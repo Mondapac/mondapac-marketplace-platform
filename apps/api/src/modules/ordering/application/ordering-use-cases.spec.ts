@@ -45,6 +45,7 @@ import { ListOrders } from './use-cases/list-orders.use-case';
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
 import { RecordCarrierProgress } from './use-cases/record-carrier-progress.use-case';
+import { RecordDeliveryAnchor } from './use-cases/record-delivery-anchor.use-case';
 import { RecordLedger } from './use-cases/record-ledger.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
@@ -1954,6 +1955,139 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         shipping.carrierDown = false;
         expect(await progress(order.id, a, 1)).toEqual(err({ code: 'validation.failed' }));
         expect(await progress(order.id, 'nope', 2)).toEqual(err({ code: 'validation.failed' }));
+      });
+    });
+
+    describe('the payout eligibility anchor (package 6b)', () => {
+      const anchorDelivery = (n: number) => ({
+        eventId: id<'event'>(0xd00 + n),
+        subscriber: 'ordering.record-delivery-anchor',
+        attempt: 1,
+      });
+      const anchor = (orderId: unknown, sellerOrderId: unknown, n = 1, context = system) =>
+        new RecordDeliveryAnchor(gate, deps).execute(context, {
+          delivery: anchorDelivery(n),
+          orderId: orderId as string,
+          sellerOrderId: sellerOrderId as string,
+        });
+      const delivered = () =>
+        written.filter((e) => e.type === 'ordering.seller-order-delivered.v1');
+
+      it('publishes the delivered event once, in the unit of the seller click (version 3, ids only)', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        written.length = 0;
+
+        expect((await deliver(sellerA, a)).ok).toBe(true);
+
+        expect(delivered()).toEqual([
+          expect.objectContaining({
+            type: 'ordering.seller-order-delivered.v1',
+            aggregateType: 'seller-order',
+            aggregateId: a,
+            aggregateVersion: 3,
+            payload: { orderId: order.id, sellerOrderId: a, sellerId: SELLER_A },
+          }),
+        ]);
+        // A second click is a conflict and writes no second event.
+        expect((await deliver(sellerA, a)).ok).toBe(false);
+        expect(delivered()).toHaveLength(1);
+      });
+
+      it('anchors a seller click as seller-click when the carrier never reported a delivery', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        // The carrier picked it up (so it is shipped); the seller then clicks "delivered".
+        await ship(sellerA, a);
+        await deliver(sellerA, a);
+        const row = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!;
+
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+        expect(commission.delivered).toEqual([
+          {
+            orderId: order.id,
+            sellerOrderId: a,
+            sellerId: SELLER_A,
+            deliveredAt: row.deliveredAt,
+            source: 'seller-click',
+          },
+        ]);
+        // The same delivery again changes nothing and never reaches commission-payouts twice.
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.already-handled' }),
+        );
+        expect(commission.delivered).toHaveLength(1);
+      });
+
+      it('anchors a carrier-confirmed delivery as carrier, and the delivery event is written with it', async () => {
+        const order = await paid();
+        const b = sellerOrderIdOf(order.id, SELLER_B);
+        shipping.carrierShipments.set(b, {
+          sellerOrderId: b,
+          carrierName: 'Mondapac Drive',
+          trackingRef: '01990000-0000-7000-8000-00000000d003',
+          progress: 'delivered',
+        });
+        written.length = 0;
+        expect(
+          await new RecordCarrierProgress(gate, deps).execute(system, {
+            delivery: {
+              eventId: id<'event'>(0xc01),
+              subscriber: 'ordering.record-carrier-progress',
+              attempt: 1,
+            },
+            orderId: order.id,
+            sellerOrderId: b,
+          }),
+        ).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(delivered()).toHaveLength(1);
+        expect(delivered()[0]).toMatchObject({ aggregateId: b, aggregateVersion: 3 });
+
+        expect(await anchor(order.id, b)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+        expect(commission.delivered).toEqual([
+          expect.objectContaining({ sellerOrderId: b, sellerId: SELLER_B, source: 'carrier' }),
+        ]);
+      });
+
+      it('retries while shipping is down or commission-payouts refuses, and anchors nothing meanwhile', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        await deliver(sellerA, a);
+
+        shipping.carrierDown = true;
+        expect(await anchor(order.id, a)).toEqual(err({ code: 'ordering.try-again' }));
+        shipping.carrierDown = false;
+        commission.deliveredFails = { code: 'commission-payouts.terms-unavailable' };
+        expect(await anchor(order.id, a)).toEqual(err({ code: 'ordering.try-again' }));
+        expect(commission.delivered).toEqual([]);
+
+        // Once commission-payouts accepts, the same event is handled (the mark was never written).
+        commission.deliveredFails = null;
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+      });
+
+      it('answers try-again for a seller order that is not delivered, and refuses bad ids and other actors', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        expect(await anchor(order.id, a)).toEqual(err({ code: 'ordering.try-again' }));
+        expect(await anchor(order.id, 'nope', 2)).toEqual(err({ code: 'validation.failed' }));
+        expect(await anchor('nope', a, 3)).toEqual(err({ code: 'validation.failed' }));
+        expect(await anchor(order.id, id<'SellerOrder'>(0x999), 4)).toEqual(
+          err({ code: 'validation.failed' }),
+        );
+        expect(await anchor(order.id, a, 5, sellerA)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(commission.delivered).toEqual([]);
       });
     });
   });

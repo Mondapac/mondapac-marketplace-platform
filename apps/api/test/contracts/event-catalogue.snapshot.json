@@ -621,6 +621,15 @@
     }
   },
   {
+    "type": "ordering.seller-order-delivered.v1",
+    "aggregateType": "seller-order",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "ordering.order-shipped.v1",
     "aggregateType": "seller-order",
     "fields": {

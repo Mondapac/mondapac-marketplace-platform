@@ -5,6 +5,18 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import request from 'supertest';
 import { ClearCommissionRate } from '../src/modules/commission-payouts/application/use-cases/clear-commission-rate.use-case';
 import { SetCommissionRate } from '../src/modules/commission-payouts/application/use-cases/set-commission-rate.use-case';
+import { ClearSellerPayoutTerms } from '../src/modules/commission-payouts/application/use-cases/clear-seller-payout-terms.use-case';
+import { ListSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-seller-payout-holds.use-case';
+import { PlacePayoutHold } from '../src/modules/commission-payouts/application/use-cases/place-payout-hold.use-case';
+import { ReleasePayoutHold } from '../src/modules/commission-payouts/application/use-cases/release-payout-hold.use-case';
+import { SetSellerPayoutTerms } from '../src/modules/commission-payouts/application/use-cases/set-seller-payout-terms.use-case';
+import { ViewSellerPayoutTerms } from '../src/modules/commission-payouts/application/use-cases/view-seller-payout-terms.use-case';
+import {
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
+  COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
+  COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
+} from '../src/modules/commission-payouts/contracts/permissions';
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from '../src/modules/commission-payouts/application/use-cases/view-seller-ledger.use-case';
@@ -77,8 +89,32 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.seller-not-found': 404,
     'commission-payouts.rate-not-set': 404,
     'commission-payouts.rate-unavailable': 503,
+    'commission-payouts.terms-not-set': 404,
+    'commission-payouts.terms-unavailable': 503,
+    'commission-payouts.version-conflict': 409,
+    'commission-payouts.seller-order-not-found': 404,
+    'commission-payouts.hold-not-found': 404,
+    'commission-payouts.hold-already-released': 409,
     'commission-payouts.unavailable': 503,
   });
+});
+
+it('declares the payout terms view as unprotected and every change as protected (2FA, no acting-as)', () => {
+  // The use-case gate enforces `protected` for every key that declares it; these four are the
+  // package 6b keys, all platform scope.
+  expect(
+    [
+      COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
+      COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
+      COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
+      COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
+    ].map((p) => [p.key, p.scope, p.protected]),
+  ).toEqual([
+    ['commission-payouts.payout-terms.view', 'platform', false],
+    ['commission-payouts.payout-terms.edit', 'platform', true],
+    ['commission-payouts.payout-hold.place', 'platform', true],
+    ['commission-payouts.payout-hold.release', 'platform', true],
+  ]);
 });
 
 describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (code) => {
@@ -114,7 +150,19 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .overrideProvider(ViewSellerLedger)
           .useValue(stub('seller-ledger'))
           .overrideProvider(ViewOwnLedger)
-          .useValue(stub('own-ledger')),
+          .useValue(stub('own-ledger'))
+          .overrideProvider(ViewSellerPayoutTerms)
+          .useValue(stub('view-terms'))
+          .overrideProvider(SetSellerPayoutTerms)
+          .useValue(stub('set-terms'))
+          .overrideProvider(ClearSellerPayoutTerms)
+          .useValue(stub('clear-terms'))
+          .overrideProvider(ListSellerPayoutHolds)
+          .useValue(stub('list-holds'))
+          .overrideProvider(PlacePayoutHold)
+          .useValue(stub('place-hold'))
+          .overrideProvider(ReleasePayoutHold)
+          .useValue(stub('release-hold')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'cp-seed-0001'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -332,5 +380,191 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       { name: 'seller-ledger', input: { sellerId: SELLER, cursor: 'abc', limit: 10 } },
       { name: 'own-ledger', input: { cursor: undefined, limit: undefined } },
     ]);
+  });
+
+  describe('payout terms and holds', () => {
+    const TERMS = `/commission-payouts/admin/sellers/${SELLER}/payout-terms`;
+    const HOLDS = `/commission-payouts/admin/sellers/${SELLER}/payout-holds`;
+    const HOLD = id<'PayoutHold'>(0xa501);
+    const RELEASE = `/commission-payouts/admin/payout-holds/${HOLD}/release`;
+    const terms = {
+      sellerId: SELLER,
+      effective: {
+        weekdays: ['TUE'],
+        localTime: '10:00',
+        holdDaysCarrier: 9,
+        holdDaysSellerClick: 14,
+        minimumMinor: 5000n,
+        approvalMode: 'AUTO',
+        firstPayoutManual: true,
+      },
+      source: 'seller',
+      override: {
+        weekdays: null,
+        localTime: null,
+        holdDaysCarrier: 9,
+        holdDaysSellerClick: null,
+        minimumMinor: null,
+        approvalMode: null,
+      },
+      version: 2,
+    };
+    const hold = {
+      holdId: HOLD,
+      sellerId: SELLER,
+      sellerOrderId: null,
+      reason: 'admin-review',
+      origin: 'admin',
+      placedAt: START,
+      active: true,
+      releasedAt: null,
+      releaseReason: null,
+    };
+
+    it('reads, sets and removes terms, passing the version and turning money into a string', async () => {
+      await boot();
+      next = ok(terms);
+      const session = admin();
+
+      const read = await call('get', 'admin', TERMS, session);
+      expect(read.status).toBe(200);
+      expect(read.headers['cache-control']).toBe('no-store');
+      expect(read.body).toMatchObject({
+        source: 'seller',
+        version: 2,
+        effective: { minimumMinor: '5000', holdDaysCarrier: 9 },
+        override: { holdDaysCarrier: 9, minimumMinor: null },
+      });
+      const set = await call('put', 'admin', TERMS, session, {
+        holdDaysCarrier: 9,
+        expectedVersion: 1,
+      });
+      expect(set.status).toBe(200);
+      expect((await call('delete', 'admin', `${TERMS}?expectedVersion=2`, session)).status).toBe(
+        200,
+      );
+      expect((await call('delete', 'admin', TERMS, session)).status).toBe(200);
+      expect(calls).toEqual([
+        { name: 'view-terms', input: { sellerId: SELLER } },
+        {
+          name: 'set-terms',
+          input: { sellerId: SELLER, terms: { holdDaysCarrier: 9 }, expectedVersion: 1 },
+        },
+        { name: 'clear-terms', input: { sellerId: SELLER, expectedVersion: 2 } },
+        // A missing version reaches the use case as an invalid one, which it refuses.
+        { name: 'clear-terms', input: { sellerId: SELLER, expectedVersion: -1 } },
+      ]);
+    });
+
+    it('refuses a terms or hold write without CSRF, and with a stray field', async () => {
+      await boot();
+      const session = admin();
+      const noCsrf = { cookie: session.cookie };
+
+      expect((await call('put', 'admin', TERMS, noCsrf, { holdDaysCarrier: 9 })).status).toBe(403);
+      expect((await call('delete', 'admin', `${TERMS}?expectedVersion=1`, noCsrf)).status).toBe(
+        403,
+      );
+      expect((await call('post', 'admin', HOLDS, noCsrf, { reason: 'admin-review' })).status).toBe(
+        403,
+      );
+      expect((await call('post', 'admin', RELEASE, noCsrf, { reason: 'resolved' })).status).toBe(
+        403,
+      );
+      const stray = await call('put', 'admin', TERMS, session, { holdDays: 9 });
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'holdDays', code: 'unknown-field' }] },
+      });
+      expect(
+        (await call('post', 'admin', HOLDS, session, { reason: 'admin-review', placedBy: 'x' }))
+          .status,
+      ).toBe(400);
+      expect((await call('post', 'admin', RELEASE, session, { holdId: HOLD })).status).toBe(400);
+      expect(calls).toEqual([]);
+    });
+
+    it('lists, places and releases holds', async () => {
+      await boot();
+      const session = admin();
+
+      next = ok([hold]);
+      const listed = await call('get', 'admin', HOLDS, session);
+      expect(listed.status).toBe(200);
+      expect(listed.body).toEqual({
+        holds: [{ ...hold, placedAt: START.toString() }],
+      });
+      next = ok(hold);
+      const placed = await call('post', 'admin', HOLDS, session, {
+        reason: 'admin-review',
+        sellerOrderId: id<'SellerOrder'>(0xc020),
+      });
+      expect(placed.status).toBe(201);
+      expect(placed.headers['cache-control']).toBe('no-store');
+      next = ok({ ...hold, active: false, releasedAt: START, releaseReason: 'resolved' });
+      const released = await call('post', 'admin', RELEASE, session, { reason: 'resolved' });
+      expect(released.status).toBe(200);
+      expect(released.body).toMatchObject({
+        active: false,
+        releasedAt: START.toString(),
+        releaseReason: 'resolved',
+      });
+      expect(calls).toEqual([
+        { name: 'list-holds', input: { sellerId: SELLER } },
+        {
+          name: 'place-hold',
+          input: {
+            sellerId: SELLER,
+            sellerOrderId: id<'SellerOrder'>(0xc020),
+            reason: 'admin-review',
+          },
+        },
+        { name: 'release-hold', input: { holdId: HOLD, reason: 'resolved' } },
+      ]);
+    });
+
+    it('maps the refusals of the terms and hold routes', async () => {
+      await boot();
+      const session = admin();
+      const cases: [string, number, () => ReturnType<typeof call>][] = [
+        [
+          'commission-payouts.version-conflict',
+          409,
+          () => call('put', 'admin', TERMS, session, { holdDaysCarrier: 9 }),
+        ],
+        ['commission-payouts.terms-unavailable', 503, () => call('get', 'admin', TERMS, session)],
+        [
+          'commission-payouts.terms-not-set',
+          404,
+          () => call('delete', 'admin', `${TERMS}?expectedVersion=1`, session),
+        ],
+        [
+          'commission-payouts.seller-order-not-found',
+          404,
+          () => call('post', 'admin', HOLDS, session, { reason: 'admin-review' }),
+        ],
+        [
+          'commission-payouts.hold-not-found',
+          404,
+          () => call('post', 'admin', RELEASE, session, { reason: 'resolved' }),
+        ],
+        [
+          'commission-payouts.hold-already-released',
+          409,
+          () => call('post', 'admin', RELEASE, session, { reason: 'resolved' }),
+        ],
+        [
+          'access.denied',
+          403,
+          () => call('post', 'admin', RELEASE, session, { reason: 'resolved' }),
+        ],
+      ];
+      for (const [code, status, run] of cases) {
+        next = err({ code });
+        const response = await run();
+        expect([code, response.status]).toEqual([code, status]);
+        expect((response.body as { code: string }).code).toBe(code);
+      }
+    });
   });
 });

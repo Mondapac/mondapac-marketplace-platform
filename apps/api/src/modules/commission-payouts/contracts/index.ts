@@ -3,6 +3,10 @@
 export { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 export {
   COMMISSION_PAYOUTS_EARNINGS_VIEW,
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
+  COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
+  COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
   COMMISSION_PAYOUTS_PERMISSIONS,
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
@@ -13,10 +17,12 @@ export {
   type CommissionPayoutsFailure,
   type CommissionRate,
   type CommissionRateMap,
+  type DeliverySource,
   type PaidLine,
   type PaidSellerOrder,
   type RefundedLine,
   type RefundedSellerOrder,
   type RefundedShipping,
   type RefundLossBearer,
+  type SellerOrderDelivered,
 } from './commission-payouts.facade';

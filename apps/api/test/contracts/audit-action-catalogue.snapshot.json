@@ -545,6 +545,75 @@
     }
   },
   {
+    "action": "commission-payouts.payout-hold.place",
+    "targetType": "commission-payouts.payout-hold",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(seller-suspended|refund-pending|dispute|admin-review|bank-change)",
+      "sellerId": "id",
+      "sellerOrderId": "optional(id)",
+      "sourceRef": "id"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-hold.release",
+    "targetType": "commission-payouts.payout-hold",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "reason": "enumOf(seller-suspended|refund-pending|dispute|admin-review|bank-change)",
+      "sellerId": "id",
+      "sellerOrderId": "optional(id)"
+    },
+    "after": {
+      "releaseReason": "enumOf(resolved|placed-in-error|seller-reinstated|review-complete)"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-terms.clear",
+    "targetType": "commission-payouts.seller-payout-terms",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    },
+    "after": {
+      "version": "optional(integer)"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-terms.set",
+    "targetType": "commission-payouts.seller-payout-terms",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    },
+    "after": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    }
+  },
+  {
     "action": "customers.account-deletion-settings.changed",
     "targetType": "customers.account-deletion-settings",
     "targetId": "enumOf(account-deletion-settings)",

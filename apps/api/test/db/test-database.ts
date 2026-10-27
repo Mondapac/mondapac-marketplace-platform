@@ -75,7 +75,9 @@ function exported(
     | 'TEST_WALLET_SWITCH_OWNER_DATABASE_URL'
     | 'TEST_WALLET_CREDIT_DATABASE_URL'
     | 'TEST_WALLET_CREDIT_OWNER_DATABASE_URL'
-    | 'TEST_ORDERING_REFUNDS_DATABASE_URL',
+    | 'TEST_ORDERING_REFUNDS_DATABASE_URL'
+    | 'TEST_PAYOUT_HOLDS_DATABASE_URL'
+    | 'TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -344,4 +346,16 @@ export function walletCreditOwnerTestDatabaseUrl(): string {
  */
 export function orderingRefundsTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_REFUNDS_DATABASE_URL');
+}
+
+/**
+ * The copy that commission-payouts-terms-holds.db-spec.ts runs on (global-setup.ts), as the
+ * application login: it relays and dispatches identity's seller-access events there.
+ */
+export function payoutHoldsTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_HOLDS_DATABASE_URL');
+}
+
+export function payoutHoldsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL');
 }

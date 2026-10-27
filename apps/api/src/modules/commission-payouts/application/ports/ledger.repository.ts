@@ -22,6 +22,12 @@ export interface LedgerRepository {
   /** Whether the seller order already has its rows (the idempotency check). */
   hasSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<boolean>;
 
+  /** The seller a seller order's rows belong to in this Market, or null when it has none. */
+  sellerOfSellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<Id<'Seller'> | null>;
+
   /** Every row of the seller order (paid facts and reversals), oldest first. */
   listSellerOrder(
     market: MarketContext,
