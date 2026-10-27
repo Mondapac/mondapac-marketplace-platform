@@ -326,12 +326,15 @@ export interface ExecuteAccountDeletionsOutput {
  * update matched goes on, so a cancel (which matches only `pending`) and a second run can never
  * overlap with the work; (3) identity ends every remaining session of the account, so nothing can
  * be ordered or credited from here on; (4) the blockers once more, now that nothing can change: a
- * blocker found here gives the claim back (`pending` again, cancellable) and the request waits;
+ * blocker found here gives the claim back (`pending` again, cancellable) and the request waits,
+ * but never once the account may already be erased: a request that was already `executing` when
+ * this run took it first asks identity whether the account still exists, and an erased account
+ * means the remaining steps are finished instead (a failed answer leaves it `executing`);
  * (5) identity erases the account (its subject key destroyed, the row, credential, sessions and
  * links deleted; `already-erased` on a re-run), recording the request id in its audit row; (6)
  * engagement forgets the account and reviews detaches the author of the account's reviews and
  * ratings (they stay as "Former customer", owner decisions ح6 and ن11); (7) one unit deletes the
- * account's `customers.addresses` rows, closes the request `completed` (only from `executing`),
+ * account's `customers.addresses` rows, closes the request `completed` (only from `executing`, and only this run's claim),
  * and writes the audit row and the outbox event. A failure in a step leaves the request
  * `executing`; the next run after the claim is stale repeats the steps. Orders, tax invoices and
  * payments stay (ids only). Logs ids and counts only.
@@ -361,41 +364,89 @@ export async function executeAccountDeletions(
       marketId: market.marketId,
       correlationId: context.correlationId,
     });
+  const logResume = (request: AccountDeletionRequest, found: readonly AccountDeletionBlocker[]) =>
+    logger.warn({
+      msg: 'customers.account-deletion.resumed-after-erasure',
+      requestId: request.id,
+      blockers: found.map((b) => b.code),
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+  /**
+   * A blocker was found: hand the claim back (`release`) only when the account is certainly not
+   * erased. A request that was already `executing` when this run took it may have been through the
+   * erase step in an earlier run, so identity is asked; an erased account (`resume`) is never
+   * handed back, the remaining steps are finished instead; an answer that cannot be had
+   * (`unknown`) leaves the request `executing` for a retry. A request that was `pending` has not
+   * been erased by anyone.
+   */
+  const whatToDo = async (
+    request: AccountDeletionRequest,
+  ): Promise<'release' | 'resume' | 'unknown'> => {
+    if (request.status !== 'executing') return 'release';
+    const exists = await deps.identity.customerAccountExists(context, request.accountId);
+    if (!exists.ok) return 'unknown';
+    return exists.value.exists ? 'release' : 'resume';
+  };
   for (const request of due.value) {
     try {
+      let erasedBefore = false;
       const first = await readBlockers(deps, context, request.accountId);
       if (!first.ok) {
         failed += 1;
         continue;
       }
       if (first.value.length > 0) {
-        // A stale claim with a blocker is given back too, so the buyer can cancel again.
-        if (request.status === 'executing') {
-          await releaseClaim(deps, market, request, request.claimedAt);
+        const verdict = await whatToDo(request);
+        if (verdict === 'unknown') {
+          failed += 1;
+          continue;
         }
-        blocked += 1;
-        logBlocked(request, first.value);
-        continue;
+        if (verdict === 'release') {
+          // A stale claim with a blocker is given back too, so the buyer can cancel again.
+          if (request.status === 'executing') {
+            await releaseClaim(deps, market, request, request.claimedAt);
+          }
+          blocked += 1;
+          logBlocked(request, first.value);
+          continue;
+        }
+        erasedBefore = true;
+        logResume(request, first.value);
       }
 
       const claimedAt = await claim(deps, market, request, startedAt, staleBefore);
       if (claimedAt === null) continue; // another run has it, or the buyer cancelled first
 
-      const lockedOut = await deps.identity.endAllCustomerSessions(context, request.accountId);
+      const lockedOut = await deps.identity.endAllCustomerSessions(
+        context,
+        request.accountId,
+        request.id,
+      );
       if (!lockedOut.ok) {
         failed += 1;
         continue;
       }
-      const last = await readBlockers(deps, context, request.accountId);
-      if (!last.ok) {
-        failed += 1;
-        continue;
-      }
-      if (last.value.length > 0) {
-        await releaseClaim(deps, market, request, claimedAt);
-        blocked += 1;
-        logBlocked(request, last.value);
-        continue;
+      if (!erasedBefore) {
+        const last = await readBlockers(deps, context, request.accountId);
+        if (!last.ok) {
+          failed += 1;
+          continue;
+        }
+        if (last.value.length > 0) {
+          const verdict = await whatToDo(request);
+          if (verdict === 'unknown') {
+            failed += 1;
+            continue;
+          }
+          if (verdict === 'release') {
+            await releaseClaim(deps, market, request, claimedAt);
+            blocked += 1;
+            logBlocked(request, last.value);
+            continue;
+          }
+          logResume(request, last.value);
+        }
       }
 
       const erased = await deps.identity.eraseCustomerAccount(
@@ -422,7 +473,7 @@ export async function executeAccountDeletions(
         async () => {
           const now = deps.clock.now();
           await deps.addresses.removeAllOf(market, request.accountId);
-          if (!(await deps.requests.complete(market, request.id, now))) return ok(false);
+          if (!(await deps.requests.complete(market, request.id, claimedAt, now))) return ok(false);
           await deps.audit.record(
             context,
             AccountDeletionCompleted.entry(request.id, {

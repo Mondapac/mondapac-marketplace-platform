@@ -39,7 +39,7 @@ ALTER TABLE "customers"."account_deletion_requests"
 
 -- Hand-written: one open (pending or executing) request per account, so a claimed request still
 -- blocks a second one. The use case also runs in a serializable unit.
-CREATE UNIQUE INDEX "account_deletion_requests_one_pending_idx"
+CREATE UNIQUE INDEX "account_deletion_requests_one_open_idx"
   ON "customers"."account_deletion_requests" ("market_id", "account_id") WHERE "status" IN ('pending', 'executing');
 
 -- Hand-written: the executor's due query (pending, by date) and its stale-claim query (executing,

@@ -64,8 +64,10 @@ describe.each(TEST_MARKETS)('buyer deletion request routes over HTTP in market %
     bind: () => undefined,
     identity: {
       endOtherCustomerSessions: (context) => bound!.endOtherCustomerSessions(context),
-      endAllCustomerSessions: (context, accountId) =>
-        bound!.endAllCustomerSessions(context, accountId),
+      endAllCustomerSessions: (context, accountId, requestId) =>
+        bound!.endAllCustomerSessions(context, accountId, requestId),
+      customerAccountExists: (context, accountId) =>
+        bound!.customerAccountExists(context, accountId),
       eraseCustomerAccount: (context, accountId, requestId) =>
         bound!.eraseCustomerAccount(context, accountId, requestId),
     },

@@ -365,6 +365,7 @@ describe.each(TEST_MARKETS)(
             ended += 1;
             return Promise.resolve(ok({ revokedSessions: 0 }));
           },
+          customerAccountExists: () => Promise.resolve(ok({ exists: true })),
           endAllCustomerSessions: () => {
             return Promise.resolve(ok({ revokedSessions: 0 }));
           },

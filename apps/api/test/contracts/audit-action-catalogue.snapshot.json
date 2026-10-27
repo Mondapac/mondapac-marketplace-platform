@@ -670,6 +670,17 @@
     }
   },
   {
+    "action": "identity.account.sessions-ended-for-erasure",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "requestId": "id",
+      "revokedSessions": "integer"
+    }
+  },
+  {
     "action": "identity.admin-session.opened",
     "targetType": "identity.account",
     "targetId": "id",

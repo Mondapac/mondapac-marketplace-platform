@@ -238,6 +238,7 @@
   { "name": "identity.confirm-seller-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.confirm-seller-second-factor-reset", "rule": "anonymous" },
   { "name": "identity.contact-email-of", "rule": "system" },
+  { "name": "identity.customer-account-exists", "rule": "system" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",

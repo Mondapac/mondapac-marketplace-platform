@@ -38,7 +38,7 @@ request cannot be cancelled (409 `customers.account-deletion-in-progress`).
 
 | Read or write | Statement shape | Index that serves it |
 |---|---|---|
-| The account's open request (view, cancel, one-open check) | `market_id, account_id`, status in (`pending`, `executing`) | partial unique `account_deletion_requests_one_pending_idx (market_id, account_id) WHERE status IN ('pending','executing')` |
+| The account's open request (view, cancel, one-open check) | `market_id, account_id`, status in (`pending`, `executing`) | partial unique `account_deletion_requests_one_open_idx (market_id, account_id) WHERE status IN ('pending','executing')` |
 | Insert a request | `INSERT ... ON CONFLICT DO NOTHING` | the same unique index (one open request per account) |
 | Executor: due requests | `market_id`, `status = 'pending'`, `scheduled_for <= now`, order by `scheduled_for, id`, limit 25 | partial `account_deletion_requests_market_id_scheduled_for_pending_idx (market_id, scheduled_for, id) WHERE status = 'pending'` |
 | Executor: stale claims | `market_id`, `status = 'executing'`, `claimed_at <= now - 15 min`, order by `claimed_at, id` | partial `account_deletion_requests_market_id_claimed_at_executing_idx (market_id, claimed_at, id) WHERE status = 'executing'` |

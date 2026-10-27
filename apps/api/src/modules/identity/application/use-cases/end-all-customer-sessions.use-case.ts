@@ -1,12 +1,16 @@
 import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { AccountSessionsEndedForErasureAudit } from '../../domain/audit';
 import type { AccountRepository } from '../ports/account.repository';
 import type { SessionRepository } from '../ports/session.repository';
 
 export interface EndAllCustomerSessionsInput {
   readonly accountId: Id<'Account'>;
+  /** The customers deletion request that asked; recorded in the audit row. */
+  readonly requestId: Id<'AccountDeletionRequest'>;
 }
 
 export interface EndAllCustomerSessionsOutput {
@@ -21,6 +25,7 @@ export interface EndAllCustomerSessionsDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly sessions: SessionRepository;
+  readonly audit: AuditWriter;
   readonly clock: Clock;
 }
 
@@ -30,8 +35,9 @@ export interface EndAllCustomerSessionsDependencies {
  * blocker check, so nothing can be ordered between that check and the erasure). Rule `system`.
  * One unit that takes the account's credential lock first, as every session revocation does, so
  * a sign-in racing it either commits and is ended here or opens afterwards. An account that is
- * already gone ends nothing. No mail and no audit row of its own: the erasure that follows is
- * audited with the deletion request id. Not exposed over HTTP.
+ * already gone ends nothing. No mail. The audit row
+ * `identity.account.sessions-ended-for-erasure` names the account id, the deletion request id and the
+ * count. Not exposed over HTTP.
  */
 export class EndAllCustomerSessions extends UseCase<
   EndAllCustomerSessionsInput,
@@ -55,7 +61,7 @@ export class EndAllCustomerSessions extends UseCase<
     input: EndAllCustomerSessionsInput,
   ): Promise<Result<EndAllCustomerSessionsOutput, EndAllCustomerSessionsFailure>> {
     const { market } = context;
-    const { unitOfWork, accounts, sessions, clock } = this.deps;
+    const { unitOfWork, accounts, sessions, audit, clock } = this.deps;
     return unitOfWork.run(
       market,
       async (): Promise<Result<EndAllCustomerSessionsOutput, EndAllCustomerSessionsFailure>> => {
@@ -73,6 +79,12 @@ export class EndAllCustomerSessions extends UseCase<
           'account-erasure',
           clock.now(),
           null,
+        );
+        await audit.record(
+          context,
+          AccountSessionsEndedForErasureAudit.entry(input.accountId, {
+            after: { requestId: input.requestId, revokedSessions },
+          }),
         );
         return ok({ code: 'sessions-ended', revokedSessions });
       },

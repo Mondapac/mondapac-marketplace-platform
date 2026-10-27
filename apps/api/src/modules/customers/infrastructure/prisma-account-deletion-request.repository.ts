@@ -109,10 +109,11 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
   async complete(
     market: MarketContext,
     id: Id<'AccountDeletionRequest'>,
+    claimedAt: Temporal.Instant,
     at: Temporal.Instant,
   ): Promise<boolean> {
     const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
-      where: { marketId: market.marketId, id, status: 'executing' },
+      where: { marketId: market.marketId, id, status: 'executing', claimedAt: toDate(claimedAt) },
       data: { status: 'completed', completedAt: toDate(at) },
     });
     return count === 1;

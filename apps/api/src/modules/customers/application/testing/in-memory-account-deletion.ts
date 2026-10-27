@@ -202,9 +202,20 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     return Promise.resolve(true);
   }
 
-  complete(market: MarketContext, id: Id<'AccountDeletionRequest'>, at: Temporal.Instant) {
+  complete(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    claimedAt: Temporal.Instant,
+    at: Temporal.Instant,
+  ) {
     const row = this.rows.get(id);
-    if (row === undefined || row.market !== market.marketId || row.status !== 'executing') {
+    if (
+      row === undefined ||
+      row.market !== market.marketId ||
+      row.status !== 'executing' ||
+      row.claimedAt === null ||
+      Temporal.Instant.compare(row.claimedAt, claimedAt) !== 0
+    ) {
       return Promise.resolve(false);
     }
     this.rows.set(id, { ...row, status: 'completed', closedAt: at });

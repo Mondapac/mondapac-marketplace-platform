@@ -48,10 +48,14 @@ export interface AccountDeletionRequestRepository {
     claimedAt: Temporal.Instant,
   ): Promise<boolean>;
 
-  /** Closes an executing request as completed; false when it was not executing. */
+  /**
+   * Closes an executing request as completed, only the claim made at `claimedAt` (as `release`);
+   * false when it was not executing or another run has claimed it again since.
+   */
   complete(
     market: MarketContext,
     id: Id<'AccountDeletionRequest'>,
+    claimedAt: Temporal.Instant,
     at: Temporal.Instant,
   ): Promise<boolean>;
 

@@ -35,7 +35,13 @@ export interface IdentityPeer {
   endAllCustomerSessions(
     context: CallContext,
     accountId: Id<'Account'>,
+    requestId: Id<'AccountDeletionRequest'>,
   ): Promise<Result<{ readonly revokedSessions: number }, Failure>>;
+  /** False once the account is erased: a claim is never handed back after that. */
+  customerAccountExists(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly exists: boolean }, Failure>>;
   eraseCustomerAccount(
     context: CallContext,
     accountId: Id<'Account'>,

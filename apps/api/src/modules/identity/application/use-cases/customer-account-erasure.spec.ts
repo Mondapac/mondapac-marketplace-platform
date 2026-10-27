@@ -18,6 +18,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import { openSession } from '../../domain/session';
+import { CustomerAccountExists } from './customer-account-exists.use-case';
 import { EndAllCustomerSessions } from './end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './erase-customer-account.use-case';
@@ -172,8 +173,16 @@ describe.each(TEST_MARKETS)(
       it('ends every session of the account, the calling one too, and no other account', async () => {
         const ended = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
           accountId: CUSTOMER,
+          requestId: REQUEST,
         });
         expect(ended).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 3 } });
+        expect(fakes.audits).toHaveLength(1);
+        expect(fakes.audits[0]).toMatchObject({
+          action: 'identity.account.sessions-ended-for-erasure',
+          targetId: CUSTOMER,
+          actor: 'system',
+          after: { requestId: REQUEST, revokedSessions: 3 },
+        });
         expect(live(CURRENT)).toBe(false);
         expect(live(LAPTOP)).toBe(false);
         expect(live(PHONE)).toBe(false);
@@ -182,6 +191,7 @@ describe.each(TEST_MARKETS)(
         expect(fakes.credentialLocks).toEqual([CUSTOMER]);
         const again = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
           accountId: CUSTOMER,
+          requestId: REQUEST,
         });
         expect(again).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 0 } });
       });
@@ -190,10 +200,12 @@ describe.each(TEST_MARKETS)(
         seedSession(id<'Session'>(0xa0a1), ADMIN);
         const gone = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
           accountId: id<'Account'>(0xc9),
+          requestId: REQUEST,
         });
         expect(gone).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 0 } });
         const admin = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
           accountId: ADMIN,
+          requestId: REQUEST,
         });
         expect(admin).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 0 } });
         expect(live(id<'Session'>(0xa0a1))).toBe(true);
@@ -202,9 +214,32 @@ describe.each(TEST_MARKETS)(
       it('is for the system actor only', async () => {
         const refused = await new EndAllCustomerSessions(gate, deps()).execute(customer(), {
           accountId: CUSTOMER,
+          requestId: REQUEST,
         });
         expect(refused.ok).toBe(false);
         expect(live(LAPTOP)).toBe(true);
+      });
+    });
+
+    describe('CustomerAccountExists', () => {
+      it('says whether a customer account is there, and nothing else', async () => {
+        const read = (accountId: Id<'Account'>) =>
+          new CustomerAccountExists(gate, deps()).execute(system(), { accountId });
+        expect(await read(CUSTOMER)).toEqual({ ok: true, value: { exists: true } });
+        expect(await read(ADMIN)).toEqual({ ok: true, value: { exists: false } });
+        expect(await read(id<'Account'>(0xc9))).toEqual({ ok: true, value: { exists: false } });
+        await new EraseCustomerAccount(gate, deps()).execute(system(), {
+          accountId: CUSTOMER,
+          requestId: REQUEST,
+        });
+        expect(await read(CUSTOMER)).toEqual({ ok: true, value: { exists: false } });
+        expect(
+          (
+            await new CustomerAccountExists(gate, deps()).execute(customer(), {
+              accountId: CUSTOMER,
+            })
+          ).ok,
+        ).toBe(false);
       });
     });
 

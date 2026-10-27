@@ -179,6 +179,20 @@ the customers barrel.
   again because every update names the status it moves from; no trigger or CHECK enforces it.
 - **Mojtaba L5, retention.** Deletion request rows are kept as the audit record of the erasure;
   no retention period is set.
+- **No account lock after the sessions end.** `identity.endAllCustomerSessions` ends every session,
+  but the buyer can sign in again between it and the erase; the last blocker check and the erase
+  follow within one run, yet a sign-in plus an order in that gap is only caught by the next
+  retry. A real lock needs an identity account flag.
+- **Erase callers are not restricted by a boundaries allow-list.** `identity.eraseCustomerAccount`,
+  `endAllCustomerSessions` and `customerAccountExists` are `system` use cases reachable from any
+  module that holds the identity facade; only `customers` should call them, and no `pnpm
+  boundaries` rule enforces it yet.
+- **Claim hand-back.** A request that was already `executing` when a run took it (a resumed stale
+  claim) is handed back to `pending` only after `identity.customerAccountExists` says the account
+  is still there; if it is already erased the run finishes the remaining steps with a warn log
+  (ids only), and if identity cannot answer the request stays `executing` for a retry. `complete`
+  matches the run's own `claimed_at`, as `release` does. `identity.endAllCustomerSessions` writes
+  `identity.account.sessions-ended-for-erasure` (account id, request id, count).
 - **No returns or disputes module**: only open orders and pending refunds are blockers.
 - **Market without wallet settings** fails closed (503) because the wallet cannot answer.
 

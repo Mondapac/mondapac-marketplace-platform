@@ -154,6 +154,7 @@ import { CustomerShortNames } from './application/use-cases/customer-short-names
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
+import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './application/use-cases/end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
@@ -986,7 +987,12 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
       sessions: true,
+      audit: true,
       clock: true,
+    }),
+    useCaseProvider(CustomerAccountExists, {
+      unitOfWork: true,
+      accounts: true,
     }),
     useCaseProvider(EraseCustomerAccount, {
       unitOfWork: true,
@@ -1700,6 +1706,7 @@ function useCaseProvider<D, U>(
         TeamMemberLabels,
         EndOtherCustomerSessions,
         EndAllCustomerSessions,
+        CustomerAccountExists,
         EraseCustomerAccount,
       ],
       useFactory: (
@@ -1714,6 +1721,7 @@ function useCaseProvider<D, U>(
         teamMemberLabels: TeamMemberLabels,
         endOtherCustomerSessions: EndOtherCustomerSessions,
         endAllCustomerSessions: EndAllCustomerSessions,
+        customerAccountExists: CustomerAccountExists,
         eraseCustomerAccount: EraseCustomerAccount,
       ) =>
         new IdentityFacadeImplementation({
@@ -1728,6 +1736,7 @@ function useCaseProvider<D, U>(
           teamMemberLabels,
           endOtherCustomerSessions,
           endAllCustomerSessions,
+          customerAccountExists,
           eraseCustomerAccount,
         }),
     },

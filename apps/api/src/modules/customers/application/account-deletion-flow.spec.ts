@@ -64,6 +64,8 @@ class Facades {
   });
   /** Runs when the sessions are ended: lets a test make an order appear at that moment. */
   onEndAll: (() => void) | null = null;
+  exists: Result<{ exists: boolean }, { code: 'access.denied' }> = ok({ exists: true });
+  readonly endAllFor: Id<'AccountDeletionRequest'>[] = [];
   readonly erasedFor: Id<'AccountDeletionRequest'>[] = [];
   eraseAnswer: 'erased' | 'already-erased' | 'throw' = 'erased';
   forgetOk = true;
@@ -100,7 +102,16 @@ class Facades {
       this.contexts.push(context);
       return Promise.resolve(this.endSessions);
     },
-    endAllCustomerSessions: (context: CallContext, accountId: Id<'Account'>) => {
+    customerAccountExists: (_context: CallContext, accountId: Id<'Account'>) => {
+      this.calls.push(`identity.exists:${accountId}`);
+      return Promise.resolve(this.exists);
+    },
+    endAllCustomerSessions: (
+      context: CallContext,
+      accountId: Id<'Account'>,
+      requestId: Id<'AccountDeletionRequest'>,
+    ) => {
+      this.endAllFor.push(requestId);
       this.calls.push(`identity.end-all:${accountId}`);
       this.contexts.push(context);
       this.onEndAll?.();
@@ -699,6 +710,69 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       facades.onEndAll = null;
       facades.obligations = ok(idle);
       expect(await run()).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
+    });
+
+    /** A claim left executing by a run that died after it, made stale. */
+    async function resumable() {
+      await due();
+      facades.forgetOk = false;
+      await run();
+      facades.forgetOk = true;
+      facades.calls.length = 0;
+      facades.erasedFor.length = 0;
+      facades.endAllFor.length = 0;
+      staleClaim();
+    }
+
+    it('hands a resumed claim back to pending when a blocker appears and the account still exists', async () => {
+      await resumable();
+      facades.obligations = ok({ openOrders: 1, pendingRefunds: 0 });
+      expect(await run()).toEqual(ok({ completed: 0, blocked: 1, failed: 0 }));
+      expect(facades.calls).toContain(`identity.exists:${BUYER}`);
+      expect(rowsOf()[0]).toMatchObject({ status: 'pending', claimedAt: null });
+      expect(facades.calls.some((c) => c.startsWith('identity.erase'))).toBe(false);
+    });
+
+    it('never hands a claim back once the account is erased: it finishes the remaining steps', async () => {
+      await resumable();
+      facades.exists = ok({ exists: false });
+      facades.eraseAnswer = 'already-erased';
+      facades.obligations = ok({ openOrders: 1, pendingRefunds: 0 });
+      expect(await run()).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
+      expect(rowsOf()[0]?.status).toBe('completed');
+      expect(facades.erasedFor).toEqual([rowsOf()[0]!.id]);
+      expect(facades.endAllFor).toEqual([rowsOf()[0]!.id]);
+    });
+
+    it('also finishes when the blocker only shows after the sessions are ended', async () => {
+      await resumable();
+      facades.exists = ok({ exists: false });
+      facades.eraseAnswer = 'already-erased';
+      facades.onEndAll = () => {
+        facades.obligations = ok({ openOrders: 1, pendingRefunds: 0 });
+      };
+      expect(await run()).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
+      expect(rowsOf()[0]?.status).toBe('completed');
+    });
+
+    it('leaves a resumed claim executing when identity cannot say whether the account exists', async () => {
+      await resumable();
+      facades.exists = err({ code: 'access.denied' });
+      facades.obligations = ok({ openOrders: 1, pendingRefunds: 0 });
+      expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 1 }));
+      expect(rowsOf()[0]?.status).toBe('executing');
+      expect(facades.calls.some((c) => c.startsWith('identity.erase'))).toBe(false);
+    });
+
+    it('does not complete under a claim another run took over', async () => {
+      await due();
+      const [row] = rowsOf();
+      const claimedAt = clock.now();
+      await requests.claim(market, row!.id, claimedAt, claimedAt.subtract({ minutes: 15 }));
+      const later = claimedAt.add({ minutes: 20 });
+      await requests.claim(market, row!.id, later, later.subtract({ minutes: 15 }));
+      expect(await requests.complete(market, row!.id, claimedAt, later)).toBe(false);
+      expect(await requests.complete(market, row!.id, later, later)).toBe(true);
     });
 
     it('a cancelled request is still cancellable after a released claim', async () => {
