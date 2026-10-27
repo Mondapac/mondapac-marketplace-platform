@@ -2,6 +2,7 @@ import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/commo
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import {
+  AUTHORISATION_CHECK,
   registerPermissions,
   registerStepUpActions,
   USE_CASE_GATE,
@@ -16,6 +17,7 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { IdentityModule } from '../identity';
 import { SellersModule } from '../sellers';
 import type { CommissionPayoutsDependencies } from './application/commission-payouts-dependencies';
 import type { DisputeDependencies } from './application/dispute-dependencies';
@@ -105,6 +107,7 @@ const DISPUTE_PORTS: readonly [keyof DisputeDependencies, InjectionToken][] = [
   ['sellerNames', SELLER_NAMES],
   ['outbox', OUTBOX_WRITER],
   ['securityEvents', SECURITY_EVENTS],
+  ['authorisation', AUTHORISATION_CHECK],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -155,7 +158,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * (payments reaches this module through ordering, so this module cannot import them).
  */
 @Module({
-  imports: [SellersModule],
+  imports: [IdentityModule, SellersModule],
   controllers: [
     AdminCommissionController,
     SellerLedgerController,

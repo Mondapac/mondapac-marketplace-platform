@@ -1,4 +1,5 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { AuthorisationCheck } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { SecurityEvents } from '../../../platform/security-events/security-events';
@@ -20,6 +21,8 @@ export interface DisputeDependencies {
   readonly sellerNames: SellerNames;
   readonly outbox: OutboxWriter;
   readonly securityEvents: SecurityEvents;
+  /** Asked whether a seller-side reader also holds `commission-payouts.earnings.view`. */
+  readonly authorisation: AuthorisationCheck;
   readonly audit: AuditWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;

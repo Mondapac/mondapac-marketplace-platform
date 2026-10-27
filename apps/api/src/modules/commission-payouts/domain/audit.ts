@@ -115,7 +115,7 @@ export const DISPUTE_DECISION_TARGET = 'commission-payouts.dispute-decision';
  * An admin decided who bears a lost chargeback on one seller order (package 8b): the platform
  * (no ledger row) or the seller up to its unreversed share (a `dispute-debit`), or, in needs-review
  * only, reversed a seller decision (a `dispute-reinstate`). `before` is the state the admin saw:
- * the bearer already decided (absent when none) and the cap on offer; `after` is the decision.
+ * the bearer already decided (absent when none) and the cap on offer (absent when it is zero); `after` is the decision.
  */
 export const DisputeDecided = defineAuditAction({
   action: 'commission-payouts.dispute.decide',
@@ -123,7 +123,7 @@ export const DisputeDecided = defineAuditAction({
   actors: ['authenticated'],
   before: {
     bearer: auditField.optional(auditField.enumOf(DECISION_BEARERS)),
-    capAmount: auditField.money(),
+    capAmount: auditField.optional(auditField.money()),
   },
   after: {
     disputeId: auditField.id(),

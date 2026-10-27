@@ -73,9 +73,6 @@ CREATE TABLE "commission_payouts"."outbox" (
 );
 
 -- CreateIndex
-CREATE INDEX "dispute_cases_closed_due_idx" ON "commission_payouts"."dispute_cases"("market_id", "closed", "evidence_due_by");
-
--- CreateIndex
 CREATE INDEX "dispute_cases_bucket_idx" ON "commission_payouts"."dispute_cases"("market_id", "bucket", "opened_at" DESC, "dispute_id" DESC);
 
 -- CreateIndex
@@ -128,6 +125,31 @@ ALTER TABLE "commission_payouts"."dispute_decisions"
     ('no-delivery-proof', 'not-as-described', 'card-fraud-not-seller', 'other')),
   -- Only the platform reverses a seller decision (seller to platform), never the other way.
   ADD CONSTRAINT "dispute_decisions_supersedes_check" CHECK ("supersedes" IS NULL OR "bearer" = 'platform');
+
+-- A reversal names a decision of the same dispute and seller order (a composite self-reference; a
+-- first decision has no `supersedes`, and MATCH SIMPLE skips the check for NULL).
+ALTER TABLE "commission_payouts"."dispute_decisions"
+  ADD CONSTRAINT "dispute_decisions_scope_id_key"
+    UNIQUE ("market_id", "dispute_id", "seller_order_id", "id"),
+  ADD CONSTRAINT "dispute_decisions_supersedes_fkey"
+    FOREIGN KEY ("market_id", "dispute_id", "seller_order_id", "supersedes")
+    REFERENCES "commission_payouts"."dispute_decisions" ("market_id", "dispute_id", "seller_order_id", "id");
+
+-- What a reversal reverses is a seller decision (the CHECK above holds the reversal's own side).
+CREATE FUNCTION "commission_payouts"."dispute_decisions_check_supersedes"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NEW."supersedes" IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM "commission_payouts"."dispute_decisions" d
+     WHERE d."id" = NEW."supersedes" AND d."bearer" = 'seller') THEN
+    RAISE EXCEPTION 'commission_payouts.dispute_decisions: only a seller decision is reversed'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "dispute_decisions_check_supersedes" BEFORE INSERT ON "commission_payouts"."dispute_decisions"
+  FOR EACH ROW EXECUTE FUNCTION "commission_payouts"."dispute_decisions_check_supersedes"();
 
 -- One first decision per seller order and dispute; one reversal per decision.
 CREATE UNIQUE INDEX "dispute_decisions_first_key"

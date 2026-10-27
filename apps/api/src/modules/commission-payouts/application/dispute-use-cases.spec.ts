@@ -203,6 +203,7 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       sellerNames: names,
       outbox,
       securityEvents,
+      authorisation: { check: () => Promise.resolve({ allowed: true }) },
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -324,6 +325,20 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       expect(securityEvents.events.map((e) => e.payload)).toEqual([
         { disputeId: DISPUTE, reason: 'payment-intent-mismatch' },
         { disputeId: DISPUTE, reason: 'unknown-order' },
+      ]);
+    });
+
+    it('parks a read that names another order than the stored case: alert, nothing refreshed', async () => {
+      publish({ version: 1 });
+      await sync();
+      const before = disputes.cases.get(`${market.marketId}:${DISPUTE}`);
+      const otherOrder = id<'Order'>(0x1ff);
+      orders.intents.set(otherOrder, INTENT);
+      publish({ version: 2, orderId: otherOrder, status: 'under_review' });
+      expect(await sync()).toEqual(ok('parked'));
+      expect(disputes.cases.get(`${market.marketId}:${DISPUTE}`)).toEqual(before);
+      expect(securityEvents.events.map((e) => e.payload)).toEqual([
+        { disputeId: DISPUTE, reason: 'order-changed' },
       ]);
     });
 
@@ -449,6 +464,48 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
         ok: false,
         error: { code: 'commission-payouts.dispute.amount-out-of-range' },
       });
+    });
+
+    it.each([
+      ['the whole cap', '850', true],
+      ['one under the cap', '849', true],
+      ['one minor unit', '1', true],
+      ['one over the cap', '851', false],
+    ] as const)('takes %s (cap 850): accepted is %s', async (_name, amount, accepted) => {
+      lost();
+      await sync();
+      expect(await decide(SO_A, 'seller', amount)).toMatchObject(
+        accepted
+          ? { ok: true, value: { amount: { amountMinor: BigInt(amount), currency } } }
+          : { ok: false, error: { code: 'commission-payouts.dispute.amount-out-of-range' } },
+      );
+    });
+
+    it('refuses a seller bearer on a seller order whose cap is zero, and lets the platform bear it', async () => {
+      // Sale 100, commission 100: nothing left to recover.
+      await seed(SO_B, SELLER_B, 100n, 100n);
+      lost();
+      await sync();
+      expect(await decide(SO_B, 'seller', '1')).toMatchObject({
+        ok: false,
+        error: { code: 'commission-payouts.dispute.amount-out-of-range' },
+      });
+      expect(ledger.all(market).filter((r) => r.kind === 'dispute-debit')).toHaveLength(0);
+      expect(await decide(SO_B, 'platform')).toMatchObject({ ok: true });
+    });
+
+    it('reverses a partial seller decision by exactly that amount, and the cap is whole again', async () => {
+      lost();
+      await sync();
+      await decide(SO_A, 'seller', '300');
+      lost({ version: 4, fundsReinstated: true, fundsReinstatedAt: T0.add({ hours: 48 }) });
+      await sync();
+      expect(await decide(SO_A, 'platform')).toMatchObject({ ok: true, value: { reversal: true } });
+      const rows = ledger.all(market).filter((r) => r.kind.startsWith('dispute-'));
+      expect(rows.map((r) => [r.kind, r.amount.amount])).toEqual([
+        ['dispute-debit', 300n],
+        ['dispute-reinstate', 300n],
+      ]);
     });
 
     it('reverses a seller decision only in needs-review, once, as a dispute-reinstate', async () => {
@@ -649,6 +706,43 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       expect(
         await new ViewDispute(gate, deps).execute(sellerA, { disputeId: DISPUTE }),
       ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+    });
+
+    it('shows the held banner but not the repaid amount to a member without earnings.view', async () => {
+      const asked: string[] = [];
+      deps = {
+        ...deps,
+        authorisation: {
+          check: (_context, declaration) => {
+            asked.push(JSON.stringify(declaration.rule));
+            return Promise.resolve({
+              allowed: false,
+              denial: { code: 'access.denied' },
+            } as never);
+          },
+        },
+      };
+      lost();
+      await sync();
+      await decide(SO_A, 'seller', '300');
+      await decide(SO_B, 'platform');
+      expect(await new ListOwnDisputes(gate, deps).execute(sellerA, undefined)).toEqual(
+        ok([
+          { sellerOrderId: SO_A, orderId: ORDER, since: T0, open: false, recoveredAmount: null },
+        ]),
+      );
+      expect(asked).toEqual([
+        JSON.stringify({ kind: 'permissions', allOf: ['commission-payouts.earnings.view'] }),
+      ]);
+      // A failing check is "no" as well.
+      deps = {
+        ...deps,
+        authorisation: { check: () => Promise.reject(new Error('identity down')) },
+      };
+      expect(await new ListOwnDisputes(gate, deps).execute(sellerA, undefined)).toMatchObject({
+        ok: true,
+        value: [{ recoveredAmount: null }],
+      });
     });
 
     it('tells a seller only its own seller order, with no reason and no provider data', async () => {

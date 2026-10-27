@@ -40,7 +40,7 @@ export interface PayoutHoldRepository {
     },
   ): Promise<boolean>;
 
-  /** Every hold of one reason and source (a dispute's holds), newest first. */
+  /** Every system hold of one reason and source (a dispute's holds), newest first. */
   listBySource(
     market: MarketContext,
     reason: HoldReason,
@@ -48,7 +48,7 @@ export interface PayoutHoldRepository {
   ): Promise<readonly PayoutHoldRecord[]>;
 
   /**
-   * Releases every active hold of one reason and source, by the system or by `releasedBy`; answers
+   * Releases every active system hold of one reason and source, by the system or by `releasedBy`; answers
    * the holds it released.
    */
   releaseBySource(
