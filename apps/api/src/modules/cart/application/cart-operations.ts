@@ -44,6 +44,7 @@ import type { RateCounterKeys } from './ports/rate-counter-keys';
 import type { RateCounterRepository } from './ports/rate-counter.repository';
 import {
   verdictKey,
+  type LineDisplay,
   type LineFactsSource,
   type LineVerdict,
   type UnavailableReason,
@@ -99,6 +100,8 @@ export interface LineView {
   /** The price at add, when the current price differs (design 6.3). */
   readonly priceChanged: { readonly previous: Money } | null;
   readonly availability: LineAvailability | null;
+  /** What the buyer sees of the unit (name, label, image); null when catalog did not answer it. */
+  readonly display: LineDisplay | null;
 }
 
 /** The minimum-order state of a seller group (design 6.4) and the minimum when it is public. */
@@ -111,6 +114,8 @@ export interface MinimumOrderView {
 export interface SellerGroupView {
   /** Null for lines whose seller could not be determined. */
   readonly sellerId: Id<'Seller'> | null;
+  /** The public store name ("Sold by"); null when unknown or not answered. */
+  readonly sellerName: string | null;
   /** Sum of the buyable lines at the current price; null when there are none or prices mix. */
   readonly subtotal: Money | null;
   readonly minimumOrder: MinimumOrderView;
@@ -263,7 +268,11 @@ const cookieAfterRead = (caller: CartCaller, loaded: Loaded): GuestCookie | null
 const cookieAfterWrite = (caller: CartCaller, token: string | null): GuestCookie | null =>
   caller.kind === 'guest' && token !== null ? { action: 'set', token } : null;
 
-function lineView(line: CartLine, verdict: LineVerdict | undefined): LineView {
+function lineView(
+  line: CartLine,
+  verdict: LineVerdict | undefined,
+  display: LineDisplay | undefined,
+): LineView {
   const v: LineVerdict = verdict ?? {
     state: 'check-unavailable',
     reason: null,
@@ -286,6 +295,7 @@ function lineView(line: CartLine, verdict: LineVerdict | undefined): LineView {
     unitPrice: v.unitPrice,
     priceChanged: changed ? { previous: line.priceAtAdd } : null,
     availability: v.availability,
+    display: display ?? null,
   };
 }
 
@@ -299,11 +309,15 @@ interface Group {
 }
 
 /** Groups lines by seller and sums the buyable ones (design 6.2). */
-function groupLines(cart: CartState, verdicts: ReadonlyMap<string, LineVerdict>): Group[] {
+function groupLines(
+  cart: CartState,
+  verdicts: ReadonlyMap<string, LineVerdict>,
+  displays: ReadonlyMap<string, LineDisplay>,
+): Group[] {
   const groups = new Map<string | null, Group>();
   for (const line of cart.lines) {
     const verdict = verdicts.get(verdictKey(line));
-    const view = lineView(line, verdict);
+    const view = lineView(line, verdict, displays.get(verdictKey(line)));
     const key = verdict?.sellerId ?? null;
     const group: Group = groups.get(key) ?? {
       sellerId: key,
@@ -383,15 +397,23 @@ export async function viewCart(
   if (cart === null || cart.lines.length === 0) {
     return ok({ groups: [], lineCount: 0, cookie });
   }
-  const verdicts = await deps.facts.evaluate(context, cart.lines);
-  const groups = groupLines(cart, verdicts);
-  const [evaluations, fees] = await Promise.all([
+  const [verdicts, displays] = await Promise.all([
+    deps.facts.evaluate(context, cart.lines),
+    deps.facts.lineDisplays(context, cart.lines),
+  ]);
+  const groups = groupLines(cart, verdicts, displays);
+  const sellerIds = groups.flatMap((group) => (group.sellerId === null ? [] : [group.sellerId]));
+  const [evaluations, fees, names] = await Promise.all([
     evaluateGroups(deps, context, groups),
     deliveryFees(deps, context, groups),
+    sellerIds.length === 0
+      ? new Map<Id<'Seller'>, string>()
+      : deps.facts.sellerNames(context, sellerIds),
   ]);
   return ok({
     groups: groups.map((group, index) => ({
       sellerId: group.sellerId,
+      sellerName: group.sellerId === null ? null : (names.get(group.sellerId) ?? null),
       subtotal: group.currency === null || group.mixed ? null : money(group.sum, group.currency),
       minimumOrder: {
         state: evaluations[index]!.state,
@@ -718,7 +740,8 @@ export async function checkoutLines(
   const cart = loaded.value.cart;
   if (cart === null || cart.lines.length === 0) return ok([]);
   const verdicts = await deps.facts.evaluate(context, cart.lines);
-  const groups = groupLines(cart, verdicts);
+  // Checkout needs no display data.
+  const groups = groupLines(cart, verdicts, new Map());
   const evaluations = await evaluateGroups(deps, context, groups);
   const sellers = groups.flatMap((group, index): NotReadySeller[] => {
     const evaluation = evaluations[index]!;

@@ -1440,7 +1440,9 @@ const marketSchema = z
      * 500.00). `promoExpiryMonths`: promo credit expires this many calendar months after the grant
      * (12); refund credit never expires. `adminIssueCapMinor` and `adminDailyCapMinor`: the most
      * one admin issue may be (AU 5000 = 50.00) and the most one admin may issue per day without a
-     * second approval (AU 50000); read from package 2. `expiringSoonDays`: promo credit expiring
+     * second approval (AU 50000); read from package 2. `adminRequestExpiryDays`: an admin credit
+     * request above either cap that no second admin decided expires after this many calendar days
+     * in the Market's time zone (AU 7). `expiringSoonDays`: promo credit expiring
      * within this many days is shown as expiring soon. Without this section the Market has no wallet
      * settings and the wallet fails closed. Whether the wallet is on is not config: an admin sets
      * it at runtime (`wallet.market_settings`), off by default.
@@ -1451,6 +1453,7 @@ const marketSchema = z
         promoExpiryMonths: z.number().int().min(1).max(60),
         adminIssueCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
         adminDailyCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        adminRequestExpiryDays: z.number().int().min(1).max(90),
         expiringSoonDays: z.number().int().min(1).max(365),
       })
       .optional(),

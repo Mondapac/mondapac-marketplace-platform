@@ -2,6 +2,8 @@ import { Logger } from '@nestjs/common';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type {
   AdminOrderView,
+  LabelledSellerOrderView,
+  OrderView,
   LabelledAdminOrderView,
   LabelledLineView,
   LabelledSellerOrderDetailView,
@@ -63,6 +65,43 @@ export async function labelAdminOrders(
   return orders.map((order) => ({
     ...order,
     customer: customers?.get(order.accountId) ?? null,
+    sellerOrders: order.sellerOrders.map((seller) => ({
+      ...seller,
+      storeName: storeNames?.get(seller.sellerId) ?? null,
+      lines: labelLines(seller.lines, unitLabels),
+    })),
+  }));
+}
+
+/**
+ * Adds the product names, Variant labels and store names to the customer's own orders: ONE
+ * batched call per lookup, in parallel, after the read unit has closed. A failed lookup is logged
+ * and leaves its fields null; it never fails the read.
+ */
+export async function labelOwnOrders<V extends OrderView>(
+  labels: OrderLabels,
+  context: CallContext,
+  orders: readonly V[],
+): Promise<(Omit<V, 'sellerOrders'> & { sellerOrders: readonly LabelledSellerOrderView[] })[]> {
+  if (orders.length === 0) return [];
+  const units = new Map<string, OrderUnitKey>();
+  const sellerIds = new Set<Id<'Seller'>>();
+  for (const order of orders) {
+    for (const seller of order.sellerOrders) {
+      sellerIds.add(seller.sellerId);
+      for (const line of seller.lines) {
+        units.set(orderUnitKey(line), { offerId: line.offerId, variantId: line.variantId });
+      }
+    }
+  }
+  const [unitAnswer, storeAnswer] = await Promise.allSettled([
+    labels.unitLabelsOf(context, [...units.values()]),
+    labels.storeNamesOf(context, [...sellerIds]),
+  ]);
+  const unitLabels = settled(context, 'unit-labels', unitAnswer);
+  const storeNames = settled(context, 'store-names', storeAnswer);
+  return orders.map((order) => ({
+    ...order,
     sellerOrders: order.sellerOrders.map((seller) => ({
       ...seller,
       storeName: storeNames?.get(seller.sellerId) ?? null,
