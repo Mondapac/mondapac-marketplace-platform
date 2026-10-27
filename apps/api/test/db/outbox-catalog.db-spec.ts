@@ -160,6 +160,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX orders_stripe_session_id_key ON ordering.orders USING btree (stripe_session_id) WHERE (stripe_session_id IS NOT NULL)',
   'ordering.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON ordering.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Payments package 8a: the relay's claim index of payments' outbox.
+  'payments.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/ordering.md 3.12a: one pending refund per seller order, one Stripe refund
   // per refund, and the worker's read of pending refunds.
   'ordering.refunds_one_pending_key':
@@ -235,6 +238,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
   // Customer wallet (package 1): the expiry sweeps, the held holds of one wallet for the books
   // check, and the journals of one hold or one lot for the commit-time checks.
+  // Admin credit (package 2a): the pending requests, for the expiry sweep.
+  'wallet.admin_credit_requests_market_id_expires_at_id_idx':
+    "CREATE INDEX admin_credit_requests_market_id_expires_at_id_idx ON wallet.admin_credit_requests USING btree (market_id, expires_at, id) WHERE (status = 'pending'::text)",
   'wallet.holds_market_id_expires_at_id_idx':
     "CREATE INDEX holds_market_id_expires_at_id_idx ON wallet.holds USING btree (market_id, expires_at, id) WHERE (status = 'held'::text)",
   'wallet.holds_market_id_wallet_account_id_amount_minor_idx':

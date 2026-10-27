@@ -493,6 +493,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
     },
+    // Admin credit (package 2a): a request is written once and decided once; a day row is
+    // written once and then only locked. Neither is ever deleted (a trigger refuses it).
+    'wallet.admin_credit_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_reason_code',
+        'journal_id',
+        'status',
+      ],
+    },
+    'wallet.admin_credit_days': { table: ['INSERT', 'SELECT'], columnUpdate: ['locked_at'] },
     // Reviews (buyer reviews and ratings, package 1): the moderation log and the signals are
     // insert-only (triggers refuse more for every role); the rest change only the columns named
     // and are never deleted (a trigger refuses DELETE and TRUNCATE for every role).
@@ -777,6 +790,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
+    'payments.disputes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'evidence_due_by',
+        'funds_reinstated',
+        'funds_reinstated_at',
+        'funds_withdrawn',
+        'funds_withdrawn_at',
+        'last_read_at',
+        'outcome',
+        'reason',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'payments.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],

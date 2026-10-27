@@ -123,7 +123,11 @@ describe('the audit key list', () => {
       (a) => stepUpAudienceOf(a) === 'admin',
     );
 
-    expect(admin.map((a) => a.key)).toEqual(['wallet.settings.change']);
+    expect(admin.map((a) => a.key)).toEqual([
+      'wallet.credit.approve',
+      'wallet.credit.issue',
+      'wallet.settings.change',
+    ]);
     for (const action of admin)
       expect(action).toMatchObject({ locked: true, defaultRequired: true });
   });

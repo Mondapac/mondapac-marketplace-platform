@@ -346,6 +346,14 @@ export class IdentityFakes {
             : [{ id, displayName: state.displayName, email: state.email.typed }];
         }),
       ),
+    customerStatus: (market: MarketContext, id: Id<'Account'>) => {
+      const state = this.accounts.get(id);
+      return Promise.resolve(
+        state === undefined || state.marketId !== market.marketId || state.population !== 'customer'
+          ? null
+          : state.status,
+      );
+    },
     lockCredential: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
       this.credentialLocks.push(id);

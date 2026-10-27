@@ -47,7 +47,10 @@
       "orders": "Orders & customers",
       "money": "Money",
       "platform": "Platform"
-    }
+    },
+    "wallet-settings": "Wallet switch",
+    "wallet-credits": "Issue credit",
+    "wallet-requests": "Credit approvals"
   },
   "home": {
     "title": "Dashboard",
@@ -2100,7 +2103,9 @@
       "changed": "The account changed in the meantime. Find the customer again to see its current status.",
       "unavailable": "The service is not available right now. Try again in a few minutes.",
       "unknown": "Something went wrong. Try again."
-    }
+    },
+    "wallet-issue": "Issue credit",
+    "wallet-view": "View wallet"
   },
   "route": {
     "loading": "Loading the page",
@@ -2271,5 +2276,297 @@
     "error": "Notifications could not be loaded.",
     "retry": "Retry",
     "loading": "Loading notifications"
+  },
+  "step-up": {
+    "title": "Confirm it is you",
+    "title-backup": "Use a recovery code",
+    "body": "Enter the 6-digit code from your authenticator app to {action}.",
+    "body-backup": "Enter one of your recovery codes to {action}. Each recovery code works once.",
+    "wait-note": "Just signed in? Wait for your authenticator app to show a new code before you enter it. The code you used to sign in cannot be used again.",
+    "action": {
+      "wallet": {
+        "settings": {
+          "change": "change the wallet switch"
+        },
+        "credit": {
+          "issue": "issue store credit",
+          "approve": "decide a credit request"
+        }
+      },
+      "fallback": "do this"
+    },
+    "label": {
+      "code": "6-digit code",
+      "backup-code": "Recovery code",
+      "digit": "Digit {position} of {total}"
+    },
+    "verify": "Verify",
+    "checking": "Checking…",
+    "cancel": "Cancel",
+    "use-backup": "Use a recovery code instead",
+    "use-app": "Use the app code instead",
+    "error": {
+      "required": "Enter your code.",
+      "incomplete": "Enter all {length} digits.",
+      "invalid": "That code is not right. Wait for the next code in your app and try again.",
+      "throttled": "Too many wrong codes. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "throttled-clock": "({clock} left)",
+      "network": "We could not reach the server. Check your connection and try again.",
+      "unknown": "Something went wrong. Try again, or ask the team if it keeps happening.",
+      "session": "Your session needs refreshing. Reload the page and try again."
+    },
+    "enrol": {
+      "title": "Set up two-step verification first",
+      "body": "To {action} you need two-step verification on your admin account.",
+      "action": "Set up two-step"
+    }
+  },
+  "wallet": {
+    "no-access": "You do not have access to this page.",
+    "back-home": "Back to dashboard",
+    "load-failed": "This could not be loaded. Try again.",
+    "retry": "Try again",
+    "loading": "Loading",
+    "cancel": "Cancel",
+    "current-marker": "(current)",
+    "state": {
+      "off": "Off",
+      "active": "Active",
+      "paused": "Paused",
+      "frozen": "Frozen"
+    },
+    "meaning": {
+      "off": "The wallet does not exist for customers. No wallet shows in the shop and no credit can be issued. Only possible before any credit has ever moved.",
+      "active": "Customers can see and spend their store credit, and admins can issue more.",
+      "paused": "Customers keep their balance and can see it, but cannot spend it. No new credit is issued. Use this for short maintenance or a wind-down. Nothing is removed.",
+      "frozen": "Like paused, but for a security or legal problem: all wallet movement stops until you set it back to Active. Balances are kept.",
+      "short": {
+        "off": "The wallet is not available to customers.",
+        "active": "Customers can use their store credit.",
+        "paused": "Customers cannot spend store credit.",
+        "frozen": "All wallet movement is stopped."
+      }
+    },
+    "reason": {
+      "wind-down": "Winding the wallet down",
+      "security-incident": "Security incident",
+      "fraud-suspected": "Suspected fraud",
+      "legal-hold": "Legal hold",
+      "maintenance": "Maintenance",
+      "owner-decision": "Owner decision"
+    },
+    "settings": {
+      "title": "Wallet switch",
+      "intro": "Controls store credit for every customer in this Market.",
+      "current": "Current state",
+      "never-changed": "Never changed",
+      "changed": "Changed {when}",
+      "reason-line": "Reason: {reason}",
+      "change": "Change state",
+      "new-state": "New state",
+      "reason": "Reason",
+      "reason-placeholder": "Choose a reason",
+      "review": "Review change",
+      "meanings": "What each state means",
+      "notice": {
+        "changed": "Wallet is now {state}.",
+        "already": "The wallet was already {state}."
+      },
+      "confirm": {
+        "paused": {
+          "title": "Pause the wallet?",
+          "body": "Customers will not be able to spend their store credit until you set it back to Active.",
+          "action": "Pause wallet"
+        },
+        "frozen": {
+          "title": "Freeze the wallet?",
+          "body": "All wallet activity stops for every customer in this Market until you set it back to Active.",
+          "action": "Freeze wallet"
+        },
+        "off": {
+          "title": "Turn the wallet off?",
+          "body": "The wallet will disappear for customers. This is refused once any credit has ever been issued; use Paused instead.",
+          "action": "Turn off"
+        }
+      }
+    },
+    "credit": {
+      "title": "Issue credit",
+      "intro": "Give a customer store credit. Larger amounts need a second admin to approve.",
+      "choose": {
+        "title": "Choose a customer",
+        "body": "Find the customer by their sign-in address, then come back with Issue credit.",
+        "action": "Find a customer",
+        "invalid": "That customer link is not valid. Find the customer again."
+      },
+      "form-title": "Issue credit",
+      "available": "Available",
+      "held": "On hold",
+      "balance-cap": "Balance limit",
+      "room": "Room left before the limit",
+      "used-today": "Issued today by you",
+      "used-today-value": "{used} of {cap}",
+      "issue-cap": "Second admin needed",
+      "issue-cap-value": "Over {cap} needs a second admin",
+      "open-switch": "Open the wallet switch",
+      "account": {
+        "none": "No wallet yet",
+        "active": "Wallet active",
+        "frozen": "Wallet frozen",
+        "closed": "Wallet closed"
+      },
+      "amount": "Amount ({currency})",
+      "amount-help": "Up to {room} can still be added to this wallet.",
+      "amount-error": {
+        "required": "Enter an amount.",
+        "format": "Enter an amount like {example}.",
+        "zero": "The amount must be more than zero.",
+        "cap": "This is more than the wallet can hold. At most {room} can be added.",
+        "currency": "This wallet's currency is not supported here."
+      },
+      "hint": {
+        "immediate": "Granted immediately.",
+        "needs-approval": "Needs a second admin to approve."
+      },
+      "reason-label": "Reason",
+      "reason-placeholder": "Choose a reason",
+      "reason-error": "Choose a reason.",
+      "reason": {
+        "goodwill": "Goodwill",
+        "service-recovery": "Service recovery",
+        "promotion": "Promotion",
+        "correction": "Correction"
+      },
+      "note-label": "Note (admins only)",
+      "note-help": "Only admins see this. The customer is not told.",
+      "note-counter": "{count}/{max}",
+      "note-error": "The note has characters that are not allowed.",
+      "submit": "Issue credit",
+      "check-fields": "Check the highlighted fields and try again."
+    },
+    "result": {
+      "granted": {
+        "title": "Credit issued",
+        "body": "{amount} was added to the customer's wallet now."
+      },
+      "pending": {
+        "title": "Sent for approval",
+        "body": "{amount} is above your limit, so another admin must approve it before the customer gets it.",
+        "issue-cap": "Reason: more than {cap} in one credit.",
+        "daily-cap": "Reason: this would take you over {cap} today.",
+        "expires": "It expires {when} if nobody decides."
+      },
+      "approval-reason": {
+        "issue-cap": "More than the limit for one credit",
+        "daily-cap": "Over the daily limit"
+      },
+      "amount": "Amount",
+      "reason": "Reason",
+      "reference": "Reference id",
+      "time": "Time",
+      "open-approvals": "Open approvals"
+    },
+    "queue": {
+      "title": "Credit approvals",
+      "intro": "Credit above an admin's limit waits here for a second admin to approve or reject it.",
+      "tabs": "Credit request lists",
+      "tab": {
+        "pending": "Pending",
+        "decided": "Decided",
+        "granted": "Granted at once"
+      },
+      "caption": {
+        "pending": "Credit requests waiting for a decision",
+        "decided": "Decided credit requests",
+        "granted": "Credit issued at once"
+      },
+      "empty": {
+        "pending": "No credit requests are waiting.",
+        "decided": "No decided requests yet.",
+        "granted": "No credit has been issued yet."
+      },
+      "col": {
+        "customer": "Customer",
+        "amount": "Amount",
+        "reason": "Reason",
+        "status": "Status",
+        "requested-by": "Requested by",
+        "requested": "Requested",
+        "until": "Expires or decided",
+        "actions": "Actions"
+      },
+      "status": {
+        "granted": "Granted",
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "expired": "Expired"
+      },
+      "you": "You",
+      "approve": "Approve",
+      "reject": "Reject",
+      "details": "Details",
+      "detail": {
+        "note": "Note",
+        "approval-reason": "Why it needed approval",
+        "decision-reason": "Decision reason",
+        "decided-by": "Decided by",
+        "journal": "Journal reference",
+        "none": "None"
+      },
+      "reject-reason": {
+        "not-justified": "Not justified",
+        "amount-too-high": "Amount too high",
+        "duplicate": "Duplicate",
+        "wrong-customer": "Wrong customer",
+        "policy": "Against policy"
+      },
+      "loaded-more": "{count, plural, one {# more request loaded} other {# more requests loaded}}",
+      "load-more": "Load more",
+      "approve-dialog": {
+        "title": "Approve this credit?",
+        "body": "{amount} will be added to customer {customer}'s wallet now. You cannot undo this."
+      },
+      "reject-dialog": {
+        "title": "Reject this request?",
+        "reason": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "action": "Reject request"
+      },
+      "notice": {
+        "approved": "Credit approved. {amount} was added.",
+        "rejected": "Request rejected. No credit was issued."
+      },
+      "load-more-failed": "We could not load more requests. Try again."
+    },
+    "error": {
+      "cannot-turn-off-with-history": "The wallet cannot go back to Off because credit has already been issued. Choose Paused instead.",
+      "busy": "Another change is in progress. Wait a moment and try again.",
+      "disabled": "The wallet is switched off for this Market.",
+      "paused": "The wallet is paused, so credit cannot be issued.",
+      "frozen": "The wallet is frozen, so credit cannot be issued.",
+      "not-active": "The wallet is not active, so this cannot be approved now.",
+      "cap-exceeded": "This is more than the wallet can hold. Lower the amount.",
+      "account-not-active": "This customer's wallet cannot receive credit.",
+      "customer-not-found": "We could not find that customer.",
+      "approver-is-requester": "You asked for this credit. A different admin has to decide it.",
+      "request-decided": "Someone already decided this request.",
+      "request-expired": "This request expired and can no longer be approved.",
+      "request-not-found": "This request no longer exists.",
+      "key-reused": "This form was already used with different details. Reload the page to start again.",
+      "validation-settings": "Choose a reason for this state.",
+      "validation-issue": "Check the details and try again.",
+      "validation-decide": "Choose a reason.",
+      "denied-settings": "You do not have permission to change the wallet.",
+      "denied-issue": "You cannot issue credit. Your account may lack permission, or you may be acting as a seller.",
+      "denied-decide": "You do not have permission to decide credit requests.",
+      "session": "Your session needs refreshing. Reload the page and try again.",
+      "save-failed": "We could not save the change. Try again.",
+      "unavailable-issue": "We could not complete this. Nothing was issued if you see no confirmation; try again, and the same request will not be issued twice.",
+      "unavailable-decide": "We could not complete this. Try again.",
+      "unknown": "Something went wrong. Try again, or ask the team if it keeps happening.",
+      "cap-exceeded-decide": "The customer's wallet no longer has room for this amount.",
+      "currency-unsupported": "This wallet's currency is not supported here, so credit cannot be issued."
+    }
   }
 }

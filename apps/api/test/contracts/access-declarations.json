@@ -238,6 +238,11 @@
   { "name": "identity.confirm-seller-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.confirm-seller-second-factor-reset", "rule": "anonymous" },
   { "name": "identity.contact-email-of", "rule": "system" },
+  {
+    "name": "identity.customer-account-of",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",
@@ -437,6 +442,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "payments.apply-stripe-events", "rule": "system" },
+  { "name": "payments.dispute-of", "rule": "system" },
   { "name": "payments.payout-readiness", "rule": "system" },
   { "name": "payments.receive-stripe-event", "rule": "anonymous" },
   { "name": "payments.sync-payout-schedules", "rule": "system" },
@@ -573,6 +579,7 @@
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
+  { "name": "wallet.expire-admin-credit-requests", "rule": "system" },
   { "name": "wallet.expire-wallet-credit", "rule": "system" },
   { "name": "wallet.grant-credit", "rule": "system" },
   { "name": "wallet.place-hold", "rule": "system" },

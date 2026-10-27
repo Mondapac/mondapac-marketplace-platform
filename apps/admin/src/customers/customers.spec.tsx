@@ -188,3 +188,40 @@ describe('customerProblemOf', () => {
     expect(customerProblemOf({ status: 500, code: 'boom' })).toBe('unknown');
   });
 });
+
+describe('CustomerLookup wallet link', () => {
+  const found = async (walletLink: 'issue' | 'view' | null, canChangeStatus = false) => {
+    call.mockResolvedValue({ ok: true, status: 200, body: customer() });
+    render(
+      wrap(
+        <CustomerLookup
+          canChangeStatus={canChangeStatus}
+          walletLink={walletLink}
+          csrfToken="csrf"
+        />,
+      ),
+    );
+    search('sara@example.com');
+    await screen.findByText('Sara@Example.com');
+  };
+
+  it('offers Issue credit with the account id to an admin who can issue', async () => {
+    await found('issue');
+    expect(screen.getByRole('link', { name: 'Issue credit' }).getAttribute('href')).toBe(
+      `/wallet/credits?customer=${ID}`,
+    );
+  });
+
+  it('offers View wallet to an admin who can only view', async () => {
+    await found('view');
+    expect(screen.getByRole('link', { name: 'View wallet' }).getAttribute('href')).toBe(
+      `/wallet/credits?customer=${ID}`,
+    );
+  });
+
+  it('offers no wallet link otherwise, and keeps the status button', async () => {
+    await found(null, true);
+    expect(screen.queryByRole('link', { name: /credit|wallet/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Disable account' })).toBeTruthy();
+  });
+});
