@@ -14,7 +14,17 @@ import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import type { AccountDeletionDependencies } from './application/account-deletion-dependencies';
 import type { CustomersDependencies } from './application/customers-dependencies';
+import {
+  ACCOUNT_DELETION_PEERS,
+  type AccountDeletionPeers,
+} from './application/ports/account-deletion-peers';
+import { ACCOUNT_DELETION_REQUEST_REPOSITORY } from './application/ports/account-deletion-request.repository';
+import { CancelAccountDeletion } from './application/use-cases/cancel-account-deletion.use-case';
+import { ExecuteAccountDeletions } from './application/use-cases/execute-account-deletions.use-case';
+import { RequestAccountDeletion } from './application/use-cases/request-account-deletion.use-case';
+import { ViewAccountDeletionRequest } from './application/use-cases/view-account-deletion-request.use-case';
 import { ACCOUNT_DELETION_SETTINGS_REPOSITORY } from './application/ports/account-deletion-settings.repository';
 import { ADDRESS_CIPHER } from './application/ports/address-cipher';
 import { ADDRESS_POLICY } from './application/ports/address-policy';
@@ -29,6 +39,7 @@ import { ReadDeliveryAddress } from './application/use-cases/read-delivery-addre
 import { SetDefaultAddress } from './application/use-cases/set-default-address.use-case';
 import { UpdateAddress } from './application/use-cases/update-address.use-case';
 import {
+  CUSTOMERS_ACCOUNT_DELETION_FACADE,
   CUSTOMERS_CHECKOUT_FACADE,
   CUSTOMERS_PERMISSIONS,
   CUSTOMERS_STEP_UP_ACTIONS,
@@ -36,6 +47,10 @@ import {
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
 import { CUSTOMERS_EVENTS } from './domain/events';
 import { customersProviders } from './infrastructure/customers-providers';
+import { AccountDeletionRequestController } from './presentation/account-deletion-request.controller';
+import { CustomersAccountDeletionFacadeImplementation } from './presentation/customers-account-deletion.facade';
+import { executeAccountDeletionsJob } from './presentation/jobs/execute-account-deletions.job';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { AccountDeletionController } from './presentation/account-deletion.controller';
 import { AdminAccountDeletionSettingsController } from './presentation/admin-account-deletion-settings.controller';
 import { AddressBookController } from './presentation/address-book.controller';
@@ -55,6 +70,32 @@ const PORTS: readonly [keyof CustomersDependencies, InjectionToken][] = [
   ['outbox', OUTBOX_WRITER],
   ['stepUp', STEP_UP_CONSUMER],
 ];
+
+type DeletionUseCaseClass<U> = new (gate: UseCaseGate, deps: AccountDeletionDependencies) => U;
+
+const DELETION_PORTS: readonly [keyof AccountDeletionDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['requests', ACCOUNT_DELETION_REQUEST_REPOSITORY],
+  ['addresses', ADDRESS_REPOSITORY],
+  ['accountDeletionSettings', ACCOUNT_DELETION_SETTINGS_REPOSITORY],
+  ['ids', ID_GENERATOR],
+  ['clock', CLOCK],
+  ['audit', AUDIT_WRITER],
+  ['outbox', OUTBOX_WRITER],
+];
+
+/** The deletion flow's use cases: the same ports, plus the peers bound at start. */
+function deletionUseCaseProvider<U>(type: DeletionUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, ACCOUNT_DELETION_PEERS, ...DELETION_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, peers: AccountDeletionPeers, ...values: unknown[]) =>
+      new type(gate, {
+        ...Object.fromEntries(DELETION_PORTS.map(([name], index) => [name, values[index]])),
+        ...peers,
+      } as unknown as AccountDeletionDependencies),
+  };
+}
 
 /** Every customers use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
@@ -86,6 +127,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     AddressBookController,
     AccountDeletionController,
+    AccountDeletionRequestController,
     AdminAccountDeletionSettingsController,
   ],
   providers: [
@@ -107,12 +149,27 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SetAccountDeletionSettings,
       ViewAccountDeletionAvailability,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    ...[
+      RequestAccountDeletion,
+      ViewAccountDeletionRequest,
+      CancelAccountDeletion,
+      ExecuteAccountDeletions,
+    ].map((type) => deletionUseCaseProvider(type as DeletionUseCaseClass<unknown>)),
+    {
+      provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,
+      inject: [CancelAccountDeletion],
+      useFactory: (cancel: CancelAccountDeletion) =>
+        new CustomersAccountDeletionFacadeImplementation(cancel),
+    },
+    registerJobsFrom('customers', [ExecuteAccountDeletions], (execute: ExecuteAccountDeletions) => [
+      executeAccountDeletionsJob(execute),
+    ]),
     {
       provide: CUSTOMERS_CHECKOUT_FACADE,
       inject: [ReadDeliveryAddress],
       useFactory: (read: ReadDeliveryAddress) => new CustomersCheckoutFacadeImplementation(read),
     },
   ],
-  exports: [CUSTOMERS_CHECKOUT_FACADE],
+  exports: [CUSTOMERS_CHECKOUT_FACADE, CUSTOMERS_ACCOUNT_DELETION_FACADE, ACCOUNT_DELETION_PEERS],
 })
 export class CustomersModule {}

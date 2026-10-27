@@ -115,6 +115,13 @@ export interface WalletFacade {
     context: CallContext,
     customerAccountId: Id<'Account'>,
   ): Promise<Result<WalletBalanceView, WalletFailure>>;
+
+  /**
+   * The calling customer's own balance (rule `own-resources`, customers only; the account is the
+   * session's). For a customer's own request that needs a yes or no on the wallet, such as account
+   * deletion. Reads work in every state.
+   */
+  ownBalanceOf(context: CallContext): Promise<Result<WalletBalanceView, WalletFailure>>;
 }
 
 /** Nest token of the {@link WalletFacade}, provided by `WalletModule`. */

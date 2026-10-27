@@ -3,6 +3,7 @@
 import { IdentityModule } from './identity';
 import { LegalModule } from './legal';
 import { CustomersModule } from './customers';
+import { CustomersAccountDeletionModule } from './customers/account-deletion.module';
 import { SellersModule } from './sellers';
 import { SellerStoreProfileModule } from './sellers/store-profile.module';
 import { CertificationModule } from './certification';
@@ -53,6 +54,7 @@ export const CORE_MODULES = [
  * Modules that only bind one core module to another and are not a bounded context of their own
  * (so they are not in {@link CORE_MODULES}, one per folder). `SellerStoreProfileModule` binds
  * certification's claim-term matching to the sellers store profile texts; sellers cannot import
- * certification without a module cycle.
+ * certification without a module cycle. `CustomersAccountDeletionModule` runs the buyer's account
+ * deletion flow, which asks ordering, wallet, identity and engagement (ordering imports customers).
  */
-export const BINDING_MODULES = [SellerStoreProfileModule];
+export const BINDING_MODULES = [SellerStoreProfileModule, CustomersAccountDeletionModule];

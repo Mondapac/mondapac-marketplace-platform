@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { StepUpRefusal } from '../../../platform/authz';
+import {
+  StaleAggregateError,
+  TransactionConflictError,
+} from '../../../platform/unit-of-work/errors';
 import { ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP } from '../contracts/step-up';
 import {
   DEFAULT_ACCOUNT_DELETION_SETTINGS,
@@ -28,9 +32,9 @@ export type AccountDeletionSettingsFailure =
   | { readonly code: 'access.unavailable' };
 
 /** Account deletion is switched off in this Market (package 2 maps it to HTTP 403). */
-export interface AccountDeletionDisabled {
+export type AccountDeletionDisabled = {
   readonly code: 'customers.account-deletion-disabled';
-}
+};
 
 /** What the admin screen reads. */
 export interface AccountDeletionSettingsView {
@@ -68,7 +72,7 @@ export function accountDeletionSettingsAggregateId(
 }
 
 /** Whether the actor is an acting-as session (Login as Seller): the reserved marker on the actor. */
-function isActingAs(context: CallContext): boolean {
+export function isActingAs(context: CallContext): boolean {
   const actor = context.actor;
   if (!Object.hasOwn(actor, 'actingAs')) return false;
   const marker = (actor as { readonly actingAs?: unknown }).actingAs;
@@ -153,57 +157,67 @@ export async function setAccountDeletionSettings(
   const next = parsed.value;
 
   const now = deps.clock.now();
-  return deps.unitOfWork.run<AccountDeletionSettingsView, AccountDeletionSettingsFailure>(
-    context.market,
-    async () => {
-      const before = await current(deps.accountDeletionSettings, context.market);
-      // The screen saved from an older version: another admin changed the setting meanwhile.
-      if (expected !== before.version) return err({ code: 'customers.conflict' } as const);
-      // The same values again change nothing: no new version, no audit row, no event.
-      if (sameSettings(before.settings, next)) return ok(before);
+  try {
+    return await deps.unitOfWork.run<AccountDeletionSettingsView, AccountDeletionSettingsFailure>(
+      context.market,
+      async () => {
+        const before = await current(deps.accountDeletionSettings, context.market);
+        // The screen saved from an older version: another admin changed the setting meanwhile.
+        if (expected !== before.version) return err({ code: 'customers.conflict' } as const);
+        // The same values again change nothing: no new version, no audit row, no event.
+        if (sameSettings(before.settings, next)) return ok(before);
 
-      // The admin step-up, spent here and only here (ADR-0018: authorization in the use case), in
-      // the unit of the change: one proof serves one change, and a refusal commits nothing.
-      const spent = await deps.stepUp.consume(context, ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP);
-      if (!spent.ok) return err(stepUpFailure(spent.error));
+        // The admin step-up, spent here and only here (ADR-0018: authorization in the use case), in
+        // the unit of the change: one proof serves one change, and a refusal commits nothing.
+        const spent = await deps.stepUp.consume(context, ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP);
+        if (!spent.ok) return err(stepUpFailure(spent.error));
 
-      const version = before.version + 1;
-      const written = await deps.accountDeletionSettings.append(context.market, {
-        version,
-        settings: next,
-        changedAt: now,
-        changedBy: actor.accountId,
-        reason: reason.value,
-      });
-      if (!written) return err({ code: 'customers.conflict' } as const);
-      const after: AccountDeletionSettingsView = { version, settings: next };
-      await deps.audit.record(
-        context,
-        AccountDeletionSettingsChanged.entry('account-deletion-settings', {
-          before: snapshot(before),
-          after: {
-            ...snapshot(after),
-            stepUpSessionId: spent.value.sessionId,
-            stepUpVerifiedAt: spent.value.verifiedAt,
-          },
-        }),
-      );
-      await deps.outbox.append(context, [
-        AccountDeletionSettingsChangedEvent.record({
-          aggregateId: accountDeletionSettingsAggregateId(context.market),
-          aggregateVersion: version,
-          occurredAt: now,
-          payload: {
-            previousEnabled: before.settings.enabled,
-            enabled: next.enabled,
-            previousWaitingPeriodDays: before.settings.waitingPeriodDays,
-            waitingPeriodDays: next.waitingPeriodDays,
-          },
-        }),
-      ]);
-      return ok(after);
-    },
-  );
+        const version = before.version + 1;
+        const written = await deps.accountDeletionSettings.append(context.market, {
+          version,
+          settings: next,
+          changedAt: now,
+          changedBy: actor.accountId,
+          reason: reason.value,
+        });
+        if (!written) return err({ code: 'customers.conflict' } as const);
+        const after: AccountDeletionSettingsView = { version, settings: next };
+        await deps.audit.record(
+          context,
+          AccountDeletionSettingsChanged.entry('account-deletion-settings', {
+            before: snapshot(before),
+            after: {
+              ...snapshot(after),
+              stepUpSessionId: spent.value.sessionId,
+              stepUpVerifiedAt: spent.value.verifiedAt,
+            },
+          }),
+        );
+        await deps.outbox.append(context, [
+          AccountDeletionSettingsChangedEvent.record({
+            aggregateId: accountDeletionSettingsAggregateId(context.market),
+            aggregateVersion: version,
+            occurredAt: now,
+            payload: {
+              previousEnabled: before.settings.enabled,
+              enabled: next.enabled,
+              previousWaitingPeriodDays: before.settings.waitingPeriodDays,
+              waitingPeriodDays: next.waitingPeriodDays,
+            },
+          }),
+        ]);
+        return ok(after);
+      },
+      // Serializable, like the deletion request that reads the setting: the two are ordered one
+      // way or the other, and two changes from the same version cannot both commit.
+      { isolation: 'serializable' },
+    );
+  } catch (error) {
+    if (error instanceof TransactionConflictError || error instanceof StaleAggregateError) {
+      return err({ code: 'customers.conflict' });
+    }
+    throw error;
+  }
 }
 
 /** What a signed-in buyer may know: whether deleting is on, and how long a request waits. */
