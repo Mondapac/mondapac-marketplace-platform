@@ -8,6 +8,7 @@ import messages from '../../messages/en.json';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
+import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import { commissionProblemOf } from './errors.ts';
 import { LedgerCard } from './ledger-card.tsx';
 import { CommissionRateCard } from './rate-card.tsx';
@@ -116,6 +117,21 @@ describe('CommissionRateCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Yes, reset' }));
     expect(await screen.findByText(/already on the Market rate/)).toBeTruthy();
     expect(screen.getByText('Market default')).toBeTruthy();
+  });
+
+  it('keeps the screen as it was when the admin closes the code dialog', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 0, code: STEP_UP_CANCELLED } });
+    mountRate(rate(1250));
+    fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '11' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to Market rate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, reset' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Rate saved|back on the Market rate/)).toBeNull();
+    expect(screen.getByText('12.5%')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Reset to the Market rate?' })).toBeNull();
   });
 
   it('shows a refusal in words', async () => {
