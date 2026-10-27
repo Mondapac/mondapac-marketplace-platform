@@ -13,7 +13,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The dispute store on PostgreSQL (payments.disputes, package 8a), as the application role, for
 // both Market fixtures: one row per Stripe dispute, the version and read-order guard, the Market
@@ -24,6 +24,7 @@ import { testDatabaseUrl } from './test-database';
 const T0 = Temporal.Instant.from('2026-10-27T10:00:00Z');
 const CHECK = '23514';
 const RESTRICT = '23001';
+const NO_PRIVILEGE = '42501';
 let sequence = 0;
 const nextDisputeRef = () => `dp_test_${process.pid}_${(sequence += 1)}_${Date.now()}`;
 
@@ -34,6 +35,7 @@ describe.each(TEST_MARKETS)('dispute store in market %s (database)', (code) => {
   let store: PrismaDisputeStore;
   let inbox: PrismaStripeEventInbox;
   let sql: Client;
+  let owner: Client;
 
   beforeAll(async () => {
     db = createPersistence();
@@ -41,10 +43,13 @@ describe.each(TEST_MARKETS)('dispute store in market %s (database)', (code) => {
     inbox = new PrismaStripeEventInbox(db.service);
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
+    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    await owner.connect();
   });
   afterAll(async () => {
     await db.close();
     await sql.end();
+    await owner.end();
   });
 
   const value = async <T>(target: MarketContext, work: () => Promise<T>): Promise<T> => {
@@ -174,6 +179,31 @@ describe.each(TEST_MARKETS)('dispute store in market %s (database)', (code) => {
         code: RESTRICT,
       });
       await expect(update(`reason = 'general'`)).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it.each([
+      ['the order', `order_id = gen_random_uuid()`],
+      ['the amount', `amount_minor = amount_minor + 1`],
+      ['the currency', `currency = 'NZD'`],
+      ['the Stripe id', `provider_dispute_id = 'dp_test_other'`],
+    ])('refuses to change %s of a dispute, to the application and the owner', async (_l, set) => {
+      // The application has no grant on the column; the trigger refuses even the owner.
+      await expect(update(set)).rejects.toMatchObject({ code: NO_PRIVILEGE });
+      await expect(
+        owner.query(
+          `UPDATE payments.disputes SET ${set}, version = version + 1 WHERE market_id = $1 AND id = $2`,
+          [code, row.id],
+        ),
+      ).rejects.toMatchObject({ code: RESTRICT });
+    });
+
+    it('refuses a reinstatement stamped before its withdrawal', async () => {
+      await expect(
+        update(
+          `funds_withdrawn = true, funds_withdrawn_at = now(), funds_reinstated = true,
+           funds_reinstated_at = now() - interval '1 day'`,
+        ),
+      ).rejects.toMatchObject({ code: CHECK });
     });
 
     it('refuses a skipped version and an older read', async () => {

@@ -65,6 +65,13 @@ export const reasonOf = (value: string): DisputeReason =>
 /** An inquiry: the bank asks a question, no money is withdrawn. */
 export const isInquiry = (status: DisputeStatus): boolean => status.startsWith('warning_');
 
+/**
+ * Stripe will not change the dispute any more: a chargeback won or lost, an inquiry closed without
+ * a chargeback, or one prevented. A consumer releases its hold on these, never on another status.
+ */
+export const isClosed = (status: DisputeStatus): boolean =>
+  status === 'won' || status === 'lost' || status === 'warning_closed' || status === 'prevented';
+
 /** Won or lost, for a chargeback that Stripe closed; null otherwise. */
 export const outcomeOf = (status: DisputeStatus): DisputeOutcome | null =>
   status === 'won' || status === 'lost' ? status : null;

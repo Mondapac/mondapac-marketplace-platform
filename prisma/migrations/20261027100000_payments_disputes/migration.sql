@@ -1,5 +1,7 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
+-- The stripe_events CHECK swap re-scans the inbox under its lock: bound how long that may take.
+SET statement_timeout = '60s';
 
 -- CreateTable
 CREATE TABLE "payments"."disputes" (
@@ -47,9 +49,6 @@ CREATE TABLE "payments"."outbox" (
 );
 
 -- CreateIndex
-CREATE INDEX "disputes_market_id_order_id_idx" ON "payments"."disputes"("market_id", "order_id");
-
--- CreateIndex
 CREATE UNIQUE INDEX "disputes_market_id_provider_dispute_id_key" ON "payments"."disputes"("market_id", "provider_dispute_id");
 
 -- CreateIndex
@@ -79,6 +78,7 @@ ALTER TABLE "payments"."disputes"
   ADD CONSTRAINT "disputes_funds_withdrawn_at_check" CHECK ("funds_withdrawn" = ("funds_withdrawn_at" IS NOT NULL)),
   ADD CONSTRAINT "disputes_funds_reinstated_at_check" CHECK ("funds_reinstated" = ("funds_reinstated_at" IS NOT NULL)),
   ADD CONSTRAINT "disputes_funds_reinstated_check" CHECK (NOT "funds_reinstated" OR "funds_withdrawn"),
+  ADD CONSTRAINT "disputes_funds_reinstated_order_check" CHECK ("funds_reinstated_at" IS NULL OR "funds_reinstated_at" >= "funds_withdrawn_at"),
   ADD CONSTRAINT "disputes_version_check" CHECK ("version" >= 1);
 
 ALTER TABLE "payments"."outbox"
@@ -112,12 +112,25 @@ ALTER TABLE "payments"."stripe_events"
       'cancelled', 'ignored', 'rejected', 'failed', 'account-updated', 'dispute-recorded',
       'other-market')));
 
--- Hand-written: what Stripe recorded is never taken back. The money flags and their instants only
+-- Hand-written: what Stripe recorded is never taken back. The ids, order, amount and currency never
+-- change (the grants already leave them out for the application). The money flags and their instants only
 -- move from unset to set, a closed outcome stays, a stored read is never replaced by an older one,
 -- and each change raises the version by exactly one, whoever asks.
 CREATE FUNCTION "payments"."disputes_guard_update"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
+  IF NEW."market_id" IS DISTINCT FROM OLD."market_id" OR NEW."id" IS DISTINCT FROM OLD."id"
+     OR NEW."tenant_id" IS DISTINCT FROM OLD."tenant_id"
+     OR NEW."provider_dispute_id" IS DISTINCT FROM OLD."provider_dispute_id"
+     OR NEW."order_id" IS DISTINCT FROM OLD."order_id"
+     OR NEW."payment_intent_ref" IS DISTINCT FROM OLD."payment_intent_ref"
+     OR NEW."amount_minor" IS DISTINCT FROM OLD."amount_minor"
+     OR NEW."currency" IS DISTINCT FROM OLD."currency"
+     OR NEW."opened_at" IS DISTINCT FROM OLD."opened_at"
+     OR NEW."created_at" IS DISTINCT FROM OLD."created_at" THEN
+    RAISE EXCEPTION 'payments.disputes: what a dispute is about never changes'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
   IF (OLD."funds_withdrawn" AND NOT NEW."funds_withdrawn")
      OR (OLD."funds_reinstated" AND NOT NEW."funds_reinstated")
      OR (OLD."funds_withdrawn_at" IS NOT NULL AND NEW."funds_withdrawn_at" IS DISTINCT FROM OLD."funds_withdrawn_at")

@@ -1,6 +1,10 @@
 -- Reverses 20261027100000_payments_disputes: the dispute events leave the inbox first so the
 -- narrower CHECKs hold, then the grants, the trigger and the tables. The schema stays (payments
--- holds other tables).
+-- holds other tables). The DELETE drops the stored dispute events, so their deduplication history is
+-- lost: Stripe's later deliveries of those events would be stored again (only after a re-apply).
+-- Dropping payments.outbox also drops any dispute event the relay has not published yet.
+SET lock_timeout = '5s';
+SET statement_timeout = '60s';
 DELETE FROM "payments"."stripe_events" WHERE "type" LIKE 'charge.dispute.%';
 ALTER TABLE "payments"."stripe_events"
   DROP CONSTRAINT "stripe_events_object_id_check",

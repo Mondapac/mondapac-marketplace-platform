@@ -136,7 +136,6 @@ model PaymentsDispute {
 
   @@id([marketId, id])
   @@unique([marketId, providerDisputeId])
-  @@index([marketId, orderId])
   @@map("disputes")
   @@schema("payments")
 }

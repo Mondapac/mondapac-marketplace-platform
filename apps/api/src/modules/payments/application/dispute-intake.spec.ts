@@ -61,6 +61,7 @@ describe.each([
   let disputes: MemoryDisputeStore;
   let outbox: RecordingPaymentsOutbox;
   let ordering: FakeOrderingFacade;
+  let securityEvents: RecordingSecurityEvents;
   let receive: ReceiveStripeEvent;
   let apply: ApplyStripeEvents;
   let disputeOf: DisputeOfQuery;
@@ -87,6 +88,7 @@ describe.each([
     disputes = new MemoryDisputeStore();
     outbox = new RecordingPaymentsOutbox();
     ordering = new FakeOrderingFacade();
+    securityEvents = new RecordingSecurityEvents();
     const deps: PaymentsDependencies = {
       unitOfWork: new FakeUnitOfWork(),
       inbox,
@@ -101,7 +103,7 @@ describe.each([
       policy: new StaticPaymentsPolicy(),
       identity: new FakeIdentityFacade(),
       audit: new RecordingPaymentsAudit(),
-      securityEvents: new RecordingSecurityEvents(),
+      securityEvents,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -223,7 +225,11 @@ describe.each([
         fundsWithdrawn: false,
       });
       const view = await disputeOf.execute(system, [stored()[0]!.id]);
-      expect(view.ok && view.value[0]).toMatchObject({ inquiry: true, outcome: null });
+      expect(view.ok && view.value[0]).toMatchObject({
+        inquiry: true,
+        closed: false,
+        outcome: null,
+      });
     });
 
     it('a repeated read that changes nothing stores and publishes nothing', async () => {
@@ -234,6 +240,18 @@ describe.each([
       expect(await applyEvent('evt_dp_2', 'charge.dispute.updated')).toBe('ignored');
       expect(stored()[0]!.version).toBe(1);
       expect(outbox.events).toHaveLength(1);
+    });
+
+    it('an inquiry closed without a chargeback is closed with no outcome', async () => {
+      reader.answer = ok(snapshot({ status: 'warning_closed' }));
+      await applyEvent('evt_dp_1', 'charge.dispute.closed');
+      const view = await disputeOf.execute(system, [stored()[0]!.id]);
+      expect(view.ok && view.value[0]).toMatchObject({
+        inquiry: true,
+        closed: true,
+        outcome: null,
+        fundsWithdrawn: false,
+      });
     });
 
     it('withdrawal, reinstatement and a won close each raise the version once', async () => {
@@ -316,32 +334,44 @@ describe.each([
       expect(await applyEvent('evt_dp_1')).toBe('other-market');
       expect(stored()).toEqual([]);
       expect(outbox.events).toEqual([]);
+      expect(securityEvents.events).toEqual([]);
     });
 
-    it.each<[string, Partial<DisputeSnapshot>]>([
-      ['a live-mode dispute', { livemode: true }],
-      ['another dispute id', { id: 'dp_test_9999' }],
-      ['a charge with no PaymentIntent', { paymentIntent: null }],
+    it.each<[string, Partial<DisputeSnapshot>, string]>([
+      ['a live-mode dispute', { livemode: true }, 'not-test-mode'],
+      ['another dispute id', { id: 'dp_test_9999' }, 'malformed'],
+      ['a charge with no PaymentIntent', { paymentIntent: null }, 'no-market'],
       [
         'a PaymentIntent with no Market',
         { paymentIntent: { id: 'pi_x', metadataOrderId: ORDER, metadataMarketId: null } },
+        'no-market',
       ],
       [
         'a PaymentIntent with no order',
         { paymentIntent: { id: 'pi_x', metadataOrderId: null, metadataMarketId: code } },
+        'malformed',
       ],
       [
         'an order id that is not a UUID',
         { paymentIntent: { id: 'pi_x', metadataOrderId: 'order-1', metadataMarketId: code } },
+        'malformed',
       ],
-      ['an unknown status', { status: 'escalated' }],
-      ['a zero amount', { amount: 0n }],
-      ['a malformed currency', { currency: 'AUD' }],
-    ])('rejects %s and stores nothing', async (_name, fields) => {
+      ['an unknown status', { status: 'escalated' }, 'malformed'],
+      ['a zero amount', { amount: 0n }, 'malformed'],
+      ['a malformed currency', { currency: 'AUD' }, 'malformed'],
+    ])('rejects %s, stores nothing and raises a security event', async (_name, fields, reason) => {
       reader.answer = ok(snapshot(fields));
       expect(await applyEvent('evt_dp_1')).toBe('rejected');
       expect(stored()).toEqual([]);
       expect(outbox.events).toEqual([]);
+      expect(securityEvents.events).toEqual([
+        expect.objectContaining({
+          type: 'payments.dispute.unmatched',
+          payload: { reason },
+          actor: 'system',
+          marketId: code,
+        }),
+      ]);
     });
 
     it('rejects a read that changes what a stored dispute is about', async () => {
@@ -352,6 +382,7 @@ describe.each([
 
       expect(await applyEvent('evt_dp_2', 'charge.dispute.updated')).toBe('rejected');
       expect(stored()[0]).toMatchObject({ amountMinor: 3000n, status: 'needs_response' });
+      expect(securityEvents.events.map((e) => e.payload)).toEqual([{ reason: 'changed' }]);
     });
 
     it('tries again later when Stripe cannot be reached, and gives up on a refusal', async () => {
@@ -360,9 +391,12 @@ describe.each([
       expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
       expect(inbox.get(code, 'evt_dp_1')).toMatchObject({ processedAt: null, attempts: 1 });
 
+      expect(securityEvents.events).toEqual([]);
+
       reader.answer = err({ code: 'payment.provider-rejected' });
       expect(await applyEvent('evt_dp_2')).toBe('rejected');
       expect(stored()).toEqual([]);
+      expect(securityEvents.events.map((e) => e.payload)).toEqual([{ reason: 'unreadable' }]);
     });
   });
 
@@ -379,10 +413,12 @@ describe.each([
             disputeId: id,
             orderId: ORDER,
             providerDisputeId: 'dp_test_0001',
+            paymentIntentRef: 'pi_test_0001',
             amount: money(3000n, currency.toUpperCase()),
             status: 'needs_response',
             reason: 'fraudulent',
             inquiry: false,
+            closed: false,
             evidenceDueBy: DUE,
             fundsWithdrawn: false,
             fundsWithdrawnAt: null,

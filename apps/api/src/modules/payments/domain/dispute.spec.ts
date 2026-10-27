@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import {
   disputeStateChanged,
+  isClosed,
   isInquiry,
   mergeDisputeState,
   outcomeOf,
@@ -32,6 +33,17 @@ describe('dispute rules', () => {
     expect(outcomeOf('lost')).toBe('lost');
     expect(outcomeOf('warning_closed')).toBeNull();
     expect(outcomeOf('prevented')).toBeNull();
+  });
+
+  it('is closed only once Stripe will not change it any more', () => {
+    expect(['won', 'lost', 'warning_closed', 'prevented'].every((s) => isClosed(s as never))).toBe(
+      true,
+    );
+    expect(
+      ['warning_needs_response', 'warning_under_review', 'needs_response', 'under_review'].some(
+        (s) => isClosed(s as never),
+      ),
+    ).toBe(false);
   });
 
   it('keeps a known reason and stores any other as other', () => {
