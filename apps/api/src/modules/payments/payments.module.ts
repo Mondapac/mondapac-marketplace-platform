@@ -31,6 +31,7 @@ import { AdminViewConnectedAccount } from './application/use-cases/admin-view-co
 import { ApplyStripeEvents } from './application/use-cases/apply-stripe-events.use-case';
 import { ConnectPayoutAccount } from './application/use-cases/connect-payout-account.use-case';
 import { DisputeOfQuery } from './application/use-cases/dispute-of.use-case';
+import { DisputesOfOrderQuery } from './application/use-cases/disputes-of-order.use-case';
 import { OpenPayoutAccountLink } from './application/use-cases/open-payout-account-link.use-case';
 import { PayoutReadinessQuery } from './application/use-cases/payout-readiness.use-case';
 import { SyncPayoutSchedules } from './application/use-cases/sync-payout-schedules.use-case';
@@ -120,14 +121,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     useCaseProvider(ViewPayoutAccount),
     useCaseProvider(PayoutReadinessQuery),
     useCaseProvider(DisputeOfQuery),
+    useCaseProvider(DisputesOfOrderQuery),
     useCaseProvider(SyncPayoutSchedules),
     useCaseProvider(AdminListConnectedAccounts),
     useCaseProvider(AdminViewConnectedAccount),
     {
       provide: PAYMENTS_FACADE,
-      inject: [PayoutReadinessQuery, DisputeOfQuery],
-      useFactory: (readiness: PayoutReadinessQuery, disputes: DisputeOfQuery) =>
-        new PaymentsFacadeImplementation(readiness, disputes),
+      inject: [PayoutReadinessQuery, DisputeOfQuery, DisputesOfOrderQuery],
+      useFactory: (
+        readiness: PayoutReadinessQuery,
+        disputes: DisputeOfQuery,
+        orderDisputes: DisputesOfOrderQuery,
+      ) => new PaymentsFacadeImplementation(readiness, disputes, orderDisputes),
     },
     registerJobsFrom(
       'payments',

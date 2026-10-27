@@ -243,6 +243,24 @@ export async function disputeOf(
   );
 }
 
+/**
+ * `payments.disputes-of-order`: the stored disputes of one order of this Market, oldest first.
+ * Stored state only (no call to Stripe). An unknown order, or one of another Market, has none.
+ */
+export async function disputesOfOrder(
+  deps: PaymentsDependencies,
+  context: CallContext,
+  orderId: string,
+): Promise<Result<readonly DisputeView[], DisputeOfFailure>> {
+  const given: unknown = orderId;
+  if (typeof given !== 'string' || !UUID.test(given)) return err({ code: 'validation.failed' });
+  return deps.unitOfWork.run<readonly DisputeView[], DisputeOfFailure>(
+    context.market,
+    async () => ok((await deps.disputes.findByOrder(context.market, orderId)).map(toView)),
+    { readOnly: true },
+  );
+}
+
 const toView = (row: DisputeRecord): DisputeView => ({
   disputeId: row.id,
   orderId: row.orderId,

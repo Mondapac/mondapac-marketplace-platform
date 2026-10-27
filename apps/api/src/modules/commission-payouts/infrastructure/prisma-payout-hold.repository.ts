@@ -94,6 +94,58 @@ export class PrismaPayoutHoldRepository implements PayoutHoldRepository {
     return updated.count > 0;
   }
 
+  async listBySource(market: MarketContext, reason: HoldReason, sourceRef: string) {
+    const rows = await this.prisma.tx(market).commissionPayoutsPayoutHold.findMany({
+      where: { marketId: market.marketId, origin: 'system', reason, sourceRef },
+      orderBy: [{ placedAt: 'desc' }, { id: 'desc' }],
+    });
+    return rows.map(toRecord);
+  }
+
+  async releaseBySource(
+    market: MarketContext,
+    reason: HoldReason,
+    sourceRef: string,
+    release: {
+      readonly releasedAt: Temporal.Instant;
+      readonly releasedBy: Id<'Account'> | null;
+      readonly reason: ReleaseReason;
+    },
+  ) {
+    const tx = this.prisma.tx(market);
+    const active = await tx.commissionPayoutsPayoutHold.findMany({
+      where: { marketId: market.marketId, origin: 'system', reason, sourceRef, releasedAt: null },
+      orderBy: [{ placedAt: 'asc' }, { id: 'asc' }],
+    });
+    if (active.length === 0) return [];
+    await tx.commissionPayoutsPayoutHold.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: { in: active.map((row) => row.id) },
+        releasedAt: null,
+      },
+      data: {
+        releasedAt: toDate(release.releasedAt),
+        releasedBy: release.releasedBy,
+        releaseReason: release.reason,
+      },
+    });
+    return active.map((row) =>
+      toRecord({
+        ...row,
+        releasedAt: toDate(release.releasedAt),
+        releasedBy: release.releasedBy,
+        releaseReason: release.reason,
+      }),
+    );
+  }
+
+  countForSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>, reason: HoldReason) {
+    return this.prisma.tx(market).commissionPayoutsPayoutHold.count({
+      where: { marketId: market.marketId, sellerOrderId, reason },
+    });
+  }
+
   async listForSeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,

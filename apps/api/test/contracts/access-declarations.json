@@ -142,11 +142,17 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "commission-payouts.list-own-disputes",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "commission-payouts.note-seller-reinstated", "rule": "system" },
   { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
+  { "name": "commission-payouts.sync-dispute", "rule": "system" },
   {
     "name": "commission-payouts.view-own-ledger",
     "rule": "permissions",
@@ -412,6 +418,7 @@
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },
   { "name": "notifications.send-seller-new-order-mail", "rule": "system" },
+  { "name": "notifications.send-seller-order-disputed-mail", "rule": "system" },
   { "name": "notifications.unsubscribe-marketing-email", "rule": "anonymous" },
   { "name": "notifications.view-public-support-contact", "rule": "anonymous" },
   { "name": "notifications.view-unsubscribe-link", "rule": "anonymous" },
@@ -430,6 +437,7 @@
   },
   { "name": "ordering.open-obligations-of", "rule": "system" },
   { "name": "ordering.order-notice", "rule": "system" },
+  { "name": "ordering.order-payment-ref", "rule": "system" },
   {
     "name": "ordering.own-open-obligations",
     "rule": "own-resources",
@@ -457,6 +465,7 @@
   },
   { "name": "payments.apply-stripe-events", "rule": "system" },
   { "name": "payments.dispute-of", "rule": "system" },
+  { "name": "payments.disputes-of-order", "rule": "system" },
   { "name": "payments.payout-readiness", "rule": "system" },
   { "name": "payments.receive-stripe-event", "rule": "anonymous" },
   { "name": "payments.sync-payout-schedules", "rule": "system" },

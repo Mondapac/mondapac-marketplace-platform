@@ -215,7 +215,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
-  it('upgrades viewer from version 1 to 18: adds shipping.delivery-settings.view, commission-payouts.payout-terms.view, shipping.fleet-selection.view, customers.account-deletion-settings.view, assistant.settings.view, certification.product-certificate.view, certification.claim-policy.view, certification.type.view, certification.seller-certificate.view, catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view, commission-payouts.settlement.view, payments.connected-account.view and notifications.support-contact.view, one seed-applied row, other roles untouched', async () => {
+  it('upgrades viewer from version 1 to 19: adds shipping.delivery-settings.view, commission-payouts.dispute.view, commission-payouts.payout-terms.view, shipping.fleet-selection.view, customers.account-deletion-settings.view, assistant.settings.view, certification.product-certificate.view, certification.claim-policy.view, certification.type.view, certification.seller-certificate.view, catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view, commission-payouts.settlement.view, payments.connected-account.view and notifications.support-contact.view, one seed-applied row, other roles untouched', async () => {
     const VIEW = 'sellers.seller.view';
     const HOLDS = 'pricing.price-hold.view';
     const ORDERS = 'ordering.order.view';
@@ -231,6 +231,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     const ASSISTANT = 'assistant.settings.view';
     const DELETION = 'customers.account-deletion-settings.view';
     const PAYOUT_TERMS = 'commission-payouts.payout-terms.view';
+    const DISPUTES = 'commission-payouts.dispute.view';
     const FLEETS = 'shipping.fleet-selection.view';
     const DELIVERY = 'shipping.delivery-settings.view';
     // The previous build's definition: version 1 without the sellers, pricing and catalog keys.
@@ -256,6 +257,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
                 k !== ASSISTANT &&
                 k !== DELETION &&
                 k !== PAYOUT_TERMS &&
+                k !== DISPUTES &&
                 k !== FLEETS &&
                 k !== DELIVERY,
             ),
@@ -275,9 +277,10 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'viewer')).toMatchObject({
       id: before.id,
-      seedVersion: 18,
+      seedVersion: 19,
       permissionKeys: [
         ...before.permissionKeys,
+        DISPUTES,
         PAYOUT_TERMS,
         DELETION,
         ASSISTANT,
@@ -303,9 +306,10 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 18,
+            seedVersion: 19,
             addedKeys: [
               DELIVERY,
+              DISPUTES,
               PAYOUT_TERMS,
               FLEETS,
               DELETION,
@@ -496,7 +500,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
   it('never downgrades a role stored at a newer version (an older build running), and warns', async () => {
     await seedRoles(
-      seedWith((role) => (role.seedCode === 'viewer' ? { ...role, seedVersion: 19 } : role)),
+      seedWith((role) => (role.seedCode === 'viewer' ? { ...role, seedVersion: 20 } : role)),
     ).execute(system, {});
     fakes.audits.length = 0;
 
@@ -505,12 +509,12 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       value: { created: 0, upgraded: 0 },
     });
 
-    expect(roleOf('platform', 'viewer').seedVersion).toBe(19);
+    expect(roleOf('platform', 'viewer').seedVersion).toBe(20);
     expect(fakes.audits).toEqual([]);
     expect(logged('identity.seed-roles.stored-newer')?.[0]).toMatchObject({
       seedCode: 'viewer',
-      storedSeedVersion: 19,
-      seedVersion: 18,
+      storedSeedVersion: 20,
+      seedVersion: 19,
     });
   });
 

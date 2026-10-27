@@ -111,6 +111,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX account_deletion_requests_market_id_scheduled_for_pending_idx ON customers.account_deletion_requests USING btree (market_id, scheduled_for, id) WHERE (status = 'pending'::text)",
   'customers.account_deletion_requests_market_id_claimed_at_executing_idx':
     "CREATE INDEX account_deletion_requests_market_id_claimed_at_executing_idx ON customers.account_deletion_requests USING btree (market_id, claimed_at, id) WHERE (status = 'executing'::text)",
+  'commission_payouts.dispute_decisions_first_key':
+    'CREATE UNIQUE INDEX dispute_decisions_first_key ON commission_payouts.dispute_decisions USING btree (market_id, dispute_id, seller_order_id) WHERE (supersedes IS NULL)',
+  'commission_payouts.dispute_decisions_reversal_key':
+    'CREATE UNIQUE INDEX dispute_decisions_reversal_key ON commission_payouts.dispute_decisions USING btree (market_id, supersedes) WHERE (supersedes IS NOT NULL)',
+  'commission_payouts.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON commission_payouts.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'commission_payouts.payout_holds_active_seller_idx':
     'CREATE INDEX payout_holds_active_seller_idx ON commission_payouts.payout_holds USING btree (market_id, seller_id) WHERE (released_at IS NULL)',
   'commission_payouts.payout_holds_system_source_key':

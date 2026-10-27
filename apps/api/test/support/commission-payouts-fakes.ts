@@ -1,4 +1,5 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { HoldReason } from '../../src/modules/commission-payouts/domain/payout-hold';
 import type {
   EligibilityAnchor,
   EligibilityAnchorRepository,
@@ -93,6 +94,54 @@ export class MemoryHolds implements PayoutHoldRepository {
       releaseReason: release.reason,
     });
     return Promise.resolve(true);
+  }
+  listBySource(market: MarketContext, reason: HoldReason, sourceRef: string) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(
+          ([k, row]) =>
+            k.startsWith(`${market.marketId}:`) &&
+            row.reason === reason &&
+            row.sourceRef === sourceRef,
+        )
+        .map(([, row]) => row),
+    );
+  }
+  releaseBySource(
+    market: MarketContext,
+    reason: HoldReason,
+    sourceRef: string,
+    release: Parameters<PayoutHoldRepository['releaseBySource']>[3],
+  ) {
+    const released: PayoutHoldRecord[] = [];
+    for (const [k, row] of this.rows.entries()) {
+      if (
+        k.startsWith(`${market.marketId}:`) &&
+        row.reason === reason &&
+        row.sourceRef === sourceRef &&
+        row.releasedAt === null
+      ) {
+        const next = {
+          ...row,
+          releasedAt: release.releasedAt,
+          releasedBy: release.releasedBy,
+          releaseReason: release.reason,
+        };
+        this.rows.set(k, next);
+        released.push(next);
+      }
+    }
+    return Promise.resolve(released);
+  }
+  countForSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>, reason: HoldReason) {
+    return Promise.resolve(
+      [...this.rows.entries()].filter(
+        ([k, row]) =>
+          k.startsWith(`${market.marketId}:`) &&
+          row.reason === reason &&
+          row.sellerOrderId === sellerOrderId,
+      ).length,
+    );
   }
   listForSeller(
     market: MarketContext,

@@ -1,6 +1,7 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import { TERMS_CHANGE_REASONS } from './payout-terms';
 import { HOLD_REASONS, RELEASE_REASONS } from './payout-hold';
+import { DECISION_BEARERS, DECISION_REASON_CODES } from './dispute';
 
 // The audited actions of commission-payouts (Phase 5 package 5), registered at boot with
 // `registerAuditActions('commission-payouts', COMMISSION_PAYOUTS_AUDIT_ACTIONS)`. Ids and whole
@@ -90,17 +91,49 @@ export const PayoutHoldPlaced = defineAuditAction({
   },
 });
 
-/** An admin released a hold (any reason, `seller-suspended` included) with a reason code. */
+/**
+ * A hold was released: by an admin (any reason, `seller-suspended` included) with a reason code, or
+ * by the system when a dispute closes (package 8b: won, a closed inquiry, or every seller order
+ * decided).
+ */
 export const PayoutHoldReleased = defineAuditAction({
   action: 'commission-payouts.payout-hold.release',
   targetType: PAYOUT_HOLD_TARGET,
-  actors: ['authenticated'],
+  actors: ['authenticated', 'system'],
   before: {
     sellerId: auditField.id(),
     sellerOrderId: auditField.optional(auditField.id()),
     reason: auditField.enumOf(HOLD_REASONS),
   },
   after: { releaseReason: auditField.enumOf(RELEASE_REASONS) },
+});
+
+/** The audit target type of an admin's decision on a lost chargeback. */
+export const DISPUTE_DECISION_TARGET = 'commission-payouts.dispute-decision';
+
+/**
+ * An admin decided who bears a lost chargeback on one seller order (package 8b): the platform
+ * (no ledger row) or the seller up to its unreversed share (a `dispute-debit`), or, in needs-review
+ * only, reversed a seller decision (a `dispute-reinstate`). `before` is the state the admin saw:
+ * the bearer already decided (absent when none) and the cap on offer (absent when it is zero); `after` is the decision.
+ */
+export const DisputeDecided = defineAuditAction({
+  action: 'commission-payouts.dispute.decide',
+  targetType: DISPUTE_DECISION_TARGET,
+  actors: ['authenticated'],
+  before: {
+    bearer: auditField.optional(auditField.enumOf(DECISION_BEARERS)),
+    capAmount: auditField.optional(auditField.money()),
+  },
+  after: {
+    disputeId: auditField.id(),
+    sellerOrderId: auditField.id(),
+    sellerId: auditField.id(),
+    bearer: auditField.enumOf(DECISION_BEARERS),
+    amount: auditField.optional(auditField.money()),
+    reasonCode: auditField.enumOf(DECISION_REASON_CODES),
+    reversal: auditField.boolean(),
+  },
 });
 
 export const COMMISSION_PAYOUTS_AUDIT_ACTIONS = [
@@ -110,4 +143,5 @@ export const COMMISSION_PAYOUTS_AUDIT_ACTIONS = [
   PayoutTermsCleared,
   PayoutHoldPlaced,
   PayoutHoldReleased,
+  DisputeDecided,
 ] as const;
