@@ -9498,29 +9498,37 @@ button.login {
   font: 700 calc(13px * var(--fs)) / calc(20px * var(--fs)) var(--sf-font-body);
   pointer-events: none;
 }
-.acc-btn {
+.acc-sum {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  inline-size: 100%;
-  min-block-size: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: start;
+  list-style: none;
+  cursor: pointer;
 }
-.acc-btn .ico {
+.acc-sum::-webkit-details-marker {
+  display: none;
+}
+.acc-sum .ico {
   flex: none;
   inline-size: 20px;
   block-size: 20px;
   color: var(--sf-teal);
   transform: rotate(90deg);
 }
-.acc-btn[aria-expanded='true'] .ico {
+.acc[open] > .acc-sum .ico {
   transform: rotate(-90deg);
+}
+/* From 700px the section is a heading with its content, always open. */
+@media (min-width: 700px) {
+  .acc-sum {
+    pointer-events: none;
+    cursor: default;
+  }
+  .acc-sum .ico,
+  .gcount {
+    display: none;
+  }
 }
 @media (max-width: 699.98px) {
   .gmain {
@@ -9539,21 +9547,23 @@ button.login {
     line-height: calc(24px * var(--fs));
     font-weight: 800;
   }
+  .acc-sum {
+    min-block-size: 44px;
+  }
   .acc-panel {
     padding-block-end: 16px;
   }
-  /* Before the screen is measured the panels follow the screen width. */
-  .acc[data-mode='server'] .acc-panel {
-    display: none;
+  .desc {
+    text-align: start;
   }
   /* The collapsible is the disclosure: the description is not also clamped. */
-  .acc[data-mode='phone'] .desc.clamp {
+  .acc .desc.clamp {
     display: block;
     -webkit-line-clamp: unset;
     line-clamp: unset;
     mask-image: none;
   }
-  .acc[data-mode='phone'] .dmore {
+  .acc .dmore {
     display: none;
   }
   :root[data-tabbar='hidden'] .tabbar {

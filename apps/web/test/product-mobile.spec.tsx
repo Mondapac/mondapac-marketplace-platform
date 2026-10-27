@@ -6,6 +6,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { formatMoney } from '../src/format/money.ts';
+import { Collapsible } from '../src/product/collapsible.tsx';
 import { ProductPage } from '../src/product/product-page.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { loadProduct } from '../src/storefront/source.ts';
@@ -54,8 +55,21 @@ describe('gallery on a phone', () => {
     fireEvent.scroll(row);
     expect(count.textContent).toContain('Photo 3 of 4');
     expect(within(count as HTMLElement).getByText('3/4')).toBeTruthy();
-    // Only the photo in view has a name.
-    expect(screen.getAllByRole('img', { name: 'Free-range chicken, whole' })).toHaveLength(1);
+    // Every photo is reachable by a screen reader, each with its place in the row.
+    expect(row.querySelector('[aria-hidden]')).toBeNull();
+    expect(
+      within(row)
+        .getAllByRole('img')
+        .map((img) => img.getAttribute('alt')),
+    ).toEqual([1, 2, 3, 4].map((n) => `Free-range chicken, whole, photo ${n} of 4`));
+  });
+
+  it('keeps the row out of the tab order on a wider screen', async () => {
+    screenIs(false);
+    await page();
+    expect(screen.getByRole('group', { name: 'Product photos' }).hasAttribute('tabindex')).toBe(
+      false,
+    );
   });
 
   it('has no count for a single photo', async () => {
@@ -71,33 +85,54 @@ describe('gallery on a phone', () => {
 });
 
 describe('collapsible Details and Specifications', () => {
-  it('are buttons with aria-expanded and aria-controls on a phone, closed at first', async () => {
+  const sections = () => Array.from(document.querySelectorAll<HTMLDetailsElement>('details.acc'));
+
+  it('are native details with a summary, rendered open before any script runs', async () => {
+    const view = await page();
+    // The markup the server sends: open on every screen, so the content is there without JS.
+    const { renderToString } = await import('react-dom/server');
+    const html = renderToString(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <Collapsible title="Details" level="h2">
+          <p>Body</p>
+        </Collapsible>
+      </NextIntlClientProvider>,
+    );
+    expect(html).toMatch(/<details[^>]* open=""[^>]*>/);
+    expect(html).toContain('Body');
+    view.unmount();
+  });
+
+  it('close on a phone, reopen by their summary and stay one heading each', async () => {
     await page();
-    for (const name of ['Details', 'Specifications']) {
-      const button = screen.getByRole('button', { name });
-      expect(button.getAttribute('aria-expanded')).toBe('false');
-      const panel = document.getElementById(button.getAttribute('aria-controls')!)!;
-      expect(panel.hidden).toBe(true);
-      fireEvent.click(button);
-      expect(button.getAttribute('aria-expanded')).toBe('true');
-      expect(panel.hidden).toBe(false);
-      fireEvent.click(button);
-      expect(panel.hidden).toBe(true);
+    expect(sections().map((d) => d.querySelector('summary')!.textContent)).toEqual([
+      'Details',
+      'Specifications',
+    ]);
+    for (const details of sections()) {
+      expect(details.open).toBe(false);
+      details.open = true;
+      expect(details.querySelector('summary h2, summary h3')).not.toBeNull();
+      expect(details.open).toBe(true);
     }
   });
 
-  it('are plain headings with their content on a wider screen', async () => {
+  it('are plain, open headings with their content on a wider screen, and cannot be closed', async () => {
     screenIs(false);
     await page();
-    expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
     expect(screen.getByRole('heading', { level: 2, name: 'Details' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: 'Specifications' })).toBeTruthy();
-    expect(screen.getByText('Weight').closest('[hidden]')).toBeNull();
+    for (const details of sections()) expect(details.open).toBe(true);
+    expect(screen.getByText('Weight')).toBeTruthy();
   });
 
-  it('are 44px tall and clamp nothing twice', () => {
-    expect(css).toMatch(/\.acc-btn \{[^}]*min-block-size: 44px/);
-    expect(css).toMatch(/\.acc\[data-mode='phone'\] \.dmore \{\s*display: none/);
+  it('have 44px summaries, no clamp twice, a start-aligned description, and no pointer on wide', () => {
+    expect(css).toMatch(/\.acc-sum \{\s*min-block-size: 44px/);
+    expect(css).toMatch(/\.acc \.dmore \{\s*display: none/);
+    expect(css).toMatch(/\.desc \{\s*text-align: start/);
+    expect(css).toMatch(/@media \(min-width: 700px\) \{\s*\.acc-sum \{\s*pointer-events: none/);
+    // The count shows on a phone only.
+    expect(css).toMatch(/\.acc-sum \.ico,\s*\.gcount \{\s*display: none/);
   });
 });
 

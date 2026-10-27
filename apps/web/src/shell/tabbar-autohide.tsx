@@ -52,24 +52,15 @@ export function TabBarAutoHide() {
       state = nextTabBar(state, window.scrollY, max);
       apply(state.hidden);
     };
-    // Keyboard users who reach the bar see it.
-    const onFocus = (event: FocusEvent) => {
-      if (event.target instanceof Element && event.target.closest('.tabbar')) {
-        state = { hidden: false, anchor: window.scrollY };
-        apply(false);
-      }
-    };
     const reset = () => {
       state = { hidden: false, anchor: window.scrollY };
       apply(false);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    document.addEventListener('focusin', onFocus);
     phone.addEventListener('change', reset);
     onScroll();
     return () => {
       window.removeEventListener('scroll', onScroll);
-      document.removeEventListener('focusin', onFocus);
       phone.removeEventListener('change', reset);
       clearTimeout(timer);
       root.removeAttribute(TABBAR_ATTRIBUTE);

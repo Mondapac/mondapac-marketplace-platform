@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CertificationSeal } from '../certification/certification-seal.tsx';
 import { checkLoaded } from '../icons/check-loaded.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
+import { under } from '../shell/breakpoints.ts';
 import type { CertificationBadge } from '../storefront/types.ts';
 
 /**
@@ -71,6 +72,16 @@ export function Gallery({
       behavior: reduce ? 'auto' : 'smooth',
     });
   };
+  // Only a phone swipes the row, so only a phone needs it in the tab order.
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia(under('tablet'));
+    const update = () => setPhone(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
   const fail = (src: string) => setFailed((list) => (list.includes(src) ? list : [...list, src]));
   return (
     <div className="gal">
@@ -85,14 +96,18 @@ export function Gallery({
             ref={track}
             role="group"
             aria-label={t('photo-gallery')}
-            tabIndex={0}
+            tabIndex={phone ? 0 : undefined}
           >
             {shots.map((shot, i) => (
               // A photo is the API's public photo route (a plain image, not a server-resized one).
-              <div key={shot.src} className="gslide" aria-hidden={i === current ? undefined : true}>
+              <div key={shot.src} className="gslide">
                 <img
                   src={shot.src}
-                  alt={i === current ? name : ''}
+                  alt={
+                    shots.length > 1
+                      ? t('photo-alt', { name, index: i + 1, total: shots.length })
+                      : name
+                  }
                   width={800}
                   height={800}
                   decoding="async"
