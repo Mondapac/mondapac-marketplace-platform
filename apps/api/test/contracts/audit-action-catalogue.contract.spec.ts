@@ -151,6 +151,10 @@ const isAmountKind = (kind: AuditFieldKind): boolean =>
  * never enters an audit row (ADR-0024), which `costLeakProblems` checks apart from this list.
  */
 const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
+  // Dispute effects package 8b: an admin's decision on who bears a lost chargeback records the
+  // amount the seller repays and the most it could repay (the seller's own share, never Cost).
+  'commission-payouts.dispute.decide.after.amount',
+  'commission-payouts.dispute.decide.before.capAmount',
   'ordering.refund.requested.after.amount',
   'ordering.refund.requested.after.tax',
   'pricing.price-hold.approved.after.amount',

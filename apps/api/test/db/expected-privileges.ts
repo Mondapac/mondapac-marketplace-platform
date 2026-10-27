@@ -500,6 +500,30 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['release_reason', 'released_at', 'released_by'],
     },
+    // Package 8b: a dispute case is inserted and refreshed (its state columns only; a trigger keeps
+    // the identity columns and the one-way flags), a decision is insert-only (a trigger refuses
+    // more), and commission-payouts has its own outbox (the relay marks events published).
+    'commission_payouts.dispute_cases': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'bucket',
+        'closed',
+        'closed_at',
+        'evidence_due_by',
+        'funds_reinstated',
+        'funds_reinstated_at',
+        'funds_withdrawn',
+        'funds_withdrawn_at',
+        'inquiry',
+        'last_synced_version',
+        'outcome',
+        'reason',
+        'status',
+        'updated_at',
+      ],
+    },
+    'commission_payouts.dispute_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
     // (triggers refuse more for every role); the rest change only the columns named and are never
     // deleted (a trigger refuses DELETE and TRUNCATE for every role).

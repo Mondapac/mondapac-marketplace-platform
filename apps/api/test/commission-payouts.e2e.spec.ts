@@ -13,6 +13,8 @@ import { SetSellerPayoutTerms } from '../src/modules/commission-payouts/applicat
 import { ViewSellerPayoutTerms } from '../src/modules/commission-payouts/application/use-cases/view-seller-payout-terms.use-case';
 import { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from '../src/modules/commission-payouts/contracts/step-up';
 import {
+  COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
+  COMMISSION_PAYOUTS_DISPUTE_VIEW,
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
@@ -98,6 +100,10 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.seller-order-not-found': 404,
     'commission-payouts.hold-not-found': 404,
     'commission-payouts.hold-already-released': 409,
+    'commission-payouts.dispute-not-found': 404,
+    'commission-payouts.dispute.not-decidable': 409,
+    'commission-payouts.dispute.already-decided': 409,
+    'commission-payouts.dispute.amount-out-of-range': 400,
     'commission-payouts.unavailable': 503,
   });
 });
@@ -113,6 +119,8 @@ it('declares the payout terms view as unprotected and every change (the commissi
       COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
       COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
       COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
+      COMMISSION_PAYOUTS_DISPUTE_VIEW,
+      COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
     ].map((p) => [p.key, p.scope, p.protected]),
   ).toEqual([
     ['commission-payouts.commission-rate.edit', 'platform', true],
@@ -120,6 +128,8 @@ it('declares the payout terms view as unprotected and every change (the commissi
     ['commission-payouts.payout-terms.edit', 'platform', true],
     ['commission-payouts.payout-hold.place', 'platform', true],
     ['commission-payouts.payout-hold.release', 'platform', true],
+    ['commission-payouts.dispute.view', 'platform', false],
+    ['commission-payouts.dispute.attribute', 'platform', true],
   ]);
   expect(COMMISSION_PAYOUTS_STEP_UP_ACTIONS).toEqual([
     {
@@ -142,6 +152,12 @@ it('declares the payout terms view as unprotected and every change (the commissi
     },
     {
       key: 'commission-payouts.payout-hold.release',
+      defaultRequired: true,
+      locked: true,
+      audience: 'admin',
+    },
+    {
+      key: 'commission-payouts.dispute.attribute',
       defaultRequired: true,
       locked: true,
       audience: 'admin',

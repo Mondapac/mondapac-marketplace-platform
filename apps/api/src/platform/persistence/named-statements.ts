@@ -52,6 +52,15 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
         UUID.test(values[2])
       );
     }
+    if (sql === LOCK_DISPUTE_CASE_TEXT || sql === LOCK_SELLER_ORDER_TEXT) {
+      return (
+        values.length === 3 &&
+        values[0] === market.marketId &&
+        values[1] === market.tenantId &&
+        typeof values[2] === 'string' &&
+        UUID.test(values[2])
+      );
+    }
     return (
       sql === LOCK_STOCK_ITEMS_TEXT &&
       values.length === 3 &&
@@ -117,6 +126,16 @@ export interface LockedEngagementAccount {
   readonly locked: true;
 }
 
+/** The answer of `commission-payouts.lock-dispute-case`: the case row, locked until the unit ends. */
+export interface LockedDisputeCase {
+  readonly disputeId: string;
+}
+
+/** The answer of `commission-payouts.lock-seller-order`: the lock is held until the unit ends. */
+export interface LockedSellerOrder {
+  readonly locked: true;
+}
+
 /** The checked-in list: statement name to its input and its rows. */
 export interface NamedStatements {
   /**
@@ -173,6 +192,28 @@ export interface NamedStatements {
   readonly 'engagement.lock-account': {
     readonly params: { readonly accountId: string; readonly mode: 'shared' | 'exclusive' };
     readonly row: LockedEngagementAccount;
+  };
+  /**
+   * Takes `FOR UPDATE` on one dispute case row of commission-payouts in the unit's Market and
+   * tenant, so two admin decisions on one dispute run one after the other and the second sees the
+   * first's decision (the release-when-all-decided check). No row: no such case (the use case
+   * answers not-found). Released at COMMIT or ROLLBACK.
+   */
+  readonly 'commission-payouts.lock-dispute-case': {
+    readonly params: { readonly disputeId: string };
+    readonly row: LockedDisputeCase;
+  };
+  /**
+   * Takes a transaction-scoped advisory lock on one seller order's dispute recoveries in the
+   * unit's Market and tenant (commission-payouts), so two decisions on the same seller order,
+   * possibly of two disputes of one order, read the ledger cap one after the other and their
+   * total stays within it. The key is `hashtext` of Market, tenant and seller order under class
+   * 1702, which is this statement's alone; a collision only makes two seller orders wait for each
+   * other. Always one row; a wait past `lock_timeout` (55P03) ends the unit as a conflict.
+   */
+  readonly 'commission-payouts.lock-seller-order': {
+    readonly params: { readonly sellerOrderId: string };
+    readonly row: LockedSellerOrder;
   };
 }
 
@@ -395,6 +436,71 @@ const LOCK_STOCK_ITEMS_TEXT = lockStockItemsStatement(
   [],
 ).sql;
 
+/** The statement of `commission-payouts.lock-dispute-case`: Market, tenant, then the dispute. */
+export function lockDisputeCaseStatement(market: MarketContext, disputeId: string): Prisma.Sql {
+  return Prisma.sql`
+    SELECT c.dispute_id
+      FROM "commission_payouts"."dispute_cases" AS c
+     WHERE c.market_id = ${market.marketId}
+       AND c.tenant_id = ${market.tenantId}
+       AND c.dispute_id = ${disputeId}::uuid
+       FOR UPDATE OF c`;
+}
+
+async function lockDisputeCase(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'commission-payouts.lock-dispute-case'>,
+): Promise<LockedDisputeCase[]> {
+  const name = 'commission-payouts.lock-dispute-case';
+  if (typeof params.disputeId !== 'string' || !UUID.test(params.disputeId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(lockDisputeCaseStatement(market, params.disputeId))) as {
+    dispute_id: string;
+  }[];
+  return rows.map((row) => ({ disputeId: row.dispute_id }));
+}
+
+const LOCK_DISPUTE_CASE_TEXT = lockDisputeCaseStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
+/** The advisory-lock class of `commission-payouts.lock-seller-order`. */
+export const COMMISSION_PAYOUTS_SELLER_ORDER_LOCK_CLASS = 1702;
+
+/** The statement of `commission-payouts.lock-seller-order`: Market, tenant, then the seller order. */
+export function lockSellerOrderStatement(market: MarketContext, sellerOrderId: string): Prisma.Sql {
+  const key = Prisma.sql`hashtext(${market.marketId}::text || ':' || ${market.tenantId}::text || ':' || ${sellerOrderId}::text)`;
+  return Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock(${Prisma.raw(String(COMMISSION_PAYOUTS_SELLER_ORDER_LOCK_CLASS))}::int4, ${key})`;
+}
+
+async function lockSellerOrder(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'commission-payouts.lock-seller-order'>,
+): Promise<LockedSellerOrder[]> {
+  const name = 'commission-payouts.lock-seller-order';
+  if (typeof params.sellerOrderId !== 'string' || !UUID.test(params.sellerOrderId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(lockSellerOrderStatement(market, params.sellerOrderId))) as {
+    locked: boolean;
+  }[];
+  if (rows.length !== 1 || rows[0]!.locked !== true) {
+    throw new NamedStatementRefusedError(name, 'rows-missing');
+  }
+  return [{ locked: true }];
+}
+
+const LOCK_SELLER_ORDER_TEXT = lockSellerOrderStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
 /** Runs one named statement on the open read-write unit's transaction. */
 export async function runNamedStatement<K extends NamedStatementName>(
   runner: RawRunner,
@@ -432,6 +538,18 @@ export async function runNamedStatement<K extends NamedStatementName>(
         runner,
         market,
         params as NamedStatementParams<'engagement.lock-account'>,
+      );
+    case 'commission-payouts.lock-dispute-case':
+      return await lockDisputeCase(
+        runner,
+        market,
+        params as NamedStatementParams<'commission-payouts.lock-dispute-case'>,
+      );
+    case 'commission-payouts.lock-seller-order':
+      return await lockSellerOrder(
+        runner,
+        market,
+        params as NamedStatementParams<'commission-payouts.lock-seller-order'>,
       );
     default:
       throw new Error('Unknown named statement');

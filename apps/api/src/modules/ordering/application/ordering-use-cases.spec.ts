@@ -59,6 +59,7 @@ import { AllowAllDeliveryMethods } from '../infrastructure/allow-all-delivery-me
 import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
+import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
@@ -786,6 +787,39 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
       expect(denied.ok).toBe(false);
       expect(gateway.captured).toEqual([]);
+    });
+  });
+
+  describe('order-payment-ref', () => {
+    it("answers the order's own PaymentIntent: none before payment, the confirmed one after", async () => {
+      const order = await placed();
+      const ref = new OrderPaymentRefQuery(gate, deps);
+      expect(await ref.execute(system, { orderId: order.id })).toEqual(
+        ok({ orderId: order.id, paymentIntentId: null }),
+      );
+      await confirm(order.id);
+      expect(await ref.execute(system, { orderId: order.id })).toEqual(
+        ok({ orderId: order.id, paymentIntentId: 'pi_test_1' }),
+      );
+    });
+
+    it('refuses an unknown order, a bad id and every caller but the system', async () => {
+      const ref = new OrderPaymentRefQuery(gate, deps);
+      expect(
+        await ref.execute(system, { orderId: '01990000-0000-7000-8000-00000000ffff' }),
+      ).toEqual(err({ code: 'ordering.order-not-found' }));
+      expect(await ref.execute(system, { orderId: 'nope' })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+      expect(OrderPaymentRefQuery.access).toEqual({
+        name: 'ordering.order-payment-ref',
+        rule: { kind: 'system' },
+      });
+      for (const context of [customer, anonymous]) {
+        expect(
+          await ref.execute(context, { orderId: '01990000-0000-7000-8000-00000000ffff' }),
+        ).toEqual(err({ code: 'access.denied' }));
+      }
     });
   });
 

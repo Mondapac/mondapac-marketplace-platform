@@ -58,6 +58,7 @@ model CommissionPayoutsLedgerEntry {
   /// original row has no source).
   @@unique([marketId, sellerOrderId, kind, orderLineId, sourceId], map: "ledger_entries_fact_key")
   @@index([marketId, sellerId, recordedAt(sort: Desc), id(sort: Desc)])
+  @@index([marketId, orderId], map: "ledger_entries_market_id_order_id_idx")
   @@index([marketId, sellerOrderId])
   @@map("ledger_entries")
   @@schema("commission_payouts")
@@ -162,5 +163,108 @@ model CommissionPayoutsPayoutHold {
 
   @@index([marketId, sellerId, placedAt(sort: Desc), id(sort: Desc)], map: "payout_holds_seller_placed_idx")
   @@map("payout_holds")
+  @@schema("commission_payouts")
+}
+
+/// A snapshot of a payments dispute (package 8b), refreshed from `disputeOf` on every
+/// `payments.dispute-changed.v1`. It holds no card, buyer or evidence data. The state only moves
+/// forward (a trigger: identity columns never change, the money flags and `closed` only go from
+/// false to true, the outcome is set once, the synced version never falls); `bucket` is the admin
+/// list's bucket, recomputed by the application with every sync and decision. No DELETE.
+model CommissionPayoutsDisputeCase {
+  marketId          String    @map("market_id") @db.VarChar(8)
+  disputeId         String    @map("dispute_id") @db.Uuid
+  tenantId          String    @map("tenant_id")
+  orderId           String    @map("order_id") @db.Uuid
+  /// Stripe's dispute id (dp_... or du_...), for the Dashboard link the panel builds.
+  providerDisputeId String    @map("provider_dispute_id")
+  amountMinor       BigInt    @map("amount_minor")
+  currency          String    @db.Char(3)
+  /// Stripe's status, copied from payments (CHECK).
+  status            String
+  inquiry           Boolean
+  closed            Boolean
+  /// won or lost once Stripe closes a chargeback (CHECK).
+  outcome           String?
+  /// Stripe's reason code; admin-only, never shown to the seller.
+  reason            String
+  evidenceDueBy     DateTime? @map("evidence_due_by") @db.Timestamptz(6)
+  fundsWithdrawn    Boolean   @map("funds_withdrawn")
+  fundsWithdrawnAt  DateTime? @map("funds_withdrawn_at") @db.Timestamptz(6)
+  fundsReinstated   Boolean   @map("funds_reinstated")
+  fundsReinstatedAt DateTime? @map("funds_reinstated_at") @db.Timestamptz(6)
+  openedAt          DateTime  @map("opened_at") @db.Timestamptz(6)
+  /// When this module first saw the case closed; null while open.
+  closedAt          DateTime? @map("closed_at") @db.Timestamptz(6)
+  /// needs-response, under-review, decision-needed, won or closed (CHECK).
+  bucket            String
+  /// The payments version the snapshot came from; an older read never replaces a newer one.
+  lastSyncedVersion Int       @map("last_synced_version")
+  createdAt         DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, disputeId])
+  @@index([marketId, bucket, openedAt(sort: Desc), disputeId(sort: Desc)], map: "dispute_cases_bucket_idx")
+  @@map("dispute_cases")
+  @@schema("commission_payouts")
+}
+
+/// An admin's decision on who bears a lost chargeback, per seller order (package 8b). Insert-only.
+/// `platform` bears it (no ledger row; no amount) or `seller` repays `amount` (a `dispute-debit`
+/// row, written in the same unit). A later `platform` row with `supersedes` set reverses a seller
+/// decision after the bank returned the money (a `dispute-reinstate` row).
+model CommissionPayoutsDisputeDecision {
+  id            String   @id @db.Uuid
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  disputeId     String   @map("dispute_id") @db.Uuid
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  sellerId      String   @map("seller_id") @db.Uuid
+  /// platform or seller (CHECK).
+  bearer        String
+  /// Minor units, set only when the seller bears it (CHECK).
+  amountMinor   BigInt?  @map("amount_minor")
+  currency      String?  @db.Char(3)
+  /// no-delivery-proof, not-as-described, card-fraud-not-seller or other (CHECK).
+  reasonCode    String   @map("reason_code")
+  /// The admin account (a plain id, no foreign key).
+  decidedBy     String   @map("decided_by") @db.Uuid
+  decidedAt     DateTime @map("decided_at") @db.Timestamptz(6)
+  /// The seller decision this one reverses; null for a first decision.
+  supersedes    String?  @db.Uuid
+
+  /// The seller decision of the same dispute and seller order that this one reverses (composite
+  /// self-reference; the migration adds it by hand and a trigger checks that the target is a
+  /// seller decision).
+  reverses   CommissionPayoutsDisputeDecision?  @relation("DisputeDecisionReversal", fields: [marketId, disputeId, sellerOrderId, supersedes], references: [marketId, disputeId, sellerOrderId, id], map: "dispute_decisions_supersedes_fkey", onDelete: NoAction, onUpdate: NoAction)
+  reversedBy CommissionPayoutsDisputeDecision[] @relation("DisputeDecisionReversal")
+
+  @@unique([marketId, disputeId, sellerOrderId, id], map: "dispute_decisions_scope_id_key")
+  @@index([marketId, disputeId])
+  @@index([marketId, sellerId])
+  @@map("dispute_decisions")
+  @@schema("commission_payouts")
+}
+
+/// Commission-payouts' outbox: `commission-payouts.seller-order-disputed.v1`.
+model CommissionPayoutsOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "commission-payouts.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  marketId         String    @map("market_id") @db.VarChar(8)
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
   @@schema("commission_payouts")
 }

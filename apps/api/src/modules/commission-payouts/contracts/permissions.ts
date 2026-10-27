@@ -55,6 +55,20 @@ export const COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE = definePermission('commissi
   protected: true,
 });
 
+/** See the dispute cases of the Market: the list, the counts and one case with its seller orders. */
+export const COMMISSION_PAYOUTS_DISPUTE_VIEW = definePermission('commission-payouts', {
+  key: 'commission-payouts.dispute.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/** Decide who bears a lost chargeback, per seller order: the platform or the seller. */
+export const COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE = definePermission('commission-payouts', {
+  key: 'commission-payouts.dispute.attribute',
+  scope: 'platform',
+  protected: true,
+});
+
 export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-payouts', [
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
@@ -63,4 +77,6 @@ export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-pay
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
   COMMISSION_PAYOUTS_EARNINGS_VIEW,
   COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
+  COMMISSION_PAYOUTS_DISPUTE_VIEW,
+  COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
 ]);
