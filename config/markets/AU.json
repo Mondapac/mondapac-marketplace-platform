@@ -414,6 +414,24 @@
       "backoffMs": 250,
       "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 },
       "quoteBounds": { "minMinor": 500, "maxMinor": 10000 }
+    },
+    "uberDirect": {
+      "enabled": false,
+      "serviceAreas": ["greater-brisbane"],
+      "modes": ["on_demand", "scheduled"],
+      "temperatures": ["ambient"],
+      "limits": { "maxItemWeightGrams": 20000, "maxItems": 8, "maxOrderValueMinor": 50000 },
+      "prohibitedClasses": [
+        "alcohol",
+        "tobacco",
+        "firearms",
+        "hazardous-materials",
+        "live-animals"
+      ],
+      "timeoutMs": 2500,
+      "maxAttempts": 2,
+      "backoffMs": 250,
+      "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 }
     }
   }
 }

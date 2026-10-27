@@ -39,6 +39,7 @@ describe('loadAppConfig', () => {
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
+      uberDirect: { customerIds: {}, clientIds: {}, clientSecrets: {} },
     });
   });
 
@@ -82,6 +83,38 @@ describe('loadAppConfig', () => {
           MONDAPAC_DRIVE_WEBHOOK_SECRET: `AU=${KEY}`,
         }),
       ).toThrow('must differ from MONDAPAC_DRIVE_API_KEY');
+    });
+  });
+
+  describe('the Uber Direct credentials (per Market: customer id, client id, client secret)', () => {
+    const SECRET = 'uber_secret_0123456789abcdefghij';
+
+    it('reads each value per hosted Market, and none when unset', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU,ZZ',
+        UBER_DIRECT_CUSTOMER_ID: 'AU=cust-0001-aaaa',
+        UBER_DIRECT_CLIENT_ID: 'AU=client-0001,ZZ=client-0002',
+        UBER_DIRECT_CLIENT_SECRET: `AU=${SECRET}`,
+      });
+      expect(config.uberDirect).toEqual({
+        customerIds: { AU: 'cust-0001-aaaa' },
+        clientIds: { AU: 'client-0001', ZZ: 'client-0002' },
+        clientSecrets: { AU: SECRET },
+      });
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).uberDirect.clientSecrets).toEqual({});
+    });
+
+    it('refuses a short secret and an unhosted Market without echoing the value', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_CLIENT_SECRET: 'AU=too-short' }),
+      ).toThrow('UBER_DIRECT_CLIENT_SECRET');
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_CLIENT_SECRET: `NZ=${SECRET}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('NZ is not in HOSTED_MARKETS');
+        expect((error as Error).message).not.toContain(SECRET);
+      }
     });
   });
 
