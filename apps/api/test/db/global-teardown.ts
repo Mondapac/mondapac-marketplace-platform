@@ -25,7 +25,9 @@ export default async function globalTeardown(): Promise<void> {
     process.env.TEST_STORE_PROFILE_DATABASE_NAME,
     process.env.TEST_CERTIFIED_CATEGORIES_DATABASE_NAME,
     process.env.TEST_WALLET_SWITCH_DATABASE_NAME,
+    process.env.TEST_WALLET_CREDIT_DATABASE_NAME,
     process.env.TEST_ORDERING_REFUNDS_DATABASE_NAME,
+    process.env.TEST_SELLERS_LIST_DATABASE_NAME,
     process.env.TEST_DATABASE_NAME,
   ].filter((name): name is string => name !== undefined && name !== '');
   if (names.length === 0) return;

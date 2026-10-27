@@ -71,7 +71,9 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'STORE_PROFILE');
   await createCopy(name, 'CERTIFIED_CATEGORIES');
   await createCopy(name, 'WALLET_SWITCH');
+  await createCopy(name, 'WALLET_CREDIT');
   await createCopy(name, 'ORDERING_REFUNDS');
+  await createCopy(name, 'SELLERS_LIST');
 }
 
 /**
@@ -123,10 +125,16 @@ export default async function globalSetup(): Promise<void> {
  *   whole Markets, so no other file's policies live there;
  * - `wallet_switch`: admin-step-up.db-spec.ts moves each Market's wallet switch through the admin
  *   step-up, so the switch of wallet-ledger.db-spec.ts never changes under it.
+ * - `wallet_credit`: wallet-admin-credit.db-spec.ts moves each Market's wallet switch (active,
+ *   paused) and counts each admin's day of admin credit, so no other file's switch or credit
+ *   lives there.
  * - `ordering_refunds`: ordering-refunds.db-spec.ts writes many paid orders and runs the
  *   Market-wide ledger steps (`RecordLedger`, `RecordRefundLedger`, `SettleRefunds`), so it never
  *   records another file's queued seller order or refund, and never moves the Market-wide order
  *   counts another file reads (ordering-order-repository.db-spec.ts compares them).
+ * - `sellers_list`: sellers-list.db-spec.ts compares the tab counts of a whole Market before and
+ *   after making its own seller files, so no other file makes or submits a seller file in that
+ *   Market between the two reads.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -154,7 +162,9 @@ async function createCopy(
     | 'STORE_PROFILE'
     | 'CERTIFIED_CATEGORIES'
     | 'WALLET_SWITCH'
-    | 'ORDERING_REFUNDS',
+    | 'WALLET_CREDIT'
+    | 'ORDERING_REFUNDS'
+    | 'SELLERS_LIST',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
