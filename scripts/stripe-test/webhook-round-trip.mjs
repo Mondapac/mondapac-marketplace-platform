@@ -1,5 +1,6 @@
 // The Stripe webhook receiver (Phase 5 package 2) against a real Stripe test-mode event. No public
-// URL is needed: the script creates a Checkout session in test mode with this Market's metadata,
+// URL is needed: the script creates a Checkout session in test mode through ordering's
+// StripeCheckoutGateway (so the session is the one checkout really creates),
 // expires it, fetches the checkout.session.expired event Stripe wrote, signs it the way Stripe
 // signs a delivery (HMAC-SHA256 over `<t>.<body>`) with the secret the running API was started
 // with, and posts it to POST /payments/stripe/webhook/<MARKET>. It then checks that the event is
@@ -18,6 +19,9 @@ import { Report, stripe, stripeError, testKey } from './stripe-test-kit.mjs';
 
 const require = createRequire(path.resolve('apps/api/package.json'));
 const { Client } = require('pg');
+const {
+  StripeCheckoutGateway,
+} = require('./dist/modules/ordering/infrastructure/stripe-checkout-gateway.js');
 
 const base = process.argv[2] ?? 'http://localhost:3000';
 const market = process.argv[3] ?? 'AU';
@@ -28,6 +32,14 @@ if (!/^whsec_[A-Za-z0-9+/=_]{8,200}$/.test(secret)) {
   process.exit(1);
 }
 
+// The gateway's answers carry codes only; the last Stripe answer is kept to show Stripe's reason.
+let lastAnswer = null;
+const checkout = new StripeCheckoutGateway(key, async (url, init) => {
+  const response = await fetch(url, init);
+  const body = await response.json();
+  lastAnswer = { status: response.status, body };
+  return { status: response.status, json: async () => body };
+});
 const report = new Report(`Stripe webhook round trip (Market ${market}, Stripe test mode)`);
 const database = new Client({ connectionString: process.env.DATABASE_URL });
 await database.connect();
@@ -40,32 +52,33 @@ try {
   report.finish();
 }
 
-/** A Checkout session of this Market, expired at once: Stripe writes the event itself. */
+/**
+ * A Checkout session of this Market, made by the gateway ordering ships, expired at once: Stripe
+ * writes the event itself.
+ */
 async function realExpiredEvent() {
   const orderId = randomUUID();
-  const session = await stripe(key, 'POST', '/v1/checkout/sessions', {
-    mode: 'payment',
-    success_url: 'https://example.com/stripe-test/success',
-    // No payment_method_types: Stripe now refuses it; the Dashboard decides the payment methods.
-    'line_items[0][quantity]': '1',
-    'line_items[0][price_data][currency]': 'aud',
-    'line_items[0][price_data][unit_amount]': '1000',
-    'line_items[0][price_data][product_data][name]': 'Webhook round-trip check',
-    client_reference_id: orderId,
-    'metadata[market_id]': market,
-    'metadata[order_id]': orderId,
-    'metadata[purpose]': 'webhook-check',
+  const created = await checkout.createSession({
+    orderId,
+    marketId: market,
+    currency: 'AUD',
+    packages: [{ label: 'Webhook round-trip check', amount: 1000n }],
+    successUrl: 'https://example.com/stripe-test/success',
+    cancelUrl: 'https://example.com/stripe-test/cancel',
+    // Stripe's minimum: 30 minutes from now.
+    expiresAt: { epochMilliseconds: Date.now() + 31 * 60 * 1000 },
+    idempotencyKey: `webhook-check-${orderId}`,
   });
   if (
     !report.check(
-      'create a test Checkout session',
-      session.status === 200,
-      session.status === 200 ? session.body.id : stripeError(session),
+      'the checkout gateway creates a session',
+      created.ok,
+      created.ok ? created.value.sessionId : `${created.error.code}; ${stripeError(lastAnswer)}`,
     )
   ) {
     return null;
   }
-  const sessionId = session.body.id;
+  const sessionId = created.value.sessionId;
   const expired = await stripe(key, 'POST', `/v1/checkout/sessions/${sessionId}/expire`);
   if (
     !report.check(

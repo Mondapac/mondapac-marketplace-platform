@@ -2,8 +2,8 @@ name: Stripe test mode
 
 # Checks that need the real Stripe API in test mode, which only a machine Stripe serves can reach
 # (GitHub's runners do; the team's own network and the agent sandbox do not). Run by hand from
-# the Actions tab, and on a pull request that changes these checks. Never on a fork's pull
-# request: it has no access to the secrets.
+# the Actions tab, and on a pull request that changes these checks or a Stripe adapter. Never on
+# a fork's pull request: it has no access to the secrets.
 #
 # Secrets (repository, Actions): SK_TEST, the Stripe test-mode secret key (sk_test_ or rk_test_).
 # PK_TEST, the test publishable key, is for the browser check that follows. A live key is
@@ -14,6 +14,9 @@ on:
     paths:
       - .github/workflows/stripe-test.yml
       - scripts/stripe-test/**
+      # The Stripe adapters these checks drive: a change to one runs them against Stripe.
+      - apps/api/src/modules/ordering/infrastructure/stripe-*.ts
+      - apps/api/src/modules/payments/infrastructure/stripe-*.ts
 
 # One run at a time: every run writes to the same Stripe test account.
 concurrency:
