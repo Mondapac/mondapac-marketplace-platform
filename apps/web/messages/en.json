@@ -164,6 +164,11 @@
       "settings": "Settings"
     },
     "log-out": "Log out",
+    "back": {
+      "account": "Account",
+      "orders": "Orders",
+      "aria": "Back to {to}"
+    },
     "titles": {
       "overview": "My account",
       "orders": "My orders",

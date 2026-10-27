@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { AccountDrawer } from '../src/account/account-drawer.tsx';
-import { AccountArea } from '../src/account/account-area.tsx';
+import { AccountArea, backTarget } from '../src/account/account-area.tsx';
 import { AuthForms } from '../src/account/auth-forms.tsx';
 import { AccountAddresses } from '../src/account/addresses.tsx';
 import { AccountLists } from '../src/account/lists.tsx';
@@ -248,8 +248,80 @@ describe('overview', () => {
     const latest = within(page).getByRole('region', { name: 'Latest order' });
     expect(within(latest).getByText('MP-20481')).toBeTruthy();
     expect(within(latest).getByText('A$93.10')).toBeTruthy();
-    expect(within(page).getByRole('link', { name: /Addresses/ }).textContent).toContain('2 saved');
-    expect(within(page).queryByRole('button', { name: 'Log out' })).toBeNull();
+    const tiles = page.querySelector<HTMLElement>('.ac-quick');
+    expect(tiles).not.toBeNull();
+    expect(within(tiles!).getByRole('link', { name: /Addresses/ }).textContent).toContain(
+      '2 saved',
+    );
+    expect(within(tiles!).queryByRole('button', { name: 'Log out' })).toBeNull();
+  });
+
+  it('phone and tablet: a menu list of the four sections and Log out beside the tiles (CSS switches them)', () => {
+    renderStore(<AccountOverview />);
+    const page = main();
+    const menu = within(page).getByRole('navigation', { name: 'Account' });
+    expect(menu.className).toBe('ac-menu');
+    expect(menu.closest('.ac-quick')).toBeNull();
+    expect(
+      within(menu)
+        .getAllByRole('link')
+        .map((a) => [a.textContent, a.getAttribute('href')]),
+    ).toEqual([
+      ['Orders', '/account/orders'],
+      ['Addresses2 saved', '/account/addresses'],
+      ['Saved lists1 saved', '/account/lists'],
+      ['SettingsProfile, look, emails', '/account/settings'],
+    ]);
+    expect(within(menu).getByRole('button', { name: 'Log out' })).toBeTruthy();
+    // Both blocks are in the page; the sheet shows the list below 900px and the tiles above.
+    expect(page.querySelector('.ac-quick')).not.toBeNull();
+    // Hello card and latest order come before the menu.
+    const order = (el: Element) =>
+      Array.from(page.querySelectorAll('.ac-card, .ac-menu')).indexOf(el);
+    expect(order(menu)).toBeGreaterThan(order(page.querySelector('.ac-card')!));
+  });
+
+  it('Log out in the menu list signs out and goes to the account address', async () => {
+    renderStore(<AccountOverview />);
+    fireEvent.click(within(main()).getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/account'));
+  });
+});
+
+describe('back link', () => {
+  const back = () => main().querySelector<HTMLAnchorElement>('a.ac-back');
+  it.each([
+    ['/account/orders', <AccountOrders key="o" />, '/account', 'Back to Account', 'Account'],
+    ['/account/addresses', <AccountAddresses key="a" />, '/account', 'Back to Account', 'Account'],
+    ['/account/lists', <AccountLists key="l" />, '/account', 'Back to Account', 'Account'],
+    [
+      '/account/settings',
+      <AccountSettings key="s" palette="B" textSize="auto" />,
+      '/account',
+      'Back to Account',
+      'Account',
+    ],
+  ])('%s goes back to the account home', (path, page, href, label, text) => {
+    nav.path = path;
+    renderStore(page);
+    expect(back()?.getAttribute('href')).toBe(href);
+    expect(back()?.getAttribute('aria-label')).toBe(label);
+    expect(back()?.textContent).toBe(text);
+    // The link is the first thing in the page, above the h1.
+    expect(main().querySelector('.ac')!.firstElementChild).toBe(back());
+  });
+
+  it('an order page goes back to Orders; the overview has no back link', () => {
+    nav.path = '/account/orders/MP-20481';
+    renderStore(<OrderDetails reference="MP-20481" />);
+    expect(back()?.getAttribute('href')).toBe('/account/orders');
+    expect(back()?.getAttribute('aria-label')).toBe('Back to Orders');
+    cleanup();
+    expect(backTarget(nav.path)).toEqual({ href: '/account/orders', key: 'orders' });
+    expect(backTarget('/account')).toBeNull();
+    nav.path = '/account';
+    renderStore(<AccountOverview />);
+    expect(back()).toBeNull();
   });
 });
 
