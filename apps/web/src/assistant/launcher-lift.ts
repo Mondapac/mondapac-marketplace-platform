@@ -53,3 +53,31 @@ export function launcherLift(
 export function launcherHidden(phone: boolean, cookieBarOpen: boolean): boolean {
   return phone && cookieBarOpen;
 }
+
+/**
+ * The dock to lift above. On a product page on a phone the tab bar slides away (the dock keeps its
+ * box, only the bar inside it moves), so a settled hidden bar covers nothing. While it moves
+ * (`moving`) the launcher keeps to the shown geometry: it is the higher one, so the launcher never
+ * lands on the bar on its way in or out, and it comes down once the move is over.
+ */
+export function dockForLauncher(dock: Box, tabBarHidden: boolean, moving: boolean): Box {
+  return tabBarHidden && !moving ? null : dock;
+}
+
+/**
+ * An action bar's box while the tab bar slides: the bar drops or rises by animating its sticky
+ * offset, so its box is somewhere between the two ends. The launcher decides from the higher end,
+ * where the bar stands stuck above the shown dock (`dockHeight` plus `gap` from the bottom edge),
+ * together with where the bar is now, so it is never under the launcher on the way.
+ */
+export function movingBarBox(
+  bar: Box,
+  viewportHeight: number,
+  dockHeight: number,
+  gap: number,
+): Box {
+  if (bar === null) return null;
+  const stuckBottom = viewportHeight - dockHeight - gap;
+  const stuckTop = stuckBottom - (bar.bottom - bar.top);
+  return { top: Math.min(bar.top, stuckTop), bottom: Math.max(bar.bottom, stuckBottom) };
+}
