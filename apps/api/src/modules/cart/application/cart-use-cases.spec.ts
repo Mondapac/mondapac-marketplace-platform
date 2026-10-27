@@ -20,7 +20,12 @@ import { CryptoGuestTokens } from '../infrastructure/crypto-guest-tokens';
 import { ConfigCartPolicy } from '../infrastructure/config-cart-policy';
 import type { SavedDependencies } from './saved-operations';
 import type { CartRepository } from './ports/cart.repository';
-import { verdictKey, type LineFactsSource, type LineVerdict } from './ports/line-facts';
+import {
+  verdictKey,
+  type LineDisplay,
+  type LineFactsSource,
+  type LineVerdict,
+} from './ports/line-facts';
 import { AddGuestItem } from './use-cases/add-guest-item.use-case';
 import { AddItem } from './use-cases/add-item.use-case';
 import { ClearOrderedLines } from './use-cases/clear-ordered-lines.use-case';
@@ -59,6 +64,12 @@ const VARIANT = id<'Variant'>(3);
 const SELLER = id<'Seller'>(4);
 const ACCOUNT = id<'Account'>(5);
 const ORIGIN = '203.0.113.7';
+const DISPLAY: LineDisplay = {
+  productId: id<'Product'>(20),
+  productName: 'Lamb mince',
+  variantLabel: '500 g',
+  imageId: id(21),
+};
 
 class MemoryCarts implements CartRepository {
   readonly rows = new Map<string, CartState>();
@@ -182,6 +193,19 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     sellerDeliveryFees: (_c, sellerIds) =>
       Promise.resolve(
         new Map(sellerIds.flatMap((sellerId) => (sellerId === SELLER ? [[sellerId, FEE]] : []))),
+      ),
+    // Only OFFER has a published listing; the other units show their state only.
+    lineDisplays: (_c, refs) =>
+      Promise.resolve(
+        new Map(
+          factsDown
+            ? []
+            : refs.flatMap((ref) => (ref.offerId === OFFER ? [[verdictKey(ref), DISPLAY]] : [])),
+        ),
+      ),
+    sellerNames: (_c, sellerIds) =>
+      Promise.resolve(
+        new Map(factsDown ? [] : sellerIds.map((sellerId) => [sellerId, 'Halal Corner'] as const)),
       ),
   };
 
@@ -326,6 +350,29 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     expect(group?.subtotal).toEqual(money(2n * 1200n + 4n * 250n, currency));
     expect(group?.lines[0]?.priceChanged).toEqual({ previous: money(1000n, currency) });
     expect(group?.lines[1]?.priceChanged).toBeNull();
+  });
+
+  it("shows each line's name, label and image and the seller's store name", async () => {
+    const add = new AddItem(gate, deps);
+    await add.execute(customerCtx, { ...line, quantity: 1 });
+    await add.execute(customerCtx, { offerId: OFFER_B, variantId: VARIANT, quantity: 1 });
+
+    const viewed = await new ViewCart(gate, deps).execute(customerCtx, {});
+
+    const group = viewed.ok ? viewed.value.groups[0]! : undefined;
+    expect(group?.sellerName).toBe('Halal Corner');
+    expect(group?.lines.map((l) => l.display)).toEqual([DISPLAY, null]);
+  });
+
+  it('still shows the cart without names or images when the checks are down', async () => {
+    await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 1 });
+    factsDown = true;
+
+    const viewed = await new ViewCart(gate, deps).execute(customerCtx, {});
+
+    const group = viewed.ok ? viewed.value.groups[0]! : undefined;
+    expect(group?.sellerName).toBeNull();
+    expect(group?.lines[0]).toMatchObject({ state: 'check-unavailable', display: null });
   });
 
   it('lowers an unbuyable line but refuses to raise it', async () => {
@@ -498,7 +545,14 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       expect(moved.ok).toBe(true);
       expect(cartAfter.ok && cartAfter.value.lineCount).toBe(0);
       expect(list.ok && list.value).toMatchObject([
-        { offerId: OFFER, variantId: VARIANT, state: 'buyable', unitPrice: money(1000n, currency) },
+        {
+          offerId: OFFER,
+          variantId: VARIANT,
+          state: 'buyable',
+          unitPrice: money(1000n, currency),
+          display: DISPLAY,
+          sellerName: 'Halal Corner',
+        },
       ]);
 
       const back = await new MoveSavedToCart(gate, deps).execute(customerCtx, {

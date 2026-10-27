@@ -942,6 +942,46 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ]);
     });
 
+    it("names the products and stores of the customer's own orders, never the customer", async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');
+      labels.stores.set(SELLER_A, 'Corner Butcher');
+
+      const list = await new ListOrders(gate, deps).execute(customer, {});
+      const view = await new ViewOrder(gate, deps).execute(customer, {
+        orderId: result.value.orderId,
+      });
+
+      if (!list.ok || !view.ok) throw new Error('read failed');
+      const a = view.value.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      expect(a.storeName).toBe('Corner Butcher');
+      expect(a.lines.find((l) => l.offerId === OFFER_1)).toMatchObject({
+        productName: 'Lamb mince',
+        variantLabel: '500 g',
+      });
+      expect(list.value.orders[0]?.sellerOrders).toEqual(view.value.sellerOrders);
+      expect(labels.calls.some((c) => c.lookup === 'customers')).toBe(false);
+    });
+
+    it("still shows the customer's order, with null names, when the lookups fail", async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.fail.add('units').add('stores');
+
+      const view = await new ViewOrder(gate, deps).execute(customer, {
+        orderId: result.value.orderId,
+      });
+
+      if (!view.ok) throw new Error('read failed');
+      for (const seller of view.value.sellerOrders) {
+        expect(seller.storeName).toBeNull();
+        for (const line of seller.lines) {
+          expect(line).toMatchObject({ productName: null, variantLabel: null });
+        }
+      }
+    });
+
     it('still answers, with null names, when every lookup fails', async () => {
       const result = await start();
       if (!result.ok) throw new Error('checkout failed');

@@ -132,6 +132,16 @@ export interface LabelledAdminOrderView extends Omit<AdminOrderView, 'sellerOrde
   readonly sellerOrders: readonly LabelledSellerOrderView[];
 }
 
+/** A customer's own order with the names the buyer site shows (product, Variant, store). */
+export interface LabelledOrderView extends Omit<OrderView, 'sellerOrders'> {
+  readonly sellerOrders: readonly LabelledSellerOrderView[];
+}
+
+/** The customer's own order with its delivery address and pickup codes, labelled. */
+export interface LabelledOwnOrderView extends Omit<OwnOrderView, 'sellerOrders'> {
+  readonly sellerOrders: readonly LabelledSellerOrderView[];
+}
+
 /** A seller order as the seller panel shows it, with the published names of its lines. */
 export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailView, 'lines'> {
   readonly lines: readonly LabelledLineView[];
