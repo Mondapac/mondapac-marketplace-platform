@@ -18,14 +18,17 @@ export type PayoutSchedule = 'manual' | NormalPayoutSchedule;
 /** What payments asks Stripe about connected accounts. Test mode only. */
 export interface ConnectGateway {
   /**
-   * Creates an Express account with the `transfers` capability. The key makes a repeated call
-   * return the same account; it is stored before the call and never replaced.
+   * Creates an account with the Express Dashboard and the recipient configuration (Accounts v2,
+   * `stripe_balance.stripe_transfers`). The key makes a repeated call return the same account; it
+   * is stored before the call and never replaced. `contactEmail` is the Seller Owner's verified
+   * address, which Stripe requires: personal data, sent to Stripe only, never logged or stored.
    */
   createAccount(request: {
     readonly idempotencyKey: string;
     readonly country: string;
     readonly marketId: string;
     readonly sellerId: string;
+    readonly contactEmail: string;
   }): Promise<Result<{ readonly accountRef: string }, ConnectFailure>>;
 
   /** A one-time hosted onboarding (or update) page; the URL is returned, never stored. */

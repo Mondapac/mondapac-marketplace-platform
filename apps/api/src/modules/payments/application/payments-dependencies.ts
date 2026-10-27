@@ -28,8 +28,14 @@ export interface PaymentsDependencies {
   readonly accounts: ConnectedAccountStore;
   readonly connect: ConnectGateway;
   readonly policy: PaymentsPolicy;
-  /** What payments asks of identity: the actor's factor state and a recent-confirmation check. */
-  readonly identity: Pick<IdentityFacade, 'describeActor' | 'confirmSecondFactor'>;
+  /**
+   * What payments asks of identity: the actor's factor state, a recent-confirmation check, and
+   * the Seller Owner's own address that Stripe requires to create the payout account.
+   */
+  readonly identity: Pick<
+    IdentityFacade,
+    'describeActor' | 'confirmSecondFactor' | 'ownOwnerEmail'
+  >;
   readonly audit: AuditWriter;
   readonly securityEvents: SecurityEvents;
   readonly ids: IdGenerator;
