@@ -13,6 +13,7 @@ import type {
   CommissionRateMap,
   PaidSellerOrder,
   RefundedSellerOrder,
+  SellerOrderDelivered,
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import type {
@@ -583,6 +584,20 @@ export class FakeCommission implements CommissionPayoutsFacade {
   refundFails: CommissionPayoutsFailure | null = null;
   /** When set, only this refund is refused by `refundFails` (the others are recorded). */
   refundFailOnly: string | null = null;
+  /** The deliveries sent to the anchor; `deliveredFails` makes commission-payouts refuse them. */
+  delivered: SellerOrderDelivered[] = [];
+  deliveredFails: CommissionPayoutsFailure | null = null;
+  recordSellerOrderDelivered(
+    _c: CallContext,
+    delivered: SellerOrderDelivered,
+  ): Promise<Result<'anchored' | 'already-anchored', CommissionPayoutsFailure>> {
+    if (this.deliveredFails !== null) return Promise.resolve(err(this.deliveredFails));
+    if (this.delivered.some((d) => d.sellerOrderId === delivered.sellerOrderId)) {
+      return Promise.resolve(ok('already-anchored' as const));
+    }
+    this.delivered.push(delivered);
+    return Promise.resolve(ok('anchored' as const));
+  }
   recordRefund(
     _c: CallContext,
     refund: RefundedSellerOrder,

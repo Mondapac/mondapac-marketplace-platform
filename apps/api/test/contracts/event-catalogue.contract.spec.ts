@@ -103,6 +103,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'certification.expiry-warning-mail',
       'certification.issuer-request-mail',
       'certification.revoked-mail',
+      // Phase 5 package 6b: payout holds from identity's seller access.
+      'commission-payouts.note-seller-reinstated',
+      'commission-payouts.place-suspended-hold',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -150,6 +153,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'ordering.book-ready-carrier-delivery',
       'ordering.cancel-carrier-after-refund',
       'ordering.record-carrier-progress',
+      'ordering.record-delivery-anchor',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'search.index-deleted-offer',
@@ -171,6 +175,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-ready.v1')).toEqual([
       'ordering.book-ready-carrier-delivery',
+    ]);
+    expect(subscriptions.subscribersOf('ordering.seller-order-delivered.v1')).toEqual([
+      'ordering.record-delivery-anchor',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'ordering.cancel-carrier-after-refund',
@@ -245,10 +252,12 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'sellers.close-decision-rejected',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-suspended.v1')).toEqual([
+      'commission-payouts.place-suspended-hold',
       'identity.seller-suspended-mail',
       'search.unindex-suspended-seller',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-reinstated.v1')).toEqual([
+      'commission-payouts.note-seller-reinstated',
       'identity.seller-reinstated-mail',
       'notifications.seller-access-reinstated-notice',
       'search.index-reinstated-seller',

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CATALOG_STEP_UP_ACTIONS } from '../../src/modules/catalog/contracts/step-up';
+import { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from '../../src/modules/commission-payouts/contracts/step-up';
 import { CUSTOMERS_STEP_UP_ACTIONS } from '../../src/modules/customers/contracts/step-up';
 import { IDENTITY_STEP_UP_ACTIONS } from '../../src/modules/identity/contracts/step-up';
 import { PAYMENTS_STEP_UP_ACTIONS } from '../../src/modules/payments/contracts/step-up';
@@ -29,6 +30,7 @@ function controllerFiles(dir: string): string[] {
 describe('step-up enforcement contract', () => {
   const registered = [
     ...CATALOG_STEP_UP_ACTIONS,
+    ...COMMISSION_PAYOUTS_STEP_UP_ACTIONS,
     ...CUSTOMERS_STEP_UP_ACTIONS,
     ...IDENTITY_STEP_UP_ACTIONS,
     ...PAYMENTS_STEP_UP_ACTIONS,
