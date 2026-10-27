@@ -8,7 +8,7 @@ import { useStore } from '../shell/store-context.tsx';
 import { useRetry } from './use-retry.ts';
 
 /**
- * The banner over a saved page while the connection is lost (approved design errors-a-teal v1).
+ * The banner over an already open page while the connection is lost (approved design errors-a-teal v1).
  * Meanwhile the cart cannot change and checkout is blocked (the store's `online`); when the
  * connection is back the page is read again, so prices and stock are current.
  */
