@@ -70,6 +70,17 @@ export interface SellerOrderCustomerName {
 export type SellerOrderCustomerNamesFailure = AccessDenied | { readonly code: 'validation.failed' };
 
 /**
+ * What is still open for the calling customer: orders waiting for payment or not yet delivered in
+ * every seller order, and refunds still pending. Counts only.
+ */
+export interface OwnOpenObligations {
+  readonly openOrders: number;
+  readonly pendingRefunds: number;
+}
+
+export type OwnOpenObligationsFailure = AccessDenied;
+
+/**
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
  */
@@ -123,6 +134,24 @@ export interface OrderingFacade {
     context: CallContext,
     sellerOrderIds: readonly string[],
   ): Promise<Result<readonly SellerOrderCustomerName[], SellerOrderCustomerNamesFailure>>;
+
+  /**
+   * The calling customer's own open orders and pending refunds, as counts (rule `own-resources`,
+   * customers only; the account is the session's), for account deletion's blocker check. Returns,
+   * disputes and chargebacks have no module yet, so they are not counted here.
+   */
+  ownOpenObligations(
+    context: CallContext,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
+   * The same counts for one customer account, for the system actor only (rule `system`): the
+   * account deletion job re-checks a due request before it erases the account.
+   */
+  openObligationsOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
 }
 
 /** Nest token of the {@link OrderingFacade}, provided and exported by `OrderingModule`. */

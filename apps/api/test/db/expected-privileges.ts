@@ -571,6 +571,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // part of the audit evidence); the outbox is immutable to the application except the relay's
     // published_at.
     'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 5b: a deletion request is inserted and closed once (only the closing columns), never deleted.
+    'customers.account_deletion_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cancel_reason', 'cancelled_at', 'completed_at', 'status'],
+    },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.

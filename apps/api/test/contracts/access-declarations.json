@@ -29,16 +29,8 @@
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
   { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
-  {
-    "name": "catalog.own-offer-read",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
-  {
-    "name": "catalog.own-offers-list",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
+  { "name": "catalog.own-offer-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
     "name": "catalog.own-product-image-list",
     "rule": "permissions",
@@ -54,16 +46,8 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
-  {
-    "name": "catalog.own-product-read",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
-  {
-    "name": "catalog.own-products-list",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
+  { "name": "catalog.own-product-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.published-image-read", "rule": "anonymous" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
@@ -165,11 +149,22 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "customers.cancel-account-deletion",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "customers.create-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "customers.execute-account-deletions", "rule": "system" },
   { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "customers.read-delivery-address",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "customers.request-account-deletion",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
@@ -181,6 +176,11 @@
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "customers.view-account-deletion-availability",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "customers.view-account-deletion-request",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
@@ -245,6 +245,12 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "identity.describe-social-sign-in", "rule": "anonymous" },
+  {
+    "name": "identity.end-other-customer-sessions",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "identity.erase-customer-account", "rule": "system" },
   { "name": "identity.find-access-decisions-by-basis", "rule": "system" },
   { "name": "identity.issue-first-admin-invitation", "rule": "system" },
   {
@@ -292,11 +298,7 @@
   { "name": "identity.request-customer-verification", "rule": "anonymous" },
   { "name": "identity.request-password-reset", "rule": "anonymous" },
   { "name": "identity.request-seller-verification", "rule": "anonymous" },
-  {
-    "name": "identity.require-step-up",
-    "rule": "own-resources",
-    "whenSellerNotApproved": "allow"
-  },
+  { "name": "identity.require-step-up", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.reset-admin-second-factor", "rule": "system" },
   { "name": "identity.reset-password", "rule": "anonymous" },
   { "name": "identity.seed-roles", "rule": "system" },
@@ -411,7 +413,13 @@
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "ordering.open-obligations-of", "rule": "system" },
   { "name": "ordering.order-notice", "rule": "system" },
+  {
+    "name": "ordering.own-open-obligations",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-ledger", "rule": "system" },
@@ -516,27 +524,20 @@
   { "name": "shipping.flat-fees", "rule": "anonymous" },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
   { "name": "shipping.shipping-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
-  {
-    "name": "shipping.view-own-flat-fee",
-    "rule": "permissions",
-    "whenSellerNotApproved": "allow"
-  },
+  { "name": "shipping.view-own-flat-fee", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "shipping.view-store-flat-fee", "rule": "anonymous" },
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },
   { "name": "storefront.view-published-page", "rule": "anonymous" },
   { "name": "storefront.view-published-slides", "rule": "anonymous" },
   { "name": "storefront.view-served-placements", "rule": "anonymous" },
-  {
-    "name": "tax.calculate-tax",
-    "rule": "own-resources",
-    "whenSellerNotApproved": "deny"
-  },
+  { "name": "tax.calculate-tax", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
   { "name": "wallet.expire-wallet-credit", "rule": "system" },
   { "name": "wallet.grant-credit", "rule": "system" },
+  { "name": "wallet.own-balance-of", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "wallet.place-hold", "rule": "system" },
   { "name": "wallet.release-hold", "rule": "system" },
   { "name": "wallet.view-my-history", "rule": "own-resources", "whenSellerNotApproved": "deny" },

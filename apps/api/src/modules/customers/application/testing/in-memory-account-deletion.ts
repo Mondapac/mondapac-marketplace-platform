@@ -14,8 +14,10 @@ import type {
 } from '../../../../platform/authz';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
-import { AccountDeletionSettingsChanged } from '../../domain/audit';
+import { CUSTOMERS_AUDIT_ACTIONS } from '../../domain/audit';
 import { CUSTOMERS_EVENTS } from '../../domain/events';
+import type { AccountDeletionRequest } from '../../domain/account-deletion-request';
+import type { AccountDeletionRequestRepository } from '../ports/account-deletion-request.repository';
 import type {
   AccountDeletionSettingsRecord,
   AccountDeletionSettingsRepository,
@@ -57,7 +59,7 @@ export class MemoryAccountDeletionSettings implements AccountDeletionSettingsRep
 export class RecordingAudit implements AuditWriter {
   readonly entries: AuditEntry[] = [];
   record(_context: CallContext, entry: AuditEntry): Promise<void> {
-    if (entry.action !== AccountDeletionSettingsChanged.action) {
+    if (!CUSTOMERS_AUDIT_ACTIONS.some((definition) => definition.action === entry.action)) {
       throw new Error('audit: unknown action');
     }
     this.entries.push(entry);
@@ -98,5 +100,78 @@ export class RecordingStepUp implements StepUpProofConsumer {
     if (this.answer !== null) return Promise.resolve(this.answer);
     const sessionId = (context.actor as { readonly sessionId: Id<'Session'> }).sessionId;
     return Promise.resolve(ok({ sessionId, verifiedAt: this.verifiedAt }));
+  }
+}
+
+export type StoredDeletionRequest = AccountDeletionRequest & {
+  readonly market: string;
+  readonly closedAt: Temporal.Instant | null;
+  readonly cancelReason: 'customer' | 'sign-in' | null;
+};
+
+/** The request store in memory, with the partial unique index (one pending per account and Market). */
+export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepository {
+  readonly rows = new Map<string, StoredDeletionRequest>();
+
+  insertPending(market: MarketContext, request: AccountDeletionRequest) {
+    const taken = [...this.rows.values()].some(
+      (row) =>
+        row.market === market.marketId &&
+        row.accountId === request.accountId &&
+        row.status === 'pending',
+    );
+    if (taken) return Promise.resolve(false);
+    this.rows.set(request.id, {
+      ...request,
+      status: 'pending',
+      market: market.marketId,
+      closedAt: null,
+      cancelReason: null,
+    });
+    return Promise.resolve(true);
+  }
+
+  findPendingOf(market: MarketContext, accountId: Id<'Account'>) {
+    const row = [...this.rows.values()].find(
+      (r) => r.market === market.marketId && r.accountId === accountId && r.status === 'pending',
+    );
+    return Promise.resolve(row ?? null);
+  }
+
+  cancel(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    reason: 'customer' | 'sign-in',
+    at: Temporal.Instant,
+  ) {
+    const row = this.rows.get(id);
+    if (row === undefined || row.market !== market.marketId || row.status !== 'pending') {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, { ...row, status: 'cancelled', closedAt: at, cancelReason: reason });
+    return Promise.resolve(true);
+  }
+
+  complete(market: MarketContext, id: Id<'AccountDeletionRequest'>, at: Temporal.Instant) {
+    const row = this.rows.get(id);
+    if (row === undefined || row.market !== market.marketId || row.status !== 'pending') {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, { ...row, status: 'completed', closedAt: at });
+    return Promise.resolve(true);
+  }
+
+  listDue(market: MarketContext, now: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.market === market.marketId &&
+            r.status === 'pending' &&
+            Temporal.Instant.compare(r.scheduledFor, now) <= 0,
+        )
+        .sort((a, b) => Temporal.Instant.compare(a.scheduledFor, b.scheduledFor))
+        .slice(0, limit),
+    );
   }
 }

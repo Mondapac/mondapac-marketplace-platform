@@ -12,6 +12,9 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'customers.address-limit-reached': 422,
   'customers.conflict': 409,
   'customers.account-deletion-disabled': 403,
+  'customers.account-deletion-blocked': 409,
+  'customers.account-deletion-already-requested': 409,
+  'customers.account-deletion-request-not-found': 404,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
   'customers.unavailable': 503,
@@ -75,6 +78,7 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (Array.isArray(error.blockers)) return fail(status, error.code, { blockers: error.blockers });
   if (typeof error.actionKey === 'string') {
     return fail(status, error.code, { actionKey: error.actionKey });
   }

@@ -373,6 +373,28 @@
     }
   },
   {
+    "type": "customers.account-deletion-requested.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "waitingPeriodDays": "integer",
+      "scheduledFor": "instant"
+    }
+  },
+  {
+    "type": "customers.account-deletion-cancelled.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "reason": "enumOf(customer|sign-in)"
+    }
+  },
+  {
+    "type": "customers.account-deletion-completed.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
     "aggregateType": "account",
     "fields": {

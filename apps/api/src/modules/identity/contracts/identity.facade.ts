@@ -91,6 +91,9 @@ export interface IdentityValidationFailed {
   readonly fields: readonly { readonly path: string; readonly code: string }[];
 }
 
+/** Why {@link IdentityFacade.endOtherCustomerSessions} refused. */
+export type EndOtherCustomerSessionsFailure = AccessDenied | { readonly code: 'session.invalid' };
+
 /**
  * The public facade of `identity` (identity design 8.1). Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs (PF 6.4
@@ -186,6 +189,27 @@ export interface IdentityFacade {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly TeamMemberLabel[], AccessDenied | IdentityValidationFailed>>;
+
+  /**
+   * Ends every session of the calling customer's own account except the one making the call
+   * (customers account deletion: the request keeps only the session that asked, so it can cancel).
+   * Rule `own-resources`, customers only; answers how many sessions were ended. The caller's
+   * `CallContext` goes unchanged. Not exposed over HTTP.
+   */
+  endOtherCustomerSessions(
+    context: CallContext,
+  ): Promise<Result<{ readonly revokedSessions: number }, EndOtherCustomerSessionsFailure>>;
+
+  /**
+   * Erases a customer account for account deletion (CUS-03): destroys its subject key and deletes
+   * the account with its credential, sessions and links. Rule `system`; a non-customer id is
+   * refused `access.denied`. Safe to call twice: a customer already gone answers `already-erased`.
+   * Not exposed over HTTP.
+   */
+  eraseCustomerAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly code: 'erased' | 'already-erased' }, AccessDenied>>;
 }
 
 /** Nest token of the {@link IdentityFacade}, provided and exported by `IdentityModule`. */

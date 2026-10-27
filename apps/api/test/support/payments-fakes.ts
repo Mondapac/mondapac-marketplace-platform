@@ -184,6 +184,14 @@ export class FakeOrderingFacade implements OrderingFacade {
   sellerOrderCustomerNames(): ReturnType<OrderingFacade['sellerOrderCustomerNames']> {
     return Promise.resolve(ok([]));
   }
+
+  ownOpenObligations(): ReturnType<OrderingFacade['ownOpenObligations']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
+  }
+
+  openObligationsOf(): ReturnType<OrderingFacade['openObligationsOf']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
+  }
 }
 
 /** A connected-account event body, as the Connect endpoint receives it. */

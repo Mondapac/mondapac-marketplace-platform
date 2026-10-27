@@ -33,4 +33,43 @@ export const AccountDeletionSettingsChanged = defineAuditAction({
   },
 });
 
-export const CUSTOMERS_AUDIT_ACTIONS = [AccountDeletionSettingsChanged] as const;
+/** The audit target type of an account deletion request. */
+export const ACCOUNT_DELETION_REQUEST_TARGET = 'customers.account-deletion-request';
+
+/**
+ * A buyer asked to delete their account (package 5b). Target: the request; the actor is the buyer
+ * on the session that asked (the audit row's actor, as every row). No free text and no personal
+ * data: the waiting period and the scheduled instant.
+ */
+export const AccountDeletionRequested = defineAuditAction({
+  action: 'customers.account-deletion.requested',
+  targetType: ACCOUNT_DELETION_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: {
+    waitingPeriodDays: auditField.integer(),
+    scheduledFor: auditField.instant(),
+  },
+});
+
+/** The buyer cancelled a pending request (`customer`), or signed in during the wait (`sign-in`). */
+export const AccountDeletionCancelled = defineAuditAction({
+  action: 'customers.account-deletion.cancelled',
+  targetType: ACCOUNT_DELETION_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: { reason: auditField.enumOf(['customer', 'sign-in'] as const) },
+});
+
+/** The deletion job carried a request out: the account is erased. Written by the system actor. */
+export const AccountDeletionCompleted = defineAuditAction({
+  action: 'customers.account-deletion.completed',
+  targetType: ACCOUNT_DELETION_REQUEST_TARGET,
+  actors: ['system'],
+  after: { waitingPeriodDays: auditField.integer() },
+});
+
+export const CUSTOMERS_AUDIT_ACTIONS = [
+  AccountDeletionSettingsChanged,
+  AccountDeletionRequested,
+  AccountDeletionCancelled,
+  AccountDeletionCompleted,
+] as const;

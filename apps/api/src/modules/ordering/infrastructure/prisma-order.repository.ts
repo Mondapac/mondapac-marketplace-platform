@@ -276,6 +276,33 @@ export class PrismaOrderRepository implements OrderRepository {
     return rows.map(toOrder);
   }
 
+  async countOpenOf(market: MarketContext, accountId: Id<'Account'>) {
+    const tx = this.prisma.tx(market);
+    const [openOrders, pendingRefunds] = await Promise.all([
+      tx.orderingOrder.count({
+        where: {
+          marketId: market.marketId,
+          accountId,
+          OR: [
+            { status: 'pending-payment' },
+            {
+              status: 'confirmed',
+              sellerOrders: { some: { fulfilment: { not: 'delivered' } } },
+            },
+          ],
+        },
+      }),
+      tx.orderingRefund.count({
+        where: {
+          marketId: market.marketId,
+          state: 'pending',
+          sellerOrder: { order: { accountId } },
+        },
+      }),
+    ]);
+    return { openOrders, pendingRefunds };
+  }
+
   async listOwn(market: MarketContext, accountId: Id<'Account'>, page: OrderPage) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
       where: { marketId: market.marketId, accountId, ...afterCursor(page) },

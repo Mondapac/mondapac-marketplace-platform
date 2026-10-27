@@ -1,6 +1,8 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { CancelPayment } from '../application/use-cases/cancel-payment.use-case';
 import type { OrderNoticeQuery } from '../application/use-cases/order-notice.use-case';
+import type { OpenObligationsOfQuery } from '../application/use-cases/open-obligations-of.use-case';
+import type { OwnOpenObligationsQuery } from '../application/use-cases/own-open-obligations.use-case';
 import type { SellerOrderCustomerNames } from '../application/use-cases/seller-order-customer-names.use-case';
 import type { ShipmentNoticeQuery } from '../application/use-cases/shipment-notice.use-case';
 import type { ConfirmPayment } from '../application/use-cases/confirm-payment.use-case';
@@ -14,6 +16,8 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly notice: OrderNoticeQuery,
     private readonly shipment: ShipmentNoticeQuery,
     private readonly customerNames: SellerOrderCustomerNames,
+    private readonly openObligations: OwnOpenObligationsQuery,
+    private readonly openObligationsOfAccount: OpenObligationsOfQuery,
   ) {}
 
   confirmPayment(context: CallContext, payment: AuthorisedPayment) {
@@ -40,5 +44,13 @@ export class OrderingFacadeImplementation implements OrderingFacade {
 
   sellerOrderCustomerNames(context: CallContext, sellerOrderIds: readonly string[]) {
     return this.customerNames.execute(context, { sellerOrderIds });
+  }
+
+  ownOpenObligations(context: CallContext) {
+    return this.openObligations.execute(context, {});
+  }
+
+  openObligationsOf(context: CallContext, accountId: Id<'Account'>) {
+    return this.openObligationsOfAccount.execute(context, { accountId });
   }
 }

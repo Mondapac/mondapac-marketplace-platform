@@ -161,6 +161,8 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         customerAccountSummaries: undefined as never,
         customerShortNames: undefined as never,
         teamMemberLabels: undefined as never,
+        endOtherCustomerSessions: undefined as never,
+        eraseCustomerAccount: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {

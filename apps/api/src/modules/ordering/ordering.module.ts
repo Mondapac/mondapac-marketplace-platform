@@ -41,6 +41,8 @@ import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
+import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
+import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
@@ -201,6 +203,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      OwnOpenObligationsQuery,
+      OpenObligationsOfQuery,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
@@ -216,6 +220,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OrderNoticeQuery,
         ShipmentNoticeQuery,
         SellerOrderCustomerNames,
+        OwnOpenObligationsQuery,
+        OpenObligationsOfQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -223,7 +229,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         notice: OrderNoticeQuery,
         shipment: ShipmentNoticeQuery,
         customerNames: SellerOrderCustomerNames,
-      ) => new OrderingFacadeImplementation(confirm, cancel, notice, shipment, customerNames),
+        openObligations: OwnOpenObligationsQuery,
+        openObligationsOfAccount: OpenObligationsOfQuery,
+      ) =>
+        new OrderingFacadeImplementation(
+          confirm,
+          cancel,
+          notice,
+          shipment,
+          customerNames,
+          openObligations,
+          openObligationsOfAccount,
+        ),
     },
     {
       provide: BestSellingOffersQuery,

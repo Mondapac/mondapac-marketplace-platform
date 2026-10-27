@@ -13,6 +13,8 @@ export {
   ORDERING_FACADE,
   type OrderNotice,
   type OrderNoticeFailure,
+  type OwnOpenObligations,
+  type OwnOpenObligationsFailure,
   type SellerOrderCustomerName,
   type SellerOrderCustomerNamesFailure,
   type ShipmentNotice,

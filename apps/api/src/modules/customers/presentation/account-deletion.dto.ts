@@ -46,3 +46,29 @@ export class AccountDeletionAvailabilityBody {
   @ApiProperty({ description: 'Days a deletion request waits before it is carried out.' })
   waitingPeriodDays!: number;
 }
+
+export class RequestAccountDeletionRequest {
+  @ApiProperty({ enum: [true], description: 'Must be true: the buyer confirms the request.' })
+  confirm!: true;
+}
+
+export class AccountDeletionBlockerBody {
+  @ApiProperty({ enum: ['open-orders', 'pending-refunds', 'wallet-balance'] })
+  code!: string;
+  @ApiProperty({ required: false, description: 'How many, for open-orders and pending-refunds.' })
+  count?: number;
+}
+
+export class AccountDeletionRequestBody {
+  @ApiProperty({ enum: ['pending'] })
+  status!: 'pending';
+  @ApiProperty({ description: 'When the request was made (UTC instant).' })
+  requestedAt!: string;
+  @ApiProperty({
+    description:
+      'When the account will be erased (UTC instant). Until then the buyer can cancel it.',
+  })
+  scheduledFor!: string;
+  @ApiProperty({ description: 'The waiting period in force when the request was made.' })
+  waitingPeriodDays!: number;
+}

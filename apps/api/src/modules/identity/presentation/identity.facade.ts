@@ -5,6 +5,8 @@ import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
+import type { EndOtherCustomerSessions } from '../application/use-cases/end-other-customer-sessions.use-case';
+import type { EraseCustomerAccount } from '../application/use-cases/erase-customer-account.use-case';
 import type { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import type { RequireStepUp } from '../application/use-cases/require-step-up.use-case';
 import type { MembershipOf } from '../application/use-cases/membership-of.use-case';
@@ -16,6 +18,7 @@ import type {
   ContactEmailTarget,
   CustomerAccountSummary,
   CustomerShortName,
+  EndOtherCustomerSessionsFailure,
   IdentityFacade,
   IdentityValidationFailed,
   SellerMembershipSummary,
@@ -34,6 +37,8 @@ export interface IdentityFacadeUseCases {
   readonly customerAccountSummaries: CustomerAccountSummaries;
   readonly customerShortNames: CustomerShortNames;
   readonly teamMemberLabels: TeamMemberLabels;
+  readonly endOtherCustomerSessions: EndOtherCustomerSessions;
+  readonly eraseCustomerAccount: EraseCustomerAccount;
 }
 
 /**
@@ -129,5 +134,20 @@ export class IdentityFacadeImplementation implements IdentityFacade {
             : { kind: row.role.kind, seedCode: row.role.seedCode, name: row.role.name },
       })),
     );
+  }
+
+  async endOtherCustomerSessions(
+    context: CallContext,
+  ): Promise<Result<{ readonly revokedSessions: number }, EndOtherCustomerSessionsFailure>> {
+    const result = await this.useCases.endOtherCustomerSessions.execute(context, {});
+    return result.ok ? ok({ revokedSessions: result.value.revokedSessions }) : err(result.error);
+  }
+
+  async eraseCustomerAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly code: 'erased' | 'already-erased' }, AccessDenied>> {
+    const result = await this.useCases.eraseCustomerAccount.execute(context, { accountId });
+    return result.ok ? ok({ code: result.value.code }) : err(result.error);
   }
 }

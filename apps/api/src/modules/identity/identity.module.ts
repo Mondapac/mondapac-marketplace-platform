@@ -154,6 +154,8 @@ import { CustomerShortNames } from './application/use-cases/customer-short-names
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
+import { EndOtherCustomerSessions } from './application/use-cases/end-other-customer-sessions.use-case';
+import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
 import { PurgeUnverifiedAccounts } from './application/use-cases/purge-unverified-accounts.use-case';
 import { RegisterCustomer } from './application/use-cases/register-customer.use-case';
 import { RegisterSeller } from './application/use-cases/register-seller.use-case';
@@ -958,6 +960,19 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    // Customers package 5b (account deletion): end the other sessions, and erase the account.
+    useCaseProvider(EndOtherCustomerSessions, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(EraseCustomerAccount, {
+      unitOfWork: true,
+      accounts: true,
+      audit: true,
+    }),
     useCaseProvider(SendOtherSessionsSignedOutMail, {
       unitOfWork: true,
       accounts: true,
@@ -1659,6 +1674,8 @@ function useCaseProvider<D, U>(
         CustomerAccountSummaries,
         CustomerShortNames,
         TeamMemberLabels,
+        EndOtherCustomerSessions,
+        EraseCustomerAccount,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1670,6 +1687,8 @@ function useCaseProvider<D, U>(
         customerAccountSummaries: CustomerAccountSummaries,
         customerShortNames: CustomerShortNames,
         teamMemberLabels: TeamMemberLabels,
+        endOtherCustomerSessions: EndOtherCustomerSessions,
+        eraseCustomerAccount: EraseCustomerAccount,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1681,6 +1700,8 @@ function useCaseProvider<D, U>(
           customerAccountSummaries,
           customerShortNames,
           teamMemberLabels,
+          endOtherCustomerSessions,
+          eraseCustomerAccount,
         }),
     },
     {
