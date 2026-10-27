@@ -88,6 +88,13 @@ jobs:
         env:
           MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
 
+      # Hosted Checkout names this configuration (STRIPE_PAYMENT_METHOD_CONFIGURATION, passed on to
+      # the next steps through GITHUB_ENV): created or brought back to cards only.
+      - name: Card-only payment method configuration
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.SK_TEST }}
+        run: node scripts/stripe-test/ensure-card-only-config.mjs
+
       - name: 'F-3: platform sets an Express payout schedule'
         env:
           STRIPE_SECRET_KEY: ${{ secrets.SK_TEST }}

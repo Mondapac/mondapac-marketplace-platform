@@ -34,12 +34,16 @@ if (!/^whsec_[A-Za-z0-9+/=_]{8,200}$/.test(secret)) {
 
 // The gateway's answers carry codes only; the last Stripe answer is kept to show Stripe's reason.
 let lastAnswer = null;
-const checkout = new StripeCheckoutGateway(key, async (url, init) => {
-  const response = await fetch(url, init);
-  const body = await response.json();
-  lastAnswer = { status: response.status, body };
-  return { status: response.status, json: async () => body };
-});
+const checkout = new StripeCheckoutGateway(
+  key,
+  process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION || null,
+  async (url, init) => {
+    const response = await fetch(url, init);
+    const body = await response.json();
+    lastAnswer = { status: response.status, body };
+    return { status: response.status, json: async () => body };
+  },
+);
 const report = new Report(`Stripe webhook round trip (Market ${market}, Stripe test mode)`);
 const database = new Client({ connectionString: process.env.DATABASE_URL });
 await database.connect();
