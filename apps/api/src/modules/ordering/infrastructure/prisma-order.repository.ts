@@ -408,6 +408,46 @@ export class PrismaOrderRepository implements OrderRepository {
     return accounts;
   }
 
+  async deliveredSellerOrdersOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    query: {
+      readonly deliveredSince: Temporal.Instant;
+      readonly sellerOrderId: Id<'SellerOrder'> | null;
+      readonly limit: number;
+    },
+  ) {
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        fulfilment: 'delivered',
+        deliveredAt: { gte: toDate(query.deliveredSince) },
+        ...(query.sellerOrderId === null ? {} : { id: query.sellerOrderId }),
+        order: { accountId, status: 'confirmed' },
+      },
+      select: {
+        id: true,
+        sellerId: true,
+        deliveredAt: true,
+        lines: { select: { offerId: true } },
+      },
+      orderBy: [{ deliveredAt: 'desc' }, { id: 'desc' }],
+      take: query.limit,
+    });
+    return rows.flatMap((row) =>
+      row.deliveredAt === null
+        ? []
+        : [
+            {
+              sellerOrderId: row.id as Id<'SellerOrder'>,
+              sellerId: row.sellerId as Id<'Seller'>,
+              deliveredAt: Temporal.Instant.fromEpochMilliseconds(row.deliveredAt.getTime()),
+              offerIds: [...new Set(row.lines.map((line) => line.offerId as Id<'Offer'>))],
+            },
+          ],
+    );
+  }
+
   async saveFulfilment(market: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
     const updated = await this.prisma.tx(market).orderingSellerOrder.updateMany({
       where: { marketId: market.marketId, id: sellerOrder.id, fulfilment: from },
