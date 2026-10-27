@@ -33,6 +33,7 @@
     "sellers": "All sellers",
     "orders": "Orders",
     "fleet-selection": "Delivery fleets",
+    "delivery-settings": "Delivery settings",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
@@ -2276,6 +2277,157 @@
     "error": "Notifications could not be loaded.",
     "retry": "Retry",
     "loading": "Loading notifications"
+  },
+  "deliverySettings": {
+    "title": "Delivery settings",
+    "intro": "Choose which delivery methods the whole Market offers, when same-day orders close, how far ahead buyers can schedule, and what the platform adds on top of the fleet quote. Which methods each seller supports is set on the seller page.",
+    "no-access": "Your role cannot see delivery settings.",
+    "back-home": "Back to the dashboard",
+    "unavailable": "Delivery settings could not be loaded. Try again.",
+    "defaults": "Nothing has been saved yet, so the defaults apply: every method on, same-day orders close at 12:00, buyers can schedule up to 7 days ahead in 2-hour windows, and no margin is added.",
+    "read-only": "Your role can view these settings but not change them.",
+    "save": "Save delivery settings",
+    "notice": {
+      "saved": "Delivery settings saved. They apply to orders placed from now on.",
+      "reloaded": "Someone saved these settings first. The page now shows what is stored. Make your change again."
+    },
+    "method": {
+      "pickup": "In-person pickup",
+      "instant": "Instant delivery",
+      "same_day": "Same-day delivery",
+      "scheduled": "Scheduled delivery"
+    },
+    "method-help": {
+      "pickup": "The buyer collects the order from the seller with a pickup code. Needs an approved pickup address.",
+      "instant": "A fleet delivers as soon as it can.",
+      "same_day": "Delivered the same day, for orders placed before the cut-off.",
+      "scheduled": "The buyer picks a delivery window up to the number of days set below."
+    },
+    "methods": {
+      "title": "Delivery methods",
+      "intro": "A method that is off is unavailable for every seller in this Market. Buyers see it as unavailable at checkout. A method that is on is offered only by sellers who support it."
+    },
+    "cutoff": {
+      "title": "Same-day cut-off",
+      "intro": "Orders placed from this time are no longer same-day. The time is read in each seller’s own time zone, and in the Market zone ({zone}) for a seller without one.",
+      "field": "Cut-off time",
+      "help": "Seller’s local time."
+    },
+    "scheduled": {
+      "title": "Scheduled delivery",
+      "intro": "Buyers pick a delivery window. Every window has the same length, and the latest day a buyer can pick is set here.",
+      "days": "Days ahead",
+      "days-help": "Whole days from {min} to {max}.",
+      "window": "Window length",
+      "window-help": "Every scheduled window is this long."
+    },
+    "duration": "{minutes, plural, one {# minute} other {# minutes}}",
+    "margin": {
+      "title": "Delivery margin",
+      "intro": "The buyer pays the fleet quote plus this margin. Add a percentage of the quote or a fixed amount, then round the total up if you like.",
+      "kind": "Margin",
+      "kinds": {
+        "none": "No margin",
+        "percent": "Percentage of the quote",
+        "fixed": "Fixed amount"
+      },
+      "percent": "Percentage",
+      "percent-help": "From 0 to 100, with up to two decimals. For example 10 or 12.5.",
+      "fixed": "Amount ({currency})",
+      "fixed-help": "Up to {max}.",
+      "rounding": "Rounding",
+      "rounding-help": "The total is always rounded up, never down.",
+      "round-none": "No rounding",
+      "round-up": "Round up to {step}"
+    },
+    "example": {
+      "title": "Example",
+      "line": "A fleet quote of {quote} becomes {total} for the buyer (margin {margin} included).",
+      "unavailable": "Enter a valid margin to see an example.",
+      "line-none": "A fleet quote of {quote} stays {total} for the buyer: no margin added."
+    },
+    "invalid": {
+      "cutoff": "Enter a time such as 12:00.",
+      "daysAhead": "Enter a whole number of days from 1 to 30.",
+      "margin-percent": "Enter a percentage from 0 to 100, with up to two decimals.",
+      "margin-fixed": "Enter an amount up to {max}, with no more decimals than the currency uses."
+    },
+    "error": {
+      "invalid": "That was refused. Check the values and try again.",
+      "conflict": "Someone saved these settings first. Reloading.",
+      "not-found": "We could not find that seller.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change delivery settings.",
+      "unavailable": "Delivery settings are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    },
+    "viewer-only": "You can view these settings but not change them. Ask an admin with the manage permission to make changes.",
+    "confirm": {
+      "title": "Save these delivery settings?",
+      "intro": "These changes apply to orders placed from now on.",
+      "sellers": "What sellers see",
+      "cancel": "Keep editing",
+      "go": "Confirm and save",
+      "line": {
+        "method-off": "{method} will be unavailable for all sellers in this Market.",
+        "method-on": "{method} will be available again in this Market, for sellers who support it.",
+        "cutoff": "Same-day orders will close at {time} seller’s local time (now {was}).",
+        "days": "Buyers can schedule up to {days, plural, one {# day} other {# days}} ahead (now {was}).",
+        "window": "Scheduled delivery windows will be {minutes, plural, one {# minute} other {# minutes}} long (now {was}).",
+        "margin-none": "Buyers will pay the fleet quote with no margin{rounded, select, yes { (total rounded up to {step})} other {}}.",
+        "margin-percent": "Buyers will pay +{percent}% on every delivery{rounded, select, yes { (rounded up to {step})} other {}}.",
+        "margin-fixed": "Buyers will pay +{amount} on every delivery{rounded, select, yes { (rounded up to {step})} other {}}."
+      },
+      "seller": {
+        "method-off": "Sellers can’t receive {method} orders, and buyers see it as unavailable.",
+        "method-on": "Sellers who support it can receive {method} orders again.",
+        "cutoff": "Sellers can’t receive same-day orders placed after that time.",
+        "days": "Sellers can receive scheduled orders for those days.",
+        "window": "Sellers deliver in windows of that length.",
+        "margin-none": "Sellers are not affected: the margin is added on top of the fleet quote.",
+        "margin-percent": "Sellers are not affected: the margin is added on top of the fleet quote.",
+        "margin-fixed": "Sellers are not affected: the margin is added on top of the fleet quote."
+      }
+    }
+  },
+  "sellerDelivery": {
+    "title": "Delivery methods",
+    "intro": "The methods this seller can offer buyers. By default a seller supports every method the Market has on. Untick a method the seller cannot serve, for example instant delivery for a seller without the capacity. Buyers then see it as unavailable for this seller’s items. The seller cannot change this. A method that is off for the whole Market stays off whatever is ticked here: the Market switch overrides this card.",
+    "platform-off": "Off for the whole Market",
+    "save": "Save delivery methods",
+    "saved": "Delivery methods saved. They apply to orders placed from now on.",
+    "error": {
+      "invalid": "That was refused. Try again.",
+      "conflict": "Someone changed this first. Reload the page and try again.",
+      "not-found": "We could not find this seller.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change delivery methods.",
+      "unavailable": "Delivery methods are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    },
+    "method-market-off": "{method} (off for the whole Market)",
+    "market-off-help": "Buyers see this as unavailable whatever is ticked here.",
+    "notice": {
+      "reloaded": "Someone changed this first. The page now shows what is stored. Make your change again."
+    },
+    "viewer-only": "You can view these methods but not change them.",
+    "confirm": {
+      "title": "Save this seller’s delivery methods?",
+      "intro": "These changes apply to orders placed from now on.",
+      "sellers": "What the seller sees",
+      "cancel": "Keep editing",
+      "go": "Confirm and save",
+      "line": {
+        "off": "{method} will be unavailable for this seller’s items.",
+        "on": "{method} will be available for this seller’s items, if the Market has it on."
+      },
+      "seller": {
+        "off": "The seller can’t receive {method} orders.",
+        "on": "The seller can receive {method} orders."
+      }
+    }
   },
   "step-up": {
     "title": "Confirm it is you",

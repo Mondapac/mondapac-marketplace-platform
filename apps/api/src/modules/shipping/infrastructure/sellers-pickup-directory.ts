@@ -59,4 +59,9 @@ export class SellersPickupDirectory implements PickupDirectory {
     const read = await this.sellers.pickupPostcodes(context, sellerIds);
     return read.ok ? ok(read.value) : err({ code: 'pickup.unavailable' } as const);
   }
+
+  async zonesOf(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    const read = await this.sellers.operatingZones(context, sellerIds);
+    return read.ok ? ok(read.value) : err({ code: 'pickup.unavailable' } as const);
+  }
 }

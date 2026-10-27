@@ -73,6 +73,7 @@ import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-ca
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
+import { OperatingZones } from './application/use-cases/operating-zones.use-case';
 import { PickupPostcodes } from './application/use-cases/pickup-postcodes.use-case';
 import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
@@ -626,6 +627,8 @@ const REVIEW_DECISION_PORTS = {
     }),
     // The pickup postcode the real-time carrier quotes from at checkout: a clear column, no audit.
     useCaseProvider(PickupPostcodes, { unitOfWork: true, revisions: true }),
+    // The seller's approved operating zone, for shipping's cut-off and windows: a clear column.
+    useCaseProvider(OperatingZones, { unitOfWork: true, revisions: true }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -640,6 +643,7 @@ const REVIEW_DECISION_PORTS = {
         PublishedStoreSlugs,
         CarrierPickupRead,
         PickupPostcodes,
+        OperatingZones,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -653,6 +657,7 @@ const REVIEW_DECISION_PORTS = {
         publishedStoreSlugs: PublishedStoreSlugs,
         carrierPickup: CarrierPickupRead,
         pickupPostcodes: PickupPostcodes,
+        operatingZones: OperatingZones,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -666,6 +671,7 @@ const REVIEW_DECISION_PORTS = {
           publishedStoreSlugs,
           carrierPickup,
           pickupPostcodes,
+          operatingZones,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

@@ -104,6 +104,7 @@ const LEAD_KEYS = [
   'assistant.settings.view',
   'customers.account-deletion-settings.view',
   'shipping.fleet-selection.view',
+  'shipping.delivery-settings.view',
   'ordering.order.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',

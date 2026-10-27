@@ -520,6 +520,37 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
   });
 
+  it('relays the delivery settings of the Market and of a seller on their exact paths only', async () => {
+    const base = 'shipping/admin/delivery-settings';
+    const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, base.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('PUT', base)).status).toBe(200);
+    expect((await call('POST', base)).status).toBe(404);
+    expect((await call('DELETE', base)).status).toBe(404);
+    expect((await call('PUT', `${base}/extra`)).status).toBe(404);
+    expect((await call('PUT', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(200);
+    const readSeller = new Request(
+      `http://admin.localhost:3002/api/shipping/admin/sellers/${ID}/delivery-methods`,
+      { headers: sameOrigin },
+    );
+    expect(
+      (
+        await relay(
+          config,
+          readSeller,
+          ['shipping', 'admin', 'sellers', ID, 'delivery-methods'],
+          fetchImpl,
+        )
+      ).status,
+    ).toBe(200);
+    expect((await call('PUT', 'shipping/admin/sellers/nope/delivery-methods')).status).toBe(404);
+    expect((await call('POST', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(404);
+    expect((await call('DELETE', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(
+      404,
+    );
+  });
+
   it('relays the commission rate for a seller UUID (GET, PUT, DELETE) and the ledger (GET)', async () => {
     const send = (method: string, path: string) =>
       relay(

@@ -7,7 +7,6 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { SellerMarkOrderReady } from '../../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
-import { AllowAllDeliveryMethods } from '../../src/modules/ordering/infrastructure/allow-all-delivery-methods';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
 import { ORDERING_EVENTS } from '../../src/modules/ordering/domain/events';
@@ -33,6 +32,7 @@ import {
   FakeGateway,
   FakeInventory,
   FakeLabels,
+  AllowAllDeliveryMethods,
   FakeShipping,
   FakeShipToCipher,
   FakeTax,
