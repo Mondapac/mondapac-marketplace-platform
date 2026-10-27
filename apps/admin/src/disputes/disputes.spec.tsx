@@ -162,6 +162,23 @@ describe('disputes list', () => {
     );
   });
 
+  it('keeps each column header over its own cells', async () => {
+    call.mockResolvedValueOnce(page([row()]));
+    render(wrap(<DisputesList zone={ZONE} />));
+    const table = await screen.findByRole('table');
+    const heads = within(table)
+      .getAllByRole('columnheader')
+      .map((head) => head.textContent);
+    const cells = within(table)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent ?? '');
+    expect(heads).toEqual(['Case', 'Money', 'Sellers', 'Reason', 'Evidence due', 'Amount']);
+    expect(cells[1]).toBe('Taken by bank');
+    expect(cells[2]).toBe('Cedar Lane Halal Meats');
+    expect(cells[3]).toBe('Product not received');
+    expect(cells[5]).toContain('125.00');
+  });
+
   it('badges the money with its text and shows none when nothing moved', async () => {
     call.mockResolvedValueOnce(
       page([

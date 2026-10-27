@@ -7,7 +7,7 @@ import { reasonText } from './evidence.ts';
 import { MoneyStateBadge } from './money-state-badge.tsx';
 import type { DisputeRow } from './types.ts';
 
-const COLUMNS = ['case', 'sellers', 'reason', 'money', 'evidence', 'amount'] as const;
+const COLUMNS = ['case', 'money', 'sellers', 'reason', 'evidence', 'amount'] as const;
 
 /** One page of cases: a table from 1024 px, labelled cards below. */
 export function DisputesTable({
