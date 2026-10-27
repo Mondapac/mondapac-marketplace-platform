@@ -56,4 +56,15 @@ describe('money: decimals by currency, never a fixed 100', () => {
     expect(isMore('10000', '10000')).toBe(false);
     expect(sumMinor('9007199254740993', '1')).toBe('9007199254740994');
   });
+
+  it('uses the ISO 4217 digits, not the browser data, and fails closed on an unknown code', () => {
+    expect(decimalsOf('IQD')).toBe(3);
+    expect(formatMinor('25000', 'IQD', 'en-AU')).toMatch(/25\.000/);
+    expect(decimalsOf('NOPE')).toBeNull();
+    expect(decimalsOf('ZZZ')).toBeNull();
+    expect(decimalsOf('aud')).toBeNull();
+    expect(parseAmount('25', 'ZZZ')).toEqual({ ok: false, problem: 'currency' });
+    expect(parseAmount('25', 'IQD')).toEqual({ ok: true, minor: '25000' });
+    expect(formatMinor('2500', 'ZZZ', 'en-AU')).toBe('-');
+  });
 });

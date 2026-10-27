@@ -19,6 +19,7 @@ import { callApi } from '../api/client.ts';
 import { formatInstant } from '../shared/format.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { walletProblemOf } from './errors.ts';
+import { wordFor } from './labels.ts';
 import {
   REASON_STATES,
   STATUS_REASONS,
@@ -66,8 +67,11 @@ export function SettingsForm({
   const load = useCallback(async () => {
     setLoadFailed(false);
     const result = await callApi<WalletSettings>('GET', 'wallet/admin/settings');
-    if (result.ok) setSettings(result.body);
-    else if (result.failure.status === 401) window.location.assign('/session-ended');
+    if (result.ok) {
+      // A state the panel does not know is not shown as a guess.
+      if (WALLET_STATES.includes(result.body.status)) setSettings(result.body);
+      else setLoadFailed(true);
+    } else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setLoadFailed(true);
   }, []);
 
@@ -92,8 +96,7 @@ export function SettingsForm({
   const needsReason = REASON_STATES.includes(chosen);
   const unchanged = chosen === current;
   const incomplete = needsReason && reason === '';
-  const reasonLabel = (code: string | null) =>
-    code !== null && t.has(`reason.${code}`) ? t(`reason.${code}`) : null;
+  const reasonLabel = (code: string | null) => (code === null ? null : wordFor(t, 'reason', code));
 
   async function send() {
     if (busy.current) return;

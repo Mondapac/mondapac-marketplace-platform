@@ -93,7 +93,7 @@ const loaded = async (wallet: CustomerWallet) => {
   mount();
   await screen.findByRole('button', { name: 'Issue credit' });
 };
-const amountField = () => screen.getByLabelText(/^Amount \(/);
+const amountField = () => screen.getByLabelText<HTMLInputElement>(/^Amount \(/);
 const fill = (amount: string, reason = 'goodwill', note = '') => {
   fireEvent.change(amountField(), { target: { value: amount } });
   if (reason !== '')
@@ -303,8 +303,8 @@ describe('CreditForm outcomes', () => {
     );
     expect(screen.getByText('Reference id')).toBeTruthy();
     expect(screen.getByText('000000E1')).toBeTruthy();
-    expect((amountField() as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('Reason') as HTMLSelectElement).value).toBe('');
+    expect(amountField().value).toBe('');
+    expect(screen.getByLabelText<HTMLSelectElement>('Reason').value).toBe('');
     await waitFor(() => expect(screen.getByText('$25.00 of $2,000.00')).toBeTruthy());
   });
 
@@ -368,7 +368,7 @@ describe('CreditForm refusals', () => {
     ['wallet.account-not-active', 409, "This customer's wallet cannot receive credit."],
     ['wallet.customer-not-found', 404, 'We could not find that customer.'],
     ['idempotency.key-reused', 409, 'Reload the page to start again.'],
-    ['access.denied', 403, 'You do not have permission to issue credit.'],
+    ['access.denied', 403, 'You cannot issue credit.'],
     ['wallet.unavailable', 503, 'the same request will not be issued twice'],
     ['unknown.thing', 500, 'Something went wrong.'],
   ])('says what %s means', async (code, status, text) => {
@@ -388,7 +388,7 @@ describe('CreditForm refusals', () => {
     submit();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole('alert')).toBeNull();
-    expect((amountField() as HTMLInputElement).value).toBe('25');
+    expect(amountField().value).toBe('25');
   });
 });
 
@@ -453,5 +453,86 @@ describe('CreditForm idempotency', () => {
     release(ok(credit(), 201));
     await screen.findByText('Credit issued');
     expect(call.mock.calls.filter((entry) => entry[0] === 'POST')).toHaveLength(1);
+  });
+});
+
+describe('CreditForm: keeping the key when the answer is unclear', () => {
+  it.each([
+    [500, 'unknown'],
+    [502, 'unknown'],
+    [504, 'unknown'],
+    [500, 'something.else'],
+  ])('reuses the key after a %s (%s) and resubmits', async (status, code) => {
+    await loaded(AUD);
+    fill('25');
+    call.mockResolvedValueOnce(refused(status, code));
+    submit();
+    await screen.findByText(/Something went wrong/);
+    call.mockResolvedValueOnce(ok(credit(), 201));
+    submit();
+    await screen.findByText('Credit issued');
+    const posts = call.mock.calls.filter((entry) => entry[0] === 'POST');
+    const keys = posts.map((entry) => (entry[2] as { idempotencyKey: string }).idempotencyKey);
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it('drops the key only on a definite refusal', async () => {
+    await loaded(AUD);
+    fill('25');
+    call.mockResolvedValueOnce(refused(409, 'wallet.paused'));
+    submit();
+    await screen.findByText(/The wallet is paused/);
+    call.mockResolvedValueOnce(refused(403, 'access.denied'));
+    submit();
+    await waitFor(() =>
+      expect(call.mock.calls.filter((entry) => entry[0] === 'POST')).toHaveLength(2),
+    );
+    const keys = call.mock.calls
+      .filter((entry) => entry[0] === 'POST')
+      .map((entry) => (entry[2] as { idempotencyKey: string }).idempotencyKey);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+});
+
+describe('CreditForm: unusual data from the server', () => {
+  it('says the customer was not found, with a way back to the lookup', async () => {
+    call.mockResolvedValueOnce(refused(404, 'wallet.customer-not-found'));
+    mount();
+    expect(await screen.findByText('We could not find that customer.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Find a customer' }).getAttribute('href')).toBe(
+      '/customers',
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('links to the wallet switch from the switched-off message', async () => {
+    call.mockResolvedValueOnce(refused(404, 'wallet.disabled'));
+    mount();
+    expect(
+      (await screen.findByRole('link', { name: 'Open the wallet switch' })).getAttribute('href'),
+    ).toBe('/wallet');
+  });
+
+  it('does not offer the form for a currency it does not know', async () => {
+    call.mockResolvedValueOnce(ok({ ...AUD, currency: 'ZZZ' }));
+    mount();
+    expect(await screen.findByText(/currency is not supported/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Issue credit' })).toBeNull();
+  });
+
+  it('treats a wallet state it does not know as a load error', async () => {
+    call.mockResolvedValueOnce(ok({ ...AUD, marketStatus: 'short' }));
+    mount();
+    expect(await screen.findByRole('alert')).toBeTruthy();
+  });
+
+  it('shows an odd reason code as plain text, not as a message path', async () => {
+    await loaded(AUD);
+    fill('25');
+    call.mockResolvedValueOnce(ok(credit({ reasonCode: 'x.y' }), 201));
+    submit();
+    await screen.findByText('Credit issued');
+    expect(screen.getByText('x.y')).toBeTruthy();
   });
 });

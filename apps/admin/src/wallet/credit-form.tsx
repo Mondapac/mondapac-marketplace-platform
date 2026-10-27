@@ -20,12 +20,14 @@ import { callApi } from '../api/client.ts';
 import { formatInstant } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
-import { failedFields, isRetryable, walletProblemOf } from './errors.ts';
-import { exampleAmount, formatMinor, isMore, parseAmount, sumMinor } from './money.ts';
+import { failedFields, isDefiniteRefusal, walletProblemOf } from './errors.ts';
+import { wordFor } from './labels.ts';
+import { decimalsOf, exampleAmount, formatMinor, isMore, parseAmount, sumMinor } from './money.ts';
 import { MoneyField } from './money-field.tsx';
 import {
   CREDIT_REASONS,
   NOTE_MAX,
+  WALLET_STATES,
   type AdminCredit,
   type CustomerWallet,
   type WalletState,
@@ -37,6 +39,8 @@ const ACCOUNT_TONE: Readonly<Record<CustomerWallet['accountStatus'], BadgeTone>>
   frozen: 'critical',
   closed: 'neutral',
 };
+
+const ACCOUNT_STATES: readonly string[] = ['none', 'active', 'frozen', 'closed'];
 
 type Fields = { amount?: string; reason?: string; note?: string };
 
@@ -69,6 +73,7 @@ export function CreditForm({
   // The whole Market has the wallet off: the summary route answers wallet.disabled.
   const [marketOff, setMarketOff] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -82,11 +87,25 @@ export function CreditForm({
 
   const load = useCallback(async () => {
     setLoadFailed(false);
-    const result = await callApi<CustomerWallet>('GET', `wallet/admin/customers/${customerId}`);
+    const result = await callApi<CustomerWallet>(
+      'GET',
+      `wallet/admin/customers/${encodeURIComponent(customerId)}`,
+    );
     if (result.ok) {
-      setSummary(result.body);
+      const body = result.body;
+      // A state the panel does not know is not shown as a guess.
+      if (
+        !WALLET_STATES.includes(body.marketStatus) ||
+        !ACCOUNT_STATES.includes(body.accountStatus)
+      ) {
+        setLoadFailed(true);
+        return;
+      }
+      setSummary(body);
       setMarketOff(false);
-    } else if (result.failure.status === 401) window.location.assign('/session-ended');
+      setNotFound(false);
+    } else if (result.failure.code === 'wallet.customer-not-found') setNotFound(true);
+    else if (result.failure.status === 401) window.location.assign('/session-ended');
     else if (result.failure.code === 'wallet.disabled') setMarketOff(true);
     else setLoadFailed(true);
   }, [customerId]);
@@ -110,9 +129,33 @@ export function CreditForm({
       />
     );
   }
-  if (marketOff) return <Banner tone="attention">{t('error.disabled')}</Banner>;
+  if (notFound) {
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <Banner tone="attention">{t('error.customer-not-found')}</Banner>
+        <LinkButton variant="secondary" href="/customers">
+          {t('credit.choose.action')}
+        </LinkButton>
+      </div>
+    );
+  }
+  if (marketOff) {
+    return (
+      <Banner tone="attention">
+        {t('error.disabled')}{' '}
+        {canViewSettings ? (
+          <a className="font-medium underline" href="/wallet">
+            {t('credit.open-switch')}
+          </a>
+        ) : null}
+      </Banner>
+    );
+  }
   if (summary === null) return <SkeletonRows label={t('loading')} rows={4} />;
 
+  if (decimalsOf(summary.currency) === null) {
+    return <Banner tone="critical">{t('error.currency-unsupported')}</Banner>;
+  }
   const money = (minor: string) => formatMinor(minor, summary.currency, locale);
   const marketState: WalletState = summary.marketStatus;
   const marketBlocked = marketState !== 'active';
@@ -197,7 +240,8 @@ export function CreditForm({
       window.location.assign('/session-ended');
       return;
     }
-    if (!isRetryable(failure)) key.current = null;
+    // Only a definite refusal ends the key; a lost or ambiguous answer keeps it for the retry.
+    if (isDefiniteRefusal(failure)) key.current = null;
     const code = walletProblemOf(failure, 'issue');
     if (code === 'validation-issue') {
       const failed = failedFields(failure);
@@ -223,11 +267,12 @@ export function CreditForm({
     { label: t('result.amount'), value: formatMinor(credit.amount, credit.currency, locale) },
     {
       label: t('result.reason'),
-      value: t.has(`credit.reason.${credit.reasonCode}`)
-        ? t(`credit.reason.${credit.reasonCode}`)
-        : credit.reasonCode,
+      value: wordFor(t, 'credit.reason', credit.reasonCode),
     },
-    { label: t('result.reference'), value: shortId(credit.id) },
+    {
+      label: t('result.reference'),
+      value: <span title={credit.id}>{shortId(credit.id)}</span>,
+    },
     { label: t('result.time'), value: formatInstant(credit.requestedAt, locale) },
   ];
 

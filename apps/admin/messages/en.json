@@ -2292,7 +2292,8 @@
         "required": "Enter an amount.",
         "format": "Enter an amount like {example}.",
         "zero": "The amount must be more than zero.",
-        "cap": "This is more than the wallet can hold. At most {room} can be added."
+        "cap": "This is more than the wallet can hold. At most {room} can be added.",
+        "currency": "This wallet's currency is not supported here."
       },
       "hint": {
         "immediate": "Granted immediately.",
@@ -2406,7 +2407,8 @@
       "notice": {
         "approved": "Credit approved. {amount} was added.",
         "rejected": "Request rejected. No credit was issued."
-      }
+      },
+      "load-more-failed": "We could not load more requests. Try again."
     },
     "error": {
       "cannot-turn-off-with-history": "The wallet cannot go back to Off because credit has already been issued. Choose Paused instead.",
@@ -2427,14 +2429,15 @@
       "validation-issue": "Check the details and try again.",
       "validation-decide": "Choose a reason.",
       "denied-settings": "You do not have permission to change the wallet.",
-      "denied-issue": "You do not have permission to issue credit. Credit cannot be issued while you are acting as a seller.",
+      "denied-issue": "You cannot issue credit. Your account may lack permission, or you may be acting as a seller.",
       "denied-decide": "You do not have permission to decide credit requests.",
       "session": "Your session needs refreshing. Reload the page and try again.",
       "save-failed": "We could not save the change. Try again.",
       "unavailable-issue": "We could not complete this. Nothing was issued if you see no confirmation; try again, and the same request will not be issued twice.",
       "unavailable-decide": "We could not complete this. Try again.",
       "unknown": "Something went wrong. Try again, or ask the team if it keeps happening.",
-      "cap-exceeded-decide": "The customer's wallet no longer has room for this amount."
+      "cap-exceeded-decide": "The customer's wallet no longer has room for this amount.",
+      "currency-unsupported": "This wallet's currency is not supported here, so credit cannot be issued."
     }
   }
 }

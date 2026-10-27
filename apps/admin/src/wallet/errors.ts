@@ -44,13 +44,17 @@ export function walletProblemOf(failure: ApiFailure, context: WalletContext): st
   return 'unknown';
 }
 
-/** Refusals the same request may be sent again after (the answer was not final). */
-export function isRetryable(failure: ApiFailure): boolean {
+/**
+ * True only for a refusal that proves the request was not applied: a 4xx with a code the API
+ * names. Status 0, any 5xx and any unknown code may hide a request that was applied, so the
+ * idempotency key stays for the retry.
+ */
+export function isDefiniteRefusal(failure: ApiFailure): boolean {
+  if (failure.status < 400 || failure.status >= 500) return false;
   return (
-    failure.status === 0 ||
-    failure.status === 503 ||
-    failure.code === 'wallet.unavailable' ||
-    failure.code === 'access.unavailable'
+    failure.code in COMMON ||
+    failure.code === 'request.throttled' ||
+    failure.code.startsWith('second-factor.')
   );
 }
 

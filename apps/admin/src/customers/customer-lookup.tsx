@@ -205,7 +205,7 @@ export function CustomerLookup({
               {walletLink === null ? null : (
                 <LinkButton
                   variant="secondary"
-                  href={`/wallet/credits?customer=${customer.accountId}`}
+                  href={`/wallet/credits?customer=${encodeURIComponent(customer.accountId)}`}
                 >
                   {t(walletLink === 'issue' ? 'wallet-issue' : 'wallet-view')}
                 </LinkButton>

@@ -237,3 +237,19 @@ describe('SettingsForm', () => {
     expect(screen.queryByText(/Wallet is now/)).toBeNull();
   });
 });
+
+describe('SettingsForm: unusual data from the server', () => {
+  it('treats a wallet state it does not know as a load error', async () => {
+    call.mockResolvedValue(ok({ status: 'short', reason: null, updatedAt: null }));
+    mount();
+    expect(await screen.findByRole('alert')).toBeTruthy();
+  });
+
+  it('shows a reason with dots as plain text', async () => {
+    call.mockResolvedValue(
+      ok(settings({ status: 'paused', reason: 'a.b', updatedAt: '2026-10-01T00:00:00.000Z' })),
+    );
+    mount();
+    expect(await screen.findByText('Reason: a.b')).toBeTruthy();
+  });
+});

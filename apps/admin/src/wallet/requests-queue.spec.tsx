@@ -302,3 +302,46 @@ describe('RequestsQueue reject', () => {
     );
   });
 });
+
+describe('RequestsQueue: unusual data from the server', () => {
+  it('shows a reason with dots as plain text', async () => {
+    call.mockResolvedValueOnce(list([entry('01', { reasonCode: 'queue.col' })]));
+    mount();
+    expect(await screen.findByText('queue.col')).toBeTruthy();
+  });
+
+  it('treats a status it does not know as a load error', async () => {
+    call.mockResolvedValueOnce(list([entry('01', { status: 'weird' as never })]));
+    mount();
+    expect(await screen.findByRole('alert')).toBeTruthy();
+  });
+
+  it('says loading more failed in its own words', async () => {
+    call.mockResolvedValueOnce(list([entry('01')], 'cursor-2'));
+    mount();
+    await screen.findByText('$900.00');
+    call.mockResolvedValueOnce(refused(503, 'access.unavailable'));
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    expect(await screen.findByText('We could not load more requests. Try again.')).toBeTruthy();
+  });
+
+  it('encodes the ids in links and API paths', async () => {
+    call.mockResolvedValueOnce(list([entry('01', { id: 'a b/c', customerAccountId: 'x?y=1&z' })]));
+    mount();
+    await screen.findByText('$900.00');
+    expect(screen.getByRole('link').getAttribute('href')).toBe(
+      '/wallet/credits?customer=x%3Fy%3D1%26z',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve this credit?' });
+    call.mockResolvedValueOnce(refused(409, 'wallet.credit-request-decided'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    await screen.findByRole('alert');
+    expect(call).toHaveBeenLastCalledWith(
+      'POST',
+      'wallet/admin/credit-requests/a%20b%2Fc/approve',
+      undefined,
+      'csrf',
+    );
+  });
+});

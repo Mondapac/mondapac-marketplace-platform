@@ -946,3 +946,112 @@ describe('relay of the storefront slides', () => {
     }
   });
 });
+
+describe('relay of the wallet and step-up routes', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+  const readHeaders = { host: 'admin.localhost:3002' };
+  const run = (method: string, path: string, headers?: Record<string, string>) => {
+    const upstream = upstreamOk();
+    const url = path.split('?')[0] ?? path;
+    return relay(config, request(method, path, headers), url.split('/'), upstream).then(
+      (response) => ({ response, upstream }),
+    );
+  };
+
+  it.each([
+    ['GET', 'wallet/admin/settings'],
+    ['PUT', 'wallet/admin/settings'],
+    ['GET', 'wallet/admin/credit-requests'],
+    ['POST', 'wallet/admin/credits'],
+    ['POST', 'identity/admin/step-up/verify'],
+    ['GET', `wallet/admin/customers/${id}`],
+    ['POST', `wallet/admin/credit-requests/${id}/approve`],
+    ['POST', `wallet/admin/credit-requests/${id}/reject`],
+  ])('relays %s %s', async (method, path) => {
+    const { response, upstream } = await run(
+      method,
+      path,
+      method === 'GET' ? readHeaders : undefined,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+  });
+
+  it.each([
+    ['DELETE', 'wallet/admin/settings'],
+    ['POST', 'wallet/admin/settings'],
+    ['PUT', 'wallet/admin/credits'],
+    ['GET', 'wallet/admin/credits'],
+    ['GET', 'identity/admin/step-up/verify'],
+    ['POST', 'wallet/admin/credit-requests'],
+    ['GET', 'wallet/admin/customers'],
+    ['GET', 'wallet/admin/customers/not-a-uuid'],
+    ['POST', 'wallet/admin/credit-requests/not-a-uuid/approve'],
+    ['POST', `wallet/admin/credit-requests/${id}/delete`],
+    ['GET', `wallet/admin/customers/${id}/extra`],
+    ['GET', 'wallet/me'],
+  ])('does not relay %s %s', async (method, path) => {
+    const { response, upstream } = await run(
+      method,
+      path,
+      method === 'GET' ? readHeaders : undefined,
+    );
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {
+    for (const path of [
+      'identity/admin/step-up/verify',
+      'wallet/admin/credits',
+      `wallet/admin/credit-requests/${id}/approve`,
+    ]) {
+      const { response, upstream } = await run('POST', path, {
+        ...sameOrigin,
+        'sec-fetch-site': 'cross-site',
+        origin: 'http://evil.test',
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ code: 'request.csrf' });
+      expect(upstream).not.toHaveBeenCalled();
+    }
+    const { response } = await run('PUT', 'wallet/admin/settings', {
+      ...sameOrigin,
+      origin: 'http://evil.test',
+    });
+    expect(response.status).toBe(403);
+  });
+
+  it('passes only the status, cursor and limit of the requests list, in their shapes', async () => {
+    const cursor = `1790000000000.${id}`;
+    const { upstream } = await run(
+      'GET',
+      `wallet/admin/credit-requests?status=decided&limit=20&cursor=${cursor}&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests?status=decided&cursor=${encodeURIComponent(cursor)}&limit=20`,
+    );
+    const bad = await run(
+      'GET',
+      'wallet/admin/credit-requests?status=all&limit=1000&cursor=a%20b',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/wallet/admin/credit-requests');
+  });
+
+  it('passes no query on the customer summary or the settings', async () => {
+    const summary = await run('GET', `wallet/admin/customers/${id}?status=pending`, readHeaders);
+    expect(summary.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/customers/${id}`,
+    );
+    const settings = await run('GET', 'wallet/admin/settings?x=1', readHeaders);
+    expect(settings.upstream.mock.calls[0]?.[0]).toBe('http://api.test/wallet/admin/settings');
+  });
+});

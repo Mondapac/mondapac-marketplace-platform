@@ -19,6 +19,7 @@ import { shortInstant } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { walletProblemOf } from './errors.ts';
+import { wordFor } from './labels.ts';
 import { formatMinor } from './money.ts';
 import {
   PAGE_SIZE,
@@ -87,6 +88,11 @@ export function RequestsQueue({
     setLoadFailed(false);
     const result = await fetchPage(null);
     if (result.ok) {
+      // A status the panel does not know is not shown as a guess.
+      if (result.body.entries.some((entry) => !(entry.status in STATUS_TONE))) {
+        setLoadFailed(true);
+        return;
+      }
       setRows(result.body.entries);
       setNext(result.body.nextCursor);
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
@@ -135,7 +141,7 @@ export function RequestsQueue({
     setNotice(null);
     const result = await guarded<AdminCredit>(
       'POST',
-      `wallet/admin/credit-requests/${row.id}/${kind}`,
+      `wallet/admin/credit-requests/${encodeURIComponent(row.id)}/${kind}`,
       kind === 'reject' ? { reasonCode: reason } : undefined,
       csrfToken,
     );
@@ -162,6 +168,8 @@ export function RequestsQueue({
       return;
     }
     const key = walletProblemOf(failure, 'decide');
+    // An expired request is marked Expired (it shows on the other tabs) and leaves Pending; a
+    // decided or vanished one leaves the list. The banner says why in both cases.
     if (key === 'request-expired') replace({ ...row, status: 'expired' });
     else if (key === 'request-decided' || key === 'request-not-found') drop(row.id);
     setNotice({ tone: 'critical', text: t(`error.${key}`) });
@@ -181,8 +189,7 @@ export function RequestsQueue({
 
   // Pending shows only requests still waiting; a decided one has left the tab.
   const visible = tab === 'pending' ? rows.filter((row) => row.status === 'pending') : rows;
-  const label = (group: string, code: string | null) =>
-    code === null ? '' : t.has(`${group}.${code}`) ? t(`${group}.${code}`) : code;
+  const label = (group: string, code: string | null) => wordFor(t, group, code);
 
   return (
     <div className="flex flex-col gap-4">
@@ -225,7 +232,7 @@ export function RequestsQueue({
                     <td className={`${CARD_TABLE.cell} min-w-0`}>
                       <a
                         className="font-semibold text-link underline"
-                        href={`/wallet/credits?customer=${row.customerAccountId}`}
+                        href={`/wallet/credits?customer=${encodeURIComponent(row.customerAccountId)}`}
                         title={row.customerAccountId}
                       >
                         {shortId(row.customerAccountId)}
@@ -358,7 +365,7 @@ export function RequestsQueue({
       <p aria-live="polite" className="sr-only">
         {announce}
       </p>
-      {moreFailed ? <Banner tone="critical">{t('error.unavailable-decide')}</Banner> : null}
+      {moreFailed ? <Banner tone="critical">{t('queue.load-more-failed')}</Banner> : null}
       {next === null ? null : (
         <div>
           <Button variant="secondary" loading={loadingMore} onClick={() => void loadMore()}>
@@ -394,6 +401,7 @@ export function RequestsQueue({
           </p>
         ) : null}
       </Dialog>
+      {/* No autoFocus here: the Reason select is the first control, so the browser focuses it. */}
       <Dialog
         open={step?.kind === 'reject'}
         title={t('queue.reject-dialog.title')}
