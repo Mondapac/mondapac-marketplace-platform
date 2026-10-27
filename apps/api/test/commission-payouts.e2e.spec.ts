@@ -15,6 +15,7 @@ import { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from '../src/modules/commission-pa
 import {
   COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
   COMMISSION_PAYOUTS_DISPUTE_VIEW,
+  COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
@@ -107,12 +108,13 @@ it('maps every refusal code of the commission-payouts routes to its exact status
   });
 });
 
-it('declares the payout terms view as unprotected and every change as protected, each with an admin step-up action', () => {
+it('declares the payout terms view as unprotected and every change (the commission rate included) as protected, each with an admin step-up action', () => {
   // The use-case gate only checks that the admin holds the key. The fresh second factor (and the
   // refusal of an acting-as session) is the route's `@RequiresStepUp` guard (H-1); the routes are
   // exercised below, one by one.
   expect(
     [
+      COMMISSION_PAYOUTS_RATE_EDIT,
       COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
       COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
       COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
@@ -121,6 +123,7 @@ it('declares the payout terms view as unprotected and every change as protected,
       COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
     ].map((p) => [p.key, p.scope, p.protected]),
   ).toEqual([
+    ['commission-payouts.commission-rate.edit', 'platform', true],
     ['commission-payouts.payout-terms.view', 'platform', false],
     ['commission-payouts.payout-terms.edit', 'platform', true],
     ['commission-payouts.payout-hold.place', 'platform', true],
@@ -129,6 +132,12 @@ it('declares the payout terms view as unprotected and every change as protected,
     ['commission-payouts.dispute.attribute', 'platform', true],
   ]);
   expect(COMMISSION_PAYOUTS_STEP_UP_ACTIONS).toEqual([
+    {
+      key: 'commission-payouts.commission-rate.edit',
+      defaultRequired: true,
+      locked: true,
+      audience: 'admin',
+    },
     {
       key: 'commission-payouts.payout-terms.edit',
       defaultRequired: true,
@@ -301,6 +310,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf102)}|${action}`, clock.now());
   const proveAll = () =>
     [
+      'commission-payouts.commission-rate.edit',
       'commission-payouts.payout-terms.edit',
       'commission-payouts.payout-hold.place',
       'commission-payouts.payout-hold.release',
@@ -338,6 +348,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   it('lets an admin read, set and remove a seller rate, passing the input to the use case', async () => {
     await boot();
     const session = admin();
+    prove('commission-payouts.commission-rate.edit');
 
     const read = await call('get', 'admin', RATE, session);
     expect(read.status).toBe(200);
@@ -358,6 +369,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   it('refuses a write without CSRF, with a stray field and not as JSON', async () => {
     await boot();
     const session = admin();
+    prove('commission-payouts.commission-rate.edit');
 
     expect(
       (await call('put', 'admin', RATE, { cookie: session.cookie }, { rateBps: 1 })).status,
@@ -380,6 +392,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   it('maps invalid, unknown seller, nothing to remove, unavailable and denied', async () => {
     await boot();
     const session = admin();
+    prove('commission-payouts.commission-rate.edit');
     const put = () => call('put', 'admin', RATE, session, { rateBps: 1 });
 
     next = err({ code: 'validation.failed', fields: [{ path: 'rateBps', code: 'range' }] });
@@ -649,6 +662,8 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       }
     });
     const GUARDED: [string, 'put' | 'delete' | 'post', () => string, object | undefined][] = [
+      ['commission-payouts.commission-rate.edit', 'put', () => RATE, { rateBps: 1200 }],
+      ['commission-payouts.commission-rate.edit', 'delete', () => RATE, undefined],
       [
         'commission-payouts.payout-terms.edit',
         'put',
@@ -669,7 +684,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       'answers second-factor.required to %s (%s) without a fresh proof, and a proof of another action does not do',
       async (action, method, path, body) => {
         await boot();
-        next = action.includes('terms') ? ok(terms) : ok(hold);
+        next = action.includes('rate') ? ok(rate) : action.includes('terms') ? ok(terms) : ok(hold);
         const session = admin();
         const refused = await call(method, 'admin', path(), session, body);
         expect(refused.status).toBe(403);
