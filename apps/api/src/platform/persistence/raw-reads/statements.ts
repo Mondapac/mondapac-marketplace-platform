@@ -311,7 +311,7 @@ const OFFER_SEARCH_IN_CATEGORY_SQL = `SELECT d.offer_id, d.product_id, d.seller_
   FROM "search"."offer_documents" d
  WHERE d.market_id = $1
    AND d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text)
-   AND d.category_ids @> $4::uuid[]
+   AND d.category_ids && $4::uuid[]
  ORDER BY rank DESC, d.offer_id ASC
  LIMIT $5::text::int4 OFFSET $6::text::int4`;
 
@@ -319,7 +319,7 @@ const OFFER_BROWSE_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, 
        d.category_ids::text[] AS category_ids, 0::int4 AS rank
   FROM "search"."offer_documents" d
  WHERE d.market_id = $1
-   AND d.category_ids @> $2::uuid[]
+   AND d.category_ids && $2::uuid[]
  ORDER BY d.name ASC, d.offer_id ASC
  LIMIT $3::text::int4 OFFSET $4::text::int4`;
 
@@ -440,13 +440,13 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
     id: 'search.offer-search-in-category',
     owner: 'search',
     reason:
-      'full-text search in one category with websearch_to_tsquery, @@ and ts_rank on the offer_documents GIN index; Prisma has no ranked text search',
+      'full-text search in one category and its subcategories with websearch_to_tsquery, @@ and ts_rank on the offer_documents GIN index; Prisma has no ranked text search',
     design: 'docs/modules/search/search.md',
     sql: OFFER_SEARCH_IN_CATEGORY_SQL,
     params: [
       { name: 'textSearchConfig', type: 'text' },
       { name: 'query', type: 'text' },
-      { name: 'categoryIds', type: 'uuid[]', maxLength: 1 },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
       { name: 'limit', type: 'text' },
       { name: 'offset', type: 'text' },
     ],
@@ -455,11 +455,12 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
   {
     id: 'search.offer-browse',
     owner: 'search',
-    reason: 'browse by category over the category GIN index (@>); Prisma has no array containment',
+    reason:
+      'browse by a category and its subcategories over the category GIN index (&& overlap); Prisma has no array overlap',
     design: 'docs/modules/search/search.md',
     sql: OFFER_BROWSE_SQL,
     params: [
-      { name: 'categoryIds', type: 'uuid[]', maxLength: 1 },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
       { name: 'limit', type: 'text' },
       { name: 'offset', type: 'text' },
     ],

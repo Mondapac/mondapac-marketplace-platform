@@ -38,6 +38,7 @@ import { AdminViewOrder } from './application/use-cases/admin-view-order.use-cas
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
+import { MyDeliveredSellerOrders } from './application/use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
@@ -46,6 +47,7 @@ import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
+import { RecordRefundLedger } from './application/use-cases/record-refund-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
 import { RegeneratePickupCode } from './application/use-cases/regenerate-pickup-code.use-case';
 import { SellerConfirmPickup } from './application/use-cases/seller-confirm-pickup.use-case';
@@ -80,6 +82,7 @@ import { ORDERING_EVENTS } from './domain/events';
 import { orderingProviders } from './infrastructure/ordering-providers';
 import { AdminOrdersController } from './presentation/admin-orders.controller';
 import { recordLedgerJob } from './presentation/jobs/record-ledger.job';
+import { recordRefundLedgerJob } from './presentation/jobs/record-refund-ledger.job';
 import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
@@ -203,9 +206,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
+      RecordRefundLedger,
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      MyDeliveredSellerOrders,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
@@ -221,6 +226,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OrderNoticeQuery,
         ShipmentNoticeQuery,
         SellerOrderCustomerNames,
+        MyDeliveredSellerOrders,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -228,7 +234,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         notice: OrderNoticeQuery,
         shipment: ShipmentNoticeQuery,
         customerNames: SellerOrderCustomerNames,
-      ) => new OrderingFacadeImplementation(confirm, cancel, notice, shipment, customerNames),
+        delivered: MyDeliveredSellerOrders,
+      ) =>
+        new OrderingFacadeImplementation(
+          confirm,
+          cancel,
+          notice,
+          shipment,
+          customerNames,
+          delivered,
+        ),
     },
     {
       provide: BestSellingOffersQuery,
@@ -267,15 +282,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger, SettleRefunds, RebuildOfferPairs],
+      [RecordShipments, RecordLedger, RecordRefundLedger, SettleRefunds, RebuildOfferPairs],
       (
         shipments: RecordShipments,
         ledger: RecordLedger,
+        refundLedger: RecordRefundLedger,
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
+        recordRefundLedgerJob(refundLedger),
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
       ],

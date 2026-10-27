@@ -8,6 +8,7 @@ import {
   LedgerTotals,
   type BadgeTone,
   type LedgerRow,
+  type LedgerTotalItem,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -21,7 +22,48 @@ const TONE: Record<LedgerKind, BadgeTone> = {
   sale: 'success',
   shipping: 'info',
   commission: 'attention',
+  'refund-sale': 'critical',
+  'refund-shipping': 'critical',
+  'refund-commission': 'info',
+  'dispute-debit': 'critical',
+  'dispute-reinstate': 'success',
 };
+type Totals = Ledger['totals'];
+
+/**
+ * The totals tiles: what was sold and charged, what refunds took back (goods and delivery fees),
+ * the commission returned on them, disputes (only once there are any) and the balance, which may
+ * be negative.
+ */
+function totalItems(
+  totals: Totals,
+  t: (key: string) => string,
+  money: (amount: string) => string,
+): LedgerTotalItem[] {
+  const refunds = BigInt(totals.refundedSales) + BigInt(totals.refundedShipping);
+  const disputes = BigInt(totals.disputeDebits) - BigInt(totals.disputeReinstated);
+  return [
+    { id: 'sales', label: t('totals.sales'), value: money(totals.sales) },
+    { id: 'shipping', label: t('totals.shipping'), value: money(totals.shipping) },
+    { id: 'commission', label: t('totals.commission'), value: money(totals.commission) },
+    { id: 'refunds', label: t('totals.refunds'), value: money(refunds.toString()) },
+    {
+      id: 'refunded-commission',
+      label: t('totals.refunded-commission'),
+      value: money(totals.refundedCommission),
+    },
+    ...(totals.disputeDebits === '0' && totals.disputeReinstated === '0'
+      ? []
+      : [{ id: 'disputes', label: t('totals.disputes'), value: money(disputes.toString()) }]),
+    {
+      id: 'balance',
+      label: t('totals.balance'),
+      value: money(totals.balance),
+      emphasis: true,
+    },
+  ];
+}
+
 const shortId = (id: string): string => id.slice(-8).toUpperCase();
 
 /** The seller's earnings: totals (sales, shipping, commission, balance) and the ledger. */
@@ -69,19 +111,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      <LedgerTotals
-        items={[
-          { id: 'sales', label: t('totals.sales'), value: money(totals.sales) },
-          { id: 'shipping', label: t('totals.shipping'), value: money(totals.shipping) },
-          { id: 'commission', label: t('totals.commission'), value: money(totals.commission) },
-          {
-            id: 'balance',
-            label: t('totals.balance'),
-            value: money(totals.balance),
-            emphasis: true,
-          },
-        ]}
-      />
+      <LedgerTotals items={totalItems(totals, t, money)} />
       {/* An empty ledger is its own region: the empty state's heading stands for it. */}
       {rows.length === 0 ? null : <h2 className="text-lg font-semibold">{t('ledger')}</h2>}
       {rows.length === 0 ? (

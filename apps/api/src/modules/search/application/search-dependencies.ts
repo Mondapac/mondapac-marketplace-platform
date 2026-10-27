@@ -1,5 +1,6 @@
 import type { Clock } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader } from './ports/offer-search.reader';
@@ -24,4 +25,6 @@ export interface SearchDependencies {
   readonly shelves: ShelfDocumentsReader;
   readonly stores: StoreResolver;
   readonly images: ProductImages;
+  /** A category filter covers the category and its subcategories (catalog's live tree). */
+  readonly categories: CategorySubtreeSource;
 }

@@ -215,6 +215,7 @@ export const SAMPLE_CHECKOUT: CheckoutSource = {
     region: 'Queensland',
     regionCode: 'QLD',
     postcodes: [{ from: '4000', to: '4199' }],
+    postcodeInput: 'numeric',
   },
   orderReference: 'MP-20481',
   places: samplePlaces(),

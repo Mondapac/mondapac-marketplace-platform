@@ -9,6 +9,7 @@ import {
   LedgerTotals,
   type BadgeTone,
   type LedgerRow,
+  type LedgerTotalItem,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortId } from '../shared/short-id.ts';
@@ -23,7 +24,48 @@ const TONE: Record<LedgerKind, BadgeTone> = {
   sale: 'success',
   shipping: 'info',
   commission: 'attention',
+  'refund-sale': 'critical',
+  'refund-shipping': 'critical',
+  'refund-commission': 'info',
+  'dispute-debit': 'critical',
+  'dispute-reinstate': 'success',
 };
+
+type Totals = Ledger['totals'];
+
+/**
+ * The totals tiles: what was sold and charged, what refunds took back (goods and delivery fees),
+ * the commission returned on them, disputes (only once there are any) and the balance, which may
+ * be negative.
+ */
+function totalItems(
+  totals: Totals,
+  t: (key: string) => string,
+  money: (amount: string) => string,
+): LedgerTotalItem[] {
+  const refunds = BigInt(totals.refundedSales) + BigInt(totals.refundedShipping);
+  const disputes = BigInt(totals.disputeDebits) - BigInt(totals.disputeReinstated);
+  return [
+    { id: 'sales', label: t('totals.sales'), value: money(totals.sales) },
+    { id: 'shipping', label: t('totals.shipping'), value: money(totals.shipping) },
+    { id: 'commission', label: t('totals.commission'), value: money(totals.commission) },
+    { id: 'refunds', label: t('totals.refunds'), value: money(refunds.toString()) },
+    {
+      id: 'refunded-commission',
+      label: t('totals.refunded-commission'),
+      value: money(totals.refundedCommission),
+    },
+    ...(totals.disputeDebits === '0' && totals.disputeReinstated === '0'
+      ? []
+      : [{ id: 'disputes', label: t('totals.disputes'), value: money(disputes.toString()) }]),
+    {
+      id: 'balance',
+      label: t('totals.balance'),
+      value: money(totals.balance),
+      emphasis: true,
+    },
+  ];
+}
 
 /** A seller's ledger for admins: totals, the rows newest first and "Load more". */
 export function LedgerCard({ initial }: { readonly initial: Ledger }) {
@@ -68,19 +110,7 @@ export function LedgerCard({ initial }: { readonly initial: Ledger }) {
 
   return (
     <Card title={t('title')}>
-      <LedgerTotals
-        items={[
-          { id: 'sales', label: t('totals.sales'), value: money(totals.sales) },
-          { id: 'shipping', label: t('totals.shipping'), value: money(totals.shipping) },
-          { id: 'commission', label: t('totals.commission'), value: money(totals.commission) },
-          {
-            id: 'balance',
-            label: t('totals.balance'),
-            value: money(totals.balance),
-            emphasis: true,
-          },
-        ]}
-      />
+      <LedgerTotals items={totalItems(totals, t, money)} />
       {rows.length === 0 ? (
         <EmptyState size="compact" icon="receipt" title={t('empty')} />
       ) : (

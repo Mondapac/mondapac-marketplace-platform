@@ -16,7 +16,11 @@ go live only after a platform admin approves them.
   `info-page`. System pages have their own template each (`system.home`, ...); checkout, order
   confirmation and account are `locked`.
 - **Module catalogue (closed)**: banner, category-circles, sellers-near-you, product-shelf
-  (sources: bestsellers, specials, category, seller, tag, manual, linked), info-strip,
+  (sources: bestsellers, specials, category, seller, tag, manual, linked, recently-viewed,
+  for-you, bought-together; the last three are read per buyer or per product with `no-store`,
+  and `bought-together` can be added only on `system.product` or a template linkable to a
+  product, and such a page publishes it only once it is linked to a product; the buyer app
+  draws these three shelves from package 1d-4 on), info-strip,
   text-block, image-text, faq, brand-header, product-spotlight, nav-link, nav-category. Every
   module checks its settings; texts are plain text (no control or format characters, no HTML),
   rich text is data (heading level 2 or 3, paragraph, list), links are site paths or `https:`
@@ -47,6 +51,7 @@ go live only after a platform admin approves them.
 | `storefront.page.create` | no | create a landing page |
 | `storefront.page.publish` | yes | publish a page's draft |
 | `storefront.page.archive` | yes | archive a landing page |
+| `storefront.page.stats` | no | block impression and click counts of a page (read in engagement, `GET /engagement/admin/block-stats`) |
 | `storefront.navigation.edit` | no | replace the navigation draft, restore a version |
 | `storefront.navigation.approve` | yes | approve the navigation draft |
 | `storefront.slide.read` | no | slide list, detail, copy package |
@@ -227,6 +232,16 @@ clickable, but the controls row below it (pause, arrows, picker) is an empty str
 it keeps its space so the page does not shift when the script adds the buttons. A slide's button
 label is drawn only when the slide has a link (a label without a link is not shown). The sample hero shows
 only when the slides read failed and the sample fallback is on.
+
+## Facade: served placements (personalization 1d-3 B)
+
+`STOREFRONT_FACADE.servedPlacements(context, pageId)` (`storefront.view-served-placements`, rule
+`anonymous`, read only, no HTTP route): the set of placement ids buyers are served now on the page
+in the call's Market, that is the enabled placements of its published version while the page is
+live (not archived, inside its window). Empty for an unknown page, another Market's page, a page
+with no published version, and an archived or not-yet-live page, so a caller cannot tell them
+apart. `engagement` uses it to count a block's impressions and clicks only for placements that are
+really served. storefront does not depend on `engagement`.
 
 ## Buyer site languages (web i18n base, W2, 25 Oct 2026)
 The buyer site launches in English only. Another language (Arabic, Persian first, both right to

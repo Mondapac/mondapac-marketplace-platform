@@ -1,5 +1,5 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { MAX_PAGE_SIZE, type SearchValidationFailed } from '../../domain/search-query';
 import { parseShelfQuery, type ShelfRequest } from '../../domain/shelf-query';
@@ -35,10 +35,18 @@ export const itemOf = ({
   categoryIds,
 });
 
+/** Whether a hit is in one of these categories; every hit when there is no filter. */
+export const inAnyOf = (categoryIds: readonly Id<'Category'>[] | null) => {
+  if (categoryIds === null) return () => true;
+  const wanted = new Set(categoryIds);
+  return (hit: OfferHit) => hit.categoryIds.some((id) => wanted.has(id));
+};
+
 /**
  * `search.list-bestsellers`: the storefront's best-sellers shelf. Rule `anonymous`: no session,
  * the request's Market. Ordering ranks the Offers by paid order lines over its window (ids only);
- * the ranked Offers that are indexed (and in the category, when one is asked) come first in rank
+ * the ranked Offers that are indexed (and in the category or one of its subcategories, when one is
+ * asked; catalog's live tree, unreadable is `search.unavailable`) come first in rank
  * order; a short shelf is filled from search's browse order (the category's, or the Market's by
  * name). Every Offer is re-checked with catalog and sellers before it is shown; a source or check
  * that cannot be made is `search.unavailable`, never an unchecked list. Same item shape as the
@@ -66,6 +74,9 @@ export class ListBestsellers extends UseCase<ShelfRequest, ShelfPage, ShelfFailu
     const { categoryId, limit } = query.value;
     const { market } = context;
 
+    const categoryIds =
+      categoryId === null ? null : await this.deps.categories.subtreeOf(context, categoryId);
+    if (categoryId !== null && categoryIds === null) return err({ code: 'search.unavailable' });
     const ranked = await this.deps.sources.bestSellingOfferIds(context, RANKED_DEPTH);
     if (ranked === null) return err({ code: 'search.unavailable' });
     const read = await this.deps.unitOfWork.run(
@@ -73,12 +84,12 @@ export class ListBestsellers extends UseCase<ShelfRequest, ShelfPage, ShelfFailu
       async () => {
         const documents = await this.deps.shelves.byOfferIds(market, ranked);
         const fill =
-          categoryId === null
+          categoryIds === null
             ? await this.deps.shelves.browseAll(market, FILL_DEPTH)
             : await this.deps.reader.search(market, {
                 textSearchConfig: this.deps.policy.settings(market).textSearchConfig,
                 text: null,
-                categoryId,
+                categoryIds,
                 limit: FILL_DEPTH,
                 offset: 0,
               });
@@ -89,8 +100,7 @@ export class ListBestsellers extends UseCase<ShelfRequest, ShelfPage, ShelfFailu
     if (!read.ok) return err({ code: 'search.unavailable' });
 
     const byId = new Map(read.value.documents.map((hit) => [hit.offerId, hit] as const));
-    const inCategory = (hit: OfferHit) =>
-      categoryId === null || hit.categoryIds.includes(categoryId);
+    const inCategory = inAnyOf(categoryIds);
     const first = ranked.flatMap((offerId) => {
       const hit = byId.get(offerId);
       return hit !== undefined && inCategory(hit) ? [hit] : [];

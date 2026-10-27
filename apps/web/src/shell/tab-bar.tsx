@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { summarise } from '../cart/cart.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useCartButton } from './header.tsx';
+import { useCheckoutFocus } from './checkout-focus.tsx';
 import { useStore } from './store-context.tsx';
 
 /**
@@ -14,6 +15,7 @@ import { useStore } from './store-context.tsx';
  */
 export function TabBar() {
   const t = useTranslations('tabs');
+  const focus = useCheckoutFocus();
   const path = usePathname();
   const {
     cart,
@@ -35,6 +37,8 @@ export function TabBar() {
   const on = (active: boolean) => (active ? 'on' : undefined);
   const page = (href: string) => !overlay && (href === '/' ? path === '/' : path.startsWith(href));
   const account = accountOpen || loginOpen || page('/account');
+  // Checkout focus mode: nothing in the way of Pay.
+  if (focus) return null;
 
   return (
     <nav className="tabbar" aria-label={t('label')}>

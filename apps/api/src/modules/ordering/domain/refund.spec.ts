@@ -66,6 +66,8 @@ const exclusive: RefundTarget = {
 const details = {
   id: id<'Refund'>(9),
   reason: 'damaged' as const,
+  lossBearer: 'seller' as const,
+  lossReasonCode: null,
   actor: { population: 'admin' as const, accountId: id<'Account'>(8) },
   stripeIdempotencyKey: 'refund-9',
   requestedAt: Temporal.Instant.from('2026-10-19T10:00:00Z'),
@@ -81,7 +83,67 @@ describe('parseRefundRequest', () => {
       }),
     ).toEqual({
       ok: true,
-      request: { lines: [{ orderLineId: LINE_A, quantity: 2 }], shipping: 550n, reason: 'damaged' },
+      request: {
+        lines: [{ orderLineId: LINE_A, quantity: 2 }],
+        shipping: 550n,
+        reason: 'damaged',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+      },
+    });
+  });
+
+  describe('the loss bearer', () => {
+    const base = { lines: [{ orderLineId: LINE_A, quantity: 1 }], shippingAmount: undefined };
+    const parse = (extra: { lossBearer?: unknown; lossReasonCode?: unknown }) =>
+      parseRefundRequest({ ...base, reason: 'other', ...extra });
+
+    it('defaults to the seller, with no reason code', () => {
+      for (const extra of [{}, { lossBearer: null }, { lossBearer: 'seller' }]) {
+        const parsed = parse(extra);
+        expect(parsed.ok && [parsed.request.lossBearer, parsed.request.lossReasonCode]).toEqual([
+          'seller',
+          null,
+        ]);
+      }
+    });
+
+    it.each([
+      'platform-error',
+      'carrier-loss',
+      'seller-unrecoverable',
+      'fraud-loss',
+      'goodwill',
+      'other',
+    ])('takes the platform with the code %s', (code) => {
+      const parsed = parse({ lossBearer: 'platform', lossReasonCode: code });
+      expect(parsed.ok && [parsed.request.lossBearer, parsed.request.lossReasonCode]).toEqual([
+        'platform',
+        code,
+      ]);
+    });
+
+    it('needs a reason code exactly when the platform bears the loss', () => {
+      const fields = (extra: { lossBearer?: unknown; lossReasonCode?: unknown }) => {
+        const parsed = parse(extra);
+        return parsed.ok ? [] : parsed.fields;
+      };
+      expect(fields({ lossBearer: 'platform' })).toEqual([
+        { path: 'lossReasonCode', code: 'required' },
+      ]);
+      expect(fields({ lossBearer: 'platform', lossReasonCode: 'because' })).toEqual([
+        { path: 'lossReasonCode', code: 'value' },
+      ]);
+      expect(fields({ lossReasonCode: 'goodwill' })).toEqual([
+        { path: 'lossReasonCode', code: 'unexpected' },
+      ]);
+      expect(fields({ lossBearer: 'seller', lossReasonCode: 'goodwill' })).toEqual([
+        { path: 'lossReasonCode', code: 'unexpected' },
+      ]);
+      expect(fields({ lossBearer: 'customer' })).toEqual([{ path: 'lossBearer', code: 'value' }]);
+      expect(fields({ lossBearer: 7, lossReasonCode: 'goodwill' })).toEqual([
+        { path: 'lossBearer', code: 'value' },
+      ]);
     });
   });
 

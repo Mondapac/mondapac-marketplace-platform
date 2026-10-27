@@ -87,6 +87,22 @@ export class PrismaStepUpRepository implements StepUpRepository {
     return row === null ? null : toInstant(row.verifiedAt);
   }
 
+  async takeProof(
+    market: MarketContext,
+    sessionId: Id<'Session'>,
+    actionKey: string,
+  ): Promise<Temporal.Instant | null> {
+    const proofs = this.prisma.tx(market).identityStepUpProof;
+    const where = { marketId: market.marketId, sessionId, actionKey };
+    const row = await proofs.findFirst({ where, select: { verifiedAt: true } });
+    if (row === null) return null;
+    // The delete takes the row lock: a unit that took the same proof first and committed leaves
+    // nothing to delete here, and one that re-verified meanwhile changed `verified_at`. Either way
+    // the count is 0 and the proof is not ours (fail closed).
+    const { count } = await proofs.deleteMany({ where: { ...where, verifiedAt: row.verifiedAt } });
+    return count === 1 ? toInstant(row.verifiedAt) : null;
+  }
+
   async recordProof(
     market: MarketContext,
     sessionId: Id<'Session'>,

@@ -96,7 +96,7 @@ export type MarketGuardRefusal =
   | 'nested-write';
 
 /**
- * A serialisation failure or deadlock after three attempts, or a lock timeout at once (P 3.1
+ * A serialisation failure or deadlock after four attempts, or a lock timeout at once (P 3.1
  * row 7). It carries the SQLSTATE and nothing else (P 12.3). HTTP: 409 `conflict.retry`.
  */
 export class TransactionConflictError extends Error {

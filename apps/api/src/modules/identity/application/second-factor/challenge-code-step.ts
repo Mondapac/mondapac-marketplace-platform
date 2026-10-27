@@ -27,7 +27,7 @@ import type { SecondFactorSecrets } from '../ports/second-factor-secrets';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
-import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
+import type { SignInRecord, SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import {
@@ -40,6 +40,8 @@ import {
   type PresentedCode,
   type ReservedAttempt,
 } from './code-check';
+import type { SecurityEvents } from '../../../../platform/security-events/security-events';
+import { recordSignInSecurityEvent } from '../security-events';
 
 /** What a challenge's code step needs (identity design 6.3 step 5, 3.6, 6.8). */
 export interface ChallengeStepDependencies {
@@ -49,6 +51,7 @@ export interface ChallengeStepDependencies {
   readonly factors: SecondFactorRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
+  readonly securityEvents: SecurityEvents;
   readonly keys: ThrottleKeys;
   readonly secrets: SecondFactorSecrets;
   readonly challengeTokens: OpaqueTokens;
@@ -351,7 +354,7 @@ export class ChallengeCodeStep<T> {
     now: Temporal.Instant,
     sessionId: Id<'Session'> | null = null,
   ): Promise<void> {
-    await this.deps.records.add(context.market, {
+    const record: SignInRecord = {
       id: this.deps.ids.next<'SignInRecord'>(),
       population: this.spec.population,
       accountId,
@@ -360,7 +363,9 @@ export class ChallengeCodeStep<T> {
       address: client.address,
       sessionId,
       correlationId: context.correlationId,
-    });
+    };
+    await this.deps.records.add(context.market, record);
+    await recordSignInSecurityEvent(this.deps.securityEvents, context, record);
   }
 
   private async find(

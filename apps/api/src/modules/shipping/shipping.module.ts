@@ -7,6 +7,7 @@ import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { SECURITY_EVENTS } from '../../platform/security-events/security-events';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { SellersModule } from '../sellers';
 import { CARRIER_BOOKING_REPOSITORY } from './application/ports/carrier-booking.repository';
@@ -69,6 +70,7 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['carrierPolicy', CARRIER_POLICY],
   ['pickups', PICKUP_DIRECTORY],
   ['webhookSignature', CARRIER_WEBHOOK_SIGNATURE],
+  ['securityEvents', SECURITY_EVENTS],
 ];
 
 /** Every shipping use case shares one dependency object, built from the same ports. */
@@ -112,6 +114,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   ],
   providers: [
     PersistenceModule.auditWriterFor('shipping'),
+    PersistenceModule.securityEventsFor('shipping'),
     registerAuditActions('shipping', SHIPPING_AUDIT_ACTIONS),
     registerPermissions('shipping', SHIPPING_PERMISSIONS),
     registerEvents('shipping', SHIPPING_EVENTS),

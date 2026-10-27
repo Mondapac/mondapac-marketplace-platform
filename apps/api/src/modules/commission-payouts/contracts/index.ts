@@ -15,4 +15,8 @@ export {
   type CommissionRateMap,
   type PaidLine,
   type PaidSellerOrder,
+  type RefundedLine,
+  type RefundedSellerOrder,
+  type RefundedShipping,
+  type RefundLossBearer,
 } from './commission-payouts.facade';
