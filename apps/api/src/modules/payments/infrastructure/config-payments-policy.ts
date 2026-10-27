@@ -1,8 +1,13 @@
+import { money } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { NormalPayoutSchedule } from '../application/ports/connect-gateway';
 import { clampCoolingOffHours } from '../domain/payout-change';
-import type { OnboardingUrls, PaymentsPolicy } from '../application/ports/payments-policy';
+import type {
+  OnboardingUrls,
+  PaymentsPolicy,
+  TransferLimits,
+} from '../application/ports/payments-policy';
 
 /**
  * The onboarding pages are built in code from the Market's seller panel (the origin of the
@@ -20,6 +25,26 @@ export class ConfigPaymentsPolicy implements PaymentsPolicy {
     return clampCoolingOffHours(
       this.markets.get(market.marketId).payments?.bankChangeCoolingOffHours,
     );
+  }
+
+  marketCurrency(market: MarketContext): string {
+    return this.markets.get(market.marketId).defaultCurrency;
+  }
+
+  marketTimeZone(market: MarketContext): string {
+    return this.markets.get(market.marketId).timezone;
+  }
+
+  transferLimits(market: MarketContext): TransferLimits | null {
+    const payments = this.markets.get(market.marketId).payments;
+    if (payments === undefined) return null;
+    const max = payments.maxTransferAmount;
+    const threshold = payments.dailyTransferAlertThreshold;
+    return {
+      maxTransferAmount: money(BigInt(max.amountMinor), max.currency),
+      dailyTransferAlertThreshold: money(BigInt(threshold.amountMinor), threshold.currency),
+      sendLeaseSeconds: payments.transferSendLeaseSeconds,
+    };
   }
 
   normalPayoutSchedule(market: MarketContext): NormalPayoutSchedule | null {

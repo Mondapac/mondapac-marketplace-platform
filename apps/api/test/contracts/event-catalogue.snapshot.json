@@ -657,6 +657,15 @@
     }
   },
   {
+    "type": "payments.transfer-changed.v1",
+    "aggregateType": "transfer-execution",
+    "fields": {
+      "transferExecutionId": "id",
+      "sellerId": "id",
+      "state": "enumOf(reserved|sending|executed|refused|abandoned|failed)"
+    }
+  },
+  {
     "type": "pricing.effective-price-changed.v1",
     "aggregateType": "price-series",
     "fields": {

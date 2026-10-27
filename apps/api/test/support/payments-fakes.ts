@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { encodePayload, err, ok, Temporal as TemporalValue } from '@mondapac/shared-kernel';
+import { encodePayload, err, money, ok, Temporal as TemporalValue } from '@mondapac/shared-kernel';
 import type {
   AuditEntry,
   CallContext,
@@ -47,7 +47,22 @@ import type {
 import type {
   OnboardingUrls,
   PaymentsPolicy,
+  TransferLimits,
 } from '../../src/modules/payments/application/ports/payments-policy';
+import type {
+  StripeTransferGateway,
+  TransferCreateAnswer,
+  TransferReadFailure,
+  TransferSnapshot,
+} from '../../src/modules/payments/application/ports/transfer-gateway';
+import type {
+  TransferChange,
+  TransferRecord,
+  TransferStore,
+} from '../../src/modules/payments/application/ports/transfer-store';
+import { hmacPrefix } from '../../src/modules/payments/domain/external-account';
+import type { TransferState } from '../../src/modules/payments/domain/transfer';
+import { HmacExternalAccountKeyring } from '../../src/modules/payments/infrastructure/hmac-external-account-keyring';
 import type {
   AccountSnapshot,
   AccountStatus,
@@ -278,6 +293,7 @@ export class MemoryAccountStore implements ConnectedAccountStore {
       payoutScheduleApplied: null,
       payoutScheduleRevision: 0,
       lastChangeId: null,
+      externalAccountHmac: null,
     });
     return Promise.resolve(true);
   }
@@ -331,6 +347,7 @@ export class MemoryAccountStore implements ConnectedAccountStore {
   ) {
     const row = this.rows.get(this.key(market, sellerId));
     if (
+      change.sourceEventId !== null &&
       this.changes.some(
         (c) => c.market === market.marketId && c.sourceEventId === change.sourceEventId,
       )
@@ -345,9 +362,35 @@ export class MemoryAccountStore implements ConnectedAccountStore {
       lastChangeId: change.id,
       coolingOffUntil: until,
       payoutsPausedUntil: until,
+      ...(change.externalAccountHmac === undefined
+        ? {}
+        : { externalAccountHmac: change.externalAccountHmac }),
     });
     this.changes.push({ ...change, market: market.marketId, sellerId });
     return Promise.resolve('recorded' as const);
+  }
+  /** Seller ids whose row was locked for a transfer, in order (the unit that reserved it). */
+  readonly locks: string[] = [];
+  lockForTransfer(market: MarketContext, sellerId: string) {
+    this.locks.push(sellerId);
+    return Promise.resolve(this.rows.get(this.key(market, sellerId)) ?? null);
+  }
+  stampExternalAccountHmac(
+    market: MarketContext,
+    sellerId: string,
+    expected: string | null,
+    next: string,
+  ) {
+    const row = this.rows.get(this.key(market, sellerId));
+    // The same rule as the repository: a different value under one key version needs a change.
+    if (expected !== null && expected !== next && hmacPrefix(expected) === hmacPrefix(next)) {
+      return Promise.resolve('needs-change' as const);
+    }
+    if (row === undefined || row.externalAccountHmac !== expected) {
+      return Promise.resolve('conflict' as const);
+    }
+    this.rows.set(this.key(market, sellerId), { ...row, externalAccountHmac: next });
+    return Promise.resolve('stamped' as const);
   }
   changesOf(market: MarketContext, sellerId: string, limit: number) {
     // Newest first; ids rise with time, so the later one wins a tie, as the database orders it.
@@ -493,7 +536,22 @@ export class StaticPaymentsPolicy implements PaymentsPolicy {
     },
     private readonly coolingOffHours = 24,
     private readonly schedule: NormalPayoutSchedule | null = 'daily',
+    private readonly currency = 'AUD',
+    private readonly limits: TransferLimits | null = {
+      maxTransferAmount: money(500_000n, 'AUD'),
+      dailyTransferAlertThreshold: money(2_000_000n, 'AUD'),
+      sendLeaseSeconds: 120,
+    },
   ) {}
+  marketCurrency() {
+    return this.currency;
+  }
+  marketTimeZone() {
+    return 'Australia/Brisbane';
+  }
+  transferLimits() {
+    return this.limits;
+  }
   bankChangeCoolingOffHours() {
     return this.coolingOffHours;
   }
@@ -670,5 +728,171 @@ export class RecordingPaymentsOutbox implements OutboxWriter {
       this.events.push(event);
     }
     return Promise.resolve();
+  }
+}
+
+/** The hash keys of the specs: version 1 and 2, as `PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K<n>` would be. */
+export const TEST_HMAC_KEYS = {
+  1: 'k1-test-key-0123456789abcdefghijklmnopqrstuv',
+  2: 'k2-test-key-0123456789abcdefghijklmnopqrstuv',
+} as const;
+
+export const testKeyring = (
+  keys: Readonly<Record<number, string>> = TEST_HMAC_KEYS,
+  current: number | null = 1,
+) => new HmacExternalAccountKeyring(keys, current);
+
+/** `payments.transfer_executions` in memory, with the guards of the database. */
+export class MemoryTransferStore implements TransferStore {
+  readonly rows = new Map<string, TransferRecord & { readonly market: string }>();
+  private key = (market: MarketContext, instructionKey: string) =>
+    `${market.marketId}/${instructionKey}`;
+  findByKey(market: MarketContext, instructionKey: string) {
+    const row = this.rows.get(this.key(market, instructionKey));
+    return Promise.resolve(row === undefined ? null : stripMarket(row));
+  }
+  /** The number of `findManyByKey` statements, to prove a batch is one. */
+  manyReads = 0;
+  findManyByKey(market: MarketContext, instructionKeys: readonly string[]) {
+    this.manyReads += 1;
+    return Promise.resolve(
+      instructionKeys.flatMap((k) => {
+        const row = this.rows.get(this.key(market, k));
+        return row === undefined ? [] : [stripMarket(row)];
+      }),
+    );
+  }
+  insert(market: MarketContext, record: TransferRecord) {
+    const key = this.key(market, record.instructionKey);
+    if (this.rows.has(key)) return Promise.resolve('conflict' as const);
+    this.rows.set(key, { ...record, market: market.marketId });
+    return Promise.resolve('inserted' as const);
+  }
+  insertTombstone(
+    market: MarketContext,
+    tombstone: { id: string; instructionKey: string; at: Temporal.Instant },
+  ) {
+    return this.insert(market, {
+      id: tombstone.id,
+      instructionKey: tombstone.instructionKey,
+      sellerId: null,
+      accountRef: null,
+      amountMinor: null,
+      currency: null,
+      reference: null,
+      state: 'abandoned',
+      providerTransferRef: null,
+      failureCode: null,
+      reversedMinor: 0n,
+      sendCount: 0,
+      leaseUntil: null,
+      abandonedAt: tombstone.at,
+      fenceBreachedAt: null,
+      executedAt: null,
+      createdAt: tombstone.at,
+      updatedAt: tombstone.at,
+      version: 1,
+    });
+  }
+  change(
+    market: MarketContext,
+    id: string,
+    from: { state: TransferState; version: number },
+    change: TransferChange,
+    at: Temporal.Instant,
+  ) {
+    const row = [...this.rows.values()].find((r) => r.market === market.marketId && r.id === id);
+    if (row === undefined || row.state !== from.state || row.version !== from.version) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(this.key(market, row.instructionKey), {
+      ...row,
+      state: change.state,
+      providerTransferRef: change.providerTransferRef ?? row.providerTransferRef,
+      failureCode: change.failureCode ?? row.failureCode,
+      executedAt: change.executedAt ?? row.executedAt,
+      abandonedAt: change.abandonedAt ?? row.abandonedAt,
+      fenceBreachedAt: change.fenceBreachedAt ?? row.fenceBreachedAt,
+      reversedMinor: change.reversedMinor ?? row.reversedMinor,
+      updatedAt: at,
+      version: row.version + 1,
+    });
+    return Promise.resolve(true);
+  }
+  sendingPastLease(market: MarketContext, now: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.market === market.marketId &&
+            r.state === 'sending' &&
+            r.leaseUntil !== null &&
+            r.leaseUntil.epochMilliseconds <= now.epochMilliseconds,
+        )
+        .slice(0, limit)
+        .map(stripMarket),
+    );
+  }
+  executedTotal(
+    market: MarketContext,
+    currency: string,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.market === market.marketId &&
+            r.state === 'executed' &&
+            r.currency === currency &&
+            r.executedAt !== null &&
+            r.executedAt.epochMilliseconds >= from.epochMilliseconds &&
+            r.executedAt.epochMilliseconds < to.epochMilliseconds,
+        )
+        .reduce((total, r) => total + (r.amountMinor ?? 0n), 0n),
+    );
+  }
+}
+
+const stripMarket = (row: TransferRecord & { readonly market: string }): TransferRecord => {
+  const { market, ...record } = row;
+  void market;
+  return record;
+};
+
+/** Stripe's transfers API: the answers are set by the spec, every call is recorded. */
+export class FakeTransferGateway implements StripeTransferGateway {
+  isAvailable = true;
+  readonly creates: {
+    destination: string;
+    amountMinor: bigint;
+    currency: string;
+    transferGroup: string;
+    key: string;
+    payoutId: string;
+    marketId: string;
+  }[] = [];
+  readonly lists: string[] = [];
+  readonly reads: string[] = [];
+  createAnswer: TransferCreateAnswer = { kind: 'created', ref: 'tr_test_0001' };
+  listAnswer: Result<readonly TransferSnapshot[], TransferReadFailure> = ok([]);
+  readAnswer: Result<TransferSnapshot, TransferReadFailure> = err({
+    code: 'payment.provider-unavailable',
+  });
+  available() {
+    return this.isAvailable;
+  }
+  createTransfer(request: FakeTransferGateway['creates'][number]) {
+    this.creates.push({ ...request });
+    return Promise.resolve(this.createAnswer);
+  }
+  listTransfersByGroup(group: string) {
+    this.lists.push(group);
+    return Promise.resolve(this.listAnswer);
+  }
+  readTransfer(transferId: string) {
+    this.reads.push(transferId);
+    return Promise.resolve(this.readAnswer);
   }
 }

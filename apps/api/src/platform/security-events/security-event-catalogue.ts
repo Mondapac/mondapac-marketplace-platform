@@ -207,6 +207,45 @@ export const StripeDisputeUnmatched = defineSecurityEvent({
   },
 });
 
+/**
+ * An alert of the transfer execution (package 6c): an amount above the Market's ceiling, an
+ * insufficient platform balance, a day's executed total above its threshold, a transfer found for
+ * a key that was abandoned (fence breach), a partial match, a stored key version whose key is
+ * missing, or a Stripe transfer payments cannot match to a stored row. Ids and a code only.
+ */
+export const TransferAlert = defineSecurityEvent({
+  type: 'payments.transfer.alert',
+  severity: 's2',
+  targetType: 'payments.connected-account',
+  targetRequired: false,
+  ip: false,
+  payload: {
+    kind: eventField.enumOf([
+      'amount-out-of-range',
+      'insufficient-platform-balance',
+      'daily-total-over-threshold',
+      'fence-breached',
+      'partial-match',
+      'hmac-key-missing',
+      'transfer-unmatched',
+    ] as const),
+  },
+});
+
+/**
+ * The live read of a connected account before a transfer failed (package 6c, HP-1 condition 2):
+ * the transfer was not made and nothing else changed. This is the counter behind
+ * `payments_live_check_failures_total{market}`: Kazem's rule counts these per Market.
+ */
+export const LiveCheckFailed = defineSecurityEvent({
+  type: 'payments.live-check.failed',
+  severity: 's3',
+  targetType: 'payments.connected-account',
+  targetRequired: false,
+  ip: false,
+  payload: { reason: eventField.enumOf(['provider-unavailable'] as const) },
+});
+
 /** A carrier webhook whose signature did not verify (Mondapac Drive; Uber Direct and Zoom2u when built). */
 export const CarrierWebhookSignatureFailed = defineSecurityEvent({
   type: 'shipping.webhook-signature.failed',
@@ -230,6 +269,8 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       PasswordReset,
       StripeWebhookSignatureFailed,
       StripeDisputeUnmatched,
+      TransferAlert,
+      LiveCheckFailed,
       CarrierWebhookSignatureFailed,
     ] as readonly SecurityEventDefinition[]
   ).map((definition) => [definition.type, definition]),

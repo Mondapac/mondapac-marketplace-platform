@@ -1113,6 +1113,38 @@
     }
   },
   {
+    "action": "payments.transfer.abandoned",
+    "targetType": "payments.transfer-execution",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "action": "payments.transfer.executed",
+    "targetType": "payments.transfer-execution",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "path": "enumOf(send|lookup|webhook)",
+      "sellerId": "id"
+    }
+  },
+  {
+    "action": "payments.transfer.fence-breached",
+    "targetType": "payments.transfer-execution",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "path": "enumOf(send|lookup|webhook)",
+      "sellerId": "id"
+    }
+  },
+  {
     "action": "pricing.offer-write.refusals-suppressed",
     "targetType": "pricing.write-refusal-actor",
     "targetId": "id",

@@ -10,6 +10,7 @@ import type {
   PayoutChangeRecord,
 } from '../application/ports/connected-account-store';
 import type { AccountSnapshot, AccountStatus } from '../domain/connected-account';
+import { hmacPrefix } from '../domain/external-account';
 import type { ChangeKind } from '../domain/payout-change';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -32,6 +33,7 @@ interface Row {
   payoutScheduleApplied: string | null;
   payoutScheduleRevision: number;
   lastChangeId: string | null;
+  externalAccountHmac: string | null;
 }
 
 const optionalInstant = (date: Date | null): Temporal.Instant | null =>
@@ -53,6 +55,7 @@ const record = (row: Row): ConnectedAccountRecord => ({
   payoutScheduleApplied: row.payoutScheduleApplied as AppliedSchedule | null,
   payoutScheduleRevision: row.payoutScheduleRevision,
   lastChangeId: row.lastChangeId,
+  externalAccountHmac: row.externalAccountHmac,
 });
 
 /** `payments.connected_accounts` through the unit of work's transaction. */
@@ -159,11 +162,13 @@ export class PrismaConnectedAccountStore implements ConnectedAccountStore {
     at: Temporal.Instant,
   ): Promise<'recorded' | 'duplicate' | 'conflict'> {
     const tx = this.prisma.tx(market);
-    const seen = await tx.paymentsPayoutAccountChange.findFirst({
-      where: { marketId: market.marketId, sourceEventId: change.sourceEventId },
-      select: { id: true },
-    });
-    if (seen !== null) return 'duplicate';
+    if (change.sourceEventId !== null) {
+      const seen = await tx.paymentsPayoutAccountChange.findFirst({
+        where: { marketId: market.marketId, sourceEventId: change.sourceEventId },
+        select: { id: true },
+      });
+      if (seen !== null) return 'duplicate';
+    }
     // The account row first, and only while its latest change is the one this was computed from.
     const moved = await tx.paymentsConnectedAccount.updateMany({
       where: { marketId: market.marketId, sellerId, lastChangeId: expectedLastChangeId },
@@ -171,6 +176,11 @@ export class PrismaConnectedAccountStore implements ConnectedAccountStore {
         lastChangeId: change.id,
         coolingOffUntil: until === null ? null : toDate(until),
         payoutsPausedUntil: until === null ? null : toDate(until),
+        // The new hash goes in with the change row, in this unit: nothing else may replace a
+        // value with a different one under the same key version (design 4.6 condition 2 (v)).
+        ...(change.externalAccountHmac === undefined
+          ? {}
+          : { externalAccountHmac: change.externalAccountHmac }),
         updatedAt: toDate(at),
       },
     });
@@ -185,9 +195,48 @@ export class PrismaConnectedAccountStore implements ConnectedAccountStore {
         detectedAt: toDate(change.detectedAt),
         coolingOffUntil: change.coolingOffUntil === null ? null : toDate(change.coolingOffUntil),
         sourceEventId: change.sourceEventId,
+        detectedBy: change.detectedBy,
       },
     });
     return 'recorded';
+  }
+
+  async lockForTransfer(
+    market: MarketContext,
+    sellerId: string,
+    at: Temporal.Instant,
+  ): Promise<ConnectedAccountRecord | null> {
+    const tx = this.prisma.tx(market);
+    // An UPDATE takes the row lock until the unit ends, so a webhook unit that moves the same
+    // row waits; the read after it sees what that unit committed (READ COMMITTED).
+    const locked = await tx.paymentsConnectedAccount.updateMany({
+      where: { marketId: market.marketId, sellerId },
+      data: { updatedAt: toDate(at) },
+    });
+    if (locked.count !== 1) return null;
+    const row = await tx.paymentsConnectedAccount.findFirst({
+      where: { marketId: market.marketId, sellerId },
+    });
+    return row === null ? null : record(row);
+  }
+
+  async stampExternalAccountHmac(
+    market: MarketContext,
+    sellerId: string,
+    expected: string | null,
+    next: string,
+    at: Temporal.Instant,
+  ): Promise<'stamped' | 'conflict' | 'needs-change'> {
+    // A different value under the same key version is a changed bank account: it is written only
+    // by `recordChange`, together with its change row.
+    if (expected !== null && expected !== next && hmacPrefix(expected) === hmacPrefix(next)) {
+      return 'needs-change';
+    }
+    const updated = await this.prisma.tx(market).paymentsConnectedAccount.updateMany({
+      where: { marketId: market.marketId, sellerId, externalAccountHmac: expected },
+      data: { externalAccountHmac: next, updatedAt: toDate(at) },
+    });
+    return updated.count === 1 ? 'stamped' : 'conflict';
   }
 
   async changesOf(

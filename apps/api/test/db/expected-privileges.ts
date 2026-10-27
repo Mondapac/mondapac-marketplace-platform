@@ -801,6 +801,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'account_ref',
         'cooling_off_until',
         'details_submitted',
+        'external_account_hmac',
         'last_change_id',
         'last_read_at',
         'payout_schedule_applied',
@@ -832,6 +833,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'payments.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 6c: a transfer is inserted once; only its state, Stripe id, reversed amount, send
+    // count, lease and instants move (a trigger keeps the machine); the content never changes.
+    'payments.transfer_executions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'abandoned_at',
+        'executed_at',
+        'failure_code',
+        'fence_breached_at',
+        'lease_until',
+        'provider_transfer_ref',
+        'reversed_minor',
+        'send_count',
+        'state',
+        'updated_at',
+        'version',
+      ],
+    },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'processed_at'],

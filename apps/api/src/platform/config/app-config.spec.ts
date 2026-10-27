@@ -31,6 +31,7 @@ describe('loadAppConfig', () => {
       stripeSecretKey: null,
       stripeWebhookSecrets: {},
       stripeConnectWebhookSecrets: {},
+      externalAccountHmac: { keys: {}, currentVersion: null },
       clientAddressTrust: null,
       assistantModels: {
         apiKeys: {},
@@ -39,6 +40,60 @@ describe('loadAppConfig', () => {
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
+    });
+  });
+
+  describe('the external account hash keys (payments, package 6c)', () => {
+    const K1 = 'k1_0123456789abcdefghijABCDEFGHIJ-xyz';
+    const K2 = 'k2_0123456789abcdefghijABCDEFGHIJ-xyz';
+
+    it('has no key and no current version by default', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).externalAccountHmac).toEqual({
+        keys: {},
+        currentVersion: null,
+      });
+    });
+
+    it('reads the keys by version and uses the highest as the current one', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: K1,
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: K2,
+      });
+      expect(config.externalAccountHmac).toEqual({ keys: { 1: K1, 2: K2 }, currentVersion: 2 });
+    });
+
+    it('lets the current version be named, as long as it has a key', () => {
+      const env = {
+        HOSTED_MARKETS: 'AU',
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: K1,
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: K2,
+      };
+      expect(
+        loadAppConfig({ ...env, PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: '1' })
+          .externalAccountHmac.currentVersion,
+      ).toBe(1);
+      expect(() =>
+        loadAppConfig({ ...env, PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: '3' }),
+      ).toThrow(/no key is set for version 3/);
+    });
+
+    it('refuses a short key, the same key twice, and never echoes a key', () => {
+      let message = '';
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: 'short' });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: must be 32 to 200/);
+      expect(message).not.toContain('short');
+      expect(() =>
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: K1,
+          PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: K1,
+        }),
+      ).toThrow(/K2: must differ from the key of another version/);
     });
   });
 

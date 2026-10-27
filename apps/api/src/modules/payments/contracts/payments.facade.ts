@@ -65,6 +65,56 @@ export interface Dispute {
 // against ordering here: check `paymentIntentRef` against the order's own PaymentIntent, and park
 // and raise an unknown order or a mismatch, never act on it or drop it.
 
+/** Why `instructTransfer` refused: definite, nothing was sent (design 4.7); mapped as given. */
+export type TransferRefusalCode =
+  | 'validation.failed'
+  | 'idempotency.key-reused'
+  | 'payments.transfer.currency-mismatch'
+  | 'payments.transfer.amount-out-of-range'
+  | 'payments.transfer.account-not-ready'
+  | 'payments.transfer.cooling-off'
+  | 'payments.transfer.account-under-review'
+  | 'payments.transfer.insufficient-platform-balance'
+  | 'payments.transfer.provider-refused';
+
+/** What commission-payouts asks for: one transfer to one seller, once. */
+export interface InstructTransferRequest {
+  /** Commission-payouts' key (1 to 128 of A-Z a-z 0-9 : _ -): unique per Market, never reused. */
+  readonly instructionKey: string;
+  readonly sellerId: string;
+  /** In the Market's currency, above zero and not above the Market's ceiling. */
+  readonly amount: Money;
+  /** Commission-payouts' payout id: the transfer group and metadata at Stripe. */
+  readonly reference: string;
+}
+
+export type InstructTransferAnswer =
+  /** Stripe created the transfer (now, or earlier under the same key). */
+  | { readonly kind: 'accepted'; readonly transferExecutionId: string }
+  /** Definite: nothing was sent. */
+  | { readonly kind: 'refused'; readonly code: TransferRefusalCode };
+
+/** The states of a stored transfer; `none` is a key with no row. */
+export type TransferState =
+  'none' | 'reserved' | 'sending' | 'executed' | 'refused' | 'abandoned' | 'failed';
+
+/** One key's stored transfer. */
+export interface TransferByKeyResult {
+  readonly instructionKey: string;
+  readonly state: TransferState;
+  readonly transferExecutionId: string | null;
+  /** Null for `none` and for a tombstone. */
+  readonly amount: Money | null;
+  /** What Stripe reported as reversed; null for `none`. */
+  readonly reversed: Money | null;
+}
+
+export type AbandonTransferAnswer =
+  | { readonly kind: 'abandoned'; readonly abandonedAt: Temporal.Instant }
+  | { readonly kind: 'still-abandoned' }
+  | { readonly kind: 'already-sent'; readonly transferExecutionId: string }
+  | { readonly kind: 'in-flight' };
+
 /**
  * What other modules ask of `payments`. Takes the caller's `CallContext` unchanged, so the
  * use case's gate runs.
@@ -91,6 +141,45 @@ export interface PaymentsFacade {
     context: CallContext,
     disputeIds: readonly string[],
   ): Promise<Result<readonly Dispute[], AccessDenied | { readonly code: 'validation.failed' }>>;
+
+  /**
+   * Sends one transfer from the platform balance to the seller's connected account, at most once
+   * (package 6c; design 4.7 P-a). `payments.unavailable`: nothing is known to have been sent, or
+   * the send's answer is unknown (it stays `sending` and is never repeated: ask `transferByKey`,
+   * then `abandonTransfer` after your own timeout). Rule `system`.
+   */
+  instructTransfer(
+    context: CallContext,
+    request: InstructTransferRequest,
+  ): Promise<
+    Result<InstructTransferAnswer, AccessDenied | { readonly code: 'payments.unavailable' }>
+  >;
+
+  /** The stored state of up to 100 transfers, in the order asked; no call to Stripe (P-c). Rule `system`. */
+  transferByKey(
+    context: CallContext,
+    instructionKeys: readonly string[],
+  ): Promise<
+    Result<readonly TransferByKeyResult[], AccessDenied | { readonly code: 'validation.failed' }>
+  >;
+
+  /**
+   * The fence for a key whose send never got an answer (P-d): `abandoned` is final, `still-abandoned`
+   * is the quarantine pass finding nothing, `already-sent` means a transfer exists, `in-flight`
+   * that the send's lease has not run out. Record `NOT_SENT` only on `abandoned` and
+   * `still-abandoned`. Rule `system`.
+   */
+  abandonTransfer(
+    context: CallContext,
+    instructionKey: string,
+  ): Promise<
+    Result<
+      AbandonTransferAnswer,
+      | AccessDenied
+      | { readonly code: 'validation.failed' }
+      | { readonly code: 'payments.unavailable' }
+    >
+  >;
 }
 
 /** Nest token of the {@link PaymentsFacade}, provided and exported by `PaymentsModule`. */

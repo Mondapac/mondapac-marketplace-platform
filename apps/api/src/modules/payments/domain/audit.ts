@@ -47,9 +47,42 @@ export const PayoutPauseFailed = defineAuditAction({
   },
 });
 
+/** The audit target type of a transfer execution; the target id is its id. */
+export const TRANSFER_EXECUTION_TARGET = 'payments.transfer-execution';
+
+/** How the transfer was found to exist: the send's own answer, a lookup by key, or the webhook. */
+export const TRANSFER_PATHS = ['send', 'lookup', 'webhook'] as const;
+
+/** Stripe created the transfer (package 6c). Ids only: no amount, account or key. */
+export const TransferExecuted = defineAuditAction({
+  action: 'payments.transfer.executed',
+  targetType: TRANSFER_EXECUTION_TARGET,
+  actors: ['system'],
+  after: { sellerId: auditField.id(), path: auditField.enumOf(TRANSFER_PATHS) },
+});
+
+/** A transfer was found for a key that had been abandoned: the fence was breached (3.5). */
+export const TransferFenceBreached = defineAuditAction({
+  action: 'payments.transfer.fence-breached',
+  targetType: TRANSFER_EXECUTION_TARGET,
+  actors: ['system'],
+  after: { sellerId: auditField.id(), path: auditField.enumOf(TRANSFER_PATHS) },
+});
+
+/** A key was abandoned: nothing was sent, or nothing was found past the lease. */
+export const TransferAbandoned = defineAuditAction({
+  action: 'payments.transfer.abandoned',
+  targetType: TRANSFER_EXECUTION_TARGET,
+  actors: ['system'],
+  after: { sellerId: auditField.optional(auditField.id()) },
+});
+
 export const PAYMENTS_AUDIT_ACTIONS = [
   PayoutChangeRecorded,
   PayoutSchedulePaused,
   PayoutScheduleResumed,
   PayoutPauseFailed,
+  TransferExecuted,
+  TransferFenceBreached,
+  TransferAbandoned,
 ] as const;

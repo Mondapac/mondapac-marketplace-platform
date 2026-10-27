@@ -102,6 +102,28 @@
       }
     },
     {
+      "type": "payments.live-check.failed",
+      "owner": "payments",
+      "severity": "s3",
+      "targetType": "payments.connected-account",
+      "targetRequired": false,
+      "ip": false,
+      "payload": {
+        "reason": "enumOf(provider-unavailable)"
+      }
+    },
+    {
+      "type": "payments.transfer.alert",
+      "owner": "payments",
+      "severity": "s2",
+      "targetType": "payments.connected-account",
+      "targetRequired": false,
+      "ip": false,
+      "payload": {
+        "kind": "enumOf(amount-out-of-range|insufficient-platform-balance|daily-total-over-threshold|fence-breached|partial-match|hmac-key-missing|transfer-unmatched)"
+      }
+    },
+    {
       "type": "payments.webhook-signature.failed",
       "owner": "payments",
       "severity": "s3",

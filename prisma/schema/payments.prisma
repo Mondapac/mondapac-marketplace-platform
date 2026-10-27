@@ -62,7 +62,12 @@ model PaymentsConnectedAccount {
   payoutScheduleRevision Int                           @default(0) @map("payout_schedule_revision")
   /// The latest row of payout_account_changes for this account.
   lastChangeId           String?                       @map("last_change_id") @db.Uuid
+  /// Keyed hash of the default external account's Stripe id: hmac-sha256:k<version>:<hex>
+  /// (Phase 5 package 6c, CHECK). Never the id itself and never bank data (VER-10). A different
+  /// value under the same key version is written only together with a payout_account_changes row.
+  externalAccountHmac    String?                       @map("external_account_hmac")
   changes                PaymentsPayoutAccountChange[]
+  transfers              PaymentsTransferExecution[]
 
   @@id([marketId, sellerId])
   @@unique([marketId, accountRef])
@@ -83,7 +88,10 @@ model PaymentsPayoutAccountChange {
   /// The waiting period this change started or extended to; null for the initial destination.
   coolingOffUntil DateTime?                @map("cooling_off_until") @db.Timestamptz(6)
   /// The Stripe event that reported it (evt_...): stored once, so a repeated event adds nothing.
-  sourceEventId   String                   @map("source_event_id")
+  /// Null only for a change found by the live check before a transfer (detected_by live-check).
+  sourceEventId   String?                  @map("source_event_id")
+  /// webhook or live-check (CHECK).
+  detectedBy      String                   @default("webhook") @map("detected_by")
   account         PaymentsConnectedAccount @relation(fields: [marketId, sellerId], references: [marketId, sellerId])
 
   @@id([marketId, id])
@@ -137,6 +145,54 @@ model PaymentsDispute {
   @@id([marketId, id])
   @@unique([marketId, providerDisputeId])
   @@map("disputes")
+  @@schema("payments")
+}
+
+/// One transfer of the platform's balance to a seller's connected account, or the tombstone of a
+/// key that was abandoned before anything was sent (Phase 5 package 6c). Sent at most once
+/// (send_count 0..1, trigger); the amount, currency, seller, account, key and reference never
+/// change; the provider's transfer id is written once. No free text and no description.
+model PaymentsTransferExecution {
+  marketId            String                    @map("market_id") @db.VarChar(8)
+  id                  String                    @db.Uuid
+  tenantId            String                    @map("tenant_id")
+  /// The instruction key of commission-payouts (CHECK pattern): unique per Market.
+  instructionKey      String                    @map("instruction_key")
+  /// Null only for a tombstone.
+  sellerId            String?                   @map("seller_id") @db.Uuid
+  /// The destination (acct_...) at the time of the send; null only for a tombstone.
+  accountRef          String?                   @map("account_ref")
+  /// Minor units (> 0); null only for a tombstone.
+  amountMinor         BigInt?                   @map("amount_minor")
+  currency            String?                   @db.Char(3)
+  /// The commission-payouts payout id: the Stripe transfer_group and metadata.
+  reference           String?                   @db.Uuid
+  /// reserved, sending, executed, refused, abandoned or failed (CHECK).
+  state               String
+  /// tr_...; written once.
+  providerTransferRef String?                   @map("provider_transfer_ref")
+  /// insufficient-platform-balance, provider-refused or transfer-failed (CHECK).
+  failureCode         String?                   @map("failure_code")
+  /// What Stripe reports as reversed; only grows, never above the amount.
+  reversedMinor       BigInt                    @default(0) @map("reversed_minor")
+  /// 0 or 1: payments never sends a transfer twice.
+  sendCount           Int                       @map("send_count") @db.SmallInt
+  /// While sending: the send is in flight until this instant.
+  leaseUntil          DateTime?                 @map("lease_until") @db.Timestamptz(6)
+  abandonedAt         DateTime?                 @map("abandoned_at") @db.Timestamptz(6)
+  /// Set once when a transfer was found for a row that was already abandoned.
+  fenceBreachedAt     DateTime?                 @map("fence_breached_at") @db.Timestamptz(6)
+  executedAt          DateTime?                 @map("executed_at") @db.Timestamptz(6)
+  createdAt           DateTime                  @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                  @map("updated_at") @db.Timestamptz(6)
+  /// 1 when stored, plus one per change: the aggregate version of its events.
+  version             Int
+  account             PaymentsConnectedAccount? @relation(fields: [marketId, sellerId], references: [marketId, sellerId])
+
+  @@id([marketId, id])
+  @@unique([marketId, instructionKey])
+  @@index([marketId, state, leaseUntil])
+  @@map("transfer_executions")
   @@schema("payments")
 }
 
