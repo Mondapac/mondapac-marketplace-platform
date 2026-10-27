@@ -97,12 +97,26 @@ describe('cookie bar', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     const accept = screen.getByRole('button', { name: 'Accept all' });
     const reject = screen.getByRole('button', { name: 'Necessary only' });
-    const settings = screen.getByRole('link', { name: 'Cookie settings' });
+    // The Settings button of the tablet and desktop bar (the phone's compact bar has an inline
+    // link of the same name, below).
+    const settings = region.querySelector<HTMLAnchorElement>('.consent-actions a')!;
+    expect(settings.textContent).toBe('Cookie settings');
     expect(settings.getAttribute('href')).toBe('/cookies');
     expect(new Set([accept.className, reject.className, settings.className])).toEqual(
       new Set(['btn']),
     );
     expect(region.contains(document.activeElement)).toBe(false);
+  });
+
+  it('carries the compact phone summary with Cookie settings as an inline link', () => {
+    withIntl(<ConsentBar initial={null} />);
+    const short = document.querySelector('.consent-short')!;
+    expect(short.textContent).toBe(
+      'We use cookies to run the shop and, if you agree, to suggest products. Cookie settings',
+    );
+    const links = screen.getAllByRole('link', { name: 'Cookie settings' });
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/cookies', '/cookies']);
+    expect(short.querySelector('a')?.className).toBe('');
   });
 
   it('does not count Escape as a choice', () => {

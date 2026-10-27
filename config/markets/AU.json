@@ -24,6 +24,31 @@
     "adminDailyCapMinor": 50000,
     "expiringSoonDays": 30
   },
+  "reviews": {
+    "reviewWindowDays": 60,
+    "editWindowDays": 30,
+    "sellerRatingMinCount": 10,
+    "maxSubmissionsPerAccountPerDay": 20,
+    "titleMaxLength": 120,
+    "bodyMaxLength": 2000,
+    "pageSize": 10,
+    "summaryRebuildMinutes": 1440,
+    "autoChecks": {
+      "blockedTerms": [
+        "fuck",
+        "fucking",
+        "shit",
+        "bullshit",
+        "cunt",
+        "bastard",
+        "asshole",
+        "bitch"
+      ],
+      "repeatedCharRun": 8,
+      "repeatedWordMinTokens": 6,
+      "repeatedWordShareBps": 6000
+    }
+  },
   "tax": {
     "defaultRateBps": 1000,
     "refundCredit": { "enabled": false },

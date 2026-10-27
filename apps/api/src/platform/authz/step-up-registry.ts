@@ -3,7 +3,7 @@ import { Injectable, type Provider } from '@nestjs/common';
 const MODULE_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ACTION_KEY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*){1,3}$/;
 
-/** A sensitive seller action that can ask for a fresh two-step code (seller OTP policy). */
+/** A sensitive action that can ask for a fresh two-step code (seller OTP policy; issue #491). */
 export interface StepUpActionDeclaration {
   /** `<module>.<noun>.<verb>`; the first segment is the registering module. */
   readonly key: string;
@@ -11,6 +11,12 @@ export interface StepUpActionDeclaration {
   readonly defaultRequired: boolean;
   /** The platform floor: always required, the seller cannot turn it off. */
   readonly locked: boolean;
+  /**
+   * Whose panel the action is on (issue #491). Omitted: a seller action, which follows the shop's
+   * rule and is listed on the shop's policy screen. `admin`: a platform admin action, which always
+   * asks for a fresh code (it must be declared locked and required) and is never shown to a shop.
+   */
+  readonly audience?: 'seller' | 'admin';
 }
 
 export class StepUpRegistryError extends Error {
@@ -43,6 +49,12 @@ export class StepUpActionRegistry {
       }
       if (action.key.split('.')[0] !== module) {
         throw new StepUpRegistryError(`Step-up action "${action.key}" is not ${module}'s`);
+      }
+      if (action.audience !== undefined && !['seller', 'admin'].includes(action.audience)) {
+        throw new StepUpRegistryError(`Step-up action "${action.key}" has an unknown audience`);
+      }
+      if (action.audience === 'admin' && !action.locked) {
+        throw new StepUpRegistryError(`Admin step-up action "${action.key}" must be locked`);
       }
       if (action.locked && !action.defaultRequired) {
         throw new StepUpRegistryError(`Locked step-up action "${action.key}" must be required`);

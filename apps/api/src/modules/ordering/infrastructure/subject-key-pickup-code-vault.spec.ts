@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import {
@@ -76,8 +78,12 @@ describe.each(TEST_MARKETS)('SubjectKeyPickupCodeVault in market %s', (code) => 
     const issued = await issue();
 
     expect(issued.code).toMatch(/^[0-9]{4}$/);
-    expect(issued.hash).not.toContain(issued.code);
-    expect(issued.sealed).not.toContain(issued.code);
+    // A random 64-hex hash or base64 seal can hold four digits by chance, so check for the
+    // code's plain encodings instead of a substring.
+    expect(issued.hash).not.toBe(issued.code);
+    expect(issued.hash).not.toBe(createHash('sha256').update(issued.code).digest('hex'));
+    expect(issued.sealed).not.toBe(issued.code);
+    expect(issued.sealed).not.toContain(JSON.stringify(issued.code));
     expect(issued.hash.length).toBeGreaterThan(20);
   });
 

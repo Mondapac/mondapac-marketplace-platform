@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
-import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
 import { isActingAsSession } from '../sellers/access-decision-reads';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   UseCase,
@@ -10,7 +10,7 @@ import {
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { STEP_UP_PROOF_MINUTES, type StepUpFailure } from '../../contracts/step-up';
-import { proofIsFresh, stepUpRequired } from '../../domain/step-up';
+import { proofCovers, stepUpAudienceOf, stepUpRequired } from '../../domain/step-up';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { StepUpRepository } from '../ports/step-up.repository';
 
@@ -37,6 +37,12 @@ export interface RequireStepUpDependencies {
  * two-step yet. A caller that is not a seller session (an admin's own route, the system) is not
  * subject to a shop's rule. An unregistered key is a coding error and answers
  * `access.unavailable`, so the action stays closed. Read-only: nothing here changes.
+ *
+ * Admin actions (issue #491; registered with `audience: 'admin'`): an admin session ALWAYS needs a
+ * proof of this session for this action from the last {@link STEP_UP_PROOF_MINUTES} minutes,
+ * made with the admin's own active factor (`VerifyAdminStepUp` writes it); there is no per-shop
+ * rule. Any other caller of an admin action is refused `access.denied`. An acting-as session is
+ * refused for every action.
  */
 export class RequireStepUp extends UseCase<
   RequireStepUpInput,
@@ -75,33 +81,53 @@ export class RequireStepUp extends UseCase<
       return err({ code: 'access.unavailable' });
     }
     if (isActingAsSession(actor)) return err({ code: 'access.denied' });
+    const { accountId, sessionId } = actor;
+    if (stepUpAudienceOf(action) === 'admin') {
+      // The platform floor for every admin action: always a fresh code, no rule to read.
+      if (actor.population !== 'admin') return err({ code: 'access.denied' });
+      return this.deps.unitOfWork.run<{ readonly code: 'step-up.satisfied' }, StepUpFailure>(
+        market,
+        () => this.proven(market, accountId, sessionId, action.key),
+        { readOnly: true },
+      );
+    }
     if (actor.population !== 'seller') return ok({ code: 'step-up.satisfied' });
     if (actor.sellerId === null) return err({ code: 'access.denied' });
-    const { sellerId, accountId, sessionId } = actor;
+    const sellerId = actor.sellerId;
     return this.deps.unitOfWork.run<{ readonly code: 'step-up.satisfied' }, StepUpFailure>(
       market,
       async () => {
         const rule = await this.deps.stepUp.policyOf(market, sellerId, action.key);
         if (!stepUpRequired(action, rule ?? undefined)) return ok({ code: 'step-up.satisfied' });
-        const factor = await this.deps.factors.findByAccount(market, accountId);
-        if (factor === null || !factor.isActive) {
-          return err({ code: 'second-factor.enrolment-required', actionKey: action.key });
-        }
-        const verifiedAt = await this.deps.stepUp.proofOf(market, sessionId, action.key);
-        if (
-          verifiedAt === null ||
-          // A proof given before the current factor was activated does not count: removing or
-          // re-enrolling the factor ends every proof made with the old one. (Replacing the device
-          // keeps `activatedAt`, so a proof lives out its five minutes; follow-up package.)
-          (factor.state.activatedAt !== null &&
-            Temporal.Instant.compare(verifiedAt, factor.state.activatedAt) < 0) ||
-          !proofIsFresh(verifiedAt, this.deps.clock.now(), STEP_UP_PROOF_MINUTES)
-        ) {
-          return err({ code: 'second-factor.required', actionKey: action.key });
-        }
-        return ok({ code: 'step-up.satisfied' });
+        return this.proven(market, accountId, sessionId, action.key);
       },
       { readOnly: true },
     );
+  }
+
+  /** Whether this session holds a proof for this action made with the account's active factor. */
+  private async proven(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    sessionId: Id<'Session'>,
+    actionKey: string,
+  ): Promise<Result<{ readonly code: 'step-up.satisfied' }, StepUpFailure>> {
+    const factor = await this.deps.factors.findByAccount(market, accountId);
+    if (factor === null || !factor.isActive) {
+      return err({ code: 'second-factor.enrolment-required', actionKey });
+    }
+    const verifiedAt = await this.deps.stepUp.proofOf(market, sessionId, actionKey);
+    // (Replacing the device keeps `activatedAt`, so a proof lives out its five minutes;
+    // follow-up package.)
+    const covered = proofCovers(verifiedAt === null ? null : { sessionId, actionKey, verifiedAt }, {
+      sessionId,
+      actionKey,
+      now: this.deps.clock.now(),
+      factorActivatedAt: factor.state.activatedAt,
+      minutes: STEP_UP_PROOF_MINUTES,
+    });
+    return covered
+      ? ok({ code: 'step-up.satisfied' })
+      : err({ code: 'second-factor.required', actionKey });
   }
 }

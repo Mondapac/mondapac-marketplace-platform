@@ -17,6 +17,7 @@ import {
   type FactorStepFailure,
 } from '../second-factor/factor-device';
 import { SignedInFactorStep } from '../second-factor/signed-in-factor-step';
+import { stepUpAudienceOf } from '../../domain/step-up';
 import type { StepUpRepository } from '../ports/step-up.repository';
 
 export interface VerifySellerStepUpInput extends FactorCodeInput {
@@ -81,7 +82,10 @@ export class VerifySellerStepUp extends UseCase<
       typeof input?.actionKey === 'string'
         ? this.deps.stepUpActions.get(input.actionKey)
         : undefined;
-    if (action === undefined) return err({ code: 'step-up.action-unknown' });
+    // An admin action is proven on the admin route only (issue #491).
+    if (action === undefined || stepUpAudienceOf(action) !== 'seller') {
+      return err({ code: 'step-up.action-unknown' });
+    }
     const presented = codeField(input?.code, true);
     if (!presented.ok) return presented;
     const throttle = this.deps.policy.secondFactorThrottle(market);

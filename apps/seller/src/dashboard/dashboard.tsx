@@ -28,7 +28,16 @@ import {
 } from './types.ts';
 
 const FULFILMENTS = ['to-ship', 'shipped', 'delivered'] as const;
-const LEDGER_KINDS = ['sale', 'shipping', 'commission'] as const;
+const LEDGER_KINDS = [
+  'sale',
+  'shipping',
+  'commission',
+  'refund-sale',
+  'refund-shipping',
+  'refund-commission',
+  'dispute-debit',
+  'dispute-reinstate',
+] as const;
 const FULFILMENT_TONE: Record<string, BadgeTone> = {
   'to-ship': 'attention',
   shipped: 'info',

@@ -41,7 +41,17 @@ const tokens = new RandomSessionTokens();
 const ledger = (currency: string) => ({
   sellerId: SELLER,
   currency,
-  totals: { sales: 1435n, shipping: 500n, commission: 196n, balance: 1739n },
+  totals: {
+    sales: 1435n,
+    shipping: 500n,
+    commission: 196n,
+    refundedSales: 300n,
+    refundedShipping: 50n,
+    refundedCommission: 45n,
+    disputeDebits: 0n,
+    disputeReinstated: 0n,
+    balance: 1434n,
+  },
   entries: [
     {
       entryId: id<'LedgerEntry'>(0xd001),
@@ -53,6 +63,7 @@ const ledger = (currency: string) => ({
       amount: 150n,
       rateBps: 1500,
       baseAmount: 1000n,
+      sourceId: null,
       occurredAt: START,
       recordedAt: START,
     },
@@ -288,7 +299,17 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     expect(own.body).toEqual({
       sellerId: SELLER,
       currency,
-      totals: { sales: '1435', shipping: '500', commission: '196', balance: '1739' },
+      totals: {
+        sales: '1435',
+        shipping: '500',
+        commission: '196',
+        refundedSales: '300',
+        refundedShipping: '50',
+        refundedCommission: '45',
+        disputeDebits: '0',
+        disputeReinstated: '0',
+        balance: '1434',
+      },
       entries: [
         {
           entryId: id<'LedgerEntry'>(0xd001),
@@ -300,6 +321,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           amount: '150',
           rateBps: 1500,
           baseAmount: '1000',
+          sourceId: null,
           occurredAt: START.toString(),
           recordedAt: START.toString(),
         },

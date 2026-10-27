@@ -7,13 +7,59 @@ import type { Temporal } from '@mondapac/shared-kernel';
  */
 export const STEP_UP_ACTION_KEYS = [
   'catalog.offer.delete',
+  'customers.account-deletion-settings.change',
   'identity.second-factor.manage',
   'identity.team.change-role',
   'identity.team.invite-remove',
   'payments.payout-account.change',
   'pricing.price.change',
   'sellers.store-terms.change',
+  'wallet.settings.change',
 ] as const;
+
+/**
+ * Whose panel an action belongs to (issue #491). A seller action follows the shop's rule and is
+ * listed on the shop's policy screen; an admin action always asks a platform admin for a fresh
+ * code (no per-shop rule) and is never listed to a shop. A declaration without one is a seller's.
+ */
+export type StepUpAudience = 'seller' | 'admin';
+
+export function stepUpAudienceOf(action: { readonly audience?: StepUpAudience }): StepUpAudience {
+  return action.audience === 'admin' ? 'admin' : 'seller';
+}
+
+/** A stored proof: a code was verified in this session for this one action at `verifiedAt`. */
+export interface StepUpProof {
+  readonly sessionId: string;
+  readonly actionKey: string;
+  readonly verifiedAt: Temporal.Instant;
+}
+
+/**
+ * Whether a proof lets this session do this action now (issue #491): the same session, the same
+ * action, fresh ({@link proofIsFresh}), and made with the current factor (a proof from before the
+ * factor was activated does not count: removing or re-enrolling it ends every earlier proof).
+ */
+export function proofCovers(
+  proof: StepUpProof | null,
+  request: {
+    readonly sessionId: string;
+    readonly actionKey: string;
+    readonly now: Temporal.Instant;
+    readonly factorActivatedAt: Temporal.Instant | null;
+    readonly minutes: number;
+  },
+): boolean {
+  if (proof === null) return false;
+  if (proof.sessionId !== request.sessionId || proof.actionKey !== request.actionKey) return false;
+  if (
+    request.factorActivatedAt !== null &&
+    proof.verifiedAt.epochMilliseconds < request.factorActivatedAt.epochMilliseconds
+  ) {
+    return false;
+  }
+  return proofIsFresh(proof.verifiedAt, request.now, request.minutes);
+}
 
 /**
  * Whether an action asks for a fresh code (seller OTP policy). A locked action always does (the

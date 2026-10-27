@@ -291,6 +291,7 @@ At the seller's slot, the worker instructs a transfer only when, in addition to 
   - Fee share of an invoiced fee → the same, without commission.
   - Loss bearer `platform` (reason code in `ordering`) → `refund-platform-borne`; the seller's assessment and item are untouched and commission is kept (no reversal record). **Answered (owner, 2026-10-08, Q-O2): yes, the seller keeps the full share and the platform bears the whole refund (the GST side goes to the tax agent, Q-T2).** The posting above is built to this answer.
   - Property test: refunding every unit of an assessment in any order of partial refunds reverses exactly its commission, its commission tax and its seller share.
+- Seller ledger rows (package 6a): the `refund-commission` row's `base_amount` is informational and must never be summed for tax. It is informational: when a commission share and its base round independently, the base can come out below the commission, and the ledger raises it to the commission so the row still satisfies `amount <= base_amount`. The bases of one line's reversals may therefore sum to slightly more than the original base. Never sum it, and never use it as the tax base of a reversal: tax is reversed from the originals, not from this column.
 - Rule 4 (refund after payout): the receivable; netted from the next payouts (4.7); AC "day 9 after payout → negative balance netted".
 - The refund amount itself is `ordering`'s; C-P never computes a customer refund and never initiates one (brief s5 "separation").
 

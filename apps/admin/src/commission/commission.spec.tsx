@@ -138,7 +138,17 @@ const entry = (n: number, over: Partial<LedgerEntry> = {}): LedgerEntry => ({
 const ledger = (entries: LedgerEntry[], nextCursor: string | null = null): Ledger => ({
   sellerId: SELLER,
   currency: 'AUD',
-  totals: { sales: '3000', shipping: '500', commission: '450', balance: '3050' },
+  totals: {
+    sales: '3000',
+    shipping: '500',
+    commission: '450',
+    refundedSales: '0',
+    refundedShipping: '0',
+    refundedCommission: '0',
+    disputeDebits: '0',
+    disputeReinstated: '0',
+    balance: '3050',
+  },
   entries,
   nextCursor,
 });
@@ -154,6 +164,33 @@ describe('LedgerCard', () => {
     expect(screen.getAllByRole('row')).toHaveLength(3);
     expect(screen.getByText('−$4.50')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'Amount' }).className).toContain('text-end');
+  });
+
+  it('shows the refund totals, the kinds and a balance below zero', () => {
+    const initial = ledger([
+      entry(1, { kind: 'refund-sale', direction: 'debit', amount: '1100' }),
+      entry(2, { kind: 'refund-commission', direction: 'credit', amount: '150' }),
+    ]);
+    mountLedger({
+      ...initial,
+      totals: {
+        ...initial.totals,
+        refundedSales: '1100',
+        refundedShipping: '250',
+        refundedCommission: '150',
+        balance: '-1200',
+      },
+    });
+    for (const [label, value] of [
+      ['Refunds', '$13.50'],
+      ['Commission returned', '$1.50'],
+      ['Balance', '-$12.00'],
+    ] as const) {
+      const term = screen.getAllByText(label).find((n) => n.tagName === 'DT');
+      expect(term?.nextElementSibling?.textContent).toBe(value);
+    }
+    expect(screen.getByText('Refund of sale')).toBeTruthy();
+    expect(screen.getAllByText('Commission returned').length).toBeGreaterThan(1);
   });
 
   it('shows an empty state without rows', () => {

@@ -14,6 +14,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useDialog } from '../account/use-dialog.ts';
 import { Icon } from '../icons/icon.tsx';
+import { under } from '../shell/breakpoints.ts';
 import { useStore } from '../shell/store-context.tsx';
 import {
   MESSAGE_LIMIT,
@@ -27,6 +28,7 @@ import {
   type AssistantSetup,
   type SendResult,
 } from './assistant.ts';
+import { dockForLauncher, launcherHidden, launcherLift, movingBarBox } from './launcher-lift.ts';
 
 /** After this long without an answer the widget says it is slow (the server gives up at 25 s). */
 export const SLOW_AFTER_MS = 8000;
@@ -57,12 +59,12 @@ type Status = 'chat' | 'off' | 'unavailable' | 'sign-in';
 let nextId = 1;
 const welcome = (): Entry => ({ id: nextId++, role: 'assistant', kind: 'welcome' });
 
-/** Matches the sheet breakpoint of the CSS: 700px and under is a full-screen modal sheet. */
+/** Matches the sheet breakpoint of the CSS: under 700px (the phone) is a full-screen modal sheet. */
 function useSheet(): boolean {
   const [sheet, setSheet] = useState(false);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const query = window.matchMedia('(max-width: 700px)');
+    const query = window.matchMedia(under('tablet'));
     const update = () => setSheet(query.matches);
     update();
     query.addEventListener('change', update);
@@ -72,36 +74,55 @@ function useSheet(): boolean {
 }
 
 /**
- * Keeps the launcher above the bottom dock (tab bar, cookie bar) and, at the end of the page, above
- * the footer's back-to-top button, so it never covers either. Writes `--as-dock` and `--as-lift`.
+ * Keeps the launcher above the bottom dock (tab bar, cookie bar), above the page's action bar (buy
+ * bar, checkout bar) and, at the end of the page, above the footer's back-to-top button, so it
+ * never covers any of them. Writes `--as-dock` and `--as-lift`, and `data-covered` while the launcher
+ * hides on a phone with the cookie bar open.
  */
 function useLift(root: HTMLElement | null) {
   useEffect(() => {
     if (!root) return;
+    const html = document.documentElement;
+    // The product page's tab bar slides away on a phone (shell/tabbar-autohide.tsx) and the buy bar
+    // drops with it. While that moves, the launcher keeps to the higher, tab bar shown geometry.
+    const box = (element: Element | null) => {
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return rect.height > 0 ? { top: rect.top, bottom: rect.bottom } : null;
+    };
+    const dockHeight = () => document.querySelector<HTMLElement>('.dock')?.offsetHeight ?? 0;
+    const gap = () => {
+      const value = Number.parseFloat(getComputedStyle(html).getPropertyValue('--sf-dock-gap'));
+      return Number.isFinite(value) ? value : 13;
+    };
     const place = () => {
-      const height = window.innerHeight;
-      let dock = 0;
-      const bar = document.querySelector('.dock');
-      if (bar) {
-        const rect = bar.getBoundingClientRect();
-        if (rect.height > 0 && rect.top < height) dock = height - rect.top;
-      }
-      let lift = Math.max(20, dock + 12);
-      let right: string | null = null;
       const top = document.querySelector('.fbase .btt');
-      if (top) {
-        const rect = top.getBoundingClientRect();
-        if (rect.height > 0 && rect.top < height - dock && rect.bottom > 0) {
-          lift = Math.max(lift, height - rect.top + 12);
-          // Lifted above back-to-top, the launcher lines up with it.
-          const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
-          right = `${Math.round(rtl ? rect.left : document.documentElement.clientWidth - rect.right)}px`;
-        }
-      }
+      const hidden = html.getAttribute('data-tabbar') === 'hidden';
+      const moving = html.getAttribute('data-tabbar-moving') === 'true';
+      const { dock, lift, alignBackToTop } = launcherLift(
+        window.innerHeight,
+        dockForLauncher(box(document.querySelector('.dock')), hidden, moving),
+        Array.from(document.querySelectorAll('.buybar, .cbar'), (bar) =>
+          moving ? movingBarBox(box(bar), window.innerHeight, dockHeight(), gap()) : box(bar),
+        ),
+        box(top),
+      );
+      const phone =
+        typeof window.matchMedia === 'function' && window.matchMedia(under('tablet')).matches;
+      root.dataset.covered = String(
+        launcherHidden(phone, document.querySelector('.consent') !== null),
+      );
       root.style.setProperty('--as-dock', `${dock}px`);
       root.style.setProperty('--as-lift', `${lift}px`);
-      if (right === null) root.style.removeProperty('--as-end');
-      else root.style.setProperty('--as-end', right);
+      if (alignBackToTop && top) {
+        // Lifted above back-to-top, the launcher lines up with it.
+        const rect = top.getBoundingClientRect();
+        const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
+        root.style.setProperty(
+          '--as-end',
+          `${Math.round(rtl ? rect.left : document.documentElement.clientWidth - rect.right)}px`,
+        );
+      } else root.style.removeProperty('--as-end');
     };
     place();
     window.addEventListener('scroll', place, { passive: true });
@@ -109,7 +130,13 @@ function useLift(root: HTMLElement | null) {
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
     const bar = document.querySelector('.dock');
     if (bar) observer?.observe(bar);
+    const tabBar = new MutationObserver(place);
+    tabBar.observe(html, {
+      attributes: true,
+      attributeFilter: ['data-tabbar', 'data-tabbar-moving'],
+    });
     return () => {
+      tabBar.disconnect();
       window.removeEventListener('scroll', place);
       window.removeEventListener('resize', place);
       observer?.disconnect();
@@ -119,7 +146,7 @@ function useLift(root: HTMLElement | null) {
 
 /**
  * The buyer assistant (package 5): a round launcher at the bottom right and the chat panel it
- * opens, docked (non-modal) over 700px and a full-screen modal sheet at 700px and under. Rendered
+ * opens, docked (non-modal) from 700px and a full-screen modal sheet under 700px. Rendered
  * only when the storefront says the assistant is on for this visitor; with no setup nothing shows.
  * Model sentences are shown as plain text; products are a list of links built from server cards,
  * without prices (open point: prices in the list, default none).

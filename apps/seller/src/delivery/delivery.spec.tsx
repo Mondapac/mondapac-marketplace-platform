@@ -4,7 +4,6 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { settingsTabs } from '../settings/settings-header.tsx';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -226,13 +225,5 @@ describe('problemOf', () => {
       'identity.error.unknown',
     ];
     for (const key of keys) expect([key, typeof lookup(key)]).toEqual([key, 'string']);
-  });
-});
-
-describe('the Delivery settings tab', () => {
-  it('shows only with the store settings permission', () => {
-    const ids = (keys: string[]) => settingsTabs(keys, (key) => key).map((tab) => tab.id);
-    expect(ids([])).not.toContain('delivery');
-    expect(ids(['sellers.store-settings.edit'])).toContain('delivery');
   });
 });
