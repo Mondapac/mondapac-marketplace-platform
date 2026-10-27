@@ -8,7 +8,12 @@ import {
   type LineWritten,
 } from './cart-operations';
 import type { AccountCaller } from './customer-caller';
-import { verdictKey, type LineVerdict, type UnavailableReason } from './ports/line-facts';
+import {
+  verdictKey,
+  type LineDisplay,
+  type LineVerdict,
+  type UnavailableReason,
+} from './ports/line-facts';
 import type { SavedItem, SavedItemRepository } from './ports/saved-item.repository';
 
 // Saved for later (cart v4): a signed-in customer moves a cart line to a list and back. The list
@@ -37,6 +42,10 @@ export interface SavedItemView {
   readonly sellerId: Id<'Seller'> | null;
   readonly unitPrice: Money | null;
   readonly availability: LineAvailability | null;
+  /** What the buyer sees of the unit; null when catalog did not answer it. */
+  readonly display: LineDisplay | null;
+  /** The seller's public store name; null when unknown. */
+  readonly sellerName: string | null;
 }
 
 const savedIdOf = (value: unknown): Result<Id<'SavedItem'>, SavedFailure> => {
@@ -60,10 +69,21 @@ export async function viewSaved(
   if (!read.ok) return read;
   const items = read.value;
   if (items.length === 0) return ok([]);
-  const verdicts = await deps.facts.evaluate(context, items);
+  const [verdicts, displays] = await Promise.all([
+    deps.facts.evaluate(context, items),
+    deps.facts.lineDisplays(context, items),
+  ]);
+  const sellerIds = [...verdicts.values()].flatMap((verdict) =>
+    verdict.sellerId === null ? [] : [verdict.sellerId],
+  );
+  const names =
+    sellerIds.length === 0
+      ? new Map<Id<'Seller'>, string>()
+      : await deps.facts.sellerNames(context, sellerIds);
   return ok(
     items.map((item) => {
       const verdict = verdicts.get(verdictKey(item));
+      const sellerId = verdict?.sellerId ?? null;
       return {
         savedId: item.id,
         offerId: item.offerId,
@@ -71,9 +91,11 @@ export async function viewSaved(
         savedAt: item.savedAt,
         state: verdict?.state ?? 'check-unavailable',
         reason: verdict?.reason ?? null,
-        sellerId: verdict?.sellerId ?? null,
+        sellerId,
         unitPrice: verdict?.unitPrice ?? null,
         availability: verdict?.availability ?? null,
+        display: displays.get(verdictKey(item)) ?? null,
+        sellerName: sellerId === null ? null : (names.get(sellerId) ?? null),
       };
     }),
   );
