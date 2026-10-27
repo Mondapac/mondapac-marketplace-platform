@@ -65,6 +65,11 @@ export class InMemoryAddresses implements AddressRepository {
     const row = await this.find(market, accountId, id);
     return row !== null && this.rows.delete(id);
   }
+  removeAllOf(market: MarketContext, accountId: Id<'Account'>) {
+    const mine = this.mine(market, accountId);
+    for (const row of mine) this.rows.delete(row.id);
+    return Promise.resolve(mine.length);
+  }
 }
 
 /**

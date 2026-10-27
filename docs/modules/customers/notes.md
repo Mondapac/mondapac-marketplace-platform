@@ -49,7 +49,7 @@ This note records what is built and the rules it keeps.
 ## Next packages
 
 3. Customer profile API. 4. Marketing consent record in `legal`.
-5. Customer account deletion (v1.5, CUS-03), built in three PRs: 5a (below, built), 5b and 5c.
+5. Customer account deletion (v1.5, CUS-03), built in three PRs: 5a and 5b (below, built), 5c.
 
 ## Package 5a: account deletion setting and server lock (API only)
 
@@ -92,14 +92,113 @@ manual admin deletion.
   period in force. Package 5b calls it first, inside its own unit of work, and only to start a
   request.
 
-### What packages 5b and 5c will do
+## Package 5b: buyer deletion flow (API only)
 
-- **5b, buyer flow.** The buyer asks to delete their account. Blockers are checked first
-  (including a wallet balance above 0). Then an OTP, then
-  the waiting period (30 days by default); signing in during the wait cancels the request. At the
-  end the account's subject key is destroyed, `engagement` forgets the account
-  (`forgetAccount`), and the buyer's reviews are anonymised. A request already pending continues
-  if the setting is switched off afterwards: the switch stops only new requests.
+Owner approved design v2 on 2026-10-26. No screens (Reza later). The flow lives in
+`CustomersAccountDeletionModule` (`customers/account-deletion.module.ts`), registered in
+`modules/index.ts` beside `CustomersModule` (as `SellerStoreProfileModule`): `ordering` imports
+`customers`, so `CustomersModule` cannot import `ordering` without a module cycle. It is not in
+the customers barrel.
+
+- **Routes** (customer sessions, `no-store`, CSRF on the unsafe ones): `POST
+  customers/me/deletion-requests` (body `{ confirm: true }`; 201 `{ status, requestedAt,
+  scheduledFor, waitingPeriodDays }`), `GET .../current` (404
+  `customers.account-deletion-request-not-found` when none), `DELETE .../current` (204).
+- **Request order.** (1) `assertAccountDeletionAllowed` (403 `customers.account-deletion-disabled`
+  before any module is asked); (2) blockers, each through the owning module's facade: open orders
+  and pending refunds (`ordering.ownOpenObligations`), wallet balance available or held above 0
+  (`wallet.ownBalanceOf`). 409 `customers.account-deletion-blocked` with `details.blockers`
+  (`open-orders` and `pending-refunds` with a count, `wallet-balance`); a module that cannot answer
+  fails closed (503 `customers.unavailable`); (3) one serializable unit: the setting again, one
+  pending request per account (partial unique index, 409 `...already-requested`), insert at
+  `now + waitingPeriodDays` of the setting in force (Clock, UTC), audit row, outbox event;
+  (4) `identity.endOtherCustomerSessions` ends every other session (the one that asked stays and
+  can cancel). If that call fails the request stays committed and the failure is logged.
+- **Setting race (5a review L1).** `SetAccountDeletionSettings` now runs serializable too, and a
+  conflict answers `customers.conflict`, so a request and a switch-off are ordered one way or the
+  other and two changes from the same version leave one winner. The client sends no raw SQL, so a
+  `FOR SHARE` on the insert-only history was not possible; a request that serialised just before
+  a switch-off is a request made a moment earlier (switching off never cancels, owner decision).
+  `test/db/customers-account-deletion.db-spec.ts` (second block) covers both races.
+- **Executor** `customers.execute-account-deletions` (hourly job, worker role, 25 requests per run,
+  system actor). Per due request (a pending one whose date has come, or an `executing` one whose
+  claim is older than 15 minutes), each step safe to repeat: (1) blockers under the system actor
+  (a blocked request stays pending, no side effect); (2) the **claim**, in its own serializable
+  unit and before any irreversible step: one conditional update `pending` to `executing` with
+  `claimed_at` (or a stale claim taken again), and only the run whose update matched goes on, so a
+  cancel and a second run cannot overlap with the work (review finding H1); (3)
+  `identity.endAllCustomerSessions` (system) ends every remaining session of the account, so no
+  order or credit can land afterwards (Hassan L1); (4) the blockers once more: a blocker found here
+  gives the claim back (`pending`, cancellable) and the request waits; (5)
+  `identity.eraseCustomerAccount` with the request id (subject key destroyed, account row,
+  credential, sessions and links deleted, audit `identity.account.erased` with `after.requestId`;
+  `already-erased` on a re-run); (6) `engagement.forgetAccount` and `reviews.detachAuthor`
+  (reviews and ratings stay as "Former customer"); (7) one unit deletes the account's
+  `customers.addresses` rows, closes the request `completed` (only from `executing`) and writes
+  audit and event. A failing request is logged by class name and left `executing`; a later run
+  repeats it once the claim is stale. Orders, tax invoices and payments stay (ids only).
+- **Cancel and the claim.** `DELETE .../current` matches only `pending`. A claimed request answers
+  409 `customers.account-deletion-in-progress` (also for `cancelPendingOnSignIn`); a unit that
+  conflicts with the claim answers 409 `customers.conflict` and the next try is definite. So a 204
+  always means the account will not be erased. `GET .../current` shows `status: "executing"`.
+  `viewCurrentAccountDeletionRequest` refuses acting-as sessions like the other routes.
+- **Data.** `customers.account_deletion_requests` (ids, status, waiting period, times; no personal
+  data; the application role may update only the state columns and may not delete; see
+  `docs/design/data/customers.md`). Events
+  `customers.account-deletion-requested.v1`, `-cancelled.v1`, `-completed.v1` (aggregate = the
+  request; no account id). Audit `customers.account-deletion.requested`, `.cancelled`, `.completed`.
+- **Facade additions.** identity `endOtherCustomerSessions` (customer, own) and
+  `endAllCustomerSessions` and `eraseCustomerAccount` (system; the erase takes the request id); wallet `ownBalanceOf` (customer, own); ordering
+  `ownOpenObligations` (customer, own) and `openObligationsOf` (system). `CUSTOMERS_ACCOUNT_DELETION_FACADE`
+  (`cancelPendingOnSignIn`) is the call a sign-in flow would make.
+
+### Not built, because the platform has no mechanism (follow-ups)
+
+- **No customer step-up or OTP.** Identity has second factors for admins and sellers only. The
+  request asks for no proof of the buyer; a customer OTP needs its own identity slice.
+- **No account lock and no cancel on sign-in.** Identity has no post-sign-in hook or sign-in event
+  and may not import another module. After the request only the other sessions end; the buyer
+  can sign in again and is not refused, and signing in does not cancel. A hook (or an identity
+  event customers can consume) would call `cancelPendingOnSignIn`; a lock needs an identity
+  account flag. The executor's blocker re-check covers an order placed in the meantime.
+- **No emails** (request received with cancel instructions, completed): `notifications` has no
+  transactional customer email facade, only events (which carry no address). The three events are
+  ready for it; a completed notice also cannot read an address once the key is destroyed, so it
+  must be sent before the erase.
+- **M2, pre-launch blocker for any buyer UI.** The buyer is asked for no step-up (no customer OTP),
+  signing in or resetting the password does not cancel the request, and no email is sent. Until
+  these exist the buyer deletion screen must not ship.
+- **M3, erasure does not yet cover** `assistant.conversations` (the assistant text is the
+  important one: it can hold what the buyer typed), cart rows and saved items, per-account
+  `notifications` rows and the wallet account row. Each owning module needs its own
+  forget-account call, added to the executor like `engagement.forgetAccount`.
+- **The blocker check outside the serializable unit.** The request's blocker read (orders, refunds,
+  wallet) is not part of the serializable insert: an order placed in between is caught by the
+  executor's two re-checks (before the claim and after every session is ended).
+- **Mojtaba L3, closed-once in code only.** A `cancelled` or `completed` row is never updated
+  again because every update names the status it moves from; no trigger or CHECK enforces it.
+- **Mojtaba L5, retention.** Deletion request rows are kept as the audit record of the erasure;
+  no retention period is set.
+- **No account lock after the sessions end.** `identity.endAllCustomerSessions` ends every session,
+  but the buyer can sign in again between it and the erase; the last blocker check and the erase
+  follow within one run, yet a sign-in plus an order in that gap is only caught by the next
+  retry. A real lock needs an identity account flag.
+- **Erase callers are not restricted by a boundaries allow-list.** `identity.eraseCustomerAccount`,
+  `endAllCustomerSessions` and `customerAccountExists` are `system` use cases reachable from any
+  module that holds the identity facade; only `customers` should call them, and no `pnpm
+  boundaries` rule enforces it yet.
+- **Claim hand-back.** A request that was already `executing` when a run took it (a resumed stale
+  claim) is handed back to `pending` only after `identity.customerAccountExists` says the account
+  is still there; if it is already erased the run finishes the remaining steps with a warn log
+  (ids only), and if identity cannot answer the request stays `executing` for a retry. `complete`
+  matches the run's own `claimed_at`, as `release` does. `identity.endAllCustomerSessions` writes
+  `identity.account.sessions-ended-for-erasure` (account id, request id, count).
+- **No returns or disputes module**: only open orders and pending refunds are blockers.
+- **Market without wallet settings** fails closed (503) because the wallet cannot answer.
+
+### What packages 5c will do
+
+- **5b, buyer flow.** Built (above).
 - **5c, admin manual deletion.** An admin deletes a buyer's account with a ticket reference, a
   reason and an OTP, under a new `buyers.account.delete` permission, with the same blockers and
   the same waiting period.

@@ -634,6 +634,37 @@
     }
   },
   {
+    "action": "customers.account-deletion.cancelled",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(customer|sign-in)"
+    }
+  },
+  {
+    "action": "customers.account-deletion.completed",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
+    "action": "customers.account-deletion.requested",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "scheduledFor": "instant",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",
@@ -689,6 +720,16 @@
     }
   },
   {
+    "action": "identity.account.erased",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "requestId": "id"
+    }
+  },
+  {
     "action": "identity.account.other-sessions-signed-out",
     "targetType": "identity.account",
     "targetId": "id",
@@ -696,6 +737,17 @@
     "before": null,
     "after": {
       "keptSessionId": "id",
+      "revokedSessions": "integer"
+    }
+  },
+  {
+    "action": "identity.account.sessions-ended-for-erasure",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "requestId": "id",
       "revokedSessions": "integer"
     }
   },

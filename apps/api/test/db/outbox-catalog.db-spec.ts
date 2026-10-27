@@ -103,6 +103,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_certifications_market_id_pending_idx ON certification.seller_certifications USING btree (market_id, status_changed_at, id) WHERE (pending_submission_id IS NOT NULL)',
   'certification.seller_certifications_market_id_seller_id_type_id_open_key':
     "CREATE UNIQUE INDEX seller_certifications_market_id_seller_id_type_id_open_key ON certification.seller_certifications USING btree (market_id, seller_id, type_id) WHERE (status <> ALL (ARRAY['declined'::text, 'revoked'::text]))",
+  // Customers (package 5b): one open (pending or executing) deletion request per account, and the
+  // executor's due query (pending, by date) and stale-claim query (executing, by claim time).
+  'customers.account_deletion_requests_one_open_idx':
+    "CREATE UNIQUE INDEX account_deletion_requests_one_open_idx ON customers.account_deletion_requests USING btree (market_id, account_id) WHERE (status = ANY (ARRAY['pending'::text, 'executing'::text]))",
+  'customers.account_deletion_requests_market_id_scheduled_for_pending_idx':
+    "CREATE INDEX account_deletion_requests_market_id_scheduled_for_pending_idx ON customers.account_deletion_requests USING btree (market_id, scheduled_for, id) WHERE (status = 'pending'::text)",
+  'customers.account_deletion_requests_market_id_claimed_at_executing_idx':
+    "CREATE INDEX account_deletion_requests_market_id_claimed_at_executing_idx ON customers.account_deletion_requests USING btree (market_id, claimed_at, id) WHERE (status = 'executing'::text)",
   'commission_payouts.payout_holds_active_seller_idx':
     'CREATE INDEX payout_holds_active_seller_idx ON commission_payouts.payout_holds USING btree (market_id, seller_id) WHERE (released_at IS NULL)',
   'commission_payouts.payout_holds_system_source_key':

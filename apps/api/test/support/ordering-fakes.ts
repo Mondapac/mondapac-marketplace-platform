@@ -119,6 +119,15 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
+  countOpenOf(_m: MarketContext, accountId: Id<'Account'>) {
+    const openOrders = [...this.rows.values()].filter(
+      (o) =>
+        o.accountId === accountId &&
+        (o.status === 'pending-payment' ||
+          (o.status === 'confirmed' && o.sellerOrders.some((s) => s.fulfilment !== 'delivered'))),
+    ).length;
+    return Promise.resolve({ openOrders, pendingRefunds: 0 });
+  }
   private newestFirst(rows: OrderState[], page: OrderPage) {
     return rows
       .sort(
