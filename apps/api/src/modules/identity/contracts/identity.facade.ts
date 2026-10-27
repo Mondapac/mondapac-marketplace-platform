@@ -158,6 +158,15 @@ export interface IdentityFacade {
   ): Promise<Result<string | null, AccessDenied>>;
 
   /**
+   * The caller's own sign-in address when the caller is the Seller Owner of an approved seller,
+   * its account active and its email verified; otherwise `null` (payments: Stripe requires a
+   * contact email to create the payout account). Rule `own-resources`; the account is the
+   * session's, never input. Personal data: sent to Stripe once, never logged, stored or put in an
+   * event.
+   */
+  ownOwnerEmail(context: CallContext): Promise<Result<string | null, AccessDenied>>;
+
+  /**
    * Whether `accountId` names an active customer account of `context.market`, for an admin flow
    * that writes to a customer's records (the wallet's admin credit, review S1). Ids only. An
    * unknown id, another population's (seller, admin), another Market's and a disabled account

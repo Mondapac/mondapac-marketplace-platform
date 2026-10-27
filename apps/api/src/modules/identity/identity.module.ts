@@ -149,6 +149,7 @@ import { DescribeActor } from './application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from './application/use-cases/describe-seller-status.use-case';
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
+import { OwnOwnerEmail } from './application/use-cases/own-owner-email.use-case';
 import { CustomerAccountOf } from './application/use-cases/customer-account-of.use-case';
 import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
 import { CustomerShortNames } from './application/use-cases/customer-short-names.use-case';
@@ -838,6 +839,12 @@ function useCaseProvider<D, U>(
       policy: true,
     }),
     useCaseProvider(ContactEmailOf, {
+      unitOfWork: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
+    }),
+    useCaseProvider(OwnOwnerEmail, {
       unitOfWork: true,
       accounts: true,
       memberships: true,
@@ -1677,6 +1684,7 @@ function useCaseProvider<D, U>(
         TeamMembershipOf,
         ConfirmSellerSecondFactor,
         ContactEmailOf,
+        OwnOwnerEmail,
         RequireStepUp,
         CustomerAccountOf,
         CustomerAccountSummaries,
@@ -1689,6 +1697,7 @@ function useCaseProvider<D, U>(
         teamMembershipOf: TeamMembershipOf,
         confirmSellerSecondFactor: ConfirmSellerSecondFactor,
         contactEmailOf: ContactEmailOf,
+        ownOwnerEmail: OwnOwnerEmail,
         requireStepUp: RequireStepUp,
         customerAccountOf: CustomerAccountOf,
         customerAccountSummaries: CustomerAccountSummaries,
@@ -1701,6 +1710,7 @@ function useCaseProvider<D, U>(
           teamMembershipOf,
           confirmSellerSecondFactor,
           contactEmailOf,
+          ownOwnerEmail,
           requireStepUp,
           customerAccountOf,
           customerAccountSummaries,

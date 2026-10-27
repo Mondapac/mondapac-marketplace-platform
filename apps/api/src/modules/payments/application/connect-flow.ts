@@ -223,11 +223,16 @@ export async function openPayoutAccountLink(
     if (deps.clock.now().since(record.createdAt).total('hours') >= CREATE_KEY_HOURS) {
       return err({ code: 'payments.unavailable' });
     }
+    // Stripe requires a contact email for the recipient configuration: the Seller Owner's own
+    // verified address, sent to Stripe once and never logged or stored here.
+    const contact = await deps.identity.ownOwnerEmail(context);
+    if (!contact.ok || contact.value === null) return err({ code: 'payments.unavailable' });
     const created = await deps.connect.createAccount({
       idempotencyKey: creationKey(market.marketId, sellerId),
       country,
       marketId: market.marketId,
       sellerId,
+      contactEmail: contact.value,
     });
     if (!created.ok) return err({ code: 'payments.unavailable' });
     const linked = await deps.unitOfWork.run<string | null, PayoutAccountFailure>(
