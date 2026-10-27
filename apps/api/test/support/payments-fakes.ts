@@ -469,6 +469,7 @@ export class FakeConnectGateway implements ConnectGateway {
     country: string;
     marketId: string;
     sellerId: string;
+    contactEmail: string;
   }) {
     this.creates.push({ ...request });
     return Promise.resolve(this.createAnswer);
@@ -535,14 +536,17 @@ export class RecordingPaymentsAudit implements AuditWriter {
 
 /**
  * The identity facade as payments uses it: whether the signed-in seller has two-step sign-in on,
- * and a code check that accepts one code (the `valid` field) and answers the configured refusal
- * otherwise. `checks` records the codes presented, in order.
+ * a code check that accepts one code (the `valid` field) and answers the configured refusal
+ * otherwise, and the Seller Owner's own address (`ownerEmail`, null for none). `checks` records
+ * the codes presented, in order.
  */
 export class FakeIdentityFacade implements Pick<
   IdentityFacade,
-  'describeActor' | 'confirmSecondFactor'
+  'describeActor' | 'confirmSecondFactor' | 'ownOwnerEmail'
 > {
   secondFactorActive = true;
+  ownerEmail: string | null = 'owner@seller.example';
+  ownerEmailDenied = false;
   valid = '123456';
   failure: ConfirmSecondFactorFailure | null = null;
   readonly checks: string[] = [];
@@ -561,6 +565,10 @@ export class FakeIdentityFacade implements Pick<
         secondFactorActive: this.secondFactorActive,
       }),
     );
+  }
+  ownOwnerEmail() {
+    if (this.ownerEmailDenied) return Promise.resolve(err({ code: 'access.denied' as const }));
+    return Promise.resolve(ok(this.ownerEmail));
   }
   confirmSecondFactor(_context: CallContext, code: string) {
     this.checks.push(code);

@@ -29,6 +29,7 @@ describe('loadAppConfig', () => {
       mailCatcherUrl: null,
       objectStoreDir: null,
       stripeSecretKey: null,
+      stripePaymentMethodConfiguration: null,
       stripeWebhookSecrets: {},
       stripeConnectWebhookSecrets: {},
       clientAddressTrust: null,
@@ -286,6 +287,19 @@ describe('loadAppConfig', () => {
       );
     },
   );
+
+  it('takes a Stripe payment method configuration id and refuses anything else', () => {
+    const id = 'pmc_1UR7zDD18uuXstC3BTXOaZWh';
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_PAYMENT_METHOD_CONFIGURATION: id })
+        .stripePaymentMethodConfiguration,
+    ).toBe(id);
+    for (const value of ['card', 'pm_1UR7zDD18uuXstC3', 'pmc_', 'pmc_short']) {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_PAYMENT_METHOD_CONFIGURATION: value }),
+      ).toThrow(/STRIPE_PAYMENT_METHOD_CONFIGURATION/);
+    }
+  });
 
   it('takes a Stripe test-mode key and refuses a live one without echoing it', () => {
     const test = 'sk_test_abcdefgh12345678';

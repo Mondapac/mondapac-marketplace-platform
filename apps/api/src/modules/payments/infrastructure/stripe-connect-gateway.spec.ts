@@ -1,4 +1,8 @@
-import { StripeConnectGateway, type StripeRequest } from './stripe-connect-gateway';
+import {
+  STRIPE_V2_VERSION,
+  StripeConnectGateway,
+  type StripeRequest,
+} from './stripe-connect-gateway';
 
 // The Connect gateway against a fake `fetch`: the exact requests (form body, idempotency key only
 // on the create call, the secret only in Authorization), the narrowing of Stripe's account and
@@ -31,11 +35,11 @@ const ACCOUNT = {
 };
 
 describe('StripeConnectGateway', () => {
-  it('creates an Express account with the transfers capability and the idempotency key', async () => {
+  it('creates an Accounts v2 recipient account (Express Dashboard) with the idempotency key', async () => {
     const calls: { url: string; init: Parameters<StripeRequest>[1] }[] = [];
     const gateway = new StripeConnectGateway(KEY, (url, init) => {
       calls.push({ url, init });
-      return answer(200, { id: 'acct_test_a1', object: 'account' })();
+      return answer(200, { id: 'acct_test_a1', object: 'v2.core.account' })();
     });
 
     const created = await gateway.createAccount({
@@ -43,26 +47,69 @@ describe('StripeConnectGateway', () => {
       country: 'AU',
       marketId: 'AU',
       sellerId: 'seller-1',
+      contactEmail: 'owner@seller.example',
     });
 
     expect(created).toEqual({ ok: true, value: { accountRef: 'acct_test_a1' } });
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe('https://api.stripe.com/v1/accounts');
+    expect(calls[0]?.url).toBe('https://api.stripe.com/v2/core/accounts');
     expect(calls[0]?.init.method).toBe('POST');
     expect(calls[0]?.init.headers).toEqual({
       Authorization: `Bearer ${KEY}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/json',
+      'Stripe-Version': STRIPE_V2_VERSION,
       'Idempotency-Key': 'connected-account:AU:seller-1',
     });
-    const form = new URLSearchParams(calls[0]?.init.body);
-    expect(Object.fromEntries(form)).toEqual({
-      type: 'express',
-      country: 'AU',
-      'capabilities[transfers][requested]': 'true',
-      'metadata[market_id]': 'AU',
-      'metadata[seller_id]': 'seller-1',
+    expect(JSON.parse(calls[0]?.init.body ?? '')).toEqual({
+      contact_email: 'owner@seller.example',
+      dashboard: 'express',
+      identity: { country: 'AU' },
+      defaults: {
+        responsibilities: { fees_collector: 'application', losses_collector: 'application' },
+      },
+      configuration: {
+        recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } },
+      },
+      metadata: { market_id: 'AU', seller_id: 'seller-1' },
     });
     expect(calls[0]?.init.body).not.toContain(KEY);
+  });
+
+  it('creates the account for another Market with its own country and metadata', async () => {
+    const calls: string[] = [];
+    const gateway = new StripeConnectGateway(KEY, (_url, init) => {
+      calls.push(init.body ?? '');
+      return answer(200, { id: 'acct_test_z9', object: 'v2.core.account' })();
+    });
+    await gateway.createAccount({
+      idempotencyKey: 'connected-account:ZZ:seller-2',
+      country: 'JP',
+      marketId: 'ZZ',
+      sellerId: 'seller-2',
+      contactEmail: 'owner@zz.example',
+    });
+    expect(JSON.parse(calls[0] ?? '')).toMatchObject({
+      identity: { country: 'JP' },
+      metadata: { market_id: 'ZZ', seller_id: 'seller-2' },
+    });
+  });
+
+  it('answers a code, not Stripe text, when the v2 create fails or answers no account id', async () => {
+    const request = {
+      idempotencyKey: 'k',
+      country: 'AU',
+      marketId: 'AU',
+      sellerId: 's',
+      contactEmail: 'owner@seller.example',
+    };
+    expect(
+      await new StripeConnectGateway(KEY, answer(400, { error: { message: 'x' } })).createAccount(
+        request,
+      ),
+    ).toEqual({ ok: false, error: { code: 'payment.provider-rejected' } });
+    expect(
+      await new StripeConnectGateway(KEY, answer(200, { id: 'cus_1' })).createAccount(request),
+    ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
   });
 
   it('creates an onboarding or update link and returns the URL only', async () => {
@@ -114,7 +161,7 @@ describe('StripeConnectGateway', () => {
     });
   });
 
-  it('sets the payout schedule with the idempotency key and nothing else in the form', async () => {
+  it('sets the payout schedule through Balance Settings as the connected account, with the idempotency key', async () => {
     const calls: { url: string; init: Parameters<StripeRequest>[1] }[] = [];
     const gateway = new StripeConnectGateway(KEY, (url, init) => {
       calls.push({ url, init });
@@ -125,11 +172,16 @@ describe('StripeConnectGateway', () => {
       ok: true,
       value: undefined,
     });
-    expect(calls[0]?.url).toBe('https://api.stripe.com/v1/accounts/acct_test_a1');
+    expect(calls[0]?.url).toBe('https://api.stripe.com/v1/balance_settings');
     expect(calls[0]?.init.method).toBe('POST');
-    expect(calls[0]?.init.headers['Idempotency-Key']).toBe('payout-pause:c1');
+    expect(calls[0]?.init.headers).toEqual({
+      Authorization: `Bearer ${KEY}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Idempotency-Key': 'payout-pause:c1',
+      'Stripe-Account': 'acct_test_a1',
+    });
     expect(Object.fromEntries(new URLSearchParams(calls[0]?.init.body))).toEqual({
-      'settings[payouts][schedule][interval]': 'manual',
+      'payments[payouts][schedule][interval]': 'manual',
     });
 
     expect(

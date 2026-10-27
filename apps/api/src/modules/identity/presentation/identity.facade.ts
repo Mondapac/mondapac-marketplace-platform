@@ -3,6 +3,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
+import type { OwnOwnerEmail } from '../application/use-cases/own-owner-email.use-case';
 import type { CustomerAccountOf } from '../application/use-cases/customer-account-of.use-case';
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
@@ -38,6 +39,7 @@ export interface IdentityFacadeUseCases {
   readonly teamMembershipOf: TeamMembershipOf;
   readonly confirmSellerSecondFactor: ConfirmSellerSecondFactor;
   readonly contactEmailOf: ContactEmailOf;
+  readonly ownOwnerEmail: OwnOwnerEmail;
   readonly requireStepUp: RequireStepUp;
   readonly customerAccountOf: CustomerAccountOf;
   readonly customerAccountSummaries: CustomerAccountSummaries;
@@ -101,6 +103,10 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     target: ContactEmailTarget,
   ): Promise<Result<string | null, AccessDenied>> {
     return this.useCases.contactEmailOf.execute(context, target);
+  }
+
+  ownOwnerEmail(context: CallContext): Promise<Result<string | null, AccessDenied>> {
+    return this.useCases.ownOwnerEmail.execute(context, {});
   }
 
   async requireStepUp(
