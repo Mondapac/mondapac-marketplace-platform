@@ -3,7 +3,7 @@
 import { ActionRow, Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
-import { callApi } from '../api/client.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { commissionProblemOf } from './errors.ts';
 import { bpsOf, MAX_RATE_BPS, percentInput, percentOf, type CommissionRate } from './types.ts';
 
@@ -27,6 +27,8 @@ export function CommissionRateCard({
   const [saved, setSaved] = useState<'saved' | 'reset' | null>(null);
   const [confirming, setConfirming] = useState(false);
   const busy = useRef(false);
+  // Setting or removing the rate needs a fresh two-step code: the shared dialog asks for it.
+  const guarded = useGuardedCall();
   const path = `commission-payouts/admin/sellers/${rate.sellerId}/commission-rate`;
 
   function adopt(next: CommissionRate) {
@@ -52,13 +54,13 @@ export function CommissionRateCard({
     setInvalid(false);
     busy.current = true;
     setPending('save');
-    const result = await callApi<CommissionRate>('PUT', path, { rateBps: bps }, csrfToken);
+    const result = await guarded<CommissionRate>('PUT', path, { rateBps: bps }, csrfToken);
     busy.current = false;
     setPending(null);
     if (result.ok) {
       adopt(result.body);
       setSaved('saved');
-    } else fail(result.failure);
+    } else if (!isStepUpCancelled(result)) fail(result.failure);
   }
 
   async function reset() {
@@ -68,15 +70,17 @@ export function CommissionRateCard({
     setSaved(null);
     setProblem(null);
     setInvalid(false);
-    const result = await callApi<CommissionRate>('DELETE', path, undefined, csrfToken);
+    // The confirm closes first, so the code dialog never opens on top of it.
+    setConfirming(false);
+    const result = await guarded<CommissionRate>('DELETE', path, undefined, csrfToken);
     busy.current = false;
     setPending(null);
-    setConfirming(false);
     if (result.ok) {
       adopt(result.body);
       setSaved('reset');
       return;
     }
+    if (isStepUpCancelled(result)) return;
     // "Not set" means the seller is already on the Market rate: show that, with the words.
     if (result.failure.code === 'commission-payouts.rate-not-set') {
       adopt({ ...rate, rateBps: rate.marketRateBps, source: 'market' });

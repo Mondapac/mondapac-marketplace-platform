@@ -1,6 +1,8 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useMemo, type ReactNode } from 'react';
 import { formatDate } from '../format/date.ts';
 import { Icon, categoryIcon } from '../icons/icon.tsx';
@@ -45,16 +47,45 @@ export function AccountArea({
   return <AccountProvider source={effective}>{children}</AccountProvider>;
 }
 
-/** An account page: its h1 and a single column of cards, full width of the content area. */
+/** Where the phone and tablet back link of an account page goes; the overview has none. */
+export function backTarget(path: string): AccountBack | null {
+  // An order's page has its own back link to Orders.
+  if (/^\/account\/orders\/[^/]+/.test(path)) return null;
+  if (/^\/account\/(orders|addresses|lists|settings)(\/|$)/.test(path))
+    return { href: '/account', key: 'account' };
+  return null;
+}
+
+export interface AccountBack {
+  readonly href: string;
+  readonly key: 'account';
+}
+
+/**
+ * An account page: its h1 and a single column of cards, full width of the content area. Below
+ * 900px a back link sits above the h1 (CSS hides it at 900px and wider): `back` overrides the
+ * target taken from the address, null leaves it out.
+ */
 export function AccountFrame({
   title,
+  back,
   children,
 }: {
   readonly title: string;
+  readonly back?: AccountBack | null;
   readonly children: ReactNode;
 }) {
+  const t = useTranslations('account.back');
+  const path = usePathname();
+  const target = back === undefined ? backTarget(path) : back;
   return (
     <div className="ac">
+      {target ? (
+        <Link className="ac-back" href={target.href} aria-label={t('aria', { to: t(target.key) })}>
+          <Icon name="chevl" />
+          {t(target.key)}
+        </Link>
+      ) : null}
       <h1>{title}</h1>
       <div className="ac-main">{children}</div>
     </div>
