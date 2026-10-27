@@ -12,6 +12,7 @@ import type {
 import { promoExpiry } from '../domain/expiry';
 import { allocate } from '../domain/lots';
 import { refusalFor, type WalletOperation } from '../domain/wallet-status';
+import type { WalletSettings } from './ports/wallet-policy';
 import type { WalletDependencies } from './wallet-dependencies';
 import type {
   BalanceRecord,
@@ -46,7 +47,7 @@ export const invalid = (fields: readonly Problem[]): WalletFailure => ({
 });
 
 /** A positive amount in the Market currency, within the range of the column. */
-function amountProblem(value: Money | undefined, currency: string): boolean {
+export function amountProblem(value: Money | undefined, currency: string): boolean {
   return (
     typeof value?.amount !== 'bigint' ||
     value.amount <= 0n ||
@@ -105,7 +106,7 @@ async function replayOf<T>(
  * the SQLSTATE, read from the two documented places only (`meta.modelName` and
  * `meta.driverAdapterError.cause.originalCode`). Never decided from message text.
  */
-function databaseErrorOf(error: unknown): { model?: string; sqlState?: string } {
+export function databaseErrorOf(error: unknown): { model?: string; sqlState?: string } {
   if (typeof error !== 'object' || error === null) return {};
   const meta = (error as { meta?: unknown }).meta;
   if (typeof meta !== 'object' || meta === null) return {};
@@ -127,9 +128,9 @@ const isKeyConflict = (error: unknown): boolean => {
 };
 
 /** The status fence (`restrict_violation`, 23001) refused the insert of a journal. */
-const isStatusFence = (error: unknown): boolean => {
-  const { model, sqlState } = databaseErrorOf(error);
-  return model === 'WalletJournal' && sqlState === '23001';
+export const isStatusFence = (error: unknown, model = 'WalletJournal'): boolean => {
+  const found = databaseErrorOf(error);
+  return found.model === model && found.sqlState === '23001';
 };
 
 /**
@@ -179,12 +180,130 @@ async function internalIds(
   });
 }
 
-const accountGate = (wallet: WalletAccountRecord, currency: string): WalletFailure | null =>
+export const accountGate = (wallet: WalletAccountRecord, currency: string): WalletFailure | null =>
   wallet.currency !== currency
     ? { code: 'wallet.unavailable' }
     : wallet.status === 'active'
       ? null
       : { code: 'wallet.account-not-active' };
+
+/** What a grant writes, once validated: the same for the facade and for admin issuance. */
+export interface GrantPlan {
+  readonly customer: Id<'Account'>;
+  readonly source: 'promo' | 'refund';
+  readonly amount: bigint;
+  readonly reasonCode: string;
+  readonly orderId: Id<'Order'> | null;
+  readonly idempotencyKey: string;
+  readonly fingerprint: string;
+  readonly now: Temporal.Instant;
+  readonly policy: WalletSettings;
+}
+
+/** The first answer of a grant, rebuilt from its journal's stored result. */
+const grantDecoder =
+  (currency: string) =>
+  (r: Readonly<Record<string, string>>): GrantCreditResult => ({
+    journalId: r.journalId as Id<'WalletJournal'>,
+    lotId: r.lotId as Id<'WalletLot'>,
+    balance: {
+      available: money(BigInt(r.availableMinor!), currency),
+      held: money(BigInt(r.heldMinor!), currency),
+    },
+  });
+
+/**
+ * The grant inside the caller's open unit: the wallet's balance lock, the replay of a known key,
+ * the switch, the customer wallet's state and the Market's balance cap, then one journal, one lot
+ * and the new balance. `beforeWrite` runs after every check and before the first ledger row (the
+ * admin flows spend their step-up proof there); its refusal ends the grant, and the caller's unit
+ * then commits nothing.
+ */
+export async function grantInUnit<F = never>(
+  deps: WalletDependencies,
+  context: CallContext,
+  plan: GrantPlan,
+  beforeWrite?: () => Promise<F | null>,
+): Promise<Result<GrantCreditResult, WalletFailure | F>> {
+  const { customer, amount, policy, now } = plan;
+  const decode = grantDecoder(policy.currency);
+  let wallet = await deps.wallet.findWallet(context.market, customer);
+  let balance: BalanceRecord | null = null;
+  if (wallet !== null) balance = await deps.wallet.lockBalance(context.market, wallet.id);
+  // The key is unique in the Market, so it is looked up even where this customer has no wallet.
+  // A retry with a known key gets its first answer whatever the switch says now: the journal is
+  // looked up, under the balance lock, before the gate. Only new work meets the gate.
+  const replay = await replayOf(deps, context, plan.idempotencyKey, plan.fingerprint, decode);
+  if (replay !== null) return replay;
+  const closed = await gate(deps, context, 'grant');
+  if (closed !== null) return err(closed);
+  if (wallet === null || balance === null) {
+    wallet = await deps.wallet.ensureWallet(context.market, {
+      newAccountId: deps.ids.next<'WalletAccount'>(),
+      customerAccountId: customer,
+      currency: policy.currency,
+      now,
+    });
+    balance = await deps.wallet.lockBalance(context.market, wallet.id);
+    // A parallel request with the same key may have created the wallet and finished first.
+    const raced = await replayOf(deps, context, plan.idempotencyKey, plan.fingerprint, decode);
+    if (raced !== null) return raced;
+  }
+  const notActive = accountGate(wallet, policy.currency);
+  if (notActive !== null) return err(notActive);
+  if (balance.availableMinor + balance.heldMinor + amount > policy.balanceCapMinor) {
+    return err({ code: 'wallet.cap-exceeded' });
+  }
+  if (beforeWrite !== undefined) {
+    const refused = await beforeWrite();
+    if (refused !== null) return err(refused);
+  }
+
+  const sourceKind = plan.source === 'promo' ? 'promo_expense' : 'refund_clearing';
+  const accounts = await internalIds(deps, context, [sourceKind], policy.currency, now);
+  const source = accounts.get(sourceKind)!;
+  const journalId = deps.ids.next<'WalletJournal'>();
+  const lotId = deps.ids.next<'WalletLot'>();
+  const next = { ...balance, availableMinor: balance.availableMinor + amount };
+  const kind: JournalKind = plan.source === 'promo' ? 'grant-promo' : 'grant-refund';
+  await deps.wallet.appendJournal(context.market, {
+    id: journalId,
+    kind,
+    holdId: null,
+    lotId: null,
+    idempotencyKey: plan.idempotencyKey,
+    fingerprint: plan.fingerprint,
+    actor: actorOf(context),
+    reasonCode: plan.reasonCode,
+    orderId: plan.orderId,
+    walletAccountId: wallet.id,
+    currency: policy.currency,
+    createdAt: now,
+    result: {
+      journalId,
+      lotId,
+      availableMinor: next.availableMinor.toString(),
+      heldMinor: next.heldMinor.toString(),
+    },
+    postings: [
+      { accountId: wallet.id, amountMinor: amount },
+      { accountId: source, amountMinor: -amount },
+    ],
+  });
+  await deps.wallet.createLot(context.market, {
+    id: lotId,
+    walletAccountId: wallet.id,
+    source: plan.source,
+    journalId,
+    amountMinor: amount,
+    currency: policy.currency,
+    expiresAt:
+      plan.source === 'promo' ? promoExpiry(now, policy.promoExpiryMonths, policy.timeZone) : null,
+    createdAt: now,
+  });
+  await deps.wallet.saveBalance(context.market, next, now);
+  return ok({ journalId, lotId, balance: balanceOfRecord(next, policy.currency) });
+}
 
 /** Grants store credit (a lot) to a customer wallet, within the Market cap. */
 export async function grantCredit(
@@ -221,100 +340,29 @@ export async function grantCredit(
     request.reasonCode,
     orderId ?? '',
   ].join('|');
-  const now = deps.clock.now();
-  // A retry with a known key gets its first answer whatever the switch says now: the journal
-  // is looked up, under the balance lock, before the gate. Only new work meets the gate.
-  const decode = (r: Readonly<Record<string, string>>): GrantCreditResult => ({
-    journalId: r.journalId as Id<'WalletJournal'>,
-    lotId: r.lotId as Id<'WalletLot'>,
-    balance: {
-      available: money(BigInt(r.availableMinor!), policy.currency),
-      held: money(BigInt(r.heldMinor!), policy.currency),
-    },
-  });
+  const plan: GrantPlan = {
+    customer,
+    source: request.source,
+    amount,
+    reasonCode: request.reasonCode,
+    orderId,
+    idempotencyKey: request.idempotencyKey,
+    fingerprint,
+    now: deps.clock.now(),
+    policy,
+  };
   const attempt = () =>
-    deps.unitOfWork.run<GrantCreditResult, WalletFailure>(context.market, async () => {
-      let wallet = await deps.wallet.findWallet(context.market, customer);
-      let balance: BalanceRecord | null = null;
-      if (wallet !== null) balance = await deps.wallet.lockBalance(context.market, wallet.id);
-      // The key is unique in the Market, so it is looked up even where this customer has no wallet.
-      const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
-      if (replay !== null) return replay;
-      const closed = await gate(deps, context, 'grant');
-      if (closed !== null) return err(closed);
-      if (wallet === null || balance === null) {
-        wallet = await deps.wallet.ensureWallet(context.market, {
-          newAccountId: deps.ids.next<'WalletAccount'>(),
-          customerAccountId: customer,
-          currency: policy.currency,
-          now,
-        });
-        balance = await deps.wallet.lockBalance(context.market, wallet.id);
-        // A parallel request with the same key may have created the wallet and finished first.
-        const raced = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
-        if (raced !== null) return raced;
-      }
-      const notActive = accountGate(wallet, policy.currency);
-      if (notActive !== null) return err(notActive);
-      if (balance.availableMinor + balance.heldMinor + amount > policy.balanceCapMinor) {
-        return err({ code: 'wallet.cap-exceeded' });
-      }
-
-      const accounts = await internalIds(
-        deps,
-        context,
-        [request.source === 'promo' ? 'promo_expense' : 'refund_clearing'],
-        policy.currency,
-        now,
-      );
-      const source = accounts.get(
-        request.source === 'promo' ? 'promo_expense' : 'refund_clearing',
-      )!;
-      const journalId = deps.ids.next<'WalletJournal'>();
-      const lotId = deps.ids.next<'WalletLot'>();
-      const next = { ...balance, availableMinor: balance.availableMinor + amount };
-      const kind: JournalKind = request.source === 'promo' ? 'grant-promo' : 'grant-refund';
-      await deps.wallet.appendJournal(context.market, {
-        id: journalId,
-        kind,
-        holdId: null,
-        lotId: null,
-        idempotencyKey: request.idempotencyKey,
-        fingerprint,
-        actor: actorOf(context),
-        reasonCode: request.reasonCode,
-        orderId,
-        walletAccountId: wallet.id,
-        currency: policy.currency,
-        createdAt: now,
-        result: {
-          journalId,
-          lotId,
-          availableMinor: next.availableMinor.toString(),
-          heldMinor: next.heldMinor.toString(),
-        },
-        postings: [
-          { accountId: wallet.id, amountMinor: amount },
-          { accountId: source, amountMinor: -amount },
-        ],
-      });
-      await deps.wallet.createLot(context.market, {
-        id: lotId,
-        walletAccountId: wallet.id,
-        source: request.source,
-        journalId,
-        amountMinor: amount,
-        currency: policy.currency,
-        expiresAt:
-          request.source === 'promo'
-            ? promoExpiry(now, policy.promoExpiryMonths, policy.timeZone)
-            : null,
-        createdAt: now,
-      });
-      await deps.wallet.saveBalance(context.market, next, now);
-      return ok({ journalId, lotId, balance: balanceOfRecord(next, policy.currency) });
-    });
-  return guarded(deps, context, request.idempotencyKey, fingerprint, decode, attempt);
+    deps.unitOfWork.run<GrantCreditResult, WalletFailure>(context.market, () =>
+      grantInUnit(deps, context, plan),
+    );
+  return guarded(
+    deps,
+    context,
+    request.idempotencyKey,
+    fingerprint,
+    grantDecoder(policy.currency),
+    attempt,
+  );
 }
 
 /** Sets `amount` aside for an order, taking the soonest-expiring lots first. */

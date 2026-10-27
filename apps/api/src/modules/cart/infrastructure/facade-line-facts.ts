@@ -1,5 +1,6 @@
 import type { CallContext, Id, Money } from '@mondapac/shared-kernel';
-import type { CatalogFacade, OfferSellUnits } from '../../catalog';
+import type { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { sellUnitKey, type CatalogFacade, type OfferSellUnits } from '../../catalog';
 import type { InventoryFacade } from '../../inventory';
 import type { PricingFacade } from '../../pricing';
 import type { SellersFacade } from '../../sellers';
@@ -7,6 +8,7 @@ import type { ShippingFacade } from '../../shipping';
 import type { SellerMinimum } from '../domain/cart-evaluator';
 import {
   verdictKey,
+  type LineDisplay,
   type LineFactsSource,
   type LineVerdict,
   type SellUnitRef,
@@ -47,6 +49,7 @@ export class FacadeLineFacts implements LineFactsSource {
     private readonly pricing: PricingFacade,
     private readonly inventory: InventoryFacade,
     private readonly shipping: ShippingFacade,
+    private readonly markets: MarketRegistry,
   ) {}
 
   async evaluate(
@@ -233,6 +236,61 @@ export class FacadeLineFacts implements LineFactsSource {
       }
     }
     return minimums;
+  }
+
+  async lineDisplays(
+    context: CallContext,
+    refs: readonly SellUnitRef[],
+  ): Promise<ReadonlyMap<string, LineDisplay>> {
+    const displays = new Map<string, LineDisplay>();
+    if (refs.length === 0) return displays;
+    const locale = this.markets.get(context.market.marketId).defaultLocale;
+    const keys = [...new Map(refs.map((ref) => [verdictKey(ref), ref] as const)).values()].map(
+      (ref) => ({ offerId: ref.offerId, variantId: ref.variantId }),
+    );
+    const answers = await Promise.all(
+      chunks(keys, 200).map((part) =>
+        this.safe(() => this.catalog.offerListings(context, part, locale)),
+      ),
+    );
+    const listings = new Map<string, LineDisplay>();
+    for (const answer of answers) {
+      if (answer === null || !answer.ok) continue;
+      for (const [key, listing] of answer.value) {
+        listings.set(key, {
+          productId: listing.productId,
+          productName: listing.productName,
+          variantLabel: listing.variantLabel,
+          imageId: listing.primaryImageId,
+        });
+      }
+    }
+    for (const key of keys) {
+      const listing = listings.get(sellUnitKey(key));
+      if (listing !== undefined) displays.set(verdictKey(key), listing);
+    }
+    return displays;
+  }
+
+  async sellerNames(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>> {
+    const names = new Map<Id<'Seller'>, string>();
+    const answers = await Promise.all(
+      chunks([...new Set(sellerIds)], BATCH).map((ids) =>
+        this.safe(() => this.sellers.sellerSummaries(context, ids)),
+      ),
+    );
+    for (const answer of answers) {
+      if (answer === null || !answer.ok) continue;
+      for (const summary of answer.value) {
+        if (summary.exists && summary.storeName !== null) {
+          names.set(summary.sellerId, summary.storeName);
+        }
+      }
+    }
+    return names;
   }
 
   async sellerDeliveryFees(

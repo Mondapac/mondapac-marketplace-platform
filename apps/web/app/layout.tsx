@@ -14,6 +14,8 @@ import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
 import { scriptFontHref } from '../src/i18n/fonts.ts';
 import { directionOf, languageTag } from '../src/i18n/locale.ts';
 import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
+import { RegisterServiceWorker } from '../src/pwa/register-service-worker.tsx';
+import { ICONS, THEME_COLOR } from '../src/pwa/pwa-config.ts';
 import { titleTemplate } from '../src/seo/defaults.ts';
 import { indexingOn } from '../src/seo/indexing.ts';
 import { StoreShell } from '../src/shell/store-shell.tsx';
@@ -35,11 +37,21 @@ export async function generateMetadata(): Promise<Metadata> {
     // A page that sets a plain title gets the store suffix; the pages' own helper sets it whole.
     title: { default: t('title'), template: titleTemplate(t('title')) },
     description: t('description'),
+    // iOS home-screen install (the manifest covers the other browsers).
+    appleWebApp: { capable: true, title: t('title'), statusBarStyle: 'default' },
+    // Next emits only the unprefixed mobile-web-app-capable; older iOS reads the apple- one.
+    other: { 'apple-mobile-web-app-capable': 'yes' },
+    icons: { apple: [{ url: ICONS.apple, sizes: '180x180', type: 'image/png' }] },
     ...(indexingOn() ? {} : { robots: { index: false, follow: false } }),
   };
 }
 
-export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: THEME_COLOR,
+};
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const [messages, locale, jar, content, cartSource, checkout, assistant, locator] =
@@ -89,6 +101,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             {children}
           </StoreShell>
         </NextIntlClientProvider>
+        <RegisterServiceWorker />
       </body>
     </html>
   );

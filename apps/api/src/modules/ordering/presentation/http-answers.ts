@@ -15,6 +15,7 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.outside-delivery-area': 422,
   'ordering.cart-empty': 422,
   'ordering.delivery-method-unavailable': 422,
+  'ordering.pickup-unavailable': 422,
   'ordering.cart-not-purchasable': 422,
   'ordering.stock-insufficient': 409,
   'ordering.cart-not-ready': 409,
@@ -24,6 +25,8 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.shipping-unavailable': 503,
   'ordering.seller-order-not-found': 404,
   'ordering.fulfilment-conflict': 409,
+  'ordering.pickup-code-invalid': 422,
+  'ordering.pickup-code-locked': 423,
   'ordering.payment-unavailable': 503,
   'ordering.refund-disabled': 409,
   'ordering.refund-not-allowed': 409,
@@ -69,7 +72,14 @@ export const moneyBody = (value: Money) => ({
   currency: value.currency,
 });
 
-const DETAILS = ['fields', 'lineIndexes', 'lines', 'sellers', 'methodSellerIds'] as const;
+const DETAILS = [
+  'fields',
+  'lineIndexes',
+  'lines',
+  'sellers',
+  'methodSellerIds',
+  'attemptsLeft',
+] as const;
 
 /** The sellers of `ordering.cart-not-ready`: the public minimum leaves as a money body. */
 const sellersBody = (sellers: unknown) =>

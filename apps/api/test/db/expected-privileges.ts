@@ -476,6 +476,30 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 6b: the inbox is appended to; a seller's payout terms override is set, changed and
+    // removed (back to the Market's terms); an eligibility anchor is written once (a trigger
+    // refuses UPDATE and DELETE); a payout hold is inserted and released (a trigger allows only the
+    // three release columns, once, and refuses DELETE).
+    'commission_payouts.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.payout_terms_overrides': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'approval_mode',
+        'hold_days_carrier',
+        'hold_days_seller_click',
+        'local_minute',
+        'minimum_minor',
+        'schedule_weekdays',
+        'updated_at',
+        'updated_by',
+        'version',
+      ],
+    },
+    'commission_payouts.eligibility_anchors': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.payout_holds': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['release_reason', 'released_at', 'released_by'],
+    },
     // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
     // (triggers refuse more for every role); the rest change only the columns named and are never
     // deleted (a trigger refuses DELETE and TRUNCATE for every role).
@@ -493,6 +517,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
     },
+    // Admin credit (package 2a): a request is written once and decided once; a day row is
+    // written once and then only locked. Neither is ever deleted (a trigger refuses it).
+    'wallet.admin_credit_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_reason_code',
+        'journal_id',
+        'status',
+      ],
+    },
+    'wallet.admin_credit_days': { table: ['INSERT', 'SELECT'], columnUpdate: ['locked_at'] },
     // Reviews (buyer reviews and ratings, package 1): the moderation log and the signals are
     // insert-only (triggers refuse more for every role); the rest change only the columns named
     // and are never deleted (a trigger refuses DELETE and TRUNCATE for every role).
@@ -672,7 +709,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['carrier_status', 'progress', 'updated_at', 'version'],
     },
     'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Delivery models, package 3 (the fleet router): selection models are created and edited,
+    // never deleted; one active-model row per Market and method and one reliability score per
+    // fleet are written once and changed; a booking attempt is written, moved and removed.
+    'shipping.fleet_selection_models': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['kind', 'name', 'rule', 'updated_at', 'updated_by', 'version'],
+    },
+    'shipping.fleet_selection_assignments': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['model_id', 'updated_at', 'updated_by'],
+    },
+    'shipping.fleet_reliability': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['score', 'updated_at', 'updated_by'],
+    },
+    'shipping.fleet_booking_attempts': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['attempted_at', 'fleet'],
+    },
     'shipping.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // Delivery models, package 2: the pickup code of a seller order handed over in person. A code is
+    // created, counted against (failures, lock) and replaced; never deleted.
+    'ordering.pickup_codes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['code_hash', 'code_sealed', 'failed_attempts', 'issued_at', 'locked_at'],
+    },
     'ordering.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Phase 6 package 1: the order emails. Ordering writes `ordering.order-paid.v1` (the relay marks
     // it published); notifications records each event it handled, once per handler.
@@ -758,6 +820,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
+    'payments.disputes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'evidence_due_by',
+        'funds_reinstated',
+        'funds_reinstated_at',
+        'funds_withdrawn',
+        'funds_withdrawn_at',
+        'last_read_at',
+        'outcome',
+        'reason',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'payments.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],

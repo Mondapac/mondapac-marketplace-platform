@@ -10,6 +10,8 @@
 // the delivery's status after the change, which is all the marketplace reads. Pure: the signature
 // is checked on the raw bytes before this runs. Nothing else of the body is read.
 
+import type { FleetDeliveryStatus } from './fleet';
+
 /** The webhook types that carry a delivery status. */
 export const DRIVE_DELIVERY_EVENTS: readonly string[] = [
   'delivery.booked',
@@ -81,4 +83,33 @@ export function parseDriveWebhook(payload: Uint8Array): ParsedDriveWebhook {
       status: data.status,
     },
   };
+}
+
+/**
+ * Drive's delivery status as the common fleet status (the pure `toFleetStatus` of this adapter).
+ * An unknown word is null: it is taken as received and changes nothing.
+ */
+export function toFleetStatus(raw: string): FleetDeliveryStatus | null {
+  switch (raw) {
+    case 'SCHEDULED':
+    case 'DISPATCHING':
+      return 'pending';
+    case 'ASSIGNED':
+    case 'AT_PICKUP':
+      return 'assigned';
+    case 'PICKED_UP':
+    case 'AT_DROPOFF':
+      return 'picked_up';
+    case 'DELIVERED':
+      return 'delivered';
+    case 'DELIVERY_FAILED':
+      return 'failed';
+    case 'RETURNING':
+    case 'RETURNED':
+      return 'returned';
+    case 'CANCELLED':
+      return 'cancelled';
+    default:
+      return null;
+  }
 }

@@ -13,6 +13,11 @@ import type { CommissionPayoutsDependencies } from '../../src/modules/commission
 import { RecordRefund } from '../../src/modules/commission-payouts/application/use-cases/record-refund.use-case';
 import { RecordSellerOrderPaid } from '../../src/modules/commission-payouts/application/use-cases/record-seller-order-paid.use-case';
 import { totalsOf, type LedgerKind } from '../../src/modules/commission-payouts/domain/ledger';
+import { PayoutTermsResolver } from '../../src/modules/commission-payouts/application/payout-terms-resolver';
+import { ConfigPayoutTermsPolicy } from '../../src/modules/commission-payouts/infrastructure/config-payout-terms-policy';
+import { PrismaEligibilityAnchorRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-eligibility-anchor.repository';
+import { PrismaPayoutHoldRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-hold.repository';
+import { PrismaPayoutTermsRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-terms.repository';
 import { ConfigCommissionPolicy } from '../../src/modules/commission-payouts/infrastructure/config-commission-policy';
 import { PrismaLedgerRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-ledger.repository';
 import { PrismaSellerRateRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-seller-rate.repository';
@@ -25,6 +30,7 @@ import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit'
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
+import { PrismaPickupCodeRepository } from '../../src/modules/ordering/infrastructure/prisma-pickup-code.repository';
 import { PrismaRefundRepository } from '../../src/modules/ordering/infrastructure/prisma-refund.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -45,6 +51,7 @@ import {
   FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
+  FakePickupVault,
 } from '../support/ordering-fakes';
 import { AllowAllDeliveryMethods } from '../../src/modules/ordering/infrastructure/allow-all-delivery-methods';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
@@ -162,6 +169,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       clock,
       labels: new FakeLabels(),
       deliveryMethods: new AllowAllDeliveryMethods(),
+      pickupCodes: new PrismaPickupCodeRepository(db.service),
+      pickupVault: new FakePickupVault(),
     };
   });
 
@@ -950,11 +959,16 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
     beforeEach(() => {
       ledger = new PrismaLedgerRepository(db.service);
+      const termsOverrides = new PrismaPayoutTermsRepository(db.service);
       const ledgerDeps: CommissionPayoutsDependencies = {
         unitOfWork: db.unitOfWork,
         rates: new PrismaSellerRateRepository(db.service),
         ledger,
         policy: new ConfigCommissionPolicy(markets),
+        termsOverrides,
+        terms: new PayoutTermsResolver(new ConfigPayoutTermsPolicy(markets), termsOverrides),
+        anchors: new PrismaEligibilityAnchorRepository(db.service),
+        holds: new PrismaPayoutHoldRepository(db.service),
         sellers: { exists: () => Promise.resolve(true) },
         audit,
         ids,
@@ -968,6 +982,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
             new RecordSellerOrderPaid(gate, ledgerDeps).execute(context, paid),
           recordRefund: (context, facts) =>
             new RecordRefund(gate, ledgerDeps).execute(context, facts),
+          recordSellerOrderDelivered: () => Promise.reject(new Error('not used')),
         },
       };
     });

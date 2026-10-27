@@ -1,16 +1,19 @@
-import { err, ok } from '@mondapac/shared-kernel';
-import type { Clock, MarketContext, Money, Result } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { Clock, MarketContext, Result } from '@mondapac/shared-kernel';
 import type {
   CarrierBookingAnswer,
   CarrierBookingRequest,
   CarrierFailure,
   CarrierGateway,
+  CarrierQuote,
   CarrierQuoteRequest,
   CarrierStop,
 } from '../application/ports/carrier-gateway';
 import { addressLineOf } from '../domain/carrier-stop';
+import { toFleetStatus } from '../domain/drive-webhook-event';
+import type { FleetCapabilities, FleetDeliveryStatus } from '../domain/fleet';
 import type { ConfigCarrierPolicy } from './config-carrier-policy';
-import type { DriveEndpoint, DriveHttpClient } from './drive-http-client';
+import type { DriveCallFailure, DriveEndpoint, DriveHttpClient } from './drive-http-client';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const STATUS = /^[A-Z][A-Z_]{1,39}$/;
@@ -29,6 +32,27 @@ const QUOTE_CACHE_SIZE = 1000;
 const NOT_CONFIGURED: CarrierFailure = Object.freeze({ code: 'carrier.not-configured' as const });
 const UNAVAILABLE: CarrierFailure = Object.freeze({ code: 'carrier.unavailable' as const });
 const REFUSED: CarrierFailure = Object.freeze({ code: 'carrier.refused' as const });
+const NOT_SENT: CarrierFailure = Object.freeze({ code: 'carrier.not-sent' as const });
+const UNAUTHORIZED: CarrierFailure = Object.freeze({ code: 'carrier.unauthorized' as const });
+
+/** The adapter's pure mapping of Drive's status words to the common fleet status. */
+export { toFleetStatus };
+
+const failureOf = (error: DriveCallFailure): CarrierFailure =>
+  error === 'refused'
+    ? REFUSED
+    : error === 'unauthorized'
+      ? UNAUTHORIZED
+      : error === 'not-sent'
+        ? NOT_SENT
+        : UNAVAILABLE;
+
+/** Drive's parcel: size and temperature only (its schema rejects any other field). */
+const parcelBody = (parcel: CarrierBookingRequest['parcel']) => ({
+  weightGrams: parcel.weightGrams,
+  volumeLitres: parcel.volumeLitres,
+  temperature: parcel.temperature,
+});
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -42,13 +66,28 @@ const stopBody = (stop: CarrierStop) => ({
   ...(stop.notes === null ? {} : { notes: stop.notes }),
 });
 
-/** Drive's quote answer as its total; every other field (breakdown, distance, area) is dropped. */
-function totalOf(body: unknown): Money | null {
+/** Drive's quote answer as its total, estimate and expiry; every other field is dropped. */
+function quoteOf(body: unknown): CarrierQuote | null {
   if (!isObject(body) || !isObject(body.total)) return null;
   const { amount, currency } = body.total;
   if (typeof amount !== 'string' || !AMOUNT.test(amount)) return null;
   if (typeof currency !== 'string' || !CURRENCY.test(currency)) return null;
-  return { amount: BigInt(amount), currency };
+  const eta = body.etaMinutes;
+  const expires = typeof body.expiresAt === 'string' ? body.expiresAt : null;
+  let expiresAt: Temporal.Instant | null = null;
+  if (expires !== null) {
+    try {
+      expiresAt = Temporal.Instant.from(expires);
+    } catch {
+      expiresAt = null;
+    }
+  }
+  return {
+    price: { amount: BigInt(amount), currency },
+    etaMinutes:
+      typeof eta === 'number' && Number.isInteger(eta) && eta >= 0 && eta <= 10_080 ? eta : null,
+    expiresAt,
+  };
 }
 
 /**
@@ -61,7 +100,12 @@ function deliveryOf(body: unknown, externalReference: string | null): CarrierBoo
   if (typeof id !== 'string' || !UUID.test(id) || typeof status !== 'string') return null;
   if (!STATUS.test(status)) return null;
   if (externalReference !== null && body.externalReference !== externalReference) return null;
-  return { carrierReference: id, carrierStatus: status };
+  const link = typeof body.trackingUrl === 'string' ? body.trackingUrl : null;
+  return {
+    carrierReference: id,
+    carrierStatus: status,
+    trackingUrl: link !== null && /^https:\/\/[^\s]{1,500}$/u.test(link) ? link : null,
+  };
 }
 
 /**
@@ -73,7 +117,9 @@ function deliveryOf(body: unknown, externalReference: string | null): CarrierBoo
  * Stack's secrets.
  */
 export class MondapacDriveCarrier implements CarrierGateway {
-  readonly #quotes = new Map<string, { readonly at: number; readonly total: Money }>();
+  readonly #quotes = new Map<string, { readonly at: number; readonly quote: CarrierQuote }>();
+
+  readonly fleet = 'mondapac_drive' as const;
 
   constructor(
     private readonly policy: ConfigCarrierPolicy,
@@ -81,6 +127,10 @@ export class MondapacDriveCarrier implements CarrierGateway {
     private readonly http: DriveHttpClient,
     private readonly clock: Clock,
   ) {}
+
+  capabilities(market: MarketContext): FleetCapabilities | null {
+    return this.policy.driveCapabilities(market.marketId);
+  }
 
   async book(
     market: MarketContext,
@@ -95,7 +145,7 @@ export class MondapacDriveCarrier implements CarrierGateway {
         externalReference: request.externalReference,
         pickup: stopBody(request.pickup),
         dropoff: stopBody(request.dropoff),
-        parcel: request.parcel,
+        parcel: parcelBody(request.parcel),
         mode: request.mode,
         ...(request.window === null
           ? {}
@@ -108,7 +158,7 @@ export class MondapacDriveCarrier implements CarrierGateway {
       },
       'book',
     );
-    if (!answer.ok) return err(answer.error === 'refused' ? REFUSED : UNAVAILABLE);
+    if (!answer.ok) return err(failureOf(answer.error));
     const delivery = deliveryOf(answer.value.body, request.externalReference);
     return delivery === null ? err(UNAVAILABLE) : ok(delivery);
   }
@@ -116,31 +166,31 @@ export class MondapacDriveCarrier implements CarrierGateway {
   async quote(
     market: MarketContext,
     request: CarrierQuoteRequest,
-  ): Promise<Result<Money, CarrierFailure>> {
+  ): Promise<Result<CarrierQuote, CarrierFailure>> {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
     const body = {
       // Drive locates a stop from a point or an address; the postcode is given as both fields.
       pickup: { postcode: request.pickup.postcode, address: request.pickup.postcode },
       dropoff: { postcode: request.dropoff.postcode, address: request.dropoff.postcode },
-      parcel: request.parcel,
+      parcel: parcelBody(request.parcel),
       mode: request.mode,
     };
     const key = `${market.marketId}|${JSON.stringify(body)}`;
     const now = this.clock.now().epochMilliseconds;
     const cached = this.#quotes.get(key);
-    if (cached !== undefined && now - cached.at < QUOTE_CACHE_MS) return ok(cached.total);
+    if (cached !== undefined && now - cached.at < QUOTE_CACHE_MS) return ok(cached.quote);
     const answer = await this.http.post(target.endpoint, '/delivery/quotes', body, 'quote');
-    if (!answer.ok) return err(answer.error === 'refused' ? REFUSED : UNAVAILABLE);
-    const total = totalOf(answer.value.body);
-    if (total === null) return err(UNAVAILABLE);
+    if (!answer.ok) return err(failureOf(answer.error));
+    const quote = quoteOf(answer.value.body);
+    if (quote === null) return err(UNAVAILABLE);
     this.#quotes.delete(key);
     if (this.#quotes.size >= QUOTE_CACHE_SIZE) {
       // The oldest entry goes first: a Map iterates in insertion order.
       this.#quotes.delete(this.#quotes.keys().next().value!);
     }
-    this.#quotes.set(key, { at: now, total });
-    return ok(total);
+    this.#quotes.set(key, { at: now, quote });
+    return ok(quote);
   }
 
   async cancel(
@@ -156,11 +206,34 @@ export class MondapacDriveCarrier implements CarrierGateway {
       { reason: 'Cancelled by the marketplace' },
       'cancel',
     );
-    if (!answer.ok) return err(answer.error === 'refused' ? REFUSED : UNAVAILABLE);
+    if (!answer.ok) return err(failureOf(answer.error));
     const delivery = deliveryOf(answer.value.body, null);
     if (delivery === null || delivery.carrierReference !== carrierReference)
       return err(UNAVAILABLE);
     return ok({ carrierStatus: delivery.carrierStatus });
+  }
+
+  async status(
+    market: MarketContext,
+    carrierReference: string,
+  ): Promise<
+    Result<{ readonly status: FleetDeliveryStatus; readonly carrierStatus: string }, CarrierFailure>
+  > {
+    const target = this.target(market);
+    if (target === null) return err(NOT_CONFIGURED);
+    if (!UUID.test(carrierReference)) return err(REFUSED);
+    // `GET /delivery/deliveries/:id` answers the delivery as a booking does (assumed from the
+    // booking answer; to be confirmed against Drive's API).
+    const answer = await this.http.get(target.endpoint, `/delivery/deliveries/${carrierReference}`);
+    if (!answer.ok) return err(failureOf(answer.error));
+    const delivery = deliveryOf(answer.value.body, null);
+    if (delivery === null || delivery.carrierReference !== carrierReference)
+      return err(UNAVAILABLE);
+    const status = toFleetStatus(delivery.carrierStatus);
+    // A word this version does not know is not a status: the caller keeps what it has.
+    return status === null
+      ? err(UNAVAILABLE)
+      : ok({ status, carrierStatus: delivery.carrierStatus });
   }
 
   /** The endpoint of the Market, or null when the carrier is off for it. */

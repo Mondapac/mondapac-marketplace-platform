@@ -18,6 +18,8 @@ import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { commissionBase, commissionOn, parseRateBps } from '../domain/commission';
 import { reversedAmount } from '../domain/reversal';
 import type { LedgerEntry, LedgerKind } from '../domain/ledger';
+import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import type { LedgerPage, LedgerRepository } from './ports/ledger.repository';
@@ -93,6 +95,11 @@ class MemoryLedger implements LedgerRepository {
   readonly rows: LedgerEntry[] = [];
   listSellerOrder(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.filter((row) => row.sellerOrderId === sellerOrderId));
+  }
+  sellerOfSellerOrder(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    return Promise.resolve(
+      this.rows.find((row) => row.sellerOrderId === sellerOrderId)?.sellerId ?? null,
+    );
   }
   hasSellerOrder(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.some((row) => row.sellerOrderId === sellerOrderId));
@@ -208,6 +215,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       rates,
       ledger,
       policy: new ConfigCommissionPolicy(markets),
+      ...payoutStores(new ConfigPayoutTermsPolicy(markets)),
       sellers: {
         exists: (_c: CallContext, sellerId: Id<'Seller'>) => Promise.resolve(known.has(sellerId)),
       },

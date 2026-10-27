@@ -142,7 +142,10 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "commission-payouts.note-seller-reinstated", "rule": "system" },
+  { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },
+  { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   {
     "name": "commission-payouts.view-own-ledger",
@@ -239,6 +242,11 @@
   { "name": "identity.confirm-seller-second-factor-reset", "rule": "anonymous" },
   { "name": "identity.contact-email-of", "rule": "system" },
   { "name": "identity.customer-account-exists", "rule": "system" },
+  {
+    "name": "identity.customer-account-of",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",
@@ -429,9 +437,15 @@
   },
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
+  { "name": "ordering.record-delivery-anchor", "rule": "system" },
   { "name": "ordering.record-ledger", "rule": "system" },
   { "name": "ordering.record-refund-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
+  {
+    "name": "ordering.regenerate-pickup-code",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "ordering.settle-refunds", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -442,6 +456,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "payments.apply-stripe-events", "rule": "system" },
+  { "name": "payments.dispute-of", "rule": "system" },
   { "name": "payments.payout-readiness", "rule": "system" },
   { "name": "payments.receive-stripe-event", "rule": "anonymous" },
   { "name": "payments.sync-payout-schedules", "rule": "system" },
@@ -552,6 +567,11 @@
   { "name": "shipping.carrier-shipment", "rule": "system" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.flat-fees", "rule": "anonymous" },
+  {
+    "name": "shipping.pickup-availability",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
   { "name": "shipping.shipping-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.view-own-flat-fee", "rule": "permissions", "whenSellerNotApproved": "allow" },
@@ -565,6 +585,7 @@
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
+  { "name": "wallet.expire-admin-credit-requests", "rule": "system" },
   { "name": "wallet.expire-wallet-credit", "rule": "system" },
   { "name": "wallet.grant-credit", "rule": "system" },
   { "name": "wallet.own-balance-of", "rule": "own-resources", "whenSellerNotApproved": "deny" },

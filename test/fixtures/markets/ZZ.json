@@ -15,13 +15,24 @@
   },
   "commissionPayouts": {
     "defaultRateBps": 1200,
-    "provisionalTaxRateBps": 1500
+    "provisionalTaxRateBps": 1500,
+    "payoutTerms": {
+      "weekdays": ["THU", "FRI"],
+      "localTime": "14:30",
+      "holdDaysCarrier": 10,
+      "holdDaysSellerClick": 21,
+      "minimumMinor": 3000,
+      "minimumMinorCap": 200000,
+      "approvalMode": "MANUAL",
+      "firstPayoutManual": false
+    }
   },
   "wallet": {
     "balanceCapMinor": 30000,
     "promoExpiryMonths": 6,
     "adminIssueCapMinor": 3000,
     "adminDailyCapMinor": 30000,
+    "adminRequestExpiryDays": 3,
     "expiringSoonDays": 14
   },
   "reviews": {
@@ -234,6 +245,7 @@
       ],
       "postcodeField": "postalCode",
       "regionField": "prefecture",
+      "localityField": "district",
       "postcodePattern": "^[0-9]{7}$",
       "regions": ["ZA", "ZB"]
     },
@@ -307,6 +319,14 @@
     "manufacturerBasisEnabled": true
   },
   "shipping": {
+    "fleets": {
+      "fake_test": {
+        "displayName": "Test Fleet",
+        "serviceAreas": ["zz-central"],
+        "methods": ["instant", "same_day", "scheduled"],
+        "temperatures": ["ambient", "chilled", "frozen"]
+      }
+    },
     "realTimeCarrier": {
       "carrier": "mondapac-drive",
       "displayName": "Zed Courier",

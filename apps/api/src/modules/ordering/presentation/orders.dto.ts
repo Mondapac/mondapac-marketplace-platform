@@ -7,7 +7,10 @@ import type {
   LabelledSellerOrderDetailView,
   LabelledSellerOrderPageView,
   LabelledSellerOrderShipView,
-  OwnOrderView,
+  LabelledOrderView,
+  LabelledOwnOrderView,
+  LabelledSellerOrderView,
+  OwnPickupCodeView,
 } from '../domain/order-views';
 import type { ShipTo } from '../domain/order';
 import { moneyBody } from './http-answers';
@@ -113,11 +116,12 @@ export class SellerOrderBody {
   })
   readyAt!: string | null;
   @ApiProperty({
-    enum: ['no-carrier'],
+    enum: ['no-carrier', 'carrier-unknown', 'cancel-unknown'],
     nullable: true,
     description:
-      'Set when no carrier could take the order and the platform must arrange the delivery. ' +
-      'The seller never delivers instead.',
+      'Set when the platform must look at the delivery: no-carrier (no fleet can carry it), ' +
+      'carrier-unknown (a fleet may already hold the booking) or cancel-unknown (a cancel was not ' +
+      'confirmed). The seller never delivers instead.',
   })
   deliveryAttention!: string | null;
   @ApiProperty({ type: [OrderLineBody] }) lines!: OrderLineBody[];
@@ -167,7 +171,36 @@ const SHIP_TO_DESCRIPTION =
   'The delivery address chosen at checkout, fixed on the order; null on orders placed before ' +
   'it was recorded and once the account was erased.';
 
+/** What the seller panel may know about a pickup order's code: never the code itself. */
+export class PickupStatusBody {
+  @ApiProperty({ description: 'Wrong codes still allowed before the order is locked (0 to 5).' })
+  attemptsLeft!: number;
+  @ApiProperty({
+    description:
+      'True after five wrong codes: the seller cannot try again until the customer asks for a new code.',
+  })
+  locked!: boolean;
+}
+
+/** One ready pickup part's code, in the customer's own order only. SECRET: never logged. */
+export class OwnPickupCodeBody extends PickupStatusBody {
+  @ApiProperty({ format: 'uuid', description: 'The seller whose part this code opens.' })
+  sellerId!: string;
+  @ApiProperty({ description: 'The 4-digit code to show the seller at the handover.' })
+  code!: string;
+}
+
+export class PickupConfirmRequest {
+  @ApiProperty({
+    description: "The buyer's 4-digit pickup code, exactly 4 digits.",
+    example: '0427',
+  })
+  code!: string;
+}
+
 export class OwnOrderBody extends OrderBody {
+  @ApiProperty({ type: () => [OwnSellerOrderBody] }) declare sellerOrders: OwnSellerOrderBody[];
+
   @ApiProperty({ type: ShipToBody, nullable: true, description: SHIP_TO_DESCRIPTION })
   shipTo!: ShipToBody | null;
 
@@ -179,6 +212,15 @@ export class OwnOrderBody extends OrderBody {
       'on older orders and once the account was erased.',
   })
   sellerNotes!: Record<string, string>;
+
+  @ApiProperty({
+    type: [OwnPickupCodeBody],
+    description:
+      'The pickup codes of the order parts the customer collects in person that the seller has ' +
+      'marked ready and that are not collected yet. Only the customer who placed the order ever ' +
+      'receives a code.',
+  })
+  pickupCodes!: OwnPickupCodeBody[];
 }
 
 export class CheckoutRequest {
@@ -235,6 +277,16 @@ export class LabelledOrderLineBody extends OrderLineBody {
   variantLabel!: string | null;
 }
 
+export class OwnSellerOrderBody extends SellerOrderBody {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The seller's public store name; null when unknown.",
+  })
+  storeName!: string | null;
+  @ApiProperty({ type: [LabelledOrderLineBody] }) declare lines: LabelledOrderLineBody[];
+}
+
 export class AdminSellerOrderBody extends SellerOrderBody {
   @ApiProperty({
     type: String,
@@ -270,8 +322,12 @@ export class AdminOrderBody extends OrderBody {
   @ApiProperty({ type: [AdminSellerOrderBody] }) declare sellerOrders: AdminSellerOrderBody[];
 }
 
+export class OwnOrderListItemBody extends OrderBody {
+  @ApiProperty({ type: [OwnSellerOrderBody] }) declare sellerOrders: OwnSellerOrderBody[];
+}
+
 export class OrderPageBody {
-  @ApiProperty({ type: [OrderBody] }) orders!: OrderBody[];
+  @ApiProperty({ type: [OwnOrderListItemBody] }) orders!: OwnOrderListItemBody[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
 }
 
@@ -357,6 +413,15 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
       'Null when none was written, on older orders and once the account was erased.',
   })
   buyerNote!: string | null;
+
+  @ApiProperty({
+    type: PickupStatusBody,
+    nullable: true,
+    description:
+      'For a ready pickup order not collected yet: the tries left and whether it is locked. ' +
+      'Never the code. Null for every other order.',
+  })
+  pickup!: PickupStatusBody | null;
 }
 
 export class SellerOrderCountsBody {
@@ -406,6 +471,10 @@ export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerO
   shipTo: shipToBody(order.shipTo),
   // A seller reads its own note only.
   buyerNote: order.shipTo?.sellerNotes?.[order.sellerId] ?? null,
+  pickup:
+    order.pickup === null
+      ? null
+      : { attemptsLeft: order.pickup.attemptsLeft, locked: order.pickup.locked },
 });
 
 export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOrderPageBody => ({
@@ -428,10 +497,31 @@ export const orderBody = (order: OrderView): OrderBody => ({
   sellerOrders: order.sellerOrders.map(sellerOrderBody),
 });
 
-export const ownOrderBody = (order: OwnOrderView): OwnOrderBody => ({
+export const ownPickupCodeBody = (view: OwnPickupCodeView): OwnPickupCodeBody => ({
+  sellerId: view.sellerId,
+  code: view.code,
+  attemptsLeft: view.attemptsLeft,
+  locked: view.locked,
+});
+
+const ownSellerOrderBody = (seller: LabelledSellerOrderView): OwnSellerOrderBody => ({
+  ...sellerOrderBody(seller),
+  storeName: seller.storeName,
+  lines: seller.lines.map(labelledLineBody),
+});
+
+/** One of the customer's own orders in their list, with product and store names. */
+export const ownListOrderBody = (order: LabelledOrderView): OwnOrderListItemBody => ({
   ...orderBody(order),
+  sellerOrders: order.sellerOrders.map(ownSellerOrderBody),
+});
+
+export const ownOrderBody = (order: LabelledOwnOrderView): OwnOrderBody => ({
+  ...orderBody(order),
+  sellerOrders: order.sellerOrders.map(ownSellerOrderBody),
   shipTo: shipToBody(order.shipTo),
   sellerNotes: { ...(order.shipTo?.sellerNotes ?? {}) },
+  pickupCodes: order.pickupCodes.map(ownPickupCodeBody),
 });
 
 export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody => ({

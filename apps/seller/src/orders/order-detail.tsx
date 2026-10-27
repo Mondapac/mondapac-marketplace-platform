@@ -7,6 +7,7 @@ import { callApi } from '../api/client.ts';
 import { formatInstant, shortInstant, windowRange } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
+import { PickupHandover } from './pickup-handover.tsx';
 import { shortId, statusOf, TONE } from './status.ts';
 import type { SellerOrderView } from './types.ts';
 
@@ -21,11 +22,13 @@ export function OrderDetail({
   csrfToken,
   canMarkReady,
   canDeliver,
+  canConfirmPickup = false,
 }: {
   readonly initial: SellerOrderView;
   readonly csrfToken: string;
   readonly canMarkReady: boolean;
   readonly canDeliver: boolean;
+  readonly canConfirmPickup?: boolean;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -34,6 +37,7 @@ export function OrderDetail({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [justMarked, setJustMarked] = useState(false);
+  const [justCollected, setJustCollected] = useState(false);
   const busy = useRef(false);
   const hintId = useId();
   const doneRef = useRef<HTMLDivElement>(null);
@@ -198,7 +202,7 @@ export function OrderDetail({
                   variant="stacked"
                   missing={t('not-given')}
                   rows={[
-                    ...(order.fulfilment === 'to-ship'
+                    ...(order.fulfilment === 'to-ship' || order.deliveryMethod === 'pickup'
                       ? []
                       : [
                           { label: t('ship.carrier'), value: order.carrier },
@@ -267,6 +271,29 @@ export function OrderDetail({
                       : t(order.deliveryAttention === null ? 'ready.arranged' : 'ready.attention')}
                   </p>
                 </div>
+              ) : null}
+              {order.deliveryMethod === 'pickup' &&
+              order.fulfilment === 'to-ship' &&
+              order.readyAt !== null &&
+              canConfirmPickup &&
+              order.pickup != null ? (
+                <PickupHandover
+                  sellerOrderId={order.sellerOrderId}
+                  csrfToken={csrfToken}
+                  status={order.pickup}
+                  onCollected={(collected) => {
+                    setOrder(collected);
+                    setJustCollected(true);
+                  }}
+                  onStatus={(pickup) => setOrder((current) => ({ ...current, pickup }))}
+                />
+              ) : null}
+              {justCollected && order.fulfilment === 'delivered' ? (
+                <p role="status" className="text-sm text-fg">
+                  {t('pickup.collected', {
+                    when: shortInstant(order.deliveredAt ?? order.paidAt, locale, zone),
+                  })}
+                </p>
               ) : null}
               {order.fulfilment === 'shipped' && canDeliver ? (
                 <>

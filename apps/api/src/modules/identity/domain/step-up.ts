@@ -14,6 +14,8 @@ export const STEP_UP_ACTION_KEYS = [
   'payments.payout-account.change',
   'pricing.price.change',
   'sellers.store-terms.change',
+  'wallet.credit.approve',
+  'wallet.credit.issue',
   'wallet.settings.change',
 ] as const;
 

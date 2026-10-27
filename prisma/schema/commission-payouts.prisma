@@ -62,3 +62,105 @@ model CommissionPayoutsLedgerEntry {
   @@map("ledger_entries")
   @@schema("commission_payouts")
 }
+
+/// Events commission-payouts' subscribers have handled (ADR-0006 decision 5): `runOnce` inserts
+/// (event_id, handler) in the handler's own unit and skips the work when the row exists. Written
+/// only by platform/persistence/outbox/. The CHECKs and the grants are hand-written in the
+/// migration.
+model CommissionPayoutsInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "commission-payouts.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("commission_payouts")
+}
+
+/// A seller's own payout terms (package 6b), set by an admin; every nullable field that is null
+/// falls back to the Market's value (Market config `commissionPayouts.payoutTerms`). At least one
+/// field is set (CHECK). `version` is the optimistic-concurrency token of an admin edit. The hold
+/// bounds (7 to 60 days) are CHECKs, the same numbers as the code constants; the first-payout rule
+/// is Market config only and is never overridden.
+model CommissionPayoutsPayoutTermsOverride {
+  marketId            String   @map("market_id") @db.VarChar(8)
+  sellerId            String   @map("seller_id") @db.Uuid
+  tenantId            String   @map("tenant_id")
+  /// ISO weekday bitmask, bit 0 = Monday (1 to 127, CHECK); null = the Market's weekdays.
+  scheduleWeekdays    Int?     @map("schedule_weekdays") @db.SmallInt
+  /// Minute of the seller's local day, 0 to 1439 (CHECK); null = the Market's local time.
+  localMinute         Int?     @map("local_minute") @db.SmallInt
+  holdDaysCarrier     Int?     @map("hold_days_carrier") @db.SmallInt
+  holdDaysSellerClick Int?     @map("hold_days_seller_click") @db.SmallInt
+  /// Minor units of the Market currency, at least 1 (CHECK).
+  minimumMinor        BigInt?  @map("minimum_minor")
+  /// AUTO or MANUAL (CHECK).
+  approvalMode        String?  @map("approval_mode")
+  version             Int
+  updatedAt           DateTime @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last wrote it (a plain id, no foreign key).
+  updatedBy           String   @map("updated_by") @db.Uuid
+
+  @@id([marketId, sellerId])
+  @@map("payout_terms_overrides")
+  @@schema("commission_payouts")
+}
+
+/// The anchor of a seller order's payout eligibility (package 6b): when it was delivered, who
+/// confirmed it (the carrier, or the seller's click) and the instant its money becomes eligible
+/// (delivered_at + the hold days then in force). Written once; a trigger refuses any UPDATE and
+/// DELETE, and a CHECK ties `eligible_at` to `delivered_at` and the frozen hold days.
+model CommissionPayoutsEligibilityAnchor {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  sellerOrderId   String   @map("seller_order_id") @db.Uuid
+  tenantId        String   @map("tenant_id")
+  sellerId        String   @map("seller_id") @db.Uuid
+  orderId         String   @map("order_id") @db.Uuid
+  deliveredAt     DateTime @map("delivered_at") @db.Timestamptz(6)
+  /// carrier or seller-click (CHECK).
+  anchorSource    String   @map("anchor_source")
+  /// 7 to 60 (CHECK); the days added to `delivered_at`.
+  holdDaysApplied Int      @map("hold_days_applied") @db.SmallInt
+  eligibleAt      DateTime @map("eligible_at") @db.Timestamptz(6)
+  recordedAt      DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerOrderId])
+  @@index([marketId, sellerId, eligibleAt])
+  @@map("eligibility_anchors")
+  @@schema("commission_payouts")
+}
+
+/// A hold on a seller's payouts, for the whole seller or one of its seller orders (package 6b).
+/// Insert and release only: a trigger refuses every UPDATE except the one that sets the three
+/// release columns once, and every DELETE. The CHECKs, the active-hold indexes and the grants are
+/// hand-written in the migration.
+model CommissionPayoutsPayoutHold {
+  id            String    @id @db.Uuid
+  marketId      String    @map("market_id") @db.VarChar(8)
+  tenantId      String    @map("tenant_id")
+  sellerId      String    @map("seller_id") @db.Uuid
+  /// Null = the whole seller; set = that seller order only.
+  sellerOrderId String?   @map("seller_order_id") @db.Uuid
+  /// seller-suspended, refund-pending, dispute, admin-review or bank-change (CHECK).
+  reason        String
+  /// admin or system (CHECK).
+  origin        String
+  /// The thing that caused it: identity's decision id, a refund or dispute id, or (admin) the hold's
+  /// own id. A system hold is unique per (market, reason, source, scope) (partial unique index in the migration): a repeated event places nothing twice.
+  sourceRef     String    @map("source_ref") @db.Uuid
+  /// The admin account that placed it; null for a system hold.
+  placedBy      String?   @map("placed_by") @db.Uuid
+  placedAt      DateTime  @map("placed_at") @db.Timestamptz(6)
+  releasedAt    DateTime? @map("released_at") @db.Timestamptz(6)
+  /// The admin account that released it; null while active (a system release is a later package).
+  releasedBy    String?   @map("released_by") @db.Uuid
+  /// A code from the closed list in the CHECK.
+  releaseReason String?   @map("release_reason")
+
+  @@index([marketId, sellerId, placedAt(sort: Desc), id(sort: Desc)], map: "payout_holds_seller_placed_idx")
+  @@map("payout_holds")
+  @@schema("commission_payouts")
+}

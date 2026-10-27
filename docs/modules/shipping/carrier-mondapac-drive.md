@@ -145,3 +145,47 @@ in an event or an error.
   `config/markets/AU.json`.
 - An answer body over 64 KiB is not read and counts as no answer.
 - Follow-up: a retention job for `shipping.carrier_events`.
+
+## Fleet router and selection models (delivery models, package 3)
+
+The seller never chooses a method or a fleet. The platform picks the fleet per seller order from
+the buyer's method and the fleets' state. Drive is now one fleet behind the same port as the
+others (`CarrierGateway`: `fleet`, `capabilities(market)`, `book`, `quote`, `cancel`, `status`).
+
+- **Candidates.** A fleet is a candidate when `capabilities(market)` is not null (OFF) and it
+  serves the method, the temperature, the item count, weight and declared value, no prohibited
+  class, and the stops: both ends in its `serviceAreas`, or, for `outsideCityAreasOnly`, a
+  drop-off in no service area.
+- **Ranking.** The admin picks one model per Market and method (`shipping.fleet_selection_*`):
+  `cheapest` (lowest quote), `weighted` (weights over price, ETA and reliability) or
+  `fixed_priority` (an ordered list; fleets not on it are not used). Without an active model the
+  built-in order is Drive, Uber Direct, Zoom2u, Australia Post. Quotes are asked only when the
+  rule needs them and more than one candidate exists. Drive wins ties. A weighted score uses
+  integer arithmetic; a fleet with no ETA scores 0 on it.
+- **Reliability** is a 0 to 100 score per fleet and Market that an admin sets (default 50 when
+  unset). A score computed from delivery history comes later and will replace the stored one.
+- **Booking.** The first ranked fleet is booked; the next one is tried only on
+  `carrier.not-configured`, `carrier.refused` or a capability mismatch. `carrier.unauthorized`
+  (401/403, nothing was booked) also falls back, logged at warn: it is an ops problem.
+  `carrier.unavailable` from a fleet with `idempotentBooking: false` is never retried and never
+  replaced, because the order may already be booked: the seller order gets
+  `delivery_attention = carrier-unknown` for an admin. For an idempotent fleet the same fleet is
+  tried first on the next attempt. Nothing able to serve gives `no-carrier`.
+- **Attempts.** `shipping.fleet_booking_attempts` is written before each book call and kept on
+  `unavailable`, so a retry goes to the same fleet, or answers `unknown` with no call for a
+  non-idempotent one. It is cleared on a booking, a refusal, not-configured and unauthorized.
+- **Cancel.** The booking row holds the fleet (`carrier_bookings.fleet`). For a non-idempotent
+  fleet a cancel answered `carrier.refused` may be a lost first answer, so it is not read as
+  "still booked": the order gets `delivery_attention = cancel-unknown`.
+- **Webhooks and status.** Each adapter has a pure `toFleetStatus(raw)` onto `pending`,
+  `assigned`, `picked_up`, `delivered`, `cancelled`, `returned`, `failed`. The Drive webhook maps
+  its status through it and then onto the booking progress; its signature check is unchanged. A
+  Drive event for a booking of another fleet is refused.
+- **Admin.** `GET/POST/PUT shipping/admin/fleet-selection[...]` (permissions
+  `shipping.fleet-selection.view` and the protected `.manage`); every create, edit, activation
+  and reliability change is audited.
+- **Assumed Drive fields** (not in Drive's contract yet; read when present, ignored otherwise):
+  `GET /delivery/deliveries/:id` for `status()`, and `etaMinutes`, `expiresAt` and `trackingUrl`
+  in answers. The Drive quote request is unchanged (postcode only).
+- **Not here:** admin cut-off, window, margin and enabled-methods settings (package 4) and the
+  checkout quote wiring (package 5). `shippingFees` still quotes Drive only.

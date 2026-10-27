@@ -8,14 +8,17 @@ import {
   type AdminOrderPageView,
   type AdminOrderView,
   type LabelledAdminOrderView,
+  type LabelledOrderView,
+  type LabelledOwnOrderView,
   type OrderStatusCounts,
   type OrderPageView,
   type OrderView,
   type OwnOrderView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
-import { labelAdminOrders } from './order-labels';
+import { labelAdminOrders, labelOwnOrders } from './order-labels';
 import type { OrderFilter, OrderPage } from './ports/order.repository';
+import { openPickupCodes, storedPickupCodes } from './pickup-flow';
 
 export type ReadFailure =
   | {
@@ -137,40 +140,54 @@ export async function openShipTo(
   }
 }
 
-/** The customer's own order, with its delivery address. Unknown and foreign are one answer. */
+/**
+ * The customer's own order, with its delivery address and the names of its products and stores.
+ * Unknown and foreign are one answer.
+ */
 export async function viewOwnOrder(
   deps: OrderingDependencies,
   context: CallContext,
   accountId: Id<'Account'>,
   input: { readonly orderId: unknown },
-): Promise<Result<OwnOrderView, ReadFailure>> {
+): Promise<Result<LabelledOwnOrderView, ReadFailure>> {
   const orderId = parseOrderId(input?.orderId);
   if (!orderId.ok) return orderId;
-  const read = await deps.unitOfWork.run<OrderState, ReadFailure>(
+  const read = await deps.unitOfWork.run<
+    { readonly order: OrderState; readonly stored: Awaited<ReturnType<typeof storedPickupCodes>> },
+    ReadFailure
+  >(
     context.market,
     async () => {
       const order = await deps.orders.findOwn(context.market, orderId.value, accountId);
-      return order === null ? err({ code: 'ordering.order-not-found' } as const) : ok(order);
+      return order === null
+        ? err({ code: 'ordering.order-not-found' } as const)
+        : ok({ order, stored: await storedPickupCodes(deps, context.market, order) });
     },
     { readOnly: true },
   );
   if (!read.ok) return read;
-  return ok({
-    ...orderView(read.value),
-    shipTo: await openShipTo(deps, context, accountId, read.value.shipToSealed),
-  });
+  const { order, stored } = read.value;
+  const own: OwnOrderView = {
+    ...orderView(order),
+    shipTo: await openShipTo(deps, context, accountId, order.shipToSealed),
+    // The buyer's own codes, opened after the unit: only this view ever shows one.
+    pickupCodes: await openPickupCodes(deps, context, accountId, order, stored),
+  };
+  const [labelled] = await labelOwnOrders(deps.labels, context, [own]);
+  return ok(labelled!);
 }
 
+/** The customer's own orders, newest first, with the names of their products and stores. */
 export async function listOwnOrders(
   deps: OrderingDependencies,
   context: CallContext,
   accountId: Id<'Account'>,
   input: ListInput,
-): Promise<Result<OrderPageView<OrderView>, ReadFailure>> {
+): Promise<Result<OrderPageView<LabelledOrderView>, ReadFailure>> {
   const parsed = pageOf(input ?? {}, false);
   if (!parsed.ok) return parsed;
   const { page } = parsed.value;
-  return deps.unitOfWork.run<OrderPageView<OrderView>, ReadFailure>(
+  const read = await deps.unitOfWork.run<OrderPageView<OrderView>, ReadFailure>(
     context.market,
     async () => {
       const rows = await deps.orders.listOwn(context.market, accountId, {
@@ -181,6 +198,11 @@ export async function listOwnOrders(
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  return ok({
+    orders: await labelOwnOrders(deps.labels, context, read.value.orders),
+    nextCursor: read.value.nextCursor,
+  });
 }
 
 export async function viewAnyOrder(

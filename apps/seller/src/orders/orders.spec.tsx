@@ -65,7 +65,10 @@ const fee: OwnFee = { sellerId: 's', amount: '500', currency: 'AUD' };
 const mountList = (initial = page([order()]), flatFee: OwnFee | null = fee) =>
   render(wrap(<SellerOrders initial={initial} fee={flatFee} />));
 
-const mountDetail = (initial = order(), { canMarkReady = true, canDeliver = true } = {}) =>
+const mountDetail = (
+  initial = order(),
+  { canMarkReady = true, canDeliver = true, canConfirmPickup = true } = {},
+) =>
   render(
     wrap(
       <OrderDetail
@@ -73,6 +76,7 @@ const mountDetail = (initial = order(), { canMarkReady = true, canDeliver = true
         csrfToken="csrf"
         canMarkReady={canMarkReady}
         canDeliver={canDeliver}
+        canConfirmPickup={canConfirmPickup}
       />,
     ),
   );
@@ -419,5 +423,117 @@ describe('orderProblemOf and the nav', () => {
       visibleNavItems(sellerNav, new Set(keys)).map((item) => item.id);
     expect(ids(['ordering.seller-order.view'])).toContain('s_orders');
     expect(ids([])).not.toContain('s_orders');
+  });
+});
+
+describe('Pickup handover', () => {
+  const readyPickup = (over: Partial<SellerOrderView> = {}) =>
+    order({
+      deliveryMethod: 'pickup',
+      readyAt: '2026-10-14T11:00:00.000Z',
+      pickup: { attemptsLeft: 5, locked: false },
+      ...over,
+    });
+  const boxes = () => screen.getAllByRole<HTMLInputElement>('textbox');
+  const type = (code: string) =>
+    [...code].forEach((digit, i) => fireEvent.change(boxes()[i]!, { target: { value: digit } }));
+
+  it('shows four boxes and a Confirm button that stays off until the code is complete', () => {
+    mountDetail(readyPickup());
+    expect(boxes()).toHaveLength(4);
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Confirm pickup' });
+    expect(confirm.disabled).toBe(true);
+    expect(screen.getByText('5 tries left')).toBeTruthy();
+    type('042');
+    expect(confirm.disabled).toBe(true);
+    type('0427');
+    expect(confirm.disabled).toBe(false);
+  });
+
+  it('sends the code once and shows the order as handed over', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: readyPickup({
+        fulfilment: 'delivered',
+        shippedAt: '2026-10-14T12:00:00.000Z',
+        deliveredAt: '2026-10-14T12:00:00.000Z',
+        pickup: null,
+      }),
+    });
+    mountDetail(readyPickup());
+    type('0427');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm pickup' }));
+    await waitFor(() => expect(screen.getByText(/Handed over to the customer/)).toBeTruthy());
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      'ordering/seller/orders/0190a000-0000-7000-8000-0000000000a1/confirm-pickup',
+      { code: '0427' },
+      'csrf',
+    );
+    expect(screen.queryByRole('button', { name: 'Confirm pickup' })).toBeNull();
+    expect(screen.queryByText('Carrier')).toBeNull();
+  });
+
+  it('spreads a pasted code over the boxes', () => {
+    mountDetail(readyPickup());
+    fireEvent.paste(boxes()[0]!, { clipboardData: { getData: () => '1 2-3 4' } });
+    expect(boxes().map((box) => box.value)).toEqual(['1', '2', '3', '4']);
+  });
+
+  it('says a wrong code is wrong, how many tries are left, and clears the boxes', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 422, code: 'ordering.pickup-code-invalid', details: { attemptsLeft: 2 } },
+    });
+    mountDetail(readyPickup({ pickup: { attemptsLeft: 3, locked: false } }));
+    type('9999');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm pickup' }));
+    await waitFor(() => expect(screen.getByText(/That code is not right/)).toBeTruthy());
+    expect(screen.getAllByText(/2 tries left/)).toHaveLength(1);
+    expect(
+      screen.queryAllByRole('status').filter((node) => /tries left/.test(node.textContent ?? '')),
+    ).toHaveLength(0);
+    const banner = screen.getByText(/That code is not right/).closest('div[id]')!;
+    for (const box of boxes()) {
+      expect(box.getAttribute('aria-describedby')).toContain(banner.id);
+    }
+    expect(boxes().every((box) => box.value === '')).toBe(true);
+  });
+
+  it('locks the form when the API says the order is locked', () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 423, code: 'ordering.pickup-code-locked' },
+    });
+    mountDetail(readyPickup({ pickup: { attemptsLeft: 1, locked: true } }));
+    expect(screen.getByText(/This order is locked/)).toBeTruthy();
+    expect(screen.getByText(/old code stops working/)).toBeTruthy();
+    expect(boxes().every((box) => box.disabled)).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Confirm pickup' }).disabled).toBe(
+      true,
+    );
+  });
+
+  it('turns to locked after the fifth wrong code', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 423, code: 'ordering.pickup-code-locked' },
+    });
+    mountDetail(readyPickup({ pickup: { attemptsLeft: 1, locked: false } }));
+    type('1111');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm pickup' }));
+    await waitFor(() => expect(screen.getByText(/This order is locked/)).toBeTruthy());
+  });
+
+  it('is hidden without the permission, before ready, and for other methods', () => {
+    mountDetail(readyPickup(), { canConfirmPickup: false });
+    expect(screen.queryByRole('button', { name: 'Confirm pickup' })).toBeNull();
+    cleanup();
+    mountDetail(readyPickup({ readyAt: null, pickup: null }));
+    expect(screen.queryByRole('button', { name: 'Confirm pickup' })).toBeNull();
+    cleanup();
+    mountDetail(order({ readyAt: '2026-10-14T11:00:00.000Z' }));
+    expect(screen.queryByRole('button', { name: 'Confirm pickup' })).toBeNull();
   });
 });

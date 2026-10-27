@@ -111,6 +111,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX account_deletion_requests_market_id_scheduled_for_pending_idx ON customers.account_deletion_requests USING btree (market_id, scheduled_for, id) WHERE (status = 'pending'::text)",
   'customers.account_deletion_requests_market_id_claimed_at_executing_idx':
     "CREATE INDEX account_deletion_requests_market_id_claimed_at_executing_idx ON customers.account_deletion_requests USING btree (market_id, claimed_at, id) WHERE (status = 'executing'::text)",
+  'commission_payouts.payout_holds_active_seller_idx':
+    'CREATE INDEX payout_holds_active_seller_idx ON commission_payouts.payout_holds USING btree (market_id, seller_id) WHERE (released_at IS NULL)',
+  'commission_payouts.payout_holds_system_source_key':
+    "CREATE UNIQUE INDEX payout_holds_system_source_key ON commission_payouts.payout_holds USING btree (market_id, reason, source_ref, seller_id, seller_order_id) NULLS NOT DISTINCT WHERE (origin = 'system'::text)",
   'customers.addresses_one_default_key':
     'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
@@ -168,6 +172,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX orders_stripe_session_id_key ON ordering.orders USING btree (stripe_session_id) WHERE (stripe_session_id IS NOT NULL)',
   'ordering.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON ordering.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Payments package 8a: the relay's claim index of payments' outbox.
+  'payments.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/ordering.md 3.12a: one pending refund per seller order, one Stripe refund
   // per refund, and the worker's read of pending refunds.
   'ordering.refunds_one_pending_key':
@@ -243,6 +250,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
   // Customer wallet (package 1): the expiry sweeps, the held holds of one wallet for the books
   // check, and the journals of one hold or one lot for the commit-time checks.
+  // Admin credit (package 2a): the pending requests, for the expiry sweep.
+  'wallet.admin_credit_requests_market_id_expires_at_id_idx':
+    "CREATE INDEX admin_credit_requests_market_id_expires_at_id_idx ON wallet.admin_credit_requests USING btree (market_id, expires_at, id) WHERE (status = 'pending'::text)",
   'wallet.holds_market_id_expires_at_id_idx':
     "CREATE INDEX holds_market_id_expires_at_id_idx ON wallet.holds USING btree (market_id, expires_at, id) WHERE (status = 'held'::text)",
   'wallet.holds_market_id_wallet_account_id_amount_minor_idx':

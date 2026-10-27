@@ -281,7 +281,16 @@
       "cancel-body": "Nothing has been confirmed yet, so your card is not charged.",
       "cancel-yes": "Yes, cancel order",
       "cancel-no": "Keep order",
-      "cancel-late": "An order can be cancelled only until a seller confirms it. After that, use \"Get help with this order\"."
+      "cancel-late": "An order can be cancelled only until a seller confirms it. After that, use \"Get help with this order\".",
+      "pickup": {
+        "title": "Pickup code for {seller}",
+        "hint": "You collect this part in person. Show this code to the seller when you pick it up, and not before. MondaPac never asks for it.",
+        "tries": "The seller has {count, plural, one {# try} other {# tries}} left to enter this code.",
+        "locked": "The seller entered a wrong code too many times, so this code is locked. Get a new code to collect your order.",
+        "renew": "Get a new code",
+        "renew-note": "A new code replaces the old one. The old code stops working.",
+        "renewed": "New code ready. The old one no longer works."
+      }
     },
     "addresses": {
       "area-note": "We deliver to {area} for now. You can save an address outside it, but we cannot deliver there yet.",
@@ -514,6 +523,10 @@
   "product": {
     "photos": "Photos",
     "photo": "Photo {index}",
+    "photo-gallery": "Product photos",
+    "photo-count": "{index}/{total}",
+    "photo-alt": "{name}, photo {index} of {total}",
+    "photo-of": "Photo {index} of {total}",
     "by": "By <seller>{name}</seller>",
     "sold-by": "Sold by",
     "special-price": "Special price",
@@ -982,8 +995,8 @@
     "all-stores": "Browse all stores",
     "other-stores": "Other stores that deliver to you",
     "offline-title": "You are offline",
-    "offline-message": "We could not reach the marketplace. Check your connection and try again. Pages you opened recently may still be available.",
-    "offline-banner": "You are viewing saved pages. Prices, stock and delivery may be out of date. Cart and checkout need a connection.",
+    "offline-message": "We could not reach the marketplace. Check your connection and try again.",
+    "offline-banner": "This page may show out-of-date prices, stock and delivery. Cart and checkout need a connection.",
     "retry": "Try again",
     "checking": "Checking...",
     "still-offline": "Still offline. We will try again when your connection is back."

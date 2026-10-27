@@ -24,11 +24,17 @@ import {
   DELIVERY_METHOD_POLICY,
   type DeliveryMethodPolicy,
 } from '../application/ports/delivery-method-policy';
+import {
+  PICKUP_CODE_REPOSITORY,
+  type PickupCodeRepository,
+} from '../application/ports/pickup-code.repository';
+import { PICKUP_CODE_VAULT, type PickupCodeVault } from '../application/ports/pickup-code-vault';
 import { AllowAllDeliveryMethods } from './allow-all-delivery-methods';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { PrismaOrderRepository } from './prisma-order.repository';
+import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
 import {
   SALES_RANKING_READER,
@@ -38,6 +44,7 @@ import { OFFER_PAIR_STORE, type OfferPairStore } from '../application/ports/offe
 import { PrismaOfferPairStore } from './prisma-offer-pairs.store';
 import { PrismaSalesRankingReader } from './prisma-sales-ranking.reader';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
+import { SubjectKeyPickupCodeVault } from './subject-key-pickup-code-vault';
 import { SubjectKeyShipToCipher } from './subject-key-ship-to-cipher';
 
 /**
@@ -54,6 +61,17 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: REFUND_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): RefundRepository => new PrismaRefundRepository(prisma),
+  },
+  {
+    provide: PICKUP_CODE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PickupCodeRepository =>
+      new PrismaPickupCodeRepository(prisma),
+  },
+  {
+    provide: PICKUP_CODE_VAULT,
+    inject: [SUBJECT_KEY_SERVICE],
+    useFactory: (keys: SubjectKeyService): PickupCodeVault => new SubjectKeyPickupCodeVault(keys),
   },
   {
     provide: SHIP_TO_CIPHER,

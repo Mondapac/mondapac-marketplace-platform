@@ -60,6 +60,53 @@ const perMinute = z.number().int().min(1).max(100_000);
  * ADR-0015 decision 3). The counters are kept per origin and are not split by Market (PF I11):
  * the limiter is the cross-Market control, and the request's Market chooses only the limit.
  */
+/**
+ * The platform-wide bounds of a payout hold, in days (commission-payouts G2 4.4): code constants,
+ * not Market values. `platform/` cannot import a module, so these are the schema's own copy of
+ * commission-payouts' `MIN_HOLD_DAYS` and `MAX_HOLD_DAYS`; a test asserts the two agree, and the
+ * same numbers are CHECKs of `commission_payouts`.
+ */
+export const PAYOUT_TERMS_MIN_HOLD_DAYS = 7;
+export const PAYOUT_TERMS_MAX_HOLD_DAYS = 60;
+
+export const PAYOUT_TERMS_WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
+
+/** Payout terms of a Market (package 6b): when, how long to hold, the minimum and the approval. */
+const payoutTermsSchema = z
+  .strictObject({
+    weekdays: z
+      .array(z.enum(PAYOUT_TERMS_WEEKDAYS))
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days).size === days.length, 'must not repeat a weekday'),
+    /** HH:mm in the seller's own zone (24 hour clock). */
+    localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    holdDaysCarrier: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    holdDaysSellerClick: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    /** Minor units of the Market currency; a payout under it carries over. */
+    minimumMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    /**
+     * The most any minimum may be, the Market's own and a seller's override alike (AU 100000 =
+     * 1,000.00): an admin cannot park a seller's money behind an unreachable minimum.
+     */
+    minimumMinorCap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    approvalMode: z.enum(['AUTO', 'MANUAL']),
+    /** The first payout of each new seller waits for an admin (package 6d acts on it). */
+    firstPayoutManual: z.boolean(),
+  })
+  .refine((terms) => terms.minimumMinor <= terms.minimumMinorCap, {
+    message: 'minimumMinor must not exceed minimumMinorCap',
+    path: ['minimumMinor'],
+  });
+
 const requestLimitsSchema = z.strictObject({
   /** Routes marked `@RateLimit('anonymous-identity')`: sign-up, sign-in, reset requests. */
   anonymousIdentityPerMinute: perMinute,
@@ -723,6 +770,8 @@ const addressFormatSchema = z
     postcodeField: fieldKey,
     /** Absent for a Market whose zone does not depend on a region. */
     regionField: fieldKey.optional(),
+    /** The suburb or town field, for a carrier to locate a pickup; absent: no locality is sent. */
+    localityField: fieldKey.optional(),
     postcodePattern: postcodePatternSource,
     regions: z.array(regionName).max(100),
   })
@@ -731,7 +780,7 @@ const addressFormatSchema = z
     if (new Set(keys).size !== keys.length) {
       context.addIssue({ code: 'custom', message: 'field keys must be unique', path: ['fields'] });
     }
-    for (const name of ['postcodeField', 'regionField'] as const) {
+    for (const name of ['postcodeField', 'regionField', 'localityField'] as const) {
       const key = format[name];
       if (key !== undefined && !keys.includes(key)) {
         context.addIssue({ code: 'custom', message: `${name} must name a field`, path: [name] });
@@ -1224,7 +1273,63 @@ export const carrierCallBudgetMs = (carrier: {
   carrier.timeoutMs * carrier.maxAttempts +
   carrier.backoffMs * (2 ** (carrier.maxAttempts - 1) - 1);
 
+/**
+ * One fleet of the `shipping.fleets` section (delivery models, package 3): what the fleet
+ * declares it can carry in this Market. Absent, or `enabled: false`: the fleet is OFF there.
+ * `serviceAreas` are the city ServiceArea codes where BOTH ends of a trip must fall;
+ * `outsideCityAreasOnly` instead serves drop-offs in no city area (Australia Post). `settings`
+ * holds the adapter's own non-secret values (endpoint, timeouts); the adapter validates them.
+ * Secrets are never here. `fake_test` is for tests and development and is not listed by a
+ * production Market.
+ */
+const fleetSchema = z
+  .strictObject({
+    enabled: z.boolean().default(true),
+    displayName: z
+      .string()
+      .regex(/^[\p{L}\p{N}][\p{L}\p{N} .&'-]{0,59}$/u, 'must be 1 to 60 letters, digits or spaces')
+      .optional(),
+    serviceAreas: z
+      .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+      .max(50)
+      .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat')
+      .default([]),
+    outsideCityAreasOnly: z.boolean().default(false),
+    methods: z
+      .array(z.enum(['instant', 'same_day', 'scheduled']))
+      .min(1)
+      .refine((items) => new Set(items).size === items.length, 'a method must not repeat'),
+    temperatures: z
+      .array(z.enum(['ambient', 'chilled', 'frozen']))
+      .min(1)
+      .refine((items) => new Set(items).size === items.length, 'a temperature must not repeat'),
+    maxItemWeightGrams: z.number().int().min(1).max(1_000_000).nullable().default(null),
+    maxItems: z.number().int().min(1).max(10_000).nullable().default(null),
+    maxOrderValueMinor: z.number().int().min(1).max(1_000_000_000_000).nullable().default(null),
+    prohibitedClasses: z
+      .array(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/u))
+      .max(50)
+      .default([]),
+    settings: z
+      .record(z.string().min(1).max(64), z.union([z.string(), z.number(), z.boolean()]))
+      .optional(),
+  })
+  .refine(
+    (fleet) => fleet.outsideCityAreasOnly || fleet.serviceAreas.length > 0,
+    'a fleet needs serviceAreas, or outsideCityAreasOnly',
+  );
+
 const shippingSchema = z.strictObject({
+  /**
+   * The fleets of the Market, by fleet code. When absent, the legacy `realTimeCarrier` below
+   * declares Mondapac Drive alone (every method, its service areas, its parcel temperature).
+   */
+  fleets: z
+    .partialRecord(
+      z.enum(['mondapac_drive', 'uber_direct', 'zoom2u', 'auspost', 'fake_test']),
+      fleetSchema,
+    )
+    .optional(),
   realTimeCarrier: z
     .strictObject({
       carrier: z.enum(['mondapac-drive']),
@@ -1320,11 +1425,14 @@ const marketSchema = z
      * separate rate per seller. `provisionalTaxRateBps`: the tax rate taken out of a tax-inclusive
      * line before commission (AU GST 1000) until the tax module gives each line's tax. Without
      * this section the Market has no commission rate and checkout fails closed.
+     * `payoutTerms` (package 6b): the Market's payout terms; every field is required, there is no
+     * core default, and a Market without them has no payout terms (fail closed).
      */
     commissionPayouts: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(3000),
         provisionalTaxRateBps: z.number().int().min(0).max(5000),
+        payoutTerms: payoutTermsSchema.optional(),
       })
       .optional(),
     /**
@@ -1334,7 +1442,9 @@ const marketSchema = z
      * 500.00). `promoExpiryMonths`: promo credit expires this many calendar months after the grant
      * (12); refund credit never expires. `adminIssueCapMinor` and `adminDailyCapMinor`: the most
      * one admin issue may be (AU 5000 = 50.00) and the most one admin may issue per day without a
-     * second approval (AU 50000); read from package 2. `expiringSoonDays`: promo credit expiring
+     * second approval (AU 50000); read from package 2. `adminRequestExpiryDays`: an admin credit
+     * request above either cap that no second admin decided expires after this many calendar days
+     * in the Market's time zone (AU 7). `expiringSoonDays`: promo credit expiring
      * within this many days is shown as expiring soon. Without this section the Market has no wallet
      * settings and the wallet fails closed. Whether the wallet is on is not config: an admin sets
      * it at runtime (`wallet.market_settings`), off by default.
@@ -1345,6 +1455,7 @@ const marketSchema = z
         promoExpiryMonths: z.number().int().min(1).max(60),
         adminIssueCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
         adminDailyCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        adminRequestExpiryDays: z.number().int().min(1).max(90),
         expiringSoonDays: z.number().int().min(1).max(365),
       })
       .optional(),

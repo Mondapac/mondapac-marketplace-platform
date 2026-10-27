@@ -4,6 +4,7 @@ import type {
   Clock,
   Id,
   IdGenerator,
+  Money,
   Result,
   Temporal,
 } from '@mondapac/shared-kernel';
@@ -37,6 +38,8 @@ import {
 } from '../domain/order';
 import type { CheckoutGateway } from './ports/checkout-gateway';
 import type { DeliveryMethodPolicy } from './ports/delivery-method-policy';
+import type { PickupCodeVault } from './ports/pickup-code-vault';
+import type { PickupCodeRepository } from './ports/pickup-code.repository';
 import type { OrderLabels } from './ports/order-labels';
 import type { OrderTaxCategories } from './ports/order-tax-categories';
 import type { OrderingPolicy } from './ports/ordering-policy';
@@ -70,6 +73,10 @@ export interface OrderingDependencies {
   readonly labels: OrderLabels;
   /** Which delivery methods a seller order may use (the seam for the platform and seller settings). */
   readonly deliveryMethods: DeliveryMethodPolicy;
+  /** The pickup codes of seller orders the buyer collects in person (delivery models, package 2). */
+  readonly pickupCodes: PickupCodeRepository;
+  /** Makes, hashes and seals those codes under the buyer's key. */
+  readonly pickupVault: PickupCodeVault;
 }
 
 export type StartCheckoutFailure =
@@ -85,6 +92,11 @@ export type StartCheckoutFailure =
   /** A seller of the cart does not offer the delivery method the buyer chose for it. */
   | {
       readonly code: 'ordering.delivery-method-unavailable';
+      readonly methodSellerIds: readonly Id<'Seller'>[];
+    }
+  /** A seller the buyer chose in-person pickup for has no approved pickup address. */
+  | {
+      readonly code: 'ordering.pickup-unavailable';
       readonly methodSellerIds: readonly Id<'Seller'>[];
     }
   | { readonly code: 'ordering.cart-empty' }
@@ -242,20 +254,6 @@ export async function startCheckout(
   }
   const planned = planOrder(read.value, { maxLines: deps.policy.maxLines() });
   if (!planned.ok) return err(planned.error);
-  // The live quote of the real-time carrier where it carries the seller order, else the flat fee
-  // (SHP-02/03). Only the postcode of the address is given for a quote.
-  const fees = await deps.shipping.shippingFees(
-    context,
-    planned.plan.sellers.map((seller) => seller.sellerId),
-    { postcode: address.value.postcode },
-  );
-  if (!fees.ok) {
-    return err(
-      fees.error.code === 'access.denied'
-        ? { code: 'access.denied' }
-        : { code: 'ordering.check-unavailable' },
-    );
-  }
   // The buyer's method per seller (a choice for a seller not in the cart is dropped), checked
   // against the delivery-method policy before anything is reserved.
   const choiceOf = (sellerId: Id<'Seller'>): DeliveryChoice =>
@@ -269,7 +267,52 @@ export async function startCheckout(
   if (refused.length > 0) {
     return err({ code: 'ordering.delivery-method-unavailable', methodSellerIds: refused });
   }
-  const priced = addShipping(planned.plan, fees.value.fees);
+  // In-person pickup (owner decision): offered by every seller with an approved pickup address,
+  // free of any delivery fee. A failed read refuses the checkout; it is never "no address".
+  const pickupSellers = planned.plan.sellers
+    .map((seller) => seller.sellerId)
+    .filter((sellerId) => choiceOf(sellerId).method === 'pickup');
+  if (pickupSellers.length > 0) {
+    const available = await deps.shipping.pickupAvailability(context, pickupSellers);
+    if (!available.ok) {
+      return err(
+        available.error.code === 'access.denied'
+          ? { code: 'access.denied' }
+          : { code: 'ordering.check-unavailable' },
+      );
+    }
+    const without = pickupSellers.filter((sellerId) => !available.value.has(sellerId));
+    if (without.length > 0) {
+      return err({ code: 'ordering.pickup-unavailable', methodSellerIds: without });
+    }
+  }
+  // The live quote of the real-time carrier where it carries the seller order, else the flat fee
+  // (SHP-02/03), for the sellers that deliver; a pickup is asked for no quote and no flat fee, and
+  // costs nothing. Only the postcode of the address is given for a quote.
+  const delivering = planned.plan.sellers
+    .map((seller) => seller.sellerId)
+    .filter((sellerId) => choiceOf(sellerId).method !== 'pickup');
+  const quotes =
+    delivering.length === 0
+      ? ok({ fees: new Map<Id<'Seller'>, Money>(), quoted: new Set<Id<'Seller'>>() })
+      : await deps.shipping.shippingFees(context, delivering, {
+          postcode: address.value.postcode,
+        });
+  if (!quotes.ok) {
+    return err(
+      quotes.error.code === 'access.denied'
+        ? { code: 'access.denied' }
+        : { code: 'ordering.check-unavailable' },
+    );
+  }
+  const fees = {
+    fees: new Map([
+      ...quotes.value.fees,
+      ...pickupSellers.map((sellerId) => [sellerId, money(0n, planned.plan.currency)] as const),
+    ]),
+    quoted: quotes.value.quoted,
+  };
+  const priced = addShipping(planned.plan, fees.fees);
   if (!priced.ok) {
     // The customer cannot fix this; an admin must set the seller's fee (the use case logs it).
     return err({ code: 'ordering.shipping-unavailable', sellerIds: priced.sellerIds });
@@ -326,7 +369,7 @@ export async function startCheckout(
   const shippingInclusive = new Map(
     plan.sellers.map((seller) => [
       seller.sellerId,
-      fees.value.quoted.has(seller.sellerId) || seller.lines.every((line) => line.taxInclusive),
+      fees.quoted.has(seller.sellerId) || seller.lines.every((line) => line.taxInclusive),
     ]),
   );
   const taxed = await deps.tax.calculateTax(context, [

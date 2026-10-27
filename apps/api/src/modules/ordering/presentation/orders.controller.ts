@@ -37,6 +37,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { ListOrders } from '../application/use-cases/list-orders.use-case';
+import { RegeneratePickupCode } from '../application/use-cases/regenerate-pickup-code.use-case';
 import { StartCheckout } from '../application/use-cases/start-checkout.use-case';
 import { ViewOrder } from '../application/use-cases/view-order.use-case';
 import { ViewOrderDocument } from '../application/use-cases/view-order-document.use-case';
@@ -47,8 +48,10 @@ import {
   CheckoutStartedView,
   OrderPageBody,
   OwnOrderBody,
-  orderBody,
+  OwnPickupCodeBody,
+  ownListOrderBody,
   ownOrderBody,
+  ownPickupCodeBody,
   pageBody,
 } from './orders.dto';
 
@@ -80,6 +83,7 @@ export class OrdersController {
     private readonly view: ViewOrder,
     private readonly list: ListOrders,
     private readonly documentOf: ViewOrderDocument,
+    private readonly regenerate: RegeneratePickupCode,
   ) {}
 
   @Post('checkout')
@@ -116,7 +120,8 @@ export class OrdersController {
       "ordering.address-not-found (not one of the customer's addresses), " +
       'ordering.outside-delivery-area (the Market does not deliver to its postcode), ' +
       'ordering.delivery-method-unavailable (details.methodSellerIds: the seller does not offer ' +
-      'the chosen method), ordering.cart-empty or ' +
+      'the chosen method), ordering.pickup-unavailable (details.methodSellerIds: the seller has ' +
+      'no approved pickup address), ordering.cart-empty or ' +
       'ordering.cart-not-purchasable (details.lineIndexes)',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
@@ -177,7 +182,7 @@ export class OrdersController {
     const result = await this.list.execute(context, { cursor, limit: parseLimit(limit) });
     this.log('ordering.list-orders-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return pageBody(result.value, orderBody);
+    return pageBody(result.value, ownListOrderBody);
   }
 
   @Get(':orderId')
@@ -234,6 +239,53 @@ export class OrdersController {
     this.log('ordering.view-order-document-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return orderDocumentBody(result.value);
+  }
+
+  @Post(':orderId/pickup/:sellerId/regenerate')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Get a new pickup code for one pickup part of an own order',
+    description:
+      'Own orders only. For a part the customer collects in person that the seller has marked ' +
+      'ready and that is not collected yet: the old code stops working, the wrong-try count goes ' +
+      'back to zero and a lock is lifted. The body is an empty JSON object. The new code is ' +
+      'answered here, to the customer only.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiParam({ name: 'sellerId', format: 'uuid' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false } })
+  @ApiOkResponse({ type: OwnPickupCodeBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({
+    ...ERROR,
+    description: "ordering.order-not-found (also another customer's order)",
+  })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'ordering.fulfilment-conflict (not a ready pickup part, or already collected)',
+  })
+  async regeneratePickup(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Param('sellerId') sellerId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body);
+    if (invalid !== null) throw invalid;
+    const result = await this.regenerate.execute(context, { orderId, sellerId });
+    this.log(
+      'ordering.regenerate-pickup-code-route',
+      context,
+      result.ok ? 'regenerated' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return ownPickupCodeBody(result.value);
   }
 
   private refused(error: HttpException, context: CallContext): HttpException {

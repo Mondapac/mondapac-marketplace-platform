@@ -3,7 +3,7 @@
 **Ground truth:** `docs/modules/customers/notes.md` (packages 5a and 5b); `docs/design/data/platform.md`
 (10.2 grants).
 **Files:** `prisma/schema/customers.prisma`,
-`prisma/migrations/20261027002000_customers_account_deletion_requests/`.
+`prisma/migrations/20261027180000_customers_account_deletion_requests/`.
 
 This note covers `customers.account_deletion_requests` only (the address book and the
 `account_deletion_settings` history are described in `notes.md`). The table carries `market_id` and

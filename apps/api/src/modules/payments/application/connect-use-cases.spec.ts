@@ -20,6 +20,9 @@ import {
   stripeSignatureHeader,
   TEST_CONNECT_WEBHOOK_SECRET,
   TEST_WEBHOOK_SECRET,
+  FakeDisputeReader,
+  MemoryDisputeStore,
+  RecordingPaymentsOutbox,
 } from '../../../../test/support/payments-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -87,6 +90,9 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
         [code]: TEST_CONNECT_WEBHOOK_SECRET,
       }),
       reader: new FakeSessionReader(),
+      disputeReader: new FakeDisputeReader(),
+      disputes: new MemoryDisputeStore(),
+      outbox: new RecordingPaymentsOutbox(),
       ordering: new FakeOrderingFacade(),
       accounts,
       connect,

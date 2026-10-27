@@ -4,12 +4,17 @@ import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
+  ADMIN_CREDIT_REPOSITORY,
+  type AdminCreditRepository,
+} from '../application/ports/admin-credit.repository';
+import {
   MARKET_SETTING_REPOSITORY,
   type MarketSettingRepository,
 } from '../application/ports/market-setting.repository';
 import { WALLET_POLICY, type WalletPolicy } from '../application/ports/wallet-policy';
 import { WALLET_REPOSITORY, type WalletRepository } from '../application/ports/wallet.repository';
 import { ConfigWalletPolicy } from './config-wallet-policy';
+import { PrismaAdminCreditRepository } from './prisma-admin-credit.repository';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaWalletRepository } from './prisma-wallet.repository';
 
@@ -26,6 +31,12 @@ export const walletProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): MarketSettingRepository =>
       new PrismaMarketSettingRepository(prisma),
+  },
+  {
+    provide: ADMIN_CREDIT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminCreditRepository =>
+      new PrismaAdminCreditRepository(prisma),
   },
   {
     provide: WALLET_POLICY,

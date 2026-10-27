@@ -14,11 +14,13 @@ import {
   FakeCommission,
   FakeCustomers,
   FakeLabels,
+  FakePickupVault,
   FakeShipping,
   FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
   MemoryOrders,
+  MemoryPickupCodes,
   NO_AUDIT,
   NO_REFUNDS,
   TEST_DELIVERY_ADDRESS,
@@ -45,6 +47,7 @@ import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-ca
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
 import { RecordCarrierProgress } from './use-cases/record-carrier-progress.use-case';
+import { RecordDeliveryAnchor } from './use-cases/record-delivery-anchor.use-case';
 import { RecordLedger } from './use-cases/record-ledger.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
@@ -149,6 +152,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
     shipping.fees.set(SELLER_A, money(500n, currency));
     shipping.fees.set(SELLER_B, money(0n, currency));
+    // Both sellers have an approved pickup address (pickup is offered only with one).
+    shipping.pickupApproved = new Set([SELLER_A, SELLER_B]);
     cart.lines = [
       line(OFFER_1, SELLER_A, 1000n, 2),
       line(OFFER_2, SELLER_B, 250n, 3),
@@ -179,6 +184,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       clock,
       labels,
       deliveryMethods: new AllowAllDeliveryMethods(),
+      pickupCodes: new MemoryPickupCodes(),
+      pickupVault: new FakePickupVault(),
     };
   });
 
@@ -935,6 +942,46 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         { lookup: 'stores', count: 2 },
         { lookup: 'customers', count: 1 },
       ]);
+    });
+
+    it("names the products and stores of the customer's own orders, never the customer", async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');
+      labels.stores.set(SELLER_A, 'Corner Butcher');
+
+      const list = await new ListOrders(gate, deps).execute(customer, {});
+      const view = await new ViewOrder(gate, deps).execute(customer, {
+        orderId: result.value.orderId,
+      });
+
+      if (!list.ok || !view.ok) throw new Error('read failed');
+      const a = view.value.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      expect(a.storeName).toBe('Corner Butcher');
+      expect(a.lines.find((l) => l.offerId === OFFER_1)).toMatchObject({
+        productName: 'Lamb mince',
+        variantLabel: '500 g',
+      });
+      expect(list.value.orders[0]?.sellerOrders).toEqual(view.value.sellerOrders);
+      expect(labels.calls.some((c) => c.lookup === 'customers')).toBe(false);
+    });
+
+    it("still shows the customer's order, with null names, when the lookups fail", async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.fail.add('units').add('stores');
+
+      const view = await new ViewOrder(gate, deps).execute(customer, {
+        orderId: result.value.orderId,
+      });
+
+      if (!view.ok) throw new Error('read failed');
+      for (const seller of view.value.sellerOrders) {
+        expect(seller.storeName).toBeNull();
+        for (const line of seller.lines) {
+          expect(line).toMatchObject({ productName: null, variantLabel: null });
+        }
+      }
     });
 
     it('still answers, with null names, when every lookup fails', async () => {
@@ -1790,6 +1837,21 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           ).toBe('no-carrier');
         });
 
+        it('records carrier-unknown when a fleet that cannot dedupe went quiet, and never books again', async () => {
+          const order = await paidWith(methodsOf({ method: 'instant' }));
+          const a = sellerOrderIdOf(order.id, SELLER_A);
+          shipping.carrierBookings.set(a, ok('unknown'));
+          const { answer } = await readyAndBook(order, SELLER_A);
+
+          expect(answer).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+          expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)).toMatchObject({
+            fulfilment: 'to-ship',
+            deliveryAttention: 'carrier-unknown',
+          });
+          // The delivery is taken: it is not retried (a retry would only ask the same question).
+          expect(shipping.carrierRequests).toHaveLength(1);
+        });
+
         it('records the attention state for a scheduled order no carrier can serve at payment', async () => {
           const order = await paidScheduled();
           expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
@@ -1858,6 +1920,20 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           expect(await cancel(ORDER_ID, SO, 2)).toEqual(
             ok({ code: 'ordering.carrier.already-handled' }),
           );
+        });
+
+        it('records cancel-unknown when a fleet that cannot dedupe refused the cancel', async () => {
+          const order = await paid();
+          const a = sellerOrderIdOf(order.id, SELLER_A);
+          withRefunded(order.id, a, 2);
+          shipping.cancelAnswer = ok('unknown');
+          expect(await cancel(order.id, a, 1)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(shipping.carrierCancels).toEqual([a]);
+          expect(
+            orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!.deliveryAttention,
+          ).toBe('cancel-unknown');
         });
 
         it('takes a delivery the carrier can no longer cancel, and retries while shipping is down', async () => {
@@ -1950,6 +2026,168 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         shipping.carrierDown = false;
         expect(await progress(order.id, a, 1)).toEqual(err({ code: 'validation.failed' }));
         expect(await progress(order.id, 'nope', 2)).toEqual(err({ code: 'validation.failed' }));
+      });
+    });
+
+    describe('the payout eligibility anchor (package 6b)', () => {
+      const anchorDelivery = (n: number) => ({
+        eventId: id<'event'>(0xd00 + n),
+        subscriber: 'ordering.record-delivery-anchor',
+        attempt: 1,
+      });
+      const delivered = () =>
+        written.filter((e) => e.type === 'ordering.seller-order-delivered.v1');
+      /** The handler gets the source the event carries, as the subscription passes it. */
+      const anchor = (orderId: unknown, sellerOrderId: unknown, n = 1, context = system) =>
+        new RecordDeliveryAnchor(gate, deps).execute(context, {
+          delivery: anchorDelivery(n),
+          orderId: orderId as string,
+          sellerOrderId: sellerOrderId as string,
+          source:
+            (
+              delivered().find((e) => e.aggregateId === sellerOrderId)?.payload as
+                { source: string } | undefined
+            )?.source ?? 'seller-click',
+        });
+
+      it('publishes the delivered event once, in the unit of the seller click (version 3, ids only)', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        written.length = 0;
+
+        expect((await deliver(sellerA, a)).ok).toBe(true);
+
+        expect(delivered()).toEqual([
+          expect.objectContaining({
+            type: 'ordering.seller-order-delivered.v1',
+            aggregateType: 'seller-order',
+            aggregateId: a,
+            aggregateVersion: 3,
+            payload: {
+              orderId: order.id,
+              sellerOrderId: a,
+              sellerId: SELLER_A,
+              source: 'seller-click',
+            },
+          }),
+        ]);
+        // A second click is a conflict and writes no second event.
+        expect((await deliver(sellerA, a)).ok).toBe(false);
+        expect(delivered()).toHaveLength(1);
+      });
+
+      it('anchors a seller click as seller-click when the carrier never reported a delivery', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        // The carrier picked it up (so it is shipped); the seller then clicks "delivered".
+        await ship(sellerA, a);
+        await deliver(sellerA, a);
+        const row = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!;
+
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+        expect(commission.delivered).toEqual([
+          {
+            orderId: order.id,
+            sellerOrderId: a,
+            sellerId: SELLER_A,
+            deliveredAt: row.deliveredAt,
+            source: 'seller-click',
+          },
+        ]);
+        // The same delivery again changes nothing and never reaches commission-payouts twice.
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.already-handled' }),
+        );
+        expect(commission.delivered).toHaveLength(1);
+      });
+
+      it('anchors a carrier-confirmed delivery as carrier, and the delivery event is written with it', async () => {
+        const order = await paid();
+        const b = sellerOrderIdOf(order.id, SELLER_B);
+        shipping.carrierShipments.set(b, {
+          sellerOrderId: b,
+          carrierName: 'Mondapac Drive',
+          trackingRef: '01990000-0000-7000-8000-00000000d003',
+          progress: 'delivered',
+        });
+        written.length = 0;
+        expect(
+          await new RecordCarrierProgress(gate, deps).execute(system, {
+            delivery: {
+              eventId: id<'event'>(0xc01),
+              subscriber: 'ordering.record-carrier-progress',
+              attempt: 1,
+            },
+            orderId: order.id,
+            sellerOrderId: b,
+          }),
+        ).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(delivered()).toHaveLength(1);
+        expect(delivered()[0]).toMatchObject({ aggregateId: b, aggregateVersion: 3 });
+
+        expect(await anchor(order.id, b)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+        expect(commission.delivered).toEqual([
+          expect.objectContaining({ sellerOrderId: b, sellerId: SELLER_B, source: 'carrier' }),
+        ]);
+      });
+
+      it('keeps a seller click as seller-click even when the carrier reports the delivery afterwards', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        await deliver(sellerA, a);
+        // The carrier reports "delivered" only after the click, before the handler runs: live
+        // shipment state now says delivered, the event says who confirmed it at the time.
+        shipping.carrierShipments.set(a, {
+          sellerOrderId: a,
+          carrierName: 'Mondapac Drive',
+          trackingRef: '01990000-0000-7000-8000-00000000d004',
+          progress: 'delivered',
+        });
+        expect(delivered()[0]!.payload).toMatchObject({ source: 'seller-click' });
+
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+        expect(commission.delivered).toEqual([expect.objectContaining({ source: 'seller-click' })]);
+      });
+
+      it('retries while commission-payouts refuses, and anchors nothing meanwhile', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        await deliver(sellerA, a);
+
+        commission.deliveredFails = { code: 'commission-payouts.terms-unavailable' };
+        expect(await anchor(order.id, a)).toEqual(err({ code: 'ordering.try-again' }));
+        expect(commission.delivered).toEqual([]);
+
+        // Once commission-payouts accepts, the same event is handled (the mark was never written).
+        commission.deliveredFails = null;
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+      });
+
+      it('answers try-again for a seller order that is not delivered, and refuses bad ids and other actors', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        expect(await anchor(order.id, a)).toEqual(err({ code: 'ordering.try-again' }));
+        expect(await anchor(order.id, 'nope', 2)).toEqual(err({ code: 'validation.failed' }));
+        expect(await anchor('nope', a, 3)).toEqual(err({ code: 'validation.failed' }));
+        expect(await anchor(order.id, id<'SellerOrder'>(0x999), 4)).toEqual(
+          err({ code: 'validation.failed' }),
+        );
+        expect(await anchor(order.id, a, 5, sellerA)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(commission.delivered).toEqual([]);
       });
     });
   });

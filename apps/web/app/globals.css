@@ -7261,6 +7261,42 @@ button.login {
   width: 14px;
   height: 14px;
 }
+.ac-pickup {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-mist-soft);
+}
+.ac-pickup h3 {
+  margin: 0;
+  font-size: calc(15px * var(--fs));
+  line-height: calc(20px * var(--fs));
+}
+.ac-pickup-hint {
+  margin: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+  line-height: calc(19px * var(--fs));
+}
+.ac-pickup-code {
+  display: flex;
+  gap: 8px;
+}
+.ac-pickup-code span {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 64px;
+  border: 2px solid var(--sf-teal);
+  border-radius: 10px;
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font-size: calc(32px * var(--fs));
+  font-weight: 700;
+}
 .ac-dl {
   display: grid;
   margin: 0;
@@ -9624,5 +9660,165 @@ button.login {
 }
 /* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
 :root[data-keyboard='open'] .paybar {
+  display: none;
+}
+
+/* Product page on a phone (M4). The photos sit in a row that snaps; the count tells where the
+   buyer is. Details and Specifications are collapsibles under 700px (product/collapsible.tsx). The
+   tab bar slides away while scrolling down (shell/tabbar-autohide.tsx sets data-tabbar on <html>)
+   by a transform alone, so nothing in the layout moves, and the buy bar drops to the bottom edge
+   (its sticky offset animates; nothing else moves), where it takes the home-indicator inset once
+   (--sf-dock-inset, shell/dock.tsx).
+   The assistant launcher follows both (assistant/launcher-lift.ts). */
+.gtrack {
+  display: flex;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.gtrack::-webkit-scrollbar {
+  display: none;
+}
+.gtrack:focus-visible {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: -3px;
+}
+.gslide {
+  flex: 0 0 100%;
+  min-inline-size: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.gslide img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+}
+.gcount {
+  position: absolute;
+  inset-inline-end: 12px;
+  inset-block-end: 12px;
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-ink);
+  color: var(--sf-white);
+  font: 700 calc(13px * var(--fs)) / calc(20px * var(--fs)) var(--sf-font-body);
+  pointer-events: none;
+}
+.acc-sum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+.acc-sum::-webkit-details-marker {
+  display: none;
+}
+.acc-sum .ico {
+  flex: none;
+  inline-size: 20px;
+  block-size: 20px;
+  color: var(--sf-teal);
+  transform: rotate(90deg);
+}
+.acc[open] > .acc-sum .ico {
+  transform: rotate(-90deg);
+}
+/* From 700px the section is a heading with its content, always open. */
+@media (min-width: 700px) {
+  .acc-sum {
+    pointer-events: none;
+    cursor: default;
+  }
+  .acc-sum .ico,
+  .gcount {
+    display: none;
+  }
+}
+@media (max-width: 699.98px) {
+  .gmain {
+    aspect-ratio: 4 / 3;
+  }
+  .gth {
+    display: none;
+  }
+  .acc {
+    border-block-end: 1px solid var(--sf-line);
+  }
+  .sec .acc h2,
+  .sec .acc h3 {
+    margin: 0;
+    font-size: calc(18px * var(--fs));
+    line-height: calc(24px * var(--fs));
+    font-weight: 800;
+  }
+  .acc-sum {
+    min-block-size: 44px;
+  }
+  .acc-panel {
+    padding-block-end: 16px;
+  }
+  .desc {
+    text-align: start;
+  }
+  /* The collapsible is the disclosure: the description is not also clamped. */
+  .acc .desc.clamp {
+    display: block;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    mask-image: none;
+  }
+  .acc .dmore {
+    display: none;
+  }
+  :root[data-tabbar='hidden'] .tabbar {
+    transform: translateY(100%);
+    visibility: hidden;
+  }
+  /* The dock keeps its box (and z-index above the buy bar) while the bar is away: taps go through. */
+  :root[data-tabbar='hidden'] .dock {
+    pointer-events: none;
+    /* The slid-away bar must not make the page longer. */
+    overflow: clip;
+  }
+  /* Nothing sticks over the bottom edge but the buy bar, which brings its own room. */
+  :root[data-tabbar='hidden'] {
+    scroll-padding-bottom: 0;
+  }
+  /* Down to the bottom edge (14px and the inset, once) from above the tab bar. Only the sticky
+     offset changes, so nothing else moves, and a bar already released at the end of its section
+     stays where it is. */
+  :root[data-tabbar='hidden'] .buybar {
+    bottom: calc(14px + var(--sf-dock-inset, env(safe-area-inset-bottom, 0px)));
+  }
+}
+@media (max-width: 699.98px) and (prefers-reduced-motion: no-preference) {
+  .tabbar {
+    transition:
+      transform 200ms ease,
+      visibility 0s;
+  }
+  :root[data-tabbar='hidden'] .tabbar {
+    transition:
+      transform 200ms ease,
+      visibility 0s linear 200ms;
+  }
+  .buybar {
+    transition: bottom 200ms ease;
+  }
+  .aslaunch {
+    transition: bottom 200ms ease;
+  }
+}
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
+:root[data-keyboard='open'] .buybar {
   display: none;
 }

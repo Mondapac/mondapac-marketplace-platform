@@ -26,6 +26,8 @@ import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-poli
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
+import { PICKUP_CODE_REPOSITORY } from './application/ports/pickup-code.repository';
+import { PICKUP_CODE_VAULT } from './application/ports/pickup-code-vault';
 import { REFUND_REPOSITORY } from './application/ports/refund.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
@@ -41,6 +43,7 @@ import { SellerOrderCustomerNames } from './application/use-cases/seller-order-c
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
+import { RecordDeliveryAnchor } from './application/use-cases/record-delivery-anchor.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
 import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
@@ -49,6 +52,8 @@ import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordRefundLedger } from './application/use-cases/record-refund-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
+import { RegeneratePickupCode } from './application/use-cases/regenerate-pickup-code.use-case';
+import { SellerConfirmPickup } from './application/use-cases/seller-confirm-pickup.use-case';
 import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from './application/use-cases/seller-mark-order-ready.use-case';
@@ -87,6 +92,7 @@ import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
 import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
+import { deliverySubscriptions } from './presentation/subscribers/delivery.subscriptions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: OrderingDependencies) => U;
 
@@ -110,6 +116,8 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['clock', CLOCK],
   ['labels', ORDER_LABELS],
   ['deliveryMethods', DELIVERY_METHOD_POLICY],
+  ['pickupCodes', PICKUP_CODE_REPOSITORY],
+  ['pickupVault', PICKUP_CODE_VAULT],
 ];
 
 /** Every ordering use case shares one dependency object, built from the same ports. */
@@ -181,6 +189,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         cancel: CancelCarrierAfterRefund,
       ) => carrierSubscriptions(book, bookReady, record, cancel),
     ),
+    // Payout eligibility (package 6b): a delivered seller order's facts go to commission-payouts.
+    registerSubscriptionsFrom('ordering', [RecordDeliveryAnchor], (record: RecordDeliveryAnchor) =>
+      deliverySubscriptions(record),
+    ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
     ...[
@@ -197,6 +209,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerViewOrder,
       SellerViewOrderDocument,
       SellerMarkOrderReady,
+      SellerConfirmPickup,
+      RegeneratePickupCode,
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
@@ -211,6 +225,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
       CancelCarrierAfterRefund,
+      RecordDeliveryAnchor,
       AdminRefundOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),

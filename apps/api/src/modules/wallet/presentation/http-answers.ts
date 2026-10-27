@@ -14,6 +14,17 @@ export const WALLET_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'wallet.busy': 409,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
+  // Admin credit issuance (package 2a).
+  'wallet.paused': 409,
+  'wallet.frozen': 409,
+  'wallet.cap-exceeded': 409,
+  'wallet.account-not-active': 409,
+  'idempotency.key-reused': 409,
+  'wallet.credit-request-not-found': 404,
+  'wallet.customer-not-found': 404,
+  'wallet.credit-request-decided': 409,
+  'wallet.credit-request-expired': 409,
+  'wallet.approver-is-requester': 403,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

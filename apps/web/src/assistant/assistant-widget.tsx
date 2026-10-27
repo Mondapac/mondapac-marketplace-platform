@@ -28,7 +28,7 @@ import {
   type AssistantSetup,
   type SendResult,
 } from './assistant.ts';
-import { launcherHidden, launcherLift } from './launcher-lift.ts';
+import { dockForLauncher, launcherHidden, launcherLift, movingBarBox } from './launcher-lift.ts';
 
 /** After this long without an answer the widget says it is slow (the server gives up at 25 s). */
 export const SLOW_AFTER_MS = 8000;
@@ -82,17 +82,29 @@ function useSheet(): boolean {
 function useLift(root: HTMLElement | null) {
   useEffect(() => {
     if (!root) return;
+    const html = document.documentElement;
+    // The product page's tab bar slides away on a phone (shell/tabbar-autohide.tsx) and the buy bar
+    // drops with it. While that moves, the launcher keeps to the higher, tab bar shown geometry.
     const box = (element: Element | null) => {
       if (!element) return null;
       const rect = element.getBoundingClientRect();
       return rect.height > 0 ? { top: rect.top, bottom: rect.bottom } : null;
     };
+    const dockHeight = () => document.querySelector<HTMLElement>('.dock')?.offsetHeight ?? 0;
+    const gap = () => {
+      const value = Number.parseFloat(getComputedStyle(html).getPropertyValue('--sf-dock-gap'));
+      return Number.isFinite(value) ? value : 13;
+    };
     const place = () => {
       const top = document.querySelector('.fbase .btt');
+      const hidden = html.getAttribute('data-tabbar') === 'hidden';
+      const moving = html.getAttribute('data-tabbar-moving') === 'true';
       const { dock, lift, alignBackToTop } = launcherLift(
         window.innerHeight,
-        box(document.querySelector('.dock')),
-        Array.from(document.querySelectorAll('.buybar, .cbar'), box),
+        dockForLauncher(box(document.querySelector('.dock')), hidden, moving),
+        Array.from(document.querySelectorAll('.buybar, .cbar'), (bar) =>
+          moving ? movingBarBox(box(bar), window.innerHeight, dockHeight(), gap()) : box(bar),
+        ),
         box(top),
       );
       const phone =
@@ -118,7 +130,13 @@ function useLift(root: HTMLElement | null) {
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
     const bar = document.querySelector('.dock');
     if (bar) observer?.observe(bar);
+    const tabBar = new MutationObserver(place);
+    tabBar.observe(html, {
+      attributes: true,
+      attributeFilter: ['data-tabbar', 'data-tabbar-moving'],
+    });
     return () => {
+      tabBar.disconnect();
       window.removeEventListener('scroll', place);
       window.removeEventListener('resize', place);
       observer?.disconnect();

@@ -3,7 +3,13 @@ import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
 import { SellerOrderReady } from '../domain/events';
-import { markDelivered, markReady, type Fulfilment } from '../domain/order';
+import { markCollected, markDelivered, markReady, type Fulfilment } from '../domain/order';
+import {
+  hashesMatch,
+  parsePickupCode,
+  pickupStatusOf,
+  type PickupStatus,
+} from '../domain/pickup-code';
 import {
   sellerOrderDetailView,
   type LabelledSellerOrderPageView,
@@ -13,14 +19,17 @@ import {
   type SellerOrderPageView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
+import { deliveredEvent } from './delivery-event';
 import { labelSellerOrders } from './order-labels';
 import type { SellerOrderPage, SellerOrderRecord } from './ports/order.repository';
+import type { IssuedPickupCode } from './ports/pickup-code-vault';
+import { pickupStatusFor } from './pickup-flow';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, openShipTo } from './read-flow';
 
 // The seller's side of an order once it is paid: see it and tell the platform it is ready; the
 // platform books the delivery, the seller never delivers or names a carrier. The delivery is
-// recorded from the carrier's progress (or, until pickup codes exist, by the seller marking it
-// delivered). The seller sees only the seller orders of its own shop. Inventory learns of a shipment
+// recorded from the carrier's progress, or, for an order the buyer collects in person, when the
+// seller types the buyer's pickup code at the handover. The seller sees only the seller orders of its own shop. Inventory learns of a shipment
 // from the worker (`recordShipments`), not from the seller's request. One seller order's page
 // (view, ship, deliver) carries the delivery address copied at checkout; the list does not.
 
@@ -30,6 +39,8 @@ const logger = new Logger('OrderingFulfilmentFlow');
 interface Detailed {
   readonly view: SellerOrderDetailView;
   readonly record: Pick<SellerOrderRecord, 'accountId' | 'shipToSealed'>;
+  /** For a ready pickup order not collected yet: the tries left and the lock, never the code. */
+  readonly pickup?: PickupStatus | null;
 }
 
 export type FulfilmentFailure =
@@ -40,7 +51,11 @@ export type FulfilmentFailure =
     }
   | { readonly code: 'ordering.seller-order-not-found' }
   /** The seller order is not at the step the request needs (already shipped, not yet shipped). */
-  | { readonly code: 'ordering.fulfilment-conflict' };
+  | { readonly code: 'ordering.fulfilment-conflict' }
+  /** The pickup code typed was wrong; `attemptsLeft` tries remain before the order is locked. */
+  | { readonly code: 'ordering.pickup-code-invalid'; readonly attemptsLeft: number }
+  /** Too many wrong pickup codes: only the buyer asking for a new code opens the order again. */
+  | { readonly code: 'ordering.pickup-code-locked' };
 
 /** The seller of an authenticated seller session; null for any other actor (fail closed). */
 function sellerOf(context: CallContext): Id<'Seller'> | null {
@@ -164,7 +179,11 @@ export async function viewSellerOrder(
         );
         return record === null
           ? err({ code: 'ordering.seller-order-not-found' } as const)
-          : ok({ view: sellerOrderDetailView(record), record });
+          : ok({
+              view: sellerOrderDetailView(record),
+              record,
+              pickup: await pickupStatusFor(deps, context.market, record.sellerOrder),
+            });
       },
       { readOnly: true },
     ),
@@ -191,15 +210,53 @@ export async function markSellerOrderReady(
   if (!sellerOrderId.ok) return sellerOrderId;
   const now = deps.clock.now();
   let outcome = 'ready';
+  // A pickup order gets its code now, when it becomes ready (not when it is paid): the code
+  // exists only while there is something to collect, and a paid order the shop never prepares
+  // carries none. The code is made before the unit, because it uses the buyer's key; the unit
+  // stores it with the ready time, once (a repeat finds the order ready and makes none).
+  let issued: IssuedPickupCode | null = null;
+  const peek = await deps.unitOfWork.run<SellerOrderRecord | null, FulfilmentFailure>(
+    context.market,
+    async () => ok(await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value)),
+    { readOnly: true },
+  );
+  if (peek.ok && peek.value !== null && peek.value.sellerOrder.deliveryMethod === 'pickup') {
+    if (
+      peek.value.sellerOrder.readyAt === null &&
+      peek.value.sellerOrder.fulfilment === 'to-ship'
+    ) {
+      const made = await deps.pickupVault.issue(
+        context.market,
+        peek.value.accountId,
+        peek.value.sellerOrder.id,
+      );
+      if (!made.ok) {
+        // The buyer's account was erased: there is nobody to collect it.
+        logger.warn({
+          msg: 'ordering.seller-order-ready',
+          outcome: 'pickup-code-unavailable',
+          sellerOrderId: sellerOrderId.value,
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+        });
+        return err({ code: 'ordering.fulfilment-conflict' });
+      }
+      issued = made.value;
+    }
+  }
   const done = await deps.unitOfWork.run<Detailed, FulfilmentFailure>(context.market, async () => {
     const record = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
     if (record === null) {
       outcome = 'ordering.seller-order-not-found';
       return err({ code: 'ordering.seller-order-not-found' } as const);
     }
-    const already = (current: SellerOrderRecord) => {
+    const already = async (current: SellerOrderRecord) => {
       outcome = 'already-ready';
-      return ok({ view: sellerOrderDetailView(current), record: current });
+      return ok({
+        view: sellerOrderDetailView(current),
+        record: current,
+        pickup: await pickupStatusFor(deps, context.market, current.sellerOrder),
+      });
     };
     if (record.sellerOrder.readyAt !== null) return already(record);
     const ready = markReady(record.sellerOrder, now);
@@ -213,6 +270,25 @@ export async function markSellerOrderReady(
       if (fresh !== null && fresh.sellerOrder.readyAt !== null) return already(fresh);
       outcome = 'ordering.fulfilment-conflict';
       return err({ code: 'ordering.fulfilment-conflict' } as const);
+    }
+    let pickup: PickupStatus | null = null;
+    if (ready.deliveryMethod === 'pickup') {
+      if (issued === null) {
+        // Defensive: no code was made because the order looked ready or past ready when it was
+        // read first. Nothing is saved (the refusal rolls the ready time back).
+        outcome = 'ordering.fulfilment-conflict';
+        return err({ code: 'ordering.fulfilment-conflict' } as const);
+      }
+      const record0 = {
+        sellerOrderId: ready.id,
+        hash: issued.hash,
+        sealed: issued.sealed,
+        failedAttempts: 0,
+        lockedAt: null,
+        issuedAt: now,
+      };
+      await deps.pickupCodes.insert(context.market, record0);
+      pickup = pickupStatusOf(record0);
     }
     // Written with the ready time, once per seller order (a repeat finds it ready). A refused
     // event rolls the change back: the seller sees a conflict and tries again.
@@ -236,7 +312,11 @@ export async function markSellerOrderReady(
       }
       throw error;
     }
-    return ok({ view: sellerOrderDetailView({ ...record, sellerOrder: ready }), record });
+    return ok({
+      view: sellerOrderDetailView({ ...record, sellerOrder: ready }),
+      record,
+      pickup,
+    });
   });
   logger.log({
     msg: 'ordering.seller-order-ready',
@@ -269,18 +349,143 @@ export async function deliverSellerOrder(
       delivered,
       record.sellerOrder.fulfilment,
     );
-    return saved === 'saved'
-      ? ok({ view: sellerOrderDetailView({ ...record, sellerOrder: delivered }), record })
-      : err({ code: 'ordering.fulfilment-conflict' } as const);
+    if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
+    await deps.outbox.append(context, [
+      deliveredEvent(record.orderId, delivered, now, 'seller-click'),
+    ]);
+    return ok({ view: sellerOrderDetailView({ ...record, sellerOrder: delivered }), record });
   });
   return labelled(deps, context, done);
+}
+
+/**
+ * The seller types the buyer's 4-digit pickup code at the handover. A correct code records the
+ * pickup order as collected: `delivered` in one step, with no carrier (the seller never
+ * delivers; the buyer came to the shop). In order: only the session's own pickup order is found
+ * (another shop's id answers as an unknown one); an already collected order answers its state
+ * without reading the code (idempotent); the order must be ready; the typed code is hashed under
+ * the buyer's key outside the unit and compared with the stored hash in constant time. A wrong
+ * code is counted in the same unit that read it, and the fifth locks the order: from then on
+ * every code is refused until the buyer asks for a new one. The code is never logged.
+ */
+export async function confirmSellerPickup(
+  deps: OrderingDependencies,
+  context: CallContext,
+  input: { readonly sellerOrderId: unknown; readonly code: unknown },
+): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
+  const sellerId = sellerOf(context);
+  if (sellerId === null) return err({ code: 'access.denied' });
+  const sellerOrderId = parseSellerOrderId(input?.sellerOrderId);
+  if (!sellerOrderId.ok) return sellerOrderId;
+  const code = parsePickupCode(input?.code);
+  if (code === null) {
+    return err({ code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] });
+  }
+  const { market } = context;
+  const now = deps.clock.now();
+  const log = (outcome: string, extra: Record<string, unknown> = {}) =>
+    logger.log({
+      msg: 'ordering.seller-pickup-confirm',
+      outcome,
+      ...extra,
+      sellerOrderId: sellerOrderId.value,
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+  const first = await deps.unitOfWork.run<SellerOrderRecord, FulfilmentFailure>(
+    market,
+    async () => {
+      const record = await deps.orders.findForSeller(market, sellerId, sellerOrderId.value);
+      return record === null
+        ? err({ code: 'ordering.seller-order-not-found' } as const)
+        : ok(record);
+    },
+    { readOnly: true },
+  );
+  if (!first.ok) {
+    log(first.error.code);
+    return first;
+  }
+  const seen = first.value;
+  const detailed = (record: SellerOrderRecord): Result<Detailed, FulfilmentFailure> =>
+    ok({ view: sellerOrderDetailView(record), record, pickup: null });
+  if (seen.sellerOrder.deliveryMethod !== 'pickup') {
+    log('ordering.fulfilment-conflict', { reason: 'not-pickup' });
+    return err({ code: 'ordering.fulfilment-conflict' });
+  }
+  if (seen.sellerOrder.fulfilment === 'delivered') {
+    log('already-collected');
+    return labelled(deps, context, detailed(seen));
+  }
+  if (seen.sellerOrder.fulfilment !== 'to-ship' || seen.sellerOrder.readyAt === null) {
+    log('ordering.fulfilment-conflict', { reason: 'not-ready' });
+    return err({ code: 'ordering.fulfilment-conflict' });
+  }
+  const typed = await deps.pickupVault.digest(market, seen.accountId, seen.sellerOrder.id, code);
+  if (!typed.ok) {
+    log('ordering.fulfilment-conflict', { reason: 'key-destroyed' });
+    return err({ code: 'ordering.fulfilment-conflict' });
+  }
+  type Verdict =
+    | { readonly kind: 'collected' | 'already'; readonly record: SellerOrderRecord }
+    | { readonly kind: 'locked' }
+    | { readonly kind: 'wrong'; readonly status: PickupStatus };
+  const done = await deps.unitOfWork.run<Verdict, FulfilmentFailure>(market, async () => {
+    const record = await deps.orders.findForSeller(market, sellerId, sellerOrderId.value);
+    if (record === null) return err({ code: 'ordering.seller-order-not-found' } as const);
+    if (record.sellerOrder.fulfilment === 'delivered') {
+      return ok({ kind: 'already', record } as const);
+    }
+    const stored = await deps.pickupCodes.find(market, record.sellerOrder.id);
+    if (stored === null || record.sellerOrder.readyAt === null) {
+      return err({ code: 'ordering.fulfilment-conflict' } as const);
+    }
+    if (pickupStatusOf(stored).locked) return ok({ kind: 'locked' } as const);
+    if (!hashesMatch(stored.hash, typed.value)) {
+      // Counted in this unit, which commits: the count must outlive the refusal. The answer is
+      // `ok` for that reason only; the caller turns it into the refusal.
+      const status = await deps.pickupCodes.registerFailure(market, record.sellerOrder.id, now);
+      return ok({ kind: 'wrong', status: status ?? pickupStatusOf(stored) } as const);
+    }
+    const collected = markCollected(record.sellerOrder, now);
+    if (collected === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
+    const saved = await deps.orders.saveFulfilment(market, collected, 'to-ship');
+    if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
+    await deps.outbox.append(context, [
+      deliveredEvent(record.orderId, collected, now, 'seller-click'),
+    ]);
+    return ok({ kind: 'collected', record: { ...record, sellerOrder: collected } } as const);
+  });
+  if (!done.ok) {
+    log(done.error.code);
+    return done;
+  }
+  switch (done.value.kind) {
+    case 'collected':
+    case 'already':
+      log(done.value.kind === 'collected' ? 'collected' : 'already-collected');
+      return labelled(deps, context, detailed(done.value.record));
+    case 'locked':
+      log('locked');
+      return err({ code: 'ordering.pickup-code-locked' });
+    case 'wrong':
+      log(done.value.status.locked ? 'wrong-code-locked' : 'wrong-code', {
+        attemptsLeft: done.value.status.attemptsLeft,
+      });
+      return done.value.status.locked
+        ? err({ code: 'ordering.pickup-code-locked' })
+        : err({
+            code: 'ordering.pickup-code-invalid',
+            attemptsLeft: done.value.status.attemptsLeft,
+          });
+  }
 }
 
 /**
  * The step's answer with the names of its lines and the opened delivery address, read after the
  * unit has closed.
  */
-async function labelled(
+export async function labelled(
   deps: OrderingDependencies,
   context: CallContext,
   result: Result<Detailed, FulfilmentFailure>,
@@ -291,6 +496,7 @@ async function labelled(
   return ok({
     ...one!,
     shipTo: await openShipTo(deps, context, record.accountId, record.shipToSealed),
+    pickup: result.value.pickup ?? null,
   });
 }
 

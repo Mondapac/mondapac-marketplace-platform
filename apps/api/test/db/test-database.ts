@@ -73,7 +73,13 @@ function exported(
     | 'TEST_CERTIFIED_CATEGORIES_OWNER_DATABASE_URL'
     | 'TEST_WALLET_SWITCH_DATABASE_URL'
     | 'TEST_WALLET_SWITCH_OWNER_DATABASE_URL'
-    | 'TEST_ORDERING_REFUNDS_DATABASE_URL',
+    | 'TEST_WALLET_CREDIT_DATABASE_URL'
+    | 'TEST_WALLET_CREDIT_OWNER_DATABASE_URL'
+    | 'TEST_ORDERING_REFUNDS_DATABASE_URL'
+    | 'TEST_PAYOUT_HOLDS_DATABASE_URL'
+    | 'TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL'
+    | 'TEST_SELLERS_LIST_DATABASE_URL'
+    | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -325,9 +331,45 @@ export function walletSwitchOwnerTestDatabaseUrl(): string {
 }
 
 /**
+ * The copy that wallet-admin-credit.db-spec.ts issues admin credit on and moves each Market's
+ * wallet switch on, as the application login and as its owner.
+ */
+export function walletCreditTestDatabaseUrl(): string {
+  return exported('TEST_WALLET_CREDIT_DATABASE_URL');
+}
+
+export function walletCreditOwnerTestDatabaseUrl(): string {
+  return exported('TEST_WALLET_CREDIT_OWNER_DATABASE_URL');
+}
+
+/**
  * The copy that ordering-refunds.db-spec.ts writes its orders and runs the Market-wide ledger
  * steps on (global-setup.ts), as the application login: no other file's orders live there.
  */
 export function orderingRefundsTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_REFUNDS_DATABASE_URL');
+}
+
+/**
+ * The copy that commission-payouts-terms-holds.db-spec.ts runs on (global-setup.ts), as the
+ * application login: it relays and dispatches identity's seller-access events there.
+ */
+export function payoutHoldsTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_HOLDS_DATABASE_URL');
+}
+
+export function payoutHoldsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that sellers-list.db-spec.ts makes seller files and counts the tabs of whole Markets
+ * on (global-setup.ts), as the application login and as its owner (the owner patches the files).
+ */
+export function sellersListTestDatabaseUrl(): string {
+  return exported('TEST_SELLERS_LIST_DATABASE_URL');
+}
+
+export function sellersListOwnerTestDatabaseUrl(): string {
+  return exported('TEST_SELLERS_LIST_OWNER_DATABASE_URL');
 }

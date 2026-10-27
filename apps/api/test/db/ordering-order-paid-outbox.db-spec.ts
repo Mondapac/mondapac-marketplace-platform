@@ -14,6 +14,7 @@ import { ORDERING_EVENTS } from '../../src/modules/ordering/domain/events';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
+import { PrismaPickupCodeRepository } from '../../src/modules/ordering/infrastructure/prisma-pickup-code.repository';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { EventCatalogue } from '../../src/platform/events/event-catalogue';
 import {
@@ -38,6 +39,7 @@ import {
   FakeTaxCategories,
   NO_AUDIT,
   NO_REFUNDS,
+  FakePickupVault,
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
@@ -99,6 +101,8 @@ describe.each(TEST_MARKETS)(
         clock,
         labels: new FakeLabels(),
         deliveryMethods: new AllowAllDeliveryMethods(),
+        pickupCodes: new PrismaPickupCodeRepository(db.service),
+        pickupVault: new FakePickupVault(),
       };
       system = testCallContext(market, 'system', `order-paid-${ids.next()}`);
     });

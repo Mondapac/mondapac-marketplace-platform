@@ -15,13 +15,24 @@
   },
   "commissionPayouts": {
     "defaultRateBps": 1500,
-    "provisionalTaxRateBps": 1000
+    "provisionalTaxRateBps": 1000,
+    "payoutTerms": {
+      "weekdays": ["TUE"],
+      "localTime": "10:00",
+      "holdDaysCarrier": 7,
+      "holdDaysSellerClick": 14,
+      "minimumMinor": 5000,
+      "minimumMinorCap": 100000,
+      "approvalMode": "AUTO",
+      "firstPayoutManual": true
+    }
   },
   "wallet": {
     "balanceCapMinor": 50000,
     "promoExpiryMonths": 12,
     "adminIssueCapMinor": 5000,
     "adminDailyCapMinor": 50000,
+    "adminRequestExpiryDays": 7,
     "expiringSoonDays": 30
   },
   "reviews": {
@@ -250,6 +261,7 @@
       ],
       "postcodeField": "postcode",
       "regionField": "state",
+      "localityField": "suburb",
       "postcodePattern": "^[0-9]{4}$",
       "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
     },

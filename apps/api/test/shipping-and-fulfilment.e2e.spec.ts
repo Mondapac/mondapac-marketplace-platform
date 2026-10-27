@@ -7,6 +7,7 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { SellerConfirmPickup } from '../src/modules/ordering/application/use-cases/seller-confirm-pickup.use-case';
 import { SellerDeliverOrder } from '../src/modules/ordering/application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../src/modules/ordering/application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from '../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
@@ -67,6 +68,7 @@ const detail = (currency: string, patch: object = {}) => ({
   deliveryWindow: null,
   readyAt: null,
   deliveryAttention: null,
+  pickup: null,
   lines: [
     {
       lineId: id<'OrderLine'>(0xc030),
@@ -95,6 +97,9 @@ it('maps every refusal code of the shipping and seller order routes to its exact
     'shipping.seller-not-found': 404,
     'shipping.fee-not-set': 404,
     'shipping.store-fee-not-found': 404,
+    'shipping.fleet-model-not-found': 404,
+    'shipping.fleet-model-name-taken': 409,
+    'shipping.fleet-model-conflict': 409,
     'shipping.unavailable': 503,
   });
   expect(ORDERING_STATUS['ordering.seller-order-not-found']).toBe(404);
@@ -134,6 +139,8 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
           .useValue(stub('document'))
           .overrideProvider(SellerMarkOrderReady)
           .useValue(stub('ready'))
+          .overrideProvider(SellerConfirmPickup)
+          .useValue(stub('confirm-pickup'))
           .overrideProvider(SellerDeliverOrder)
           .useValue(stub('deliver'))
           .overrideProvider(SetFlatFee)
@@ -415,6 +422,104 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
         .send('x');
       expect(text.status).toBe(415);
       expect(calls).toEqual([]);
+    });
+
+    it('confirms a pickup from a body of the code alone and answers the collected order', async () => {
+      await boot();
+      const session = seller();
+      next = ok(
+        detail(currency, {
+          deliveryMethod: 'pickup',
+          fulfilment: 'delivered',
+          shippedAt: START,
+          deliveredAt: START,
+          readyAt: START,
+        }),
+      );
+
+      const res = await call(
+        'post',
+        'seller',
+        `${ORDERS}/${SELLER_ORDER}/confirm-pickup`,
+        session,
+        { code: '0427' },
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toMatchObject({ fulfilment: 'delivered', carrier: null, pickup: null });
+      expect(JSON.stringify(res.body)).not.toContain('0427');
+      expect(calls).toEqual([
+        { name: 'confirm-pickup', input: { sellerOrderId: SELLER_ORDER, code: '0427' } },
+      ]);
+    });
+
+    it('answers the tries left for a ready pickup, and never the code', async () => {
+      await boot();
+      next = ok(
+        detail(currency, {
+          deliveryMethod: 'pickup',
+          readyAt: START,
+          pickup: { attemptsLeft: 3, locked: false },
+        }),
+      );
+
+      const res = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, seller());
+
+      expect(res.body).toMatchObject({ pickup: { attemptsLeft: 3, locked: false } });
+    });
+
+    it('refuses confirm-pickup without CSRF, with an extra field, and not as JSON', async () => {
+      await boot();
+      const session = seller();
+      const path = `${ORDERS}/${SELLER_ORDER}/confirm-pickup`;
+
+      expect(
+        (await call('post', 'seller', path, { cookie: session.cookie }, { code: '0427' })).status,
+      ).toBe(403);
+      const extra = await call('post', 'seller', path, session, { code: '0427', orderId: 'x' });
+      expect(extra.status).toBe(400);
+      expect(extra.body).toMatchObject({
+        details: { fields: [{ path: 'orderId', code: 'unknown-field' }] },
+      });
+      const text = await http()
+        .post(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...session })
+        .set('content-type', 'text/plain')
+        .send('0427');
+      expect(text.status).toBe(415);
+      expect(calls).toEqual([]);
+    });
+
+    it('maps the confirm-pickup refusals: wrong code 422 with tries left, locked 423, conflict 409', async () => {
+      await boot();
+      const session = seller();
+      const path = `${ORDERS}/${SELLER_ORDER}/confirm-pickup`;
+      const post = () => call('post', 'seller', path, session, { code: '1111' });
+
+      next = err({ code: 'ordering.pickup-code-invalid', attemptsLeft: 2 });
+      const wrong = await post();
+      expect(wrong.status).toBe(422);
+      expect(wrong.body).toEqual({
+        statusCode: 422,
+        code: 'ordering.pickup-code-invalid',
+        details: { attemptsLeft: 2 },
+      });
+      next = err({ code: 'ordering.pickup-code-locked' });
+      const locked = await post();
+      expect(locked.status).toBe(423);
+      expect(locked.body).toEqual({ statusCode: 423, code: 'ordering.pickup-code-locked' });
+      next = err({ code: 'ordering.fulfilment-conflict' });
+      expect((await post()).status).toBe(409);
+      next = err({ code: 'ordering.seller-order-not-found' });
+      expect((await post()).status).toBe(404);
+      next = err({
+        code: 'validation.failed',
+        fields: [{ path: 'code', code: 'format' }],
+      });
+      expect((await post()).status).toBe(400);
+      next = err({ code: 'access.denied' });
+      expect((await post()).status).toBe(403);
     });
 
     it('maps the ready refusals: bad id, not found (also another shop) and already shipped', async () => {
