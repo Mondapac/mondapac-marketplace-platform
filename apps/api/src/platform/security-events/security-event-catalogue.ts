@@ -186,6 +186,27 @@ export const StripeWebhookSignatureFailed = defineSecurityEvent({
   payload: { provider: eventField.enumOf(['stripe'] as const) },
 });
 
+/**
+ * A Stripe dispute payments could not record (package 8a): unreadable, not test mode, no Market on
+ * its PaymentIntent, malformed, or a later read that changes its order or amount. Its money may
+ * move all the same, so an admin looks at it in the Stripe Dashboard.
+ */
+export const StripeDisputeUnmatched = defineSecurityEvent({
+  type: 'payments.dispute.unmatched',
+  severity: 's2',
+  targetType: null,
+  ip: false,
+  payload: {
+    reason: eventField.enumOf([
+      'unreadable',
+      'not-test-mode',
+      'no-market',
+      'malformed',
+      'changed',
+    ] as const),
+  },
+});
+
 /** A carrier webhook whose signature did not verify (Mondapac Drive; Uber Direct and Zoom2u when built). */
 export const CarrierWebhookSignatureFailed = defineSecurityEvent({
   type: 'shipping.webhook-signature.failed',
@@ -208,6 +229,7 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       PasswordChanged,
       PasswordReset,
       StripeWebhookSignatureFailed,
+      StripeDisputeUnmatched,
       CarrierWebhookSignatureFailed,
     ] as readonly SecurityEventDefinition[]
   ).map((definition) => [definition.type, definition]),

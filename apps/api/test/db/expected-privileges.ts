@@ -771,6 +771,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
+    'payments.disputes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'evidence_due_by',
+        'funds_reinstated',
+        'funds_reinstated_at',
+        'funds_withdrawn',
+        'funds_withdrawn_at',
+        'last_read_at',
+        'outcome',
+        'reason',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'payments.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],
