@@ -1,4 +1,4 @@
--- Reverses 20261026214718_wallet_admin_credit (customer wallet package 2a): the grants, the
+-- Reverses 20261027013000_wallet_admin_credit (customer wallet package 2a): the grants, the
 -- tables (with their triggers, indexes and foreign key) and the functions. Every admin credit
 -- request is lost with them; the ledger rows their grants wrote stay. Never run this against
 -- production after launch.

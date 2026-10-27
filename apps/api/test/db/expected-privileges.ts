@@ -640,6 +640,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['content_ciphertext', 'is_default', 'updated_at'],
     },
+    // Customers (package 5a): the account deletion setting is insert-only versions (the reason is
+    // part of the audit evidence); the outbox is immutable to the application except the relay's
+    // published_at.
+    'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
