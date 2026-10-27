@@ -2,7 +2,11 @@ import { BackLink, EmptyState, LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { OrderDetail } from '../../../../src/orders/order-detail.tsx';
-import { ORDER_DELIVER_PERMISSION, ORDER_READY_PERMISSION } from '../../../../src/orders/types.ts';
+import {
+  ORDER_CONFIRM_PICKUP_PERMISSION,
+  ORDER_DELIVER_PERMISSION,
+  ORDER_READY_PERMISSION,
+} from '../../../../src/orders/types.ts';
 import { isUuid } from '../../../../src/server/catalog-page.ts';
 import { loadOrderDetailPage } from '../../../../src/server/orders-page.ts';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
@@ -66,6 +70,7 @@ export default async function OrderPage({
         csrfToken={csrfToken}
         canMarkReady={permissionKeys.includes(ORDER_READY_PERMISSION)}
         canDeliver={permissionKeys.includes(ORDER_DELIVER_PERMISSION)}
+        canConfirmPickup={permissionKeys.includes(ORDER_CONFIRM_PICKUP_PERMISSION)}
       />
     </SellerShell>
   );

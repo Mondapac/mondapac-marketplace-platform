@@ -2,6 +2,7 @@ import { money as makeMoney } from '@mondapac/shared-kernel';
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
 import type { DeliveryAttention, DeliveryMethod } from './delivery-method';
 import { linesTax, shippingTaxOf } from './order';
+import type { PickupStatus } from './pickup-code';
 import type {
   CancelReason,
   Fulfilment,
@@ -85,6 +86,18 @@ export interface OrderView {
  */
 export interface OwnOrderView extends OrderView {
   readonly shipTo: ShipTo | null;
+  /**
+   * The pickup codes of the order's ready pickup parts that are not collected yet, for the buyer
+   * only: the code to show the seller at the handover, how many wrong tries the seller has left
+   * and whether the part is locked. SECRET: never logged, never in an event or an error.
+   */
+  readonly pickupCodes: readonly OwnPickupCodeView[];
+}
+
+/** One ready pickup part's code, in the buyer's own view of an order. */
+export interface OwnPickupCodeView extends PickupStatus {
+  readonly sellerId: Id<'Seller'>;
+  readonly code: string;
 }
 
 export interface AdminOrderView extends OrderView {
@@ -130,6 +143,11 @@ export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailVie
  */
 export interface LabelledSellerOrderShipView extends LabelledSellerOrderDetailView {
   readonly shipTo: ShipTo | null;
+  /**
+   * For a ready pickup order not yet collected: the tries left and the lock, never the code.
+   * Null for every other order.
+   */
+  readonly pickup: PickupStatus | null;
 }
 
 /** The seller's paid seller orders per fulfilment step, whatever the page or filter. */

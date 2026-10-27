@@ -45,6 +45,17 @@ import type {
   ShipToCipher,
   ShipToKeyDestroyed,
 } from '../../src/modules/ordering/application/ports/ship-to-cipher';
+import type {
+  IssuedPickupCode,
+  PickupCodeVault,
+  PickupKeyDestroyed,
+} from '../../src/modules/ordering/application/ports/pickup-code-vault';
+import type { PickupCodeRepository } from '../../src/modules/ordering/application/ports/pickup-code.repository';
+import {
+  PICKUP_MAX_FAILED_ATTEMPTS,
+  pickupStatusOf,
+  type PickupCodeRecord,
+} from '../../src/modules/ordering/domain/pickup-code';
 import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
 import type { RefundRepository } from '../../src/modules/ordering/application/ports/refund.repository';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
@@ -392,6 +403,19 @@ export class FakeShipping implements ShippingFacade {
   fees = new Map<string, Money>();
   outside = new Set<string>();
   down = false;
+  /** The sellers with an approved pickup address (delivery models, package 2). */
+  pickupApproved = new Set<string>();
+  /** Every seller id `pickupAvailability` was asked about. */
+  pickupAsked: (readonly string[])[] = [];
+  pickupDown = false;
+  pickupAvailability(
+    _c: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlySet<Id<'Seller'>>, ShippingFailure>> {
+    this.pickupAsked.push(sellerIds);
+    if (this.pickupDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    return Promise.resolve(ok(new Set(sellerIds.filter((id) => this.pickupApproved.has(id)))));
+  }
   deliversTo(_c: CallContext, postcode: string): Promise<Result<boolean, ShippingFailure>> {
     if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     return Promise.resolve(ok(!this.outside.has(postcode)));
@@ -873,5 +897,93 @@ export class FakeShipToCipher implements ShipToCipher {
     }
     if (!sealed.startsWith(prefix)) throw new Error('sealed under another account');
     return Promise.resolve(ok(JSON.parse(sealed.slice(prefix.length)) as ShipTo));
+  }
+}
+
+/** The pickup codes of the memory store; failures count like the real, conditional increment. */
+export class MemoryPickupCodes implements PickupCodeRepository {
+  readonly rows = new Map<string, PickupCodeRecord>();
+  find(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    return Promise.resolve(this.rows.get(sellerOrderId) ?? null);
+  }
+  findMany(_m: MarketContext, sellerOrderIds: readonly Id<'SellerOrder'>[]) {
+    const found = new Map<Id<'SellerOrder'>, PickupCodeRecord>();
+    for (const id of sellerOrderIds) {
+      const row = this.rows.get(id);
+      if (row !== undefined) found.set(id, row);
+    }
+    return Promise.resolve(found);
+  }
+  insert(_m: MarketContext, record: PickupCodeRecord) {
+    if (this.rows.has(record.sellerOrderId)) return Promise.resolve(false);
+    this.rows.set(record.sellerOrderId, record);
+    return Promise.resolve(true);
+  }
+  replace(_m: MarketContext, record: PickupCodeRecord) {
+    if (!this.rows.has(record.sellerOrderId)) return Promise.resolve(false);
+    this.rows.set(record.sellerOrderId, record);
+    return Promise.resolve(true);
+  }
+  registerFailure(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>, now: Temporal.Instant) {
+    const row = this.rows.get(sellerOrderId);
+    if (row === undefined) return Promise.resolve(null);
+    const failedAttempts = Math.min(row.failedAttempts + 1, PICKUP_MAX_FAILED_ATTEMPTS);
+    const next = {
+      ...row,
+      failedAttempts,
+      lockedAt: row.lockedAt ?? (failedAttempts >= PICKUP_MAX_FAILED_ATTEMPTS ? now : null),
+    };
+    this.rows.set(sellerOrderId, next);
+    return Promise.resolve(pickupStatusOf(next));
+  }
+}
+
+/**
+ * A readable stand-in for the pickup vault: the codes it issues come from a queue (`next`), the
+ * hash is `hash:<account>:<seller order>:<code>` and the sealed copy `sealed:<seller order>:<code>`.
+ * An erased account's key is destroyed.
+ */
+export class FakePickupVault implements PickupCodeVault {
+  readonly destroyed = new Set<string>();
+  /** The codes to issue, first to last; then 4242. */
+  next: string[] = [];
+  readonly issued: string[] = [];
+  issue(_m: MarketContext, accountId: Id<'Account'>, sellerOrderId: Id<'SellerOrder'>) {
+    if (this.destroyed.has(accountId)) {
+      return Promise.resolve(err<PickupKeyDestroyed>({ code: 'subject-key.destroyed' }));
+    }
+    const code = this.next.shift() ?? '4242';
+    this.issued.push(code);
+    const issued: IssuedPickupCode = {
+      code,
+      hash: `hash:${accountId}:${sellerOrderId}:${code}`,
+      sealed: `sealed:${sellerOrderId}:${code}`,
+    };
+    return Promise.resolve(ok(issued));
+  }
+  digest(
+    _m: MarketContext,
+    accountId: Id<'Account'>,
+    sellerOrderId: Id<'SellerOrder'>,
+    code: string,
+  ) {
+    return Promise.resolve(
+      this.destroyed.has(accountId)
+        ? err<PickupKeyDestroyed>({ code: 'subject-key.destroyed' })
+        : ok(`hash:${accountId}:${sellerOrderId}:${code}`),
+    );
+  }
+  reveal(
+    _m: MarketContext,
+    accountId: Id<'Account'>,
+    sellerOrderId: Id<'SellerOrder'>,
+    sealed: string,
+  ) {
+    if (this.destroyed.has(accountId)) {
+      return Promise.resolve(err<PickupKeyDestroyed>({ code: 'subject-key.destroyed' }));
+    }
+    const prefix = `sealed:${sellerOrderId}:`;
+    if (!sealed.startsWith(prefix)) throw new Error('sealed for another seller order');
+    return Promise.resolve(ok(sealed.slice(prefix.length)));
   }
 }

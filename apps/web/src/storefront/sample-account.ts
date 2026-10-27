@@ -1,6 +1,13 @@
 import 'server-only';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT, SAMPLE_TERMS } from './sample-cart.ts';
-import type { AccountOrder, AccountSource, Money, OrderLine, OrderPart } from './types.ts';
+import type {
+  AccountOrder,
+  AccountSource,
+  Money,
+  OrderLine,
+  OrderPart,
+  PickupCode,
+} from './types.ts';
 
 // Sample data of the buyer account pages (approved design, account-a-teal v7). It stands in for
 // the account backend (orders read, profile, password, saved lists), which is not built yet
@@ -25,7 +32,7 @@ function part(
   sellerId: string,
   status: OrderPart['status'],
   lines: readonly OrderLine[],
-  extra: { deliveredOn?: string; note?: string } = {},
+  extra: { deliveredOn?: string; note?: string; pickup?: PickupCode } = {},
 ): OrderPart {
   const seller = SAMPLE_CART_SOURCE.sellers[sellerId];
   if (!seller) throw new Error(`no sample seller ${sellerId}`);
@@ -67,6 +74,18 @@ export const SAMPLE_ACCOUNT: AccountSource = {
           note: 'Please ring the bell twice.',
         }),
         part('mt-gravatt', 'out-for-delivery', [line('bananas', 2)]),
+      ],
+    }),
+    // Collected in person: the seller marked the part ready, so the code is live (a sample).
+    order({
+      reference: 'MP-20503',
+      placedOn: '2026-10-20',
+      status: 'in-progress',
+      deliveredTo: HOME,
+      parts: [
+        part('paddington', 'confirmed', [line('sourdough', 1)], {
+          pickup: { code: '0427', attemptsLeft: 5, locked: false },
+        }),
       ],
     }),
     order({

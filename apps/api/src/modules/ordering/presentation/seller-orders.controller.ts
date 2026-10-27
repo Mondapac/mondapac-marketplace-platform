@@ -21,9 +21,11 @@ import {
   ApiOperation,
   ApiParam,
   ApiQuery,
+  ApiResponse,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
@@ -33,6 +35,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { SellerConfirmPickup } from '../application/use-cases/seller-confirm-pickup.use-case';
 import { SellerDeliverOrder } from '../application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from '../application/use-cases/seller-mark-order-ready.use-case';
@@ -41,6 +44,7 @@ import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-
 import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, refusal } from './http-answers';
 import {
+  PickupConfirmRequest,
   SellerOrderPageBody,
   SellerOrderShipBody,
   sellerOrderPageBody,
@@ -74,6 +78,7 @@ export class SellerOrdersController {
     private readonly list: SellerListOrders,
     private readonly view: SellerViewOrder,
     private readonly markReady: SellerMarkOrderReady,
+    private readonly confirmPickup: SellerConfirmPickup,
     private readonly deliver: SellerDeliverOrder,
     private readonly documentOf: SellerViewOrderDocument,
   ) {}
@@ -207,6 +212,60 @@ export class SellerOrdersController {
       'ordering.seller-mark-order-ready-route',
       context,
       result.ok ? 'ready' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return sellerOrderShipBody(result.value);
+  }
+
+  @Post(':sellerOrderId/confirm-pickup')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Confirm a pickup handover with the buyer's 4-digit code",
+    description:
+      'Needs ordering.seller-order.confirm-pickup. For a ready order the customer collects in ' +
+      'person: the seller types the code the customer shows and a correct one records the order ' +
+      'as collected (fulfilment delivered, no carrier). The seller never delivers. A wrong code ' +
+      'is 422 ordering.pickup-code-invalid with details.attemptsLeft; the fifth wrong code locks ' +
+      'the order (423 ordering.pickup-code-locked) until the customer asks for a new code. ' +
+      'Idempotent: an order already collected answers its state.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiBody({ type: PickupConfirmRequest })
+  @ApiOkResponse({ type: SellerOrderShipBody })
+  @ApiBadRequestResponse({
+    ...ERROR,
+    description: 'validation.failed (details.fields: code format, not exactly 4 digits)',
+  })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'ordering.fulfilment-conflict (not a pickup order, or not ready yet)',
+  })
+  @ApiUnprocessableEntityResponse({
+    ...ERROR,
+    description: 'ordering.pickup-code-invalid (details.attemptsLeft)',
+  })
+  @ApiResponse({ status: 423, description: 'ordering.pickup-code-locked', ...ERROR })
+  async confirmPickupOrder(
+    @Call() context: CallContext,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, ['code']);
+    if (invalid !== null) throw invalid;
+    const { code } = body as { code?: unknown };
+    const result = await this.confirmPickup.execute(context, { sellerOrderId, code });
+    // The code is never logged: only the outcome.
+    this.log(
+      'ordering.seller-confirm-pickup-route',
+      context,
+      result.ok ? 'collected' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderShipBody(result.value);
