@@ -49,7 +49,60 @@ This note records what is built and the rules it keeps.
 ## Next packages
 
 3. Customer profile API. 4. Marketing consent record in `legal`.
-5. Customer account deletion (v1.5).
+5. Customer account deletion (v1.5, CUS-03), built in three PRs: 5a (below, built), 5b and 5c.
+
+## Package 5a: account deletion setting and server lock (API only)
+
+Owner approved design v2 on 2026-10-26. Package 5a is the setting and the lock only. There is no
+admin screen and no buyer screen yet (screens wait for Reza's review), no deletion flow and no
+manual admin deletion.
+
+- **Setting.** One row per Market version in `customers.account_deletion_settings` (insert-only,
+  the application role has SELECT and INSERT only, like `assistant.settings`): `enabled`
+  (built-in default false) and `waitingPeriodDays` (default 30, allowed 7 to 90). Version 0 is the
+  built-in defaults. Each row also keeps the admin account, the time and the `reason`.
+- **Admin routes** (population `admin`, `no-store`): `GET` and `PUT
+  customers/admin/account-deletion-settings`. View needs `customers.account-deletion-settings.view`
+  (plain, in the Viewer default role, seed version 15). Change needs
+  `customers.account-deletion-settings.manage`, a protected key held by the Platform Administrator
+  only. The body is `{ expectedVersion, settings: { enabled, waitingPeriodDays }, reason }`; CSRF
+  as every unsafe route; `reason` is 1 to 500 characters of one line of plain text; a stale
+  `expectedVersion` answers `customers.conflict` (409); the same values again change nothing.
+- **Audit and event.** A change writes the history row (with the reason), an audit row
+  `customers.account-deletion-settings.changed` (versions, `enabled`, `waitingPeriodDays`; audit
+  fields hold no free text, so the reason is only in the history row, which is part of the audit
+  evidence) and the outbox event `customers.account-deletion-settings-changed.v1` (previous and
+  new `enabled` and `waitingPeriodDays`; no actor, because events carry none (ADR-0018 decision
+  4), and no reason text), in one unit. `customers` gets its own `customers.outbox` table for it.
+- **Admin step-up** (owner decision, after PR #515). A change also needs a fresh two-step
+  proof of the admin's session for the admin step-up action
+  `customers.account-deletion-settings.change` (`POST identity/admin/step-up/verify`, valid 5
+  minutes), exactly as the wallet switch (`wallet.settings.change`): `@RequiresStepUp` on the
+  `PUT` route refuses without one with `403 second-factor.required` and `details.actionKey`
+  (`second-factor.enrolment-required` when the admin has no active two-step), and the flow spends
+  the proof in the unit of the change, so one proof serves one change and a refusal commits
+  nothing. A no-op, an invalid body or a stale version spends no proof. The audit row's `after`
+  names the proof (`stepUpSessionId`, `stepUpVerifiedAt`). An acting-as session is refused. The
+  `GET` needs no proof.
+- **Customer route.** `GET customers/me/account-deletion` (customer sessions only, `no-store`)
+  answers `{ canDeleteAccount, waitingPeriodDays }`. The buyer UI reads only this.
+- **Server lock.** `assertAccountDeletionAllowed(settings, market)` in
+  `application/account-deletion-settings-flow.ts` fails with `customers.account-deletion-disabled`
+  (HTTP 403 in `CUSTOMERS_STATUS`) while the Market has deletion off, else answers the waiting
+  period in force. Package 5b calls it first, inside its own unit of work, and only to start a
+  request.
+
+### What packages 5b and 5c will do
+
+- **5b, buyer flow.** The buyer asks to delete their account. Blockers are checked first
+  (including a wallet balance above 0). Then an OTP, then
+  the waiting period (30 days by default); signing in during the wait cancels the request. At the
+  end the account's subject key is destroyed, `engagement` forgets the account
+  (`forgetAccount`), and the buyer's reviews are anonymised. A request already pending continues
+  if the setting is switched off afterwards: the switch stops only new requests.
+- **5c, admin manual deletion.** An admin deletes a buyer's account with a ticket reference, a
+  reason and an OTP, under a new `buyers.account.delete` permission, with the same blockers and
+  the same waiting period.
 
 ## Open follow-ups (Hassan, PR #405 review: GO, two low findings)
 
