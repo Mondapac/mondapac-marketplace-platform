@@ -111,6 +111,7 @@ const LEAD_KEYS = [
   'shipping.flat-fee.view',
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
+  'commission-payouts.dispute.view',
 ];
 
 type AccountAction = keyof AdminTeamAccountRow['actions'];

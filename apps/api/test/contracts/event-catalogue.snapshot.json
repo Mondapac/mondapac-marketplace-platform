@@ -363,6 +363,16 @@
     }
   },
   {
+    "type": "commission-payouts.seller-order-disputed.v1",
+    "aggregateType": "seller-order",
+    "fields": {
+      "sellerOrderId": "id",
+      "sellerId": "id",
+      "orderId": "id",
+      "disputeId": "id"
+    }
+  },
+  {
     "type": "customers.account-deletion-settings-changed.v1",
     "aggregateType": "account-deletion-settings",
     "fields": {

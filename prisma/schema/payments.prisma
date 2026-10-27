@@ -136,6 +136,8 @@ model PaymentsDispute {
 
   @@id([marketId, id])
   @@unique([marketId, providerDisputeId])
+  /// The disputes of an order (`disputesOfOrder`, package 8b).
+  @@index([marketId, orderId], map: "disputes_market_id_order_id_idx")
   @@map("disputes")
   @@schema("payments")
 }

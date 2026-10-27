@@ -40,6 +40,35 @@ export interface PayoutHoldRepository {
     },
   ): Promise<boolean>;
 
+  /** Every hold of one reason and source (a dispute's holds), newest first. */
+  listBySource(
+    market: MarketContext,
+    reason: HoldReason,
+    sourceRef: string,
+  ): Promise<readonly PayoutHoldRecord[]>;
+
+  /**
+   * Releases every active hold of one reason and source, by the system or by `releasedBy`; answers
+   * the holds it released.
+   */
+  releaseBySource(
+    market: MarketContext,
+    reason: HoldReason,
+    sourceRef: string,
+    release: {
+      readonly releasedAt: Temporal.Instant;
+      readonly releasedBy: Id<'Account'> | null;
+      readonly reason: ReleaseReason;
+    },
+  ): Promise<readonly PayoutHoldRecord[]>;
+
+  /** How many holds of this reason a seller order has ever had (the version of its event). */
+  countForSellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    reason: HoldReason,
+  ): Promise<number>;
+
   /** The seller's holds, active first then newest first, at most `limit`. */
   listForSeller(
     market: MarketContext,

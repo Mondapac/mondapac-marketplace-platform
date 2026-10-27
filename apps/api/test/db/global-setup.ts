@@ -74,6 +74,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'WALLET_CREDIT');
   await createCopy(name, 'ORDERING_REFUNDS');
   await createCopy(name, 'PAYOUT_HOLDS');
+  await createCopy(name, 'DISPUTES');
   await createCopy(name, 'SELLERS_LIST');
 }
 
@@ -169,6 +170,7 @@ async function createCopy(
     | 'WALLET_CREDIT'
     | 'ORDERING_REFUNDS'
     | 'PAYOUT_HOLDS'
+    | 'DISPUTES'
     | 'SELLERS_LIST',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;

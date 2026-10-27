@@ -78,6 +78,8 @@ function exported(
     | 'TEST_ORDERING_REFUNDS_DATABASE_URL'
     | 'TEST_PAYOUT_HOLDS_DATABASE_URL'
     | 'TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL'
+    | 'TEST_DISPUTES_DATABASE_URL'
+    | 'TEST_DISPUTES_OWNER_DATABASE_URL'
     | 'TEST_SELLERS_LIST_DATABASE_URL'
     | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL',
 ): string {
@@ -360,6 +362,18 @@ export function payoutHoldsTestDatabaseUrl(): string {
 
 export function payoutHoldsOwnerTestDatabaseUrl(): string {
   return exported('TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that commission-payouts-disputes.db-spec.ts runs on (global-setup.ts), as the
+ * application login and as its owner: it relays and dispatches payments' dispute events there.
+ */
+export function disputesTestDatabaseUrl(): string {
+  return exported('TEST_DISPUTES_DATABASE_URL');
+}
+
+export function disputesOwnerTestDatabaseUrl(): string {
+  return exported('TEST_DISPUTES_OWNER_DATABASE_URL');
 }
 
 /**

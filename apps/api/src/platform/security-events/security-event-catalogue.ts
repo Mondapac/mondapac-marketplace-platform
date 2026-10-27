@@ -207,6 +207,23 @@ export const StripeDisputeUnmatched = defineSecurityEvent({
   },
 });
 
+/**
+ * A dispute payments recorded names an order that commission-payouts cannot match (package 8b):
+ * the order is unknown in this Market, or the dispute's PaymentIntent is not the order's own. Its
+ * money may move all the same, so it holds nothing and an admin looks at it in the Stripe
+ * Dashboard.
+ */
+export const DisputeOrderMismatch = defineSecurityEvent({
+  type: 'commission-payouts.dispute.order-mismatch',
+  severity: 's2',
+  targetType: null,
+  ip: false,
+  payload: {
+    disputeId: eventField.id(),
+    reason: eventField.enumOf(['unknown-order', 'payment-intent-mismatch'] as const),
+  },
+});
+
 /** A carrier webhook whose signature did not verify (Mondapac Drive; Uber Direct and Zoom2u when built). */
 export const CarrierWebhookSignatureFailed = defineSecurityEvent({
   type: 'shipping.webhook-signature.failed',
@@ -230,6 +247,7 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       PasswordReset,
       StripeWebhookSignatureFailed,
       StripeDisputeUnmatched,
+      DisputeOrderMismatch,
       CarrierWebhookSignatureFailed,
     ] as readonly SecurityEventDefinition[]
   ).map((definition) => [definition.type, definition]),

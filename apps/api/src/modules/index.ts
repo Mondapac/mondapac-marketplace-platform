@@ -14,6 +14,7 @@ import { CartModule } from './cart';
 import { OrderingModule } from './ordering';
 import { PaymentsModule } from './payments';
 import { CommissionPayoutsModule } from './commission-payouts';
+import { CommissionPayoutsDisputesModule } from './commission-payouts/disputes-binding.module';
 import { TaxModule } from './tax';
 import { ShippingModule } from './shipping';
 import { ReturnsModule } from './returns';
@@ -56,5 +57,11 @@ export const CORE_MODULES = [
  * certification's claim-term matching to the sellers store profile texts; sellers cannot import
  * certification without a module cycle. `CustomersAccountDeletionModule` runs the buyer's account
  * deletion flow, which asks ordering, wallet, identity and engagement (ordering imports customers).
+ * `CommissionPayoutsDisputesModule` binds the dispute consumer of commission-payouts to payments
+ * and ordering, which reach commission-payouts.
  */
-export const BINDING_MODULES = [SellerStoreProfileModule, CustomersAccountDeletionModule];
+export const BINDING_MODULES = [
+  SellerStoreProfileModule,
+  CustomersAccountDeletionModule,
+  CommissionPayoutsDisputesModule,
+];

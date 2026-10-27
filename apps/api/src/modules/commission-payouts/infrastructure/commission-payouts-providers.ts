@@ -26,6 +26,13 @@ import {
   type PayoutTermsRepository,
 } from '../application/ports/payout-terms.repository';
 import { PAYOUT_TERMS_RESOLVER, PayoutTermsResolver } from '../application/payout-terms-resolver';
+import {
+  DISPUTE_REPOSITORY,
+  type DisputeRepository,
+} from '../application/ports/dispute.repository';
+import { SELLER_NAMES, type SellerNames } from '../application/ports/seller-names';
+import { PrismaDisputeRepository } from './prisma-dispute.repository';
+import { SellersSellerNames } from './sellers-seller-names';
 import { ConfigCommissionPolicy } from './config-commission-policy';
 import { ConfigPayoutTermsPolicy } from './config-payout-terms-policy';
 import { PrismaEligibilityAnchorRepository } from './prisma-eligibility-anchor.repository';
@@ -82,6 +89,16 @@ export const commissionPayoutsProviders: readonly FactoryProvider[] = [
     inject: [PAYOUT_TERMS_POLICY, PAYOUT_TERMS_REPOSITORY],
     useFactory: (policy: PayoutTermsPolicy, overrides: PayoutTermsRepository) =>
       new PayoutTermsResolver(policy, overrides),
+  },
+  {
+    provide: DISPUTE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): DisputeRepository => new PrismaDisputeRepository(prisma),
+  },
+  {
+    provide: SELLER_NAMES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerNames => new SellersSellerNames(sellers),
   },
   {
     provide: SELLER_DIRECTORY,

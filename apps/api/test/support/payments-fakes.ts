@@ -192,6 +192,9 @@ export class FakeOrderingFacade implements OrderingFacade {
   shipmentNotice(): ReturnType<OrderingFacade['shipmentNotice']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
+  orderPaymentRef(): ReturnType<OrderingFacade['orderPaymentRef']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' }));
+  }
 
   sellerOrderCustomerNames(): ReturnType<OrderingFacade['sellerOrderCustomerNames']> {
     return Promise.resolve(ok([]));
@@ -606,6 +609,14 @@ export class FakeDisputeReader implements StripeDisputeReader {
 /** `payments.disputes` in memory, with the guards of the database: version and read order. */
 export class MemoryDisputeStore implements DisputeStore {
   readonly rows = new Map<string, DisputeRecord & { readonly market: string }>();
+  findByOrder(market: MarketContext, orderId: string) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => r.market === market.marketId && r.orderId === orderId)
+        .sort((a, b) => a.openedAt.epochMilliseconds - b.openedAt.epochMilliseconds)
+        .map(strip),
+    );
+  }
   findByRef(market: MarketContext, providerDisputeId: string) {
     const row = [...this.rows.values()].find(
       (r) => r.market === market.marketId && r.providerDisputeId === providerDisputeId,

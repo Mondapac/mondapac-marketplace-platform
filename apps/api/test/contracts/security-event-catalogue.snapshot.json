@@ -1,6 +1,18 @@
 {
   "recorded": [
     {
+      "ip": false,
+      "owner": "commission-payouts",
+      "payload": {
+        "disputeId": "id",
+        "reason": "enumOf(unknown-order|payment-intent-mismatch)"
+      },
+      "severity": "s2",
+      "targetRequired": false,
+      "targetType": null,
+      "type": "commission-payouts.dispute.order-mismatch"
+    },
+    {
       "type": "identity.password.changed",
       "owner": "identity",
       "severity": "s3",

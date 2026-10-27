@@ -19,6 +19,8 @@ export {
   type OrderNoticeFailure,
   type OwnOpenObligations,
   type OwnOpenObligationsFailure,
+  type OrderPaymentRef,
+  type OrderPaymentRefFailure,
   type SellerOrderCustomerName,
   type SellerOrderCustomerNamesFailure,
   type ShipmentNotice,

@@ -109,6 +109,7 @@ const LEAD_KEYS = [
   'shipping.flat-fee.view',
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
+  'commission-payouts.dispute.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {
