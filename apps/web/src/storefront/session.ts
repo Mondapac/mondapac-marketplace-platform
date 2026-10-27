@@ -15,7 +15,8 @@ import { RELAY_TIMEOUT_MS, upstreamCookie } from './session-relay.ts';
 // browser only through the relay (app/api/[...path]). An ended session reads as a guest.
 
 /** The only paths a page reads with the buyer's cookies. */
-export type SessionReadPath = 'cart' | 'identity/customer/session';
+export type SessionReadPath =
+  'cart' | 'identity/customer/session' | 'orders?limit=100' | `orders/${string}`;
 
 interface RequestHeaders {
   get(name: string): string | null;

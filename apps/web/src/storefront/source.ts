@@ -30,7 +30,9 @@ import { sellerSignInUrls } from './seller-sign-in.ts';
 import { callSellerSignUp, type SellerSignUpCall } from './seller-sign-up-api.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
+import { accountOrderOf, accountOrdersOf, isOrderId, shipToLine } from '../account/live-orders.ts';
 import type {
+  AccountOrder,
   AccountSource,
   CartSource,
   CheckoutSource,
@@ -367,11 +369,32 @@ export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
 
 /**
  * The signed-in buyer's account: profile, orders, address book, saved lists and email choices.
- * Orders, saved lists and email choices are sample data until their backends exist; the profile,
- * session and address book come from the API in live mode (see `live`).
+ * Saved lists and email choices are sample data until their backends exist; the profile, session,
+ * address book and orders come from the API in live mode (see `live`). Live, the orders are the
+ * paid ones among the buyer's newest 100; a failed read shows none.
  */
 export async function loadAccount(): Promise<AccountSource> {
-  return Promise.resolve({ ...SAMPLE_ACCOUNT, live: storefrontIsLive() });
+  if (!storefrontIsLive()) return { ...SAMPLE_ACCOUNT, live: false };
+  const [read, labels] = await Promise.all([sessionGet('orders?limit=100'), orderLabels()]);
+  const orders = read.kind === 'ok' ? accountOrdersOf(read.body, labels) : null;
+  return { ...SAMPLE_ACCOUNT, live: true, orders: orders ?? [] };
+}
+
+/**
+ * One of the buyer's real orders for its page: `null` when it is not theirs, not paid or not an
+ * order id, `'sample'` without the API (the page looks the reference up in the sample account).
+ */
+export async function loadAccountOrder(id: string): Promise<AccountOrder | null | 'sample'> {
+  if (!storefrontIsLive()) return 'sample';
+  if (!isOrderId(id)) return null;
+  const path = `orders/${id.toLowerCase()}` as const;
+  const [read, labels] = await Promise.all([sessionGet(path), orderLabels()]);
+  return read.kind === 'ok' ? accountOrderOf(read.body, labels, shipToLine(read.body)) : null;
+}
+
+async function orderLabels() {
+  const t = await getTranslations('account.order');
+  return { unnamedItem: t('unnamed-item'), unnamedSeller: t('unnamed-seller') };
 }
 
 /**
