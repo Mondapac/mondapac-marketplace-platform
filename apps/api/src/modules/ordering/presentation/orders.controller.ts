@@ -49,7 +49,7 @@ import {
   OrderPageBody,
   OwnOrderBody,
   OwnPickupCodeBody,
-  orderBody,
+  ownListOrderBody,
   ownOrderBody,
   ownPickupCodeBody,
   pageBody,
@@ -182,7 +182,7 @@ export class OrdersController {
     const result = await this.list.execute(context, { cursor, limit: parseLimit(limit) });
     this.log('ordering.list-orders-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return pageBody(result.value, orderBody);
+    return pageBody(result.value, ownListOrderBody);
   }
 
   @Get(':orderId')
