@@ -38,6 +38,7 @@ import { AdminViewOrder } from './application/use-cases/admin-view-order.use-cas
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
+import { MyDeliveredSellerOrders } from './application/use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
@@ -209,6 +210,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      MyDeliveredSellerOrders,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
@@ -224,6 +226,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OrderNoticeQuery,
         ShipmentNoticeQuery,
         SellerOrderCustomerNames,
+        MyDeliveredSellerOrders,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -231,7 +234,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         notice: OrderNoticeQuery,
         shipment: ShipmentNoticeQuery,
         customerNames: SellerOrderCustomerNames,
-      ) => new OrderingFacadeImplementation(confirm, cancel, notice, shipment, customerNames),
+        delivered: MyDeliveredSellerOrders,
+      ) =>
+        new OrderingFacadeImplementation(
+          confirm,
+          cancel,
+          notice,
+          shipment,
+          customerNames,
+          delivered,
+        ),
     },
     {
       provide: BestSellingOffersQuery,

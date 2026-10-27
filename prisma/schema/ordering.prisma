@@ -150,6 +150,9 @@ model OrderingOrderLine {
   @@unique([marketId, id, sellerOrderId, quantity])
   @@unique([marketId, orderId, offerId, variantId])
   @@index([marketId, orderId])
+  /// The lines of a seller order (the delivered-orders read for reviews). Built CONCURRENTLY in its
+  /// own migration.
+  @@index([marketId, sellerOrderId])
   @@map("order_lines")
   @@schema("ordering")
 }

@@ -406,6 +406,11 @@
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "ordering.my-delivered-seller-orders",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "ordering.order-notice", "rule": "system" },
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
@@ -442,6 +447,29 @@
   { "name": "pricing.retire-series-for-removed-offer", "rule": "system" },
   { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
   { "name": "pricing.specials-in-force", "rule": "anonymous" },
+  {
+    "name": "reviews.delete-product-review",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "reviews.detach-author", "rule": "system" },
+  {
+    "name": "reviews.edit-product-review",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "reviews.list-my-reviews", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "reviews.list-product-reviews", "rule": "anonymous" },
+  { "name": "reviews.list-to-review", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "reviews.rate-seller-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "reviews.rebuild-rating-summaries", "rule": "system" },
+  {
+    "name": "reviews.submit-product-review",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "reviews.view-product-summary", "rule": "anonymous" },
+  { "name": "reviews.view-seller-summary", "rule": "anonymous" },
   { "name": "search.list-bestsellers", "rule": "anonymous" },
   { "name": "search.list-bought-together", "rule": "anonymous" },
   { "name": "search.list-for-you", "rule": "own-resources", "whenSellerNotApproved": "deny" },

@@ -4271,35 +4271,48 @@ svg {
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-tile);
 }
-.cmob summary {
+.cmob-btn {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  width: 100%;
   min-height: 52px;
-  padding: 0 16px;
+  padding-inline: 16px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   font-weight: 700;
+  text-align: start;
   cursor: pointer;
-  list-style: none;
 }
-.cmob summary::-webkit-details-marker {
-  display: none;
+.cmob-t {
+  display: grid;
 }
-.cmob summary span {
+.cmob-t small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+  font-weight: 600;
+}
+.cmob-v {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--sf-teal);
 }
-.cmob summary b {
+.cmob-v b {
   color: var(--sf-ink);
 }
-.cmob summary .ico {
+.cmob-v .ico {
   width: 18px;
   height: 18px;
 }
-.cmob[open] summary .ico {
+.cmob[data-open] .cmob-v .ico {
   transform: rotate(180deg);
+}
+.cmob .cs[hidden] {
+  display: none;
 }
 .cmob .cs {
   border: 0;
@@ -4784,7 +4797,7 @@ svg {
   width: 100%;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .cmob summary .ico {
+  .cmob-v .ico {
     transition: transform 0.15s;
   }
 }
@@ -9340,4 +9353,135 @@ button.login {
 :root:lang(ar) {
   --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
   --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
+}
+
+/* Checkout focus mode (M2, phone and tablet only): on /checkout and /checkout/payment the tab bar
+   is not rendered, the footer and the full header give way to a simple header, and the Pay bar
+   stays at the bottom. From 900px the pages are unchanged. Spacing is logical, except the page
+   gutters --gl and --gr, which are physical insets (landscape notch) and are used physically,
+   as .consent does. The home-indicator inset goes on the bottom-most layer only: the cookie bar
+   when it shows, else the Pay bar (--sf-dock-inset, set by shell/dock.tsx). */
+.cfh,
+.paybar {
+  display: none;
+}
+@media (max-width: 899.98px) {
+  .frame[data-focus] .top,
+  .frame[data-focus] .foot {
+    display: none;
+  }
+  /* The tab bar is gone, so the cookie bar is the bottom layer and clears the home indicator. */
+  .frame[data-focus] .consent {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .cfh {
+    display: block;
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    background: var(--sf-white);
+    border-bottom: 1px solid var(--sf-line);
+  }
+  /* One row: Cart at the start, the logo in the middle, the lock label at the end. */
+  .cfh-in {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 4px;
+    min-height: 56px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+  }
+  .cfh-back {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 44px;
+    min-width: 44px;
+    margin-inline-start: -8px;
+    padding-inline: 8px;
+    color: var(--sf-teal);
+    font: 700 calc(14px * var(--fs)) / 1.2 var(--sf-font-body);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .cfh-back .ico {
+    width: 18px;
+    height: 18px;
+  }
+  .cfh-secure {
+    justify-self: end;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--sf-slate);
+    font: 700 calc(13px * var(--fs)) / 1.2 var(--sf-font-body);
+    white-space: nowrap;
+  }
+  .cfh-secure .ico {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--sf-teal);
+  }
+  .cfh .long {
+    display: none;
+  }
+  .frame[data-focus] .logo {
+    font-size: 18px;
+  }
+  .paybar {
+    display: grid;
+    gap: 6px;
+    position: sticky;
+    bottom: var(--sf-dock-height);
+    z-index: 4;
+    margin-left: calc(-1 * var(--gl));
+    margin-right: calc(-1 * var(--gr));
+    padding-top: 10px;
+    padding-bottom: calc(10px + var(--sf-dock-inset, env(safe-area-inset-bottom, 0px)));
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+    background: var(--sf-white);
+    border-top: 1px solid var(--sf-line);
+    box-shadow: 0 -4px 16px var(--sf-shadow-soft);
+  }
+  .paybar small {
+    color: var(--sf-slate);
+    font-size: calc(12px * var(--fs));
+  }
+  .paybar .btn {
+    min-height: 48px;
+  }
+  /* One Pay on phones: the Pay bar's. The in-page button and its legal line are not read twice. */
+  .ckpm {
+    display: none;
+  }
+  /* A field or warning brought into view clears the Pay bar. */
+  .cwrap .fld input,
+  .dcard .dwarn2 button,
+  .dcard .dwarn2 a,
+  #checkout-payment .cfm input {
+    scroll-margin-block: 96px;
+  }
+}
+@media (min-width: 700px) and (max-width: 899.98px) {
+  .cfh .long {
+    display: inline;
+  }
+  .cfh .short {
+    display: none;
+  }
+  .paybar > * {
+    width: 100%;
+    max-inline-size: 560px;
+    margin-inline: auto;
+  }
+}
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
+:root[data-keyboard='open'] .paybar {
+  display: none;
 }
