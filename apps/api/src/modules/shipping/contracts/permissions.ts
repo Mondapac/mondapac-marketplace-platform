@@ -25,7 +25,30 @@ export const SHIPPING_OWN_FEE_VIEW = definePermission('shipping', {
   protected: false,
 });
 
+/**
+ * See the fleet-selection models, the active model per delivery method and the reliability score
+ * of each fleet (delivery models, package 3).
+ */
+export const SHIPPING_FLEET_SELECTION_VIEW = definePermission('shipping', {
+  key: 'shipping.fleet-selection.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit fleet-selection models, choose the active model per delivery method and set the
+ * reliability score of a fleet. It decides which provider carries every order and what it costs,
+ * so it is a protected platform key.
+ */
+export const SHIPPING_FLEET_SELECTION_MANAGE = definePermission('shipping', {
+  key: 'shipping.fleet-selection.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SHIPPING_PERMISSIONS = declarePermissions('shipping', [
+  SHIPPING_FLEET_SELECTION_MANAGE,
+  SHIPPING_FLEET_SELECTION_VIEW,
   SHIPPING_FLAT_FEE_MANAGE,
   SHIPPING_FLAT_FEE_VIEW,
   SHIPPING_OWN_FEE_VIEW,

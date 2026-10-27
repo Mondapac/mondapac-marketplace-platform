@@ -1834,6 +1834,21 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           ).toBe('no-carrier');
         });
 
+        it('records carrier-unknown when a fleet that cannot dedupe went quiet, and never books again', async () => {
+          const order = await paidWith(methodsOf({ method: 'instant' }));
+          const a = sellerOrderIdOf(order.id, SELLER_A);
+          shipping.carrierBookings.set(a, ok('unknown'));
+          const { answer } = await readyAndBook(order, SELLER_A);
+
+          expect(answer).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+          expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)).toMatchObject({
+            fulfilment: 'to-ship',
+            deliveryAttention: 'carrier-unknown',
+          });
+          // The delivery is taken: it is not retried (a retry would only ask the same question).
+          expect(shipping.carrierRequests).toHaveLength(1);
+        });
+
         it('records the attention state for a scheduled order no carrier can serve at payment', async () => {
           const order = await paidScheduled();
           expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
@@ -1902,6 +1917,20 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           expect(await cancel(ORDER_ID, SO, 2)).toEqual(
             ok({ code: 'ordering.carrier.already-handled' }),
           );
+        });
+
+        it('records cancel-unknown when a fleet that cannot dedupe refused the cancel', async () => {
+          const order = await paid();
+          const a = sellerOrderIdOf(order.id, SELLER_A);
+          withRefunded(order.id, a, 2);
+          shipping.cancelAnswer = ok('unknown');
+          expect(await cancel(order.id, a, 1)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(shipping.carrierCancels).toEqual([a]);
+          expect(
+            orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!.deliveryAttention,
+          ).toBe('cancel-unknown');
         });
 
         it('takes a delivery the carrier can no longer cancel, and retries while shipping is down', async () => {

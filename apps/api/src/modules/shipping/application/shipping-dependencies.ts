@@ -4,9 +4,10 @@ import type { SecurityEvents } from '../../../platform/security-events/security-
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CarrierBookingRepository } from './ports/carrier-booking.repository';
-import type { CarrierGateway } from './ports/carrier-gateway';
 import type { CarrierPolicy } from './ports/carrier-policy';
 import type { CarrierWebhookSignature } from './ports/carrier-webhook-signature';
+import type { FleetRegistry } from './ports/fleet-registry';
+import type { FleetSelectionRepository } from './ports/fleet-selection.repository';
 import type { FlatFeeRepository } from './ports/flat-fee.repository';
 import type { PickupDirectory } from './ports/pickup-directory';
 import type { SellerDirectory } from './ports/seller-directory';
@@ -25,7 +26,8 @@ export interface ShippingDependencies {
   readonly ids: IdGenerator;
   readonly outbox: OutboxWriter;
   readonly bookings: CarrierBookingRepository;
-  readonly carrier: CarrierGateway;
+  readonly fleets: FleetRegistry;
+  readonly selection: FleetSelectionRepository;
   readonly carrierPolicy: CarrierPolicy;
   readonly pickups: PickupDirectory;
   readonly webhookSignature: CarrierWebhookSignature;

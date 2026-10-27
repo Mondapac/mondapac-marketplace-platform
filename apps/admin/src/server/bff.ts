@@ -25,6 +25,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // the unread count with the newest unread notice.
     'notifications/admin/notices',
     'notifications/admin/notices/unread-count',
+    // The fleet-selection models, the active model per method and the fleets (shipping), read
+    // again after a save.
+    'shipping/admin/fleet-selection',
     // The storefront slide library (storefront), read-only: the list (query: `state`, `position`);
     // one slide is read by the page server.
     'storefront/admin/slides',
@@ -45,6 +48,16 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/profile/preferences',
     // The Market's buyer assistant settings (assistant): every field with `expectedVersion`.
     'assistant/admin/settings',
+    // Fleet selection (shipping): the active model per delivery method and the reliability score
+    // of each fleet. Each path is spelled out, so no other fleet or method name reaches the API.
+    'shipping/admin/fleet-selection/fleets/mondapac_drive/reliability',
+    'shipping/admin/fleet-selection/fleets/uber_direct/reliability',
+    'shipping/admin/fleet-selection/fleets/zoom2u/reliability',
+    'shipping/admin/fleet-selection/fleets/auspost/reliability',
+    'shipping/admin/fleet-selection/fleets/fake_test/reliability',
+    'shipping/admin/fleet-selection/active/instant',
+    'shipping/admin/fleet-selection/active/same_day',
+    'shipping/admin/fleet-selection/active/scheduled',
     // The order of the live slides of one position (storefront). A fixed path, so `order` is never
     // read as a slide id: the slide route below takes a UUID only.
     'storefront/admin/slides/order',
@@ -71,6 +84,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
     'notifications/admin/notices/read-all',
+    // A new fleet-selection model (shipping).
+    'shipping/admin/fleet-selection/models',
     // A new storefront slide, as a draft (storefront).
     'storefront/admin/slides',
     // Admin store credit (wallet), behind a fresh two-step code.
@@ -120,6 +135,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/review/manual-register-check',
     // The seller's flat delivery fee (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/flat-fee',
+    // A fleet-selection model edited by its id (shipping).
+    'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
     'commission-payouts/admin/sellers/:id/commission-rate',
     // A storefront slide's whole draft (storefront).

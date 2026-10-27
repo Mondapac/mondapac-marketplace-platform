@@ -40,11 +40,17 @@ export class SellersPickupDirectory implements PickupDirectory {
       .filter((field) => field.key !== format.postcodeField)
       .map((field) => (Object.hasOwn(address, field.key) ? (address[field.key] ?? '') : ''))
       .filter((line) => line !== '');
+    const field = (key: string | undefined): string | null =>
+      key !== undefined && Object.hasOwn(address, key) ? (address[key] ?? '') || null : null;
     return ok({
       contactName: read.value.storeName,
       contactPhone: read.value.phone,
       addressLines,
       postcode,
+      // From the seller's approved business file, never free text.
+      locality: field(format.localityField) ?? '',
+      region: field(format.regionField),
+      location: null,
       notes: null,
     });
   }

@@ -63,6 +63,14 @@ export const adminNav: NavConfig = {
       anyOf: ['identity.customer-account.view'],
     },
     {
+      id: 'fleet-selection',
+      icon: 'package',
+      labelKey: 'nav.fleet-selection',
+      href: '/fleet-selection',
+      group: 'orders',
+      anyOf: ['shipping.fleet-selection.view'],
+    },
+    {
       id: 'payout-accounts',
       icon: 'wallet',
       labelKey: 'nav.payout-accounts',

@@ -32,6 +32,7 @@
     "customers": "Customers",
     "sellers": "All sellers",
     "orders": "Orders",
+    "fleet-selection": "Delivery fleets",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
@@ -1610,6 +1611,134 @@
       "denied": "Your role cannot set delivery fees.",
       "unavailable": "Delivery fees are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
+    }
+  },
+  "fleets": {
+    "title": "Delivery fleets",
+    "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
+    "no-access": "Your role cannot see delivery fleets.",
+    "back-home": "Back to the dashboard",
+    "unavailable": "Delivery fleets could not be loaded. Try again.",
+    "notice": {
+      "activated": "Active models saved. They apply to the next booking.",
+      "created": "Model created.",
+      "edited": "Model saved. If it is active, it applies to the next booking.",
+      "reloaded": "Someone saved this model first. The page now shows what is stored. Make your change again."
+    },
+    "method": {
+      "instant": "Instant",
+      "same_day": "Same day",
+      "scheduled": "Scheduled"
+    },
+    "kind": {
+      "cheapest": "Cheapest",
+      "weighted": "Weighted",
+      "fixed_priority": "Fixed priority"
+    },
+    "kind-help": {
+      "cheapest": "The fleet with the lowest quote wins. A tie goes to Mondapac Drive.",
+      "weighted": "Each fleet is scored on price, arrival time and reliability. The highest score wins. A tie goes to Mondapac Drive.",
+      "fixed_priority": "The first fleet in your list that can serve the order wins. Fleets not on the list are not used."
+    },
+    "summary": {
+      "cheapest": "Lowest quote wins. A tie goes to Mondapac Drive.",
+      "weighted": "Price {price}, arrival time {eta}, reliability {reliability}.",
+      "fixed_priority": "Tried in this order: {order}"
+    },
+    "active": {
+      "title": "Active model per delivery method",
+      "intro": "Each delivery method uses one model. With none chosen, the built-in order applies: {order}.",
+      "default": "Built-in order",
+      "save": "Save active models"
+    },
+    "models": {
+      "title": "Models",
+      "intro": "A model is a named rule for picking a fleet. Every create, edit and change of the active model is recorded in the audit log.",
+      "empty": "No models yet. The built-in order is in use.",
+      "new": "New model",
+      "editing": "Edit model",
+      "edit": "Edit",
+      "edit-named": "Edit {name}",
+      "used": "Active for: {methods}",
+      "unused": "Not active for any method",
+      "active-note": "This model is active for {methods}. Saving applies it to every new order of that method."
+    },
+    "model": {
+      "name": "Name",
+      "name-help": "Up to 60 characters. Each name is used once.",
+      "kind": "Kind",
+      "save": "Save model",
+      "cancel": "Cancel",
+      "option": "{name} ({kind})"
+    },
+    "weight": {
+      "title": "Weights",
+      "help": "Whole numbers from 0 to 100. They do not need to add up to 100, but they cannot all be 0.",
+      "price": "Price",
+      "eta": "Arrival time",
+      "reliability": "Reliability",
+      "share": "{value} of {total} ({percent}%)",
+      "total": "Total: {total}"
+    },
+    "order": {
+      "title": "Fleet order",
+      "help": "The fleets in the order they are tried. Add or remove fleets below.",
+      "up": "Move {fleet} up",
+      "down": "Move {fleet} down",
+      "remove": "Remove {fleet}",
+      "up-short": "Up",
+      "down-short": "Down",
+      "remove-short": "Remove",
+      "add": "Add {fleet}",
+      "moved": "{fleet} moved to position {position}",
+      "removed": "{fleet} removed from the list",
+      "add-off": "Add {fleet} (off in this Market)",
+      "add-group": "Fleets that can be added"
+    },
+    "fleets": {
+      "title": "Fleets",
+      "intro": "Reliability is a score from 0 to 100 that you set for now. A score worked out from delivery history will replace it later."
+    },
+    "fleet": {
+      "on": "On in this Market",
+      "off": "Off in this Market",
+      "methods": "Serves: {methods}",
+      "no-methods": "Not used in this Market"
+    },
+    "reliability": {
+      "label": "Reliability (0 to 100)",
+      "help": "Used by weighted models.",
+      "unset": "Not set. The router uses {score}.",
+      "save": "Save score",
+      "saved": "Score saved."
+    },
+    "invalid": {
+      "name": "Enter a name of 1 to 60 characters.",
+      "weights": "Enter whole numbers from 0 to 100, not all 0.",
+      "order": "Choose at least one fleet.",
+      "score": "Enter a whole number from 0 to 100.",
+      "weight-range": "Whole number from 0 to 100",
+      "weight-zero": "At least one weight must be above 0"
+    },
+    "error": {
+      "invalid": "That was refused. Check it and try again.",
+      "name-taken": "Another model already has this name.",
+      "conflict": "Someone saved this model first. Reloading.",
+      "not-found": "We could not find that model.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change delivery fleets.",
+      "unavailable": "Delivery fleets are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    },
+    "viewer-only": "You can view but not change delivery fleets.",
+    "confirm": {
+      "title": "Change the active models?",
+      "edit-title": "Save a model that is in use?",
+      "line": "{method}: {from} → {to}. Every new {method} order will use this rule.",
+      "edit-body": "{name} is active for {methods}. Saving applies the new rule to every new order of that method.",
+      "go": "Confirm",
+      "cancel": "Go back"
     }
   },
   "commission": {

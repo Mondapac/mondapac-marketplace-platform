@@ -116,5 +116,10 @@ export function parseDeliveryChoices(
   return fields.length > 0 ? { ok: false, fields } : { ok: true, choices };
 }
 
-/** The platform-attention state of a seller order: why nobody is carrying it. */
-export type DeliveryAttention = 'no-carrier';
+/**
+ * The platform-attention state of a seller order: why an admin must look at it. `no-carrier`:
+ * no fleet can carry it; `carrier-unknown`: a fleet that cannot dedupe went quiet on the booking,
+ * so it may exist; `cancel-unknown`: such a fleet refused a cancel, which does not say whether the
+ * delivery is still booked.
+ */
+export type DeliveryAttention = 'no-carrier' | 'carrier-unknown' | 'cancel-unknown';

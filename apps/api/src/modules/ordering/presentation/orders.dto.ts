@@ -116,11 +116,12 @@ export class SellerOrderBody {
   })
   readyAt!: string | null;
   @ApiProperty({
-    enum: ['no-carrier'],
+    enum: ['no-carrier', 'carrier-unknown', 'cancel-unknown'],
     nullable: true,
     description:
-      'Set when no carrier could take the order and the platform must arrange the delivery. ' +
-      'The seller never delivers instead.',
+      'Set when the platform must look at the delivery: no-carrier (no fleet can carry it), ' +
+      'carrier-unknown (a fleet may already hold the booking) or cancel-unknown (a cancel was not ' +
+      'confirmed). The seller never delivers instead.',
   })
   deliveryAttention!: string | null;
   @ApiProperty({ type: [OrderLineBody] }) lines!: OrderLineBody[];

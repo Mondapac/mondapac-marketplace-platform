@@ -679,6 +679,25 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['carrier_status', 'progress', 'updated_at', 'version'],
     },
     'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Delivery models, package 3 (the fleet router): selection models are created and edited,
+    // never deleted; one active-model row per Market and method and one reliability score per
+    // fleet are written once and changed; a booking attempt is written, moved and removed.
+    'shipping.fleet_selection_models': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['kind', 'name', 'rule', 'updated_at', 'updated_by', 'version'],
+    },
+    'shipping.fleet_selection_assignments': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['model_id', 'updated_at', 'updated_by'],
+    },
+    'shipping.fleet_reliability': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['score', 'updated_at', 'updated_by'],
+    },
+    'shipping.fleet_booking_attempts': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['attempted_at', 'fleet'],
+    },
     'shipping.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Delivery models, package 2: the pickup code of a seller order handed over in person. A code is
     // created, counted against (failures, lock) and replaced; never deleted.
