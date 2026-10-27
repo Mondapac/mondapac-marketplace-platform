@@ -28,6 +28,8 @@ const PRICE = '\\d{1,4}(?:\\.\\d{1,6})?/\\d{1,4}(?:\\.\\d{1,6})?';
 const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
 /** A carrier key or webhook secret: long enough to be guessed by no one, in a URL-safe alphabet. */
 const CARRIER_SECRET = '[A-Za-z0-9_-]{24,200}';
+/** An external fleet's customer or client id: an identifier, not a secret, but still not logged. */
+const FLEET_ID = '[A-Za-z0-9_-]{8,100}';
 
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
@@ -113,6 +115,31 @@ const envSchema = z.object({
     )
     .optional(),
   MONDAPAC_DRIVE_WEBHOOK_SECRET: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
+      'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  // Phase 6 package 5b, the external fleet Uber Direct: its customer id, OAuth client id and OAuth
+  // client secret, each as MARKET=value pairs separated by commas (each Market at most once and
+  // only hosted ones). A Market without all three has Uber Direct off, whatever its
+  // `shipping.uberDirect.enabled` says. Server secrets, never echoed; checked in parseMarketValues.
+  UBER_DIRECT_CUSTOMER_ID: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(FLEET_ID)}(,${MARKET_VALUE(FLEET_ID)})*$`),
+      'must be MARKET=id pairs separated by commas (an id is 8 to 100 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  UBER_DIRECT_CLIENT_ID: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(FLEET_ID)}(,${MARKET_VALUE(FLEET_ID)})*$`),
+      'must be MARKET=id pairs separated by commas (an id is 8 to 100 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  UBER_DIRECT_CLIENT_SECRET: z
     .string()
     .regex(
       new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
@@ -283,6 +310,16 @@ export interface AppConfig {
   readonly mondapacDrive: Readonly<{
     apiKeys: Readonly<Record<string, string>>;
     webhookSecrets: Readonly<Record<string, string>>;
+  }>;
+  /**
+   * The Uber Direct credentials of each hosted Market (`UBER_DIRECT_CUSTOMER_ID`,
+   * `UBER_DIRECT_CLIENT_ID`, `UBER_DIRECT_CLIENT_SECRET`). Holds secrets: read by shipping's Uber
+   * Direct adapter alone.
+   */
+  readonly uberDirect: Readonly<{
+    customerIds: Readonly<Record<string, string>>;
+    clientIds: Readonly<Record<string, string>>;
+    clientSecrets: Readonly<Record<string, string>>;
   }>;
 }
 
@@ -469,6 +506,16 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       );
     }
   }
+  const uberValues = (
+    variable: 'UBER_DIRECT_CUSTOMER_ID' | 'UBER_DIRECT_CLIENT_ID' | 'UBER_DIRECT_CLIENT_SECRET',
+  ) =>
+    parsed.success
+      ? parseMarketValues(parsed.data[variable], parsed.data.HOSTED_MARKETS, variable)
+      : { values: {}, issues: [] };
+  const uberCustomers = uberValues('UBER_DIRECT_CUSTOMER_ID');
+  const uberClients = uberValues('UBER_DIRECT_CLIENT_ID');
+  const uberSecrets = uberValues('UBER_DIRECT_CLIENT_SECRET');
+  issues.push(...uberCustomers.issues, ...uberClients.issues, ...uberSecrets.issues);
   const assistant = parsed.success
     ? assistantModelConfig(parsed.data)
     : { config: null, issues: [] };
@@ -512,6 +559,11 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     mondapacDrive: Object.freeze({
       apiKeys: driveKeys.values,
       webhookSecrets: driveSecrets.values,
+    }),
+    uberDirect: Object.freeze({
+      customerIds: uberCustomers.values,
+      clientIds: uberClients.values,
+      clientSecrets: uberSecrets.values,
     }),
   });
 }
