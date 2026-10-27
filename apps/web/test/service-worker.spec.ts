@@ -12,7 +12,7 @@ function load(opts: { version?: string; online?: boolean; htmlAssets?: string[] 
   const listeners: Record<string, Listener> = {};
   const stores = new Map<string, Map<string, Response>>();
   const fetched: { url: string; init?: RequestInit }[] = [];
-  const state = { online: opts.online ?? true, type: 'basic' as ResponseType };
+  const state = { online: opts.online ?? true, type: 'basic' as ResponseType, redirected: false };
   const key = (r: Request | string) => new URL(typeof r === 'string' ? r : r.url, ORIGIN).pathname;
   const caches = {
     open: (name: string) => {
@@ -52,6 +52,7 @@ function load(opts: { version?: string; online?: boolean; htmlAssets?: string[] 
       const response = new Response(body, { status: 200 });
       // A same-origin fetch answers with type "basic".
       Object.defineProperty(response, 'type', { value: state.type });
+      Object.defineProperty(response, 'redirected', { value: state.redirected });
       return Promise.resolve(response);
     },
     URL,
@@ -148,6 +149,33 @@ describe('service worker caching rules', () => {
     for (const r of ignored) expect(sw.event(r)).toBeNull();
     expect(sw.fetched.length).toBe(before);
     expect(sw.stores.size).toBe(2);
+  });
+
+  it('does not handle page loads of the account, cart, checkout, payment, login and sell routes', async () => {
+    const sw = load();
+    await sw.wait('install');
+    const before = sw.fetched.length;
+    for (const p of [
+      '/checkout',
+      '/checkout/payment',
+      '/payment/return',
+      '/account',
+      '/account/orders',
+      '/cart',
+      '/login',
+      '/sell',
+      '/api/storefront/cart',
+    ]) {
+      expect(sw.event(nav(p))).toBeNull();
+    }
+    expect(sw.fetched.length).toBe(before);
+    expect(sw.event(nav('/checkouts-guide'))).not.toBeNull();
+  });
+
+  it('fails install when the offline page arrives through a redirect', async () => {
+    const sw = load();
+    sw.state.redirected = true;
+    await expect(sw.wait('install')).rejects.toThrow('offline page unavailable');
   });
 
   it('keeps only hashed static files, cache-first, and never an error or opaque response', async () => {

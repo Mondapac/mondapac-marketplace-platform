@@ -7,11 +7,13 @@
 //   precache   /offline (fetched anonymously, without cookies) + the /_next/static/ files it names
 //              + the icons. Install fails if any is missing, so a half-saved offline page is never used.
 //   navigation network-first. Only when the network fails is the cached /offline served. No other
-//              HTML is ever stored.
+//              HTML is ever stored. Page loads of the never-routes below are not handled at all.
 //   /_next/static/  same-origin GET, cache-first (files are content-hashed), cache name has the version.
 //   everything else is not touched (the browser handles it): non-GET, cross-origin (Stripe...),
 //              /api/*, requests with an Authorization header, and the account, cart, checkout and
-//              payment routes (also never answered from cache even if listed above).
+//              payment routes, page loads included (offline they get the browser's own error).
+// PCI DSS 4.0: /_next/static scripts on the checkout page can still come from this worker's cache, so
+// sw.js belongs in the payment-page script inventory (6.4.3) and change/tamper detection (11.6.1).
 // UPDATE: no skipWaiting. A new version waits until the old tabs close; the version is the build
 // id in this script's URL (?v=), so every deploy installs fresh caches and activate deletes the old ones.
 
@@ -48,8 +50,8 @@ function decide(request) {
   }
   if (url.origin !== self.location.origin) return 'ignore';
   if (request.headers.has('authorization')) return 'ignore';
-  if (request.mode === 'navigate') return 'navigate';
   if (isNever(url.pathname)) return 'ignore';
+  if (request.mode === 'navigate') return 'navigate';
   if (url.pathname.startsWith('/_next/static/')) return 'static';
   return 'ignore';
 }
@@ -60,7 +62,10 @@ self.addEventListener('install', (event) => {
       const cache = await caches.open(SHELL_CACHE);
       // credentials omit: the saved page is the anonymous one, never a signed-in buyer's.
       const page = await fetch(OFFLINE_URL, { credentials: 'omit', cache: 'reload' });
-      if (!page.ok) throw new Error('offline page unavailable');
+      // A redirected copy would be refused when answering a navigation, so it is never saved.
+      if (!page.ok || page.redirected || page.type !== 'basic') {
+        throw new Error('offline page unavailable');
+      }
       const html = await page.clone().text();
       const assets = new Set(html.match(/\/_next\/static\/[^"'\s\\)<>]+/g) || []);
       const staticCache = await caches.open(STATIC_CACHE);
