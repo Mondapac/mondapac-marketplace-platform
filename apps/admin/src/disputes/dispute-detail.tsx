@@ -79,7 +79,8 @@ export function DisputeDetailView({
 
   const money = (value: DisputeMoney) => formatMinor(value.amountMinor, value.currency, locale);
   const when = (iso: string) => shortInstantInZone(iso, locale, zone);
-  const who = (id: string) => (id === accountId ? t('you') : shortId(id));
+  const who = (id: string) =>
+    id === accountId ? t('you') : t('another-admin', { id: shortId(id) });
   const reasonLabel = (code: string) =>
     (REASON_CODES as readonly string[]).includes(code) ? t(`decision.reason.${code}`) : code;
   const storeOf = (order: { storeName: string | null; sellerId: string }) =>

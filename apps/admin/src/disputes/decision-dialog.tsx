@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Dialog, Select } from '@mondapac/ui';
+import { Banner, Button, Dialog, RadioGroup, Select } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { shortId } from '../shared/short-id.ts';
@@ -23,6 +23,8 @@ export interface DecisionTarget {
 }
 
 type Bearer = 'platform' | 'seller';
+
+const HELP_ID = 'decision-save-help';
 
 /**
  * Who bears a lost chargeback, for one seller order. The code is not asked for here: saving goes
@@ -70,6 +72,7 @@ export function DecisionDialog({
 
   const nothingToRecover = cap !== null && !isMore(cap.amountMinor, '0');
   const ready = bearer !== '' && reason !== '';
+  const saveDisabled = !ready || (nothingToRecover && bearer === 'seller');
   const money = (minor: string, currency: string) => formatMinor(minor, currency, locale);
 
   async function save() {
@@ -141,13 +144,19 @@ export function DecisionDialog({
       onClose={() => {
         if (!busy.current) onClose();
       }}
+      actionsNote={
+        saveDisabled ? (
+          <p id={HELP_ID}>{t(reverse ? 'save-help-reverse' : 'save-help')}</p>
+        ) : undefined
+      }
       actions={
         <>
           <Button variant="secondary" onClick={onClose} disabled={pending}>
             {t('cancel')}
           </Button>
           <Button
-            disabled={!ready || (nothingToRecover && bearer === 'seller')}
+            disabled={saveDisabled}
+            aria-describedby={saveDisabled ? HELP_ID : undefined}
             loading={pending}
             onClick={() => void save()}
           >
@@ -175,35 +184,22 @@ export function DecisionDialog({
               })}
             </p>
           ) : (
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-sm font-medium text-fg">{t('bearer.legend')}</legend>
-              {(['seller', 'platform'] as const).map((value) => {
-                const off = value === 'seller' && nothingToRecover;
-                return (
-                  <label
-                    key={value}
-                    className={`flex min-h-(--mp-size-control) items-center gap-3 text-fg ${off ? 'text-fg-muted' : ''}`}
-                  >
-                    <input
-                      type="radio"
-                      name="bearer"
-                      value={value}
-                      checked={bearer === value}
-                      disabled={off || pending}
-                      className="size-5 accent-accent"
-                      onChange={() => {
-                        setBearer(value);
-                        setAmountError(undefined);
-                      }}
-                    />
-                    <span>{t(`bearer.${value}`)}</span>
-                  </label>
-                );
-              })}
-              {nothingToRecover ? (
-                <p className="text-sm text-fg-muted">{t('nothing-to-recover')}</p>
-              ) : null}
-            </fieldset>
+            <RadioGroup
+              legend={t('bearer.legend')}
+              name="bearer"
+              value={bearer}
+              disabled={pending}
+              options={(['seller', 'platform'] as const).map((value) => ({
+                value,
+                label: t(`bearer.${value}`),
+                disabled: value === 'seller' && nothingToRecover,
+              }))}
+              note={nothingToRecover ? t('nothing-to-recover') : undefined}
+              onChange={(value) => {
+                setBearer(value as Bearer);
+                setAmountError(undefined);
+              }}
+            />
           )}
           {bearer === 'seller' && !reverse ? (
             <MoneyField

@@ -184,6 +184,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'commission-payouts/admin/disputes': {
     filter: /^(needs-response|decision-needed|under-review|won|closed)$/,
     limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the opening, a dot and the dispute id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {

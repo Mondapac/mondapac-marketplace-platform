@@ -87,9 +87,10 @@ const ledger: Ledger = {
 afterEach(cleanup);
 
 describe('dispute notice', () => {
-  it('says the payment is disputed and held, with a critical badge', () => {
+  it('says the payment is disputed and held, once, in a critical banner', () => {
     render(wrap(<DisputeNotice dispute={dispute()} />));
-    expect(screen.getByText('Payment disputed').className).toContain('critical');
+    expect(screen.getAllByText('Payment disputed')).toHaveLength(1);
+    expect(screen.getByRole('alert').className).toContain('critical');
     expect(screen.getByText('Held until the dispute is closed.')).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
   });

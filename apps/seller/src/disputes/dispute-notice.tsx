@@ -1,4 +1,4 @@
-import { Badge, Banner } from '@mondapac/ui';
+import { Banner } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMinor } from '../price/money.ts';
 import type { OwnDispute } from './types.ts';
@@ -14,11 +14,8 @@ export function DisputeNotice({ dispute }: { readonly dispute: OwnDispute | null
   if (dispute === null) return null;
   if (dispute.open) {
     return (
-      <Banner tone="critical">
-        <p className="flex flex-wrap items-center gap-2">
-          <Badge tone="critical">{t('badge')}</Badge>
-          <span>{t('held')}</span>
-        </p>
+      <Banner tone="critical" title={t('badge')}>
+        <p>{t('held')}</p>
       </Banner>
     );
   }

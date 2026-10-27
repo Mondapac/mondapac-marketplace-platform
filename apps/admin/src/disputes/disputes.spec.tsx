@@ -318,6 +318,30 @@ describe('dispute detail', () => {
     expect(screen.getByText(/22 Oct/)).toBeTruthy();
   });
 
+  it('names another admin by a short id instead of showing a bare id', () => {
+    const base = detail().sellerOrders[0]!;
+    mountDetail(
+      detail({
+        sellerOrders: [
+          {
+            ...base,
+            decision: 'not-allowed',
+            decided: {
+              bearer: 'platform',
+              amount: null,
+              reasonCode: 'other',
+              decidedBy: '0190a000-0000-7000-8000-0000000000e7',
+              decidedAt: '2026-10-22T02:00:00.000Z',
+              reversal: null,
+            },
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText('Another admin (000000E7)')).toBeTruthy();
+    expect(screen.queryByText('You')).toBeNull();
+  });
+
   it('flags a case that needs review and offers to return the recovered amount', () => {
     const base = detail().sellerOrders[0]!;
     mountDetail(
@@ -395,6 +419,62 @@ describe('decision dialog', () => {
     expect((save as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(reason, { target: { value: 'other' } });
     expect((save as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('offers the bearer as a labelled group of radios and explains the disabled Save', () => {
+    const dialog = open();
+    const group = within(dialog).getByRole('group', { name: 'Who bears the loss' });
+    expect(within(group).getAllByRole('radio')).toHaveLength(2);
+    const save = within(dialog).getByRole('button', { name: 'Save decision' });
+    const help = within(dialog).getByText('Choose who bears the loss and a reason.');
+    expect(save.getAttribute('aria-describedby')).toBe(help.id);
+    fireEvent.click(within(dialog).getByLabelText('MondaPac bears the loss'));
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'other' } });
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+    expect(within(dialog).queryByText('Choose who bears the loss and a reason.')).toBeNull();
+    expect(save.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('works in a zero-decimal currency: whole yen in the field, the hint and the request', async () => {
+    const base = detail().sellerOrders[0]!;
+    mountDetail(
+      detail({
+        amount: { amountMinor: '12500', currency: 'JPY' },
+        sellerOrders: [
+          {
+            ...base,
+            sellerShare: { amountMinor: '10000', currency: 'JPY' },
+            recoverableCap: { amountMinor: '9000', currency: 'JPY' },
+          },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Decide' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByLabelText('Recover from the seller'));
+    const amount = within(dialog).getByLabelText<HTMLInputElement>(/Amount \(JPY\)/);
+    expect(amount.value).toBe('9000');
+    expect(within(dialog).getByText(/Up to .*9,000/)).toBeTruthy();
+    // A decimal part is not a yen amount, and a value over the cap stays out of the request.
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'other' } });
+    fireEvent.change(amount, { target: { value: '90.5' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save decision' }));
+    expect(amount.getAttribute('aria-invalid')).toBe('true');
+    fireEvent.change(amount, { target: { value: '9001' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save decision' }));
+    expect(within(dialog).getByText(/The amount can be at most .*9,000/)).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    call.mockResolvedValueOnce({ ok: true, status: 201, body: {} });
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: detail() });
+    fireEvent.change(amount, { target: { value: '4500' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save decision' }));
+    await waitFor(() =>
+      expect(call.mock.calls[0]?.[2]).toEqual({
+        bearer: 'seller',
+        amountMinor: '4500',
+        reasonCode: 'other',
+      }),
+    );
   });
 
   it('defaults the amount to the full cap, with the hint, and posts the seller recovery', async () => {

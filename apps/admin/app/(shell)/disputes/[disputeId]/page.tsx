@@ -29,7 +29,13 @@ export default async function DisputePage({
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
-    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
+    // No session, so no shell; the page still has its heading.
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <h1 className="text-2xl font-semibold">{t('disputes.detail.page-title')}</h1>
+        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
+      </div>
+    );
   }
   const { session } = gate;
   const title = t('disputes.title');
@@ -53,7 +59,11 @@ export default async function DisputePage({
   if (result.kind === 'not-found') return message('not-found');
   if (result.kind !== 'ok') {
     return shell(
-      <LoadError message={t('disputes.error.unavailable')} retryLabel={t('load.retry')} />,
+      <div className="flex flex-col gap-4">
+        <BackLink href="/disputes" label={title} />
+        <h1 className="text-2xl font-semibold">{t('disputes.detail.page-title')}</h1>
+        <LoadError message={t('disputes.error.unavailable')} retryLabel={t('load.retry')} />
+      </div>,
     );
   }
   return shell(

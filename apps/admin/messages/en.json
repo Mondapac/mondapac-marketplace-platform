@@ -2628,6 +2628,7 @@
     "not-found": "This dispute does not exist, or it belongs to another market.",
     "back-home": "Back to the dashboard",
     "you": "You",
+    "another-admin": "Another admin ({id})",
     "detail": {
       "page-title": "Dispute",
       "title": "Dispute on order {id}"
@@ -2716,6 +2717,8 @@
       },
       "cancel": "Cancel",
       "save": "Save decision",
+      "save-help": "Choose who bears the loss and a reason.",
+      "save-help-reverse": "Choose a reason.",
       "saved": "Decision saved.",
       "saved-stale": "Decision saved. The page could not refresh; reload it to see the latest.",
       "error": {

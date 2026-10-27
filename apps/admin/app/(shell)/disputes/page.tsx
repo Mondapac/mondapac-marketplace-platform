@@ -14,10 +14,16 @@ export async function generateMetadata() {
 export default async function DisputesPage() {
   const gate = await requireSession();
   const t = await getTranslations();
-  if (gate.kind === 'unavailable') {
-    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
-  }
   const title = t('disputes.title');
+  if (gate.kind === 'unavailable') {
+    // No session, so no shell; the page still has its heading.
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
+      </div>
+    );
+  }
   return (
     <AdminShell session={gate.session} activeId="disputes" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
