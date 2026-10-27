@@ -16,6 +16,7 @@ import { AccountDeletionCancelled, AccountDeletionCompleted } from '../domain/au
 import { AccountDeletionRequested } from '../domain/audit';
 import type { AccountDeletionDependencies } from './account-deletion-dependencies';
 import { DELETION_BATCH_SIZE } from './account-deletion-flow';
+import { CLAIM_STALE_AFTER_MINUTES } from '../domain/account-deletion-request';
 import {
   MemoryAccountDeletionRequests,
   MemoryAccountDeletionSettings,
@@ -58,6 +59,12 @@ class Facades {
   endSessions: Result<{ revokedSessions: number }, { code: 'session.invalid' }> = ok({
     revokedSessions: 2,
   });
+  endAll: Result<{ revokedSessions: number }, { code: 'access.denied' }> = ok({
+    revokedSessions: 1,
+  });
+  /** Runs when the sessions are ended: lets a test make an order appear at that moment. */
+  onEndAll: (() => void) | null = null;
+  readonly erasedFor: Id<'AccountDeletionRequest'>[] = [];
   eraseAnswer: 'erased' | 'already-erased' | 'throw' = 'erased';
   forgetOk = true;
   readonly calls: string[] = [];
@@ -93,8 +100,19 @@ class Facades {
       this.contexts.push(context);
       return Promise.resolve(this.endSessions);
     },
-    eraseCustomerAccount: (_context: CallContext, accountId: Id<'Account'>) => {
+    endAllCustomerSessions: (context: CallContext, accountId: Id<'Account'>) => {
+      this.calls.push(`identity.end-all:${accountId}`);
+      this.contexts.push(context);
+      this.onEndAll?.();
+      return Promise.resolve(this.endAll);
+    },
+    eraseCustomerAccount: (
+      _context: CallContext,
+      accountId: Id<'Account'>,
+      requestId: Id<'AccountDeletionRequest'>,
+    ) => {
       this.calls.push(`identity.erase:${accountId}`);
+      this.erasedFor.push(requestId);
       if (this.eraseAnswer === 'throw') return Promise.reject(new Error('boom'));
       return Promise.resolve(ok({ code: this.eraseAnswer }));
     },
@@ -408,6 +426,63 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       expect((await current(adminContext())).ok).toBe(false);
     });
 
+    it('refuses an acting-as session, as the other routes do', async () => {
+      turnOn();
+      await ask();
+      const actingAs = {
+        ...buyer(),
+        actor: { ...buyer().actor, actingAs: { adminAccountId: ADMIN } },
+      } as unknown as CallContext;
+      expect(await current(actingAs)).toEqual(err({ code: 'access.denied' }));
+    });
+
+    it('shows a claimed request as executing, and refuses to cancel it', async () => {
+      turnOn(7);
+      await ask();
+      clock.set(T0.add({ hours: 7 * 24 }));
+      facades.onEndAll = () => undefined;
+      const [row] = rowsOf();
+      await requests.claim(market, row!.id, clock.now(), clock.now().subtract({ minutes: 15 }));
+      expect(await current()).toEqual(
+        ok({
+          status: 'executing',
+          requestedAt: T0,
+          scheduledFor: T0.add({ hours: 7 * 24 }),
+          waitingPeriodDays: 7,
+        }),
+      );
+      const auditBefore = audit.entries.length;
+      expect(await cancel()).toEqual(err({ code: 'customers.account-deletion-in-progress' }));
+      expect(rowsOf()[0]?.status).toBe('executing');
+      expect(audit.entries).toHaveLength(auditBefore);
+      expect(outbox.events.map((e) => e.type)).not.toContain(
+        'customers.account-deletion-cancelled.v1',
+      );
+      // The sign-in facade is refused the same way, and a new request is still refused.
+      const facade = new CustomersAccountDeletionFacadeImplementation(
+        new CancelAccountDeletion(gate, deps),
+      );
+      expect(await facade.cancelPendingOnSignIn(buyer())).toEqual(
+        err({ code: 'customers.account-deletion-in-progress' }),
+      );
+      expect(await ask()).toEqual(err({ code: 'customers.account-deletion-already-requested' }));
+    });
+
+    it('answers in progress when the job claims the request between the read and the cancel', async () => {
+      turnOn(7);
+      await ask();
+      clock.set(T0.add({ hours: 7 * 24 }));
+      const [row] = rowsOf();
+      requests.beforeNextTransition = () => {
+        void requests.claim(market, row!.id, clock.now(), clock.now().subtract({ minutes: 15 }));
+      };
+      expect(await cancel()).toEqual(err({ code: 'customers.account-deletion-in-progress' }));
+      expect(rowsOf()[0]?.status).toBe('executing');
+      expect(outbox.events.map((e) => e.type)).not.toContain(
+        'customers.account-deletion-cancelled.v1',
+      );
+    });
+
     it('cancels during the wait with an audit row and a second event', async () => {
       turnOn();
       await ask();
@@ -505,8 +580,12 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       await seedAddress(OTHER_BUYER, 3);
       const outcome = await run();
       expect(outcome).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
-      // Key destroyed first, then engagement; the blockers were asked again under the system.
+      // The blockers under the system; the claim; every session ended; the blockers once more
+      // (nothing can change now); then the key destroyed, then engagement and reviews.
       expect(facades.calls).toEqual([
+        `ordering.of:${BUYER}`,
+        `wallet.of:${BUYER}`,
+        `identity.end-all:${BUYER}`,
         `ordering.of:${BUYER}`,
         `wallet.of:${BUYER}`,
         `identity.erase:${BUYER}`,
@@ -517,6 +596,8 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       expect(await addresses.list(market, OTHER_BUYER)).toHaveLength(1);
       const [row] = rowsOf();
       expect(row?.status).toBe('completed');
+      // identity's audit row names the request that asked for the erasure.
+      expect(facades.erasedFor).toEqual([row!.id]);
       expect(audit.entries.at(-1)).toEqual(
         AccountDeletionCompleted.entry(row!.id, { after: { waitingPeriodDays: 7 } }),
       );
@@ -538,16 +619,95 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       expect(facades.calls).toHaveLength(calls);
     });
 
-    it('repeats the steps after a failure, and already-erased is fine', async () => {
+    const staleClaim = () =>
+      clock.advance(Temporal.Duration.from({ minutes: CLAIM_STALE_AFTER_MINUTES }));
+
+    it('repeats the steps after a failure once the claim is stale, and already-erased is fine', async () => {
       await due();
       facades.forgetOk = false;
       expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 1 }));
-      expect(rowsOf()[0]?.status).toBe('pending');
-      // The key is already destroyed on the next run; the rest goes through.
+      // Claimed and left executing: the buyer can no longer cancel it.
+      expect(rowsOf()[0]).toMatchObject({ status: 'executing', claimedAt: clock.now() });
+      expect(await cancel()).toEqual(err({ code: 'customers.account-deletion-in-progress' }));
+      // A fresh claim is not taken by the next run...
       facades.forgetOk = true;
       facades.eraseAnswer = 'already-erased';
+      facades.calls.length = 0;
+      expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 0 }));
+      expect(facades.calls).toEqual([]);
+      // ...a stale one is: the key is already destroyed, the rest goes through.
+      staleClaim();
       expect(await run()).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
       expect(rowsOf()[0]?.status).toBe('completed');
+    });
+
+    it('a failed lock-out of the sessions leaves the request executing and erases nothing', async () => {
+      await due();
+      facades.endAll = err({ code: 'access.denied' });
+      expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 1 }));
+      expect(facades.calls.some((c) => c.startsWith('identity.erase'))).toBe(false);
+      expect(rowsOf()[0]?.status).toBe('executing');
+    });
+
+    it('two runs at once: only one claims the request and does the erase work', async () => {
+      await due();
+      const [a, b] = await Promise.all([run(), run()]);
+      const outcomes = [a, b].map((r) => (r.ok ? r.value : null));
+      expect(outcomes.filter((o) => o?.completed === 1)).toHaveLength(1);
+      expect(outcomes.reduce((n, o) => n + (o?.failed ?? 0), 0)).toBe(0);
+      expect(facades.calls.filter((c) => c.startsWith('identity.erase'))).toHaveLength(1);
+      expect(facades.calls.filter((c) => c.startsWith('identity.end-all'))).toHaveLength(1);
+      expect(
+        outbox.events.filter((e) => e.type === 'customers.account-deletion-completed.v1'),
+      ).toHaveLength(1);
+      expect(rowsOf()[0]?.status).toBe('completed');
+    });
+
+    it('a cancel that lands between the executor read and its claim wins: nothing is erased', async () => {
+      await due();
+      const [row] = rowsOf();
+      requests.beforeNextTransition = () => {
+        void requests.cancel(market, row!.id, 'customer', clock.now());
+      };
+      expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 0 }));
+      expect(rowsOf()[0]?.status).toBe('cancelled');
+      expect(facades.calls.some((c) => c.startsWith('identity.'))).toBe(false);
+    });
+
+    it('a request claimed by a live run is left alone; a stale claim is taken by exactly one run', async () => {
+      await due();
+      const [row] = rowsOf();
+      await requests.claim(market, row!.id, clock.now(), clock.now().subtract({ minutes: 15 }));
+      expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 0 }));
+      expect(facades.calls).toEqual([]);
+      staleClaim();
+      const [a, b] = await Promise.all([run(), run()]);
+      expect([a, b].map((r) => (r.ok ? r.value.completed : -1)).sort()).toEqual([0, 1]);
+      expect(facades.calls.filter((c) => c.startsWith('identity.erase'))).toHaveLength(1);
+    });
+
+    it('gives the claim back when a blocker appears after the sessions are ended', async () => {
+      await due();
+      // An order lands in the last moment before the lock-out takes effect.
+      facades.onEndAll = () => {
+        facades.obligations = ok({ openOrders: 1, pendingRefunds: 0 });
+      };
+      expect(await run()).toEqual(ok({ completed: 0, blocked: 1, failed: 0 }));
+      expect(facades.calls.some((c) => c.startsWith('identity.erase'))).toBe(false);
+      // Pending again and cancellable, with no claim.
+      expect(rowsOf()[0]).toMatchObject({ status: 'pending', claimedAt: null });
+      facades.onEndAll = null;
+      facades.obligations = ok(idle);
+      expect(await run()).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
+    });
+
+    it('a cancelled request is still cancellable after a released claim', async () => {
+      await due();
+      facades.onEndAll = () => {
+        facades.obligations = ok({ openOrders: 1, pendingRefunds: 0 });
+      };
+      await run();
+      expect(await cancel()).toEqual(ok({ code: 'cancelled' }));
     });
 
     it('a request that throws does not stop the next one', async () => {
@@ -558,6 +718,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       facades.eraseAnswer = 'throw';
       expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 2 }));
       facades.eraseAnswer = 'erased';
+      staleClaim();
       expect(await run()).toEqual(ok({ completed: 2, blocked: 0, failed: 0 }));
     });
 
@@ -565,7 +726,9 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       await due();
       facades.obligations = ok({ openOrders: 1, pendingRefunds: 0 });
       expect(await run()).toEqual(ok({ completed: 0, blocked: 1, failed: 0 }));
-      expect(facades.calls.some((c) => c.startsWith('identity.erase'))).toBe(false);
+      // Found before the claim: no session ended, no erase, still pending.
+      expect(facades.calls.some((c) => c.startsWith('identity.'))).toBe(false);
+      expect(rowsOf()[0]?.status).toBe('pending');
       facades.obligations = ok(idle);
       facades.balance = ok({ available: money(1n), held: money(0n) });
       expect(await run()).toEqual(ok({ completed: 0, blocked: 1, failed: 0 }));

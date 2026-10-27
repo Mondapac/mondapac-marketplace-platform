@@ -8,6 +8,8 @@ import type { AccountRepository } from '../ports/account.repository';
 
 export interface EraseCustomerAccountInput {
   readonly accountId: Id<'Account'>;
+  /** The customers deletion request that asked for the erasure; recorded in the audit row. */
+  readonly requestId: Id<'AccountDeletionRequest'>;
 }
 
 export interface EraseCustomerAccountOutput {
@@ -31,7 +33,7 @@ export interface EraseCustomerAccountDependencies {
  * credential, sessions, links and challenges (C8). Only a customer account:
  * any other population is refused `access.denied` and nothing changes. An id with no customer
  * account in the Market answers `already-erased`, so the caller can run again. The audit row
- * names the account id only.
+ * names the account id and the deletion request id (no personal data).
  */
 export class EraseCustomerAccount extends UseCase<
   EraseCustomerAccountInput,
@@ -66,7 +68,12 @@ export class EraseCustomerAccount extends UseCase<
         if (account === null) return ok({ code: 'already-erased' });
         if (account.state.population !== 'customer') return err({ code: 'access.denied' });
         await accounts.remove(market, account);
-        await audit.record(context, AccountErasedAudit.entry(account.state.id, {}));
+        await audit.record(
+          context,
+          AccountErasedAudit.entry(account.state.id, {
+            after: { requestId: input.requestId },
+          }),
+        );
         return ok({ code: 'erased' });
       },
       { isolation: 'serializable' },

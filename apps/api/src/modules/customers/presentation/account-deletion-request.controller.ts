@@ -106,8 +106,10 @@ export class AccountDeletionRequestController {
 
   @Get('current')
   @ApiOperation({
-    summary: 'The pending deletion request',
-    description: 'Customer sessions only. 404 when the account has no pending request.',
+    summary: 'The open deletion request',
+    description:
+      'Customer sessions only. status is pending (can be cancelled) or executing (the job has ' +
+      'taken it). 404 when the account has no open request.',
   })
   @ApiOkResponse({ type: AccountDeletionRequestBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -127,13 +129,19 @@ export class AccountDeletionRequestController {
     summary: 'Cancel the pending deletion request',
     description:
       'Customer sessions only, during the wait. 404 when there is no pending request (also ' +
-      'when it was just carried out or cancelled).',
+      'when it was just carried out or cancelled). 409 customers.account-deletion-in-progress ' +
+      'once the job has claimed the request: it can no longer be cancelled. 204 always means ' +
+      'the account will not be erased.',
   })
   @ApiHeader(CSRF)
   @ApiNoContentResponse({ description: 'The request is cancelled.' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiNotFoundResponse({ ...ERROR, description: 'customers.account-deletion-request-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'customers.account-deletion-in-progress or customers.conflict (ask again)',
+  })
   async cancelCurrent(
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,

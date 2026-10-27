@@ -109,21 +109,35 @@ export type StoredDeletionRequest = AccountDeletionRequest & {
   readonly cancelReason: 'customer' | 'sign-in' | null;
 };
 
-/** The request store in memory, with the partial unique index (one pending per account and Market). */
+/**
+ * The request store in memory, with the partial unique index (one open request per account and
+ * Market) and every transition as a conditional update, as the database does it.
+ */
 export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepository {
   readonly rows = new Map<string, StoredDeletionRequest>();
+  /** Runs once, just before the next `claim` or `cancel` is applied: lets a test interleave. */
+  beforeNextTransition: (() => void) | null = null;
+
+  private interleave() {
+    const hook = this.beforeNextTransition;
+    this.beforeNextTransition = null;
+    hook?.();
+  }
+
+  private isOpen(row: StoredDeletionRequest) {
+    return row.status === 'pending' || row.status === 'executing';
+  }
 
   insertPending(market: MarketContext, request: AccountDeletionRequest) {
     const taken = [...this.rows.values()].some(
       (row) =>
-        row.market === market.marketId &&
-        row.accountId === request.accountId &&
-        row.status === 'pending',
+        row.market === market.marketId && row.accountId === request.accountId && this.isOpen(row),
     );
     if (taken) return Promise.resolve(false);
     this.rows.set(request.id, {
       ...request,
       status: 'pending',
+      claimedAt: null,
       market: market.marketId,
       closedAt: null,
       cancelReason: null,
@@ -131,9 +145,9 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     return Promise.resolve(true);
   }
 
-  findPendingOf(market: MarketContext, accountId: Id<'Account'>) {
+  findActiveOf(market: MarketContext, accountId: Id<'Account'>) {
     const row = [...this.rows.values()].find(
-      (r) => r.market === market.marketId && r.accountId === accountId && r.status === 'pending',
+      (r) => r.market === market.marketId && r.accountId === accountId && this.isOpen(r),
     );
     return Promise.resolve(row ?? null);
   }
@@ -144,6 +158,7 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     reason: 'customer' | 'sign-in',
     at: Temporal.Instant,
   ) {
+    this.interleave();
     const row = this.rows.get(id);
     if (row === undefined || row.market !== market.marketId || row.status !== 'pending') {
       return Promise.resolve(false);
@@ -152,26 +167,68 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     return Promise.resolve(true);
   }
 
+  claim(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    at: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+  ) {
+    this.interleave();
+    const row = this.rows.get(id);
+    if (row === undefined || row.market !== market.marketId) return Promise.resolve(false);
+    const duePending =
+      row.status === 'pending' && Temporal.Instant.compare(row.scheduledFor, at) <= 0;
+    const staleExecuting =
+      row.status === 'executing' &&
+      row.claimedAt !== null &&
+      Temporal.Instant.compare(row.claimedAt, staleBefore) <= 0;
+    if (!duePending && !staleExecuting) return Promise.resolve(false);
+    this.rows.set(id, { ...row, status: 'executing', claimedAt: at });
+    return Promise.resolve(true);
+  }
+
+  release(market: MarketContext, id: Id<'AccountDeletionRequest'>, claimedAt: Temporal.Instant) {
+    const row = this.rows.get(id);
+    if (
+      row === undefined ||
+      row.market !== market.marketId ||
+      row.status !== 'executing' ||
+      row.claimedAt === null ||
+      Temporal.Instant.compare(row.claimedAt, claimedAt) !== 0
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, { ...row, status: 'pending', claimedAt: null });
+    return Promise.resolve(true);
+  }
+
   complete(market: MarketContext, id: Id<'AccountDeletionRequest'>, at: Temporal.Instant) {
     const row = this.rows.get(id);
-    if (row === undefined || row.market !== market.marketId || row.status !== 'pending') {
+    if (row === undefined || row.market !== market.marketId || row.status !== 'executing') {
       return Promise.resolve(false);
     }
     this.rows.set(id, { ...row, status: 'completed', closedAt: at });
     return Promise.resolve(true);
   }
 
-  listDue(market: MarketContext, now: Temporal.Instant, limit: number) {
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter(
-          (r) =>
-            r.market === market.marketId &&
-            r.status === 'pending' &&
-            Temporal.Instant.compare(r.scheduledFor, now) <= 0,
-        )
-        .sort((a, b) => Temporal.Instant.compare(a.scheduledFor, b.scheduledFor))
-        .slice(0, limit),
-    );
+  listDue(
+    market: MarketContext,
+    now: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+    limit: number,
+  ) {
+    const mine = [...this.rows.values()].filter((r) => r.market === market.marketId);
+    const stale = mine
+      .filter(
+        (r) =>
+          r.status === 'executing' &&
+          r.claimedAt !== null &&
+          Temporal.Instant.compare(r.claimedAt, staleBefore) <= 0,
+      )
+      .sort((a, b) => Temporal.Instant.compare(a.claimedAt!, b.claimedAt!));
+    const pending = mine
+      .filter((r) => r.status === 'pending' && Temporal.Instant.compare(r.scheduledFor, now) <= 0)
+      .sort((a, b) => Temporal.Instant.compare(a.scheduledFor, b.scheduledFor));
+    return Promise.resolve([...stale, ...pending].slice(0, limit));
   }
 }

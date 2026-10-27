@@ -60,8 +60,11 @@ export class AccountDeletionBlockerBody {
 }
 
 export class AccountDeletionRequestBody {
-  @ApiProperty({ enum: ['pending'] })
-  status!: 'pending';
+  @ApiProperty({
+    enum: ['pending', 'executing'],
+    description: 'executing: the job has taken the request; it can no longer be cancelled.',
+  })
+  status!: 'pending' | 'executing';
   @ApiProperty({ description: 'When the request was made (UTC instant).' })
   requestedAt!: string;
   @ApiProperty({

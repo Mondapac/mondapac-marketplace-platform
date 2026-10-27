@@ -17,6 +17,7 @@ import { CancelAccountDeletion } from '../../src/modules/customers/application/u
 import { ExecuteAccountDeletions } from '../../src/modules/customers/application/use-cases/execute-account-deletions.use-case';
 import { RequestAccountDeletion } from '../../src/modules/customers/application/use-cases/request-account-deletion.use-case';
 import { SetAccountDeletionSettings } from '../../src/modules/customers/application/use-cases/set-account-deletion-settings.use-case';
+import { ViewAccountDeletionRequest } from '../../src/modules/customers/application/use-cases/view-account-deletion-request.use-case';
 import { ViewAccountDeletionAvailability } from '../../src/modules/customers/application/use-cases/view-account-deletion-availability.use-case';
 import { ViewAccountDeletionSettings } from '../../src/modules/customers/application/use-cases/view-account-deletion-settings.use-case';
 import { CUSTOMERS_AUDIT_ACTIONS } from '../../src/modules/customers/domain/audit';
@@ -364,6 +365,9 @@ describe.each(TEST_MARKETS)(
             ended += 1;
             return Promise.resolve(ok({ revokedSessions: 0 }));
           },
+          endAllCustomerSessions: () => {
+            return Promise.resolve(ok({ revokedSessions: 0 }));
+          },
           eraseCustomerAccount: (_c: CallContext, accountId: Id<'Account'>) => {
             erased.push(accountId);
             return Promise.resolve(ok({ code: 'erased' as const }));
@@ -570,6 +574,181 @@ describe.each(TEST_MARKETS)(
         [code, (await rows(BUYER))[0]!.id],
       );
       expect(completed.rowCount).toBe(1);
+    });
+
+    const requestRepo = () => new PrismaAccountDeletionRequestRepository(db.service);
+    const claimNow = (accountId: Id<'Account'>, at = later().now()) =>
+      db.unitOfWork.run(
+        market,
+        async () => {
+          const [row] = await rows(accountId);
+          return ok(
+            await requestRepo().claim(
+              market,
+              row!.id as Id<'AccountDeletionRequest'>,
+              at,
+              at.subtract({ minutes: 15 }),
+            ),
+          );
+        },
+        { isolation: 'serializable' },
+      );
+    const statusOf = async (accountId: Id<'Account'>) =>
+      (await rows(accountId)).map((r) => r.status);
+
+    it('refuses to cancel a request the job has claimed, and keeps it executing', async () => {
+      await ask();
+      expect(await claimNow(BUYER)).toEqual(ok(true));
+      expect(await statusOf(BUYER)).toEqual(['executing']);
+      const cancelled = await new CancelAccountDeletion(gate, deps()).execute(buyer(), {
+        reason: 'customer',
+      });
+      expect(cancelled).toEqual({
+        ok: false,
+        error: { code: 'customers.account-deletion-in-progress' },
+      });
+      expect(await statusOf(BUYER)).toEqual(['executing']);
+      // The open request still blocks a second one (the partial unique index covers executing).
+      expect(await ask()).toEqual({
+        ok: false,
+        error: { code: 'customers.account-deletion-already-requested' },
+      });
+      const current = await new ViewAccountDeletionRequest(gate, deps()).execute(buyer(), {});
+      expect(current).toMatchObject({ ok: true, value: { status: 'executing' } });
+      // No cancelled audit row or event was written.
+      const cancelledEvents = await sql.query(
+        `SELECT 1 FROM customers.outbox WHERE market_id = $1 AND type = 'customers.account-deletion-cancelled.v1'
+          AND aggregate_id = $2`,
+        [code, (await rows(BUYER))[0]!.id],
+      );
+      expect(cancelledEvents.rowCount).toBe(0);
+      // A live claim is not taken by another run; a stale one is, and finishes the work.
+      const executor = new ExecuteAccountDeletions(gate, { ...deps(), clock: later() });
+      await executor.execute(system(), {});
+      expect(erased).not.toContain(BUYER);
+      const afterStale = new FixedClock(later().now().add({ minutes: 16 }));
+      await new ExecuteAccountDeletions(gate, { ...deps(), clock: afterStale }).execute(
+        system(),
+        {},
+      );
+      expect(erased).toContain(BUYER);
+      expect(await statusOf(BUYER)).toEqual(['completed']);
+    });
+
+    it('a cancel racing the executor never leaves a cancelled request erased', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const account = id<'Account'>(0xd000 + counter * 16 + round);
+        await ask(account);
+        erased = [];
+        const executor = new ExecuteAccountDeletions(gate, { ...deps(), clock: later() });
+        const [cancelled] = await Promise.all([
+          new CancelAccountDeletion(gate, deps()).execute(buyer(account), { reason: 'customer' }),
+          executor.execute(system(), {}),
+        ]);
+        const [status] = await statusOf(account);
+        if (cancelled.ok) {
+          // The 204 case: the request is cancelled and the account was never touched.
+          expect(status).toBe('cancelled');
+          expect(erased).not.toContain(account);
+        } else {
+          // In progress or conflict: claimed first. Not found: the whole run finished first.
+          expect([
+            'customers.account-deletion-in-progress',
+            'customers.conflict',
+            'customers.account-deletion-request-not-found',
+          ]).toContain(cancelled.error.code);
+          // Claimed first: the work ran to the end (or can be repeated), never cancelled.
+          expect(status).not.toBe('cancelled');
+        }
+        // Whatever happened, a later run finishes an uncancelled request.
+        await new ExecuteAccountDeletions(gate, {
+          ...deps(),
+          clock: new FixedClock(later().now().add({ minutes: 16 })),
+        }).execute(system(), {});
+        expect(await statusOf(account)).toEqual([cancelled.ok ? 'cancelled' : 'completed']);
+      }
+    });
+
+    it('two executor runs at once: only one claims the request and does the erase work', async () => {
+      for (let round = 0; round < 5; round += 1) {
+        const account = id<'Account'>(0xd800 + counter * 16 + round);
+        await ask(account);
+        erased = [];
+        const [a, b] = await Promise.all([
+          new ExecuteAccountDeletions(gate, { ...deps(), clock: later() }).execute(system(), {}),
+          new ExecuteAccountDeletions(gate, { ...deps(), clock: later() }).execute(system(), {}),
+        ]);
+        expect(a.ok && b.ok).toBe(true);
+        // Other tests' due requests are taken once as well; this account exactly once.
+        expect(erased.filter((e) => e === account)).toHaveLength(1);
+        expect(await statusOf(account)).toEqual(['completed']);
+        const completedEvents = await sql.query(
+          `SELECT 1 FROM customers.outbox WHERE market_id = $1
+            AND type = 'customers.account-deletion-completed.v1' AND aggregate_id = $2`,
+          [code, (await rows(account))[0]!.id],
+        );
+        expect(completedEvents.rowCount).toBe(1);
+      }
+    });
+
+    it('ends every remaining session before the last blocker check and the erase', async () => {
+      await ask();
+      const order: string[] = [];
+      const base = deps();
+      const executor = new ExecuteAccountDeletions(gate, {
+        ...base,
+        clock: later(),
+        identity: {
+          ...base.identity,
+          endAllCustomerSessions: (
+            ...args: Parameters<typeof base.identity.endAllCustomerSessions>
+          ) => {
+            order.push(`end-all:${args[1] === BUYER ? 'buyer' : 'other'}`);
+            return base.identity.endAllCustomerSessions(...args);
+          },
+          eraseCustomerAccount: (
+            ...args: Parameters<typeof base.identity.eraseCustomerAccount>
+          ) => {
+            order.push(`erase:${args[1] === BUYER ? 'buyer' : 'other'}`);
+            return base.identity.eraseCustomerAccount(...args);
+          },
+        },
+        ordering: {
+          ...base.ordering,
+          openObligationsOf: (context, accountId) => {
+            if (accountId === BUYER) order.push('blockers:buyer');
+            return base.ordering.openObligationsOf(context, accountId);
+          },
+        },
+      });
+      await executor.execute(system(), {});
+      expect(order.filter((o) => o.endsWith(':buyer'))).toEqual([
+        'blockers:buyer',
+        'end-all:buyer',
+        'blockers:buyer',
+        'erase:buyer',
+      ]);
+    });
+
+    it('refuses an inconsistent claim column (CHECK)', async () => {
+      const insert = (status: string, claimedAt: string | null, extra = '') =>
+        sql.query(
+          `INSERT INTO customers.account_deletion_requests
+             (id, market_id, tenant_id, account_id, status, waiting_period_days, requested_at, scheduled_for, claimed_at ${extra ? ', ' + extra.split('=')[0] : ''})
+           VALUES ($1, $2, 'default', $3, $4, 14, now(), now() + interval '14 days', $5 ${extra ? ', ' + extra.split('=')[1] : ''})`,
+          [ids.next(), code, OTHER_BUYER, status, claimedAt],
+        );
+      // executing needs a claim; pending must have none.
+      await expect(insert('executing', null)).rejects.toMatchObject({ code: '23514' });
+      await expect(insert('pending', new Date().toISOString())).rejects.toMatchObject({
+        code: '23514',
+      });
+      await expect(insert('claimed', new Date().toISOString())).rejects.toMatchObject({
+        code: '23514',
+      });
+      // A claimed row is accepted, and it holds the account's one open slot.
+      await expect(insert('executing', new Date().toISOString())).resolves.toBeDefined();
+      await expect(insert('pending', null)).rejects.toMatchObject({ code: UNIQUE });
     });
 
     it('refuses or orders a request that races an admin switch-off, and refuses every later one', async () => {

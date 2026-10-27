@@ -8,13 +8,19 @@ import type { AccessDenied } from '../../../platform/authz';
  * identity may not import another module (notes.md, package 5b).
  */
 export interface CustomersAccountDeletionFacade {
-  /** Cancels the calling customer's pending request with the reason `sign-in`. */
+  /**
+   * Cancels the calling customer's pending request with the reason `sign-in`; a request the job
+   * has already claimed answers `customers.account-deletion-in-progress`.
+   */
   cancelPendingOnSignIn(
     context: CallContext,
   ): Promise<
     Result<
       { readonly code: 'cancelled' },
-      AccessDenied | { readonly code: 'customers.account-deletion-request-not-found' }
+      | AccessDenied
+      | { readonly code: 'customers.account-deletion-request-not-found' }
+      | { readonly code: 'customers.account-deletion-in-progress' }
+      | { readonly code: 'customers.conflict' }
     >
   >;
 }

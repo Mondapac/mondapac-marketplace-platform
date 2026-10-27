@@ -654,7 +654,9 @@
     "targetId": "id",
     "actors": ["system"],
     "before": null,
-    "after": null
+    "after": {
+      "requestId": "id"
+    }
   },
   {
     "action": "identity.account.other-sessions-signed-out",

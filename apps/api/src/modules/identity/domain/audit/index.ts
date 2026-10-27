@@ -492,12 +492,15 @@ export const OtherSessionsSignedOutAudit = defineAuditAction({
 /**
  * A customer account was erased for account deletion (CUS-03, customers package 5b): the subject
  * key destroyed and the row deleted. Target: the account id, which stays meaningless afterwards.
- * Written by the system actor of the deletion job; nothing else is named (R5).
+ * Written by the system actor of the deletion job; `after.requestId` names the customers deletion
+ * request and nothing else is named (R5).
  */
 export const AccountErasedAudit = defineAuditAction({
   action: 'identity.account.erased',
   targetType: 'identity.account',
   actors: ['system'],
+  // The deletion request that asked for it (an id; no personal data), so the erasure can be traced.
+  after: { requestId: auditField.id() },
 });
 
 /**

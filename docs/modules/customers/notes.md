@@ -121,19 +121,34 @@ the customers barrel.
   a switch-off is a request made a moment earlier (switching off never cancels, owner decision).
   `test/db/customers-account-deletion.db-spec.ts` (second block) covers both races.
 - **Executor** `customers.execute-account-deletions` (hourly job, worker role, 25 requests per run,
-  system actor). Per due request, each step safe to repeat: blockers again under the system actor
-  (a blocked request stays pending and is asked again); `identity.eraseCustomerAccount` (subject
-  key destroyed, account row, credential, sessions and links deleted, audit
-  `identity.account.erased`; `already-erased` on a re-run); `engagement.forgetAccount` and `reviews.detachAuthor` (reviews and ratings stay as "Former customer"); then one
-  unit deletes the account's `customers.addresses` rows, closes the request `completed` (only if
-  still pending) and writes audit and event. A failing request is logged by class name and left
-  pending; the next run repeats it. Orders, tax invoices and payments stay (ids only).
+  system actor). Per due request (a pending one whose date has come, or an `executing` one whose
+  claim is older than 15 minutes), each step safe to repeat: (1) blockers under the system actor
+  (a blocked request stays pending, no side effect); (2) the **claim**, in its own serializable
+  unit and before any irreversible step: one conditional update `pending` to `executing` with
+  `claimed_at` (or a stale claim taken again), and only the run whose update matched goes on, so a
+  cancel and a second run cannot overlap with the work (review finding H1); (3)
+  `identity.endAllCustomerSessions` (system) ends every remaining session of the account, so no
+  order or credit can land afterwards (Hassan L1); (4) the blockers once more: a blocker found here
+  gives the claim back (`pending`, cancellable) and the request waits; (5)
+  `identity.eraseCustomerAccount` with the request id (subject key destroyed, account row,
+  credential, sessions and links deleted, audit `identity.account.erased` with `after.requestId`;
+  `already-erased` on a re-run); (6) `engagement.forgetAccount` and `reviews.detachAuthor`
+  (reviews and ratings stay as "Former customer"); (7) one unit deletes the account's
+  `customers.addresses` rows, closes the request `completed` (only from `executing`) and writes
+  audit and event. A failing request is logged by class name and left `executing`; a later run
+  repeats it once the claim is stale. Orders, tax invoices and payments stay (ids only).
+- **Cancel and the claim.** `DELETE .../current` matches only `pending`. A claimed request answers
+  409 `customers.account-deletion-in-progress` (also for `cancelPendingOnSignIn`); a unit that
+  conflicts with the claim answers 409 `customers.conflict` and the next try is definite. So a 204
+  always means the account will not be erased. `GET .../current` shows `status: "executing"`.
+  `viewCurrentAccountDeletionRequest` refuses acting-as sessions like the other routes.
 - **Data.** `customers.account_deletion_requests` (ids, status, waiting period, times; no personal
-  data; the application role may update only the closing columns and may not delete). Events
+  data; the application role may update only the state columns and may not delete; see
+  `docs/design/data/customers.md`). Events
   `customers.account-deletion-requested.v1`, `-cancelled.v1`, `-completed.v1` (aggregate = the
   request; no account id). Audit `customers.account-deletion.requested`, `.cancelled`, `.completed`.
 - **Facade additions.** identity `endOtherCustomerSessions` (customer, own) and
-  `eraseCustomerAccount` (system); wallet `ownBalanceOf` (customer, own); ordering
+  `endAllCustomerSessions` and `eraseCustomerAccount` (system; the erase takes the request id); wallet `ownBalanceOf` (customer, own); ordering
   `ownOpenObligations` (customer, own) and `openObligationsOf` (system). `CUSTOMERS_ACCOUNT_DELETION_FACADE`
   (`cancelPendingOnSignIn`) is the call a sign-in flow would make.
 
@@ -150,6 +165,20 @@ the customers barrel.
   transactional customer email facade, only events (which carry no address). The three events are
   ready for it; a completed notice also cannot read an address once the key is destroyed, so it
   must be sent before the erase.
+- **M2, pre-launch blocker for any buyer UI.** The buyer is asked for no step-up (no customer OTP),
+  signing in or resetting the password does not cancel the request, and no email is sent. Until
+  these exist the buyer deletion screen must not ship.
+- **M3, erasure does not yet cover** `assistant.conversations` (the assistant text is the
+  important one: it can hold what the buyer typed), cart rows and saved items, per-account
+  `notifications` rows and the wallet account row. Each owning module needs its own
+  forget-account call, added to the executor like `engagement.forgetAccount`.
+- **The blocker check outside the serializable unit.** The request's blocker read (orders, refunds,
+  wallet) is not part of the serializable insert: an order placed in between is caught by the
+  executor's two re-checks (before the claim and after every session is ended).
+- **Mojtaba L3, closed-once in code only.** A `cancelled` or `completed` row is never updated
+  again because every update names the status it moves from; no trigger or CHECK enforces it.
+- **Mojtaba L5, retention.** Deletion request rows are kept as the audit record of the erasure;
+  no retention period is set.
 - **No returns or disputes module**: only open orders and pending refunds are blockers.
 - **Market without wallet settings** fails closed (503) because the wallet cannot answer.
 

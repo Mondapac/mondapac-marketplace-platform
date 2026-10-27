@@ -32,9 +32,14 @@ export interface IdentityPeer {
   endOtherCustomerSessions(
     context: CallContext,
   ): Promise<Result<{ readonly revokedSessions: number }, Failure>>;
+  endAllCustomerSessions(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly revokedSessions: number }, Failure>>;
   eraseCustomerAccount(
     context: CallContext,
     accountId: Id<'Account'>,
+    requestId: Id<'AccountDeletionRequest'>,
   ): Promise<Result<{ readonly code: 'erased' | 'already-erased' }, Failure>>;
 }
 

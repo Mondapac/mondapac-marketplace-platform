@@ -201,14 +201,26 @@ export interface IdentityFacade {
   ): Promise<Result<{ readonly revokedSessions: number }, EndOtherCustomerSessionsFailure>>;
 
   /**
+   * Ends every session of a customer account, none kept (account deletion: the job locks the buyer
+   * out before its last blocker check). Rule `system`; answers how many sessions were ended, 0 for
+   * an account that is gone or is not a customer's. Not exposed over HTTP.
+   */
+  endAllCustomerSessions(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
+
+  /**
    * Erases a customer account for account deletion (CUS-03): destroys its subject key and deletes
    * the account with its credential, sessions and links. Rule `system`; a non-customer id is
    * refused `access.denied`. Safe to call twice: a customer already gone answers `already-erased`.
+   * `requestId` is the customers deletion request that asked for it; the audit row records it.
    * Not exposed over HTTP.
    */
   eraseCustomerAccount(
     context: CallContext,
     accountId: Id<'Account'>,
+    requestId: Id<'AccountDeletionRequest'>,
   ): Promise<Result<{ readonly code: 'erased' | 'already-erased' }, AccessDenied>>;
 }
 

@@ -245,6 +245,7 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "identity.describe-social-sign-in", "rule": "anonymous" },
+  { "name": "identity.end-all-customer-sessions", "rule": "system" },
   {
     "name": "identity.end-other-customer-sessions",
     "rule": "own-resources",

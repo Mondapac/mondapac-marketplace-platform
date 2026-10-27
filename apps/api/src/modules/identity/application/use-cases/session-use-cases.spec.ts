@@ -162,6 +162,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         customerShortNames: undefined as never,
         teamMemberLabels: undefined as never,
         endOtherCustomerSessions: undefined as never,
+        endAllCustomerSessions: undefined as never,
         eraseCustomerAccount: undefined as never,
       });
 

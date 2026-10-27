@@ -18,6 +18,7 @@ const toRequest = (row: {
   readonly waitingPeriodDays: number;
   readonly requestedAt: Date;
   readonly scheduledFor: Date;
+  readonly claimedAt: Date | null;
 }): AccountDeletionRequest => ({
   id: row.id as Id<'AccountDeletionRequest'>,
   accountId: row.accountId as Id<'Account'>,
@@ -25,6 +26,7 @@ const toRequest = (row: {
   waitingPeriodDays: row.waitingPeriodDays,
   requestedAt: toInstant(row.requestedAt),
   scheduledFor: toInstant(row.scheduledFor),
+  claimedAt: row.claimedAt === null ? null : toInstant(row.claimedAt),
 });
 
 /** {@link AccountDeletionRequestRepository} on `customers.account_deletion_requests`, scoped by `marketId`. */
@@ -32,7 +34,7 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
   constructor(private readonly prisma: PrismaService) {}
 
   async insertPending(market: MarketContext, request: AccountDeletionRequest): Promise<boolean> {
-    // ON CONFLICT DO NOTHING answers the partial unique index (one pending request per account).
+    // ON CONFLICT DO NOTHING answers the partial unique index (one open request per account).
     const created = await this.prisma.tx(market).customersAccountDeletionRequest.createMany({
       data: [
         {
@@ -51,9 +53,9 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     return created.count === 1;
   }
 
-  async findPendingOf(market: MarketContext, accountId: Id<'Account'>) {
+  async findActiveOf(market: MarketContext, accountId: Id<'Account'>) {
     const row = await this.prisma.tx(market).customersAccountDeletionRequest.findFirst({
-      where: { marketId: market.marketId, accountId, status: 'pending' },
+      where: { marketId: market.marketId, accountId, status: { in: ['pending', 'executing'] } },
     });
     return row === null ? null : toRequest(row);
   }
@@ -64,9 +66,42 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     reason: 'customer' | 'sign-in',
     at: Temporal.Instant,
   ): Promise<boolean> {
+    // Only a pending request: a claimed one (executing) matches nothing and stays as it is.
     const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
       where: { marketId: market.marketId, id, status: 'pending' },
       data: { status: 'cancelled', cancelledAt: toDate(at), cancelReason: reason },
+    });
+    return count === 1;
+  }
+
+  async claim(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    at: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        OR: [
+          { status: 'pending', scheduledFor: { lte: toDate(at) } },
+          { status: 'executing', claimedAt: { lte: toDate(staleBefore) } },
+        ],
+      },
+      data: { status: 'executing', claimedAt: toDate(at) },
+    });
+    return count === 1;
+  }
+
+  async release(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    claimedAt: Temporal.Instant,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
+      where: { marketId: market.marketId, id, status: 'executing', claimedAt: toDate(claimedAt) },
+      data: { status: 'pending', claimedAt: null },
     });
     return count === 1;
   }
@@ -77,18 +112,34 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     at: Temporal.Instant,
   ): Promise<boolean> {
     const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
-      where: { marketId: market.marketId, id, status: 'pending' },
+      where: { marketId: market.marketId, id, status: 'executing' },
       data: { status: 'completed', completedAt: toDate(at) },
     });
     return count === 1;
   }
 
-  async listDue(market: MarketContext, now: Temporal.Instant, limit: number) {
-    const rows = await this.prisma.tx(market).customersAccountDeletionRequest.findMany({
+  async listDue(
+    market: MarketContext,
+    now: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+    limit: number,
+  ) {
+    // Two reads, one partial index each (pending by date, executing by claim time).
+    const pending = await this.prisma.tx(market).customersAccountDeletionRequest.findMany({
       where: { marketId: market.marketId, status: 'pending', scheduledFor: { lte: toDate(now) } },
       orderBy: [{ scheduledFor: 'asc' }, { id: 'asc' }],
       take: limit,
     });
-    return rows.map(toRequest);
+    const stale = await this.prisma.tx(market).customersAccountDeletionRequest.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'executing',
+        claimedAt: { lte: toDate(staleBefore) },
+      },
+      orderBy: [{ claimedAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    // A claim that died is older work than a request that only just fell due: take those first.
+    return [...stale, ...pending].slice(0, limit).map(toRequest);
   }
 }

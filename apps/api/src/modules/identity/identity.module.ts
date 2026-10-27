@@ -154,6 +154,7 @@ import { CustomerShortNames } from './application/use-cases/customer-short-names
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
+import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './application/use-cases/end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
 import { PurgeUnverifiedAccounts } from './application/use-cases/purge-unverified-accounts.use-case';
@@ -981,6 +982,12 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    useCaseProvider(EndAllCustomerSessions, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      clock: true,
+    }),
     useCaseProvider(EraseCustomerAccount, {
       unitOfWork: true,
       accounts: true,
@@ -1692,6 +1699,7 @@ function useCaseProvider<D, U>(
         CustomerShortNames,
         TeamMemberLabels,
         EndOtherCustomerSessions,
+        EndAllCustomerSessions,
         EraseCustomerAccount,
       ],
       useFactory: (
@@ -1705,6 +1713,7 @@ function useCaseProvider<D, U>(
         customerShortNames: CustomerShortNames,
         teamMemberLabels: TeamMemberLabels,
         endOtherCustomerSessions: EndOtherCustomerSessions,
+        endAllCustomerSessions: EndAllCustomerSessions,
         eraseCustomerAccount: EraseCustomerAccount,
       ) =>
         new IdentityFacadeImplementation({
@@ -1718,6 +1727,7 @@ function useCaseProvider<D, U>(
           customerShortNames,
           teamMemberLabels,
           endOtherCustomerSessions,
+          endAllCustomerSessions,
           eraseCustomerAccount,
         }),
     },

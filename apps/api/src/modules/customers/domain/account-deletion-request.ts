@@ -1,7 +1,17 @@
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 
-/** `pending` waits for its date; the other two are final. */
-export type AccountDeletionRequestStatus = 'pending' | 'cancelled' | 'completed';
+/**
+ * `pending` waits for its date and is the only state the buyer can cancel; `executing` is claimed
+ * by the job (its first irreversible step is next or under way) and can no longer be cancelled;
+ * `cancelled` and `completed` are final.
+ */
+export type AccountDeletionRequestStatus = 'pending' | 'executing' | 'cancelled' | 'completed';
+
+/**
+ * A claim older than this is taken to belong to a job run that died: the next run claims it again
+ * and repeats the steps (each is safe to repeat). Far longer than one run's steps take.
+ */
+export const CLAIM_STALE_AFTER_MINUTES = 15;
 
 /** One buyer deletion request (`customers.account_deletion_requests`): ids, a status and times. */
 export interface AccountDeletionRequest {
@@ -12,6 +22,8 @@ export interface AccountDeletionRequest {
   readonly waitingPeriodDays: number;
   readonly requestedAt: Temporal.Instant;
   readonly scheduledFor: Temporal.Instant;
+  /** When the job claimed it (`executing`); null while pending, and for a request cancelled before. */
+  readonly claimedAt: Temporal.Instant | null;
 }
 
 /**

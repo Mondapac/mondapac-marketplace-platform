@@ -18,6 +18,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import { openSession } from '../../domain/session';
+import { EndAllCustomerSessions } from './end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './erase-customer-account.use-case';
 
@@ -37,6 +38,7 @@ const CURRENT = id<'Session'>(0xa001);
 const LAPTOP = id<'Session'>(0xa002);
 const PHONE = id<'Session'>(0xa003);
 const OTHERS = id<'Session'>(0xa004);
+const REQUEST = id<'AccountDeletionRequest'>(0xd1);
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 12 * 3600 };
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const allow: AuthorisationCheck = {
@@ -166,10 +168,51 @@ describe.each(TEST_MARKETS)(
       });
     });
 
+    describe('EndAllCustomerSessions', () => {
+      it('ends every session of the account, the calling one too, and no other account', async () => {
+        const ended = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
+          accountId: CUSTOMER,
+        });
+        expect(ended).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 3 } });
+        expect(live(CURRENT)).toBe(false);
+        expect(live(LAPTOP)).toBe(false);
+        expect(live(PHONE)).toBe(false);
+        expect(live(OTHERS)).toBe(true);
+        // The credential lock was taken first.
+        expect(fakes.credentialLocks).toEqual([CUSTOMER]);
+        const again = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
+          accountId: CUSTOMER,
+        });
+        expect(again).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 0 } });
+      });
+
+      it('ends nothing for an account that is gone or is not a customer', async () => {
+        seedSession(id<'Session'>(0xa0a1), ADMIN);
+        const gone = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
+          accountId: id<'Account'>(0xc9),
+        });
+        expect(gone).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 0 } });
+        const admin = await new EndAllCustomerSessions(gate, deps()).execute(system(), {
+          accountId: ADMIN,
+        });
+        expect(admin).toEqual({ ok: true, value: { code: 'sessions-ended', revokedSessions: 0 } });
+        expect(live(id<'Session'>(0xa0a1))).toBe(true);
+      });
+
+      it('is for the system actor only', async () => {
+        const refused = await new EndAllCustomerSessions(gate, deps()).execute(customer(), {
+          accountId: CUSTOMER,
+        });
+        expect(refused.ok).toBe(false);
+        expect(live(LAPTOP)).toBe(true);
+      });
+    });
+
     describe('EraseCustomerAccount', () => {
       it('destroys the key, deletes the account and its sessions, and audits the id only', async () => {
         const erased = await new EraseCustomerAccount(gate, deps()).execute(system(), {
           accountId: CUSTOMER,
+          requestId: REQUEST,
         });
         expect(erased).toEqual({ ok: true, value: { code: 'erased' } });
         expect(fakes.subjectKeys.get(CUSTOMER)).toBe('destroyed');
@@ -182,13 +225,18 @@ describe.each(TEST_MARKETS)(
           action: 'identity.account.erased',
           targetId: CUSTOMER,
           actor: 'system',
+          after: { requestId: REQUEST },
         });
       });
 
       it('is safe to call twice: already erased, nothing more audited', async () => {
-        await new EraseCustomerAccount(gate, deps()).execute(system(), { accountId: CUSTOMER });
+        await new EraseCustomerAccount(gate, deps()).execute(system(), {
+          accountId: CUSTOMER,
+          requestId: REQUEST,
+        });
         const again = await new EraseCustomerAccount(gate, deps()).execute(system(), {
           accountId: CUSTOMER,
+          requestId: REQUEST,
         });
         expect(again).toEqual({ ok: true, value: { code: 'already-erased' } });
         expect(fakes.audits).toHaveLength(1);
@@ -197,6 +245,7 @@ describe.each(TEST_MARKETS)(
       it('refuses an admin account and changes nothing', async () => {
         const refused = await new EraseCustomerAccount(gate, deps()).execute(system(), {
           accountId: ADMIN,
+          requestId: REQUEST,
         });
         expect(refused).toEqual({ ok: false, error: { code: 'access.denied' } });
         expect(fakes.accounts.has(ADMIN)).toBe(true);
@@ -206,6 +255,7 @@ describe.each(TEST_MARKETS)(
       it('is for the system actor only', async () => {
         const refused = await new EraseCustomerAccount(gate, deps()).execute(customer(), {
           accountId: CUSTOMER,
+          requestId: REQUEST,
         });
         expect(refused.ok).toBe(false);
         expect(fakes.accounts.has(CUSTOMER)).toBe(true);

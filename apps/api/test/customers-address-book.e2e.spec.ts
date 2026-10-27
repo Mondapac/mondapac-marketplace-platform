@@ -111,6 +111,7 @@ describe('customer address book routes over HTTP', () => {
       'customers.account-deletion-blocked': 409,
       'customers.account-deletion-already-requested': 409,
       'customers.account-deletion-request-not-found': 404,
+      'customers.account-deletion-in-progress': 409,
       'second-factor.required': 403,
       'second-factor.enrolment-required': 403,
       'customers.unavailable': 503,
