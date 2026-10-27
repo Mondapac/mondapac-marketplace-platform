@@ -36,6 +36,11 @@ export function searchHref(q: string, category?: string): string {
   return `${SEARCH_PATH}?${params.toString()}`;
 }
 
+/** What Load more asks the listing for: the words and the category they are narrowed to. */
+function scopeOf(q: string, category?: Category) {
+  return { q, ...(category ? { category: category.code } : {}) };
+}
+
 /** The results heading, "Results for “words”", which a search sent from a form focuses. */
 export function ResultsHeading({ query }: { readonly query: string }) {
   const t = useTranslations('search-results');
@@ -143,6 +148,8 @@ export interface SearchResultsProps {
   /** The categories of every product matching the words, most results first. */
   readonly counts: readonly CategoryCount[];
   readonly state: ListingState;
+  /** The last page a phone's Load more has shown (the listing's page when none). */
+  readonly through?: number;
   readonly products: ProductPage;
   readonly pageSize: number;
   readonly facets: ListingFacets;
@@ -194,6 +201,7 @@ export interface LiveSearchResultsProps {
   readonly category?: Category;
   readonly categories: readonly Category[];
   readonly state: ListingState;
+  readonly through?: number;
   readonly products: ProductPage;
   /** What the filters offer, which is nothing with the API on; only the category chip uses it. */
   readonly facets: ListingFacets;
@@ -212,6 +220,7 @@ export function LiveSearchResults({
   category,
   categories,
   state,
+  through = state.page,
   products,
   facets,
   popular,
@@ -242,6 +251,7 @@ export function LiveSearchResults({
       <ProductResults
         result={products}
         hrefFor={(page) => listingHref(path, { ...state, page })}
+        loadMore={{ scope: scopeOf(query, category), state, path, through }}
         empty={
           filtered ? (
             <div className="empty rich">
@@ -273,6 +283,7 @@ function ProductsPanel({
   categories,
   counts,
   state,
+  through = state.page,
   products,
   pageSize,
   facets,
@@ -327,12 +338,13 @@ function ProductsPanel({
         {...(category ? { clearHref: searchHref(query) } : {})}
       />
       <div className="rbar">
-        <ResultCount page={state.page} pageSize={pageSize} total={total} />
+        <ResultCount page={state.page} pageSize={pageSize} total={total} through={through} />
         <SortSelect kind="search" path={path} state={state} />
       </div>
       <ProductResults
         result={products}
         hrefFor={(page) => listingHref(path, { ...state, page })}
+        loadMore={{ scope: scopeOf(query, category), state, path, through }}
         pager={<NumberedPager path={path} state={state} pages={Math.ceil(total / pageSize)} />}
         empty={
           filtered ? (

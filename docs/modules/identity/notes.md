@@ -13,7 +13,8 @@ It follows the seller step-up (seller OTP policy, 2026-10-16) and reuses its par
   action that is not `locked` (and so required): there is no per-shop or per-admin rule, the
   platform floor is always "required". Admin actions are never listed on, set through, or proven
   on the seller step-up routes (`step-up.action-unknown` there). First admin action:
-  `wallet.settings.change` (wallet `setStatus`). Every key is also in `STEP_UP_ACTION_KEYS`
+  `wallet.settings.change` (wallet `setStatus`); then `customers.account-deletion-settings.change`
+  (customers `setAccountDeletionSettings`, package 5a). Every key is also in `STEP_UP_ACTION_KEYS`
   (`domain/step-up.ts`), the closed list of the audit rows.
 - **Rule.** `RequireStepUp` (the guard's `StepUpCheck` and `IdentityFacade.requireStepUp`): for
   an admin action, an admin session needs a proof of this session for this action from the last

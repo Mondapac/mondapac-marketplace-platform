@@ -100,6 +100,7 @@ const LEAD_KEYS = [
   'certification.product-certificate.view',
   'notifications.support-contact.view',
   'assistant.settings.view',
+  'customers.account-deletion-settings.view',
   'ordering.order.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
