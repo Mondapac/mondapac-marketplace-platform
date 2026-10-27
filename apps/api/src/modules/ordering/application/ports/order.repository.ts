@@ -45,6 +45,14 @@ export interface SellerOrderRecord {
   readonly lines: readonly OrderLine[];
 }
 
+/** What `deliveredSellerOrdersOf` answers for one seller order. */
+export interface DeliveredSellerOrderRecord {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly deliveredAt: Temporal.Instant;
+  readonly offerIds: readonly Id<'Offer'>[];
+}
+
 /**
  * The store of orders, seller orders and order lines (ordering.orders and its children). Every
  * method runs in the open unit of the use case, through the Market-scoped client.
@@ -64,6 +72,16 @@ export interface OrderRepository {
 
   /** The account's orders still waiting for payment (to supersede on a new checkout). */
   findPending(market: MarketContext, accountId: Id<'Account'>): Promise<readonly OrderState[]>;
+
+  /**
+   * What is still open for the account, for a decision that must not strand a customer (account
+   * deletion): the orders waiting for payment, or paid and not yet delivered in every seller
+   * order (cancelled orders and delivered ones are closed), and the refunds still pending.
+   */
+  countOpenOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+  ): Promise<{ readonly openOrders: number; readonly pendingRefunds: number }>;
 
   listOwn(
     market: MarketContext,
@@ -118,6 +136,21 @@ export interface OrderRepository {
     sellerId: Id<'Seller'>,
     sellerOrderIds: readonly Id<'SellerOrder'>[],
   ): Promise<ReadonlyMap<Id<'SellerOrder'>, Id<'Account'>>>;
+
+  /**
+   * The account's own seller orders of confirmed orders whose fulfilment is `delivered`, delivered
+   * at or after `deliveredSince`, newest delivery first, at most `limit`; with `sellerOrderId`
+   * only that one. Refunds are not looked at (a refunded order may still be reviewed).
+   */
+  deliveredSellerOrdersOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    query: {
+      readonly deliveredSince: Temporal.Instant;
+      readonly sellerOrderId: Id<'SellerOrder'> | null;
+      readonly limit: number;
+    },
+  ): Promise<readonly DeliveredSellerOrderRecord[]>;
 
   /**
    * Writes the fulfilment fields of one seller order only if it still stands at `from`; `stale`

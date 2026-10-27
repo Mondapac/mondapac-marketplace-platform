@@ -103,6 +103,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_certifications_market_id_pending_idx ON certification.seller_certifications USING btree (market_id, status_changed_at, id) WHERE (pending_submission_id IS NOT NULL)',
   'certification.seller_certifications_market_id_seller_id_type_id_open_key':
     "CREATE UNIQUE INDEX seller_certifications_market_id_seller_id_type_id_open_key ON certification.seller_certifications USING btree (market_id, seller_id, type_id) WHERE (status <> ALL (ARRAY['declined'::text, 'revoked'::text]))",
+  // Customers (package 5b): one open (pending or executing) deletion request per account, and the
+  // executor's due query (pending, by date) and stale-claim query (executing, by claim time).
+  'customers.account_deletion_requests_one_open_idx':
+    "CREATE UNIQUE INDEX account_deletion_requests_one_open_idx ON customers.account_deletion_requests USING btree (market_id, account_id) WHERE (status = ANY (ARRAY['pending'::text, 'executing'::text]))",
+  'customers.account_deletion_requests_market_id_scheduled_for_pending_idx':
+    "CREATE INDEX account_deletion_requests_market_id_scheduled_for_pending_idx ON customers.account_deletion_requests USING btree (market_id, scheduled_for, id) WHERE (status = 'pending'::text)",
+  'customers.account_deletion_requests_market_id_claimed_at_executing_idx':
+    "CREATE INDEX account_deletion_requests_market_id_claimed_at_executing_idx ON customers.account_deletion_requests USING btree (market_id, claimed_at, id) WHERE (status = 'executing'::text)",
+  'commission_payouts.payout_holds_active_seller_idx':
+    'CREATE INDEX payout_holds_active_seller_idx ON commission_payouts.payout_holds USING btree (market_id, seller_id) WHERE (released_at IS NULL)',
+  'commission_payouts.payout_holds_system_source_key':
+    "CREATE UNIQUE INDEX payout_holds_system_source_key ON commission_payouts.payout_holds USING btree (market_id, reason, source_ref, seller_id, seller_order_id) NULLS NOT DISTINCT WHERE (origin = 'system'::text)",
   'customers.addresses_one_default_key':
     'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
@@ -160,6 +172,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX orders_stripe_session_id_key ON ordering.orders USING btree (stripe_session_id) WHERE (stripe_session_id IS NOT NULL)',
   'ordering.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON ordering.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Payments package 8a: the relay's claim index of payments' outbox.
+  'payments.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/ordering.md 3.12a: one pending refund per seller order, one Stripe refund
   // per refund, and the worker's read of pending refunds.
   'ordering.refunds_one_pending_key':
@@ -168,6 +183,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX refunds_pending_requested_at_idx ON ordering.refunds USING btree (market_id, requested_at, id) WHERE (state = 'pending'::text)",
   'ordering.refunds_stripe_refund_id_key':
     'CREATE UNIQUE INDEX refunds_stripe_refund_id_key ON ordering.refunds USING btree (stripe_refund_id) WHERE (stripe_refund_id IS NOT NULL)',
+  'ordering.refunds_unrecorded_ledger_idx':
+    "CREATE INDEX refunds_unrecorded_ledger_idx ON ordering.refunds USING btree (market_id, ledger_attempts, requested_at, id) WHERE ((state = 'succeeded'::text) AND (ledger_recorded_at IS NULL))",
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
   // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
   'pricing.outbox_market_id_event_id_unpublished_idx':
@@ -199,6 +216,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX business_file_revisions_market_id_kind_created_at_pending_idx ON sellers.business_file_revisions USING btree (market_id, kind, created_at, id) WHERE (status = 'pending'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Customers (package 5a): the relay's claim index of customers.outbox.
+  'customers.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
   'shipping.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
@@ -230,6 +250,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
   // Customer wallet (package 1): the expiry sweeps, the held holds of one wallet for the books
   // check, and the journals of one hold or one lot for the commit-time checks.
+  // Admin credit (package 2a): the pending requests, for the expiry sweep.
+  'wallet.admin_credit_requests_market_id_expires_at_id_idx':
+    "CREATE INDEX admin_credit_requests_market_id_expires_at_id_idx ON wallet.admin_credit_requests USING btree (market_id, expires_at, id) WHERE (status = 'pending'::text)",
   'wallet.holds_market_id_expires_at_id_idx':
     "CREATE INDEX holds_market_id_expires_at_id_idx ON wallet.holds USING btree (market_id, expires_at, id) WHERE (status = 'held'::text)",
   'wallet.holds_market_id_wallet_account_id_amount_minor_idx':
@@ -240,6 +263,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX journals_market_id_lot_id_idx ON wallet.journals USING btree (market_id, lot_id) WHERE (lot_id IS NOT NULL)',
   'wallet.lots_market_id_expires_at_id_idx':
     "CREATE INDEX lots_market_id_expires_at_id_idx ON wallet.lots USING btree (market_id, expires_at, id) WHERE ((source = 'promo'::text) AND (remaining_minor > 0))",
+  // Reviews: public list pages read published reviews only (newest first, optionally by rating).
+  'reviews.product_reviews_public_list_idx':
+    "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  'reviews.product_reviews_public_list_rating_idx':
+    "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
 };
 
 const OUTBOX_COLUMNS = `

@@ -106,6 +106,14 @@ describe('customer address book routes over HTTP', () => {
       'validation.failed': 400,
       'customers.address-not-found': 404,
       'customers.address-limit-reached': 422,
+      'customers.conflict': 409,
+      'customers.account-deletion-disabled': 403,
+      'customers.account-deletion-blocked': 409,
+      'customers.account-deletion-already-requested': 409,
+      'customers.account-deletion-request-not-found': 404,
+      'customers.account-deletion-in-progress': 409,
+      'second-factor.required': 403,
+      'second-factor.enrolment-required': 403,
       'customers.unavailable': 503,
     });
   });

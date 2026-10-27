@@ -11,6 +11,7 @@ import type {
   ShelfCard,
 } from '../storefront/types.ts';
 import { Slider } from '../slider/slider.tsx';
+import { HomeSearch } from './home-search.tsx';
 import { ProductCard } from './product-card.tsx';
 
 /** The home page middle, in the order the content layout gives (admin-editable later). */
@@ -49,6 +50,7 @@ export function HomeSections({
   return (
     <>
       <h1 className="sr-only">{t('title')}</h1>
+      <HomeSearch />
       {body}
     </>
   );

@@ -304,6 +304,33 @@ export class PrismaOrderRepository implements OrderRepository {
     return rows.map(toOrder);
   }
 
+  async countOpenOf(market: MarketContext, accountId: Id<'Account'>) {
+    const tx = this.prisma.tx(market);
+    const [openOrders, pendingRefunds] = await Promise.all([
+      tx.orderingOrder.count({
+        where: {
+          marketId: market.marketId,
+          accountId,
+          OR: [
+            { status: 'pending-payment' },
+            {
+              status: 'confirmed',
+              sellerOrders: { some: { fulfilment: { not: 'delivered' } } },
+            },
+          ],
+        },
+      }),
+      tx.orderingRefund.count({
+        where: {
+          marketId: market.marketId,
+          state: 'pending',
+          sellerOrder: { order: { accountId } },
+        },
+      }),
+    ]);
+    return { openOrders, pendingRefunds };
+  }
+
   async listOwn(market: MarketContext, accountId: Id<'Account'>, page: OrderPage) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
       where: { marketId: market.marketId, accountId, ...afterCursor(page) },
@@ -434,6 +461,46 @@ export class PrismaOrderRepository implements OrderRepository {
       accounts.set(row.id as Id<'SellerOrder'>, row.order.accountId as Id<'Account'>);
     }
     return accounts;
+  }
+
+  async deliveredSellerOrdersOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    query: {
+      readonly deliveredSince: Temporal.Instant;
+      readonly sellerOrderId: Id<'SellerOrder'> | null;
+      readonly limit: number;
+    },
+  ) {
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        fulfilment: 'delivered',
+        deliveredAt: { gte: toDate(query.deliveredSince) },
+        ...(query.sellerOrderId === null ? {} : { id: query.sellerOrderId }),
+        order: { accountId, status: 'confirmed' },
+      },
+      select: {
+        id: true,
+        sellerId: true,
+        deliveredAt: true,
+        lines: { select: { offerId: true } },
+      },
+      orderBy: [{ deliveredAt: 'desc' }, { id: 'desc' }],
+      take: query.limit,
+    });
+    return rows.flatMap((row) =>
+      row.deliveredAt === null
+        ? []
+        : [
+            {
+              sellerOrderId: row.id as Id<'SellerOrder'>,
+              sellerId: row.sellerId as Id<'Seller'>,
+              deliveredAt: Temporal.Instant.fromEpochMilliseconds(row.deliveredAt.getTime()),
+              offerIds: [...new Set(row.lines.map((line) => line.offerId as Id<'Offer'>))],
+            },
+          ],
+    );
   }
 
   async saveFulfilment(market: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {

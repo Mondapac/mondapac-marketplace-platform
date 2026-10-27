@@ -37,6 +37,18 @@ const done = (value: Placements): Change => ({ ok: true, value: Object.freeze(va
 const failed = (error: PlacementFailure): Change => ({ ok: false, error });
 const invalid = (fields: Problems): Change => failed({ code: 'validation.failed', fields });
 
+/**
+ * A `bought-together` shelf pairs with a product: only the product system page, or a page that
+ * can be linked to a product, can ever publish one (a page linked to a product is checked when
+ * it is published).
+ */
+const canPairWithProduct = (template: TemplateDefinition): boolean =>
+  template.key === 'system.product' || template.linkable.includes('product');
+
+const isBoughtTogether = (module: ModuleKey, config: ModuleConfig): boolean =>
+  module === 'product-shelf' &&
+  (config.source as { kind?: string } | undefined)?.kind === 'bought-together';
+
 const maxOf = (slot: SlotDefinition) => Math.min(slot.max, MAX_MODULES_PER_SLOT);
 
 function editableSlot(template: TemplateDefinition, slotKey: string): SlotDefinition | null {
@@ -83,7 +95,7 @@ export function readPlacements(
     const entries = Array.isArray(source[slot.key]) ? (source[slot.key] as unknown[]) : [];
     const kept: Placement[] = [];
     for (const entry of entries) {
-      const placement = storedPlacement(slot, entry);
+      const placement = storedPlacement(template, slot, entry);
       if (placement === null || kept.length >= maxOf(slot)) dropped += 1;
       else kept.push(placement);
     }
@@ -97,12 +109,19 @@ export function readPlacements(
   return { placements: Object.freeze(out), dropped };
 }
 
-function storedPlacement(slot: SlotDefinition, entry: unknown): Placement | null {
+function storedPlacement(
+  template: TemplateDefinition,
+  slot: SlotDefinition,
+  entry: unknown,
+): Placement | null {
   if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.enabled !== 'boolean') {
     return null;
   }
   if (!isModuleKey(entry.module) || !slot.modules.includes(entry.module)) return null;
   const parsed = parseModuleConfig(entry.module, entry.config);
+  if (parsed.ok && isBoughtTogether(entry.module, parsed.config) && !canPairWithProduct(template)) {
+    return null;
+  }
   return parsed.ok
     ? { id: entry.id, module: entry.module, enabled: entry.enabled, config: parsed.config }
     : null;
@@ -186,6 +205,9 @@ export function addPlacement(
   if (typeof enabled !== 'boolean') problem(problems, 'enabled', 'type');
   const parsed = parseModuleConfig(input.module, input.config);
   if (!parsed.ok) problems.push(...parsed.problems);
+  else if (isBoughtTogether(input.module, parsed.config) && !canPairWithProduct(template)) {
+    problem(problems, 'config.source.kind', 'needs-product-page');
+  }
   if (problems.length > 0 || !parsed.ok) return invalid(problems);
   if (current.length >= maxOf(slot)) return failed({ code: 'storefront.slot-full' });
   const next = [...current];
@@ -223,8 +245,10 @@ export function updatePlacement(
   let config = before.config;
   if (input.config !== undefined) {
     const parsed = parseModuleConfig(before.module, input.config);
-    if (parsed.ok) config = parsed.config;
-    else problems.push(...parsed.problems);
+    if (!parsed.ok) problems.push(...parsed.problems);
+    else if (isBoughtTogether(before.module, parsed.config) && !canPairWithProduct(template)) {
+      problem(problems, 'config.source.kind', 'needs-product-page');
+    } else config = parsed.config;
   }
   if (problems.length > 0) return invalid(problems);
   const next = [...current];
@@ -282,7 +306,8 @@ export function reorderPlacements(
 
 /**
  * What stops a version from being published: a slot under its minimum (counting the modules that
- * are switched on), or a module that needs the page's linked entity on a page that has none.
+ * are switched on), or a module that needs the page's linked entity (or, for a spotlight or a bought-together
+ * shelf, a product) on a page that has none.
  */
 export function publishProblems(
   template: TemplateDefinition,
@@ -301,6 +326,13 @@ export function publishProblems(
       const source = entry.config.source as { kind?: string } | undefined;
       if (entry.module === 'product-shelf' && source?.kind === 'linked' && linkedType === null) {
         problem(problems, at(at('slots', slot.key), index), 'needs-linked-entity');
+      }
+      if (
+        isBoughtTogether(entry.module, entry.config) &&
+        template.key !== 'system.product' &&
+        linkedType !== 'product'
+      ) {
+        problem(problems, at(at('slots', slot.key), index), 'needs-product-page');
       }
       if (
         entry.module === 'product-spotlight' &&

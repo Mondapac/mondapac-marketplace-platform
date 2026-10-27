@@ -675,6 +675,10 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           },
         ],
       });
+      // Each seller part and line carries its names (null here: no catalog or sellers fake).
+      const part = (one.body as { sellerOrders: Record<string, unknown>[] }).sellerOrders[0]!;
+      expect(part).toHaveProperty('storeName');
+      expect((part.lines as Record<string, unknown>[])[0]).toHaveProperty('productName');
       // The address chosen at checkout, as copied onto the order.
       expect(one.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS });
       expect(body(list).orders[0]).not.toHaveProperty('shipTo');

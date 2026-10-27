@@ -9,7 +9,7 @@ import {
 } from '../../../../platform/authz';
 import { STEP_UP_POLICY_MANAGE } from '../../contracts/permissions';
 import { SellerStepUpPolicyChangedAudit } from '../../domain/audit';
-import { stepUpRequired, STEP_UP_ACTION_KEYS } from '../../domain/step-up';
+import { stepUpAudienceOf, stepUpRequired, STEP_UP_ACTION_KEYS } from '../../domain/step-up';
 import { spendCode } from '../second-factor/code-check';
 import {
   codeField,
@@ -102,7 +102,12 @@ export class SetSellerStepUpPolicy extends UseCase<
       typeof input?.actionKey === 'string'
         ? this.deps.stepUpActions.get(input.actionKey)
         : undefined;
-    if (action === undefined || !(STEP_UP_ACTION_KEYS as readonly string[]).includes(action.key)) {
+    if (
+      action === undefined ||
+      // A platform admin action is never a shop's to set (issue #491).
+      stepUpAudienceOf(action) !== 'seller' ||
+      !(STEP_UP_ACTION_KEYS as readonly string[]).includes(action.key)
+    ) {
       return err({ code: 'step-up.action-unknown' });
     }
     if (typeof input.required !== 'boolean') {

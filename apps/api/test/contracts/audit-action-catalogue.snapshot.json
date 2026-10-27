@@ -545,6 +545,126 @@
     }
   },
   {
+    "action": "commission-payouts.payout-hold.place",
+    "targetType": "commission-payouts.payout-hold",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(seller-suspended|refund-pending|dispute|admin-review|bank-change)",
+      "sellerId": "id",
+      "sellerOrderId": "optional(id)",
+      "sourceRef": "id"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-hold.release",
+    "targetType": "commission-payouts.payout-hold",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "reason": "enumOf(seller-suspended|refund-pending|dispute|admin-review|bank-change)",
+      "sellerId": "id",
+      "sellerOrderId": "optional(id)"
+    },
+    "after": {
+      "releaseReason": "enumOf(resolved|placed-in-error|seller-reinstated|review-complete)"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-terms.clear",
+    "targetType": "commission-payouts.seller-payout-terms",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    },
+    "after": {
+      "reasonCode": "enumOf(seller-request|risk-review|correction|policy)",
+      "version": "optional(integer)"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-terms.set",
+    "targetType": "commission-payouts.seller-payout-terms",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    },
+    "after": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "reasonCode": "enumOf(seller-request|risk-review|correction|policy)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    }
+  },
+  {
+    "action": "customers.account-deletion-settings.changed",
+    "targetType": "customers.account-deletion-settings",
+    "targetId": "enumOf(account-deletion-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean",
+      "version": "integer",
+      "waitingPeriodDays": "integer"
+    },
+    "after": {
+      "enabled": "boolean",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant",
+      "version": "integer",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
+    "action": "customers.account-deletion.cancelled",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(customer|sign-in)"
+    }
+  },
+  {
+    "action": "customers.account-deletion.completed",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
+    "action": "customers.account-deletion.requested",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "scheduledFor": "instant",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",
@@ -600,6 +720,16 @@
     }
   },
   {
+    "action": "identity.account.erased",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "requestId": "id"
+    }
+  },
+  {
     "action": "identity.account.other-sessions-signed-out",
     "targetType": "identity.account",
     "targetId": "id",
@@ -611,6 +741,17 @@
     }
   },
   {
+    "action": "identity.account.sessions-ended-for-erasure",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "requestId": "id",
+      "revokedSessions": "integer"
+    }
+  },
+  {
     "action": "identity.admin-session.opened",
     "targetType": "identity.account",
     "targetId": "id",
@@ -618,6 +759,29 @@
     "before": null,
     "after": {
       "boundSubjectId": "id",
+      "sessionId": "id"
+    }
+  },
+  {
+    "action": "identity.admin-step-up.refused",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "cause": "enumOf(invalid|locked)",
+      "sessionId": "id"
+    }
+  },
+  {
+    "action": "identity.admin-step-up.verified",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -910,11 +1074,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -939,6 +1103,8 @@
     "after": {
       "amount": "money",
       "lineCount": "integer",
+      "lossBearer": "enumOf(seller|platform)",
+      "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
       "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
       "sellerOrderId": "id",
       "tax": "optional(money)"
@@ -1165,6 +1331,18 @@
       "offerId": "id",
       "recordId": "id",
       "variantId": "id"
+    }
+  },
+  {
+    "action": "reviews.market-status.changed",
+    "targetType": "reviews.market-settings",
+    "targetId": "enumOf(reviews-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(off|active)"
+    },
+    "after": {
+      "status": "enumOf(off|active)"
     }
   },
   {
@@ -1548,6 +1726,86 @@
     }
   },
   {
+    "action": "wallet.admin-credit.approved",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(pending)"
+    },
+    "after": {
+      "amount": "money",
+      "customerAccountId": "id",
+      "journalId": "id",
+      "requestedBy": "id",
+      "status": "enumOf(approved)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.expired",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": {
+      "status": "enumOf(pending)"
+    },
+    "after": {
+      "requestedBy": "id",
+      "status": "enumOf(expired)"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.issued",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "customerAccountId": "id",
+      "journalId": "id",
+      "reasonCode": "enumOf(goodwill|service-recovery|promotion|correction)",
+      "status": "enumOf(granted)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.rejected",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(pending)"
+    },
+    "after": {
+      "reasonCode": "enumOf(not-justified|amount-too-high|duplicate|wrong-customer|policy)",
+      "requestedBy": "id",
+      "status": "enumOf(rejected)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.requested",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "approvalReason": "enumOf(issue-cap|daily-cap)",
+      "customerAccountId": "id",
+      "expiresAt": "instant",
+      "reasonCode": "enumOf(goodwill|service-recovery|promotion|correction)",
+      "status": "enumOf(pending)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
     "action": "wallet.market-status.changed",
     "targetType": "wallet.market-settings",
     "targetId": "enumOf(wallet-settings)",
@@ -1558,7 +1816,9 @@
     },
     "after": {
       "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
-      "status": "enumOf(off|active|paused|frozen)"
+      "status": "enumOf(off|active|paused|frozen)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   }
 ]

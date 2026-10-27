@@ -19,6 +19,7 @@ interface Row {
   readonly currency: string;
   readonly rateBps: number | null;
   readonly baseAmount: bigint | null;
+  readonly sourceId: string | null;
   readonly occurredAt: Date;
   readonly recordedAt: Date;
 }
@@ -33,6 +34,7 @@ const toEntry = (row: Row): LedgerEntry => ({
   amount: money(row.amount, row.currency),
   rateBps: row.rateBps,
   baseAmount: row.baseAmount,
+  sourceId: row.sourceId as Id<'Refund'> | Id<'Dispute'> | null,
   occurredAt: toInstant(row.occurredAt),
   recordedAt: toInstant(row.recordedAt),
 });
@@ -55,12 +57,28 @@ const afterCursor = (page: LedgerPage) =>
 export class PrismaLedgerRepository implements LedgerRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async sellerOfSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    const row = await this.prisma.tx(market).commissionPayoutsLedgerEntry.findFirst({
+      where: { marketId: market.marketId, sellerOrderId },
+      select: { sellerId: true },
+    });
+    return row === null ? null : (row.sellerId as Id<'Seller'>);
+  }
+
   async hasSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     const row = await this.prisma.tx(market).commissionPayoutsLedgerEntry.findFirst({
       where: { marketId: market.marketId, sellerOrderId },
       select: { id: true },
     });
     return row !== null;
+  }
+
+  async listSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    const rows = await this.prisma.tx(market).commissionPayoutsLedgerEntry.findMany({
+      where: { marketId: market.marketId, sellerOrderId },
+      orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map(toEntry);
   }
 
   async append(market: MarketContext, entries: readonly LedgerEntry[]): Promise<number> {
@@ -79,6 +97,7 @@ export class PrismaLedgerRepository implements LedgerRepository {
         currency: entry.amount.currency,
         rateBps: entry.rateBps,
         baseAmount: entry.baseAmount,
+        sourceId: entry.sourceId,
         occurredAt: toDate(entry.occurredAt),
         recordedAt: toDate(entry.recordedAt),
       })),

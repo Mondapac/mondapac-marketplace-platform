@@ -179,6 +179,7 @@ describe.each([
       ledger: undefined as never,
       pickups,
       webhookSignature: undefined as never,
+      securityEvents: undefined as never,
     };
   });
 
@@ -568,6 +569,7 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
         ledger: undefined as never,
         pickups,
         webhookSignature: undefined as never,
+        securityEvents: undefined as never,
       };
       const request = {
         orderId: ORDER,

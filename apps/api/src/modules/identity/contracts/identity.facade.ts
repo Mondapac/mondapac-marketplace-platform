@@ -43,6 +43,14 @@ export type ContactEmailTarget =
   | { readonly kind: 'customer'; readonly accountId: Id<'Account'> }
   | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> };
 
+/** An active customer account of the context's Market ({@link IdentityFacade.customerAccountOf}). */
+export interface CustomerAccountRef {
+  readonly accountId: Id<'Account'>;
+}
+
+/** Why {@link IdentityFacade.customerAccountOf} could not answer; the caller fails closed. */
+export type CustomerAccountOfFailure = AccessDenied | { readonly code: 'access.unavailable' };
+
 /**
  * One customer of {@link IdentityFacade.customerAccountSummaries}. The name and the address are
  * PERSONAL DATA for the admin who asked: no module logs them or puts them in an event, an audit
@@ -91,6 +99,9 @@ export interface IdentityValidationFailed {
   readonly fields: readonly { readonly path: string; readonly code: string }[];
 }
 
+/** Why {@link IdentityFacade.endOtherCustomerSessions} refused. */
+export type EndOtherCustomerSessionsFailure = AccessDenied | { readonly code: 'session.invalid' };
+
 /**
  * The public facade of `identity` (identity design 8.1). Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs (PF 6.4
@@ -128,8 +139,11 @@ export interface IdentityFacade {
    * now (seller OTP policy). Call it first in the use case that does the action, with the
    * caller's `CallContext` unchanged, and pass its refusal on: `second-factor.required`
    * (`actionKey` in the details) tells the panel to verify a code for that action and repeat the
-   * request; `second-factor.enrolment-required` that the member must set up two-step first. A
-   * caller that is not a seller session passes. An unregistered key answers
+   * request; `second-factor.enrolment-required` that the member must set up two-step first. For
+   * a seller action, a caller that is not a seller session passes. For an admin action
+   * (`audience: 'admin'`, issue #491) an admin session always needs a fresh proof of its own
+   * (`POST identity/admin/step-up/verify`) and any other caller is refused `access.denied`; an
+   * acting-as session is refused for every action. An unregistered key answers
    * `access.unavailable`. Rule `own-resources`, allowed while the seller is not approved (the guarded
    * action refuses it itself).
    */
@@ -145,6 +159,19 @@ export interface IdentityFacade {
     context: CallContext,
     target: ContactEmailTarget,
   ): Promise<Result<string | null, AccessDenied>>;
+
+  /**
+   * Whether `accountId` names an active customer account of `context.market`, for an admin flow
+   * that writes to a customer's records (the wallet's admin credit, review S1). Ids only. An
+   * unknown id, another population's (seller, admin), another Market's and a disabled account
+   * answer `null`, alike. Rule `own-resources`, denied while the seller is not approved; only a
+   * platform admin that is not acting as a seller is answered, any other caller `access.denied`.
+   * A failed read is `access.unavailable`. Not exposed over HTTP.
+   */
+  customerAccountOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerAccountRef | null, CustomerAccountOfFailure>>;
 
   /**
    * The display name and sign-in address of each requested customer account, for an admin page
@@ -183,6 +210,49 @@ export interface IdentityFacade {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly TeamMemberLabel[], AccessDenied | IdentityValidationFailed>>;
+
+  /**
+   * Ends every session of the calling customer's own account except the one making the call
+   * (customers account deletion: the request keeps only the session that asked, so it can cancel).
+   * Rule `own-resources`, customers only; answers how many sessions were ended. The caller's
+   * `CallContext` goes unchanged. Not exposed over HTTP.
+   */
+  endOtherCustomerSessions(
+    context: CallContext,
+  ): Promise<Result<{ readonly revokedSessions: number }, EndOtherCustomerSessionsFailure>>;
+
+  /**
+   * Ends every session of a customer account, none kept (account deletion: the job locks the buyer
+   * out before its last blocker check). Rule `system`; answers how many sessions were ended, 0 for
+   * an account that is gone or is not a customer's; audited with `requestId`. Not exposed over HTTP.
+   */
+  endAllCustomerSessions(
+    context: CallContext,
+    accountId: Id<'Account'>,
+    requestId: Id<'AccountDeletionRequest'>,
+  ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
+
+  /**
+   * Whether a customer account is still there (false once erased). Rule `system`; a boolean and
+   * nothing else. The deletion job asks it before handing a resumed claim back. Not exposed over HTTP.
+   */
+  customerAccountExists(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly exists: boolean }, AccessDenied>>;
+
+  /**
+   * Erases a customer account for account deletion (CUS-03): destroys its subject key and deletes
+   * the account with its credential, sessions and links. Rule `system`; a non-customer id is
+   * refused `access.denied`. Safe to call twice: a customer already gone answers `already-erased`.
+   * `requestId` is the customers deletion request that asked for it; the audit row records it.
+   * Not exposed over HTTP.
+   */
+  eraseCustomerAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+    requestId: Id<'AccountDeletionRequest'>,
+  ): Promise<Result<{ readonly code: 'erased' | 'already-erased' }, AccessDenied>>;
 }
 
 /** Nest token of the {@link IdentityFacade}, provided and exported by `IdentityModule`. */

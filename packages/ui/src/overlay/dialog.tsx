@@ -1,14 +1,19 @@
 'use client';
 
-import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
+import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 
 /**
  * Opens and closes a native `<dialog>` as a modal with `open`: the browser traps focus, makes the
  * rest of the page inert and closes on Escape, and focus returns to the opener. Shared by the
  * Dialog and the side sheets (the notifications drawer).
+ *
+ * A layout effect, so the element opens and closes in the same commit as `open` changes. A
+ * passive effect runs a task later: the content is already gone while the element is still
+ * open, so the page can paint an empty modal for a frame, and a test that waits for the next
+ * state can still find the dialog open.
  */
 export function useModal(ref: RefObject<HTMLDialogElement | null>, open: boolean): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = ref.current;
     if (dialog === null) return;
     if (open && !dialog.open) dialog.showModal();

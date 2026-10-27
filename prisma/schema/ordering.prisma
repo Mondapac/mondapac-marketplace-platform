@@ -162,6 +162,9 @@ model OrderingOrderLine {
   @@unique([marketId, id, sellerOrderId, quantity])
   @@unique([marketId, orderId, offerId, variantId])
   @@index([marketId, orderId])
+  /// The lines of a seller order (the delivered-orders read for reviews). Built CONCURRENTLY in its
+  /// own migration.
+  @@index([marketId, sellerOrderId])
   @@map("order_lines")
   @@schema("ordering")
 }
@@ -195,6 +198,20 @@ model OrderingRefund {
   actorAccountId       String               @map("actor_account_id") @db.Uuid
   /// pending, succeeded or failed (CHECK). Moves only from pending (trigger).
   state                String
+  /// Who bears the loss: seller (default; the refund is reversed in the seller ledger) or platform
+  /// (the seller keeps its share; nothing is posted). CHECK.
+  lossBearer           String               @default("seller") @map("loss_bearer")
+  /// Why the platform bears it: platform-error, carrier-loss, seller-unrecoverable, fraud-loss,
+  /// goodwill or other (CHECK); set exactly when `lossBearer` is platform (pair CHECK).
+  lossReasonCode       String?              @map("loss_reason_code")
+  /// Set once by the worker when the succeeded refund went into the seller ledger (or needed no
+  /// rows); null until then, and only for a succeeded refund (CHECK).
+  ledgerRecordedAt     DateTime?            @map("ledger_recorded_at") @db.Timestamptz(6)
+  /// How many times the ledger refused the refund; the worker takes the fewest first.
+  ledgerAttempts       Int                  @default(0) @map("ledger_attempts")
+  /// The shipping gross refunded by earlier refunds that had not failed, read under the seller
+  /// order's lock when this refund is written; zero when none.
+  shippingBefore       BigInt               @default(0) @map("shipping_before")
   /// Stored before Stripe is called; the same key on every retry.
   stripeIdempotencyKey String               @map("stripe_idempotency_key")
   /// Kept once Stripe made the refund (also while it is pending there); never changes after.

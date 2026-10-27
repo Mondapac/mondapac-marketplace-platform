@@ -10,6 +10,14 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'validation.failed': 400,
   'customers.address-not-found': 404,
   'customers.address-limit-reached': 422,
+  'customers.conflict': 409,
+  'customers.account-deletion-disabled': 403,
+  'customers.account-deletion-blocked': 409,
+  'customers.account-deletion-already-requested': 409,
+  'customers.account-deletion-request-not-found': 404,
+  'customers.account-deletion-in-progress': 409,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
   'customers.unavailable': 503,
 });
 
@@ -29,12 +37,24 @@ export function closedBody(
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return fail(400, 'validation.failed', { fields: [{ path: '', code: 'type' }] });
   }
-  const unknown = Object.keys(body)
+  return closedObject(body, allowed, '');
+}
+
+/** A nested object of a body, closed the same way; paths are prefixed with `prefix`. */
+export function closedObject(
+  value: unknown,
+  allowed: readonly string[],
+  prefix: string,
+): HttpException | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return fail(400, 'validation.failed', { fields: [{ path: prefix, code: 'type' }] });
+  }
+  const unknown = Object.keys(value)
     .filter((key) => !allowed.includes(key))
     .sort()
     .slice(0, 10)
     .map((key) => ({
-      path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
+      path: `${prefix === '' ? '' : `${prefix}.`}${Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�')}`,
       code: 'unknown-field',
     }));
   return unknown.length > 0 ? fail(400, 'validation.failed', { fields: unknown }) : null;
@@ -59,6 +79,10 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (Array.isArray(error.blockers)) return fail(status, error.code, { blockers: error.blockers });
+  if (typeof error.actionKey === 'string') {
+    return fail(status, error.code, { actionKey: error.actionKey });
+  }
   if (error.limit !== undefined) return fail(status, error.code, { limit: error.limit });
   return fail(status, error.code);
 }

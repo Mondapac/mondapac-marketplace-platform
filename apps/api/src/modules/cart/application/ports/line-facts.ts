@@ -19,6 +19,19 @@ export interface LineVerdict {
   readonly availability: LineAvailability | null;
 }
 
+/**
+ * What the buyer sees of one sell unit beside its verdict (cart design 6.2: product name, Variant
+ * label, primary image): the published revision's, in the Market's default locale. Display only,
+ * never a reason to buy; seller-entered text, so the client escapes it.
+ */
+export interface LineDisplay {
+  readonly productId: Id<'Product'>;
+  readonly productName: string | null;
+  readonly variantLabel: string | null;
+  /** The first clean image of the published revision; the client builds the URL. */
+  readonly imageId: Id | null;
+}
+
 export interface SellUnitRef {
   readonly offerId: Id<'Offer'>;
   readonly variantId: Id<'Variant'>;
@@ -49,6 +62,25 @@ export interface LineFactsSource {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, SellerMinimum>>;
+
+  /**
+   * The display data of each sell unit, from `catalog.offerListings` (one batch per 200 keys). A
+   * unit catalog does not answer (unpublished, deleted, another Market) or a failed call is
+   * absent: the line shows its state only. Never throws.
+   */
+  lineDisplays(
+    context: CallContext,
+    refs: readonly SellUnitRef[],
+  ): Promise<ReadonlyMap<string, LineDisplay>>;
+
+  /**
+   * The public store name of each seller ("Sold by", CRT-03), from `sellers.sellerSummaries`. A
+   * seller without an approved revision, or a failed call, is absent. Never throws.
+   */
+  sellerNames(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>>;
 }
 
 export const LINE_FACTS_SOURCE = Symbol('LINE_FACTS_SOURCE');

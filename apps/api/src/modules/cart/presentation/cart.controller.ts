@@ -43,6 +43,7 @@ import {
 import type {
   CartView,
   GuestCookie,
+  LineDisplay,
   LineWritten,
 } from '../application/use-cases/view-cart.use-case';
 import { AddGuestItem } from '../application/use-cases/add-guest-item.use-case';
@@ -94,9 +95,20 @@ const ERROR = { type: Object };
 
 const money = (value: Money) => ({ amount: value.amount.toString(), currency: value.currency });
 
+const displayBody = (display: LineDisplay | null) =>
+  display === null
+    ? null
+    : {
+        productId: display.productId,
+        productName: display.productName,
+        variantLabel: display.variantLabel,
+        imageId: display.imageId,
+      };
+
 const viewBody = (view: CartView) => ({
   groups: view.groups.map((group) => ({
     sellerId: group.sellerId,
+    sellerName: group.sellerName,
     subtotal: group.subtotal === null ? null : money(group.subtotal),
     minimumOrder: {
       state: group.minimumOrder.state,
@@ -112,6 +124,7 @@ const viewBody = (view: CartView) => ({
       unitPrice: line.unitPrice === null ? null : money(line.unitPrice),
       previousPrice: line.priceChanged === null ? null : money(line.priceChanged.previous),
       availability: line.availability,
+      display: displayBody(line.display),
     })),
   })),
   lineCount: view.lineCount,
@@ -505,6 +518,8 @@ const savedBody = (item: SavedItemView) => ({
   sellerId: item.sellerId,
   unitPrice: item.unitPrice === null ? null : money(item.unitPrice),
   availability: item.availability,
+  display: displayBody(item.display),
+  sellerName: item.sellerName,
 });
 
 const written = (value: LineWritten) => ({

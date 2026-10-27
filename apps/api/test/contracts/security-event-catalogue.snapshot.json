@@ -1,0 +1,249 @@
+{
+  "recorded": [
+    {
+      "type": "identity.password.changed",
+      "owner": "identity",
+      "severity": "s3",
+      "targetType": "account",
+      "targetRequired": true,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)"
+      }
+    },
+    {
+      "type": "identity.password.confirm-failed",
+      "owner": "identity",
+      "severity": "s4",
+      "targetType": "account",
+      "targetRequired": true,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)"
+      }
+    },
+    {
+      "type": "identity.password.reset",
+      "owner": "identity",
+      "severity": "s3",
+      "targetType": "account",
+      "targetRequired": true,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)"
+      }
+    },
+    {
+      "type": "identity.second-factor.failed",
+      "owner": "identity",
+      "severity": "s3",
+      "targetType": "account",
+      "targetRequired": true,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)"
+      }
+    },
+    {
+      "type": "identity.second-factor.locked",
+      "owner": "identity",
+      "severity": "s2",
+      "targetType": "account",
+      "targetRequired": true,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)"
+      }
+    },
+    {
+      "type": "identity.sign-in.failed",
+      "owner": "identity",
+      "severity": "s4",
+      "targetType": "account",
+      "targetRequired": false,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)",
+        "reason": "enumOf(credentials-invalid|link-rejected|challenge-rejected|account-disabled)"
+      }
+    },
+    {
+      "type": "identity.sign-in.succeeded",
+      "owner": "identity",
+      "severity": "s4",
+      "targetType": "account",
+      "targetRequired": true,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)",
+        "sessionId": "id"
+      }
+    },
+    {
+      "type": "identity.sign-in.throttled",
+      "owner": "identity",
+      "severity": "s3",
+      "targetType": "account",
+      "targetRequired": false,
+      "ip": true,
+      "payload": {
+        "population": "enumOf(customer|seller|admin)"
+      }
+    },
+    {
+      "type": "payments.dispute.unmatched",
+      "owner": "payments",
+      "severity": "s2",
+      "targetType": null,
+      "targetRequired": false,
+      "ip": false,
+      "payload": {
+        "reason": "enumOf(unreadable|not-test-mode|no-market|malformed|changed)"
+      }
+    },
+    {
+      "type": "payments.webhook-signature.failed",
+      "owner": "payments",
+      "severity": "s3",
+      "targetType": null,
+      "targetRequired": false,
+      "ip": true,
+      "payload": {
+        "provider": "enumOf(stripe)"
+      }
+    },
+    {
+      "type": "shipping.webhook-signature.failed",
+      "owner": "shipping",
+      "severity": "s3",
+      "targetType": null,
+      "targetRequired": false,
+      "ip": true,
+      "payload": {
+        "carrier": "enumOf(mondapac-drive|uber-direct|zoom2u)"
+      }
+    }
+  ],
+  "projected": [
+    {
+      "action": "assistant.settings.changed",
+      "severity": "s3"
+    },
+    {
+      "action": "commission-payouts.commission-rate.clear",
+      "severity": "s3"
+    },
+    {
+      "action": "commission-payouts.commission-rate.set",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.account-role.assigned",
+      "severity": "s2"
+    },
+    {
+      "action": "identity.account-role.changed",
+      "severity": "s2"
+    },
+    {
+      "action": "identity.account.disabled",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.account.enabled",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.account.other-sessions-signed-out",
+      "severity": "s4"
+    },
+    {
+      "action": "identity.invitation.accepted",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.invitation.issued",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.role.created",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.role.deleted",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.role.updated",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.second-factor.activated",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.second-factor.recovery-codes-regenerated",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.second-factor.replaced",
+      "severity": "s3"
+    },
+    {
+      "action": "identity.second-factor.reset",
+      "severity": "s2"
+    },
+    {
+      "action": "identity.seller-member.added",
+      "severity": "s4"
+    },
+    {
+      "action": "identity.seller-member.removed",
+      "severity": "s4"
+    },
+    {
+      "action": "identity.seller-second-factor-reset.confirmed",
+      "severity": "s2"
+    },
+    {
+      "action": "identity.seller-step-up-policy.changed",
+      "severity": "s3"
+    },
+    {
+      "action": "notifications.support-contact.changed",
+      "severity": "s3"
+    },
+    {
+      "action": "ordering.refund.requested",
+      "severity": "s3"
+    },
+    {
+      "action": "payments.payout-change.recorded",
+      "severity": "s2"
+    },
+    {
+      "action": "payments.payout-pause.failed",
+      "severity": "s2"
+    },
+    {
+      "action": "payments.payout-schedule.paused",
+      "severity": "s2"
+    },
+    {
+      "action": "payments.payout-schedule.resumed",
+      "severity": "s2"
+    },
+    {
+      "action": "tax.strategy.activate",
+      "severity": "s2"
+    },
+    {
+      "action": "tax.strategy.deactivate",
+      "severity": "s2"
+    },
+    {
+      "action": "wallet.market-status.changed",
+      "severity": "s2"
+    }
+  ]
+}

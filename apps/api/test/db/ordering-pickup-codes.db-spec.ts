@@ -244,8 +244,11 @@ describe.each(TEST_MARKETS)('pickup code store in market %s (database)', (code) 
     const set = (extra: string) =>
       owner
         .query(
+          // inventory_recorded_at keeps this pending-payment row out of findUnrecordedShipments,
+          // which scans the whole Market while other suites run against the same database.
           `UPDATE ordering.seller_orders SET fulfilment = 'delivered', shipped_at = now(),
-             delivered_at = now(), ready_at = now() ${extra} WHERE id = $1`,
+             delivered_at = now(), ready_at = now(), inventory_recorded_at = now() ${extra}
+           WHERE id = $1`,
           [id],
         )
         .then(

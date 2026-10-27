@@ -151,6 +151,11 @@ import {
   type ThrottleReservation,
 } from '../../src/modules/identity/domain/throttle';
 import { AUDIT_WRITER, type AuditWriter } from '../../src/platform/audit/audit-writer';
+import type { SecurityEventInput } from '../../src/platform/security-events/security-event-catalogue';
+import {
+  SECURITY_EVENTS,
+  type SecurityEvents,
+} from '../../src/platform/security-events/security-events';
 import { OUTBOX_WRITER, type OutboxWriter } from '../../src/platform/events/outbox-writer';
 import {
   MAIL_TRANSPORT,
@@ -341,6 +346,14 @@ export class IdentityFakes {
             : [{ id, displayName: state.displayName, email: state.email.typed }];
         }),
       ),
+    customerStatus: (market: MarketContext, id: Id<'Account'>) => {
+      const state = this.accounts.get(id);
+      return Promise.resolve(
+        state === undefined || state.marketId !== market.marketId || state.population !== 'customer'
+          ? null
+          : state.status,
+      );
+    },
     lockCredential: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
       this.credentialLocks.push(id);
@@ -1197,6 +1210,12 @@ export class IdentityFakes {
       Promise.resolve(
         this.stepUpProofs.get(`${market.marketId}|${sessionId}|${actionKey}`) ?? null,
       ),
+    takeProof: (market, sessionId, actionKey) => {
+      const key = `${market.marketId}|${sessionId}|${actionKey}`;
+      const verifiedAt = this.stepUpProofs.get(key) ?? null;
+      this.stepUpProofs.delete(key);
+      return Promise.resolve(verifiedAt);
+    },
     recordProof: (market, sessionId, actionKey, now) => {
       this.stepUpProofs.set(`${market.marketId}|${sessionId}|${actionKey}`, now);
       return Promise.resolve();
@@ -1771,6 +1790,24 @@ export class IdentityFakes {
     },
   };
 
+  /** The security events identity recorded, with the actor kind and Market of each. */
+  readonly recordedSecurityEvents: (SecurityEventInput & {
+    readonly actor: string;
+    readonly marketId: string;
+  })[] = [];
+
+  /** Identity's security event recorder without a database (test/db/ covers the real one). */
+  readonly securityEvents: SecurityEvents = {
+    record: (context: CallContext, event: SecurityEventInput) => {
+      this.recordedSecurityEvents.push({
+        ...event,
+        actor: context.actor.kind,
+        marketId: context.market.marketId,
+      });
+      return Promise.resolve();
+    },
+  };
+
   /**
    * Identity's subject keys without a database (slice 7b): a stand-in with the port's contract
    * and none of its cryptography. "Ciphertext" names the Market, the subject and the field, so a
@@ -1860,6 +1897,8 @@ export class IdentityFakes {
       .useValue(this.outbox)
       .overrideProvider(AUDIT_WRITER)
       .useValue(this.audit)
+      .overrideProvider(SECURITY_EVENTS)
+      .useValue(this.securityEvents)
       .overrideProvider(ONE_TIME_LINK_REPOSITORY)
       .useValue(this.linkRepository)
       .overrideProvider(SELLER_ACCESS_REPOSITORY)

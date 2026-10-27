@@ -167,7 +167,7 @@ describe('live search results', () => {
     const { container } = show([CARD]);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('lamb');
     expect(screen.getByRole('link', { name: 'Lamb shoulder, 1 kg' })).toBeTruthy();
-    expect(container.querySelector('.pr, .gst, .by, button')).toBeNull();
+    expect(container.querySelector('.pr, .gst, .by, button:not(.lm-btn)')).toBeNull();
     expect(screen.queryByRole('tab')).toBeNull();
     expect(screen.queryByText(/products ·/)).toBeNull();
     expect(screen.queryByText('Filter by:')).toBeNull();

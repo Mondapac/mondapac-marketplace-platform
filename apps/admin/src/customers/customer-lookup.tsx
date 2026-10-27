@@ -8,6 +8,7 @@ import {
   Card,
   Dialog,
   FieldAction,
+  LinkButton,
   TextField,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -40,9 +41,12 @@ function problemOf(failure: ApiFailure): Problem | null {
  */
 export function CustomerLookup({
   canChangeStatus,
+  walletLink = null,
   csrfToken,
 }: {
   readonly canChangeStatus: boolean;
+  /** The wallet link on a found account: issue credit (wallet.credit.issue) or view (credit.view). */
+  readonly walletLink?: 'issue' | 'view' | null;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('customers');
@@ -196,18 +200,28 @@ export function CustomerLookup({
               </div>
             ))}
           </dl>
-          {canChangeStatus ? (
+          {canChangeStatus || walletLink !== null ? (
             <ActionRow>
-              <Button
-                variant={active ? 'destructive' : 'secondary'}
-                onClick={() => {
-                  setChanged(null);
-                  setChangeProblem(null);
-                  setConfirming(true);
-                }}
-              >
-                {t(active ? 'disable.action' : 'enable.action')}
-              </Button>
+              {walletLink === null ? null : (
+                <LinkButton
+                  variant="secondary"
+                  href={`/wallet/credits?customer=${encodeURIComponent(customer.accountId)}`}
+                >
+                  {t(walletLink === 'issue' ? 'wallet-issue' : 'wallet-view')}
+                </LinkButton>
+              )}
+              {canChangeStatus ? (
+                <Button
+                  variant={active ? 'destructive' : 'secondary'}
+                  onClick={() => {
+                    setChanged(null);
+                    setChangeProblem(null);
+                    setConfirming(true);
+                  }}
+                >
+                  {t(active ? 'disable.action' : 'enable.action')}
+                </Button>
+              ) : null}
             </ActionRow>
           ) : null}
         </Card>

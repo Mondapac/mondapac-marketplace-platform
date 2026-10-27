@@ -1,12 +1,24 @@
 import { createHmac } from 'node:crypto';
-import { err, ok, Temporal as TemporalValue } from '@mondapac/shared-kernel';
+import { encodePayload, err, ok, Temporal as TemporalValue } from '@mondapac/shared-kernel';
 import type {
   AuditEntry,
   CallContext,
   MarketContext,
+  PendingEvent as OutboxEvent,
   Result,
   Temporal,
 } from '@mondapac/shared-kernel';
+import type {
+  DisputeRecord,
+  DisputeStore,
+} from '../../src/modules/payments/application/ports/dispute-store';
+import type {
+  DisputeSnapshot,
+  StripeDisputeReader,
+} from '../../src/modules/payments/application/ports/stripe-dispute-reader';
+import type { DisputeState } from '../../src/modules/payments/domain/dispute';
+import { PAYMENTS_EVENTS } from '../../src/modules/payments/domain/events';
+import type { OutboxWriter } from '../../src/platform/events/outbox-writer';
 import type {
   EventOutcome,
   PendingEvent,
@@ -182,6 +194,18 @@ export class FakeOrderingFacade implements OrderingFacade {
   }
 
   sellerOrderCustomerNames(): ReturnType<OrderingFacade['sellerOrderCustomerNames']> {
+    return Promise.resolve(ok([]));
+  }
+
+  ownOpenObligations(): ReturnType<OrderingFacade['ownOpenObligations']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
+  }
+
+  openObligationsOf(): ReturnType<OrderingFacade['openObligationsOf']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
+  }
+
+  myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
     return Promise.resolve(ok([]));
   }
 }
@@ -541,5 +565,118 @@ export class FakeIdentityFacade implements Pick<
     return Promise.resolve(
       code === this.valid ? ok(undefined) : err({ code: 'second-factor.invalid' as const }),
     );
+  }
+}
+
+/** A dispute event body, as the platform endpoint receives it. */
+export function disputeEvent(fields: {
+  readonly id?: string;
+  readonly type?: string;
+  readonly disputeId?: string;
+  readonly livemode?: boolean;
+}): Record<string, unknown> {
+  return {
+    id: fields.id ?? 'evt_test_dp_0001',
+    object: 'event',
+    type: fields.type ?? 'charge.dispute.created',
+    livemode: fields.livemode ?? false,
+    data: {
+      object: {
+        id: fields.disputeId ?? 'dp_test_0001',
+        object: 'dispute',
+        charge: 'ch_test_0001',
+        payment_intent: 'pi_test_0001',
+        amount: 3000,
+        reason: 'fraudulent',
+        status: 'needs_response',
+      },
+    },
+  };
+}
+
+export class FakeDisputeReader implements StripeDisputeReader {
+  readonly reads: string[] = [];
+  answer: Result<DisputeSnapshot, ReadFailure> = err({ code: 'payment.provider-unavailable' });
+  readDispute(disputeId: string) {
+    this.reads.push(disputeId);
+    return Promise.resolve(this.answer);
+  }
+}
+
+/** `payments.disputes` in memory, with the guards of the database: version and read order. */
+export class MemoryDisputeStore implements DisputeStore {
+  readonly rows = new Map<string, DisputeRecord & { readonly market: string }>();
+  findByRef(market: MarketContext, providerDisputeId: string) {
+    const row = [...this.rows.values()].find(
+      (r) => r.market === market.marketId && r.providerDisputeId === providerDisputeId,
+    );
+    return Promise.resolve(row === undefined ? null : strip(row));
+  }
+  insert(market: MarketContext, record: DisputeRecord) {
+    if (
+      [...this.rows.values()].some(
+        (r) => r.market === market.marketId && r.providerDisputeId === record.providerDisputeId,
+      )
+    ) {
+      return Promise.resolve('conflict' as const);
+    }
+    this.rows.set(`${market.marketId}/${record.id}`, { ...record, market: market.marketId });
+    return Promise.resolve('inserted' as const);
+  }
+  update(
+    market: MarketContext,
+    id: string,
+    expectedVersion: number,
+    next: DisputeState,
+    readAt: Temporal.Instant,
+  ) {
+    const key = `${market.marketId}/${id}`;
+    const row = this.rows.get(key);
+    if (
+      row === undefined ||
+      row.version !== expectedVersion ||
+      row.lastReadAt.epochMilliseconds > readAt.epochMilliseconds
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(key, {
+      ...row,
+      ...next,
+      updatedAt: readAt,
+      lastReadAt: readAt,
+      version: expectedVersion + 1,
+    });
+    return Promise.resolve(true);
+  }
+  findMany(market: MarketContext, ids: readonly string[]) {
+    return Promise.resolve(
+      ids.flatMap((id) => {
+        const row = this.rows.get(`${market.marketId}/${id}`);
+        return row === undefined ? [] : [strip(row)];
+      }),
+    );
+  }
+}
+
+const strip = (row: DisputeRecord & { readonly market: string }): DisputeRecord => {
+  const { market, ...record } = row;
+  void market;
+  return record;
+};
+
+/** Collects payments events, each checked against its catalogue definition as the writer does. */
+export class RecordingPaymentsOutbox implements OutboxWriter {
+  readonly events: OutboxEvent[] = [];
+  append(_context: CallContext, events: readonly OutboxEvent[]): Promise<void> {
+    for (const event of events) {
+      const definition = PAYMENTS_EVENTS.find((d) => d.type === event.type);
+      if (definition === undefined) throw new Error(`outbox: unknown type ${event.type}`);
+      const checked = encodePayload(definition.fields, event.payload, {
+        isKnownPermissionKey: () => false,
+      });
+      if (!checked.ok) throw new Error(`outbox: ${JSON.stringify(checked.error)}`);
+      this.events.push(event);
+    }
+    return Promise.resolve();
   }
 }

@@ -1,4 +1,4 @@
-import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 
 /** A payment the provider holds on a card, as the webhook receiver reports it. */
@@ -69,6 +69,34 @@ export interface SellerOrderCustomerName {
 
 export type SellerOrderCustomerNamesFailure = AccessDenied | { readonly code: 'validation.failed' };
 
+/** At most this many delivered seller orders per `myDeliveredSellerOrders` call, newest first. */
+export const MAX_DELIVERED_SELLER_ORDERS = 200;
+
+/**
+ * One delivered seller order of the signed-in customer, for `reviews` (buyer reviews and ratings
+ * package 1; verified buyers only). Ids and the delivery instant: no amount, address or name.
+ * `offerIds` are the distinct offers on its lines.
+ */
+export interface DeliveredSellerOrder {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly deliveredAt: Temporal.Instant;
+  readonly offerIds: readonly Id<'Offer'>[];
+}
+
+export type DeliveredSellerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
+
+/**
+ * What is still open for the calling customer: orders waiting for payment or not yet delivered in
+ * every seller order, and refunds still pending. Counts only.
+ */
+export interface OwnOpenObligations {
+  readonly openOrders: number;
+  readonly pendingRefunds: number;
+}
+
+export type OwnOpenObligationsFailure = AccessDenied;
+
 /**
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
@@ -123,6 +151,37 @@ export interface OrderingFacade {
     context: CallContext,
     sellerOrderIds: readonly string[],
   ): Promise<Result<readonly SellerOrderCustomerName[], SellerOrderCustomerNamesFailure>>;
+
+  /**
+   * The calling customer's own open orders and pending refunds, as counts (rule `own-resources`,
+   * customers only; the account is the session's), for account deletion's blocker check. Returns,
+   * disputes and chargebacks have no module yet, so they are not counted here.
+   */
+  ownOpenObligations(
+    context: CallContext,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
+   * The same counts for one customer account, for the system actor only (rule `system`): the
+   * account deletion job re-checks a due request before it erases the account.
+   */
+  openObligationsOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
+   * The signed-in customer's own seller orders whose fulfilment is `delivered`, delivered at or
+   * after `deliveredSince`, newest delivery first, at most {@link MAX_DELIVERED_SELLER_ORDERS}.
+   * With `sellerOrderId` only that seller order (the customer's own, else an empty list). Rule
+   * `own-resources`; the caller passes the customer's `CallContext` unchanged, so another
+   * customer's orders can never be asked for. A refunded order is still listed (a refund does
+   * not take the right to review); an order cancelled before shipping never is. In-process only.
+   */
+  myDeliveredSellerOrders(
+    context: CallContext,
+    request: { readonly deliveredSince: Temporal.Instant; readonly sellerOrderId?: string },
+  ): Promise<Result<readonly DeliveredSellerOrder[], DeliveredSellerOrdersFailure>>;
 }
 
 /** Nest token of the {@link OrderingFacade}, provided and exported by `OrderingModule`. */

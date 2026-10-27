@@ -363,6 +363,38 @@
     }
   },
   {
+    "type": "customers.account-deletion-settings-changed.v1",
+    "aggregateType": "account-deletion-settings",
+    "fields": {
+      "previousEnabled": "boolean",
+      "enabled": "boolean",
+      "previousWaitingPeriodDays": "integer",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
+    "type": "customers.account-deletion-requested.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "waitingPeriodDays": "integer",
+      "scheduledFor": "instant"
+    }
+  },
+  {
+    "type": "customers.account-deletion-cancelled.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "reason": "enumOf(customer|sign-in)"
+    }
+  },
+  {
+    "type": "customers.account-deletion-completed.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
     "aggregateType": "account",
     "fields": {
@@ -611,6 +643,16 @@
     }
   },
   {
+    "type": "ordering.seller-order-delivered.v1",
+    "aggregateType": "seller-order",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "sellerId": "id",
+      "source": "enumOf(carrier|seller-click)"
+    }
+  },
+  {
     "type": "ordering.order-shipped.v1",
     "aggregateType": "seller-order",
     "fields": {
@@ -626,6 +668,14 @@
       "orderId": "id",
       "sellerOrderId": "id",
       "refundId": "id"
+    }
+  },
+  {
+    "type": "payments.dispute-changed.v1",
+    "aggregateType": "dispute",
+    "fields": {
+      "disputeId": "id",
+      "orderId": "id"
     }
   },
   {

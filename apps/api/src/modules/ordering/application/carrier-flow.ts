@@ -14,6 +14,7 @@ import {
 } from '../domain/order';
 import { refundedInFull } from '../domain/refund';
 import type { OrderingDependencies } from './checkout-flow';
+import { deliveredEvent } from './delivery-event';
 import { openShipTo } from './read-flow';
 
 // Ordering's side of the real-time carrier (SHP-02/03): once an order is paid, each seller order
@@ -384,6 +385,11 @@ export async function recordCarrierProgress(
         if ((await deps.orders.saveFulfilment(market, delivered, 'shipped')) !== 'saved') {
           return err({ code: 'ordering.try-again' });
         }
+        await deps.outbox.append(
+          context,
+          [deliveredEvent(order.id, delivered, now, 'carrier')],
+          input.delivery.eventId,
+        );
         changed = true;
       }
       return ok(changed);

@@ -53,9 +53,10 @@ const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
   '~~*',
   '!~~',
   '!~~*',
-  // Text search match and array containment (ADR-0030 amendment, `search` module).
+  // Text search match, array containment and array overlap (ADR-0030 amendments, `search`).
   '@@',
   '@>',
+  '&&',
 ]);
 
 /** The types a cast may name (`pg_catalog` or unqualified); anything else is refused. */
@@ -418,7 +419,7 @@ function visit(value: unknown, walk: Walk): void {
         const shaped =
           operator?.[0] === '@@'
             ? isColumn(child.lexpr) && isTsQueryCall(child.rexpr)
-            : operator?.[0] === '@>'
+            : operator?.[0] === '@>' || operator?.[0] === '&&'
               ? isColumn(child.lexpr) && isParamCast(child.rexpr, 'uuid')
               : true;
         if (!shaped) walk.violations.add(`operator-shape:${operator?.[0] ?? '?'}`);

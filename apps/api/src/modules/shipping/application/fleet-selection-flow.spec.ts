@@ -140,6 +140,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       ledger: undefined as never,
       pickups: undefined as never,
       webhookSignature: undefined as never,
+      securityEvents: undefined as never,
     };
   });
 

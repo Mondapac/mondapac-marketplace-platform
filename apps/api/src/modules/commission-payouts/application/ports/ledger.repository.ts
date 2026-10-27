@@ -22,9 +22,22 @@ export interface LedgerRepository {
   /** Whether the seller order already has its rows (the idempotency check). */
   hasSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<boolean>;
 
+  /** The seller a seller order's rows belong to in this Market, or null when it has none. */
+  sellerOfSellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<Id<'Seller'> | null>;
+
+  /** Every row of the seller order (paid facts and reversals), oldest first. */
+  listSellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<readonly LedgerEntry[]>;
+
   /**
-   * Inserts the rows of one fact. A row that exists already (same seller order, kind and line)
-   * is skipped, so a replay writes nothing twice. Answers how many rows were inserted.
+   * Inserts the rows of one fact. A row that exists already (same seller order, kind, line and
+   * source) is skipped (INSERT ... ON CONFLICT DO NOTHING), so a replay writes nothing twice.
+   * Answers how many rows were inserted.
    */
   append(market: MarketContext, entries: readonly LedgerEntry[]): Promise<number>;
 

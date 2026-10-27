@@ -54,13 +54,14 @@ export const cartProviders: readonly FactoryProvider[] = [
   },
   {
     provide: LINE_FACTS_SOURCE,
-    inject: [CATALOG_FACADE, SELLERS_FACADE, PRICING_FACADE, INVENTORY_FACADE],
+    inject: [CATALOG_FACADE, SELLERS_FACADE, PRICING_FACADE, INVENTORY_FACADE, MarketRegistry],
     useFactory: (
       catalog: CatalogFacade,
       sellers: SellersFacade,
       pricing: PricingFacade,
       inventory: InventoryFacade,
-    ): LineFactsSource => new FacadeLineFacts(catalog, sellers, pricing, inventory),
+      markets: MarketRegistry,
+    ): LineFactsSource => new FacadeLineFacts(catalog, sellers, pricing, inventory, markets),
   },
   {
     provide: RATE_COUNTER_REPOSITORY,

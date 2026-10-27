@@ -60,6 +60,53 @@ const perMinute = z.number().int().min(1).max(100_000);
  * ADR-0015 decision 3). The counters are kept per origin and are not split by Market (PF I11):
  * the limiter is the cross-Market control, and the request's Market chooses only the limit.
  */
+/**
+ * The platform-wide bounds of a payout hold, in days (commission-payouts G2 4.4): code constants,
+ * not Market values. `platform/` cannot import a module, so these are the schema's own copy of
+ * commission-payouts' `MIN_HOLD_DAYS` and `MAX_HOLD_DAYS`; a test asserts the two agree, and the
+ * same numbers are CHECKs of `commission_payouts`.
+ */
+export const PAYOUT_TERMS_MIN_HOLD_DAYS = 7;
+export const PAYOUT_TERMS_MAX_HOLD_DAYS = 60;
+
+export const PAYOUT_TERMS_WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
+
+/** Payout terms of a Market (package 6b): when, how long to hold, the minimum and the approval. */
+const payoutTermsSchema = z
+  .strictObject({
+    weekdays: z
+      .array(z.enum(PAYOUT_TERMS_WEEKDAYS))
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days).size === days.length, 'must not repeat a weekday'),
+    /** HH:mm in the seller's own zone (24 hour clock). */
+    localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    holdDaysCarrier: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    holdDaysSellerClick: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    /** Minor units of the Market currency; a payout under it carries over. */
+    minimumMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    /**
+     * The most any minimum may be, the Market's own and a seller's override alike (AU 100000 =
+     * 1,000.00): an admin cannot park a seller's money behind an unreachable minimum.
+     */
+    minimumMinorCap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    approvalMode: z.enum(['AUTO', 'MANUAL']),
+    /** The first payout of each new seller waits for an admin (package 6d acts on it). */
+    firstPayoutManual: z.boolean(),
+  })
+  .refine((terms) => terms.minimumMinor <= terms.minimumMinorCap, {
+    message: 'minimumMinor must not exceed minimumMinorCap',
+    path: ['minimumMinor'],
+  });
+
 const requestLimitsSchema = z.strictObject({
   /** Routes marked `@RateLimit('anonymous-identity')`: sign-up, sign-in, reset requests. */
   anonymousIdentityPerMinute: perMinute,
@@ -1340,6 +1387,54 @@ const shippingSchema = z.strictObject({
       return url.search === '' && url.hash === '';
     }, 'baseUrl must have no query or fragment')
     .optional(),
+  /**
+   * Uber Direct, an external fleet adapter (Phase 6 package 5b). `enabled` is the Market switch:
+   * an absent section or `false` leaves it off (nothing is sent), and so does any missing
+   * credential (UBER_DIRECT_CUSTOMER_ID, UBER_DIRECT_CLIENT_ID, UBER_DIRECT_CLIENT_SECRET: server
+   * secrets, never here). The API hosts are fixed in the adapter, not settable. `serviceAreas`
+   * and `modes` say what the fleet serves (`on_demand` offers the instant and same-day methods,
+   * `scheduled` the buyer's window); `temperatures` what it keeps. `limits` are the fleet's caps (the order value is in the Market's default
+   * currency, in minor units) and `prohibitedClasses` the kinds of goods it refuses. The rest
+   * shapes the HTTP client like `realTimeCarrier`'s.
+   */
+  uberDirect: z
+    .strictObject({
+      enabled: z.boolean(),
+      serviceAreas: z
+        .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+        .min(1)
+        .max(50)
+        .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat'),
+      modes: z
+        .array(z.enum(['on_demand', 'scheduled']))
+        .min(1)
+        .refine((modes) => new Set(modes).size === modes.length, 'a mode must not repeat'),
+      temperatures: z
+        .array(z.enum(['ambient', 'chilled', 'frozen']))
+        .min(1)
+        .refine((items) => new Set(items).size === items.length, 'a temperature must not repeat'),
+      limits: z.strictObject({
+        maxItemWeightGrams: z.number().int().min(1).max(100_000),
+        maxItems: z.number().int().min(1).max(100),
+        maxOrderValueMinor: z.number().int().min(1).max(1_000_000_000),
+      }),
+      prohibitedClasses: z
+        .array(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/u))
+        .max(50)
+        .refine((classes) => new Set(classes).size === classes.length, 'a class must not repeat'),
+      timeoutMs: z.number().int().min(500).max(15_000),
+      maxAttempts: z.number().int().min(1).max(5),
+      backoffMs: z.number().int().min(0).max(5000),
+      circuitBreaker: z.strictObject({
+        failureThreshold: z.number().int().min(1).max(50),
+        cooldownSeconds: z.number().int().min(1).max(600),
+      }),
+    })
+    .refine(
+      (fleet) => carrierCallBudgetMs(fleet) <= MAX_CARRIER_CALL_MS,
+      `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
+    )
+    .optional(),
 });
 
 const marketSchema = z
@@ -1385,11 +1480,14 @@ const marketSchema = z
      * separate rate per seller. `provisionalTaxRateBps`: the tax rate taken out of a tax-inclusive
      * line before commission (AU GST 1000) until the tax module gives each line's tax. Without
      * this section the Market has no commission rate and checkout fails closed.
+     * `payoutTerms` (package 6b): the Market's payout terms; every field is required, there is no
+     * core default, and a Market without them has no payout terms (fail closed).
      */
     commissionPayouts: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(3000),
         provisionalTaxRateBps: z.number().int().min(0).max(5000),
+        payoutTerms: payoutTermsSchema.optional(),
       })
       .optional(),
     /**
@@ -1399,7 +1497,9 @@ const marketSchema = z
      * 500.00). `promoExpiryMonths`: promo credit expires this many calendar months after the grant
      * (12); refund credit never expires. `adminIssueCapMinor` and `adminDailyCapMinor`: the most
      * one admin issue may be (AU 5000 = 50.00) and the most one admin may issue per day without a
-     * second approval (AU 50000); read from package 2. `expiringSoonDays`: promo credit expiring
+     * second approval (AU 50000); read from package 2. `adminRequestExpiryDays`: an admin credit
+     * request above either cap that no second admin decided expires after this many calendar days
+     * in the Market's time zone (AU 7). `expiringSoonDays`: promo credit expiring
      * within this many days is shown as expiring soon. Without this section the Market has no wallet
      * settings and the wallet fails closed. Whether the wallet is on is not config: an admin sets
      * it at runtime (`wallet.market_settings`), off by default.
@@ -1410,7 +1510,50 @@ const marketSchema = z
         promoExpiryMonths: z.number().int().min(1).max(60),
         adminIssueCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
         adminDailyCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        adminRequestExpiryDays: z.number().int().min(1).max(90),
         expiringSoonDays: z.number().int().min(1).max(365),
+      })
+      .optional(),
+    /**
+     * Reviews settings (buyer reviews and ratings package 1), owned by `reviews`. All values are
+     * Market config, never constants. `reviewWindowDays`: a buyer may review a product or rate a
+     * seller order this many days after the seller order's delivery (AU 60). `editWindowDays`:
+     * a product review may be edited this many days after it was first submitted (AU 30); the
+     * author may delete it any time. `sellerRatingMinCount`: rated seller orders needed before a
+     * seller's summary is meant to be shown (AU 10; the answer carries the count, the web
+     * decides). `maxSubmissionsPerAccountPerDay`: product reviews plus seller ratings one account
+     * may write in 24 hours. `titleMaxLength` and `bodyMaxLength`: in characters (AU 120, 2000).
+     * `pageSize`: reviews per public page (AU 10). `autoChecks`: `blockedTerms` is the Market's
+     * profanity list (matched as whole words, case-insensitive); `repeatedCharRun` is the length
+     * of one character repeated that counts as spam; `repeatedWordMinTokens` and
+     * `repeatedWordShareBps` flag a text of at least that many words of which one word makes up
+     * at least that share (basis points). A hit never refuses the review: it is held for a
+     * human. Whether reviews are on is not config: an admin sets it at runtime
+     * (`reviews.market_settings`), off by default. Without this section reviews are unavailable
+     * (fail closed).
+     */
+    reviews: z
+      .strictObject({
+        reviewWindowDays: z.number().int().min(1).max(365),
+        editWindowDays: z.number().int().min(0).max(365),
+        sellerRatingMinCount: z.number().int().min(1).max(1000),
+        maxSubmissionsPerAccountPerDay: z.number().int().min(1).max(200),
+        titleMaxLength: z.number().int().min(1).max(200),
+        bodyMaxLength: z.number().int().min(1).max(5000),
+        pageSize: z.number().int().min(1).max(50),
+        /**
+         * How often the job recomputes the rating summaries from the source rows (minutes, default
+         * 1440, daily). The write path refreshes a product summary at once; a SELLER summary is
+         * written only by this job, so that several ratings land in one change and a poller cannot
+         * read a single rating from it.
+         */
+        summaryRebuildMinutes: z.number().int().min(5).max(1440).default(1440),
+        autoChecks: z.strictObject({
+          blockedTerms: z.array(z.string().trim().min(2).max(64)).max(1000),
+          repeatedCharRun: z.number().int().min(4).max(100),
+          repeatedWordMinTokens: z.number().int().min(3).max(100),
+          repeatedWordShareBps: z.number().int().min(5000).max(10000),
+        }),
       })
       .optional(),
     /**

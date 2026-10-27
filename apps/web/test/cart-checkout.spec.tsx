@@ -312,7 +312,7 @@ const STRIPE_CHECKOUT = {
 } as const;
 
 describe('checkout', () => {
-  /** The Pay buttons (the right column's and the one ending the form on phone and tablet). */
+  /** The Pay buttons (the one ending the form, the right column's and the sticky Pay bar). */
   const payButtons = () => screen.getAllByRole('button', { name: /^Pay A\$/ });
   const payOff = () => payButtons().every((b) => b.getAttribute('aria-disabled') === 'true');
 
@@ -662,6 +662,7 @@ describe('checkout', () => {
       expect(payButtons().map((b) => b.getAttribute('aria-describedby'))).toEqual([
         'checkout-pay-notice',
         'checkout-pay-notice',
+        'checkout-pay-notice',
       ]),
     );
     expect(document.getElementById('checkout-pay-notice')?.textContent).toContain('Stock changed.');
@@ -815,7 +816,8 @@ describe('checkout', () => {
     deliveryOptionsFor.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
     expect(payOff()).toBe(true);
-    expect(screen.getAllByText('Getting delivery prices...')).toHaveLength(2);
+    // The form's line, the right column's and the sticky Pay bar's.
+    expect(screen.getAllByText('Getting delivery prices...')).toHaveLength(3);
     answer({ kind: 'failed' });
     const failed = (await screen.findAllByRole('alert'))[0]!;
     expect(failed.textContent).toContain('We could not get a delivery price.');
@@ -912,7 +914,7 @@ describe('checkout', () => {
     });
     expect(
       screen.getAllByText('You are offline. Pay works again when your connection is back.'),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(payOff()).toBe(true);
     act(() => {
       window.dispatchEvent(new Event('online'));

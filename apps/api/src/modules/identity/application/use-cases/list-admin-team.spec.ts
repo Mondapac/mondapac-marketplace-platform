@@ -102,6 +102,7 @@ const LEAD_KEYS = [
   'certification.product-certificate.view',
   'notifications.support-contact.view',
   'assistant.settings.view',
+  'customers.account-deletion-settings.view',
   'shipping.fleet-selection.view',
   'shipping.delivery-settings.view',
   'ordering.order.view',
@@ -109,6 +110,7 @@ const LEAD_KEYS = [
   'pricing.price-hold.view',
   'sellers.seller.view',
   'commission-payouts.settlement.view',
+  'commission-payouts.payout-terms.view',
 ];
 
 type AccountAction = keyof AdminTeamAccountRow['actions'];

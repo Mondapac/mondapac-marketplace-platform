@@ -38,14 +38,19 @@ import { AdminViewOrder } from './application/use-cases/admin-view-order.use-cas
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
+import { MyDeliveredSellerOrders } from './application/use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
+import { RecordDeliveryAnchor } from './application/use-cases/record-delivery-anchor.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
+import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
+import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
+import { RecordRefundLedger } from './application/use-cases/record-refund-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
 import { RegeneratePickupCode } from './application/use-cases/regenerate-pickup-code.use-case';
 import { SellerConfirmPickup } from './application/use-cases/seller-confirm-pickup.use-case';
@@ -81,12 +86,14 @@ import { ORDERING_EVENTS } from './domain/events';
 import { orderingProviders } from './infrastructure/ordering-providers';
 import { AdminOrdersController } from './presentation/admin-orders.controller';
 import { recordLedgerJob } from './presentation/jobs/record-ledger.job';
+import { recordRefundLedgerJob } from './presentation/jobs/record-refund-ledger.job';
 import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
 import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
+import { deliverySubscriptions } from './presentation/subscribers/delivery.subscriptions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: OrderingDependencies) => U;
 
@@ -184,6 +191,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         cancel: CancelCarrierAfterRefund,
       ) => carrierSubscriptions(book, bookReady, record, cancel),
     ),
+    // Payout eligibility (package 6b): a delivered seller order's facts go to commission-payouts.
+    registerSubscriptionsFrom('ordering', [RecordDeliveryAnchor], (record: RecordDeliveryAnchor) =>
+      deliverySubscriptions(record),
+    ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
     ...[
@@ -206,13 +217,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
+      RecordRefundLedger,
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      OwnOpenObligationsQuery,
+      OpenObligationsOfQuery,
+      MyDeliveredSellerOrders,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
       CancelCarrierAfterRefund,
+      RecordDeliveryAnchor,
       AdminRefundOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
@@ -224,6 +240,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OrderNoticeQuery,
         ShipmentNoticeQuery,
         SellerOrderCustomerNames,
+        OwnOpenObligationsQuery,
+        OpenObligationsOfQuery,
+        MyDeliveredSellerOrders,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -231,7 +250,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         notice: OrderNoticeQuery,
         shipment: ShipmentNoticeQuery,
         customerNames: SellerOrderCustomerNames,
-      ) => new OrderingFacadeImplementation(confirm, cancel, notice, shipment, customerNames),
+        openObligations: OwnOpenObligationsQuery,
+        openObligationsOfAccount: OpenObligationsOfQuery,
+        delivered: MyDeliveredSellerOrders,
+      ) =>
+        new OrderingFacadeImplementation(
+          confirm,
+          cancel,
+          notice,
+          shipment,
+          customerNames,
+          openObligations,
+          openObligationsOfAccount,
+          delivered,
+        ),
     },
     {
       provide: BestSellingOffersQuery,
@@ -270,15 +302,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger, SettleRefunds, RebuildOfferPairs],
+      [RecordShipments, RecordLedger, RecordRefundLedger, SettleRefunds, RebuildOfferPairs],
       (
         shipments: RecordShipments,
         ledger: RecordLedger,
+        refundLedger: RecordRefundLedger,
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
+        recordRefundLedgerJob(refundLedger),
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
       ],

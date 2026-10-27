@@ -258,6 +258,35 @@ export const SellerStepUpPolicyChangedAudit = defineAuditAction({
   after: { actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS), required: auditField.boolean() },
 });
 
+/**
+ * A platform admin presented a fresh two-step code for one admin action (issue #491). Target: the
+ * admin's own account. The session that now holds the proof and the action it covers; never the
+ * code. A wrong code is counted on the account's code counter and is not an audit row.
+ */
+export const AdminStepUpVerifiedAudit = defineAuditAction({
+  action: 'identity.admin-step-up.verified',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { sessionId: auditField.id(), actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS) },
+});
+
+/**
+ * A platform admin presented a wrong two-step code for an admin action (issue #491; Hassan L3).
+ * Target: the admin's own account. `cause` is `locked` for the wrong code that reached the
+ * account's limit and locked the factor (for sign-in too), `invalid` otherwise. Bounded by that
+ * lock-out; a request refused before the code is checked (already locked) writes no row.
+ */
+export const AdminStepUpRefusedAudit = defineAuditAction({
+  action: 'identity.admin-step-up.refused',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: {
+    sessionId: auditField.id(),
+    actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS),
+    cause: auditField.enumOf(['invalid', 'locked'] as const),
+  },
+});
+
 /** The account statuses (identity design 3.1), as an audit row names them. */
 const ACCOUNT_STATUSES = ['active', 'disabled'] as const;
 
@@ -461,6 +490,35 @@ export const OtherSessionsSignedOutAudit = defineAuditAction({
 });
 
 /**
+ * A customer account was erased for account deletion (CUS-03, customers package 5b): the subject
+ * key destroyed and the row deleted. Target: the account id, which stays meaningless afterwards.
+ * Written by the system actor of the deletion job; `after.requestId` names the customers deletion
+ * request and nothing else is named (R5).
+ */
+export const AccountErasedAudit = defineAuditAction({
+  action: 'identity.account.erased',
+  targetType: 'identity.account',
+  actors: ['system'],
+  // The deletion request that asked for it (an id; no personal data), so the erasure can be traced.
+  after: { requestId: auditField.id() },
+});
+
+/**
+ * Every session of a customer account was ended for account deletion (customers package 5b), before
+ * the erasure's last blocker check. Target: the account id. `after` holds the deletion request id
+ * and the count: no device, no address (R5). Written by the system actor of the deletion job.
+ */
+export const AccountSessionsEndedForErasureAudit = defineAuditAction({
+  action: 'identity.account.sessions-ended-for-erasure',
+  targetType: 'identity.account',
+  actors: ['system'],
+  after: {
+    requestId: auditField.id(),
+    revokedSessions: auditField.integer(),
+  },
+});
+
+/**
  * The decisions on a seller's access (identity design 3.3, 10.1; PA 5 row 9; slice 9). Target: the
  * seller access record. The actor is the admin who decided (AC 11, AC 27). `before` and `after`
  * are state codes; `after.decisionId` names the `AccessDecision`, which holds the reason
@@ -549,6 +607,8 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   AccountRoleChangedAudit,
   SellerMemberRemovedAudit,
   SellerStepUpPolicyChangedAudit,
+  AdminStepUpVerifiedAudit,
+  AdminStepUpRefusedAudit,
   AccountDisabledAudit,
   AccountEnabledAudit,
   InvitationIssuedAudit,
@@ -563,6 +623,8 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerSecondFactorResetConfirmedAudit,
   AdminSessionOpenedAudit,
   OtherSessionsSignedOutAudit,
+  AccountErasedAudit,
+  AccountSessionsEndedForErasureAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,
   SellerAccessSuspendedAudit,

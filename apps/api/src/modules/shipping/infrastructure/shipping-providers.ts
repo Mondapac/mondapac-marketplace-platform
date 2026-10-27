@@ -40,6 +40,7 @@ import { SHIPPING_POLICY, type ShippingPolicy } from '../application/ports/shipp
 import { CircuitBreaker } from './circuit-breaker';
 import { ConfigCarrierPolicy } from './config-carrier-policy';
 import { ConfigShippingPolicy } from './config-shipping-policy';
+import { ConfigUberDirectPolicy } from './config-uber-direct-policy';
 import { DriveHttpClient } from './drive-http-client';
 import { FakeTestCarrier } from './fake-test-carrier';
 import { capabilitiesOf } from './fleet-config';
@@ -53,6 +54,8 @@ import { PrismaDeliveryQuoteRepository } from './prisma-delivery-quote.repositor
 import { PrismaFleetLedgerRepository } from './prisma-fleet-ledger.repository';
 import { SellersPickupDirectory } from './sellers-pickup-directory';
 import { SellersSellerDirectory } from './sellers-seller-directory';
+import { UberDirectCarrier } from './uber-direct-carrier';
+import { UberDirectHttpClient } from './uber-direct-http-client';
 
 /** Binds the ports of shipping. Only this layer may reach `PrismaService`. */
 export const shippingProviders: readonly FactoryProvider[] = [
@@ -107,8 +110,8 @@ export const shippingProviders: readonly FactoryProvider[] = [
       new PrismaDeliverySettingsRepository(prisma),
   },
   {
-    // One gateway per fleet. Mondapac Drive is the only real adapter here; Uber Direct, Zoom2u
-    // and Australia Post register theirs beside it. The fake is for tests and development: it is
+    // One gateway per fleet. Mondapac Drive and Uber Direct are registered here; Zoom2u and
+    // Australia Post register theirs beside them. The fake is for tests and development: it is
     // never registered in production and is on only where a Market's `shipping.fleets` lists it.
     provide: FLEET_REGISTRY,
     inject: [CARRIER_POLICY, MarketRegistry, APP_CONFIG, CLOCK],
@@ -123,6 +126,13 @@ export const shippingProviders: readonly FactoryProvider[] = [
           policy,
           config.mondapacDrive.apiKeys,
           new DriveHttpClient(new CircuitBreaker(clock)),
+          clock,
+        ),
+        // Off (no capabilities, so never a candidate) unless the Market's
+        // `shipping.uberDirect.enabled` is true AND the Region Stack holds its credentials.
+        new UberDirectCarrier(
+          new ConfigUberDirectPolicy(markets, config.uberDirect),
+          new UberDirectHttpClient(new CircuitBreaker(clock), clock),
           clock,
         ),
       ];

@@ -1,11 +1,14 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import { StripeWebhookSignatureFailed } from '../../../platform/security-events/security-event-catalogue';
+import { isDisputeEventType } from '../domain/dispute';
 import { isExternalAccountEvent } from '../domain/payout-change';
 import type { PaymentsDependencies } from './payments-dependencies';
 import {
   ACCOUNT_EVENT_TYPES,
-  CHECKOUT_EVENT_TYPES,
+  PLATFORM_EVENT_TYPES,
   type KeptEventType,
 } from './ports/stripe-event-inbox';
 
@@ -14,6 +17,8 @@ export interface ReceiveInput {
   readonly payload: Uint8Array;
   /** The `Stripe-Signature` header as received. */
   readonly signature: unknown;
+  /** The caller's address (ADR-0037), kept with a security event when the signature fails. */
+  readonly clientAddress?: string | null;
 }
 
 export type ReceiveOutcome =
@@ -37,6 +42,7 @@ export type ReceiveFailure =
 
 const EVENT_ID = /^evt_[A-Za-z0-9_]{1,200}$/;
 const SESSION_ID = /^cs_[A-Za-z0-9_]{1,200}$/;
+const DISPUTE_ID = /^(dp|du)_[A-Za-z0-9_]{1,200}$/;
 const ACCOUNT_ID = /^acct_[A-Za-z0-9_]{1,200}$/;
 const MAX_TYPE_LENGTH = 100;
 
@@ -56,10 +62,40 @@ function parse(payload: Uint8Array): Record<string, unknown> | null {
   }
 }
 
+const logger = new Logger('ReceiveStripeEvent');
+
+/**
+ * A webhook whose signature failed is a security event (SOC package 1), recorded in a unit of its
+ * own: nothing else of the request is. A failure to record it is logged and does not change the
+ * answer, so Stripe (or a forger) sees the same 400 either way.
+ */
+async function recordSignatureFailure(
+  deps: PaymentsDependencies,
+  context: CallContext,
+  clientAddress: string | null,
+): Promise<void> {
+  try {
+    await deps.unitOfWork.run(context.market, async () => {
+      await deps.securityEvents.record(
+        context,
+        StripeWebhookSignatureFailed.event({ ip: clientAddress, payload: { provider: 'stripe' } }),
+      );
+      return ok(undefined);
+    });
+  } catch {
+    logger.warn({
+      msg: 'payments.stripe-webhook.security-event-failed',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
+}
+
 /**
  * `receive-stripe-event`: the signature is checked on the raw bytes before anything is read.
  * Then the event must be a test-mode event: a platform event (no connected account) of a kept
- * Checkout type about a session of this Market, or, signed with the Connect secret, an account
+ * Checkout type about a session of this Market or of a dispute type (package 8a), or, signed with
+ * the Connect secret, an account
  * event of a connected account (another Market's is acknowledged and dropped). A kept event is
  * stored once by its id; nothing else is done here. The payload is used only to route the event:
  * the worker re-reads the session or account from Stripe before it acts.
@@ -73,7 +109,10 @@ export async function receiveStripeEvent(
   if (!deps.signature.configuredFor(marketId)) return err({ code: 'payments.webhook-unavailable' });
   if (!(input?.payload instanceof Uint8Array)) return err({ code: 'validation.failed' });
   const kind = deps.signature.verify(marketId, input.payload, input.signature);
-  if (kind === null) return err({ code: 'payments.signature-invalid' });
+  if (kind === null) {
+    await recordSignatureFailure(deps, context, input.clientAddress ?? null);
+    return err({ code: 'payments.signature-invalid' });
+  }
   const event = parse(input.payload);
   if (
     event === null ||
@@ -94,13 +133,25 @@ export async function receiveStripeEvent(
   if (kind === 'platform' ? hasAccount : typeof account !== 'string' || !ACCOUNT_ID.test(account)) {
     return err({ code: 'payments.event-refused' });
   }
-  const kept = kind === 'platform' ? CHECKOUT_EVENT_TYPES : ACCOUNT_EVENT_TYPES;
+  const kept = kind === 'platform' ? PLATFORM_EVENT_TYPES : ACCOUNT_EVENT_TYPES;
   if (!isKept(event.type, kept)) return ok('ignored');
 
   const object = isObject(event.data) ? event.data.object : undefined;
   if (!isObject(object)) return err({ code: 'validation.failed' });
   let objectId: string;
-  if (kind === 'platform') {
+  if (kind === 'platform' && isDisputeEventType(event.type)) {
+    // A dispute names no Market in its payload (only its charge and PaymentIntent ids), so every
+    // Market's endpoint stores it; the worker reads it again with its PaymentIntent and drops one
+    // of another Market's order.
+    if (
+      object.object !== 'dispute' ||
+      typeof object.id !== 'string' ||
+      !DISPUTE_ID.test(object.id)
+    ) {
+      return err({ code: 'validation.failed' });
+    }
+    objectId = object.id;
+  } else if (kind === 'platform') {
     if (
       object.object !== 'checkout.session' ||
       typeof object.id !== 'string' ||

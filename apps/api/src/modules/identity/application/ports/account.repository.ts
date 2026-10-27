@@ -68,6 +68,13 @@ export interface AccountRepository {
   ): Promise<readonly CustomerSummaryRow[]>;
 
   /**
+   * The status of the Market's customer account with this id, or null for an unknown id or
+   * another population's account. Reads no credential and no personal data, so an account
+   * without a password credential is still answered.
+   */
+  customerStatus(market: MarketContext, id: Id<'Account'>): Promise<'active' | 'disabled' | null>;
+
+  /**
    * Stores a new account, its credential and its data key (identity design 11.3: the key is
    * created with the account, in the same unit).
    */

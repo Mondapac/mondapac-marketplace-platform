@@ -15,14 +15,41 @@
   },
   "commissionPayouts": {
     "defaultRateBps": 1200,
-    "provisionalTaxRateBps": 1500
+    "provisionalTaxRateBps": 1500,
+    "payoutTerms": {
+      "weekdays": ["THU", "FRI"],
+      "localTime": "14:30",
+      "holdDaysCarrier": 10,
+      "holdDaysSellerClick": 21,
+      "minimumMinor": 3000,
+      "minimumMinorCap": 200000,
+      "approvalMode": "MANUAL",
+      "firstPayoutManual": false
+    }
   },
   "wallet": {
     "balanceCapMinor": 30000,
     "promoExpiryMonths": 6,
     "adminIssueCapMinor": 3000,
     "adminDailyCapMinor": 30000,
+    "adminRequestExpiryDays": 3,
     "expiringSoonDays": 14
+  },
+  "reviews": {
+    "reviewWindowDays": 30,
+    "editWindowDays": 7,
+    "sellerRatingMinCount": 3,
+    "maxSubmissionsPerAccountPerDay": 2,
+    "titleMaxLength": 60,
+    "bodyMaxLength": 300,
+    "pageSize": 2,
+    "summaryRebuildMinutes": 720,
+    "autoChecks": {
+      "blockedTerms": ["zork", "blarg"],
+      "repeatedCharRun": 5,
+      "repeatedWordMinTokens": 4,
+      "repeatedWordShareBps": 7500
+    }
   },
   "tax": {
     "defaultRateBps": 1500,
@@ -313,6 +340,24 @@
       "backoffMs": 0,
       "circuitBreaker": { "failureThreshold": 2, "cooldownSeconds": 10 },
       "quoteBounds": { "minMinor": 300, "maxMinor": 20000 }
+    },
+    "uberDirect": {
+      "enabled": false,
+      "serviceAreas": ["zz-central"],
+      "modes": ["on_demand", "scheduled"],
+      "temperatures": ["ambient"],
+      "limits": { "maxItemWeightGrams": 20000, "maxItems": 8, "maxOrderValueMinor": 50000 },
+      "prohibitedClasses": [
+        "alcohol",
+        "tobacco",
+        "firearms",
+        "hazardous-materials",
+        "live-animals"
+      ],
+      "timeoutMs": 2500,
+      "maxAttempts": 2,
+      "backoffMs": 250,
+      "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 }
     }
   }
 }

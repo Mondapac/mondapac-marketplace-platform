@@ -11,9 +11,14 @@ export {
 } from './permissions';
 export { ORDERING_EVENTS, OrderPaid, OrderShipped } from '../domain/events';
 export {
+  MAX_DELIVERED_SELLER_ORDERS,
   ORDERING_FACADE,
+  type DeliveredSellerOrder,
+  type DeliveredSellerOrdersFailure,
   type OrderNotice,
   type OrderNoticeFailure,
+  type OwnOpenObligations,
+  type OwnOpenObligationsFailure,
   type SellerOrderCustomerName,
   type SellerOrderCustomerNamesFailure,
   type ShipmentNotice,

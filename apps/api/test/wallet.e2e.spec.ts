@@ -41,6 +41,18 @@ it('maps every refusal code of the wallet routes to its exact status', () => {
     'wallet.unavailable': 503,
     'wallet.busy': 409,
     'wallet.cannot-turn-off-with-history': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
+    'wallet.paused': 409,
+    'wallet.frozen': 409,
+    'wallet.cap-exceeded': 409,
+    'wallet.account-not-active': 409,
+    'idempotency.key-reused': 409,
+    'wallet.credit-request-not-found': 404,
+    'wallet.customer-not-found': 404,
+    'wallet.credit-request-decided': 409,
+    'wallet.credit-request-expired': 409,
+    'wallet.approver-is-requester': 403,
   });
 });
 
@@ -94,7 +106,33 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
         credential: { passwordHash: fakeHashOf('x'), changedAt: START },
       });
     }
+    // The admin's active second factor, for the admin step-up of the switch (issue #491).
+    fakes.factors.set(ADMIN, {
+      id: id<'SecondFactor'>(0xf301),
+      marketId,
+      accountId: ADMIN,
+      state: 'active',
+      secretCiphertext: 'sealed',
+      pendingSecretCiphertext: null,
+      lastAcceptedStep: null,
+      activatedAt: START,
+      lockedAt: null,
+      createdAt: START,
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
+      version: 1,
+    });
   }
+
+  /** A fresh step-up proof of the admin session for the switch (identity's verify route). */
+  const proveSwitch = (n: number) =>
+    fakes.stepUpProofs.set(
+      `${code}|${id<'Session'>(0xf100 + n)}|wallet.settings.change`,
+      clock.now(),
+    );
 
   function sessionOf(population: 'customer' | 'admin', n: number) {
     const issued = tokens.issue();
@@ -118,7 +156,11 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
     };
   }
   const customer = () => sessionOf('customer', 1);
-  const admin = () => sessionOf('admin', 2);
+  const admin = () => {
+    const session = sessionOf('admin', 2);
+    proveSwitch(2);
+    return session;
+  };
 
   const asAdmin = (method: 'get' | 'put', headers: Record<string, string>, payload?: unknown) => {
     const req = http()
@@ -160,6 +202,36 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
       { name: 'view-settings', input: {} },
       { name: 'set-status', input: { status: 'paused', reasonCode: 'wind-down' } },
     ]);
+  });
+
+  it('refuses the switch without a fresh step-up proof of the session (issue #491)', async () => {
+    await boot();
+    const session = sessionOf('admin', 2);
+    const put = () => asAdmin('put', session, { status: 'active' });
+    const refused = await put();
+    expect(refused.status).toBe(403);
+    expect(refused.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'wallet.settings.change' },
+    });
+    proveSwitch(2);
+    clock.advance(Temporal.Duration.from({ minutes: 5 }));
+    expect((await put()).status).toBe(403);
+    proveSwitch(2);
+    expect((await put()).status).toBe(200);
+    // The read needs no proof.
+    fakes.stepUpProofs.clear();
+    expect((await asAdmin('get', session)).status).toBe(200);
+    // The use case's own refusal carries the action key too.
+    proveSwitch(2);
+    next = err({ code: 'second-factor.required', actionKey: 'wallet.settings.change' });
+    expect((await put()).body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'wallet.settings.change' },
+    });
+    expect(calls.map((call) => call.name)).toEqual(['set-status', 'view-settings', 'set-status']);
   });
 
   it('refuses a write without CSRF, with a stray field and not as JSON', async () => {

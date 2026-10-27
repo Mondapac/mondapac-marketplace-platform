@@ -21,7 +21,7 @@ export type DriveFetch = (
 export const MAX_ANSWER_BYTES = 64 * 1024;
 
 /** The body as JSON, or null when it is empty, not JSON or larger than the cap. */
-async function boundedJson(body: ReadableStream<Uint8Array> | null): Promise<unknown> {
+export async function boundedJson(body: ReadableStream<Uint8Array> | null): Promise<unknown> {
   if (body === null) return null;
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];

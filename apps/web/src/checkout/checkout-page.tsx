@@ -34,6 +34,7 @@ import {
   useDeliveryOptions,
 } from './delivery-section.tsx';
 import { payOrder } from './actions.ts';
+import { firstFieldToFix, revealField } from './focus-error.ts';
 import {
   legalLinks,
   PaymentSection,
@@ -59,7 +60,6 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const t = useTranslations('checkout');
   const methodName = (method: string | undefined) =>
     t('method-label', { method: method ?? 'other' });
-  const locale = useLocale();
   const router = useRouter();
   const reason = useId();
   const {
@@ -227,7 +227,8 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
       if (method === 'card' && source.card.kind === 'stripe') {
         if (cardName.trim() === '') {
           setNameError(true);
-          document.querySelector<HTMLElement>('#checkout-payment .cfm input')?.focus();
+          const nameField = document.querySelector<HTMLElement>('#checkout-payment .cfm input');
+          if (nameField) revealField(nameField);
           return;
         }
         setPaying(true);
@@ -263,19 +264,18 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
       return;
     }
     // Blocked: the focus goes to the first thing to fix.
+    const address = document.getElementById('checkout-address');
     const target =
       block === 'address'
-        ? [
-            ...document.querySelectorAll<HTMLInputElement>(
-              '#checkout-address input:not([type=radio]):not([type=checkbox]):not([readonly])',
-            ),
-          ].find((input) => input.value.trim() === '' || input.getAttribute('aria-invalid'))
+        ? address
+          ? firstFieldToFix(address)
+          : null
         : block === 'delivery'
-          ? document.querySelector<HTMLElement>('.dcard .dwarn2 button')
+          ? document.querySelector<HTMLElement>('.dcard .dwarn2 button, .dcard .dwarn2 a')
           : block === 'choose'
             ? document.querySelector<HTMLElement>('.dcard input[type=radio]:not(:disabled)')
             : null;
-    target?.focus();
+    if (target) revealField(target);
   };
   const title = (
     <div className="ctitle">
@@ -305,18 +305,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     <div className="cwrap">
       {title}
       <CheckoutProgress current="pay" signedIn />
-      <details className="cmob">
-        <summary>
-          {t('summary-toggle')}
-          <span>
-            <b className="num">{formatMoney(view.total, locale)}</b>
-            <Icon name="chevd" />
-          </span>
-        </summary>
-        <div className="cs">
-          <MiniSummary view={view} discount={false} />
-        </div>
-      </details>
+      <SummaryDisclosure view={view} />
       <div className="ckdc" inert={paying}>
         <DiscountBox startOpen />
       </div>
@@ -388,6 +377,88 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
           <HelpCard />
         </div>
       </div>
+      <PayBar
+        view={view}
+        method={method}
+        block={block}
+        paying={paying}
+        onPay={() => void pay()}
+        reasonId={`${reason}-bar`}
+      />
+    </div>
+  );
+}
+
+/**
+ * The folded order summary on phone and tablet: one button showing the item count and the total,
+ * which opens the same summary the guest sees. A button with aria-expanded and aria-controls, not
+ * a native disclosure, so the state is the page's own and the label can carry the count.
+ */
+function SummaryDisclosure({ view }: { readonly view: CartView }) {
+  const t = useTranslations('checkout');
+  const locale = useLocale();
+  const [open, setOpen] = useState(false);
+  const panel = useId();
+  const count = view.groups.reduce(
+    (sum, g) => sum + g.lines.reduce((lines, l) => lines + l.quantity, 0),
+    0,
+  );
+  return (
+    <div className="cmob" data-open={open ? '' : undefined}>
+      <button
+        className="cmob-btn"
+        type="button"
+        aria-expanded={open}
+        aria-controls={panel}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="cmob-t">
+          {t('summary-toggle')}
+          <small>{t('summary-items', { count })}</small>
+        </span>
+        <span className="cmob-v">
+          <b className="num">{formatMoney(view.total, locale)}</b>
+          <Icon name="chevd" />
+        </span>
+      </button>
+      <div className="cs" id={panel} hidden={!open}>
+        <MiniSummary view={view} discount={false} heading={false} />
+      </div>
+    </div>
+  );
+}
+
+/** The sticky Pay bar of phone and tablet: the same Pay button (one action, `pay`), always in reach. */
+function PayBar({
+  view,
+  method,
+  block,
+  paying,
+  onPay,
+  reasonId,
+}: {
+  readonly view: CartView;
+  readonly method: PaymentMethod;
+  readonly block: PayBlock;
+  readonly paying: boolean;
+  readonly onPay: () => void;
+  readonly reasonId: string;
+}) {
+  const t = useTranslations('checkout');
+  return (
+    <div className="paybar">
+      {block !== null && block !== 'stock' ? (
+        <small id={reasonId}>{t(`pay-block-${block}`)}</small>
+      ) : null}
+      <PayButton
+        view={view}
+        method={method}
+        block={block}
+        paying={paying}
+        onPay={onPay}
+        reasonId={reasonId}
+      />
+      <small className="legal">{t.rich('agree-order', legalLinks)}</small>
     </div>
   );
 }
@@ -421,16 +492,19 @@ function ItemList({ view }: { readonly view: CartView }) {
 function MiniSummary({
   view,
   discount = true,
+  heading = true,
 }: {
   readonly view: CartView;
   readonly discount?: boolean;
+  /** False inside the folded summary, whose button already names it. */
+  readonly heading?: boolean;
 }) {
   const t = useTranslations('cart');
   const tco = useTranslations('checkout');
   const locale = useLocale();
   return (
     <>
-      <h2>{t('summary')}</h2>
+      {heading ? <h2>{t('summary')}</h2> : null}
       <ul className="cmini">
         {view.groups.map((g) => (
           <li key={g.seller.id}>

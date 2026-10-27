@@ -1,8 +1,19 @@
 /* Storefront styles, ported from the approved home page design (v29, design/storefront-prototypes/
    home-a-teal.html). One light look: white surfaces and neutral greys; the brand palette appears
    only on buttons, type accents and small elements. Every colour, radius and font below is a
-   token on :root; components use the tokens only. Breakpoints: 700px (tablet), 900px (desktop
-   shell with the side rail), 1100px and 1600px (wider product grids). */
+   token on :root; components use the tokens only.
+
+   Breakpoints (one source of truth: src/shell/breakpoints.ts; test/breakpoints.spec.ts fails on
+   any other width in a media query):
+     phone    under 700px      max-width: 699.98px
+     tablet   700px to 899px   min-width: 700px
+     desktop  900px to 1339px  min-width: 900px  (tab bar off, side rail on)
+     wide     1340px and up    min-width: 1340px
+   Write a range edge only as `min-width: 700px | 900px | 1340px` or `max-width: 699.98px | 899.98px
+   | 1339.98px`. The widths in the allowlist of the test (420, 520, 600, 760, 999.98, 1000,
+   1000.98, 1100, 1140, 1600) are older values that stay until their layouts are reworked; do not
+   add a new use of one without a reason. A container query (@container) measures a component, not
+   the screen, and is outside this list. */
 
 /* Tokens. Palette B "Trusted Teal" is the default in use (palette choice is still open). */
 :root {
@@ -76,6 +87,17 @@
   --sf-slide-pad-block: 16px;
   --sf-slide-pad-inline: 20px;
   --sf-header-height: 72px;
+  /* The sticky bottom layers, bottom to top: tab bar, cookie bar (both in .dock, in flow after
+     the footer), the page's action bar (buy bar, checkout bar: sticky in the page, released at
+     the end of its section), assistant launcher. .dock writes its measured height to
+     --sf-dock-height (shell/dock.tsx); until then the tab bar's own height stands in (6px
+     padding, 52px tabs, 6px padding, 1px border). An action bar sticks --sf-dock-gap above the
+     dock; the launcher lifts above the bars (assistant-widget.tsx). */
+  --sf-tabbar-height: 65px;
+  --sf-dock-height: calc(var(--sf-tabbar-height) + env(safe-area-inset-bottom, 0px));
+  /* 13px, not 12px: the raised Browse tab stands 10px above the tab bar's top edge, and this keeps
+     the bars clear of it (the old fixed 78px = 65px tab bar + 13px). */
+  --sf-dock-gap: 13px;
   /* Side gutters; widen from the tablet breakpoint. */
   --gl: max(16px, env(safe-area-inset-left, 0px));
   --gr: max(16px, env(safe-area-inset-right, 0px));
@@ -117,6 +139,14 @@
     --fs: 1;
   }
 }
+@media (min-width: 900px) {
+  :root {
+    /* No tab bar: the dock holds the cookie bar or nothing, and its measured height never includes
+       the safe area, so the gap adds it (what the 900px to 999px bars had before). */
+    --sf-dock-height: 0px;
+    --sf-dock-gap: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+}
 @media (min-width: 700px) {
   :root {
     --gl: max(24px, env(safe-area-inset-left, 0px));
@@ -132,6 +162,10 @@
 
 * {
   box-sizing: border-box;
+}
+html {
+  /* A focused field or an anchor scrolled into view stops above the sticky dock. */
+  scroll-padding-bottom: var(--sf-dock-height);
 }
 body {
   background: var(--sf-white);
@@ -207,10 +241,12 @@ svg {
 }
 .top-in {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* The logo keeps its width; the delivery pill beside it shrinks (an ellipsis) when it must. */
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px var(--gr) 8px var(--gl);
+  container: header / inline-size;
 }
 .lead {
   display: flex;
@@ -279,6 +315,7 @@ svg {
 .search input {
   flex: 1;
   min-width: 0;
+  text-overflow: ellipsis;
   border: 0;
   background: none;
   outline: 0;
@@ -306,9 +343,11 @@ svg {
   align-items: center;
   gap: 8px;
   justify-self: end;
+  min-width: 0;
 }
 .deliver {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -322,6 +361,15 @@ svg {
   color: var(--sf-ink);
   white-space: nowrap;
   text-align: start;
+}
+.deliver .dt {
+  min-width: 0;
+  overflow: hidden;
+}
+.deliver small,
+.deliver b {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .deliver small {
   display: block;
@@ -488,6 +536,10 @@ svg {
     display: none;
   }
 }
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the tab bar would sit on the field. */
+:root[data-keyboard='open'] .tabbar {
+  display: none;
+}
 
 /* Search view (phone and tablet) */
 .sview {
@@ -529,6 +581,7 @@ svg {
 .sin input {
   flex: 1;
   min-width: 0;
+  text-overflow: ellipsis;
   border: 0;
   background: none;
   outline: 0;
@@ -1870,6 +1923,65 @@ svg {
     margin-inline-start: 0;
   }
 }
+/* Touch targets (44px minimum) of the shell on phone and tablet; from 900px the mouse layout keeps
+   its tighter rows. The logo's hit area is 44px at every width (it sits in a 44px row). */
+.logo {
+  min-height: 44px;
+}
+@media (max-width: 899.98px) {
+  .fcol ul {
+    gap: 0;
+  }
+  .fcol li a {
+    padding: 12px 0;
+  }
+  .fbrand .fc {
+    gap: 0;
+  }
+  .fbrand .fc a {
+    min-height: 44px;
+  }
+  /* 44px legal links; the 6px of padding is taken back with a margin, so the words stay where
+     they were (16px apart, the first one flush with the row). */
+  .fbase .fl {
+    align-items: center;
+    gap: 0 16px;
+  }
+  /* The copyright on its own line, so Terms, Privacy and Cookies make one 44px row. */
+  .fbase .fl > span:first-child {
+    flex-basis: 100%;
+  }
+  .fbase .fl a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 6px;
+    margin-inline: -6px;
+  }
+  .sbody .pchips a {
+    min-height: 44px;
+  }
+}
+/* iOS Safari zooms the page into a field set under 16px: phones, and any touch screen (a phone held
+   sideways is wider than 700px), keep every field at 16px or more. A mouse keeps the set size. */
+@media (max-width: 699.98px), (pointer: coarse) {
+  :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+    font-size: max(16px, 1em);
+  }
+}
+/* A 320px phone: the header row (logo 141px, 8px gap, delivery pill 175px) is 324px wide, so under
+   that the pill drops its chevron and tightens; below that its text ends in an ellipsis. Measured
+   on the header row, not the screen, so a wider phone is left exactly as it was. */
+@container header (max-width: 323px) {
+  .deliver {
+    gap: 6px;
+    padding: 0 10px;
+  }
+  .deliver .dc {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .btn,
   .login,
@@ -2735,7 +2847,7 @@ svg {
   }
 }
 
-/* Cookie bar: a region above the tab bar (not a dialog). Accept and Reject look the same. */
+/* Cookie bar: a region above the tab bar, in the dock (not a dialog). Accept and Reject look the same. */
 .consent {
   display: grid;
   gap: 12px;
@@ -2766,9 +2878,45 @@ svg {
   padding: 0 16px;
   text-align: center;
 }
+.consent-short {
+  display: none;
+}
+.consent-short a {
+  color: var(--sf-teal);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* Phone: the compact bar (at most 140px tall at 320px, with the tab bar under it the stack stays
+   inside the proposal's budget). A two-line summary with Cookie settings as an inline link, the
+   title kept for screen readers, and Accept and Reject side by side with the same weight. */
 @media (max-width: 699.98px) {
+  .consent {
+    gap: 8px;
+    padding-block: 12px;
+  }
+  .consent h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .consent-long,
   .consent-actions .btn:last-child {
-    grid-column: 1 / -1;
+    display: none;
+  }
+  .consent-short {
+    display: block;
+  }
+  .consent-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The keyboard is open (shell/use-keyboard.ts): the bar would cover the field. The choice is
+     still open and the bar comes back on blur. */
+  :root[data-keyboard='open'] .consent {
+    display: none;
   }
 }
 .consent .btn:disabled,
@@ -3647,14 +3795,14 @@ svg {
   .spop:not(.asmodal) {
     display: none;
   }
-  /* Above the tab bar until the end of the product section; below the header. */
+  /* Above the dock (tab bar and cookie bar) until the end of the product section; below the header. */
   .buybar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     position: sticky;
-    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--sf-dock-height) + var(--sf-dock-gap));
     z-index: 4;
     background: var(--sf-white);
     border: 1px solid var(--sf-line);
@@ -3673,11 +3821,6 @@ svg {
   }
   .pr1 .bctl {
     display: none;
-  }
-}
-@media (min-width: 900px) and (max-width: 999.98px) {
-  .buybar {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -4077,14 +4220,14 @@ svg {
   width: 16px;
   height: 16px;
 }
-/* Above the tab bar, below the header. */
+/* Above the dock (tab bar and cookie bar), below the header. */
 .cbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   position: sticky;
-  bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--sf-dock-height) + var(--sf-dock-gap));
   z-index: 4;
   background: var(--sf-white);
   border: 1px solid var(--sf-line);
@@ -4128,35 +4271,48 @@ svg {
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-tile);
 }
-.cmob summary {
+.cmob-btn {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  width: 100%;
   min-height: 52px;
-  padding: 0 16px;
+  padding-inline: 16px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   font-weight: 700;
+  text-align: start;
   cursor: pointer;
-  list-style: none;
 }
-.cmob summary::-webkit-details-marker {
-  display: none;
+.cmob-t {
+  display: grid;
 }
-.cmob summary span {
+.cmob-t small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+  font-weight: 600;
+}
+.cmob-v {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--sf-teal);
 }
-.cmob summary b {
+.cmob-v b {
   color: var(--sf-ink);
 }
-.cmob summary .ico {
+.cmob-v .ico {
   width: 18px;
   height: 18px;
 }
-.cmob[open] summary .ico {
+.cmob[data-open] .cmob-v .ico {
   transform: rotate(180deg);
+}
+.cmob .cs[hidden] {
+  display: none;
 }
 .cmob .cs {
   border: 0;
@@ -4641,7 +4797,7 @@ svg {
   width: 100%;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .cmob summary .ico {
+  .cmob-v .ico {
     transition: transform 0.15s;
   }
 }
@@ -4665,11 +4821,6 @@ svg {
   }
   .frow.three {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
-@media (min-width: 900px) and (max-width: 999.98px) {
-  .cbar {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (min-width: 1000px) {
@@ -6051,8 +6202,8 @@ svg {
 
 /* Seller page (approved prototype v9, design/storefront-prototypes/seller-a-teal.html): header
    card with banner, logo, rings and chips; Products, About and Certificates tabs. Layouts: desktop
-   from 1001px (logo 141px over the banner), tablet 701 to 1000px (logo 110px half over it), phone
-   up to 700px (logo 88px below it). */
+   from 1001px (logo 141px over the banner), tablet 700 to 1000px (logo 110px half over it), phone
+   under 700px (logo 88px below it). */
 .shop {
   display: grid;
   gap: 16px;
@@ -6534,7 +6685,7 @@ svg {
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   }
 }
-@media (min-width: 701px) and (max-width: 1000.98px) {
+@media (min-width: 700px) and (max-width: 1000.98px) {
   .shop-banner {
     height: clamp(120px, 18vw, 150px);
   }
@@ -6567,7 +6718,7 @@ svg {
     height: 60px;
   }
 }
-@media (max-width: 700.98px) {
+@media (max-width: 699.98px) {
   .shop-banner {
     height: 130px;
   }
@@ -8370,7 +8521,7 @@ button.login {
     transition: transform 0.15s;
   }
 }
-@media (min-width: 701px) {
+@media (min-width: 700px) {
   .sg {
     gap: 40px;
   }
@@ -8724,9 +8875,11 @@ button.login {
   outline: 3px solid var(--sf-teal);
   outline-offset: 2px;
 }
-/* Switched off: the launcher would only open the off state again. */
+/* Switched off: the launcher would only open the off state again. Covered: a phone with the cookie
+   bar open (launcher-lift.ts). */
 .asw[data-open='true'] .aslaunch,
-.asw[data-off='true'] .aslaunch {
+.asw[data-off='true'] .aslaunch,
+.asw[data-covered='true'] .aslaunch {
   display: none;
 }
 .aspanel {
@@ -8749,7 +8902,7 @@ button.login {
 .aspanel[hidden] {
   display: none;
 }
-@media (max-width: 700px) {
+@media (max-width: 699.98px) {
   .aslaunch {
     inset-inline-end: var(--as-end, max(16px, var(--sa-end)));
   }
@@ -9289,4 +9442,472 @@ button.login {
 :root:lang(ar) {
   --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
   --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
+}
+
+/* Buyer mobile M3: the phone home search field, the sticky filter bar and "Load more".
+   Widths are the canonical breakpoints (shell/breakpoints.ts); logical properties except the gutters, which are physical insets (--gl, --gr). */
+.hs,
+.lm,
+.sortw.in-bar {
+  display: none;
+}
+@media (max-width: 699.98px) {
+  /* Home search: sticky under the header; collapsing moves it behind the header with a
+     transform, so the page below never shifts. */
+  .hs {
+    display: block;
+    position: sticky;
+    z-index: 4;
+    top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
+    margin-block-end: -16px;
+    margin-left: calc(var(--gl) * -1);
+    margin-right: calc(var(--gr) * -1);
+    padding-block: 8px;
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+    background: var(--sf-white);
+  }
+  .hs-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding-block: 0;
+    padding-inline: 16px;
+    border: 1.5px solid transparent;
+    border-radius: var(--sf-radius-pill);
+    background: var(--sf-surface);
+    color: var(--sf-slate);
+    font-size: 16px;
+    text-align: start;
+  }
+  .hs-field span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html[data-hsearch='collapsed'] .hs {
+    transform: translateY(-100%);
+    visibility: hidden;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hs {
+      transition:
+        transform 0.2s ease,
+        visibility 0s;
+    }
+    html[data-hsearch='collapsed'] .hs {
+      transition:
+        transform 0.2s ease,
+        visibility 0s 0.2s;
+    }
+  }
+
+  /* A sticky bar needs a block or flex parent (a grid item cannot leave its row). */
+  .main:has(> .hs),
+  .main:has(> .tools),
+  .sr-panel:has(> .tools):not([hidden]) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Listing: the filter and sort bar sticks under the header; its chips scroll sideways. */
+  .tools {
+    position: sticky;
+    z-index: 3;
+    top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    margin-left: calc(var(--gl) * -1);
+    margin-right: calc(var(--gr) * -1);
+    padding-block: 8px;
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+    background: var(--sf-white);
+    border-block-end: 1px solid var(--sf-line);
+  }
+  .tools::-webkit-scrollbar {
+    display: none;
+  }
+  .tools > * {
+    flex: none;
+  }
+  .tools .lbl {
+    display: none;
+  }
+  .tools .chip {
+    min-height: 44px;
+  }
+  .sortw.in-bar {
+    display: flex;
+    flex: none;
+    width: 176px;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .sortw.in-bar .sel {
+    min-width: 0;
+    flex: 1;
+  }
+  .sortw.in-bar select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 8px 26px;
+    font-size: 16px;
+    text-overflow: ellipsis;
+  }
+  .rtitle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    min-width: 0;
+  }
+  .hcount {
+    color: var(--sf-slate);
+  }
+  /* Anchors and focus stop below the header and the sticky bar. */
+  html:has(.tools) {
+    scroll-padding-top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px) + 61px);
+  }
+  html:has(.hs):not([data-hsearch='collapsed']) {
+    scroll-padding-top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px) + 60px);
+  }
+  .rbar .sortw {
+    display: none;
+  }
+  .main:has(.lm-wrap[data-lm='on']) .rbar {
+    display: none;
+  }
+  .fchips a {
+    min-height: 44px;
+  }
+
+  /* Load more replaces the numbered pager once the script runs; without it the pager stays. */
+  .lm-wrap[data-lm='on'] .lm {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    margin-block-start: 24px;
+  }
+  .lm-wrap[data-lm='on'] .pager {
+    display: none;
+  }
+  .lm-count {
+    color: var(--sf-slate);
+  }
+  .lm-btn {
+    min-height: 48px;
+    min-width: min(100%, 240px);
+    padding-inline: 24px;
+  }
+  .lm-error {
+    color: var(--sf-error-ink);
+    font-weight: 600;
+    text-align: center;
+  }
+}
+@media (min-width: 700px) {
+  /* The Filters button comes first in the markup (phone order); on larger screens it stays last. */
+  .tools .chip.all {
+    order: 1;
+  }
+  .hcount {
+    display: none;
+  }
+}
+/* Checkout focus mode (M2, phone and tablet only): on /checkout and /checkout/payment the tab bar
+   is not rendered, the footer and the full header give way to a simple header, and the Pay bar
+   stays at the bottom. From 900px the pages are unchanged. Spacing is logical, except the page
+   gutters --gl and --gr, which are physical insets (landscape notch) and are used physically,
+   as .consent does. The home-indicator inset goes on the bottom-most layer only: the cookie bar
+   when it shows, else the Pay bar (--sf-dock-inset, set by shell/dock.tsx). */
+.cfh,
+.paybar {
+  display: none;
+}
+@media (max-width: 899.98px) {
+  .frame[data-focus] .top,
+  .frame[data-focus] .foot {
+    display: none;
+  }
+  /* The tab bar is gone, so the cookie bar is the bottom layer and clears the home indicator. */
+  .frame[data-focus] .consent {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .cfh {
+    display: block;
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    background: var(--sf-white);
+    border-bottom: 1px solid var(--sf-line);
+  }
+  /* One row: Cart at the start, the logo in the middle, the lock label at the end. */
+  .cfh-in {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 4px;
+    min-height: 56px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+  }
+  .cfh-back {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 44px;
+    min-width: 44px;
+    margin-inline-start: -8px;
+    padding-inline: 8px;
+    color: var(--sf-teal);
+    font: 700 calc(14px * var(--fs)) / 1.2 var(--sf-font-body);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .cfh-back .ico {
+    width: 18px;
+    height: 18px;
+  }
+  .cfh-secure {
+    justify-self: end;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--sf-slate);
+    font: 700 calc(13px * var(--fs)) / 1.2 var(--sf-font-body);
+    white-space: nowrap;
+  }
+  .cfh-secure .ico {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--sf-teal);
+  }
+  .cfh .long {
+    display: none;
+  }
+  .frame[data-focus] .logo {
+    font-size: 18px;
+  }
+  .paybar {
+    display: grid;
+    gap: 6px;
+    position: sticky;
+    bottom: var(--sf-dock-height);
+    z-index: 4;
+    margin-left: calc(-1 * var(--gl));
+    margin-right: calc(-1 * var(--gr));
+    padding-top: 10px;
+    padding-bottom: calc(10px + var(--sf-dock-inset, env(safe-area-inset-bottom, 0px)));
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+    background: var(--sf-white);
+    border-top: 1px solid var(--sf-line);
+    box-shadow: 0 -4px 16px var(--sf-shadow-soft);
+  }
+  .paybar small {
+    color: var(--sf-slate);
+    font-size: calc(12px * var(--fs));
+  }
+  .paybar .btn {
+    min-height: 48px;
+  }
+  /* One Pay on phones: the Pay bar's. The in-page button and its legal line are not read twice. */
+  .ckpm {
+    display: none;
+  }
+  /* A field or warning brought into view clears the Pay bar. */
+  .cwrap .fld input,
+  .dcard .dwarn2 button,
+  .dcard .dwarn2 a,
+  #checkout-payment .cfm input {
+    scroll-margin-block: 96px;
+  }
+}
+@media (min-width: 700px) and (max-width: 899.98px) {
+  .cfh .long {
+    display: inline;
+  }
+  .cfh .short {
+    display: none;
+  }
+  .paybar > * {
+    width: 100%;
+    max-inline-size: 560px;
+    margin-inline: auto;
+  }
+}
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
+:root[data-keyboard='open'] .paybar {
+  display: none;
+}
+
+/* Product page on a phone (M4). The photos sit in a row that snaps; the count tells where the
+   buyer is. Details and Specifications are collapsibles under 700px (product/collapsible.tsx). The
+   tab bar slides away while scrolling down (shell/tabbar-autohide.tsx sets data-tabbar on <html>)
+   by a transform alone, so nothing in the layout moves, and the buy bar drops to the bottom edge
+   (its sticky offset animates; nothing else moves), where it takes the home-indicator inset once
+   (--sf-dock-inset, shell/dock.tsx).
+   The assistant launcher follows both (assistant/launcher-lift.ts). */
+.gtrack {
+  display: flex;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.gtrack::-webkit-scrollbar {
+  display: none;
+}
+.gtrack:focus-visible {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: -3px;
+}
+.gslide {
+  flex: 0 0 100%;
+  min-inline-size: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.gslide img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+}
+.gcount {
+  position: absolute;
+  inset-inline-end: 12px;
+  inset-block-end: 12px;
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-ink);
+  color: var(--sf-white);
+  font: 700 calc(13px * var(--fs)) / calc(20px * var(--fs)) var(--sf-font-body);
+  pointer-events: none;
+}
+.acc-sum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+.acc-sum::-webkit-details-marker {
+  display: none;
+}
+.acc-sum .ico {
+  flex: none;
+  inline-size: 20px;
+  block-size: 20px;
+  color: var(--sf-teal);
+  transform: rotate(90deg);
+}
+.acc[open] > .acc-sum .ico {
+  transform: rotate(-90deg);
+}
+/* From 700px the section is a heading with its content, always open. */
+@media (min-width: 700px) {
+  .acc-sum {
+    pointer-events: none;
+    cursor: default;
+  }
+  .acc-sum .ico,
+  .gcount {
+    display: none;
+  }
+}
+@media (max-width: 699.98px) {
+  .gmain {
+    aspect-ratio: 4 / 3;
+  }
+  .gth {
+    display: none;
+  }
+  .acc {
+    border-block-end: 1px solid var(--sf-line);
+  }
+  .sec .acc h2,
+  .sec .acc h3 {
+    margin: 0;
+    font-size: calc(18px * var(--fs));
+    line-height: calc(24px * var(--fs));
+    font-weight: 800;
+  }
+  .acc-sum {
+    min-block-size: 44px;
+  }
+  .acc-panel {
+    padding-block-end: 16px;
+  }
+  .desc {
+    text-align: start;
+  }
+  /* The collapsible is the disclosure: the description is not also clamped. */
+  .acc .desc.clamp {
+    display: block;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    mask-image: none;
+  }
+  .acc .dmore {
+    display: none;
+  }
+  :root[data-tabbar='hidden'] .tabbar {
+    transform: translateY(100%);
+    visibility: hidden;
+  }
+  /* The dock keeps its box (and z-index above the buy bar) while the bar is away: taps go through. */
+  :root[data-tabbar='hidden'] .dock {
+    pointer-events: none;
+    /* The slid-away bar must not make the page longer. */
+    overflow: clip;
+  }
+  /* Nothing sticks over the bottom edge but the buy bar, which brings its own room. */
+  :root[data-tabbar='hidden'] {
+    scroll-padding-bottom: 0;
+  }
+  /* Down to the bottom edge (14px and the inset, once) from above the tab bar. Only the sticky
+     offset changes, so nothing else moves, and a bar already released at the end of its section
+     stays where it is. */
+  :root[data-tabbar='hidden'] .buybar {
+    bottom: calc(14px + var(--sf-dock-inset, env(safe-area-inset-bottom, 0px)));
+  }
+}
+@media (max-width: 699.98px) and (prefers-reduced-motion: no-preference) {
+  .tabbar {
+    transition:
+      transform 200ms ease,
+      visibility 0s;
+  }
+  :root[data-tabbar='hidden'] .tabbar {
+    transition:
+      transform 200ms ease,
+      visibility 0s linear 200ms;
+  }
+  .buybar {
+    transition: bottom 200ms ease;
+  }
+  .aslaunch {
+    transition: bottom 200ms ease;
+  }
+}
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
+:root[data-keyboard='open'] .buybar {
+  display: none;
 }

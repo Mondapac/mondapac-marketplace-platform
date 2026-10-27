@@ -9,7 +9,28 @@ import {
   SELLER_RATE_REPOSITORY,
   type SellerRateRepository,
 } from '../application/ports/seller-rate.repository';
+import {
+  ELIGIBILITY_ANCHOR_REPOSITORY,
+  type EligibilityAnchorRepository,
+} from '../application/ports/eligibility-anchor.repository';
+import {
+  PAYOUT_HOLD_REPOSITORY,
+  type PayoutHoldRepository,
+} from '../application/ports/payout-hold.repository';
+import {
+  PAYOUT_TERMS_POLICY,
+  type PayoutTermsPolicy,
+} from '../application/ports/payout-terms-policy';
+import {
+  PAYOUT_TERMS_REPOSITORY,
+  type PayoutTermsRepository,
+} from '../application/ports/payout-terms.repository';
+import { PAYOUT_TERMS_RESOLVER, PayoutTermsResolver } from '../application/payout-terms-resolver';
 import { ConfigCommissionPolicy } from './config-commission-policy';
+import { ConfigPayoutTermsPolicy } from './config-payout-terms-policy';
+import { PrismaEligibilityAnchorRepository } from './prisma-eligibility-anchor.repository';
+import { PrismaPayoutHoldRepository } from './prisma-payout-hold.repository';
+import { PrismaPayoutTermsRepository } from './prisma-payout-terms.repository';
 import { PrismaLedgerRepository } from './prisma-ledger.repository';
 import { PrismaSellerRateRepository } from './prisma-seller-rate.repository';
 import { SellersSellerDirectory } from './sellers-seller-directory';
@@ -31,6 +52,36 @@ export const commissionPayoutsProviders: readonly FactoryProvider[] = [
     provide: COMMISSION_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): CommissionPolicy => new ConfigCommissionPolicy(markets),
+  },
+  {
+    provide: PAYOUT_TERMS_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PayoutTermsRepository =>
+      new PrismaPayoutTermsRepository(prisma),
+  },
+  {
+    provide: ELIGIBILITY_ANCHOR_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): EligibilityAnchorRepository =>
+      new PrismaEligibilityAnchorRepository(prisma),
+  },
+  {
+    provide: PAYOUT_HOLD_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PayoutHoldRepository =>
+      new PrismaPayoutHoldRepository(prisma),
+  },
+  {
+    provide: PAYOUT_TERMS_POLICY,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): PayoutTermsPolicy =>
+      new ConfigPayoutTermsPolicy(markets),
+  },
+  {
+    provide: PAYOUT_TERMS_RESOLVER,
+    inject: [PAYOUT_TERMS_POLICY, PAYOUT_TERMS_REPOSITORY],
+    useFactory: (policy: PayoutTermsPolicy, overrides: PayoutTermsRepository) =>
+      new PayoutTermsResolver(policy, overrides),
   },
   {
     provide: SELLER_DIRECTORY,

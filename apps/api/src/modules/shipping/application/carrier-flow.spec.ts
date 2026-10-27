@@ -40,6 +40,7 @@ import { BookCarrierDelivery } from './use-cases/book-carrier-delivery.use-case'
 import { CancelCarrierDelivery } from './use-cases/cancel-carrier-delivery.use-case';
 import { CarrierShipmentQuery } from './use-cases/carrier-shipment.use-case';
 import { ReceiveCarrierWebhook } from './use-cases/receive-carrier-webhook.use-case';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 
 // The `real_time_delivery` flows in memory on both Market fixtures (AU: Mondapac Drive around
 // greater-brisbane; ZZ: "Zed Courier" in zz-central only): the strategy, one booking per seller
@@ -115,6 +116,7 @@ describe.each([
   let pickups: FakePickups;
   let written: PendingEvent[];
   let deps: ShippingDependencies;
+  let securityEvents: RecordingSecurityEvents;
 
   const pickup: CarrierStop = {
     contactName: 'Test Halal Butcher',
@@ -146,6 +148,7 @@ describe.each([
   };
 
   beforeEach(() => {
+    securityEvents = new RecordingSecurityEvents();
     clock = new FixedClock(T0);
     bookings = new MemoryBookings();
     carrier = new FakeCarrier(() => deps.carrierPolicy as ConfigCarrierPolicy);
@@ -187,6 +190,7 @@ describe.each([
       ledger: undefined as never,
       pickups,
       webhookSignature: undefined as never,
+      securityEvents,
     };
     withSecrets(true);
   });
@@ -415,6 +419,11 @@ describe.each([
       const old = webhook('PICKED_UP');
       clock.advance(Temporal.Duration.from({ minutes: 6 }));
       expect(await receive(old)).toEqual(err({ code: 'shipping.signature-invalid' }));
+      // Both failures are security events (SOC package 1).
+      expect(securityEvents.events.map((event) => [event.type, event.payload])).toEqual([
+        ['shipping.webhook-signature.failed', { carrier: 'mondapac-drive' }],
+        ['shipping.webhook-signature.failed', { carrier: 'mondapac-drive' }],
+      ]);
       expect(
         await receive(webhook('PICKED_UP', { marketId: code === 'AU' ? 'ZZ' : 'AU' })),
       ).toEqual(err({ code: 'shipping.event-refused' }));

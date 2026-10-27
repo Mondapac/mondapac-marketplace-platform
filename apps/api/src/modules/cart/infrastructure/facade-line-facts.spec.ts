@@ -1,10 +1,16 @@
 import { err, money, ok, parseId } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
-import type { CatalogFacade, OfferSellUnits } from '../../catalog';
+import {
+  sellUnitKey,
+  type CatalogFacade,
+  type OfferSellUnits,
+  type SellUnitKey,
+} from '../../catalog';
 import type { InventoryFacade, SellUnitAvailability } from '../../inventory';
 import type { EffectivePrice, PricingFacade } from '../../pricing';
 import type { SellersFacade } from '../../sellers';
+import type { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { verdictKey } from '../application/ports/line-facts';
 import { FacadeLineFacts } from './facade-line-facts';
 
@@ -23,9 +29,15 @@ const ref = { offerId: OFFER, variantId: VARIANT };
 const key = verdictKey(ref);
 
 describe.each([
-  ['AU', 'AUD'],
-  ['ZZ', 'JPY'],
-] as const)('cart line facts in market %s', (code, currency) => {
+  ['AU', 'AUD', 'en-AU'],
+  ['ZZ', 'JPY', 'ja-JP'],
+] as const)('cart line facts in market %s', (code, currency, locale) => {
+  const markets = {
+    get: (marketId: string) => {
+      if (marketId !== code) throw new Error('another Market');
+      return { defaultLocale: locale };
+    },
+  } as unknown as MarketRegistry;
   const context = testCallContext(
     testMarketContext(code, 'default'),
     'anonymous',
@@ -94,7 +106,7 @@ describe.each([
       },
     } as unknown as InventoryFacade;
     return {
-      facts: new FacadeLineFacts(catalog, sellers, pricing, inventory),
+      facts: new FacadeLineFacts(catalog, sellers, pricing, inventory, markets),
       calls,
     };
   }
@@ -186,6 +198,7 @@ describe.each([
         { sellerSummaries: answer } as unknown as SellersFacade,
         {} as PricingFacade,
         {} as InventoryFacade,
+        markets,
       );
 
     it('maps an explicit none, a Money, and an absent key to none, minimum and unknown', async () => {
@@ -228,6 +241,112 @@ describe.each([
       await facts.sellerMinimums(context, [...many, ...many]);
 
       expect(calls.sort()).toEqual([100, 50]);
+    });
+  });
+
+  describe('lineDisplays (cart design 6.2)', () => {
+    const OTHER_VARIANT = id<'Variant'>(8);
+    const PRODUCT = id<'Product'>(4);
+    const IMAGE = id(10);
+    const listing = {
+      sellerId: SELLER,
+      productId: PRODUCT,
+      publishedRevisionId: id<'ProductRevision'>(11),
+      listed: true,
+      variantBelongs: true,
+      productName: 'Lamb mince',
+      variantLabel: '500 g',
+      primaryImageId: IMAGE,
+      tags: [],
+    };
+    const withListings = (
+      answer: (context: unknown, keys: SellUnitKey[], locale: string) => Promise<unknown>,
+    ) =>
+      new FacadeLineFacts(
+        { offerListings: answer } as unknown as CatalogFacade,
+        {} as SellersFacade,
+        {} as PricingFacade,
+        {} as InventoryFacade,
+        markets,
+      );
+
+    it("answers each listed unit's name, label and image, in the Market's default locale", async () => {
+      const asked: string[] = [];
+      const facts = withListings((_context, keys, askedLocale) => {
+        asked.push(askedLocale);
+        return Promise.resolve(ok(new Map([[sellUnitKey(keys[0]!), listing]])));
+      });
+
+      const displays = await facts.lineDisplays(context, [
+        ref,
+        { offerId: OFFER, variantId: OTHER_VARIANT },
+      ]);
+
+      expect(asked).toEqual([locale]);
+      expect([...displays]).toEqual([
+        [
+          key,
+          { productId: PRODUCT, productName: 'Lamb mince', variantLabel: '500 g', imageId: IMAGE },
+        ],
+      ]);
+    });
+
+    it.each([
+      ['a refused call', () => Promise.resolve(err({ code: 'access.denied' } as never))],
+      ['a thrown call', () => Promise.reject(new Error('down'))],
+    ])('answers no display on %s', async (_name, answer) => {
+      expect((await withListings(answer).lineDisplays(context, [ref])).size).toBe(0);
+    });
+
+    it('asks nobody for no units, and once per 200 distinct units', async () => {
+      const calls: number[] = [];
+      const facts = withListings((_context, keys) => {
+        calls.push(keys.length);
+        return Promise.resolve(ok(new Map()));
+      });
+      const many = Array.from({ length: 250 }, (_, n) => ({
+        offerId: id<'Offer'>(2000 + n),
+        variantId: VARIANT,
+      }));
+
+      await facts.lineDisplays(context, []);
+      await facts.lineDisplays(context, [...many, ...many]);
+
+      expect(calls.sort()).toEqual([200, 50]);
+    });
+  });
+
+  describe('sellerNames', () => {
+    const OTHER = id<'Seller'>(6);
+    const THIRD = id<'Seller'>(7);
+    const withSummaries = (answer: () => Promise<unknown>) =>
+      new FacadeLineFacts(
+        {} as CatalogFacade,
+        { sellerSummaries: answer } as unknown as SellersFacade,
+        {} as PricingFacade,
+        {} as InventoryFacade,
+        markets,
+      );
+
+    it('answers the approved store names and leaves the rest out', async () => {
+      const names = await withSummaries(() =>
+        Promise.resolve(
+          ok([
+            { sellerId: SELLER, exists: true, storeName: 'Halal Corner' },
+            { sellerId: OTHER, exists: true, storeName: null },
+            { sellerId: THIRD, exists: false, storeName: null },
+          ]),
+        ),
+      ).sellerNames(context, [SELLER, OTHER, THIRD]);
+
+      expect([...names]).toEqual([[SELLER, 'Halal Corner']]);
+    });
+
+    it.each([
+      ['a refused call', () => Promise.resolve(err({ code: 'access.denied' } as never))],
+      ['a thrown call', () => Promise.reject(new Error('down'))],
+    ])('answers no name on %s', async (_name, answer) => {
+      expect((await withSummaries(answer).sellerNames(context, [SELLER])).size).toBe(0);
     });
   });
 });

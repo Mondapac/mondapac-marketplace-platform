@@ -2,6 +2,7 @@ import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { OrderingDependencies } from './checkout-flow';
 import type { SellerOrderRecord } from './ports/order.repository';
+import type { RefundForLedger } from './ports/refund.repository';
 
 // Paid seller orders go into the seller ledger (commission-payouts, Phase 5 package 5) from the
 // worker, not from the payment path: a confirmed order never waits for, or fails on, the ledger.
@@ -82,6 +83,107 @@ export async function recordLedger(
       return ok(true as const);
     });
     recorded += 1;
+  }
+  return ok({ recorded, failed, stuck });
+}
+
+// Succeeded refunds go into the seller ledger the same way (Phase 5 package 6a): the worker takes
+// the succeeded refunds not yet recorded, whose seller order's own paid facts are in the ledger
+// (the others wait), and sends commission-payouts the ids and numbers it needs; the amounts come
+// from the ledger rows there, never from a price here. Whatever the answer (rows written,
+// already written, or nothing to post for a platform-borne refund), the refund is then marked
+// handled. A refusal is counted on the refund and reported once at the threshold.
+
+export interface RefundLedgerRecording {
+  readonly recorded: number;
+  readonly failed: readonly { readonly refundId: string; readonly code: string }[];
+  /** Refunds whose refusals just reached the threshold: ids, count and code only. */
+  readonly stuck: readonly {
+    readonly refundId: string;
+    readonly attempts: number;
+    readonly code: string;
+  }[];
+}
+
+/** `record-refund-ledger`: writes up to 20 succeeded refunds into the seller ledger. */
+export async function recordRefundLedger(
+  deps: OrderingDependencies,
+  context: CallContext,
+): Promise<Result<RefundLedgerRecording, never>> {
+  const pending = await deps.unitOfWork.run<readonly RefundForLedger[], never>(
+    context.market,
+    async () => ok(await deps.refunds.findUnrecordedLedger(context.market, LEDGER_BATCH)),
+    { readOnly: true },
+  );
+  if (!pending.ok) return pending;
+  let recorded = 0;
+  const failed: { refundId: string; code: string }[] = [];
+  const stuck: { refundId: string; attempts: number; code: string }[] = [];
+  const refuse = async (refundId: Id<'Refund'>, code: string) => {
+    failed.push({ refundId, code });
+    const counted = await deps.unitOfWork.run<number, never>(context.market, async () =>
+      ok(await deps.refunds.countLedgerFailure(context.market, refundId)),
+    );
+    if (counted.ok && counted.value === LEDGER_STUCK_ATTEMPTS) {
+      stuck.push({ refundId, attempts: counted.value, code });
+    }
+  };
+  const handled = async (refundId: Id<'Refund'>) => {
+    const at = deps.clock.now();
+    await deps.unitOfWork.run<true, never>(context.market, async () => {
+      await deps.refunds.markLedgerRecorded(context.market, refundId, at);
+      return ok(true as const);
+    });
+    recorded += 1;
+  };
+  for (const item of pending.value) {
+    const { refund } = item;
+    // A seller order that never reached the ledger has nothing to reverse.
+    if (item.sellerOrderLedgerState === 'not-applicable') {
+      await handled(refund.id);
+      continue;
+    }
+    if (item.sellerOrderLedgerState !== 'recorded' || refund.settledAt === null) continue;
+    if (refund.shipping !== null && item.shippingCharge === null) {
+      await refuse(refund.id, 'ordering.refund-shipping-unknown');
+      continue;
+    }
+    // A fully discounted line wrote no ledger rows (the paid flow skips a zero line amount), so
+    // there is nothing of it to reverse: it is left out of the facts. Commission-payouts stays
+    // strict about any other line it cannot find.
+    const lines = refund.lines.filter((line) => !item.freeLines.has(line.orderLineId));
+    if (lines.length === 0 && refund.shipping === null) {
+      await handled(refund.id);
+      continue;
+    }
+    const done = await deps.commission.recordRefund(context, {
+      refundId: refund.id,
+      orderId: refund.orderId,
+      sellerOrderId: refund.sellerOrderId,
+      sellerId: refund.sellerId,
+      currency: refund.currency,
+      lossBearer: refund.lossBearer,
+      settledAt: refund.settledAt,
+      lines: lines.map((line) => ({
+        orderLineId: line.orderLineId,
+        lineQuantity: line.lineQuantity,
+        unitsBefore: line.unitsBefore,
+        units: line.quantity,
+      })),
+      shipping:
+        refund.shipping === null
+          ? null
+          : {
+              refundedBefore: refund.shipping.before,
+              refundedAfter: refund.shipping.before + refund.shipping.gross,
+              charge: item.shippingCharge!,
+            },
+    });
+    if (!done.ok) {
+      await refuse(refund.id, done.error.code);
+      continue;
+    }
+    await handled(refund.id);
   }
   return ok({ recorded, failed, stuck });
 }

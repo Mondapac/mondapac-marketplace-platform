@@ -54,6 +54,30 @@ export class AvailabilityView {
   onlyLeft!: number | null;
 }
 
+export class LineDisplayView {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The published product name in the Market's default locale; seller text.",
+  })
+  productName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'The published Variant label.' })
+  variantLabel!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      'The first clean image of the published revision, served at ' +
+      'catalog/public-images/:market/:productId/:imageId/:size.',
+  })
+  imageId!: string | null;
+}
+
 export class CartLineView {
   @ApiProperty({ format: 'uuid' }) lineId!: string;
   @ApiProperty({ format: 'uuid' }) offerId!: string;
@@ -84,6 +108,13 @@ export class CartLineView {
 
   @ApiProperty({ type: AvailabilityView, nullable: true })
   availability!: AvailabilityView | null;
+
+  @ApiProperty({
+    type: LineDisplayView,
+    nullable: true,
+    description: 'Null when catalog has no published listing for the unit (or did not answer).',
+  })
+  display!: LineDisplayView | null;
 }
 
 export class MinimumOrderStateView {
@@ -108,6 +139,13 @@ export class MinimumOrderStateView {
 export class SellerGroupView {
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   sellerId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The public store name ("Sold by"); null when unknown or not answered.',
+  })
+  sellerName!: string | null;
 
   @ApiProperty({ type: MoneyView, nullable: true })
   subtotal!: MoneyView | null;
@@ -176,6 +214,12 @@ export class SavedItemBody {
 
   @ApiProperty({ type: AvailabilityView, nullable: true })
   availability!: AvailabilityView | null;
+
+  @ApiProperty({ type: LineDisplayView, nullable: true })
+  display!: LineDisplayView | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'The public store name.' })
+  sellerName!: string | null;
 }
 
 export class SavedListView {

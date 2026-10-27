@@ -49,6 +49,8 @@ export interface AddressRepository {
     accountId: Id<'Account'>,
     id: Id<'CustomerAddress'>,
   ): Promise<boolean>;
+  /** Deletes every address of the account (account deletion); answers how many. Safe to repeat. */
+  removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<number>;
 }
 
 export const ADDRESS_REPOSITORY = Symbol('ADDRESS_REPOSITORY');

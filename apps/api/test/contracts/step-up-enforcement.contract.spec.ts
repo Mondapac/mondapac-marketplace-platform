@@ -1,10 +1,13 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CATALOG_STEP_UP_ACTIONS } from '../../src/modules/catalog/contracts/step-up';
+import { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from '../../src/modules/commission-payouts/contracts/step-up';
+import { CUSTOMERS_STEP_UP_ACTIONS } from '../../src/modules/customers/contracts/step-up';
 import { IDENTITY_STEP_UP_ACTIONS } from '../../src/modules/identity/contracts/step-up';
 import { PAYMENTS_STEP_UP_ACTIONS } from '../../src/modules/payments/contracts/step-up';
 import { PRICING_STEP_UP_ACTIONS } from '../../src/modules/pricing/contracts/step-up';
 import { SELLERS_STEP_UP_ACTIONS } from '../../src/modules/sellers/contracts/step-up';
+import { WALLET_STEP_UP_ACTIONS } from '../../src/modules/wallet/contracts/step-up';
 
 // Every step-up action is either guarded by `@RequiresStepUp` on a route, or listed here with the
 // use case that spends a code in the request itself. A typo in a decorator key would otherwise
@@ -27,10 +30,13 @@ function controllerFiles(dir: string): string[] {
 describe('step-up enforcement contract', () => {
   const registered = [
     ...CATALOG_STEP_UP_ACTIONS,
+    ...COMMISSION_PAYOUTS_STEP_UP_ACTIONS,
+    ...CUSTOMERS_STEP_UP_ACTIONS,
     ...IDENTITY_STEP_UP_ACTIONS,
     ...PAYMENTS_STEP_UP_ACTIONS,
     ...PRICING_STEP_UP_ACTIONS,
     ...SELLERS_STEP_UP_ACTIONS,
+    ...WALLET_STEP_UP_ACTIONS,
   ].map((action) => action.key);
   const used = new Set(
     controllerFiles(sourceRoot).flatMap((file) =>

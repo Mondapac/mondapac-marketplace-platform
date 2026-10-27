@@ -1,0 +1,255 @@
+import { createHash } from 'node:crypto';
+import { err, ok } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type { StepUpRefusal } from '../../../platform/authz';
+import {
+  StaleAggregateError,
+  TransactionConflictError,
+} from '../../../platform/unit-of-work/errors';
+import { ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP } from '../contracts/step-up';
+import {
+  DEFAULT_ACCOUNT_DELETION_SETTINGS,
+  parseAccountDeletionSettings,
+  parseChangeReason,
+  sameSettings,
+  type AccountDeletionSettings,
+  type FieldError,
+} from '../domain/account-deletion-settings';
+import { AccountDeletionSettingsChanged } from '../domain/audit';
+import { AccountDeletionSettingsChangedEvent } from '../domain/events';
+import type { CustomersDependencies } from './customers-dependencies';
+import type { AccountDeletionSettingsRepository } from './ports/account-deletion-settings.repository';
+
+export type AccountDeletionSettingsFailure =
+  | { readonly code: 'access.denied' }
+  | { readonly code: 'validation.failed'; readonly fields: readonly FieldError[] }
+  /** Another admin changed the setting first; the screen reloads and tries again. */
+  | { readonly code: 'customers.conflict' }
+  /** The admin has no fresh two-step proof for the change: verify one, then repeat. */
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  /** The admin has no active two-step: set it up first. */
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string }
+  | { readonly code: 'access.unavailable' };
+
+/** Account deletion is switched off in this Market (package 2 maps it to HTTP 403). */
+export type AccountDeletionDisabled = {
+  readonly code: 'customers.account-deletion-disabled';
+};
+
+/** What the admin screen reads. */
+export interface AccountDeletionSettingsView {
+  /** 0 while the built-in defaults are in force. */
+  readonly version: number;
+  readonly settings: AccountDeletionSettings;
+}
+
+/** What the buyer's own screens read: the one fact and the one number they need. */
+export interface AccountDeletionAvailability {
+  readonly canDeleteAccount: boolean;
+  readonly waitingPeriodDays: number;
+}
+
+/** Fixed namespace of the settings aggregate's id; never change it (consumers key on the id). */
+const AGGREGATE_NAMESPACE = 'customers.account-deletion-settings.v1';
+
+/**
+ * The one aggregate id of a Market's account deletion setting: the same for every version, so a
+ * consumer orders the versions of one Market (ADR-0006 decision 3) and the outbox's unique
+ * (market, aggregate, version) key catches a duplicate. Derived from the Market id under a fixed
+ * namespace (SHA-256, shaped as a UUID v7 as every id is); a different Market gets a different id.
+ */
+export function accountDeletionSettingsAggregateId(
+  market: MarketContext,
+): Id<'AccountDeletionSettings'> {
+  const bytes = createHash('sha256')
+    .update(`${AGGREGATE_NAMESPACE}:${market.marketId}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x70;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as Id<'AccountDeletionSettings'>;
+}
+
+/** Whether the actor is an acting-as session (Login as Seller): the reserved marker on the actor. */
+export function isActingAs(context: CallContext): boolean {
+  const actor = context.actor;
+  if (!Object.hasOwn(actor, 'actingAs')) return false;
+  const marker = (actor as { readonly actingAs?: unknown }).actingAs;
+  return marker !== null && marker !== undefined;
+}
+
+/** identity's refusal of the step-up, as the change answers it; anything else stays closed. */
+function stepUpFailure(refusal: StepUpRefusal): AccountDeletionSettingsFailure {
+  if (
+    refusal.code === 'second-factor.required' ||
+    refusal.code === 'second-factor.enrolment-required'
+  ) {
+    return { code: refusal.code, actionKey: refusal.actionKey };
+  }
+  return { code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied' };
+}
+
+const isAdmin = (context: CallContext): boolean =>
+  context.actor.kind === 'authenticated' && context.actor.population === 'admin';
+
+async function current(
+  settings: AccountDeletionSettingsRepository,
+  market: MarketContext,
+): Promise<AccountDeletionSettingsView> {
+  const latest = await settings.latest(market);
+  return latest === null
+    ? { version: 0, settings: DEFAULT_ACCOUNT_DELETION_SETTINGS }
+    : { version: latest.version, settings: latest.settings };
+}
+
+const snapshot = (view: AccountDeletionSettingsView) => ({
+  version: view.version,
+  enabled: view.settings.enabled,
+  waitingPeriodDays: view.settings.waitingPeriodDays,
+});
+
+/** The setting in force: the newest admin version, else the built-in defaults. */
+export async function viewAccountDeletionSettings(
+  deps: CustomersDependencies,
+  context: CallContext,
+): Promise<Result<AccountDeletionSettingsView, AccountDeletionSettingsFailure>> {
+  if (!isAdmin(context)) return err({ code: 'access.denied' });
+  return deps.unitOfWork.run<AccountDeletionSettingsView, AccountDeletionSettingsFailure>(
+    context.market,
+    async () => ok(await current(deps.accountDeletionSettings, context.market)),
+    { readOnly: true },
+  );
+}
+
+/**
+ * An admin replaces the setting from the version they saw, with a reason and a fresh admin
+ * step-up proof (`customers.account-deletion-settings.change`, spent in the unit of the change, as
+ * the wallet switch does). Each change is a new
+ * version in the insert-only history (with the reason), an audit row and an outbox event, all in
+ * one unit.
+ */
+export async function setAccountDeletionSettings(
+  deps: CustomersDependencies,
+  context: CallContext,
+  input: {
+    readonly settings: unknown;
+    readonly expectedVersion: unknown;
+    readonly reason: unknown;
+  },
+): Promise<Result<AccountDeletionSettingsView, AccountDeletionSettingsFailure>> {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
+    return err({ code: 'access.denied' });
+  }
+  const expected = input?.expectedVersion;
+  const fields: FieldError[] = [];
+  if (typeof expected !== 'number' || !Number.isSafeInteger(expected) || expected < 0) {
+    fields.push({ path: 'expectedVersion', code: 'range' });
+  }
+  const parsed = parseAccountDeletionSettings(input?.settings);
+  if (!parsed.ok) fields.push(...parsed.error);
+  const reason = parseChangeReason(input?.reason);
+  if (!reason.ok) fields.push(reason.error);
+  if (fields.length > 0 || !parsed.ok || !reason.ok) {
+    return err({ code: 'validation.failed', fields });
+  }
+  const next = parsed.value;
+
+  const now = deps.clock.now();
+  try {
+    return await deps.unitOfWork.run<AccountDeletionSettingsView, AccountDeletionSettingsFailure>(
+      context.market,
+      async () => {
+        const before = await current(deps.accountDeletionSettings, context.market);
+        // The screen saved from an older version: another admin changed the setting meanwhile.
+        if (expected !== before.version) return err({ code: 'customers.conflict' } as const);
+        // The same values again change nothing: no new version, no audit row, no event.
+        if (sameSettings(before.settings, next)) return ok(before);
+
+        // The admin step-up, spent here and only here (ADR-0018: authorization in the use case), in
+        // the unit of the change: one proof serves one change, and a refusal commits nothing.
+        const spent = await deps.stepUp.consume(context, ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP);
+        if (!spent.ok) return err(stepUpFailure(spent.error));
+
+        const version = before.version + 1;
+        const written = await deps.accountDeletionSettings.append(context.market, {
+          version,
+          settings: next,
+          changedAt: now,
+          changedBy: actor.accountId,
+          reason: reason.value,
+        });
+        if (!written) return err({ code: 'customers.conflict' } as const);
+        const after: AccountDeletionSettingsView = { version, settings: next };
+        await deps.audit.record(
+          context,
+          AccountDeletionSettingsChanged.entry('account-deletion-settings', {
+            before: snapshot(before),
+            after: {
+              ...snapshot(after),
+              stepUpSessionId: spent.value.sessionId,
+              stepUpVerifiedAt: spent.value.verifiedAt,
+            },
+          }),
+        );
+        await deps.outbox.append(context, [
+          AccountDeletionSettingsChangedEvent.record({
+            aggregateId: accountDeletionSettingsAggregateId(context.market),
+            aggregateVersion: version,
+            occurredAt: now,
+            payload: {
+              previousEnabled: before.settings.enabled,
+              enabled: next.enabled,
+              previousWaitingPeriodDays: before.settings.waitingPeriodDays,
+              waitingPeriodDays: next.waitingPeriodDays,
+            },
+          }),
+        ]);
+        return ok(after);
+      },
+      // Serializable, like the deletion request that reads the setting: the two are ordered one
+      // way or the other, and two changes from the same version cannot both commit.
+      { isolation: 'serializable' },
+    );
+  } catch (error) {
+    if (error instanceof TransactionConflictError || error instanceof StaleAggregateError) {
+      return err({ code: 'customers.conflict' });
+    }
+    throw error;
+  }
+}
+
+/** What a signed-in buyer may know: whether deleting is on, and how long a request waits. */
+export async function viewAccountDeletionAvailability(
+  deps: CustomersDependencies,
+  context: CallContext,
+): Promise<Result<AccountDeletionAvailability, never>> {
+  return deps.unitOfWork.run<AccountDeletionAvailability, never>(
+    context.market,
+    async () => {
+      const { settings } = await current(deps.accountDeletionSettings, context.market);
+      return ok({
+        canDeleteAccount: settings.enabled,
+        waitingPeriodDays: settings.waitingPeriodDays,
+      });
+    },
+    { readOnly: true },
+  );
+}
+
+/**
+ * The guard package 2's deletion request calls first, inside its own unit of work: refuses with
+ * `customers.account-deletion-disabled` (HTTP 403) when the Market has switched deletion off,
+ * else answers the waiting period in force. The Market comes from the caller's context, never
+ * from the request. A request already pending keeps running when the setting is switched off:
+ * only starting a new one is guarded.
+ */
+export async function assertAccountDeletionAllowed(
+  settings: AccountDeletionSettingsRepository,
+  market: MarketContext,
+): Promise<Result<{ readonly waitingPeriodDays: number }, AccountDeletionDisabled>> {
+  const { settings: inForce } = await current(settings, market);
+  if (!inForce.enabled) return err({ code: 'customers.account-deletion-disabled' });
+  return ok({ waitingPeriodDays: inForce.waitingPeriodDays });
+}
