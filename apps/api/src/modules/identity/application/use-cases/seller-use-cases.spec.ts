@@ -991,6 +991,46 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
       });
     });
 
+    it('gives no address for a disabled account, an unverified email or a failed read', async () => {
+      const s = setUp();
+      await registered(s);
+      approve(s);
+      const owner = account(s);
+
+      // A disabled account is refused by the gate before the read.
+      s.fakes.seedAccount({ ...owner, status: 'disabled' });
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      s.fakes.seedAccount({ ...owner, emailVerifiedAt: null });
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toEqual({
+        ok: true,
+        value: null,
+      });
+      s.fakes.seedAccount(owner);
+      jest.spyOn(s.fakes.accountRepository, 'findById').mockRejectedValueOnce(new Error('down'));
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toMatchObject({
+        ok: false,
+      });
+    });
+
+    it('refuses an acting-as (Login as Seller) session', async () => {
+      const s = setUp();
+      await registered(s);
+      approve(s);
+      const context = actorOf(s);
+      const actingAs = {
+        ...context,
+        actor: { ...context.actor, actingAs: { accountId: account(s).id } },
+      } as unknown as typeof context;
+
+      await expect(s.ownOwnerEmail.execute(actingAs, {})).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
     it('is denied to a seller that is not approved, another seller, the system and anonymous', async () => {
       const s = setUp();
       await registered(s);

@@ -31,6 +31,7 @@ const gateway = new StripeConnectGateway(key, async (url, init) => {
 });
 const report = new Report('F-3: platform sets an Express payout schedule (Stripe test mode)');
 const run = randomUUID();
+const startedAt = Math.floor(Date.now() / 1000);
 
 // Created by the gateway the API ships (Accounts v2), as a seller's payout account is. The
 // contact email is a reserved test address, not a person's.
@@ -113,6 +114,51 @@ async function remove(accountId) {
   );
 }
 
+/**
+ * HP-1 re-read trigger (Hassan, review of #544): which events Stripe writes when the schedule is
+ * changed through Balance Settings, on the platform and on the connected account. Recorded, not
+ * asserted: the payments design (4.6) takes the answer from here.
+ */
+async function recordScheduleEvents(accountId) {
+  const since = startedAt - 5;
+  const seen = [];
+  // Stripe writes events within seconds of the change.
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  for (const [scope, headers] of [
+    ['platform', {}],
+    ['connected account', { 'Stripe-Account': accountId }],
+  ]) {
+    const answer = await fetch(`https://api.stripe.com/v1/events?limit=100&created[gte]=${since}`, {
+      headers: { Authorization: `Bearer ${key}`, ...headers },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await answer.json().catch(() => ({}));
+    if (answer.status !== 200) {
+      seen.push(`${scope}: ${stripeError({ status: answer.status, body })}`);
+      continue;
+    }
+    // On the platform, only this account's events; the connected account's list is its own.
+    const types = (body.data ?? [])
+      .filter(
+        (event) =>
+          scope === 'connected account' ||
+          event.account === accountId ||
+          event.data?.object?.id === accountId,
+      )
+      .map((event) => event.type);
+    const counts = {};
+    for (const type of types) counts[type] = (counts[type] ?? 0) + 1;
+    seen.push(
+      `${scope}: ${
+        Object.entries(counts)
+          .map(([type, n]) => `${type} x${n}`)
+          .join(', ') || 'none'
+      }`,
+    );
+  }
+  report.pass('record the events of the schedule changes', seen.join('; '));
+}
+
 /** Manual, back to daily, manual again: each set through the gateway, then read back. */
 async function checkSchedules(accountId) {
   let step = 0;
@@ -134,6 +180,8 @@ async function checkSchedules(accountId) {
       read.ok ? `interval ${read.value.payoutScheduleInterval}` : read.error.code,
     );
   }
+
+  await recordScheduleEvents(accountId);
 
   const balance = await fetch('https://api.stripe.com/v1/balance_settings', {
     headers: { Authorization: `Bearer ${key}`, 'Stripe-Account': accountId },
