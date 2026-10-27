@@ -32,6 +32,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `position`, `scope`, `scopeId`). A fixed path, so `order` is never read as a slide id: the
     // slide route reads a UUID only, and one slide is read by the page server.
     'storefront/admin/slides/order',
+    // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
+    'wallet/admin/settings',
+    'wallet/admin/credit-requests',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -45,6 +48,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The order of the live slides of one position (storefront). A fixed path, so `order` is never
     // read as a slide id: the slide route below takes a UUID only.
     'storefront/admin/slides/order',
+    // The Market's wallet switch (wallet), behind a fresh two-step code.
+    'wallet/admin/settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -68,6 +73,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/admin/notices/read-all',
     // A new storefront slide, as a draft (storefront).
     'storefront/admin/slides',
+    // Admin store credit (wallet), behind a fresh two-step code.
+    'wallet/admin/credits',
+    // A fresh two-step code for one admin action (identity).
+    'identity/admin/step-up/verify',
   ]),
 };
 
@@ -102,6 +111,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id/resume',
     'storefront/admin/slides/:id/archive',
     'storefront/admin/slides/:id/restore',
+    // Approve or reject another admin's credit request (wallet), behind a two-step code.
+    'wallet/admin/credit-requests/:id/approve',
+    'wallet/admin/credit-requests/:id/reject',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -120,6 +132,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
     'storefront/admin/slides/:id/copy',
+    // One customer's wallet and the caller's credit caps (wallet), for the issue screen.
+    'wallet/admin/customers/:id',
   ],
 };
 
@@ -132,9 +146,16 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
+  'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  // The cursor is the API's own: epoch milliseconds, a dot and a request id.
+  'wallet/admin/credit-requests': {
+    status: /^(pending|decided|granted)$/,
+    limit: /^[0-9]{1,3}$/,
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
