@@ -57,6 +57,14 @@ const afterCursor = (page: LedgerPage) =>
 export class PrismaLedgerRepository implements LedgerRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async sellerOfSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    const row = await this.prisma.tx(market).commissionPayoutsLedgerEntry.findFirst({
+      where: { marketId: market.marketId, sellerOrderId },
+      select: { sellerId: true },
+    });
+    return row === null ? null : (row.sellerId as Id<'Seller'>);
+  }
+
   async hasSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     const row = await this.prisma.tx(market).commissionPayoutsLedgerEntry.findFirst({
       where: { marketId: market.marketId, sellerOrderId },

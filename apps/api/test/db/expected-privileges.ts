@@ -476,6 +476,30 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 6b: the inbox is appended to; a seller's payout terms override is set, changed and
+    // removed (back to the Market's terms); an eligibility anchor is written once (a trigger
+    // refuses UPDATE and DELETE); a payout hold is inserted and released (a trigger allows only the
+    // three release columns, once, and refuses DELETE).
+    'commission_payouts.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.payout_terms_overrides': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'approval_mode',
+        'hold_days_carrier',
+        'hold_days_seller_click',
+        'local_minute',
+        'minimum_minor',
+        'schedule_weekdays',
+        'updated_at',
+        'updated_by',
+        'version',
+      ],
+    },
+    'commission_payouts.eligibility_anchors': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.payout_holds': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['release_reason', 'released_at', 'released_by'],
+    },
     // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
     // (triggers refuse more for every role); the rest change only the columns named and are never
     // deleted (a trigger refuses DELETE and TRUNCATE for every role).
