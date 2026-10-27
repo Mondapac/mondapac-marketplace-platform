@@ -46,8 +46,8 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * set or removed, Phase 5 package 5; storefront: page and navigation content changes, publishing
  * and archiving; tax: the admin-defined tax strategies; payments: the payout-account
  * change and pause rows, Phase 5 package 3 leftovers; assistant: the buyer assistant settings
- * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; customers: the account deletion
- * setting change, package 5a).
+ * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
+ * reviews switch, reviews package 1; customers: the account deletion setting change, package 5a).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
@@ -59,6 +59,7 @@ const AUDITING_MODULES = [
   'OrderingModule',
   'PaymentsModule',
   'PricingModule',
+  'ReviewsModule',
   'SellersModule',
   'ShippingModule',
   'StorefrontModule',
@@ -456,6 +457,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['OrderingModule', 'ordering'],
       ['PaymentsModule', 'payments'],
       ['PricingModule', 'pricing'],
+      ['ReviewsModule', 'reviews'],
       ['SellersModule', 'sellers'],
       ['ShippingModule', 'shipping'],
       ['StorefrontModule', 'storefront'],
@@ -500,6 +502,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PaymentsModule', 'writer'],
       ['PricingModule', 'actions'],
       ['PricingModule', 'writer'],
+      ['ReviewsModule', 'actions'],
+      ['ReviewsModule', 'writer'],
       ['SellersModule', 'actions'],
       ['SellersModule', 'writer'],
       ['ShippingModule', 'actions'],
@@ -607,6 +611,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'payments', 'payments.module.ts')}: registerAuditActions('payments')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
+      `${path.join('modules', 'reviews', 'reviews.module.ts')}: auditWriterFor('reviews')`,
+      `${path.join('modules', 'reviews', 'reviews.module.ts')}: registerAuditActions('reviews')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: auditWriterFor('shipping')`,

@@ -37,6 +37,10 @@ export class LateBoundAccountDeletionPeers implements AccountDeletionPeers {
         ? UNAVAILABLE()
         : this.#bound.identity.eraseCustomerAccount(context, accountId),
   };
+  readonly reviews = {
+    detachAuthor: (context: CallContext, accountId: Id<'Account'>) =>
+      this.#bound === null ? UNAVAILABLE() : this.#bound.reviews.detachAuthor(context, accountId),
+  };
   readonly engagement = {
     forgetAccount: (context: CallContext, accountId: Id<'Account'>) =>
       this.#bound === null

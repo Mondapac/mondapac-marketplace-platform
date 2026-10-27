@@ -42,7 +42,12 @@ export interface EngagementPeer {
   forgetAccount(context: CallContext, accountId: Id<'Account'>): Promise<Result<unknown, Failure>>;
 }
 
+export interface ReviewsPeer {
+  detachAuthor(context: CallContext, accountId: Id<'Account'>): Promise<Result<unknown, Failure>>;
+}
+
 export interface AccountDeletionPeers {
+  readonly reviews: ReviewsPeer;
   readonly ordering: OrderingPeer;
   readonly wallet: WalletPeer;
   readonly identity: IdentityPeer;

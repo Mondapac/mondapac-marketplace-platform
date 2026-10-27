@@ -297,11 +297,13 @@ export interface ExecuteAccountDeletionsOutput {
  * step safe to repeat: (1) the blockers again under the system actor, since a buyer may have
  * ordered during the wait (a blocked request stays pending and is asked again next run); (2)
  * identity erases the account (its subject key destroyed, the row, credential, sessions and links
- * deleted; `already-erased` on a re-run); (3) engagement forgets the account; (4) one unit deletes
+ * deleted; `already-erased` on a re-run); (3) engagement forgets the account and reviews detaches
+ * the author of the account's reviews and ratings (they stay as "Former customer", owner decisions
+ * ح6 and ن11); (4) one unit deletes
  * the account's `customers.addresses` rows, closes the request `completed` (only if still
  * pending), and writes the audit row and the outbox event. A failure in a step leaves the request
  * pending, so the next run repeats the steps. Orders, tax invoices and payments stay (ids only).
- * There is no reviews module yet (notes.md). Logs ids and counts only.
+ * Logs ids and counts only.
  */
 export async function executeAccountDeletions(
   deps: AccountDeletionDependencies,
@@ -342,6 +344,11 @@ export async function executeAccountDeletions(
       }
       const forgotten = await deps.engagement.forgetAccount(context, request.accountId);
       if (!forgotten.ok) {
+        failed += 1;
+        continue;
+      }
+      const detached = await deps.reviews.detachAuthor(context, request.accountId);
+      if (!detached.ok) {
         failed += 1;
         continue;
       }

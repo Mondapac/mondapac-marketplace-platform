@@ -1250,6 +1250,18 @@
     }
   },
   {
+    "action": "reviews.market-status.changed",
+    "targetType": "reviews.market-settings",
+    "targetId": "enumOf(reviews-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(off|active)"
+    },
+    "after": {
+      "status": "enumOf(off|active)"
+    }
+  },
+  {
     "action": "sellers.business-details.viewed",
     "targetType": "sellers.seller",
     "targetId": "id",

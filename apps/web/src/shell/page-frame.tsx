@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { useStore } from './store-context.tsx';
 import { from } from './breakpoints.ts';
+import { useCheckoutFocus } from './checkout-focus.tsx';
 
 /**
  * The page behind the overlays. While Browse products, the search view, a listing's filters
@@ -23,6 +24,7 @@ export function PageFrame({ children }: { readonly children: ReactNode }) {
     online,
     deliverOpen,
   } = useStore();
+  const focus = useCheckoutFocus();
   const overlay =
     browseOpen ||
     searchOpen ||
@@ -55,7 +57,12 @@ export function PageFrame({ children }: { readonly children: ReactNode }) {
   }, [searchOpen, setSearchOpen]);
 
   return (
-    <div className="frame" inert={overlay} data-offline={online ? undefined : ''}>
+    <div
+      className="frame"
+      inert={overlay}
+      data-offline={online ? undefined : ''}
+      data-focus={focus ? 'checkout' : undefined}
+    >
       {children}
     </div>
   );

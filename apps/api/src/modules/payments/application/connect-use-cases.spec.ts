@@ -35,6 +35,7 @@ import { OpenPayoutAccountLink } from './use-cases/open-payout-account-link.use-
 import { PayoutReadinessQuery } from './use-cases/payout-readiness.use-case';
 import { ReceiveStripeEvent } from './use-cases/receive-stripe-event.use-case';
 import { ViewPayoutAccount } from './use-cases/view-payout-account.use-case';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 
 // The seller payout account (Stripe Connect Express) in memory on both Market fixtures: one
 // Stripe account per seller created with a stored key, the hosted page, the state kept from
@@ -92,6 +93,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       policy,
       identity: new FakeIdentityFacade(),
       audit: new RecordingPaymentsAudit(),
+      securityEvents: new RecordingSecurityEvents(),
       ids: new SequenceIdGenerator(clock),
       clock,
     };

@@ -124,7 +124,7 @@ the customers barrel.
   system actor). Per due request, each step safe to repeat: blockers again under the system actor
   (a blocked request stays pending and is asked again); `identity.eraseCustomerAccount` (subject
   key destroyed, account row, credential, sessions and links deleted, audit
-  `identity.account.erased`; `already-erased` on a re-run); `engagement.forgetAccount`; then one
+  `identity.account.erased`; `already-erased` on a re-run); `engagement.forgetAccount` and `reviews.detachAuthor` (reviews and ratings stay as "Former customer"); then one
   unit deletes the account's `customers.addresses` rows, closes the request `completed` (only if
   still pending) and writes audit and event. A failing request is logged by class name and left
   pending; the next run repeats it. Orders, tax invoices and payments stay (ids only).
@@ -150,7 +150,6 @@ the customers barrel.
   transactional customer email facade, only events (which carry no address). The three events are
   ready for it; a completed notice also cannot read an address once the key is destroyed, so it
   must be sent before the erase.
-- **No reviews module**: nothing to anonymise yet (owner decisions ح6, ن11 apply when it lands).
 - **No returns or disputes module**: only open orders and pending refunds are blockers.
 - **Market without wallet settings** fails closed (503) because the wallet cannot answer.
 

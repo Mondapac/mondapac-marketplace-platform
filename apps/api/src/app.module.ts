@@ -5,6 +5,7 @@ import type { DestinationStream } from 'pino';
 import { BINDING_MODULES, CORE_MODULES } from './modules';
 import { IdentityModule } from './modules/identity';
 import { AuditModule } from './platform/audit/audit.module';
+import { SecurityEventsModule } from './platform/security-events/security-events.module';
 import { AuthzModule } from './platform/authz/authz.module';
 import { ActorGuard } from './platform/call-context/actor.guard';
 import { CallContextModule } from './platform/call-context/call-context.module';
@@ -74,6 +75,7 @@ export class AppModule {
         SubjectKeysModule,
         EventsModule,
         AuditModule,
+        SecurityEventsModule,
         ExtensionsModule,
         MailModule,
         StorageModule,

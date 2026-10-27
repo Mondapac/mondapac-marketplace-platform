@@ -6,6 +6,7 @@ import type {
   EngagementPeer,
   IdentityPeer,
   OrderingPeer,
+  ReviewsPeer,
   WalletPeer,
 } from './ports/account-deletion-peers';
 import type { AccountDeletionRequestRepository } from './ports/account-deletion-request.repository';
@@ -35,4 +36,6 @@ export interface AccountDeletionDependencies {
   readonly ordering: OrderingPeer;
   /** Forgets the account's behaviour. */
   readonly engagement: EngagementPeer;
+  /** Detaches the author from the account's reviews and ratings (they stay as "Former customer"). */
+  readonly reviews: ReviewsPeer;
 }

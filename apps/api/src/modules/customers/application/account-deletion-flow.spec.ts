@@ -99,6 +99,12 @@ class Facades {
       return Promise.resolve(ok({ code: this.eraseAnswer }));
     },
   };
+  readonly reviews = {
+    detachAuthor: (_context: CallContext, accountId: Id<'Account'>) => {
+      this.calls.push(`reviews.detach:${accountId}`);
+      return Promise.resolve(ok({ reviews: 1, ratings: 1 }));
+    },
+  };
   readonly engagement = {
     forgetAccount: (_context: CallContext, accountId: Id<'Account'>) => {
       this.calls.push(`engagement.forget:${accountId}`);
@@ -201,6 +207,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       wallet: facades.wallet,
       ordering: facades.ordering,
       engagement: facades.engagement,
+      reviews: facades.reviews,
     };
   });
 
@@ -504,6 +511,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
         `wallet.of:${BUYER}`,
         `identity.erase:${BUYER}`,
         `engagement.forget:${BUYER}`,
+        `reviews.detach:${BUYER}`,
       ]);
       expect(await addresses.list(market, BUYER)).toEqual([]);
       expect(await addresses.list(market, OTHER_BUYER)).toHaveLength(1);

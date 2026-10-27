@@ -377,6 +377,9 @@ describe.each(TEST_MARKETS)(
           ownOpenObligations: () => Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 })),
           openObligationsOf: () => Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 })),
         },
+        reviews: {
+          detachAuthor: () => Promise.resolve(ok({ reviews: 0, ratings: 0 })),
+        },
         engagement: {
           forgetAccount: () => Promise.resolve(ok({ events: 0 })),
         },
