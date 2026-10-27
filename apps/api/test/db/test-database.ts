@@ -75,7 +75,9 @@ function exported(
     | 'TEST_WALLET_SWITCH_OWNER_DATABASE_URL'
     | 'TEST_WALLET_CREDIT_DATABASE_URL'
     | 'TEST_WALLET_CREDIT_OWNER_DATABASE_URL'
-    | 'TEST_ORDERING_REFUNDS_DATABASE_URL',
+    | 'TEST_ORDERING_REFUNDS_DATABASE_URL'
+    | 'TEST_SELLERS_LIST_DATABASE_URL'
+    | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -344,4 +346,16 @@ export function walletCreditOwnerTestDatabaseUrl(): string {
  */
 export function orderingRefundsTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_REFUNDS_DATABASE_URL');
+}
+
+/**
+ * The copy that sellers-list.db-spec.ts makes seller files and counts the tabs of whole Markets
+ * on (global-setup.ts), as the application login and as its owner (the owner patches the files).
+ */
+export function sellersListTestDatabaseUrl(): string {
+  return exported('TEST_SELLERS_LIST_DATABASE_URL');
+}
+
+export function sellersListOwnerTestDatabaseUrl(): string {
+  return exported('TEST_SELLERS_LIST_OWNER_DATABASE_URL');
 }
