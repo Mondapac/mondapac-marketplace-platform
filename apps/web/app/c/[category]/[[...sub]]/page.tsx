@@ -33,7 +33,14 @@ import {
   listingIsLive,
   resolveCategory,
 } from '../../../../src/storefront/catalog.ts';
-import { listingNoindex, pageMetadata, seoDescription } from '../../../../src/seo/metadata.ts';
+import { JsonLd } from '../../../../src/seo/json-ld.tsx';
+import {
+  listingNoindex,
+  pageMetadata,
+  requestOrigin,
+  seoDescription,
+} from '../../../../src/seo/metadata.ts';
+import { breadcrumbStructuredData } from '../../../../src/seo/structured-data.ts';
 
 interface Props {
   readonly params: Promise<{ category: string; sub?: string[] }>;
@@ -85,10 +92,11 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   // A phone that pressed Load more has `?through=N`: pages `page` to N are one list.
   const through = throughOf(query, state.page);
   const scope = { category: category.code, ...(child ? { subcategory: child.code } : {}) };
-  const [result, facets, banner] = await Promise.all([
+  const [result, facets, banner, origin] = await Promise.all([
     findProductsThrough({ ...scope, ...state, pageSize: LISTING_PAGE_SIZE }, through),
     listingFacets(scope),
     listingBanner(category.code),
+    requestOrigin(),
   ]);
   const total = result.total ?? 0;
   const pages = Math.ceil(total / LISTING_PAGE_SIZE);
@@ -99,9 +107,25 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     { label: t('browse-products'), browse: true },
   ];
   if (child) trail.push({ label: category.name, href: base });
+  // The visible crumbs as structured data, only on an indexable page (as in generateMetadata: no
+  // filter or other order, not empty) of a listed host. "Browse products" is a panel: left out.
+  const indexable = !listingNoindex(state) && (result.total ?? result.items.length) > 0;
+  const crumbs =
+    origin === undefined || !indexable
+      ? null
+      : breadcrumbStructuredData(
+          [
+            ...trail.flatMap((crumb) =>
+              'href' in crumb ? [{ name: crumb.label, path: crumb.href }] : [],
+            ),
+            { name: title },
+          ],
+          origin,
+        );
 
   return (
     <>
+      <JsonLd data={crumbs} />
       <Crumbs trail={trail} current={title} />
       {banner ? <ListingBannerView banner={banner} /> : null}
       <ResultsHead title={title} {...(result.total === undefined ? {} : { total: result.total })}>
