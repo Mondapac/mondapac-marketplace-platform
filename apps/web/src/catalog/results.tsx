@@ -5,6 +5,9 @@ import { ProductCard } from '../home/product-card.tsx';
 import { Icon } from '../icons/icon.tsx';
 import type { ProductPage } from '../storefront/catalog.ts';
 import { BrowseCrumb } from './browse-crumb.tsx';
+import { LoadMoreGrid } from './load-more-grid.tsx';
+import type { LoadMoreRequest } from './load-more.ts';
+import type { ListingState } from './listing-state.ts';
 
 // The parts the category and search pages share: breadcrumb, heading row, filter chips, the
 // product grid of v29 and the pager. The API gives `hasMore` and no total, so the pager offers
@@ -45,16 +48,27 @@ export function Crumbs({
 export function ResultsHead({
   title,
   crumbs,
+  total,
   children,
 }: {
   readonly title: string;
   readonly crumbs?: ReactNode;
+  /** The number of products, shown beside the title on a phone; left out when unknown. */
+  readonly total?: number;
   readonly children?: ReactNode;
 }) {
+  const t = useTranslations('catalog');
   return (
     <div className="rhead">
       {crumbs}
-      <h1>{title}</h1>
+      {total === undefined ? (
+        <h1>{title}</h1>
+      ) : (
+        <div className="rtitle">
+          <h1>{title}</h1>
+          <span className="hcount num">{t('products-total', { count: total })}</span>
+        </div>
+      )}
       {children}
     </div>
   );
@@ -69,11 +83,19 @@ export function ProductResults({
   hrefFor,
   empty,
   pager,
+  loadMore,
 }: {
   readonly result: ProductPage;
   readonly hrefFor: (page: number) => string;
   readonly empty: ReactNode;
   readonly pager?: ReactNode;
+  /** Gives the phone a "Load more" button; `result` then holds the pages `state.page` to `through`. */
+  readonly loadMore?: {
+    readonly scope: LoadMoreRequest['scope'];
+    readonly state: ListingState;
+    readonly path: string;
+    readonly through: number;
+  };
 }) {
   const t = useTranslations('catalog');
   if (result.items.length === 0) {
@@ -90,39 +112,60 @@ export function ProductResults({
     return empty;
   }
   const previous = result.page > 1;
+  const at = loadMore?.through ?? result.page;
+  const pagerNode =
+    pager !== undefined ? (
+      pager
+    ) : previous || result.hasMore ? (
+      <nav className="pager" aria-label={t('pages')}>
+        {previous ? (
+          <Link href={hrefFor(result.page - 1)} rel="prev">
+            <Icon name="chevl" />
+            {t('previous')}
+          </Link>
+        ) : (
+          <span />
+        )}
+        <span className="at">{t('page', { page: at })}</span>
+        {result.hasMore ? (
+          <Link href={hrefFor(at + 1)} rel="next">
+            {t('next')}
+            <Icon name="chevr" />
+          </Link>
+        ) : (
+          <span />
+        )}
+      </nav>
+    ) : null;
   return (
     <section aria-labelledby="results-heading">
       <h2 id="results-heading" className="sr-only">
         {t('results')}
       </h2>
-      <div className="grid">
-        {result.items.map((p) => (
-          <ProductCard key={p.id} product={p} />
-        ))}
-      </div>
-      {pager !== undefined ? (
-        pager
-      ) : previous || result.hasMore ? (
-        <nav className="pager" aria-label={t('pages')}>
-          {previous ? (
-            <Link href={hrefFor(result.page - 1)} rel="prev">
-              <Icon name="chevl" />
-              {t('previous')}
-            </Link>
-          ) : (
-            <span />
-          )}
-          <span className="at">{t('page', { page: result.page })}</span>
-          {result.hasMore ? (
-            <Link href={hrefFor(result.page + 1)} rel="next">
-              {t('next')}
-              <Icon name="chevr" />
-            </Link>
-          ) : (
-            <span />
-          )}
-        </nav>
-      ) : null}
+      {loadMore ? (
+        <LoadMoreGrid
+          key={`${loadMore.path}|${JSON.stringify(loadMore.state)}|${loadMore.through}`}
+          items={result.items}
+          through={loadMore.through}
+          hasMore={result.hasMore}
+          {...(result.total === undefined ? {} : { total: result.total })}
+          pageSize={result.pageSize}
+          scope={loadMore.scope}
+          state={loadMore.state}
+          path={loadMore.path}
+        >
+          {pagerNode}
+        </LoadMoreGrid>
+      ) : (
+        <>
+          <div className="grid">
+            {result.items.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+          {pagerNode}
+        </>
+      )}
     </section>
   );
 }
