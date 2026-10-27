@@ -26,10 +26,11 @@ export interface DeliveryAnchorOutput {
 }
 
 /**
- * `record-delivery-anchor`, for `ordering.seller-order-delivered.v1`: reads the seller order's
- * delivery from the order (the instant) and shipping (carrier-confirmed when the seller order's
- * carrier booking reached progress `delivered`; every other delivery, the seller's click and a
- * pickup handover included, is `seller-click`), tells commission-payouts, and marks the delivery
+ * `record-delivery-anchor`, for `ordering.seller-order-delivered.v1`: reads the delivery instant
+ * from the order and takes who confirmed it from the event, where it was fixed when the delivery
+ * happened (`carrier` for the carrier's report; the seller's click and a pickup handover are
+ * `seller-click`). It never looks at live shipment state, so a carrier report that arrives after
+ * the seller's click cannot change the source. It tells commission-payouts, and marks the delivery
  * handled in the inbox unit last. commission-payouts writes the anchor once, so a repeat after a
  * crash changes nothing.
  */
@@ -40,12 +41,20 @@ export async function recordDeliveryAnchor(
     readonly delivery: EventDelivery;
     readonly orderId: unknown;
     readonly sellerOrderId: unknown;
+    readonly source: unknown;
   },
 ): Promise<Result<DeliveryAnchorOutput, DeliveryAnchorFailure>> {
   const orderId = typeof input?.orderId === 'string' ? parseId<'Order'>(input.orderId) : null;
   const sellerOrderId =
     typeof input?.sellerOrderId === 'string' ? parseId<'SellerOrder'>(input.sellerOrderId) : null;
-  if (orderId === null || !orderId.ok || sellerOrderId === null || !sellerOrderId.ok) {
+  const source = input?.source;
+  if (
+    orderId === null ||
+    !orderId.ok ||
+    sellerOrderId === null ||
+    !sellerOrderId.ok ||
+    (source !== 'carrier' && source !== 'seller-click')
+  ) {
     return err({ code: 'validation.failed' });
   }
   const { market } = context;
@@ -68,12 +77,6 @@ export async function recordDeliveryAnchor(
     });
     return err({ code: 'ordering.try-again' });
   }
-  const shipment = await deps.shipping.carrierShipment(context, sellerOrderId.value);
-  if (!shipment.ok && shipment.error.code !== 'shipping.carrier-delivery-not-found') {
-    return err({ code: 'ordering.try-again' });
-  }
-  const source =
-    shipment.ok && shipment.value.progress === 'delivered' ? 'carrier' : 'seller-click';
   const anchored = await deps.commission.recordSellerOrderDelivered(context, {
     orderId: orderId.value,
     sellerOrderId: sellerOrderId.value,

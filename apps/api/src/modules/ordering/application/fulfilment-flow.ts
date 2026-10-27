@@ -350,7 +350,9 @@ export async function deliverSellerOrder(
       record.sellerOrder.fulfilment,
     );
     if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
-    await deps.outbox.append(context, [deliveredEvent(record.orderId, delivered, now)]);
+    await deps.outbox.append(context, [
+      deliveredEvent(record.orderId, delivered, now, 'seller-click'),
+    ]);
     return ok({ view: sellerOrderDetailView({ ...record, sellerOrder: delivered }), record });
   });
   return labelled(deps, context, done);
@@ -449,7 +451,9 @@ export async function confirmSellerPickup(
     if (collected === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
     const saved = await deps.orders.saveFulfilment(market, collected, 'to-ship');
     if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
-    await deps.outbox.append(context, [deliveredEvent(record.orderId, collected, now)]);
+    await deps.outbox.append(context, [
+      deliveredEvent(record.orderId, collected, now, 'seller-click'),
+    ]);
     return ok({ kind: 'collected', record: { ...record, sellerOrder: collected } } as const);
   });
   if (!done.ok) {

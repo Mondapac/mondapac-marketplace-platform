@@ -10,6 +10,7 @@ type Input = {
   readonly sellerId: unknown;
   readonly terms: unknown;
   readonly expectedVersion: unknown;
+  readonly reasonCode: unknown;
 };
 
 /** `commission-payouts.set-seller-payout-terms`: an admin sets a seller's own payout terms (protected key). */

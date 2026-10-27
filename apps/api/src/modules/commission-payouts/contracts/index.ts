@@ -11,6 +11,7 @@ export {
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
 } from './permissions';
+export { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from './step-up';
 export {
   COMMISSION_PAYOUTS_FACADE,
   type CommissionPayoutsFacade,

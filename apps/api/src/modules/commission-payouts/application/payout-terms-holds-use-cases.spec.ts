@@ -129,9 +129,25 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
     terms: unknown,
     expectedVersion: unknown = null,
     context = admin,
-  ) => new SetSellerPayoutTerms(gate, deps).execute(context, { sellerId, terms, expectedVersion });
-  const clear = (sellerId: unknown, expectedVersion: unknown, context = admin) =>
-    new ClearSellerPayoutTerms(gate, deps).execute(context, { sellerId, expectedVersion });
+    reasonCode: unknown = 'correction',
+  ) =>
+    new SetSellerPayoutTerms(gate, deps).execute(context, {
+      sellerId,
+      terms,
+      expectedVersion,
+      reasonCode,
+    });
+  const clear = (
+    sellerId: unknown,
+    expectedVersion: unknown,
+    context = admin,
+    reasonCode: unknown = 'policy',
+  ) =>
+    new ClearSellerPayoutTerms(gate, deps).execute(context, {
+      sellerId,
+      expectedVersion,
+      reasonCode,
+    });
 
   describe('payout terms', () => {
     it('answers the Market terms for a seller without an override', async () => {
@@ -165,16 +181,84 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
           'commission-payouts.payout-terms.set',
           SELLER_A,
           { holdDaysCarrier: null, version: null },
-          { holdDaysCarrier: 9, minimumMinor: 7000, version: 1 },
+          { holdDaysCarrier: 9, minimumMinor: 7000, version: 1, reasonCode: 'correction' },
         ],
         [
           'commission-payouts.payout-terms.set',
           SELLER_A,
           { holdDaysCarrier: 9, version: 1 },
-          { holdDaysCarrier: 12, minimumMinor: null, version: 2 },
+          { holdDaysCarrier: 12, minimumMinor: null, version: 2, reasonCode: 'correction' },
         ],
       ]);
       expect(stores.termsOverrides.rows.size).toBe(1);
+    });
+
+    it('requires a reason code from the closed list on a change and a removal, and audits it', async () => {
+      for (const reasonCode of [undefined, null, '', 'because', 'POLICY', 7]) {
+        const refused = {
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'reasonCode', code: 'format' }] },
+        };
+        expect(
+          await new SetSellerPayoutTerms(gate, deps).execute(admin, {
+            sellerId: SELLER_A,
+            terms: { holdDaysCarrier: 9 },
+            expectedVersion: null,
+            reasonCode,
+          }),
+        ).toMatchObject(refused);
+        expect(
+          await new ClearSellerPayoutTerms(gate, deps).execute(admin, {
+            sellerId: SELLER_A,
+            expectedVersion: 1,
+            reasonCode,
+          }),
+        ).toMatchObject(refused);
+      }
+      expect(stores.termsOverrides.rows.size).toBe(0);
+      expect(audit.entries).toEqual([]);
+      for (const reasonCode of ['seller-request', 'risk-review', 'correction', 'policy']) {
+        const version = stores.termsOverrides.rows.size === 0 ? null : 1;
+        expect(
+          await set(SELLER_A, { holdDaysCarrier: 9 }, version, admin, reasonCode),
+        ).toMatchObject({
+          ok: true,
+        });
+        expect(audit.entries.at(-1)).toMatchObject({ after: { reasonCode } });
+        await clear(SELLER_A, 1, admin, reasonCode);
+        expect(audit.entries.at(-1)).toMatchObject({ after: { reasonCode } });
+      }
+    });
+
+    it('refuses a minimum above the Market cap and accepts one at the cap', async () => {
+      const cap = marketTerms.minimumMinorCap;
+      expect(await set(SELLER_A, { minimumMinor: cap + 1 })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'minimumMinor', code: 'range' }] },
+      });
+      expect(stores.termsOverrides.rows.size).toBe(0);
+      expect(await set(SELLER_A, { minimumMinor: cap })).toMatchObject({
+        ok: true,
+        value: { effective: { minimumMinor: BigInt(cap) } },
+      });
+    });
+
+    it('treats a stored minimum above the cap as terms-unavailable (fail closed on read)', async () => {
+      stores.termsOverrides.rows.set(`${market.marketId}:${SELLER_A}`, {
+        sellerId: SELLER_A,
+        override: {
+          weekdays: null,
+          localTime: null,
+          holdDaysCarrier: null,
+          holdDaysSellerClick: null,
+          minimumMinor: BigInt(marketTerms.minimumMinorCap) + 1n,
+          approvalMode: null,
+        },
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      expect(await view(SELLER_A)).toEqual(err({ code: 'commission-payouts.terms-unavailable' }));
     });
 
     it('refuses a stale or missing version and leaves the override alone', async () => {
@@ -225,7 +309,7 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
       expect(audit.entries.at(-1)).toMatchObject({
         action: 'commission-payouts.payout-terms.clear',
         before: { holdDaysCarrier: 9, version: 1 },
-        after: { version: null },
+        after: { version: null, reasonCode: 'policy' },
       });
     });
 

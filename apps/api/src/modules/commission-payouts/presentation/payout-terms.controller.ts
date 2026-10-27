@@ -52,6 +52,8 @@ import {
   ReleasePayoutHoldRequest,
   SetPayoutTermsRequest,
 } from './commission-payouts.dto';
+import { RequiresStepUp } from '../../../platform/authz';
+import { TERMS_CHANGE_REASONS } from '../domain/payout-terms';
 import { closedBody, refusal } from './http-answers';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -64,6 +66,7 @@ const TERMS_KEYS = [
   'minimumMinor',
   'approvalMode',
   'expectedVersion',
+  'reasonCode',
 ];
 
 function logRoute(logger: Logger, msg: string, context: CallContext, outcome: string): void {
@@ -128,10 +131,11 @@ export class AdminPayoutTermsController {
 
   @Put()
   @HttpCode(200)
+  @RequiresStepUp('commission-payouts.payout-terms.edit')
   @ApiOperation({
     summary: "Set a seller's own payout terms (admin)",
     description:
-      "Needs commission-payouts.payout-terms.edit (protected: a recent second-factor confirmation, refused in a Login-as-Seller session). Replaces the seller's override: a field left out uses the Market's value. Hold days are 7 to 60. Audited with before and after.",
+      "Needs commission-payouts.payout-terms.edit (protected) and a fresh two-step proof for commission-payouts.payout-terms.edit (403 second-factor.required without one; refused in a Login-as-Seller session). Replaces the seller's override: a field left out uses the Market's value. Hold days are 7 to 60; the minimum is at most the Market's minimumMinorCap. reasonCode is required (seller-request, risk-review, correction or policy). Audited with before and after and the reason code.",
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
@@ -156,8 +160,13 @@ export class AdminPayoutTermsController {
     response.setHeader('Cache-Control', 'no-store');
     const invalid = closedBody(request, requestBody, TERMS_KEYS);
     if (invalid !== null) throw invalid;
-    const { expectedVersion, ...terms } = requestBody as Record<string, unknown>;
-    const result = await this.set.execute(context, { sellerId, terms, expectedVersion });
+    const { expectedVersion, reasonCode, ...terms } = requestBody as Record<string, unknown>;
+    const result = await this.set.execute(context, {
+      sellerId,
+      terms,
+      expectedVersion,
+      reasonCode,
+    });
     logRoute(
       this.#logger,
       'commission-payouts.set-seller-payout-terms-route',
@@ -170,10 +179,11 @@ export class AdminPayoutTermsController {
 
   @Delete()
   @HttpCode(200)
+  @RequiresStepUp('commission-payouts.payout-terms.edit')
   @ApiOperation({
     summary: "Remove a seller's own payout terms (admin)",
     description:
-      "Needs commission-payouts.payout-terms.edit (protected). The seller is back on the Market's terms. Audited with before and after.",
+      "Needs commission-payouts.payout-terms.edit (protected) and a fresh two-step proof for commission-payouts.payout-terms.edit (403 second-factor.required without one; refused in a Login-as-Seller session). The seller is back on the Market's terms. reasonCode is required. Audited with before and after and the reason code.",
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
@@ -181,6 +191,12 @@ export class AdminPayoutTermsController {
     name: 'expectedVersion',
     required: true,
     description: 'The override version the admin saw.',
+  })
+  @ApiQuery({
+    name: 'reasonCode',
+    required: true,
+    enum: TERMS_CHANGE_REASONS,
+    description: 'Why the terms are removed.',
   })
   @ApiOkResponse({ type: PayoutTermsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
@@ -199,6 +215,7 @@ export class AdminPayoutTermsController {
     @Call() context: CallContext,
     @Param('sellerId') sellerId: string,
     @Query('expectedVersion') expectedVersion: unknown,
+    @Query('reasonCode') reasonCode: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
@@ -208,6 +225,7 @@ export class AdminPayoutTermsController {
         typeof expectedVersion === 'string' && /^[0-9]{1,9}$/.test(expectedVersion)
           ? Number(expectedVersion)
           : -1,
+      reasonCode,
     });
     logRoute(
       this.#logger,
@@ -267,10 +285,11 @@ export class AdminPayoutHoldsController {
   }
 
   @Post('sellers/:sellerId/payout-holds')
+  @RequiresStepUp('commission-payouts.payout-hold.place')
   @ApiOperation({
     summary: 'Place a payout hold (admin)',
     description:
-      'Needs commission-payouts.payout-hold.place (protected: a recent second-factor confirmation, refused in a Login-as-Seller session). The reason code is required (admin-review or bank-change); the system places the other reasons. With sellerOrderId the hold covers that seller order only. Audited.',
+      'Needs commission-payouts.payout-hold.place (protected) and a fresh two-step proof for commission-payouts.payout-hold.place (403 second-factor.required without one; refused in a Login-as-Seller session). The reason code is required (admin-review or bank-change); the system places the other reasons. With sellerOrderId the hold covers that seller order only. Audited.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
@@ -308,10 +327,11 @@ export class AdminPayoutHoldsController {
 
   @Post('payout-holds/:holdId/release')
   @HttpCode(200)
+  @RequiresStepUp('commission-payouts.payout-hold.release')
   @ApiOperation({
     summary: 'Release a payout hold (admin)',
     description:
-      'Needs commission-payouts.payout-hold.release (protected). Releases any hold, a seller-suspended one included; the system never does. The reason code is required. Audited.',
+      'Needs commission-payouts.payout-hold.release (protected) and a fresh two-step proof for commission-payouts.payout-hold.release (403 second-factor.required without one; refused in a Login-as-Seller session). Releases any hold, a seller-suspended one included; the system never does. The reason code is required. Audited.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'holdId', format: 'uuid' })

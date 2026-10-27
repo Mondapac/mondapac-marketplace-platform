@@ -1,7 +1,13 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
+import { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from './contracts/step-up';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
@@ -103,6 +109,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.auditWriterFor('commission-payouts'),
     registerAuditActions('commission-payouts', COMMISSION_PAYOUTS_AUDIT_ACTIONS),
     registerPermissions('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS),
+    registerStepUpActions('commission-payouts', COMMISSION_PAYOUTS_STEP_UP_ACTIONS),
     // Package 6b: identity's seller access suspends or reinstates a seller's payouts
     // (commission_payouts.inbox).
     registerSubscriptionsFrom(

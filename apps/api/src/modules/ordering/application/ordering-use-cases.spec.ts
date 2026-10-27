@@ -1964,14 +1964,20 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         subscriber: 'ordering.record-delivery-anchor',
         attempt: 1,
       });
+      const delivered = () =>
+        written.filter((e) => e.type === 'ordering.seller-order-delivered.v1');
+      /** The handler gets the source the event carries, as the subscription passes it. */
       const anchor = (orderId: unknown, sellerOrderId: unknown, n = 1, context = system) =>
         new RecordDeliveryAnchor(gate, deps).execute(context, {
           delivery: anchorDelivery(n),
           orderId: orderId as string,
           sellerOrderId: sellerOrderId as string,
+          source:
+            (
+              delivered().find((e) => e.aggregateId === sellerOrderId)?.payload as
+                { source: string } | undefined
+            )?.source ?? 'seller-click',
         });
-      const delivered = () =>
-        written.filter((e) => e.type === 'ordering.seller-order-delivered.v1');
 
       it('publishes the delivered event once, in the unit of the seller click (version 3, ids only)', async () => {
         const order = await paid();
@@ -1987,7 +1993,12 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
             aggregateType: 'seller-order',
             aggregateId: a,
             aggregateVersion: 3,
-            payload: { orderId: order.id, sellerOrderId: a, sellerId: SELLER_A },
+            payload: {
+              orderId: order.id,
+              sellerOrderId: a,
+              sellerId: SELLER_A,
+              source: 'seller-click',
+            },
           }),
         ]);
         // A second click is a conflict and writes no second event.
@@ -2054,15 +2065,33 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         ]);
       });
 
-      it('retries while shipping is down or commission-payouts refuses, and anchors nothing meanwhile', async () => {
+      it('keeps a seller click as seller-click even when the carrier reports the delivery afterwards', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        await deliver(sellerA, a);
+        // The carrier reports "delivered" only after the click, before the handler runs: live
+        // shipment state now says delivered, the event says who confirmed it at the time.
+        shipping.carrierShipments.set(a, {
+          sellerOrderId: a,
+          carrierName: 'Mondapac Drive',
+          trackingRef: '01990000-0000-7000-8000-00000000d004',
+          progress: 'delivered',
+        });
+        expect(delivered()[0]!.payload).toMatchObject({ source: 'seller-click' });
+
+        expect(await anchor(order.id, a)).toEqual(
+          ok({ code: 'ordering.delivery-anchor.recorded' }),
+        );
+        expect(commission.delivered).toEqual([expect.objectContaining({ source: 'seller-click' })]);
+      });
+
+      it('retries while commission-payouts refuses, and anchors nothing meanwhile', async () => {
         const order = await paid();
         const a = sellerOrderIdOf(order.id, SELLER_A);
         await ship(sellerA, a);
         await deliver(sellerA, a);
 
-        shipping.carrierDown = true;
-        expect(await anchor(order.id, a)).toEqual(err({ code: 'ordering.try-again' }));
-        shipping.carrierDown = false;
         commission.deliveredFails = { code: 'commission-payouts.terms-unavailable' };
         expect(await anchor(order.id, a)).toEqual(err({ code: 'ordering.try-again' }));
         expect(commission.delivered).toEqual([]);

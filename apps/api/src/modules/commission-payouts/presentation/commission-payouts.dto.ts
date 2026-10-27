@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { RateView } from '../application/use-cases/view-commission-rate.use-case';
 import { LEDGER_KINDS } from '../domain/ledger';
 import { HOLD_REASONS, RELEASE_REASONS, ADMIN_HOLD_REASONS } from '../domain/payout-hold';
-import { APPROVAL_MODES, PAYOUT_WEEKDAYS } from '../domain/payout-terms';
+import { APPROVAL_MODES, PAYOUT_WEEKDAYS, TERMS_CHANGE_REASONS } from '../domain/payout-terms';
 import type { PayoutHoldView } from '../application/use-cases/place-payout-hold.use-case';
 import type { PayoutTermsView } from '../application/use-cases/view-seller-payout-terms.use-case';
 import type { LedgerView } from '../application/use-cases/view-own-ledger.use-case';
@@ -179,12 +179,18 @@ export class PayoutTermsBody {
 }
 
 export class SetPayoutTermsRequest {
+  @ApiProperty({ enum: TERMS_CHANGE_REASONS, description: 'Why the terms change.' })
+  reasonCode!: string;
   @ApiProperty({ enum: PAYOUT_WEEKDAYS, isArray: true, required: false })
   weekdays?: string[];
   @ApiProperty({ required: false, example: '10:00' }) localTime?: string;
   @ApiProperty({ required: false, description: '7 to 60.' }) holdDaysCarrier?: number;
   @ApiProperty({ required: false, description: '7 to 60.' }) holdDaysSellerClick?: number;
-  @ApiProperty({ required: false, description: 'Minor units, at least 1.' }) minimumMinor?: number;
+  @ApiProperty({
+    required: false,
+    description: 'Minor units, at least 1 and at most the Market minimumMinorCap.',
+  })
+  minimumMinor?: number;
   @ApiProperty({ enum: APPROVAL_MODES, required: false }) approvalMode?: string;
   @ApiProperty({
     nullable: true,

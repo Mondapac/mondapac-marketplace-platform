@@ -12,6 +12,7 @@ interface RecordDeliveryAnchorInput {
   readonly delivery: EventDelivery;
   readonly orderId: string;
   readonly sellerOrderId: string;
+  readonly source: string;
 }
 
 /**

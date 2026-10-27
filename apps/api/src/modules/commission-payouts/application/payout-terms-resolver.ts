@@ -33,15 +33,26 @@ export class PayoutTermsResolver {
     private readonly overrides: PayoutTermsRepository,
   ) {}
 
+  /** The most a minimum may be in this Market, or null when the Market has no payout terms. */
+  minimumCap(market: MarketContext): bigint | null {
+    const terms = this.policy.marketTerms(market);
+    return terms === null ? null : BigInt(terms.minimumMinorCap);
+  }
+
   async resolve(
     market: MarketContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<EffectivePayoutTerms, TermsUnavailable>> {
+    const marketTerms = this.policy.marketTerms(market);
+    if (marketTerms === null) return err({ code: 'commission-payouts.terms-unavailable' });
     const override = await this.overrides.find(market, sellerId);
-    if (override !== null && !overrideInBounds(override.override)) {
+    if (
+      override !== null &&
+      !overrideInBounds(override.override, BigInt(marketTerms.minimumMinorCap))
+    ) {
       return err({ code: 'commission-payouts.terms-unavailable' });
     }
-    const terms = resolvePayoutTerms(this.policy.marketTerms(market), override?.override ?? null);
+    const terms = resolvePayoutTerms(marketTerms, override?.override ?? null);
     if (!terms.ok) return terms;
     return ok({ terms: terms.value, source: override === null ? 'market' : 'seller', override });
   }

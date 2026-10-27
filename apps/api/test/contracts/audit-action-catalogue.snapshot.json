@@ -586,6 +586,7 @@
       "weekdaysMask": "optional(integer)"
     },
     "after": {
+      "reasonCode": "enumOf(seller-request|risk-review|correction|policy)",
       "version": "optional(integer)"
     }
   },
@@ -609,6 +610,7 @@
       "holdDaysSellerClick": "optional(integer)",
       "localMinute": "optional(integer)",
       "minimumMinor": "optional(integer)",
+      "reasonCode": "enumOf(seller-request|risk-review|correction|policy)",
       "version": "optional(integer)",
       "weekdaysMask": "optional(integer)"
     }

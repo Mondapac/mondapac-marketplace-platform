@@ -3,9 +3,11 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { PayoutTermsCleared, PayoutTermsSet } from '../domain/audit';
 import {
   localTimeToMinute,
+  isTermsChangeReason,
   parsePayoutTermsOverride,
   weekdaysToMask,
   type PayoutTermsOverride,
+  type TermsChangeReason,
 } from '../domain/payout-terms';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import type { PayoutTermsOverrideRecord } from './ports/payout-terms.repository';
@@ -13,8 +15,9 @@ import type { EffectivePayoutTerms } from './payout-terms-resolver';
 import { sellerIdOf } from './rate-flow';
 
 // Payout terms per seller (package 6b; G2 4.4): an admin reads, sets and removes one seller's own
-// terms. The set and the removal are protected keys (recent second factor, refused in acting-as,
-// checked by the gate), carry the version they expect (optimistic concurrency) and are audited with
+// terms. The set and the removal are protected keys. The use-case gate checks the key; the fresh
+// second factor (and the refusal of an acting-as session) is the route's `@RequiresStepUp` guard
+// (H-1), not the gate. They carry a closed reason code (kept in the audit `after`), carry the version they expect (optimistic concurrency) and are audited with
 // before and after.
 
 export type TermsFailure =
@@ -115,12 +118,20 @@ export async function viewPayoutTerms(
 export async function setPayoutTerms(
   deps: CommissionPayoutsDependencies,
   context: CallContext,
-  input: { readonly sellerId: unknown; readonly terms: unknown; readonly expectedVersion: unknown },
+  input: {
+    readonly sellerId: unknown;
+    readonly terms: unknown;
+    readonly expectedVersion: unknown;
+    readonly reasonCode: unknown;
+  },
 ): Promise<Result<PayoutTermsView, TermsFailure>> {
   const actor = adminOf(context);
   if (actor === null) return err({ code: 'access.denied' });
+  const cap = deps.terms.minimumCap(context.market);
+  if (cap === null) return err({ code: 'commission-payouts.terms-unavailable' });
   const sellerId = sellerIdOf(input?.sellerId);
-  const parsed = parsePayoutTermsOverride(input?.terms);
+  const parsed = parsePayoutTermsOverride(input?.terms, cap);
+  const reasonCode = isTermsChangeReason(input?.reasonCode) ? input.reasonCode : null;
   const expected = input?.expectedVersion;
   const expectedOk =
     expected === null ||
@@ -130,7 +141,8 @@ export async function setPayoutTerms(
   if (sellerId === null) fields.push({ path: 'sellerId', code: 'format' });
   if (!parsed.ok) fields.push(...parsed.error);
   if (!expectedOk) fields.push({ path: 'expectedVersion', code: 'range' });
-  if (sellerId === null || !parsed.ok || !expectedOk) {
+  if (reasonCode === null) fields.push({ path: 'reasonCode', code: 'format' });
+  if (sellerId === null || !parsed.ok || !expectedOk || reasonCode === null) {
     return err({ code: 'validation.failed', fields });
   }
   const refused = await sellerCheck(deps, context, sellerId);
@@ -161,7 +173,10 @@ export async function setPayoutTerms(
     if (!effective.ok) return effective;
     await deps.audit.record(
       context,
-      PayoutTermsSet.entry(sellerId, { before: auditValues(before), after: auditValues(record) }),
+      PayoutTermsSet.entry(sellerId, {
+        before: auditValues(before),
+        after: { ...auditValues(record), reasonCode },
+      }),
     );
     return ok(toView(sellerId, effective.value));
   });
@@ -171,17 +186,27 @@ export async function setPayoutTerms(
 export async function clearPayoutTerms(
   deps: CommissionPayoutsDependencies,
   context: CallContext,
-  input: { readonly sellerId: unknown; readonly expectedVersion: unknown },
+  input: {
+    readonly sellerId: unknown;
+    readonly expectedVersion: unknown;
+    readonly reasonCode: unknown;
+  },
 ): Promise<Result<PayoutTermsView, TermsFailure>> {
   if (adminOf(context) === null) return err({ code: 'access.denied' });
   const sellerId = sellerIdOf(input?.sellerId);
+  const reasonCode: TermsChangeReason | null = isTermsChangeReason(input?.reasonCode)
+    ? input.reasonCode
+    : null;
   const expected = input?.expectedVersion;
   const expectedOk =
     typeof expected === 'number' && Number.isSafeInteger(expected) && expected >= 1;
   const fields: { path: string; code: string }[] = [];
   if (sellerId === null) fields.push({ path: 'sellerId', code: 'format' });
   if (!expectedOk) fields.push({ path: 'expectedVersion', code: 'range' });
-  if (sellerId === null || !expectedOk) return err({ code: 'validation.failed', fields });
+  if (reasonCode === null) fields.push({ path: 'reasonCode', code: 'format' });
+  if (sellerId === null || !expectedOk || reasonCode === null) {
+    return err({ code: 'validation.failed', fields });
+  }
   const refused = await sellerCheck(deps, context, sellerId);
   if (refused !== null) return err(refused);
 
@@ -200,7 +225,7 @@ export async function clearPayoutTerms(
       context,
       PayoutTermsCleared.entry(sellerId, {
         before: auditValues(before),
-        after: { version: null },
+        after: { version: null, reasonCode },
       }),
     );
     return ok(toView(sellerId, effective.value));

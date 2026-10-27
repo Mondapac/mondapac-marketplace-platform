@@ -24,6 +24,7 @@ export function deliverySubscriptions(record: RecordDeliveryAnchor): RegisteredS
           delivery,
           orderId: event.payload.orderId,
           sellerOrderId: event.payload.sellerOrderId,
+          source: event.payload.source,
         });
         if (!result.ok) {
           throw new Error(`${RECORD_DELIVERY_ANCHOR_SUBSCRIBER} refused: ${result.error.code}`);

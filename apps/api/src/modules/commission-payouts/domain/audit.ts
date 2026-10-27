@@ -1,4 +1,5 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
+import { TERMS_CHANGE_REASONS } from './payout-terms';
 import { HOLD_REASONS, RELEASE_REASONS } from './payout-hold';
 
 // The audited actions of commission-payouts (Phase 5 package 5), registered at boot with
@@ -58,7 +59,7 @@ export const PayoutTermsSet = defineAuditAction({
   targetType: SELLER_PAYOUT_TERMS_TARGET,
   actors: ['authenticated'],
   before: termsFields,
-  after: termsFields,
+  after: { ...termsFields, reasonCode: auditField.enumOf(TERMS_CHANGE_REASONS) },
 });
 
 /** An admin removed a seller's override: the seller is back on the Market's terms. */
@@ -67,7 +68,10 @@ export const PayoutTermsCleared = defineAuditAction({
   targetType: SELLER_PAYOUT_TERMS_TARGET,
   actors: ['authenticated'],
   before: termsFields,
-  after: { version: auditField.optional(auditField.integer()) },
+  after: {
+    version: auditField.optional(auditField.integer()),
+    reasonCode: auditField.enumOf(TERMS_CHANGE_REASONS),
+  },
 });
 
 /** The audit target type of a payout hold. */

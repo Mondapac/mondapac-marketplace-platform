@@ -149,7 +149,7 @@ model CommissionPayoutsPayoutHold {
   /// admin or system (CHECK).
   origin        String
   /// The thing that caused it: identity's decision id, a refund or dispute id, or (admin) the hold's
-  /// own id. Unique per (market, reason, source): a repeated event places nothing twice.
+  /// own id. A system hold is unique per (market, reason, source, scope) (partial unique index in the migration): a repeated event places nothing twice.
   sourceRef     String    @map("source_ref") @db.Uuid
   /// The admin account that placed it; null for a system hold.
   placedBy      String?   @map("placed_by") @db.Uuid
@@ -160,7 +160,7 @@ model CommissionPayoutsPayoutHold {
   /// A code from the closed list in the CHECK.
   releaseReason String?   @map("release_reason")
 
-  @@unique([marketId, reason, sourceRef], map: "payout_holds_source_key")
+  @@index([marketId, sellerId, placedAt(sort: Desc), id(sort: Desc)], map: "payout_holds_seller_placed_idx")
   @@map("payout_holds")
   @@schema("commission_payouts")
 }

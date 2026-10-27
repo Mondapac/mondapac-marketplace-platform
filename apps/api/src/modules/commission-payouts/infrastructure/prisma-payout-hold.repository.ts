@@ -99,20 +99,20 @@ export class PrismaPayoutHoldRepository implements PayoutHoldRepository {
     sellerId: Id<'Seller'>,
     options: { readonly activeOnly: boolean; readonly limit: number },
   ) {
-    const rows = await this.prisma.tx(market).commissionPayoutsPayoutHold.findMany({
-      where: {
-        marketId: market.marketId,
-        sellerId,
-        ...(options.activeOnly ? { releasedAt: null } : {}),
-      },
-      orderBy: [{ placedAt: 'desc' }, { id: 'desc' }],
+    // Every active hold, however many and however old (a hold that is not listed is a hold that
+    // is not honoured), then the newest released ones up to the limit.
+    const tx = this.prisma.tx(market);
+    const order = [{ placedAt: 'desc' as const }, { id: 'desc' as const }];
+    const active = await tx.commissionPayoutsPayoutHold.findMany({
+      where: { marketId: market.marketId, sellerId, releasedAt: null },
+      orderBy: order,
+    });
+    if (options.activeOnly) return active.map(toRecord);
+    const released = await tx.commissionPayoutsPayoutHold.findMany({
+      where: { marketId: market.marketId, sellerId, releasedAt: { not: null } },
+      orderBy: order,
       take: options.limit,
     });
-    const records = rows.map(toRecord);
-    // Active holds first, each group newest first.
-    return [
-      ...records.filter((hold) => hold.releasedAt === null),
-      ...records.filter((hold) => hold.releasedAt !== null),
-    ];
+    return [...active, ...released].map(toRecord);
   }
 }

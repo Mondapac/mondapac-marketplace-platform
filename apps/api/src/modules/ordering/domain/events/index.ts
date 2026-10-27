@@ -79,6 +79,8 @@ export const SellerOrderDelivered = defineEvent({
     orderId: eventField.id(),
     sellerOrderId: eventField.id(),
     sellerId: eventField.id(),
+    /** Who confirmed the delivery, fixed at the moment it happened: the carrier's report or the seller's click. */
+    source: eventField.enumOf(['carrier', 'seller-click'] as const),
   },
 });
 

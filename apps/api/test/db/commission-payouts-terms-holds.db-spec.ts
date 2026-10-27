@@ -305,21 +305,18 @@ describe.each(TEST_MARKETS)('payout terms, anchors and holds in market %s (datab
     it('inserts a hold once per reason and source, lists active ones first and releases it once', async () => {
       const first = hold();
       expect(await value(market, () => holds.insertIfAbsent(market, first))).toBe(true);
-      // The same (reason, source) again is skipped, whoever asks.
+      // An admin hold is keyed by its own id: the same source again is a different hold.
       expect(
         await value(market, () =>
-          holds.insertIfAbsent(
-            market,
-            hold({ reason: 'admin-review', sourceRef: first.sourceRef }),
-          ),
+          holds.insertIfAbsent(market, hold({ sourceRef: first.sourceRef })),
         ),
-      ).toBe(false);
+      ).toBe(true);
       const second = hold({ sellerId: first.sellerId, reason: 'bank-change' });
       await value(market, () => holds.insertIfAbsent(market, second));
       const listed = await value(market, () =>
         holds.listForSeller(market, first.sellerId, { activeOnly: true, limit: 10 }),
       );
-      expect(listed.map((h) => h.id).sort()).toEqual([first.id, second.id].sort());
+      expect(listed.map((h) => h.id)).toEqual(expect.arrayContaining([first.id, second.id]));
       expect(await value(other, () => holds.find(other, first.id))).toBeNull();
 
       const by = ids.next<'Account'>();
@@ -491,19 +488,144 @@ describe.each(TEST_MARKETS)('payout terms, anchors and holds in market %s (datab
       ).toBe('allowed');
     });
 
-    it('refuses a second row with the same market, reason and source', async () => {
+    it('keeps one system hold per reason, source and scope (NULLS NOT DISTINCT), and not for admin holds', async () => {
       const sourceRef = ids.next<'PayoutHold'>();
-      const insert = (id: Id<'PayoutHold'>) =>
+      const sellerId = ids.next<'Seller'>();
+      const system = (overrides: Partial<PayoutHoldRecord> = {}) =>
+        hold({
+          origin: 'system',
+          placedBy: null,
+          reason: 'dispute',
+          sourceRef,
+          sellerId,
+          ...overrides,
+        });
+      const place = (record: PayoutHoldRecord) =>
+        value(market, () => holds.insertIfAbsent(market, record));
+      expect(await place(system())).toBe(true);
+      // The same event again (the repository skips it: ON CONFLICT DO NOTHING).
+      expect(await place(system())).toBe(false);
+      // The key holds on raw SQL too.
+      const raw = (overrides: { seller?: string; order?: string | null; reason?: string }) =>
+        codeOf(
+          sql.query(
+            `INSERT INTO commission_payouts.payout_holds
+               (id, market_id, tenant_id, seller_id, seller_order_id, reason, origin, source_ref, placed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 'system', $7, now())`,
+            [
+              ids.next(),
+              market.marketId,
+              market.tenantId,
+              overrides.seller ?? sellerId,
+              overrides.order ?? null,
+              overrides.reason ?? 'dispute',
+              sourceRef,
+            ],
+          ),
+        );
+      expect(await raw({})).toBe(UNIQUE);
+      // Another scope, reason or seller is another hold.
+      expect(await raw({ order: ids.next() })).toBe('allowed');
+      expect(await raw({ order: ids.next() })).toBe('allowed');
+      expect(await raw({ reason: 'refund-pending' })).toBe('allowed');
+      expect(await raw({ seller: ids.next() })).toBe('allowed');
+      // Admin holds are not keyed by source.
+      const admin = (id: Id<'PayoutHold'>) =>
         codeOf(
           sql.query(
             `INSERT INTO commission_payouts.payout_holds
                (id, market_id, tenant_id, seller_id, reason, origin, source_ref, placed_by, placed_at)
              VALUES ($1, $2, $3, $4, 'admin-review', 'admin', $5, $6, now())`,
-            [id, market.marketId, market.tenantId, ids.next(), sourceRef, ids.next()],
+            [id, market.marketId, market.tenantId, sellerId, sourceRef, ids.next()],
           ),
         );
-      expect(await insert(ids.next())).toBe('allowed');
-      expect(await insert(ids.next())).toBe(UNIQUE);
+      expect(await admin(ids.next())).toBe('allowed');
+      expect(await admin(ids.next())).toBe('allowed');
+    });
+
+    it('releases without a releaser only a system refund-pending or dispute hold (L-1)', async () => {
+      const release = (id: string, by: string | null) =>
+        codeOf(
+          sql.query(
+            `UPDATE commission_payouts.payout_holds
+                SET released_at = now(), release_reason = 'resolved', released_by = $2
+              WHERE id = $1`,
+            [id, by],
+          ),
+        );
+      const cases: [Partial<PayoutHoldRecord>, string][] = [
+        [{ origin: 'system', placedBy: null, reason: 'refund-pending' }, 'allowed'],
+        [{ origin: 'system', placedBy: null, reason: 'dispute' }, 'allowed'],
+        [{ origin: 'system', placedBy: null, reason: 'seller-suspended' }, CHECK],
+        [{ origin: 'admin', reason: 'admin-review' }, CHECK],
+        [{ origin: 'admin', reason: 'bank-change' }, CHECK],
+      ];
+      for (const [overrides, expected] of cases) {
+        const target = hold(overrides);
+        await value(market, () => holds.insertIfAbsent(market, target));
+        expect([target.reason, target.origin, await release(target.id, null)]).toEqual([
+          target.reason,
+          target.origin,
+          expected,
+        ]);
+        // With a releaser, every kind may be released.
+        const again = hold(overrides);
+        await value(market, () => holds.insertIfAbsent(market, again));
+        expect(await release(again.id, ids.next())).toBe('allowed');
+      }
+    });
+
+    it('lists every active hold however old, and only the newest released ones up to the limit (F1)', async () => {
+      const sellerId = ids.next<'Seller'>();
+      const oldActive = hold({ sellerId, placedAt: T0.subtract({ hours: 24 * 400 }) });
+      await value(market, () => holds.insertIfAbsent(market, oldActive));
+      const by = ids.next<'Account'>();
+      for (let n = 0; n < 7; n += 1) {
+        const released = hold({ sellerId, placedAt: T0.add({ minutes: n }) });
+        await value(market, () => holds.insertIfAbsent(market, released));
+        await value(market, () =>
+          holds.release(market, released.id, {
+            releasedAt: T0.add({ hours: 1 }),
+            releasedBy: by,
+            reason: 'resolved',
+          }),
+        );
+      }
+      const all = await value(market, () =>
+        holds.listForSeller(market, sellerId, { activeOnly: false, limit: 5 }),
+      );
+      expect(all).toHaveLength(6);
+      expect(all[0]!.id).toBe(oldActive.id);
+      expect(all.slice(1).every((h) => h.releasedAt !== null)).toBe(true);
+      // The newest released first.
+      expect(all[1]!.placedAt.toString()).toBe(T0.add({ minutes: 6 }).toString());
+      const active = await value(market, () =>
+        holds.listForSeller(market, sellerId, { activeOnly: true, limit: 5 }),
+      );
+      expect(active.map((h) => h.id)).toEqual([oldActive.id]);
+    });
+
+    it('has the seller listing index and no seller-order index yet (F2, N1)', async () => {
+      const names = (
+        await sql.query<{ indexname: string }>(
+          `SELECT indexname FROM pg_indexes
+            WHERE schemaname = 'commission_payouts' AND tablename = 'payout_holds'`,
+        )
+      ).rows.map((row) => row.indexname);
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'payout_holds_seller_placed_idx',
+          'payout_holds_active_seller_idx',
+          'payout_holds_system_source_key',
+        ]),
+      );
+      expect(names).not.toContain('payout_holds_active_seller_order_idx');
+      const def = (
+        await sql.query<{ indexdef: string }>(
+          `SELECT indexdef FROM pg_indexes WHERE indexname = 'payout_holds_seller_placed_idx'`,
+        )
+      ).rows[0]!.indexdef;
+      expect(def).toContain('(market_id, seller_id, placed_at DESC, id DESC)');
     });
   });
 

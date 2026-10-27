@@ -72,26 +72,40 @@ export const PAYOUT_TERMS_MAX_HOLD_DAYS = 60;
 export const PAYOUT_TERMS_WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
 
 /** Payout terms of a Market (package 6b): when, how long to hold, the minimum and the approval. */
-const payoutTermsSchema = z.strictObject({
-  weekdays: z
-    .array(z.enum(PAYOUT_TERMS_WEEKDAYS))
-    .min(1)
-    .max(7)
-    .refine((days) => new Set(days).size === days.length, 'must not repeat a weekday'),
-  /** HH:mm in the seller's own zone (24 hour clock). */
-  localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  holdDaysCarrier: z.number().int().min(PAYOUT_TERMS_MIN_HOLD_DAYS).max(PAYOUT_TERMS_MAX_HOLD_DAYS),
-  holdDaysSellerClick: z
-    .number()
-    .int()
-    .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
-    .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
-  /** Minor units of the Market currency; a payout under it carries over. */
-  minimumMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
-  approvalMode: z.enum(['AUTO', 'MANUAL']),
-  /** The first payout of each new seller waits for an admin (package 6d acts on it). */
-  firstPayoutManual: z.boolean(),
-});
+const payoutTermsSchema = z
+  .strictObject({
+    weekdays: z
+      .array(z.enum(PAYOUT_TERMS_WEEKDAYS))
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days).size === days.length, 'must not repeat a weekday'),
+    /** HH:mm in the seller's own zone (24 hour clock). */
+    localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    holdDaysCarrier: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    holdDaysSellerClick: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    /** Minor units of the Market currency; a payout under it carries over. */
+    minimumMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    /**
+     * The most any minimum may be, the Market's own and a seller's override alike (AU 100000 =
+     * 1,000.00): an admin cannot park a seller's money behind an unreachable minimum.
+     */
+    minimumMinorCap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    approvalMode: z.enum(['AUTO', 'MANUAL']),
+    /** The first payout of each new seller waits for an admin (package 6d acts on it). */
+    firstPayoutManual: z.boolean(),
+  })
+  .refine((terms) => terms.minimumMinor <= terms.minimumMinorCap, {
+    message: 'minimumMinor must not exceed minimumMinorCap',
+    path: ['minimumMinor'],
+  });
 
 const requestLimitsSchema = z.strictObject({
   /** Routes marked `@RateLimit('anonymous-identity')`: sign-up, sign-in, reset requests. */

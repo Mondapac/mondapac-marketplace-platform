@@ -59,12 +59,19 @@ export class MemoryAnchors implements EligibilityAnchorRepository {
 export class MemoryHolds implements PayoutHoldRepository {
   readonly rows = new Map<string, PayoutHoldRecord>();
   insertIfAbsent(market: MarketContext, hold: PayoutHoldRecord) {
-    const clash = [...this.rows.entries()].some(
-      ([k, row]) =>
-        k.startsWith(`${market.marketId}:`) &&
-        row.reason === hold.reason &&
-        row.sourceRef === hold.sourceRef,
-    );
+    // The partial unique index: one system hold per reason, source and scope (admin holds have
+    // their own id as source and are not keyed).
+    const clash =
+      hold.origin === 'system' &&
+      [...this.rows.entries()].some(
+        ([k, row]) =>
+          k.startsWith(`${market.marketId}:`) &&
+          row.origin === 'system' &&
+          row.reason === hold.reason &&
+          row.sourceRef === hold.sourceRef &&
+          row.sellerId === hold.sellerId &&
+          row.sellerOrderId === hold.sellerOrderId,
+      );
     if (clash) return Promise.resolve(false);
     this.rows.set(key(market, hold.id), hold);
     return Promise.resolve(true);
@@ -92,12 +99,15 @@ export class MemoryHolds implements PayoutHoldRepository {
     sellerId: Id<'Seller'>,
     options: { readonly activeOnly: boolean; readonly limit: number },
   ) {
+    const mine = [...this.rows.entries()]
+      .filter(([k, row]) => k.startsWith(`${market.marketId}:`) && row.sellerId === sellerId)
+      .map(([, row]) => row);
+    // Every active hold, then the released ones up to the limit (like the SQL).
+    const active = mine.filter((row) => row.releasedAt === null);
     return Promise.resolve(
-      [...this.rows.entries()]
-        .filter(([k, row]) => k.startsWith(`${market.marketId}:`) && row.sellerId === sellerId)
-        .map(([, row]) => row)
-        .filter((row) => !options.activeOnly || row.releasedAt === null)
-        .slice(0, options.limit),
+      options.activeOnly
+        ? active
+        : [...active, ...mine.filter((row) => row.releasedAt !== null).slice(0, options.limit)],
     );
   }
 }

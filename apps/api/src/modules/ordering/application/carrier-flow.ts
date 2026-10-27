@@ -362,7 +362,7 @@ export async function recordCarrierProgress(
         }
         await deps.outbox.append(
           context,
-          [deliveredEvent(order.id, delivered, now)],
+          [deliveredEvent(order.id, delivered, now, 'carrier')],
           input.delivery.eventId,
         );
         changed = true;

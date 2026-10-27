@@ -110,7 +110,9 @@ describe.each(['AU', 'ZZ'] as const)('payout terms in market %s', (code) => {
     for (const days of [MIN_HOLD_DAYS - 1, MAX_HOLD_DAYS + 1, 0, -1]) {
       expect(resolvePayoutTerms(market, { ...NONE, holdDaysCarrier: days }).ok).toBe(false);
       expect(resolvePayoutTerms(market, { ...NONE, holdDaysSellerClick: days }).ok).toBe(false);
-      expect(overrideInBounds({ ...NONE, holdDaysCarrier: days })).toBe(false);
+      expect(
+        overrideInBounds({ ...NONE, holdDaysCarrier: days }, BigInt(market.minimumMinorCap)),
+      ).toBe(false);
       expect(resolvePayoutTerms({ ...market, holdDaysCarrier: days }, null).ok).toBe(false);
       expect(resolvePayoutTerms({ ...market, holdDaysSellerClick: days }, null).ok).toBe(false);
     }
@@ -121,6 +123,23 @@ describe.each(['AU', 'ZZ'] as const)('payout terms in market %s', (code) => {
       holdDaysSellerClick: MAX_HOLD_DAYS,
     });
     expect(edge.ok).toBe(true);
+  });
+
+  it('caps every minimum at the Market minimumMinorCap, on read and on write', () => {
+    const cap = market.minimumMinorCap;
+    expect(market.minimumMinor).toBeLessThanOrEqual(cap);
+    expect(resolvePayoutTerms(market, { ...NONE, minimumMinor: BigInt(cap) }).ok).toBe(true);
+    expect(resolvePayoutTerms(market, { ...NONE, minimumMinor: BigInt(cap) + 1n }).ok).toBe(false);
+    expect(resolvePayoutTerms({ ...market, minimumMinor: cap + 1 }, null).ok).toBe(false);
+    expect(overrideInBounds({ ...NONE, minimumMinor: BigInt(cap) }, BigInt(cap))).toBe(true);
+    expect(overrideInBounds({ ...NONE, minimumMinor: BigInt(cap) + 1n }, BigInt(cap))).toBe(false);
+    expect(parsePayoutTermsOverride({ minimumMinor: cap }, BigInt(cap))).toMatchObject({
+      ok: true,
+    });
+    expect(parsePayoutTermsOverride({ minimumMinor: cap + 1 }, BigInt(cap))).toEqual({
+      ok: false,
+      error: [{ path: 'minimumMinor', code: 'range' }],
+    });
   });
 
   it('anchors a carrier delivery on the carrier hold and a click on the seller-click hold', () => {
@@ -143,6 +162,7 @@ describe('the fixtures differ', () => {
       holdDaysCarrier: 7,
       holdDaysSellerClick: 14,
       minimumMinor: 5000,
+      minimumMinorCap: 100000,
       approvalMode: 'AUTO',
       firstPayoutManual: true,
     });
@@ -167,6 +187,10 @@ describe('the fixtures differ', () => {
     };
     expect(load({})).not.toThrow();
     expect(load({ holdDaysCarrier: 6 })).toThrow();
+    // The minimum may not exceed its cap, and the cap is required.
+    expect(load({ minimumMinor: 100_001 })).toThrow();
+    expect(load({ minimumMinorCap: 0 })).toThrow();
+    expect(load({ minimumMinorCap: undefined })).toThrow();
     expect(load({ holdDaysSellerClick: 61 })).toThrow();
     expect(load({ extra: 1 })).toThrow();
     expect(load({ localTime: '24:00' })).toThrow();
@@ -179,12 +203,15 @@ describe('the fixtures differ', () => {
 
 describe('parsing an admin override', () => {
   it('accepts a partial override and reads absent or null fields as the Market value', () => {
-    const parsed = parsePayoutTermsOverride({
-      holdDaysCarrier: 10,
-      localTime: '09:30',
-      weekdays: ['FRI', 'MON'],
-      approvalMode: null,
-    });
+    const parsed = parsePayoutTermsOverride(
+      {
+        holdDaysCarrier: 10,
+        localTime: '09:30',
+        weekdays: ['FRI', 'MON'],
+        approvalMode: null,
+      },
+      100_000n,
+    );
     expect(parsed).toEqual({
       ok: true,
       value: {
@@ -214,7 +241,7 @@ describe('parsing an admin override', () => {
     [{ approvalMode: 'auto' }, [{ path: 'approvalMode', code: 'format' }]],
     [null, [{ path: '', code: 'type' }]],
   ])('refuses %j', (input, problems) => {
-    expect(parsePayoutTermsOverride(input)).toEqual({ ok: false, error: problems });
+    expect(parsePayoutTermsOverride(input, 100_000n)).toEqual({ ok: false, error: problems });
   });
 
   it('round-trips weekdays and the local time through their stored forms', () => {

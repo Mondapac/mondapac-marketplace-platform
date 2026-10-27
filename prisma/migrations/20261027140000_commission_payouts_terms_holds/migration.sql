@@ -73,7 +73,14 @@ CREATE TABLE "commission_payouts"."payout_holds" (
 CREATE INDEX "eligibility_anchors_market_id_seller_id_eligible_at_idx" ON "commission_payouts"."eligibility_anchors"("market_id", "seller_id", "eligible_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "payout_holds_source_key" ON "commission_payouts"."payout_holds"("market_id", "reason", "source_ref");
+CREATE INDEX "payout_holds_seller_placed_idx" ON "commission_payouts"."payout_holds"("market_id", "seller_id", "placed_at" DESC, "id" DESC);
+
+-- One system hold per source and scope (data design 3.8): a replayed suspension, refund or dispute
+-- event places nothing twice (ON CONFLICT DO NOTHING). An admin hold uses its own id as source_ref,
+-- so it needs no key. Partial and NULLS NOT DISTINCT, so hand-written (not in the Prisma schema).
+CREATE UNIQUE INDEX "payout_holds_system_source_key"
+  ON "commission_payouts"."payout_holds" ("market_id", "reason", "source_ref", "seller_id", "seller_order_id")
+  NULLS NOT DISTINCT WHERE "origin" = 'system';
 
 
 -- ---------------------------------------------------------------------------------------------
@@ -140,16 +147,16 @@ ALTER TABLE "commission_payouts"."payout_holds"
     ("released_at" IS NULL) = ("release_reason" IS NULL)
     AND ("released_by" IS NULL OR "released_at" IS NOT NULL)
     AND ("released_at" IS NULL OR "released_at" >= "placed_at")),
-  -- The system never releases a seller-suspended hold: only an admin does, whatever else happens.
-  ADD CONSTRAINT "payout_holds_suspended_release_check" CHECK (
-    "reason" <> 'seller-suspended' OR "released_at" IS NULL OR "released_by" IS NOT NULL);
+  -- Only a system-placed refund-pending or dispute hold may be released without an admin (the
+  -- system release is a later package); an admin hold and a seller-suspended hold always name the
+  -- admin who released them.
+  ADD CONSTRAINT "payout_holds_release_actor_check" CHECK (
+    "released_at" IS NULL OR "released_by" IS NOT NULL
+    OR ("origin" = 'system' AND "reason" IN ('refund-pending', 'dispute')));
 
--- The payout run's reads: the active holds of a seller, and of one of its seller orders.
+-- The active holds of a seller. The seller-order read gets its index with its reader (package 6d).
 CREATE INDEX "payout_holds_active_seller_idx"
   ON "commission_payouts"."payout_holds" ("market_id", "seller_id") WHERE "released_at" IS NULL;
-CREATE INDEX "payout_holds_active_seller_order_idx"
-  ON "commission_payouts"."payout_holds" ("market_id", "seller_order_id")
-  WHERE "released_at" IS NULL AND "seller_order_id" IS NOT NULL;
 
 -- ---------------------------------------------------------------------------------------------
 -- Hand-written: write-once guards

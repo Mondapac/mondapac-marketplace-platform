@@ -22,6 +22,7 @@
       "holdDaysCarrier": 10,
       "holdDaysSellerClick": 21,
       "minimumMinor": 3000,
+      "minimumMinorCap": 200000,
       "approvalMode": "MANUAL",
       "firstPayoutManual": false
     }

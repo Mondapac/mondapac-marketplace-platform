@@ -55,7 +55,6 @@ export const isHoldDays = (value: unknown): value is number =>
   value <= MAX_HOLD_DAYS;
 
 const LOCAL_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
-const MAX_MINIMUM = BigInt(Number.MAX_SAFE_INTEGER);
 
 // ---------------------------------------------------------------------------------------------
 // Storage forms: a weekday bitmask (bit 0 = Monday) and the minute of the local day.
@@ -87,6 +86,8 @@ export interface MarketPayoutTermsConfig {
   readonly holdDaysCarrier: number;
   readonly holdDaysSellerClick: number;
   readonly minimumMinor: number;
+  /** The most any minimum may be, the Market's and a seller's alike (minor units). */
+  readonly minimumMinorCap: number;
   readonly approvalMode: ApprovalMode;
   readonly firstPayoutManual: boolean;
 }
@@ -117,7 +118,7 @@ export function resolvePayoutTerms(
     isHoldDays(terms.holdDaysCarrier) &&
     isHoldDays(terms.holdDaysSellerClick) &&
     terms.minimumMinor >= 1n &&
-    terms.minimumMinor <= MAX_MINIMUM &&
+    terms.minimumMinor <= BigInt(Math.min(market.minimumMinorCap, Number.MAX_SAFE_INTEGER)) &&
     terms.weekdays.length >= 1 &&
     localTimeToMinute(terms.localTime) !== null;
   return valid ? ok(terms) : unavailable;
@@ -146,6 +147,7 @@ type OverrideKey =
  */
 export function parsePayoutTermsOverride(
   input: unknown,
+  minimumMinorCap: bigint,
 ): Result<PayoutTermsOverride, readonly FieldProblem[]> {
   const problems: FieldProblem[] = [];
   const raw: Record<string, unknown> =
@@ -186,7 +188,12 @@ export function parsePayoutTermsOverride(
   let minimumMinor: bigint | null = null;
   const minimum = given('minimumMinor');
   if (minimum !== undefined) {
-    if (typeof minimum === 'number' && Number.isSafeInteger(minimum) && minimum >= 1) {
+    if (
+      typeof minimum === 'number' &&
+      Number.isSafeInteger(minimum) &&
+      minimum >= 1 &&
+      BigInt(minimum) <= minimumMinorCap
+    ) {
       minimumMinor = BigInt(minimum);
     } else problems.push({ path: 'minimumMinor', code: 'range' });
   }
@@ -211,10 +218,11 @@ export function parsePayoutTermsOverride(
 }
 
 /** Whether a stored override is inside the bounds (checked on read; a CHECK also holds). */
-export const overrideInBounds = (override: PayoutTermsOverride): boolean =>
+export const overrideInBounds = (override: PayoutTermsOverride, minimumMinorCap: bigint): boolean =>
   (override.holdDaysCarrier === null || isHoldDays(override.holdDaysCarrier)) &&
   (override.holdDaysSellerClick === null || isHoldDays(override.holdDaysSellerClick)) &&
-  (override.minimumMinor === null || override.minimumMinor >= 1n);
+  (override.minimumMinor === null ||
+    (override.minimumMinor >= 1n && override.minimumMinor <= minimumMinorCap));
 
 // ---------------------------------------------------------------------------------------------
 // The eligibility anchor.
@@ -228,3 +236,18 @@ export const holdDaysFor = (source: AnchorSource, terms: PayoutTerms): number =>
  */
 export const eligibleAtOf = (deliveredAt: Temporal.Instant, holdDays: number): Temporal.Instant =>
   deliveredAt.add({ hours: holdDays * 24 });
+
+// ---------------------------------------------------------------------------------------------
+// Why an admin changed a seller's terms.
+
+/** The closed list of reasons an admin gives when setting or removing a seller's terms. */
+export const TERMS_CHANGE_REASONS = [
+  'seller-request',
+  'risk-review',
+  'correction',
+  'policy',
+] as const;
+export type TermsChangeReason = (typeof TERMS_CHANGE_REASONS)[number];
+
+export const isTermsChangeReason = (value: unknown): value is TermsChangeReason =>
+  typeof value === 'string' && TERMS_CHANGE_REASONS.includes(value as TermsChangeReason);

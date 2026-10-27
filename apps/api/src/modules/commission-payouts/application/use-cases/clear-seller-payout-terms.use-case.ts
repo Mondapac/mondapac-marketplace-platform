@@ -6,7 +6,11 @@ import { clearPayoutTerms, type TermsFailure, type PayoutTermsView } from '../te
 
 export type { PayoutTermsView };
 
-type Input = { readonly sellerId: unknown; readonly expectedVersion: unknown };
+type Input = {
+  readonly sellerId: unknown;
+  readonly expectedVersion: unknown;
+  readonly reasonCode: unknown;
+};
 
 /** `commission-payouts.clear-seller-payout-terms`: an admin removes a seller's own payout terms (protected key). */
 export class ClearSellerPayoutTerms extends UseCase<Input, PayoutTermsView, TermsFailure> {
