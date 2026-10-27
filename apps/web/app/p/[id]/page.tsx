@@ -1,7 +1,15 @@
+import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { UnavailableProductView } from '../../../src/errors/unavailable-product.tsx';
 import { ProductPage } from '../../../src/product/product-page.tsx';
-import { pageMetadata, seoDescription } from '../../../src/seo/metadata.ts';
+import { JsonLd } from '../../../src/seo/json-ld.tsx';
+import {
+  canonicalOf,
+  pageMetadata,
+  requestOrigin,
+  seoDescription,
+} from '../../../src/seo/metadata.ts';
+import { productPageStructuredData } from '../../../src/seo/structured-data.ts';
 import {
   loadProduct,
   loadStorefrontContent,
@@ -11,6 +19,9 @@ import {
 interface Props {
   readonly params: Promise<{ id: string }>;
 }
+
+// The current path; a later URL shape changes only this line (SEO plan, package 5).
+const productPath = (id: string) => `/p/${encodeURIComponent(id)}`;
 
 /** The product of the path, or a removed product; an unknown one is a 404. */
 async function resolve(params: Props['params']) {
@@ -24,8 +35,7 @@ async function resolve(params: Props['params']) {
 
 export async function generateMetadata({ params }: Props) {
   const [found, { id }] = await Promise.all([resolve(params), params]);
-  // The current path; a later URL shape changes only this line (SEO plan, package 5).
-  const path = `/p/${encodeURIComponent(id)}`;
+  const path = productPath(id);
   if (found.product) {
     const { product } = found;
     const description =
@@ -52,9 +62,37 @@ export async function generateMetadata({ params }: Props) {
 }
 
 export default async function ProductRoute({ params }: Props) {
-  const found = await resolve(params);
+  const [found, { id }] = await Promise.all([resolve(params), params]);
+  // A removed product is noindex: no structured data.
   if (!found.product) return <UnavailableProductView product={found.removed} />;
-  const content = await loadStorefrontContent();
-  const category = content.categories.find((c) => c.code === found.product.category);
-  return <ProductPage product={found.product} category={category} />;
+  const [content, origin, t] = await Promise.all([
+    loadStorefrontContent(),
+    requestOrigin(),
+    getTranslations('catalog'),
+  ]);
+  const { product } = found;
+  const category = content.categories.find((c) => c.code === product.category);
+  // The markup is built from the same read as the page, so price and stock always match it.
+  const canonical =
+    origin === undefined ? undefined : canonicalOf({ path: productPath(id) }, origin);
+  const data =
+    origin === undefined || canonical === undefined
+      ? null
+      : productPageStructuredData(
+          product,
+          // The visible crumbs, without "Browse products" (a panel, not a page).
+          [
+            { name: t('home'), path: '/' },
+            ...(category ? [{ name: category.name, path: `/c/${category.code}` }] : []),
+            { name: product.name },
+          ],
+          origin,
+          canonical,
+        );
+  return (
+    <>
+      <JsonLd data={data} />
+      <ProductPage product={product} category={category} />
+    </>
+  );
 }
