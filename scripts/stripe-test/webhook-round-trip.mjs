@@ -46,7 +46,7 @@ async function realExpiredEvent() {
   const session = await stripe(key, 'POST', '/v1/checkout/sessions', {
     mode: 'payment',
     success_url: 'https://example.com/stripe-test/success',
-    'payment_method_types[0]': 'card',
+    // No payment_method_types: Stripe now refuses it; the Dashboard decides the payment methods.
     'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': 'aud',
     'line_items[0][price_data][unit_amount]': '1000',
