@@ -326,7 +326,7 @@ validation); it extends the three answers of PF 5.1 without renaming them. Decid
 | The gate, or a throttle counter, could not be evaluated | `access.unavailable`; the use case does not run and nothing is hashed (fail closed) | 503 |
 | The password-hash queue is full (6.5) | `request.busy` with `retryAfterSeconds` | 503 |
 | Throttled (6.8) | `request.throttled` with `retryAfterSeconds` | 429 |
-| `StaleAggregateError`; `TransactionConflictError` (platform document 10, PN7: `40001` or `40P01` after three attempts, or a lock timeout `55P03` at once; a statement timeout `57014` is a 500) | `conflict.stale`; `conflict.retry` | 409 |
+| `StaleAggregateError`; `TransactionConflictError` (platform document 10, PN7: `40001` or `40P01` after four attempts, or a lock timeout `55P03` at once; a statement timeout `57014` is a 500) | `conflict.stale`; `conflict.retry` | 409 |
 
 ### 5.3 Permission catalogue of `identity`
 Declared in `modules/identity/contracts/permissions.ts`. Labels are translation keys derived

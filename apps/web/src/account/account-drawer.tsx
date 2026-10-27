@@ -9,6 +9,7 @@ import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import { ACCOUNT_NAV, useAccountCurrent, useLogOut } from './account-nav.ts';
 import { useDialog } from './use-dialog.ts';
+import { from } from '../shell/breakpoints.ts';
 
 /**
  * The account menu of the phone and tablet layout (below 900px): a right slide-in panel opened by
@@ -29,7 +30,7 @@ export function AccountDrawer() {
   useEffect(() => setAccountOpen(false), [path, setAccountOpen]);
   useEffect(() => {
     if (!open || typeof window.matchMedia !== 'function') return;
-    const desktop = window.matchMedia('(min-width: 900px)');
+    const desktop = window.matchMedia(from('desktop'));
     const onChange = () => {
       if (desktop.matches) setAccountOpen(false);
     };

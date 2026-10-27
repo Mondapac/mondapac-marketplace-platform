@@ -53,6 +53,7 @@ import type { OrderState } from '../domain/order';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
 import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-delivery.use-case';
 import { AllowAllDeliveryMethods } from '../infrastructure/allow-all-delivery-methods';
+import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
@@ -2370,6 +2371,100 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(view.value.sellerOrders.map((s) => s.tax)).toEqual([null, null]);
       expect(view.value.sellerOrders[0]!.lines[0]!.tax).toBeNull();
       expect(view.value.sellerOrders[0]!.lines[0]!.taxCategoryCode).toBeNull();
+    });
+  });
+
+  describe('my-delivered-seller-orders (eligibility for reviews)', () => {
+    const delivered = (context: CallContext, input: object) =>
+      new MyDeliveredSellerOrders(gate, deps).execute(context, {
+        deliveredSince: T0.subtract({ hours: 1000 }),
+        ...input,
+      });
+    const sellerOrderOf = (orderId: string, sellerId: Id<'Seller'>) =>
+      orders.rows.get(orderId)!.sellerOrders.find((s) => s.sellerId === sellerId)!;
+    /** Marks one seller order of a paid order delivered at `at`, as the carrier flow would. */
+    const deliverAt = (orderId: string, sellerId: Id<'Seller'>, at: Temporal.Instant) => {
+      const order = orders.rows.get(orderId)!;
+      orders.rows.set(orderId, {
+        ...order,
+        sellerOrders: order.sellerOrders.map((s) =>
+          s.sellerId === sellerId
+            ? { ...s, fulfilment: 'delivered' as const, shippedAt: at, deliveredAt: at }
+            : s,
+        ),
+      });
+    };
+
+    it('lists only delivered seller orders of the signed-in customer, with their offers', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      expect(await delivered(customer, {})).toEqual(ok([]));
+
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      const answer = await delivered(customer, {});
+
+      expect(answer).toEqual(
+        ok([
+          {
+            sellerOrderId: sellerOrderOf(order.id, SELLER_A).id,
+            sellerId: SELLER_A,
+            deliveredAt: T0.add({ hours: 5 }),
+            offerIds: [OFFER_1, OFFER_3],
+          },
+        ]),
+      );
+    });
+
+    it('never lists an order that was cancelled or is still waiting for payment', async () => {
+      const order = await placed();
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      expect(await delivered(customer, {})).toEqual(ok([]));
+      orders.rows.set(order.id, { ...orders.rows.get(order.id)!, status: 'cancelled' });
+      expect(await delivered(customer, {})).toEqual(ok([]));
+      orders.rows.set(order.id, { ...orders.rows.get(order.id)!, status: 'confirmed' });
+      const answer = await delivered(customer, {});
+      expect(answer.ok && answer.value).toHaveLength(1);
+    });
+
+    it('applies the since instant, and narrows to one seller order of the customer', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      deliverAt(order.id, SELLER_B, T0.add({ hours: 9 }));
+      const a = sellerOrderOf(order.id, SELLER_A).id;
+      const b = sellerOrderOf(order.id, SELLER_B).id;
+
+      const since = await delivered(customer, { deliveredSince: T0.add({ hours: 6 }) });
+      const one = await delivered(customer, { sellerOrderId: a });
+      const both = await delivered(customer, {});
+
+      expect(since.ok && since.value.map((row) => row.sellerOrderId)).toEqual([b]);
+      expect(one.ok && one.value.map((row) => row.sellerOrderId)).toEqual([a]);
+      expect(both.ok && both.value.map((row) => row.sellerOrderId)).toEqual([b, a]);
+    });
+
+    it("answers nothing for another customer's order, byte-identical to an unknown one", async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      const a = sellerOrderOf(order.id, SELLER_A).id;
+
+      expect(await delivered(customerOf(OTHER), {})).toEqual(ok([]));
+      expect(await delivered(customerOf(OTHER), { sellerOrderId: a })).toEqual(ok([]));
+      expect(await delivered(customer, { sellerOrderId: id<'SellerOrder'>(0xdead) })).toEqual(
+        ok([]),
+      );
+    });
+
+    it('refuses a bad request and every caller that is not a customer', async () => {
+      expect(await delivered(customer, { sellerOrderId: 'nope' })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+      expect(await delivered(customer, { deliveredSince: 'yesterday' })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+      expect((await delivered(anonymous, {})).ok).toBe(false);
+      expect((await delivered(system, {})).ok).toBe(false);
     });
   });
 

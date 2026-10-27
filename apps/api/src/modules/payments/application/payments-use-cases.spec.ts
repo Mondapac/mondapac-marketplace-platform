@@ -29,6 +29,7 @@ import type { PaymentsDependencies } from './payments-dependencies';
 import type { CheckoutSessionSnapshot } from './ports/stripe-session-reader';
 import { ApplyStripeEvents } from './use-cases/apply-stripe-events.use-case';
 import { ReceiveStripeEvent } from './use-cases/receive-stripe-event.use-case';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 
 // The Stripe webhook receiver in memory on both Market fixtures (AU in AUD, ZZ in JPY): the
 // signature on the exact bytes first, test mode and platform account only, one row per event id,
@@ -52,6 +53,7 @@ describe.each([
   let reader: FakeSessionReader;
   let ordering: FakeOrderingFacade;
   let deps: PaymentsDependencies;
+  let securityEvents: RecordingSecurityEvents;
   let receive: ReceiveStripeEvent;
   let apply: ApplyStripeEvents;
 
@@ -74,6 +76,7 @@ describe.each([
   });
 
   beforeEach(() => {
+    securityEvents = new RecordingSecurityEvents();
     clock = new FixedClock(T0);
     inbox = new MemoryInbox();
     reader = new FakeSessionReader();
@@ -89,6 +92,7 @@ describe.each([
       policy: new StaticPaymentsPolicy(),
       identity: new FakeIdentityFacade(),
       audit: new RecordingPaymentsAudit(),
+      securityEvents,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -142,6 +146,22 @@ describe.each([
           err({ code: 'payments.signature-invalid' }),
         );
       }
+      // Each failure is a security event (SOC package 1); the address only when known.
+      expect(securityEvents.events).toHaveLength(cases.length);
+      expect(securityEvents.events[0]).toEqual({
+        type: 'payments.webhook-signature.failed',
+        targetId: null,
+        ip: null,
+        payload: { provider: 'stripe' },
+        actor: 'anonymous',
+        marketId: code,
+      });
+      await receive.execute(anonymous, {
+        payload: body,
+        signature: undefined,
+        clientAddress: '203.0.113.9',
+      });
+      expect(securityEvents.events.at(-1)?.ip).toBe('203.0.113.9');
       // Within the tolerance, one matching v1 among others passes.
       const good = stripeSignatureHeader(body, T0.subtract({ seconds: 299 }));
       const header = `${good},v1=${'0'.repeat(64)}`;

@@ -5,7 +5,7 @@ import { parseShelfQuery, type ShelfRequest } from '../../domain/shelf-query';
 import type { ShelfSpecial } from '../ports/shelf-sources';
 import type { ShelfDependencies } from '../shelf-dependencies';
 import { withPrimaryImages } from '../product-images';
-import { itemOf, type ShelfFailure } from './list-bestsellers.use-case';
+import { inAnyOf, itemOf, type ShelfFailure } from './list-bestsellers.use-case';
 import type { ProductSearchItem } from './search-products.use-case';
 
 /** How many specials are asked of pricing: twice a full shelf, so one read stays cheap (Hassan M1). */
@@ -29,7 +29,7 @@ export interface SpecialsPage {
  * request's Market. Pricing answers the (Offer, Variant) keys whose effective price is a special
  * at its Clock's now, newest first, with the regular price beside it. A key whose Variant is not
  * a published sell unit is dropped (Hassan L1); an Offer appears once (its first remaining key).
- * Only indexed Offers (in the category, when one is asked) that catalog and sellers
+ * Only indexed Offers (in the category or a subcategory, when one is asked) that catalog and sellers
  * still show are kept. A source or check that cannot be made is `search.unavailable`. Prices are
  * always Money (amount and currency); never Cost.
  */
@@ -55,6 +55,10 @@ export class ListSpecials extends UseCase<ShelfRequest, SpecialsPage, ShelfFailu
     const { categoryId, limit } = query.value;
     const { market } = context;
 
+    const categoryIds =
+      categoryId === null ? null : await this.deps.categories.subtreeOf(context, categoryId);
+    if (categoryId !== null && categoryIds === null) return err({ code: 'search.unavailable' });
+    const inCategory = inAnyOf(categoryIds);
     const specials = await this.deps.sources.specials(context, SPECIALS_DEPTH);
     if (specials === null) return err({ code: 'search.unavailable' });
     const published = await this.deps.variants.published(context, [
@@ -76,9 +80,7 @@ export class ListSpecials extends UseCase<ShelfRequest, SpecialsPage, ShelfFailu
     const byId = new Map(read.value.map((hit) => [hit.offerId, hit] as const));
     const candidates = [...firstOf.keys()].flatMap((offerId) => {
       const hit = byId.get(offerId);
-      return hit !== undefined && (categoryId === null || hit.categoryIds.includes(categoryId))
-        ? [hit]
-        : [];
+      return hit !== undefined && inCategory(hit) ? [hit] : [];
     });
     const visible = await this.deps.visibility.visible(context, candidates);
     if (visible === null) return err({ code: 'search.unavailable' });

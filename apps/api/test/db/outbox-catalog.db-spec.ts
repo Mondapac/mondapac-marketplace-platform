@@ -168,6 +168,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX refunds_pending_requested_at_idx ON ordering.refunds USING btree (market_id, requested_at, id) WHERE (state = 'pending'::text)",
   'ordering.refunds_stripe_refund_id_key':
     'CREATE UNIQUE INDEX refunds_stripe_refund_id_key ON ordering.refunds USING btree (stripe_refund_id) WHERE (stripe_refund_id IS NOT NULL)',
+  'ordering.refunds_unrecorded_ledger_idx':
+    "CREATE INDEX refunds_unrecorded_ledger_idx ON ordering.refunds USING btree (market_id, ledger_attempts, requested_at, id) WHERE ((state = 'succeeded'::text) AND (ledger_recorded_at IS NULL))",
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
   // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
   'pricing.outbox_market_id_event_id_unpublished_idx':
@@ -199,6 +201,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX business_file_revisions_market_id_kind_created_at_pending_idx ON sellers.business_file_revisions USING btree (market_id, kind, created_at, id) WHERE (status = 'pending'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Customers (package 5a): the relay's claim index of customers.outbox.
+  'customers.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
   'shipping.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
@@ -243,6 +248,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX journals_market_id_lot_id_idx ON wallet.journals USING btree (market_id, lot_id) WHERE (lot_id IS NOT NULL)',
   'wallet.lots_market_id_expires_at_id_idx':
     "CREATE INDEX lots_market_id_expires_at_id_idx ON wallet.lots USING btree (market_id, expires_at, id) WHERE ((source = 'promo'::text) AND (remaining_minor > 0))",
+  // Reviews: public list pages read published reviews only (newest first, optionally by rating).
+  'reviews.product_reviews_public_list_idx':
+    "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  'reviews.product_reviews_public_list_rating_idx':
+    "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
 };
 
 const OUTBOX_COLUMNS = `

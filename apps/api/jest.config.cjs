@@ -25,4 +25,10 @@ module.exports = {
   // specs went over Jest's 5 s default now and then. CI gets more time; locally the default stays,
   // so a test that really got slow still shows up there.
   ...(process.env.GITHUB_ACTIONS ? { testTimeout: 30_000 } : {}),
+  // A worker keeps every spec file it ran in memory until V8 aborts it ("Jest worker ran out of
+  // memory"), which fails a whole spec file with no test annotation: test/authz/use-cases.spec.ts
+  // (one TypeScript program over src/, about 500 MB alone) crashed that way on main (c0683eb,
+  // Node .nvmrc leg). Restart a worker between spec files once it holds more than 1 GB, as the
+  // database tests already do (jest.db.config.cjs).
+  workerIdleMemoryLimit: '1GB',
 };

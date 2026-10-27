@@ -60,8 +60,20 @@ function rawRunnerOf(transaction: {
 
 /** The short random pause between attempts (P 3.1 row 7). */
 export type RetryPause = (attempt: number) => Promise<void>;
-const randomPause: RetryPause = async () => {
-  await sleep(5 + Math.floor(Math.random() * 20));
+
+/**
+ * The pause after failed attempt `attempt` (1 to 3), in ms: random, and its range doubles with
+ * each attempt (5-55 ms, 5-105 ms, then 5-205 ms). A fixed range sent units that had just conflicted back
+ * at about the same moment, so with several writers on one customer's rows the same units met
+ * again and one ran out of attempts (measured: 32 of 80 runs of four concurrent address adds
+ * ended in 40001; 4 of 240 with this range).
+ */
+export function retryPauseMs(attempt: number, random: () => number = Math.random): number {
+  return 5 + Math.floor(random() * 25 * 2 ** attempt);
+}
+
+const randomPause: RetryPause = async (attempt) => {
+  await sleep(retryPauseMs(attempt));
 };
 
 /** Refuses the option combinations of P 3.1 rows 8 and 9 (ADR-0025 condition (c)). */
@@ -100,7 +112,7 @@ export function checkUnitOfWorkOptions(options: UnitOfWorkOptions): void {
  * - Read-write: one interactive transaction per attempt, a fresh {@link OpenUnit} around its
  *   client, `work` awaited inside `unitStorage.run` (P 3.2). READ COMMITTED sends no
  *   `isolationLevel` (ADR-0025 decision 2); `serializable` sends `Serializable`. `40001` and
- *   `40P01` are retried, three attempts in all; `55P03` is a conflict at once.
+ *   `40P01` are retried, four attempts in all; `55P03` is a conflict at once.
  * - Read-only (ADR-0025 decision 1): no transaction. The unit holds the guarded base client's
  *   model delegates; `work` runs once; the unit is closed in `finally`.
  */

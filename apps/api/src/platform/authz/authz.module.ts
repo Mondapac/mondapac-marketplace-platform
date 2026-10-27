@@ -4,7 +4,15 @@ import { MarketRegistry } from '../market-config/market-registry';
 import { AUTHORISATION_CHECK, type AuthorisationCheck } from './authorisation-check';
 import { PermissionRegistry } from './permission-registry';
 import { StepUpActionRegistry } from './step-up-registry';
-import { StepUpGuard, STEP_UP_CHECK, STEP_UP_SOURCE, type StepUpCheck } from './step-up.guard';
+import {
+  StepUpGuard,
+  STEP_UP_CHECK,
+  STEP_UP_CONSUMER,
+  STEP_UP_CONSUMER_SOURCE,
+  STEP_UP_SOURCE,
+  type StepUpCheck,
+  type StepUpProofConsumer,
+} from './step-up.guard';
 import { createUseCaseGate } from './use-case-gate';
 import { USE_CASE_GATE } from './use-case-gate.token';
 
@@ -43,6 +51,12 @@ export class AuthzModule {
           inject: [STEP_UP_SOURCE],
           useFactory: (source: StepUpCheck): StepUpCheck => source,
         },
+        // identity's single-use spend of an admin proof, in the caller's unit (issue #491).
+        {
+          provide: STEP_UP_CONSUMER,
+          inject: [STEP_UP_CONSUMER_SOURCE],
+          useFactory: (source: StepUpProofConsumer): StepUpProofConsumer => source,
+        },
         StepUpGuard,
         {
           provide: USE_CASE_GATE,
@@ -57,6 +71,7 @@ export class AuthzModule {
         PERMISSION_KEY_LOOKUP,
         StepUpActionRegistry,
         STEP_UP_CHECK,
+        STEP_UP_CONSUMER,
         StepUpGuard,
       ],
     };

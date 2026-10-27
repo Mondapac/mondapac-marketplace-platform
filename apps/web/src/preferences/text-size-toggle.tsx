@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { TEXT_SIZE_COOKIE, savePreference, type TextSize } from './preferences.ts';
+import { from } from '../shell/breakpoints.ts';
 
 /**
  * Large or Small text. Untouched, the size follows the screen (Large from 900px). `onChoose` also
@@ -21,7 +22,7 @@ export function TextSizeToggle({
   const [auto, setAuto] = useState<'large' | 'small' | null>(null);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const query = window.matchMedia('(min-width: 900px)');
+    const query = window.matchMedia(from('desktop'));
     const update = () => setAuto(query.matches ? 'large' : 'small');
     update();
     query.addEventListener('change', update);

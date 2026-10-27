@@ -1,5 +1,6 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { SecurityEvents } from '../../../platform/security-events/security-events';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CarrierBookingRepository } from './ports/carrier-booking.repository';
@@ -33,4 +34,5 @@ export interface ShippingDependencies {
   readonly webhookSignature: CarrierWebhookSignature;
   /** Uber Direct's status webhook signature (one header, no timestamp). */
   readonly uberWebhookSignature: FleetWebhookSignature;
+  readonly securityEvents: SecurityEvents;
 }

@@ -8,7 +8,10 @@ import { WALLET_STATUS_REASONS, WALLET_STATUSES } from './wallet-status';
 /** The audit target type of the wallet switch. */
 export const WALLET_SETTINGS_TARGET = 'wallet.market-settings';
 
-/** An admin moved the Market's wallet to another state. */
+/**
+ * An admin moved the Market's wallet to another state. `after` names the admin step-up proof the
+ * change spent (issue #491; Hassan L3): the session that verified the code and when.
+ */
 export const WalletStatusChanged = defineAuditAction({
   action: 'wallet.market-status.changed',
   targetType: WALLET_SETTINGS_TARGET,
@@ -21,6 +24,8 @@ export const WalletStatusChanged = defineAuditAction({
   after: {
     status: auditField.enumOf(WALLET_STATUSES),
     reason: auditField.optional(auditField.enumOf(WALLET_STATUS_REASONS)),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
   },
 });
 

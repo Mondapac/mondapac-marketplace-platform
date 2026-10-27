@@ -163,6 +163,7 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
       pickups: undefined as never,
       webhookSignature: undefined as never,
       uberWebhookSignature: undefined as never,
+      securityEvents: undefined as never,
     };
   });
 

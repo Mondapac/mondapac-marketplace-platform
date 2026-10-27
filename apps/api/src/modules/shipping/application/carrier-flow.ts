@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
+import { CarrierWebhookSignatureFailed } from '../../../platform/security-events/security-event-catalogue';
 import type {
   CarrierBookingOutcome,
   CarrierDeliveryFailure,
@@ -440,6 +441,8 @@ export interface ReceiveWebhookInput {
   readonly payload: Uint8Array;
   readonly timestamp: unknown;
   readonly signature: unknown;
+  /** The caller's address (ADR-0037), kept with a security event when the signature fails. */
+  readonly clientAddress?: string | null;
 }
 
 /** What the receiver did with a verified event; every one answers 200. */
@@ -454,6 +457,35 @@ export type ReceiveWebhookFailure =
   | { readonly code: 'shipping.event-refused' }
   /** No booking (yet) for the reference: the carrier retries, so a race with booking settles. */
   | { readonly code: 'shipping.carrier-delivery-not-found' };
+
+/**
+ * A carrier webhook whose signature failed is a security event (SOC package 1), recorded in a
+ * unit of its own. A failure to record it is logged and does not change the answer.
+ */
+async function recordSignatureFailure(
+  deps: ShippingDependencies,
+  context: CallContext,
+  clientAddress: string | null,
+): Promise<void> {
+  try {
+    await deps.unitOfWork.run(context.market, async () => {
+      await deps.securityEvents.record(
+        context,
+        CarrierWebhookSignatureFailed.event({
+          ip: clientAddress,
+          payload: { carrier: 'mondapac-drive' },
+        }),
+      );
+      return ok(undefined);
+    });
+  } catch {
+    logger.warn({
+      msg: 'shipping.carrier-webhook.security-event-failed',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
+}
 
 /**
  * `receive-carrier-webhook`: the signature is checked on the raw bytes (HMAC with timestamp,
@@ -475,7 +507,10 @@ export async function receiveCarrierWebhook(
     timestamp: input.timestamp,
     signature: input.signature,
   });
-  if (!signed) return err({ code: 'shipping.signature-invalid' });
+  if (!signed) {
+    await recordSignatureFailure(deps, context, input.clientAddress ?? null);
+    return err({ code: 'shipping.signature-invalid' });
+  }
   const parsed = parseDriveWebhook(input.payload);
   if (parsed.kind === 'invalid') return err({ code: 'validation.failed' });
   if (parsed.kind === 'other') return ok('ignored');
