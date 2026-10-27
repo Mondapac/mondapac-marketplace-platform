@@ -1,6 +1,7 @@
 import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
 import type { CancelPayment } from '../application/use-cases/cancel-payment.use-case';
 import type { MyDeliveredSellerOrders } from '../application/use-cases/my-delivered-seller-orders.use-case';
+import type { OrderPaymentRefQuery } from '../application/use-cases/order-payment-ref.use-case';
 import type { OrderNoticeQuery } from '../application/use-cases/order-notice.use-case';
 import type { OpenObligationsOfQuery } from '../application/use-cases/open-obligations-of.use-case';
 import type { OwnOpenObligationsQuery } from '../application/use-cases/own-open-obligations.use-case';
@@ -20,7 +21,12 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly openObligations: OwnOpenObligationsQuery,
     private readonly openObligationsOfAccount: OpenObligationsOfQuery,
     private readonly delivered: MyDeliveredSellerOrders,
+    private readonly paymentRef: OrderPaymentRefQuery,
   ) {}
+
+  orderPaymentRef(context: CallContext, orderId: string) {
+    return this.paymentRef.execute(context, { orderId });
+  }
 
   confirmPayment(context: CallContext, payment: AuthorisedPayment) {
     return this.confirm.execute(context, payment);

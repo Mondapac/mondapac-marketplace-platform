@@ -48,6 +48,7 @@ import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier
 import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
+import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordRefundLedger } from './application/use-cases/record-refund-ledger.use-case';
@@ -219,6 +220,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordLedger,
       RecordRefundLedger,
       OrderNoticeQuery,
+      OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
       OwnOpenObligationsQuery,
@@ -243,6 +245,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OwnOpenObligationsQuery,
         OpenObligationsOfQuery,
         MyDeliveredSellerOrders,
+        OrderPaymentRefQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -253,6 +256,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         openObligations: OwnOpenObligationsQuery,
         openObligationsOfAccount: OpenObligationsOfQuery,
         delivered: MyDeliveredSellerOrders,
+        paymentRef: OrderPaymentRefQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -263,6 +267,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           openObligations,
           openObligationsOfAccount,
           delivered,
+          paymentRef,
         ),
     },
     {

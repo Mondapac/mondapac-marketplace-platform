@@ -11,6 +11,7 @@ import {
   orderConfirmationMail,
   orderShippedMail,
   sellerNewOrderMail,
+  sellerOrderDisputedMail,
   type MailLine,
 } from '../domain/order-mail';
 import type { NotificationsPolicy } from './ports/notifications-policy';
@@ -210,6 +211,40 @@ export async function sendSellerNewOrders(
   }
   if (failed) throw new Error('notifications.seller-new-order-mail: a send failed');
   return finish(deps, context, input, name, sent === 0 ? { skipped: 'recipient.none' } : { sent });
+}
+
+/** One delivery of `commission-payouts.seller-order-disputed.v1`: ids only. */
+export interface DisputedMailInput extends OrderMailInput {
+  readonly sellerId: string;
+}
+
+/**
+ * The seller's "Payment dispute" mail (package 8b, D8): to the Owner of the seller whose seller
+ * order the dispute holds, with the order reference and no reason, amount, buyer or card data.
+ */
+export async function sendSellerOrderDisputed(
+  deps: OrderMailDependencies,
+  context: CallContext,
+  input: DisputedMailInput,
+): Promise<Result<OrderMailOutput, OrderMailFailure>> {
+  const name = 'notifications.seller-order-disputed-mail';
+  const to = await recipientOf(deps, context, {
+    kind: 'seller-owner',
+    sellerId: input.sellerId as Id<'Seller'>,
+  });
+  if (to === null) return finish(deps, context, input, name, { skipped: 'recipient.none' });
+  const composed = sellerOrderDisputedMail({
+    orderId: input.orderId,
+    locale: deps.policy.defaultLocale(context.market),
+  });
+  // A send failure throws: the outbox retries the delivery; the hold is already placed.
+  await deps.transport.send({
+    to,
+    from: deps.policy.mailSender(context.market),
+    subject: composed.subject,
+    text: composed.text,
+  });
+  return finish(deps, context, input, name, { sent: 1 });
 }
 
 /** The customer's "Shipped" mail, once a seller records the shipment of its part of the order. */

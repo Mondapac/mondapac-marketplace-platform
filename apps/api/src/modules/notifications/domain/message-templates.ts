@@ -7,6 +7,7 @@
 export type TemplateId =
   | 'order-confirmation'
   | 'seller-new-order'
+  | 'seller-order-disputed'
   | 'order-shipped'
   | 'marketing-footer'
   | 'cart-reminder-first'
@@ -57,6 +58,21 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         '{items}',
         '',
         'Open your seller panel to see the order and record the shipment.',
+        '',
+      ),
+    },
+  },
+  // Package 8b: the seller is told a payment of its order was disputed. Nothing of the dispute
+  // is in it: no reason, amount, card or buyer data.
+  'seller-order-disputed': {
+    en: {
+      subject: 'Payment dispute on an order',
+      body: lines(
+        'Payment dispute',
+        '',
+        'A payment on order {orderId} was disputed. Your share of this order is on hold until the dispute is closed.',
+        '',
+        'Open your seller panel to see the order.',
         '',
       ),
     },

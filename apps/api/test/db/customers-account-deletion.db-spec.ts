@@ -561,9 +561,12 @@ describe.each(TEST_MARKETS)(
         if ((await rows(BUYER))[0]?.status === 'completed') break;
       }
       await executor.execute(system(), {});
+      // Other spec files write addresses in this Market of the shared database at the same time:
+      // read the rows of this test's two accounts only.
       const left = await sql.query<{ account_id: string }>(
-        `SELECT account_id FROM customers.addresses WHERE market_id = $1`,
-        [code],
+        `SELECT account_id FROM customers.addresses
+          WHERE market_id = $1 AND account_id = ANY($2::uuid[])`,
+        [code, [BUYER, OTHER_BUYER]],
       );
       expect(left.rows).toEqual([{ account_id: OTHER_BUYER }]);
       expect((await rows(BUYER)).map((r) => r.status)).toEqual(['completed']);

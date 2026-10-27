@@ -17,6 +17,10 @@ export const COMMISSION_PAYOUTS_STATUS: Readonly<Record<string, number>> = Objec
   'commission-payouts.seller-order-not-found': 404,
   'commission-payouts.hold-not-found': 404,
   'commission-payouts.hold-already-released': 409,
+  'commission-payouts.dispute-not-found': 404,
+  'commission-payouts.dispute.not-decidable': 409,
+  'commission-payouts.dispute.already-decided': 409,
+  'commission-payouts.dispute.amount-out-of-range': 400,
   'commission-payouts.unavailable': 503,
 });
 

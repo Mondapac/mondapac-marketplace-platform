@@ -358,6 +358,27 @@
       "maxAttempts": 2,
       "backoffMs": 250,
       "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 }
+    },
+    "zoom2u": {
+      "enabled": false,
+      "environment": "sandbox",
+      "serviceAreas": ["zz-central"],
+      "modes": ["on_demand", "scheduled"],
+      "instantSpeed": "3 hour",
+      "supportsWindow": false,
+      "temperatures": ["ambient"],
+      "limits": { "maxItemWeightGrams": 30000, "maxItems": 8, "maxOrderValueMinor": 50000 },
+      "prohibitedClasses": [
+        "alcohol",
+        "tobacco",
+        "firearms",
+        "hazardous-materials",
+        "live-animals"
+      ],
+      "timeoutMs": 2500,
+      "maxAttempts": 2,
+      "backoffMs": 250,
+      "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 }
     }
   }
 }

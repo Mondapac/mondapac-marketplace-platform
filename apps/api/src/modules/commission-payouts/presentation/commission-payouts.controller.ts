@@ -33,6 +33,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { RequiresStepUp } from '../../../platform/authz';
 import { ClearCommissionRate } from '../application/use-cases/clear-commission-rate.use-case';
 import { SetCommissionRate } from '../application/use-cases/set-commission-rate.use-case';
 import { ViewCommissionRate } from '../application/use-cases/view-commission-rate.use-case';
@@ -114,11 +115,14 @@ export class AdminCommissionController {
 
   @Put('commission-rate')
   @HttpCode(200)
+  @RequiresStepUp('commission-payouts.commission-rate.edit')
   @ApiOperation({
     summary: "Set a seller's own commission rate (admin)",
     description:
-      'Needs commission-payouts.commission-rate.edit (protected). Applies to orders placed after ' +
-      'the change; earlier orders keep the rate frozen on their lines. Audited.',
+      'Needs commission-payouts.commission-rate.edit (protected) and a fresh two-step proof for ' +
+      'commission-payouts.commission-rate.edit (403 second-factor.required without one; refused ' +
+      'in a Login-as-Seller session). Applies to orders placed after the change; earlier orders ' +
+      'keep the rate frozen on their lines. Audited.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
@@ -126,7 +130,10 @@ export class AdminCommissionController {
   @ApiOkResponse({ type: CommissionRateBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, request.csrf or second-factor.required',
+  })
   @ApiNotFoundResponse({ ...ERROR, description: 'commission-payouts.seller-not-found' })
   @ApiServiceUnavailableResponse({
     ...ERROR,
@@ -156,18 +163,24 @@ export class AdminCommissionController {
 
   @Delete('commission-rate')
   @HttpCode(200)
+  @RequiresStepUp('commission-payouts.commission-rate.edit')
   @ApiOperation({
     summary: "Remove a seller's own commission rate (admin)",
     description:
-      'Needs commission-payouts.commission-rate.edit (protected). The seller is back on the ' +
-      'Market rate for orders placed after the change. Audited.',
+      'Needs commission-payouts.commission-rate.edit (protected) and a fresh two-step proof for ' +
+      'commission-payouts.commission-rate.edit (403 second-factor.required without one; refused ' +
+      'in a Login-as-Seller session). The seller is back on the Market rate for orders placed ' +
+      'after the change. Audited.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiOkResponse({ type: CommissionRateBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, request.csrf or second-factor.required',
+  })
   @ApiNotFoundResponse({ ...ERROR, description: 'commission-payouts.rate-not-set' })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'commission-payouts.rate-unavailable' })
   async clear(

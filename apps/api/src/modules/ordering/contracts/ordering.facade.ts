@@ -86,6 +86,17 @@ export interface DeliveredSellerOrder {
 
 export type DeliveredSellerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
 
+/** The PaymentIntent an order holds (null before checkout created one). */
+export interface OrderPaymentRef {
+  readonly orderId: string;
+  readonly paymentIntentId: string | null;
+}
+
+export type OrderPaymentRefFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'ordering.order-not-found' };
+
 /**
  * What is still open for the calling customer: orders waiting for payment or not yet delivered in
  * every seller order, and refunds still pending. Counts only.
@@ -139,6 +150,15 @@ export interface OrderingFacade {
     context: CallContext,
     request: { readonly orderId: string; readonly sellerOrderId: string },
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
+
+  /**
+   * The PaymentIntent the order itself holds, for the dispute consumer of `commission-payouts`.
+   * Rule `system`. An unknown or foreign-Market order is `ordering.order-not-found`.
+   */
+  orderPaymentRef(
+    context: CallContext,
+    orderId: string,
+  ): Promise<Result<OrderPaymentRef, OrderPaymentRefFailure>>;
 
   /**
    * The short customer name of each of the seller's own paid seller orders asked for, for the

@@ -39,6 +39,7 @@ import {
   SELLER_OFFER_CHANGES_REQUESTED,
   SELLER_OFFER_PUBLISHED,
   SELLER_OFFER_TAG_CHANGED,
+  SELLER_ORDER_DISPUTED,
   SELLER_ORDER_PAID,
   SELLER_PRICE_HOLD_DECIDED,
   SELLER_PRODUCT_CHANGES_REQUESTED,
@@ -102,11 +103,13 @@ const SELLER_KIND_ACCESS: Readonly<Record<SellerNoticeKind, AccessDeclaration>> 
     name: `notifications.see-seller-${name}-notices`,
     rule: { kind: 'permissions', allOf: [key] },
   });
+  const order = seeing('order', ORDERING_SELLER_ORDER_VIEW.key);
   const stock = seeing('stock', INVENTORY_STOCK_VIEW.key);
   const certificate = seeing('certificate', CERTIFICATION_OWN_CERTIFICATE_VIEW.key);
   const catalog = seeing('catalog', CATALOG_OWN_PRODUCT_VIEW.key);
   return {
-    [SELLER_ORDER_PAID]: seeing('order', ORDERING_SELLER_ORDER_VIEW.key),
+    [SELLER_ORDER_PAID]: order,
+    [SELLER_ORDER_DISPUTED]: order,
     [SELLER_LOW_STOCK]: stock,
     [SELLER_CERTIFICATE_DECIDED]: certificate,
     [SELLER_CERTIFICATE_EXPIRING]: certificate,
