@@ -57,3 +57,59 @@ a replay of the same refund conflicts and writes nothing (`INSERT ... ON CONFLIC
 `base_amount` on a `refund-commission` row is **informational**: when a commission share and its base round independently, the base can come out below the commission, and the ledger raises it to the commission so the row still satisfies `amount <= base_amount`. The bases of one line's reversals may therefore sum to slightly more than the original base. Never sum it, and never use it as the tax base of a reversal: tax is reversed from the originals, not from this column.
 
 The ledger step also caps itself: the `refund-*` rows of other refunds plus this one never exceed the stored `sale`, `commission` or `shipping` row, and a refunded line with no stored rows is refused; both answer `commission-payouts.ledger-inconsistent` and write nothing. The shipping position (`shipping_before`) is stored on the refund when it is written, like `units_before`.
+
+## Package 6d: the seller payout run
+
+Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (reconciliation).
+
+**Jobs** (one pass per hosted Market, rule `system`)
+- `commission-payouts.payout-run`, every 15 minutes. Revalidates the payouts that wait
+  (AWAITING_APPROVAL, APPROVED), then evaluates the sellers whose slot is due (at most 5 batches of
+  100). Each write unit locks the seller's cursor first and plans again from the committed state.
+  Each payout that becomes INSTRUCTING is sent right after its unit commits, after one more
+  `access.eligible` check (4.7 step 5); anything but a clear yes fences the key and closes the
+  payout as NOT_SENT `payout-unwound` (no quarantine, nothing was sent).
+- `commission-payouts.reconcile-instructions`, every 5 minutes. Asks payments by key. A key payments
+  never saw is sent by this job after the same re-check. After twice the send lease the key is
+  fenced (`abandonTransfer`); after 15 minutes it is asked once more and closed as NOT_SENT.
+- Consumer of `payments.transfer-changed.v1`: a trigger only; the payout follows the state read by key.
+
+**Routes**
+- Admin (`commission-payouts/admin/payouts`): list, view, and `POST :payoutId/approve` (protected,
+  step-up, echoes the transfer amount; approval binds the amount).
+- Seller (`commission-payouts/seller`): `payouts/next`, `payouts`, `payout-holds`. The seller id comes
+  from the session only.
+
+**Rules worth knowing**
+- One live payout per seller (partial unique index). One unfreed item per seller order.
+- An APPROVED payout is planned again before it is instructed and voided when a hold, a lower
+  seller order, a failed check or a different transfer amount (receivable grew) is found.
+- `idempotency.key-reused` is not a definite refusal: the payout stays INSTRUCTING and a PayoutAlert
+  is raised.
+- Dispute holds and decisions take the affected sellers' cursor locks first (sellerId order).
+- The table guards: `instructing_at` and `abandoned_at` are written once, the transfer id only with
+  instructing to instructed, and a payout can only be inserted as pending, awaiting-approval,
+  instructing or settled-by-netting.
+- Against a non-test Stripe key the unwired prerequisites adapter answers `unavailable`: the run pays
+  nothing until a real second-factor / business-id adapter exists.
+
+**Open items** (also in the pull request)
+1. No facade for the owner's second factor or the business-id re-check; the adapter answers ok in
+   test mode (closed against the live provider). Hard gate before live money.
+2. `lastBankChangeAt` is null (payments' cooling-off covers the money path).
+3. Readiness shown to the seller comes from the cursor's last evaluation.
+4. No payable / in-transit journal accounts, so no daily reconciliation yet. Before live money.
+5. No approval expiry.
+6. A transfer above `maxTransferAmount` becomes NOT_SENT with an alert; it is not split.
+7. (closed) Dispute decisions and holds now take the cursor lock.
+8. (closed) A net increase after approval now voids the approved payout; after an item was taken
+   (not approved) it is still ignored: the seller is paid less, never more.
+9. `transfer-after-abandon` posting is not built: a late transfer for a NOT_SENT payout is retried to
+   dead-letter and alerts. Before live money.
+10. NOT_SENT or VOIDED money is proposed again (by design); safe only with 9.
+11. Acting-as is tested on the helper and by the exact 401 in the e2e.
+12. Access check uses `sellers.sellingEligibility` per seller instead of `accessStatesForPayout` +
+    `PayoutAccessMapping` (not built); the batch "any anomaly drops the batch" rule is applied
+    per payout, right before the send. Needs sign-off from Ali.
+13. The run evaluates at most 500 sellers per tick; `listByState(..., 100)` reads oldest first, so a
+    backlog above 100 delays newer payouts (liveness, not money).
