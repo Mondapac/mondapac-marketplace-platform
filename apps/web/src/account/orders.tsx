@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useState } from 'react';
 import { lineLimit } from '../cart/cart.ts';
+import { unitOf } from '../cart/live-cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { useStore } from '../shell/store-context.tsx';
 import type { AccountOrder, OrderStatus } from '../storefront/types.ts';
@@ -90,7 +91,7 @@ export function AccountOrders() {
                 <div className="ac-acts">
                   <Link
                     className="btn"
-                    href={`/account/orders/${order.reference}`}
+                    href={`/account/orders/${order.id ?? order.reference}`}
                     aria-label={t('orders.view-order', { reference: order.reference })}
                   >
                     {t('overview.view-order')}
@@ -132,9 +133,11 @@ export function BuyAgain({
           for (const part of order.parts)
             for (const line of part.lines) {
               const item = cartSource.items[line.offerId];
-              if (!item) continue;
+              // A real order's line is a sell unit: the cart takes it at today's price.
+              const price = item?.price ?? (unitOf(line.offerId) ? line.unitPrice : null);
+              if (price === null) continue;
               for (let n = 0; n < line.quantity; n++)
-                add(line.offerId, item.price, lineLimit(item.lowStock));
+                add(line.offerId, price, lineLimit(item?.lowStock));
             }
           setDone(true);
         }}

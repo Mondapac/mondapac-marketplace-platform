@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { TAX_INVOICE_SHOWN } from '../storefront/features.ts';
-import type { OrderPart, PickupCode } from '../storefront/types.ts';
+import type { AccountOrder, OrderPart, PickupCode } from '../storefront/types.ts';
 import { AccountFrame, LineThumb, OrderBadge, PartBadge, useDay } from './account-area.tsx';
 import { cancellable, orderTotals, useAccount } from './account-state.tsx';
 import { BuyAgain } from './orders.tsx';
@@ -25,9 +25,13 @@ const STEP_OF: Record<Exclude<OrderPart['status'], 'cancelled'>, number> = {
  */
 export function OrderDetails({
   reference,
+  order: given,
   showTaxInvoice = TAX_INVOICE_SHOWN,
 }: {
+  /** The page's key: a sample order's reference, or a real order's id. */
   readonly reference: string;
+  /** A real order the page read on the server; otherwise it is looked up in the account. */
+  readonly order?: AccountOrder;
   readonly showTaxInvoice?: boolean;
 }) {
   const t = useTranslations('account');
@@ -45,7 +49,7 @@ export function OrderDetails({
       (cancelButton.current ?? document.getElementById('order-title'))?.focus();
     wasAsking.current = asking;
   }, [asking]);
-  const order = orders.find((o) => o.reference === reference);
+  const order = given ?? orders.find((o) => (o.id ?? o.reference) === reference);
   if (!order) return null;
   const totals = orderTotals(order);
   const money = (m: Parameters<typeof formatMoney>[0]) => formatMoney(m, locale);
@@ -147,18 +151,23 @@ export function OrderDetails({
             <dd className="num">{money(totals.total)}</dd>
           </div>
         </dl>
-        <small className="ac-sub">{t('order.gst', { amount: money(order.includedTax) })}</small>
-        {order.status === 'cancelled' ? (
+        {order.taxKnown === false ? null : (
+          <small className="ac-sub">{t('order.gst', { amount: money(order.includedTax) })}</small>
+        )}
+        {/* A sample order is cancelled only before a seller confirms it; a real one may have been paid. */}
+        {order.status === 'cancelled' && order.id === undefined ? (
           <p className="ac-note">
             <Icon name="info" />
             <span>{t('order.not-charged')}</span>
           </p>
         ) : null}
       </section>
-      <section className="ac-card" aria-labelledby="order-address">
-        <h2 id="order-address">{t('order.delivered-to')}</h2>
-        <p>{order.deliveredTo}</p>
-      </section>
+      {order.deliveredTo === '' ? null : (
+        <section className="ac-card" aria-labelledby="order-address">
+          <h2 id="order-address">{t('order.delivered-to')}</h2>
+          <p>{order.deliveredTo}</p>
+        </section>
+      )}
       <div className="ac-acts">
         {order.status === 'cancelled' ? null : <BuyAgain order={order} />}
         {showTaxInvoice && order.status !== 'cancelled' ? (

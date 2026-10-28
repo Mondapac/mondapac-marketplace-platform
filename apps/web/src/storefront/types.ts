@@ -692,6 +692,8 @@ export interface OrderPart {
 
 /** A placed order as the buyer's account shows it. */
 export interface AccountOrder {
+  /** The order's id when it comes from the API (its page's key); sample orders have none. */
+  readonly id?: string;
   readonly reference: string;
   /** The day it was placed (ISO date). */
   readonly placedOn: string;
@@ -701,6 +703,8 @@ export interface AccountOrder {
   readonly parts: readonly [OrderPart, ...OrderPart[]];
   /** The GST included in the total, as the order's tax record gives it. */
   readonly includedTax: Money;
+  /** False for a real order without a tax record (placed before tax was frozen): no GST line. */
+  readonly taxKnown?: boolean;
 }
 
 /** A list the buyer named (Saved lists), holding offer ids. */
