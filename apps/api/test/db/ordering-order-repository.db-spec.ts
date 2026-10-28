@@ -13,7 +13,10 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import {
+  orderingOrdersOwnerTestDatabaseUrl,
+  orderingOrdersTestDatabaseUrl,
+} from './test-database';
 
 // The order store on PostgreSQL (ordering.orders, seller_orders, order_lines), as the application
 // role, for both Market fixtures: round trip with the seller split, the optimistic version, the
@@ -35,11 +38,11 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
   let owner: Client;
 
   beforeAll(async () => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: orderingOrdersTestDatabaseUrl() });
     repository = new PrismaOrderRepository(db.service);
-    sql = new Client({ connectionString: testDatabaseUrl() });
+    sql = new Client({ connectionString: orderingOrdersTestDatabaseUrl() });
     await sql.connect();
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    owner = new Client({ connectionString: orderingOrdersOwnerTestDatabaseUrl() });
     await owner.connect();
   });
   afterAll(async () => {

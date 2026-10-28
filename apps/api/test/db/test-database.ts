@@ -81,7 +81,9 @@ function exported(
     | 'TEST_DISPUTES_DATABASE_URL'
     | 'TEST_DISPUTES_OWNER_DATABASE_URL'
     | 'TEST_SELLERS_LIST_DATABASE_URL'
-    | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL',
+    | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL'
+    | 'TEST_ORDERING_ORDERS_DATABASE_URL'
+    | 'TEST_ORDERING_ORDERS_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -386,4 +388,16 @@ export function sellersListTestDatabaseUrl(): string {
 
 export function sellersListOwnerTestDatabaseUrl(): string {
   return exported('TEST_SELLERS_LIST_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that ordering-order-repository.db-spec.ts writes orders and counts the orders of whole
+ * Markets on (global-setup.ts), as the application login and as its owner (the CHECK probes).
+ */
+export function orderingOrdersTestDatabaseUrl(): string {
+  return exported('TEST_ORDERING_ORDERS_DATABASE_URL');
+}
+
+export function orderingOrdersOwnerTestDatabaseUrl(): string {
+  return exported('TEST_ORDERING_ORDERS_OWNER_DATABASE_URL');
 }
