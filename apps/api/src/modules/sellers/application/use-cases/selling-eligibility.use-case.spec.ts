@@ -63,6 +63,13 @@ class Store implements SellingFactsRepository {
     if (this.fail) return Promise.reject(new Error('read failed'));
     return Promise.resolve(this.settings.get(`${market.marketId}|${sellerId}`) ?? null);
   }
+
+  blogs = new Map<string, boolean>();
+
+  blogEnabled(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean | null> {
+    if (this.fail) return Promise.reject(new Error('read failed'));
+    return Promise.resolve(this.blogs.get(`${market.marketId}|${sellerId}`) ?? null);
+  }
 }
 
 class Access implements SellerAccessReader {
@@ -168,6 +175,8 @@ describe.each([
         unitOfWork,
         sellingFacts: store,
       }),
+      blogAccess: undefined as never,
+      blogAccessSystem: undefined as never,
       reviewerBusinessDetails: undefined as never,
       publishedStoreSellerId: undefined as never,
       carrierPickup: undefined as never,

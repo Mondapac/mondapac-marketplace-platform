@@ -13,6 +13,22 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Blog (blog package 1): one open and one live version per post, one featured post per Market,
+  // the public list and the worker's due-posts index, and the outbox's unpublished index.
+  'blog.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON blog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'blog.post_versions_market_id_category_id_idx':
+    'CREATE INDEX post_versions_market_id_category_id_idx ON blog.post_versions USING btree (market_id, category_id) WHERE (category_id IS NOT NULL)',
+  'blog.post_versions_one_live_key':
+    "CREATE UNIQUE INDEX post_versions_one_live_key ON blog.post_versions USING btree (market_id, post_id) WHERE (state = 'live'::text)",
+  'blog.post_versions_one_open_key':
+    "CREATE UNIQUE INDEX post_versions_one_open_key ON blog.post_versions USING btree (market_id, post_id) WHERE (state = ANY (ARRAY['draft'::text, 'in_review'::text, 'returned'::text, 'approved'::text]))",
+  'blog.posts_market_id_published_at_published_idx':
+    "CREATE INDEX posts_market_id_published_at_published_idx ON blog.posts USING btree (market_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  'blog.posts_market_id_scheduled_at_idx':
+    'CREATE INDEX posts_market_id_scheduled_at_idx ON blog.posts USING btree (market_id, scheduled_at, id) WHERE (scheduled_at IS NOT NULL)',
+  'blog.posts_one_featured_key':
+    'CREATE UNIQUE INDEX posts_one_featured_key ON blog.posts USING btree (market_id) WHERE featured',
   // Cart (speed mode): one active cart per account, one cart per guest token hash.
   'cart.carts_market_id_account_id_active_key':
     "CREATE UNIQUE INDEX carts_market_id_account_id_active_key ON cart.carts USING btree (market_id, account_id) WHERE ((account_id IS NOT NULL) AND (status = 'active'::text))",

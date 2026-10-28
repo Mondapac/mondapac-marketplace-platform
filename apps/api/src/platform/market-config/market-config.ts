@@ -1618,6 +1618,25 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * Blog settings (blog package 1), owned by `blog`. `sellerPostsPerMonth`: the posts a seller may
+     * submit for the first time in one calendar month, counted in the Market `timezone` (AU 4).
+     * `pageSize`: posts per public page (AU 12). `defaultAuthorDisplay`: the byline of a platform
+     * post that gives none. `healthTerms`: words and phrases that make the automatic check ask the
+     * reviewer to look at health wording (a warning, never a block). `selfApprovalWithStepUp`:
+     * whether, in a Market with a single admin, the person who wrote or submitted a post may also
+     * approve it after a fresh step-up (audited); false: the approver is always another person.
+     * Without this section the blog is unavailable (fail closed).
+     */
+    blog: z
+      .strictObject({
+        sellerPostsPerMonth: z.number().int().min(0).max(100),
+        pageSize: z.number().int().min(1).max(50),
+        defaultAuthorDisplay: z.string().trim().min(1).max(80),
+        healthTerms: z.array(z.string().trim().min(2).max(64)).max(500),
+        selfApprovalWithStepUp: z.boolean(),
+      })
+      .optional(),
+    /**
      * Tax settings, owned by `tax`. `defaultRateBps`: the tax rate of the built-in strategy used
      * while an admin has not activated a strategy of their own (AU GST 1000 = 10 %). Without this
      * section the Market has no built-in strategy and tax calculation fails closed.

@@ -82,6 +82,11 @@ import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
+import { BlogAccessSystem } from './application/use-cases/blog-access-system.use-case';
+import { BlogAccess } from './application/use-cases/blog-access.use-case';
+import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
+import { BlogAccessController } from './presentation/blog-access.controller';
+import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
 import { AllowedProductTypesSystem } from './application/use-cases/allowed-product-types-system.use-case';
 import { AllowedProductTypes } from './application/use-cases/allowed-product-types.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
@@ -176,6 +181,7 @@ const PORT = {
   claims: IDENTIFIER_CLAIM_REPOSITORY,
   flags: ADMIN_FLAG_REPOSITORY,
   sellingFacts: SELLING_FACTS_REPOSITORY,
+  blogAccess: BLOG_ACCESS_REPOSITORY,
   storeProfiles: STORE_PROFILE_REPOSITORY,
   publishedStores: PUBLISHED_STORE_REPOSITORY,
   minimumOrderPolicy: MINIMUM_ORDER_POLICY,
@@ -276,6 +282,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewReadController,
     ReviewRegisterCheckController,
     ReviewDecisionController,
+    BlogAccessController,
     SellerListController,
     StoreSettingsController,
     OwnZoneController,
@@ -610,6 +617,16 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(SellingEligibilitySystem, SELLING_ELIGIBILITY_PORTS),
     useCaseProvider(AllowedProductTypes, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(AllowedProductTypesSystem, { unitOfWork: true, sellingFacts: true }),
+    // The blog switch of a seller (blog package 1): the read pair and the admin's set.
+    useCaseProvider(BlogAccess, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(BlogAccessSystem, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(BlogAccessSetUseCase, {
+      unitOfWork: true,
+      blogAccess: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
     // The certification reviewer's read of one approved revision's names and addresses
     // (design 7.1, Hassan M4): audited per read.
     useCaseProvider(ReviewerBusinessDetailsRead, {
@@ -638,6 +655,8 @@ const REVIEW_DECISION_PORTS = {
         SellingEligibilitySystem,
         AllowedProductTypes,
         AllowedProductTypesSystem,
+        BlogAccess,
+        BlogAccessSystem,
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
         PublishedStoreSlugs,
@@ -652,6 +671,8 @@ const REVIEW_DECISION_PORTS = {
         sellingEligibilitySystem: SellingEligibilitySystem,
         allowedProductTypes: AllowedProductTypes,
         allowedProductTypesSystem: AllowedProductTypesSystem,
+        blogAccess: BlogAccess,
+        blogAccessSystem: BlogAccessSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
         publishedStoreSlugs: PublishedStoreSlugs,
@@ -666,6 +687,8 @@ const REVIEW_DECISION_PORTS = {
           sellingEligibilitySystem,
           allowedProductTypes,
           allowedProductTypesSystem,
+          blogAccess,
+          blogAccessSystem,
           reviewerBusinessDetails,
           publishedStoreSellerId,
           publishedStoreSlugs,

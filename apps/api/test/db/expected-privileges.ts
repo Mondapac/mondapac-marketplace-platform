@@ -47,6 +47,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     legal: ['USAGE'],
     tax: ['USAGE'],
     storefront: ['USAGE'],
+    blog: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
     shipping: ['USAGE'],
@@ -609,6 +610,93 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],
     },
+    // Blog (blog package 1): a post changes its slug, status, pointers, schedule and stamps (never
+    // its kind, owner or seller); a version's content and review stamps change while it is a draft
+    // or is decided (a trigger refuses the rest); links and tags are rewritten with the draft; an
+    // event's status changes at once; a redirect is removed when its post takes the slug back; a
+    // category and its names are changed and deleted; a quota row is counted. Outbox as every module.
+    'blog.posts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'draft_version_id',
+        'featured',
+        'live_version_id',
+        'paused_reason',
+        'published_at',
+        'quota_period',
+        'row_version',
+        'scheduled_at',
+        'scheduled_by',
+        'slug',
+        'status',
+        'unpublished_at',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'blog.post_versions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'author_display',
+        'body',
+        'category_id',
+        'cover_alt',
+        'cover_image_id',
+        'decided_at',
+        'decided_by',
+        'decision',
+        'decision_note',
+        'excerpt',
+        'published_at',
+        'published_by',
+        'self_approved',
+        'seo_description',
+        'seo_title',
+        'state',
+        'submitted_at',
+        'submitted_by',
+        'title',
+        'updated_at',
+      ],
+    },
+    'blog.post_events': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'address',
+        'attendance',
+        'ends_at',
+        'event_status',
+        'registration_url',
+        'starts_at',
+        'status_message',
+        'time_zone',
+        'venue_name',
+      ],
+    },
+    'blog.post_links': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.post_tags': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.redirects': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['position', 'updated_at', 'updated_by'],
+    },
+    'blog.category_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'blog.tags': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'blog.seller_quotas': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['updated_at', 'used'],
+    },
+    'blog.outbox': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_at'],
+    },
+    'blog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.
