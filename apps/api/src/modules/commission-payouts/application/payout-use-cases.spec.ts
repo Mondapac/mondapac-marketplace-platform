@@ -405,6 +405,31 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       );
     });
 
+    it("keeps the slot at the same local time across the seller zone's daylight-saving change", async () => {
+      await addSeller();
+      // Melbourne moves its clocks on Sunday 4 October 2026 (02:00 to 03:00).
+      access.zonesBySeller.set(SELLER_A, { zone: 'Australia/Melbourne', provisional: false });
+      const terms = must(await stores.terms.resolve(market, SELLER_A)).terms;
+      const nextSlotFrom = async (at: string) => {
+        clock.set(Temporal.Instant.from(at));
+        await stores.cursors.invalidate(market, SELLER_A, clock.now());
+        await run();
+        return (await cursor()).nextSlotAt!;
+      };
+      const before = await nextSlotFrom('2026-09-01T00:00:00Z');
+      const after = await nextSlotFrom('2026-10-06T00:00:00Z');
+      const local = (slot: Temporal.Instant) => slot.toZonedDateTimeISO('Australia/Melbourne');
+      expect(local(before).toPlainTime().toString()).toBe(
+        Temporal.PlainTime.from(terms.localTime).toString(),
+      );
+      expect(local(after).toPlainTime().toString()).toBe(
+        Temporal.PlainTime.from(terms.localTime).toString(),
+      );
+      // The same local time, one hour earlier in UTC after the clocks went forward.
+      expect(local(before).offsetNanoseconds).toBe(10 * 3600e9);
+      expect(local(after).offsetNanoseconds).toBe(11 * 3600e9);
+    });
+
     it('makes one payout for several missed slots, at the latest one', async () => {
       await addSeller();
       await addOrder(ORDER_1, 20000n);

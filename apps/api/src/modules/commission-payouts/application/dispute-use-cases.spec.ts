@@ -25,6 +25,7 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE } from '../contracts/permissions';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import type { LedgerEntry, LedgerKind } from '../domain/ledger';
 import type { DisputeDependencies } from './dispute-dependencies';
@@ -102,6 +103,7 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
   let disputes: MemoryDisputes;
   let holds: MemoryHolds;
   let cursors: MemoryCursors;
+  let stepUp: AllowingStepUp;
   let source: FakeDisputeSource;
   let orders: FakeOrderLookup;
   let names: FakeSellerNames;
@@ -188,6 +190,7 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
     disputes = new MemoryDisputes(ledger);
     holds = new MemoryHolds();
     cursors = new MemoryCursors();
+    stepUp = new AllowingStepUp();
     await cursors.ensure(market, SELLER_A, T0);
     await cursors.ensure(market, SELLER_B, T0);
     source = new FakeDisputeSource();
@@ -210,7 +213,7 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       outbox,
       securityEvents,
       authorisation: { check: () => Promise.resolve({ allowed: true }) },
-      stepUp: new AllowingStepUp(),
+      stepUp,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
