@@ -913,6 +913,103 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         },
       );
 
+      it.each([
+        [
+          'a later end',
+          { endsAt: T0.add({ hours: 24 * 30 }).toString() },
+          { endsAt: T0.add({ hours: 24 * 10 }).toString() },
+        ],
+        [
+          'an earlier start',
+          { startsAt: T0.subtract({ hours: 48 }).toString() },
+          { startsAt: T0.subtract({ hours: 24 }).toString() },
+        ],
+        ['no end at all', { endsAt: undefined }, { endsAt: T0.add({ hours: 24 * 10 }).toString() }],
+        ['a higher cap', { capMinor: '3000' }, { capMinor: '2000' }],
+        ['no cap', { capMinor: undefined }, { capMinor: '2000' }],
+        ['a higher per-order limit', { maxPerOrderMinor: '9000' }, { maxPerOrderMinor: '5000' }],
+        ['a lower minimum spend', { minSpendMinor: '1000' }, { minSpendMinor: '2000' }],
+        ['no minimum spend', { minSpendMinor: undefined }, { minSpendMinor: '2000' }],
+        ['combinable', { combinable: true }, { combinable: false }],
+      ])(
+        'withdraws every opt-in when an edit widens the exposure: %s',
+        async (_name, wider, base) => {
+          const created = await make(CreatePromotion).execute(admin(), campaign(base));
+          if (!created.ok) throw new Error('create failed');
+          const promotionId = created.value.id;
+          await make(SetCoFundingOptIn).execute(seller(), { promotionId, optIn: true });
+          audit.entries.length = 0;
+          expect((await edit(promotionId, { ...base, ...wider })).ok).toBe(true);
+          expect(await liveOptIns(promotionId)).toEqual([]);
+          expect(
+            audit.entries.filter((e) => e.action === 'promotions.co-funding.changed'),
+          ).toHaveLength(1);
+        },
+      );
+
+      it.each([
+        [
+          'an earlier end',
+          { endsAt: T0.add({ hours: 24 * 5 }).toString() },
+          { endsAt: T0.add({ hours: 24 * 10 }).toString() },
+        ],
+        [
+          'a later start',
+          { startsAt: T0.subtract({ hours: 12 }).toString() },
+          { startsAt: T0.subtract({ hours: 24 }).toString() },
+        ],
+        ['a lower cap', { capMinor: '1000' }, { capMinor: '2000' }],
+        ['a lower per-order limit', { maxPerOrderMinor: '4000' }, { maxPerOrderMinor: '5000' }],
+        ['a higher minimum spend', { minSpendMinor: '3000' }, { minSpendMinor: '2000' }],
+        ['not combinable', { combinable: false }, { combinable: true }],
+        ['a lower budget', { budgetMinor: '50000' }, { budgetMinor: '100000' }],
+      ])(
+        'keeps the opt-ins when an edit narrows the exposure: %s',
+        async (_name, narrower, base) => {
+          const created = await make(CreatePromotion).execute(admin(), campaign(base));
+          if (!created.ok) throw new Error('create failed');
+          const promotionId = created.value.id;
+          await make(SetCoFundingOptIn).execute(seller(), { promotionId, optIn: true });
+          expect((await edit(promotionId, { ...base, ...narrower })).ok).toBe(true);
+          expect(await liveOptIns(promotionId)).toEqual([SELLER]);
+        },
+      );
+
+      it('withdraws every opt-in when the budget of a co-funded campaign is raised, not lowered', async () => {
+        const promotionId = await optedIn();
+        const lowered = await make(SetPromotionBudget).execute(admin(), {
+          promotionId,
+          budgetMinor: '50000',
+        });
+        expect(lowered.ok).toBe(true);
+        expect(await liveOptIns(promotionId)).toHaveLength(2);
+        audit.entries.length = 0;
+        const raised = await make(SetPromotionBudget).execute(admin(), {
+          promotionId,
+          budgetMinor: '90000',
+        });
+        expect(raised.ok).toBe(true);
+        expect(await liveOptIns(promotionId)).toEqual([]);
+        const withdrawals = audit.entries.filter(
+          (e) => e.action === 'promotions.co-funding.changed',
+        );
+        expect(withdrawals).toHaveLength(2);
+        expect(withdrawals.every((e) => (e.after as { optedIn: boolean }).optedIn === false)).toBe(
+          true,
+        );
+      });
+
+      it('does not touch opt-ins when the budget of a platform promotion changes', async () => {
+        const created = await make(CreatePromotion).execute(admin(), platformCart());
+        if (!created.ok) throw new Error('create failed');
+        audit.entries.length = 0;
+        await make(SetPromotionBudget).execute(admin(), {
+          promotionId: created.value.id,
+          budgetMinor: '90000',
+        });
+        expect(audit.entries.map((e) => e.action)).toEqual(['promotions.promotion.budget-changed']);
+      });
+
       it('leaves a withdrawn opt-in alone and a refused edit changes nothing', async () => {
         const promotionId = await optedIn();
         await make(SetCoFundingOptIn).execute(seller(SELLER_2, SELLER_2_ACCOUNT), {
@@ -1247,6 +1344,70 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
           sellerIds: [SELLER, SELLER_2].sort(),
           productIds: [product(1), product(9)].sort(),
         });
+      });
+    });
+
+    describe('a row lock that cannot be taken (N2)', () => {
+      it('answers invalid-state, never an error, on every write that locks', async () => {
+        const created = await make(CreatePromotion).execute(admin(), platformCart());
+        if (!created.ok) throw new Error('create failed');
+        const promotionId = created.value.id;
+        const mine = await make(CreateOwnPromotion).execute(seller(), sale());
+        if (!mine.ok) throw new Error('create failed');
+        const reviewId = [...reviewQueue.entries.keys()][0]!;
+        const camp = await make(CreatePromotion).execute(
+          admin(),
+          platformCart({
+            type: 'CO_FUNDED_CAMPAIGN',
+            funding: 'CO_FUNDED',
+            platformSplitBps: 5000,
+            name: 'Locked',
+          }),
+        );
+        if (!camp.ok) throw new Error('create failed');
+
+        promotions.contended = true;
+        firstOrder.contended = true;
+        const refused = { ok: false, error: { code: 'promotions.invalid-state' } };
+        expect(
+          await make(EditPromotion).execute(admin(), { ...platformCart(), promotionId }),
+        ).toEqual(refused);
+        expect(
+          await make(SetPromotionBudget).execute(admin(), { promotionId, budgetMinor: '5000' }),
+        ).toEqual(refused);
+        expect(await make(PausePromotion).execute(admin(), { promotionId })).toEqual(refused);
+        expect(await make(ResumePromotion).execute(admin(), { promotionId })).toEqual(refused);
+        expect(
+          await make(DecidePromotionReview).execute(admin(), {
+            reviewId,
+            decision: 'APPROVE',
+            promotionVersion: mine.value.updatedAt.toString(),
+          }),
+        ).toEqual(refused);
+        expect(
+          await make(SetCoFundingOptIn).execute(seller(), {
+            promotionId: camp.value.id,
+            optIn: true,
+          }),
+        ).toEqual(refused);
+        expect(
+          await make(SetFirstOrderSettings).execute(admin(), {
+            enabled: true,
+            kind: 'PERCENT',
+            percentBps: 500,
+            minSpendMinor: '3000',
+            monthlyBudgetMinor: '1000',
+          }),
+        ).toEqual(refused);
+        // Nothing was written by any of them.
+        expect(promotions.records.get(promotionId)?.budgetMinor).toBe(100000n);
+        expect(firstOrder.row).toBeNull();
+
+        promotions.contended = false;
+        expect(
+          (await make(SetPromotionBudget).execute(admin(), { promotionId, budgetMinor: '5000' }))
+            .ok,
+        ).toBe(true);
       });
     });
 

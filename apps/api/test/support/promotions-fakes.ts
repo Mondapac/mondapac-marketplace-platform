@@ -10,6 +10,7 @@ import type {
   OptInRepository,
 } from '../../src/modules/promotions/application/ports/opt-in.repository';
 import type { PriceHistory } from '../../src/modules/promotions/application/ports/price-history';
+import { LockContendedError } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type {
   LiveScope,
   PromotionFilter,
@@ -64,7 +65,10 @@ export class MemoryPromotions implements PromotionRepository {
   find(_market: MarketContext, id: Id<'Promotion'>) {
     return Promise.resolve(this.records.get(id) ?? null);
   }
+  /** Set to make the row lock give up, as the database one does under heavy contention. */
+  contended = false;
   findForUpdate(_market: MarketContext, id: Id<'Promotion'>) {
+    if (this.contended) return Promise.reject(new LockContendedError('promotions.promotion'));
     this.locked.push(id);
     return Promise.resolve(this.records.get(id) ?? null);
   }
@@ -216,7 +220,9 @@ export class MemoryFirstOrder implements FirstOrderSettingsRepository {
   find() {
     return Promise.resolve(this.row);
   }
+  contended = false;
   findForUpdate() {
+    if (this.contended) return Promise.reject(new LockContendedError('promotions.first-order'));
     return Promise.resolve(this.row);
   }
   save(_market: MarketContext, settings: FirstOrderSettings) {

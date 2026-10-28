@@ -6,6 +6,7 @@ import type { PromotionsFailure } from './failures';
 import { activeSettings, isStillActive } from './market-switch';
 import type { ReviewEntry } from './ports/review-queue.repository';
 import type { PromotionsDependencies } from './promotions-dependencies';
+import { locked } from './shared';
 import { promotionViewOf, type PromotionView } from './views';
 
 // The admin review queue of seller promotions and the seller's opt-in to co-funded campaigns.
@@ -95,7 +96,11 @@ export async function decideReview(
     const entry = await deps.reviews.find(context.market, reviewId.value);
     if (entry === null) return err({ code: 'promotions.not-found' });
     if (entry.status !== 'OPEN') return err({ code: 'promotions.invalid-state' });
-    const before = await deps.promotions.findForUpdate(context.market, entry.promotionId);
+    const lock = await locked(() =>
+      deps.promotions.findForUpdate(context.market, entry.promotionId),
+    );
+    if (!lock.ok) return lock;
+    const before = lock.value;
     if (before === null) return err({ code: 'promotions.not-found' });
     // The promotion changed since the admin looked at it: nothing is decided.
     if (!before.updatedAt.equals(version)) return err({ code: 'promotions.invalid-state' });
@@ -170,7 +175,9 @@ export async function setOptIn(
     PromotionsFailure
   >(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const promotion = await deps.promotions.findForUpdate(context.market, parsed.value);
+    const lock = await locked(() => deps.promotions.findForUpdate(context.market, parsed.value));
+    if (!lock.ok) return lock;
+    const promotion = lock.value;
     // A campaign the admin aimed at other sellers does not exist for this one.
     if (
       promotion === null ||

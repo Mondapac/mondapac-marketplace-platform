@@ -1,5 +1,5 @@
-import { err, ok, parseId, parseMinorUnits } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, parseId, parseMinorUnits, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import {
   auditCode,
   CoFundingOptInChanged,
@@ -23,7 +23,7 @@ import { adminAccountId, sellerCaller } from './caller';
 import type { PromotionsFailure } from './failures';
 import { activeSettings, isStillActive } from './market-switch';
 import type { PromotionsDependencies } from './promotions-dependencies';
-import { auditMoney, auditTerms, spendPlatformFundingProof } from './shared';
+import { auditMoney, auditTerms, locked, spendPlatformFundingProof } from './shared';
 
 // Create, edit, pause, resume and budget change of promotions (promotions package T1). An admin
 // works on the platform's promotions (and may pause any); a seller works on its own. Every write
@@ -53,7 +53,16 @@ function callerOf(context: CallContext, as: Actor): Caller | null {
 const ownerSellerOf = (owner: Owner): Id<'Seller'> | null =>
   owner.kind === 'seller' ? owner.sellerId : null;
 
-/** Whether an edit changes what a seller agreed to when it opted in to a co-funded campaign. */
+/** `after` is larger than `before`, where null is "no limit" (the largest). */
+const widerMax = (before: bigint | null, after: bigint | null): boolean =>
+  before !== null && (after === null || after > before);
+
+/**
+ * Whether an edit changes what a seller agreed to when it opted in to a co-funded campaign: other
+ * terms (reward, split, products, sellers) or a wider exposure (a longer or earlier-starting run,
+ * a higher cap, per-order limit or budget, a lower minimum spend, combining with other offers).
+ * A narrowing edit keeps the opt-ins.
+ */
 function sellerTermsChanged(before: PromotionRecord, after: PromotionRecord): boolean {
   if (before.funding !== 'CO_FUNDED') return false;
   const sameReward =
@@ -63,12 +72,44 @@ function sellerTermsChanged(before: PromotionRecord, after: PromotionRecord): bo
       : before.reward.amount === (after.reward as { amount: bigint }).amount);
   const sameIds = (a: readonly string[], b: readonly string[]) =>
     a.length === b.length && a.every((value) => b.includes(value));
+  // No end is the longest run; no minimum spend is the lowest.
+  const laterEnd =
+    before.endsAt !== null &&
+    (after.endsAt === null || Temporal.Instant.compare(after.endsAt, before.endsAt) > 0);
+  const lowerMinSpend = (before.minSpendMinor ?? 0n) > (after.minSpendMinor ?? 0n);
   return (
     !sameReward ||
     before.platformSplitBps !== after.platformSplitBps ||
     !sameIds(before.productIds, after.productIds) ||
-    !sameIds(before.sellerIds, after.sellerIds)
+    !sameIds(before.sellerIds, after.sellerIds) ||
+    laterEnd ||
+    Temporal.Instant.compare(after.startsAt, before.startsAt) < 0 ||
+    widerMax(before.capMinor, after.capMinor) ||
+    widerMax(before.maxPerOrderMinor, after.maxPerOrderMinor) ||
+    widerMax(before.budgetMinor, after.budgetMinor) ||
+    lowerMinSpend ||
+    (!before.combinable && after.combinable)
   );
+}
+
+/** Withdraws every live opt-in of the promotion, one audit row per seller; they must opt in again. */
+async function withdrawOptIns(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  promotionId: Id<'Promotion'>,
+  now: Temporal.Instant,
+  by: Id<'Account'>,
+): Promise<void> {
+  const withdrawn = await deps.optIns.withdrawAll(context.market, promotionId, now, by);
+  for (const sellerId of withdrawn) {
+    await deps.audit.record(
+      context,
+      CoFundingOptInChanged.entry(promotionId, {
+        before: { optedIn: true },
+        after: { optedIn: false, sellerId },
+      }),
+    );
+  }
 }
 
 const invalid = (fields: readonly { path: string; code: string }[]): PromotionsFailure => ({
@@ -217,7 +258,9 @@ export async function editPromotion(
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const before = await deps.promotions.findForUpdate(context.market, id);
+    const lock = await locked(() => deps.promotions.findForUpdate(context.market, id));
+    if (!lock.ok) return lock;
+    const before = lock.value;
     // Unknown and someone else's seller promotion are one answer.
     if (before === null) return err({ code: 'promotions.not-found' });
     if (caller.owner.kind === 'seller' && before.ownerSellerId !== caller.owner.sellerId) {
@@ -271,17 +314,7 @@ export async function editPromotion(
     }
     await deps.promotions.update(context.market, after);
     if (sellerTermsChanged(before, after)) {
-      // The sellers agreed to other terms: each must opt in again, and the withdrawal is audited.
-      const withdrawn = await deps.optIns.withdrawAll(context.market, id, now, caller.accountId);
-      for (const sellerId of withdrawn) {
-        await deps.audit.record(
-          context,
-          CoFundingOptInChanged.entry(id, {
-            before: { optedIn: true },
-            after: { optedIn: false, sellerId },
-          }),
-        );
-      }
+      await withdrawOptIns(deps, context, id, now, caller.accountId);
     }
     if (as === 'seller') {
       await deps.reviews.open(context.market, {
@@ -328,7 +361,9 @@ export async function changePause(
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const before = await deps.promotions.findForUpdate(context.market, id);
+    const lock = await locked(() => deps.promotions.findForUpdate(context.market, id));
+    if (!lock.ok) return lock;
+    const before = lock.value;
     if (before === null) return err({ code: 'promotions.not-found' });
     // An admin may pause any promotion; a seller only its own, and resume only what it paused.
     if (caller.owner.kind === 'seller' && before.ownerSellerId !== caller.owner.sellerId) {
@@ -398,7 +433,9 @@ export async function setBudget(
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const before = await deps.promotions.findForUpdate(context.market, id);
+    const lock = await locked(() => deps.promotions.findForUpdate(context.market, id));
+    if (!lock.ok) return lock;
+    const before = lock.value;
     if (before === null) return err({ code: 'promotions.not-found' });
     // A seller-funded promotion's budget is the seller's own to set.
     if (before.ownerSellerId !== null || before.status === 'REJECTED') {
@@ -417,6 +454,10 @@ export async function setBudget(
       proof = spent.value;
     }
     await deps.promotions.update(context.market, after);
+    // A larger budget on a co-funded campaign widens what the opted-in sellers share in.
+    if (sellerTermsChanged(before, after)) {
+      await withdrawOptIns(deps, context, id, now, adminId);
+    }
     await deps.audit.record(
       context,
       PromotionBudgetChanged.entry(id, {

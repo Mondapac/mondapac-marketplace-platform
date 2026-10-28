@@ -1,6 +1,7 @@
 import type { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import { LockContendedError } from '../application/ports/promotion.repository';
 import type { FirstOrderSettings } from '../application/ports/promotions-policy';
 import type {
   FirstOrderSettingsRepository,
@@ -57,7 +58,7 @@ export class PrismaFirstOrderSettingsRepository implements FirstOrderSettingsRep
       });
       return held === null ? null : toSettings(held);
     }
-    throw new Error('promotions.first-order-lock-contended');
+    throw new LockContendedError('promotions.first-order');
   }
 
   async save(

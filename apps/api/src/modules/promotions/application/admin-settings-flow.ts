@@ -6,7 +6,7 @@ import type { PromotionsFailure } from './failures';
 import { activeSettings, isStillActive } from './market-switch';
 import type { FirstOrderSettings, PromotionsSettings } from './ports/promotions-policy';
 import type { PromotionsDependencies } from './promotions-dependencies';
-import { auditMoney, spendPlatformFundingProof } from './shared';
+import { auditMoney, locked, spendPlatformFundingProof } from './shared';
 import type { ShippingThresholdRecord } from './ports/settings.repository';
 
 // The two admin-editable settings of phase 1: the first-order discount of the Market and the
@@ -160,7 +160,9 @@ export async function setFirstOrder(
   return deps.unitOfWork.run<FirstOrderView, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
     // Read with the row locked, so two changes of the settings cannot both pass on a stale budget.
-    const stored = await deps.firstOrder.findForUpdate(context.market);
+    const lock = await locked(() => deps.firstOrder.findForUpdate(context.market));
+    if (!lock.ok) return lock;
+    const stored = lock.value;
     const before: { readonly settings: FirstOrderSettings | null } =
       stored !== null ? { settings: stored } : await effectiveFirstOrder(deps, context, settings);
     const was = before.settings ?? OFF;

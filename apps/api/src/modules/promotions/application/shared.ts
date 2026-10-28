@@ -5,6 +5,7 @@ import { PROMOTIONS_PLATFORM_FUNDING_STEP_UP } from '../contracts/step-up';
 import { auditCode } from '../domain/audit';
 import type { PromotionRecord } from '../domain/promotion';
 import type { PromotionsFailure } from './failures';
+import { LockContendedError } from './ports/promotion.repository';
 import type { PromotionsDependencies } from './promotions-dependencies';
 
 /** identity's refusal of the step-up, as a promotions use case answers it; anything else stays closed. */
@@ -30,6 +31,21 @@ export async function spendPlatformFundingProof(
   const spent = await deps.stepUp.consume(context, PROMOTIONS_PLATFORM_FUNDING_STEP_UP);
   if (!spent.ok) return { ok: false, error: stepUpFailure(spent.error) };
   return { ok: true, value: spent.value };
+}
+
+/**
+ * Reads under a row lock. A lock that cannot be taken is `promotions.invalid-state` (409), not an
+ * error: the row moved under the reader, so the caller reads again.
+ */
+export async function locked<T>(read: () => Promise<T>): Promise<Result<T, PromotionsFailure>> {
+  try {
+    return { ok: true, value: await read() };
+  } catch (error) {
+    if (error instanceof LockContendedError) {
+      return { ok: false, error: { code: 'promotions.invalid-state' } };
+    }
+    throw error;
+  }
 }
 
 /** The money of an audit row: only an amount above zero is a Money there. */

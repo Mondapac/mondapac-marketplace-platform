@@ -1,11 +1,12 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type {
-  LiveScope,
-  PromotionFilter,
-  PromotionRepository,
-  UsageRecord,
+import {
+  LockContendedError,
+  type LiveScope,
+  type PromotionFilter,
+  type PromotionRepository,
+  type UsageRecord,
 } from '../application/ports/promotion.repository';
 import type {
   CreatableType,
@@ -219,7 +220,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
       });
       return held === null ? null : toRecord(held);
     }
-    throw new Error('promotions.promotion-lock-contended');
+    throw new LockContendedError('promotions.promotion');
   }
 
   async findMany(

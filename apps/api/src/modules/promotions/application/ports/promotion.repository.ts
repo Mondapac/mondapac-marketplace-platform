@@ -16,6 +16,17 @@ export interface PromotionFilter {
   readonly limit: number;
 }
 
+/**
+ * A row lock that could not be taken (the row kept moving under the reader). The use cases answer
+ * it as `promotions.invalid-state` (409): the caller reads again and retries.
+ */
+export class LockContendedError extends Error {
+  constructor(readonly what: string) {
+    super(`${what}-lock-contended`);
+    this.name = 'LockContendedError';
+  }
+}
+
 /** What a cart touches: only promotions that can apply to it are read. */
 export interface LiveScope {
   readonly sellerIds: readonly Id<'Seller'>[];
