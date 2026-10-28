@@ -152,7 +152,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // review, publish or pause a post are not listed.
     // Version 21 adds `promotions.promotion.view`, likewise unprotected (promotions package T1:
     // usage counts only); the manage keys of promotions are not listed.
-    seedVersion: 21,
+    // Version 22 adds `customers.account-deletion-requests.view`, likewise unprotected (customers
+    // package 5c); the protected `customers.buyer-account.delete` is not listed.
+    seedVersion: 22,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -179,6 +181,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'shipping.delivery-settings.view',
       'blog.post.read',
       'promotions.promotion.view',
+      'customers.account-deletion-requests.view',
     ],
   },
   {

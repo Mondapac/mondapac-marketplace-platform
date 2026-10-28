@@ -1,7 +1,10 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { AccountDeletionRequestRepository } from '../application/ports/account-deletion-request.repository';
+import type {
+  AccountDeletionRequestRepository,
+  PendingCursor,
+} from '../application/ports/account-deletion-request.repository';
 import type {
   AccountDeletionRequest,
   AccountDeletionRequestStatus,
@@ -19,6 +22,10 @@ const toRequest = (row: {
   readonly requestedAt: Date;
   readonly scheduledFor: Date;
   readonly claimedAt: Date | null;
+  readonly requestedBy: string;
+  readonly adminAccountId: string | null;
+  readonly ticketRef: string | null;
+  readonly reason: string | null;
 }): AccountDeletionRequest => ({
   id: row.id as Id<'AccountDeletionRequest'>,
   accountId: row.accountId as Id<'Account'>,
@@ -27,6 +34,15 @@ const toRequest = (row: {
   requestedAt: toInstant(row.requestedAt),
   scheduledFor: toInstant(row.scheduledFor),
   claimedAt: row.claimedAt === null ? null : toInstant(row.claimedAt),
+  requestedBy: row.requestedBy === 'admin' ? 'admin' : 'customer',
+  adminOrigin:
+    row.adminAccountId === null || row.ticketRef === null || row.reason === null
+      ? null
+      : {
+          adminAccountId: row.adminAccountId as Id<'Account'>,
+          ticketRef: row.ticketRef,
+          reason: row.reason,
+        },
 });
 
 /** {@link AccountDeletionRequestRepository} on `customers.account_deletion_requests`, scoped by `marketId`. */
@@ -46,6 +62,10 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
           waitingPeriodDays: request.waitingPeriodDays,
           requestedAt: toDate(request.requestedAt),
           scheduledFor: toDate(request.scheduledFor),
+          requestedBy: request.requestedBy,
+          adminAccountId: request.adminOrigin?.adminAccountId ?? null,
+          ticketRef: request.adminOrigin?.ticketRef ?? null,
+          reason: request.adminOrigin?.reason ?? null,
         },
       ],
       skipDuplicates: true,
@@ -72,6 +92,58 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
       data: { status: 'cancelled', cancelledAt: toDate(at), cancelReason: reason },
     });
     return count === 1;
+  }
+
+  async findById(market: MarketContext, id: Id<'AccountDeletionRequest'>) {
+    const row = await this.prisma
+      .tx(market)
+      .customersAccountDeletionRequest.findFirst({ where: { marketId: market.marketId, id } });
+    return row === null ? null : toRequest(row);
+  }
+
+  async cancelByAdmin(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    adminAccountId: Id<'Account'>,
+    note: string,
+    at: Temporal.Instant,
+  ): Promise<boolean> {
+    // Only a pending request, as the buyer's cancel: a claimed one matches nothing.
+    const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
+      where: { marketId: market.marketId, id, status: 'pending' },
+      data: {
+        status: 'cancelled',
+        cancelledAt: toDate(at),
+        cancelReason: 'admin',
+        cancelledByAdminId: adminAccountId,
+        cancelNote: note,
+      },
+    });
+    return count === 1;
+  }
+
+  async listPending(
+    market: MarketContext,
+    page: { readonly after: PendingCursor | null; readonly limit: number },
+  ) {
+    const { after } = page;
+    const rows = await this.prisma.tx(market).customersAccountDeletionRequest.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'pending',
+        ...(after === null
+          ? {}
+          : {
+              OR: [
+                { scheduledFor: { gt: toDate(after.scheduledFor) } },
+                { scheduledFor: toDate(after.scheduledFor), id: { gt: after.id } },
+              ],
+            }),
+      },
+      orderBy: [{ scheduledFor: 'asc' }, { id: 'asc' }],
+      take: page.limit,
+    });
+    return rows.map(toRequest);
   }
 
   async claim(

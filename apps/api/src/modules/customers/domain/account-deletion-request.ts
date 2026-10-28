@@ -1,4 +1,6 @@
-import type { Id, Temporal } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
+import type { Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { parseChangeReason, type FieldError } from './account-deletion-settings';
 
 /**
  * `pending` waits for its date and is the only state the buyer can cancel; `executing` is claimed
@@ -24,7 +26,37 @@ export interface AccountDeletionRequest {
   readonly scheduledFor: Temporal.Instant;
   /** When the job claimed it (`executing`); null while pending, and for a request cancelled before. */
   readonly claimedAt: Temporal.Instant | null;
+  /** Who asked: the buyer, or an admin on the buyer's behalf (package 5c). */
+  readonly requestedBy: AccountDeletionRequester;
+  /** The admin's side of an admin request; null for the buyer's own. */
+  readonly adminOrigin: AdminDeletionOrigin | null;
 }
+
+export type AccountDeletionRequester = 'customer' | 'admin';
+
+/**
+ * What an admin entered when asking for a buyer's deletion. Free text: kept on the request row
+ * (part of the audit evidence), never in an event or an audit row.
+ */
+export interface AdminDeletionOrigin {
+  readonly adminAccountId: Id<'Account'>;
+  readonly ticketRef: string;
+  readonly reason: string;
+}
+
+/** A support ticket reference: 1 to 64 characters, letters, digits and `. _ # / -`, no spaces. */
+export const TICKET_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._#/-]{0,63}$/;
+
+export function parseTicketRef(value: unknown): Result<string, FieldError> {
+  if (typeof value !== 'string') return err({ path: 'ticketRef', code: 'type' });
+  const text = value.trim();
+  if (text.length === 0) return err({ path: 'ticketRef', code: 'range' });
+  if (!TICKET_REF_PATTERN.test(text)) return err({ path: 'ticketRef', code: 'format' });
+  return ok(text);
+}
+
+/** The admin's reason (request or cancel): 1 to 500 characters of one line of plain text. */
+export const parseAdminReason = parseChangeReason;
 
 /**
  * When a request made at `requestedAt` is carried out: the waiting period later, as an instant of

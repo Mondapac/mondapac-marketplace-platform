@@ -17,7 +17,10 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { CUSTOMERS_AUDIT_ACTIONS } from '../../domain/audit';
 import { CUSTOMERS_EVENTS } from '../../domain/events';
 import type { AccountDeletionRequest } from '../../domain/account-deletion-request';
-import type { AccountDeletionRequestRepository } from '../ports/account-deletion-request.repository';
+import type {
+  AccountDeletionRequestRepository,
+  PendingCursor,
+} from '../ports/account-deletion-request.repository';
 import type {
   AccountDeletionSettingsRecord,
   AccountDeletionSettingsRepository,
@@ -106,7 +109,11 @@ export class RecordingStepUp implements StepUpProofConsumer {
 export type StoredDeletionRequest = AccountDeletionRequest & {
   readonly market: string;
   readonly closedAt: Temporal.Instant | null;
-  readonly cancelReason: 'customer' | 'sign-in' | null;
+  readonly cancelReason: 'customer' | 'sign-in' | 'admin' | null;
+  readonly cancelledByAdmin: {
+    readonly adminAccountId: Id<'Account'>;
+    readonly note: string;
+  } | null;
 };
 
 /**
@@ -141,8 +148,56 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
       market: market.marketId,
       closedAt: null,
       cancelReason: null,
+      cancelledByAdmin: null,
     });
     return Promise.resolve(true);
+  }
+
+  findById(market: MarketContext, id: Id<'AccountDeletionRequest'>) {
+    const row = this.rows.get(id);
+    return Promise.resolve(row !== undefined && row.market === market.marketId ? row : null);
+  }
+
+  cancelByAdmin(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    adminAccountId: Id<'Account'>,
+    note: string,
+    at: Temporal.Instant,
+  ) {
+    this.interleave();
+    const row = this.rows.get(id);
+    if (row === undefined || row.market !== market.marketId || row.status !== 'pending') {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, {
+      ...row,
+      status: 'cancelled',
+      closedAt: at,
+      cancelReason: 'admin',
+      cancelledByAdmin: { adminAccountId, note },
+    });
+    return Promise.resolve(true);
+  }
+
+  listPending(
+    market: MarketContext,
+    page: { readonly after: PendingCursor | null; readonly limit: number },
+  ) {
+    const { after } = page;
+    const rows = [...this.rows.values()]
+      .filter((r) => r.market === market.marketId && r.status === 'pending')
+      .sort(
+        (a, b) =>
+          Temporal.Instant.compare(a.scheduledFor, b.scheduledFor) || a.id.localeCompare(b.id),
+      )
+      .filter(
+        (r) =>
+          after === null ||
+          Temporal.Instant.compare(r.scheduledFor, after.scheduledFor) > 0 ||
+          (Temporal.Instant.compare(r.scheduledFor, after.scheduledFor) === 0 && r.id > after.id),
+      );
+    return Promise.resolve(rows.slice(0, page.limit));
   }
 
   findActiveOf(market: MarketContext, accountId: Id<'Account'>) {

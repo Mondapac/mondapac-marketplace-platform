@@ -43,6 +43,7 @@ import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
+import { AdminOpenObligationsOfQuery } from './use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
@@ -2782,6 +2783,39 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await ofAccount.execute(customer, { accountId: ACCOUNT })).toMatchObject({
         ok: false,
       });
+    });
+  });
+
+  describe('the admin read of open obligations (customers package 5c)', () => {
+    const adminActor = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'obligations-admin',
+      );
+
+    it('answers the counts to a platform admin and to nobody else', async () => {
+      const systemContext = testCallContext(market, 'system', 'admin-obligations-sys');
+      const read = new AdminOpenObligationsOfQuery(gate, deps);
+      expect(await read.execute(adminActor(), { accountId: ACCOUNT })).toEqual({
+        ok: true,
+        value: { openOrders: 0, pendingRefunds: 0 },
+      });
+      for (const context of [
+        customer,
+        systemContext,
+        {
+          ...adminActor(),
+          actor: { ...adminActor().actor, actingAs: { adminAccountId: ACCOUNT } },
+        } as never,
+      ]) {
+        expect(await read.execute(context, { accountId: ACCOUNT })).toMatchObject({ ok: false });
+      }
     });
   });
 

@@ -1,6 +1,12 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { AccountDeletionRequest } from '../../domain/account-deletion-request';
 
+/** Where the next page of pending requests starts: after this date and id. */
+export interface PendingCursor {
+  readonly scheduledFor: Temporal.Instant;
+  readonly id: Id<'AccountDeletionRequest'>;
+}
+
 /**
  * The deletion requests (`customers.account_deletion_requests`). Every method runs inside the
  * caller's unit of work and is scoped by the Market. At most one open (pending or executing)
@@ -25,6 +31,33 @@ export interface AccountDeletionRequestRepository {
     reason: 'customer' | 'sign-in',
     at: Temporal.Instant,
   ): Promise<boolean>;
+
+  /** One request by id, in any state, or null (unknown or another Market's). */
+  findById(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+  ): Promise<AccountDeletionRequest | null>;
+
+  /**
+   * Closes a pending request as cancelled by an admin (`cancel_reason` admin), keeping the admin
+   * and the note on the row; false when it was not pending (claimed, closed or gone).
+   */
+  cancelByAdmin(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    adminAccountId: Id<'Account'>,
+    note: string,
+    at: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /**
+   * The Market's pending requests, oldest date first (the due index), after `after` (keyset on
+   * `scheduledFor` then id), at most `limit`. Ids, dates and who asked: nothing personal.
+   */
+  listPending(
+    market: MarketContext,
+    page: { readonly after: PendingCursor | null; readonly limit: number },
+  ): Promise<readonly AccountDeletionRequest[]>;
 
   /**
    * The job's claim, before any irreversible step: a pending request whose date has come becomes

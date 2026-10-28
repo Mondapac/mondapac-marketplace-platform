@@ -67,9 +67,46 @@ export const AccountDeletionCompleted = defineAuditAction({
   after: { waitingPeriodDays: auditField.integer() },
 });
 
+const STEP_UP_PROOF = {
+  /** The admin step-up proof the action spent: the session that verified the code, and when. */
+  stepUpSessionId: auditField.id(),
+  stepUpVerifiedAt: auditField.instant(),
+};
+
+/**
+ * An admin asked for a buyer's account to be deleted (package 5c). Target: the request; the actor
+ * is the admin. No free text: the ticket reference and the reason are on the request row
+ * (`customers.account_deletion_requests`, never updated after insert), which is part of the audit
+ * evidence. `after` names the buyer's account, the dates and the step-up proof the request spent.
+ */
+export const AccountDeletionRequestedByAdmin = defineAuditAction({
+  action: 'customers.account-deletion.requested-by-admin',
+  targetType: ACCOUNT_DELETION_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: {
+    accountId: auditField.id(),
+    waitingPeriodDays: auditField.integer(),
+    scheduledFor: auditField.instant(),
+    ...STEP_UP_PROOF,
+  },
+});
+
+/** An admin cancelled a pending request (package 5c); the note is on the request row. */
+export const AccountDeletionCancelledByAdmin = defineAuditAction({
+  action: 'customers.account-deletion.cancelled-by-admin',
+  targetType: ACCOUNT_DELETION_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: {
+    accountId: auditField.id(),
+    ...STEP_UP_PROOF,
+  },
+});
+
 export const CUSTOMERS_AUDIT_ACTIONS = [
   AccountDeletionSettingsChanged,
   AccountDeletionRequested,
   AccountDeletionCancelled,
   AccountDeletionCompleted,
+  AccountDeletionRequestedByAdmin,
+  AccountDeletionCancelledByAdmin,
 ] as const;
