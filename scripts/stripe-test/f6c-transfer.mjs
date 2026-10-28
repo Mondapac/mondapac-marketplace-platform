@@ -139,7 +139,8 @@ async function createRecipient() {
     },
     defaults: {
       currency: CURRENCY.toLowerCase(),
-      profile: { business_url: 'https://example.com' },
+      // Stripe's test value for a website it accepts as verified.
+      profile: { business_url: 'https://accessible.stripe.com' },
       responsibilities: { fees_collector: 'application', losses_collector: 'application' },
     },
     configuration: {
