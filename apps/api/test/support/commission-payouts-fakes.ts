@@ -77,6 +77,8 @@ export class MemoryAnchors implements EligibilityAnchorRepository {
 export class MemoryCursors implements PayoutCursorRepository {
   readonly rows = new Map<string, PayoutCursor>();
   locks = 0;
+  /** The sellers locked, in the order the locks were taken. */
+  readonly lockLog: Id<'Seller'>[] = [];
   ensure(market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
     if (!this.rows.has(key(market, sellerId))) {
       this.rows.set(key(market, sellerId), {
@@ -96,6 +98,7 @@ export class MemoryCursors implements PayoutCursorRepository {
     const row = this.rows.get(key(market, sellerId));
     if (row === undefined) return Promise.resolve(null);
     this.locks += 1;
+    this.lockLog.push(sellerId);
     const locked = { ...row, version: row.version + 1 };
     this.rows.set(key(market, sellerId), locked);
     return Promise.resolve(locked);

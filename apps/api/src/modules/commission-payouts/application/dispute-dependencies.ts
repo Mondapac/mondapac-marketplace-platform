@@ -7,6 +7,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { DisputeSource, OrderPaymentLookup } from './ports/dispute-source';
 import type { DisputeRepository } from './ports/dispute.repository';
 import type { LedgerRepository } from './ports/ledger.repository';
+import type { PayoutCursorRepository } from './ports/payout-cursor.repository';
 import type { PayoutHoldRepository } from './ports/payout-hold.repository';
 import type { SellerNames } from './ports/seller-names';
 
@@ -16,6 +17,8 @@ export interface DisputeDependencies {
   readonly disputes: DisputeRepository;
   readonly ledger: LedgerRepository;
   readonly holds: PayoutHoldRepository;
+  /** The seller's money lock, taken before a hold or a debit changes what a payout may take. */
+  readonly cursors: PayoutCursorRepository;
   readonly source: DisputeSource;
   readonly orders: OrderPaymentLookup;
   readonly sellerNames: SellerNames;

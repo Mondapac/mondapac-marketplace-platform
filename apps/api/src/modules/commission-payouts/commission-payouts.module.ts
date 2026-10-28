@@ -128,6 +128,7 @@ const DISPUTE_PORTS: readonly [keyof DisputeDependencies, InjectionToken][] = [
   ['disputes', DISPUTE_REPOSITORY],
   ['ledger', LEDGER_REPOSITORY],
   ['holds', PAYOUT_HOLD_REPOSITORY],
+  ['cursors', PAYOUT_CURSOR_REPOSITORY],
   ['source', DISPUTE_SOURCE],
   ['orders', ORDER_PAYMENT_LOOKUP],
   ['sellerNames', SELLER_NAMES],
