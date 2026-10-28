@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { lineLimit } from '../cart/cart.ts';
+import { unitKey } from '../cart/live-cart.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { ProductOffer } from '../storefront/types.ts';
@@ -21,7 +22,12 @@ export function BuyControl({
   const t = useTranslations('product');
   const { cart, add, remove, online } = useStore();
   const off = online ? undefined : true;
-  const quantity = cart[offer.id]?.quantity ?? 0;
+  // A real offer is carted by its sell unit (the priced Variant); a sample offer by its id.
+  const id =
+    offer.variantId === undefined
+      ? offer.id
+      : unitKey({ offerId: offer.id, variantId: offer.variantId });
+  const quantity = cart[id]?.quantity ?? 0;
   const limit = lineLimit(offer.lowStock);
   if (limit === 0)
     return (
@@ -38,7 +44,7 @@ export function BuyControl({
         {...(variant === 'small'
           ? { 'aria-label': t('add-offer', { seller: offer.seller.name }) }
           : {})}
-        onClick={() => add(offer.id, offer.price, limit)}
+        onClick={() => add(id, offer.price, limit)}
       >
         {variant === 'small' ? null : <Icon name="bag" />}
         {t('add-to-cart')}
@@ -52,7 +58,7 @@ export function BuyControl({
           type="button"
           aria-label={t('decrease')}
           aria-disabled={off}
-          onClick={() => remove(offer.id)}
+          onClick={() => remove(id)}
         >
           <Icon name="minus" />
         </button>
@@ -64,7 +70,7 @@ export function BuyControl({
           aria-label={t('increase')}
           aria-disabled={off}
           disabled={full}
-          onClick={() => add(offer.id, offer.price, limit)}
+          onClick={() => add(id, offer.price, limit)}
         >
           <Icon name="plus" />
         </button>

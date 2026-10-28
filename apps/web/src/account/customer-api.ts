@@ -94,22 +94,28 @@ async function call<T>(
   path: string,
   body: object | undefined,
   read: (json: Record<string, unknown>) => T | undefined,
+  guest = false,
 ): Promise<ApiResult<T>> {
-  const result = await callOnce(method, path, body, read);
+  const result = await callOnce(method, path, body, read, guest);
   // A token from before the session rotated (a password change in another tab): read the
   // session's current token and try once more.
   if (result.kind === 'invalid' && result.code === 'request.csrf' && method !== 'GET') {
     forgetCsrfToken();
-    return callOnce(method, path, body, read);
+    return callOnce(method, path, body, read, guest);
   }
   return result;
 }
 
+/**
+ * One request. `guest`: the route also serves a buyer without a session (the cart), so a write
+ * with no session goes without a token; the API then uses the guest-cart cookie.
+ */
 async function callOnce<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   body: object | undefined,
   read: (json: Record<string, unknown>) => T | undefined,
+  guest: boolean,
 ): Promise<ApiResult<T>> {
   try {
     const headers: Record<string, string> = { accept: 'application/json' };
@@ -118,7 +124,7 @@ async function callOnce<T>(
       if (csrfToken === null) {
         // No token yet (a page opened with a session from before): read the session for it.
         const session = await readSession();
-        if (session.kind !== 'ok') return session;
+        if (session.kind !== 'ok' && !(guest && session.kind === 'signed-out')) return session;
       }
       if (csrfToken !== null) headers['x-csrf-token'] = csrfToken;
     }
@@ -422,4 +428,53 @@ export function readDeliveryOptions(
   addressId: string,
 ): Promise<ApiResult<Readonly<Record<string, SellerDeliveryOptions>>>> {
   return call('POST', 'orders/delivery-quotes', { addressId }, optionsOf);
+}
+
+// The cart (guest or account) and the account's saved list. The bodies are mapped by
+// src/cart/live-cart.ts; here they are passed on as they came.
+
+const body = (json: Record<string, unknown>): Record<string, unknown> => json;
+
+/** `GET cart`: the buyer's cart, the account's or this browser's guest cart. */
+export function readCart(): Promise<ApiResult<Record<string, unknown>>> {
+  return call('GET', 'cart', undefined, body, true);
+}
+
+/** `POST cart/items`: adds units of a sell unit (to its line when there is one). */
+export function addCartItem(
+  offerId: string,
+  variantId: string,
+  quantity: number,
+): Promise<ApiResult<true>> {
+  return call('POST', 'cart/items', { offerId, variantId, quantity }, () => true as const, true);
+}
+
+/** `PUT cart/items/:lineId`: sets a line's quantity (1 or more). */
+export function setCartLineQuantity(lineId: string, quantity: number): Promise<ApiResult<true>> {
+  return call('PUT', `cart/items/${lineId}`, { quantity }, () => true as const, true);
+}
+
+/** `DELETE cart/items/:lineId`. */
+export function removeCartLine(lineId: string): Promise<ApiResult<true>> {
+  return call('DELETE', `cart/items/${lineId}`, undefined, () => true as const, true);
+}
+
+/** `GET cart/saved`: the signed-in customer's saved list. */
+export function readSaved(): Promise<ApiResult<Record<string, unknown>>> {
+  return call('GET', 'cart/saved', undefined, body);
+}
+
+/** `POST cart/saved`: moves a line of the account's cart to the saved list. */
+export function saveCartLine(lineId: string): Promise<ApiResult<true>> {
+  return call('POST', 'cart/saved', { lineId }, () => true as const);
+}
+
+/** `POST cart/saved/:savedId/move-to-cart`: one of the saved item goes back to the cart. */
+export function moveSavedToCart(savedId: string): Promise<ApiResult<true>> {
+  return call('POST', `cart/saved/${savedId}/move-to-cart`, undefined, () => true as const);
+}
+
+/** `DELETE cart/saved/:savedId`. */
+export function removeSavedItem(savedId: string): Promise<ApiResult<true>> {
+  return call('DELETE', `cart/saved/${savedId}`, undefined, () => true as const);
 }

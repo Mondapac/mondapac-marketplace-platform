@@ -224,6 +224,8 @@ export interface ProductDetail {
 export interface CartItem {
   readonly name: string;
   readonly sellerId: string;
+  /** The seller's store name, for an item outside the cart's sellers (a saved item). */
+  readonly sellerName?: string;
   /** Category code, for the fallback illustration when there is no photo. */
   readonly category: string;
   readonly price: Money;

@@ -38,7 +38,7 @@ export function CartPage() {
   const tc = useTranslations('catalog');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, discount, customer, online, stockChanges, setStockChanges } =
+  const { cart, cartSource, discount, customer, online, stockChanges, setStockChanges, live } =
     useStore();
   const view = viewCart(cart, cartSource, discount);
   const [notice, setNotice] = useState(true);
@@ -66,6 +66,7 @@ export function CartPage() {
           <h1>{t('title')}</h1>
         </div>
         <StockNotice changes={stockChanges} onDismiss={() => setStockChanges(null)} />
+        <UnavailableLines />
         <div className="cempty">
           <Icon name="bag" />
           <h2>{t('empty')}</h2>
@@ -109,11 +110,13 @@ export function CartPage() {
           {view.groups.map((group) => (
             <SellerGroup key={group.seller.id} group={group} notice={notice} />
           ))}
+          <UnavailableLines />
           <SavedForLater />
         </div>
         <div className="cs stick">
           <h2>{t('summary')}</h2>
-          <DiscountBox />
+          {/* Discount codes have no backend yet: the real cart shows no code box. */}
+          {live ? null : <DiscountBox />}
           <SummaryTotals view={view} />
           <CheckoutAction view={view} onCheckout={checkout} />
           {customer ? null : <small>{t('guest-note')}</small>}
@@ -273,6 +276,47 @@ function SaveLine({ line }: { readonly line: CartGroupLine }) {
 }
 
 /**
+ * Lines of the real cart that cannot be bought now (no longer listed, out of stock, the seller
+ * cannot sell or has no delivery fee yet): not in the totals or the order, each with Remove.
+ */
+function UnavailableLines() {
+  const t = useTranslations('cart');
+  const { unavailable, removeUnavailable } = useStore();
+  if (unavailable.length === 0) return null;
+  return (
+    <section className="svd" aria-labelledby="unavailable-title">
+      <h2 id="unavailable-title">
+        {t('unavailable-title')} <span>({unavailable.length})</span>
+      </h2>
+      <p className="legal">{t('unavailable-body')}</p>
+      <ul className="cli">
+        {unavailable.map((line) => {
+          const name = line.name ?? t('unavailable-unnamed');
+          return (
+            <li className="ci" key={line.key}>
+              <span className="cim" aria-hidden="true">
+                <Icon name="grid" />
+              </span>
+              <div className="cin">
+                <b>{name}</b>
+                <button
+                  className="lnk"
+                  type="button"
+                  aria-label={t('remove-item', { name })}
+                  onClick={() => removeUnavailable(line.key)}
+                >
+                  {t('remove')}
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
  * Items saved for later, under the sellers (and under the empty cart): not in the order or its
  * totals. Signed in they are kept in the account; a guest's stay in this browser.
  */
@@ -297,7 +341,9 @@ function SavedForLater() {
             <ItemThumb item={item} />
             <div className="cin">
               <b>{item.name}</b>
-              <span className="legal">{cartSource.sellers[item.sellerId]?.name}</span>
+              <span className="legal">
+                {cartSource.sellers[item.sellerId]?.name ?? item.sellerName}
+              </span>
               <button
                 className="lnk"
                 type="button"

@@ -87,6 +87,10 @@ describe('storefront session relay: what may cross', () => {
     expect(isSessionPathAllowed('POST', ['identity', 'customer', 'sign-in'])).toBe(true);
     expect(isSessionPathAllowed('PUT', ['cart', 'items', LINE])).toBe(true);
     expect(isSessionPathAllowed('DELETE', ['cart', 'items', LINE])).toBe(true);
+    expect(isSessionPathAllowed('GET', ['cart', 'saved'])).toBe(true);
+    expect(isSessionPathAllowed('POST', ['cart', 'saved'])).toBe(true);
+    expect(isSessionPathAllowed('POST', ['cart', 'saved', LINE, 'move-to-cart'])).toBe(true);
+    expect(isSessionPathAllowed('DELETE', ['cart', 'saved', LINE])).toBe(true);
 
     expect(isSessionPathAllowed('POST', ['orders', 'delivery-quotes'])).toBe(true);
     expect(isSessionPathAllowed('GET', ['orders', 'delivery-quotes'])).toBe(false);
@@ -98,6 +102,12 @@ describe('storefront session relay: what may cross', () => {
     expect(isSessionPathAllowed('GET', ['identity', 'customer', 'change-password'])).toBe(false);
     expect(isSessionPathAllowed('GET', ['ordering', 'orders'])).toBe(false);
     expect(isSessionPathAllowed('PATCH', ['cart', 'items', LINE])).toBe(false);
+    expect(isSessionPathAllowed('GET', ['cart', 'saved', LINE])).toBe(false);
+    expect(isSessionPathAllowed('PUT', ['cart', 'saved', LINE])).toBe(false);
+    expect(isSessionPathAllowed('POST', ['cart', 'saved', 'not-a-uuid', 'move-to-cart'])).toBe(
+      false,
+    );
+    expect(isSessionPathAllowed('DELETE', ['cart', 'saved'])).toBe(false);
   });
 
   it.each(MARKETS)(
