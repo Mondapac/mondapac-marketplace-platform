@@ -47,7 +47,8 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * and archiving; tax: the admin-defined tax strategies; payments: the payout-account
  * change and pause rows, Phase 5 package 3 leftovers; assistant: the buyer assistant settings
  * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
- * reviews switch, reviews package 1; customers: the account deletion setting change, package 5a).
+ * reviews switch, reviews package 1; promotions: the Market switch, the promotion changes, reviews and
+ * settings, promotions package T1; customers: the account deletion setting change, package 5a).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
@@ -60,6 +61,7 @@ const AUDITING_MODULES = [
   'OrderingModule',
   'PaymentsModule',
   'PricingModule',
+  'PromotionsModule',
   'ReviewsModule',
   'SellersModule',
   'ShippingModule',
@@ -168,6 +170,27 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'pricing.special-price.accepted.after.amount',
   'pricing.special-price.held.after.amount',
   'pricing.special-price.held.after.referenceAmount',
+  // Promotions package T1: the terms an owner or an admin sets on a discount (a fixed amount, a
+  // budget, a minimum spend, a free-shipping threshold). Customer-facing and marketing amounts,
+  // never Cost.
+  'promotions.first-order-settings.changed.after.amount',
+  'promotions.first-order-settings.changed.after.cap',
+  'promotions.first-order-settings.changed.after.minSpend',
+  'promotions.first-order-settings.changed.after.monthlyBudget',
+  'promotions.first-order-settings.changed.before.amount',
+  'promotions.first-order-settings.changed.before.cap',
+  'promotions.first-order-settings.changed.before.minSpend',
+  'promotions.first-order-settings.changed.before.monthlyBudget',
+  'promotions.free-shipping-threshold.changed.after.threshold',
+  'promotions.free-shipping-threshold.changed.before.threshold',
+  'promotions.promotion.budget-changed.after.budget',
+  'promotions.promotion.budget-changed.before.budget',
+  'promotions.promotion.created.after.budget',
+  'promotions.promotion.created.after.rewardAmount',
+  'promotions.promotion.edited.after.budget',
+  'promotions.promotion.edited.after.rewardAmount',
+  'promotions.promotion.edited.before.budget',
+  'promotions.promotion.edited.before.rewardAmount',
   'sellers.minimum-order.changed.after.minimumOrder',
   'sellers.minimum-order.changed.before.minimumOrder',
   // Customer wallet package 2a: the amount of promo credit an admin issued, asked for or approved
@@ -469,6 +492,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['OrderingModule', 'ordering'],
       ['PaymentsModule', 'payments'],
       ['PricingModule', 'pricing'],
+      ['PromotionsModule', 'promotions'],
       ['ReviewsModule', 'reviews'],
       ['SellersModule', 'sellers'],
       ['ShippingModule', 'shipping'],
@@ -516,6 +540,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PaymentsModule', 'writer'],
       ['PricingModule', 'actions'],
       ['PricingModule', 'writer'],
+      ['PromotionsModule', 'actions'],
+      ['PromotionsModule', 'writer'],
       ['ReviewsModule', 'actions'],
       ['ReviewsModule', 'writer'],
       ['SellersModule', 'actions'],
@@ -627,6 +653,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'payments', 'payments.module.ts')}: registerAuditActions('payments')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
+      `${path.join('modules', 'promotions', 'promotions.module.ts')}: auditWriterFor('promotions')`,
+      `${path.join('modules', 'promotions', 'promotions.module.ts')}: registerAuditActions('promotions')`,
       `${path.join('modules', 'reviews', 'reviews.module.ts')}: auditWriterFor('reviews')`,
       `${path.join('modules', 'reviews', 'reviews.module.ts')}: registerAuditActions('reviews')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,

@@ -290,6 +290,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_rating_idx':
     "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  // Promotions: a promotion has at most one open review entry (a unique key over open rows only).
+  'promotions.promotion_reviews_one_open_idx':
+    "CREATE UNIQUE INDEX promotion_reviews_one_open_idx ON promotions.promotion_reviews USING btree (market_id, promotion_id) WHERE (status = 'OPEN'::text)",
 };
 
 const OUTBOX_COLUMNS = `

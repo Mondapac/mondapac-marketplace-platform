@@ -1572,6 +1572,190 @@
     }
   },
   {
+    "action": "promotions.co-funding.changed",
+    "targetType": "promotions.promotion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "optedIn": "boolean"
+    },
+    "after": {
+      "optedIn": "boolean",
+      "sellerId": "id"
+    }
+  },
+  {
+    "action": "promotions.first-order-settings.changed",
+    "targetType": "promotions.first-order-settings",
+    "targetId": "enumOf(first-order-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "amount": "optional(money)",
+      "cap": "optional(money)",
+      "enabled": "boolean",
+      "kind": "enumOf(percent|fixed)",
+      "minSpend": "optional(money)",
+      "monthlyBudget": "optional(money)",
+      "percentBps": "optional(integer)"
+    },
+    "after": {
+      "amount": "optional(money)",
+      "cap": "optional(money)",
+      "enabled": "boolean",
+      "kind": "enumOf(percent|fixed)",
+      "minSpend": "optional(money)",
+      "monthlyBudget": "optional(money)",
+      "percentBps": "optional(integer)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "promotions.free-shipping-threshold.changed",
+    "targetType": "promotions.free-shipping-threshold",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "threshold": "optional(money)"
+    },
+    "after": {
+      "threshold": "optional(money)"
+    }
+  },
+  {
+    "action": "promotions.market-status.changed",
+    "targetType": "promotions.market-settings",
+    "targetId": "enumOf(promotions-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(off|active)"
+    },
+    "after": {
+      "status": "enumOf(off|active)"
+    }
+  },
+  {
+    "action": "promotions.promotion.budget-changed",
+    "targetType": "promotions.promotion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "budget": "optional(money)"
+    },
+    "after": {
+      "budget": "optional(money)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "promotions.promotion.created",
+    "targetType": "promotions.promotion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "budget": "optional(money)",
+      "combinable": "boolean",
+      "endsAt": "optional(instant)",
+      "funding": "enumOf(seller|platform|co-funded)",
+      "hasCode": "boolean",
+      "ownerSellerId": "optional(id)",
+      "platformSplitBps": "optional(integer)",
+      "rewardAmount": "optional(money)",
+      "rewardBps": "optional(integer)",
+      "rewardKind": "enumOf(percent|fixed)",
+      "specialCampaign": "boolean",
+      "startsAt": "instant",
+      "status": "enumOf(pending-approval|active|paused|rejected)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)",
+      "testMode": "boolean",
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign)"
+    }
+  },
+  {
+    "action": "promotions.promotion.edited",
+    "targetType": "promotions.promotion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "budget": "optional(money)",
+      "combinable": "boolean",
+      "endsAt": "optional(instant)",
+      "funding": "enumOf(seller|platform|co-funded)",
+      "hasCode": "boolean",
+      "ownerSellerId": "optional(id)",
+      "platformSplitBps": "optional(integer)",
+      "rewardAmount": "optional(money)",
+      "rewardBps": "optional(integer)",
+      "rewardKind": "enumOf(percent|fixed)",
+      "specialCampaign": "boolean",
+      "startsAt": "instant",
+      "status": "enumOf(pending-approval|active|paused|rejected)",
+      "testMode": "boolean",
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign)"
+    },
+    "after": {
+      "budget": "optional(money)",
+      "combinable": "boolean",
+      "endsAt": "optional(instant)",
+      "funding": "enumOf(seller|platform|co-funded)",
+      "hasCode": "boolean",
+      "ownerSellerId": "optional(id)",
+      "platformSplitBps": "optional(integer)",
+      "rewardAmount": "optional(money)",
+      "rewardBps": "optional(integer)",
+      "rewardKind": "enumOf(percent|fixed)",
+      "specialCampaign": "boolean",
+      "startsAt": "instant",
+      "status": "enumOf(pending-approval|active|paused|rejected)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)",
+      "testMode": "boolean",
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign)"
+    }
+  },
+  {
+    "action": "promotions.promotion.paused",
+    "targetType": "promotions.promotion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(pending-approval|active|paused|rejected)"
+    },
+    "after": {
+      "pausedBy": "enumOf(admin|seller)",
+      "status": "enumOf(pending-approval|active|paused|rejected)"
+    }
+  },
+  {
+    "action": "promotions.promotion.resumed",
+    "targetType": "promotions.promotion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(pending-approval|active|paused|rejected)"
+    },
+    "after": {
+      "status": "enumOf(pending-approval|active|paused|rejected)"
+    }
+  },
+  {
+    "action": "promotions.review.decided",
+    "targetType": "promotions.promotion-review",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "promotionStatus": "enumOf(pending-approval|active|paused|rejected)"
+    },
+    "after": {
+      "decision": "enumOf(approved|rejected)",
+      "promotionId": "id",
+      "promotionStatus": "enumOf(pending-approval|active|paused|rejected)"
+    }
+  },
+  {
     "action": "reviews.market-status.changed",
     "targetType": "reviews.market-settings",
     "targetId": "enumOf(reviews-settings)",

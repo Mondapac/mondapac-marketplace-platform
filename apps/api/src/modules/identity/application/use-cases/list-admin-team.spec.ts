@@ -106,6 +106,7 @@ const LEAD_KEYS = [
   'shipping.fleet-selection.view',
   'shipping.delivery-settings.view',
   'blog.post.read',
+  'promotions.promotion.view',
   'ordering.order.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',

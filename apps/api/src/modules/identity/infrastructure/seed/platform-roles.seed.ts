@@ -150,7 +150,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 19 adds `shipping.delivery-settings.view`, likewise unprotected (delivery package 4).
     // Version 20 adds `blog.post.read`, likewise unprotected (blog package 1); the keys that edit,
     // review, publish or pause a post are not listed.
-    seedVersion: 20,
+    // Version 21 adds `promotions.promotion.view`, likewise unprotected (promotions package T1:
+    // usage counts only); the manage keys of promotions are not listed.
+    seedVersion: 21,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -176,6 +178,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'commission-payouts.dispute.view',
       'shipping.delivery-settings.view',
       'blog.post.read',
+      'promotions.promotion.view',
     ],
   },
   {
