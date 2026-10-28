@@ -31,7 +31,7 @@ was asked for and carried out; the application role cannot delete it.
 | `cancelled_at`, `cancel_reason` | Set with `cancelled` only; reason `customer`, `sign-in` or `admin` |
 | `completed_at` | Set with `completed` only |
 | `requested_by` | `customer` (default) or `admin` (package 5c, CHECK) |
-| `admin_account_id`, `ticket_ref`, `reason` | Set with `requested_by = 'admin'` only (CHECK): the admin, the support ticket (1 to 64 characters, `[A-Za-z0-9][A-Za-z0-9._#/-]*`) and the reason (1 to 500). **Admin-entered text, possible personal data**: kept here, never in an event or an audit row; never rewritten after insert, except that `reason` is set to NULL when the request closes |
+| `admin_account_id`, `ticket_ref`, `reason` | Set with `requested_by = 'admin'` only (CHECK): the admin, the support ticket (1 to 64 characters, `[A-Za-z0-9][A-Za-z0-9._#/-]*`) and the reason (1 to 500). **Admin-entered text, possible personal data**: kept here, never in an event or an audit row; never rewritten after insert, except that the code sets `reason` to NULL when the request closes |
 | `redacted_at` | When `reason` was redacted: set, with `reason` NULL, on an admin request once it is `cancelled` or `completed`; NULL otherwise (CHECK) |
 | `cancelled_by_admin_id` | Set with `cancel_reason = 'admin'` only (CHECK): the admin who cancelled. The admin's cancel note (1 to 500 characters, possible personal data) is validated and never stored; the admin's id and the step-up proof are in the audit row |
 
@@ -76,7 +76,7 @@ only: every update names the status it moves from. There is no trigger (see foll
 ## 4. Grants
 
 `mondapac_app`: `SELECT`, `INSERT`, and `UPDATE` on the state columns only (`status`, `claimed_at`,
-`cancelled_at`, `cancel_reason`, `completed_at`, `cancelled_by_admin_id`, `reason`, `redacted_at`; the last two only to redact: `reason` can only be written, and the CHECK only allows NULL). No `DELETE`; `requested_by`, `admin_account_id` and `ticket_ref` are never updatable. Mirrored in
+`cancelled_at`, `cancel_reason`, `completed_at`, `cancelled_by_admin_id`, `reason`, `redacted_at`; the last two exist to redact. A column grant cannot limit `reason` to NULL, so only the code does: the repository writes nothing but NULL there, in the unit of the closing write. No trigger, as the rest of the table). No `DELETE`; `requested_by`, `admin_account_id` and `ticket_ref` are never updatable. Mirrored in
 `apps/api/test/db/expected-privileges.ts`.
 
 ## 5. Retention

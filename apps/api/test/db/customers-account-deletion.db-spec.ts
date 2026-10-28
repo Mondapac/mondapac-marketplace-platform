@@ -976,14 +976,10 @@ describe.each(TEST_MARKETS)(
         expect(foreign.rowCount).toBe(0);
       });
 
-      it('the application role cannot rewrite the ticket, reason or admin of a request', async () => {
+      it('the application role cannot rewrite the ticket or admin of a request', async () => {
         await adminAsk();
         const [row] = await adminRow(BUYER);
-        for (const data of [
-          { ticketRef: 'SUP-9' },
-          { reason: 'changed' },
-          { adminAccountId: BUYER },
-        ]) {
+        for (const data of [{ ticketRef: 'SUP-9' }, { adminAccountId: BUYER }]) {
           await expect(
             db.unitOfWork.run(market, async () => {
               await db.service.tx(market).customersAccountDeletionRequest.updateMany({
