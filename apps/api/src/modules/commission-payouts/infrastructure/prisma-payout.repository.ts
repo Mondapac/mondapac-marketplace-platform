@@ -273,7 +273,7 @@ export class PrismaPayoutRepository implements PayoutRepository {
       where: {
         marketId: market.marketId,
         state: { in: ['instructed', 'paid'] },
-        stateChangedAt: { gte: toDate(since) },
+        instructingAt: { gte: toDate(since) },
       },
       _sum: { transferMinor: true },
     });

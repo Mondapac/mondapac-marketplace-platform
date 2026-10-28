@@ -354,6 +354,7 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
       transfer_execution_id: string | null;
       outcome_code: string | null;
       instructing_at: Date | null;
+      abandoned_at: Date | null;
       item: bigint;
     }
     const row = (overrides: Partial<Row> = {}): Row => ({
@@ -372,21 +373,34 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
       transfer_execution_id: null,
       outcome_code: null,
       instructing_at: new Date(T0.epochMilliseconds),
+      abandoned_at: null,
       item: overrides.gross ?? 10000n,
       ...overrides,
     });
     /** A payout and one item in one transaction, as the repository writes them. */
-    async function insertRaw(r: Row, marketId: string = code): Promise<void> {
-      await sql.query('BEGIN');
+    async function insertRaw(
+      r: Row,
+      marketId: string = code,
+      guarded: boolean = true,
+    ): Promise<void> {
+      const db = guarded ? sql : owner;
+      await db.query('BEGIN');
       try {
-        await sql.query(
+        // The CHECKs and unique indexes are tested on rows the insert guard would refuse first
+        // (a payout born paid, say): the owner switches the guard off for that transaction only.
+        if (!guarded) {
+          await db.query(
+            'ALTER TABLE commission_payouts.payouts DISABLE TRIGGER payouts_guard_insert',
+          );
+        }
+        await db.query(
           `INSERT INTO commission_payouts.payouts
              (id, market_id, tenant_id, seller_id, currency, gross_minor, netted_minor, transfer_minor,
               approval_mode, approval_reason, minimum_minor, slot_at, state, approved_by, approved_at,
-              approved_transfer_minor, transfer_execution_id, outcome_code, instructing_at, created_at,
-              state_changed_at, version)
+              approved_transfer_minor, transfer_execution_id, outcome_code, instructing_at, abandoned_at,
+              created_at, state_changed_at, version)
            VALUES ($1, $2, 'platform', $3, $4, $5, $6, $7, $8, $9, $10, now(), $11, $12, $13, $14, $15,
-                   $16, $17, now(), now(), 1)`,
+                   $16, $17, $18, now(), now(), 1)`,
           [
             r.id,
             marketId,
@@ -405,19 +419,27 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
             r.transfer_execution_id,
             r.outcome_code,
             r.instructing_at,
+            r.abandoned_at,
           ],
         );
         if (r.item > 0n) {
-          await sql.query(
+          await db.query(
             `INSERT INTO commission_payouts.payout_items
                (market_id, payout_id, seller_order_id, tenant_id, seller_id, currency, amount_minor)
              VALUES ($1, $2, $3, 'platform', $4, $5, $6)`,
             [marketId, r.id, randomUUID(), r.seller_id, currency, r.item],
           );
         }
-        await sql.query('COMMIT');
+        if (!guarded) {
+          // The deferred sum check runs now, so the table has no pending trigger events to alter.
+          await db.query('SET CONSTRAINTS ALL IMMEDIATE');
+          await db.query(
+            'ALTER TABLE commission_payouts.payouts ENABLE TRIGGER payouts_guard_insert',
+          );
+        }
+        await db.query('COMMIT');
       } catch (error) {
-        await sql.query('ROLLBACK');
+        await db.query('ROLLBACK');
         throw error;
       }
     }
@@ -445,7 +467,7 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
       ['a voided payout with no outcome code', { state: 'voided' }],
       ['an outcome code that is free text', { state: 'voided', outcome_code: 'Because I said so' }],
     ] as const)('refuses %s', async (_label, overrides) => {
-      expect(await codeOf(insertRaw(row(overrides as Partial<Row>)))).toBe(CHECK);
+      expect(await codeOf(insertRaw(row(overrides as Partial<Row>), code, false))).toBe(CHECK);
     });
 
     it('binds the approval to the amount: 5,999 for 6,000 is refused, the exact amount is kept', async () => {
@@ -458,16 +480,22 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
         approved_by: randomUUID(),
         approved_at: new Date(T0.epochMilliseconds),
       };
-      expect(await codeOf(insertRaw(row({ ...approval, approved_transfer: 5999n })))).toBe(CHECK);
-      expect(await codeOf(insertRaw(row({ ...approval, approved_transfer: null })))).toBe(CHECK);
-      expect(await codeOf(insertRaw(row({ ...approval, approved_transfer: 6000n })))).toBe(
-        'allowed',
-      );
+      expect(
+        await codeOf(insertRaw(row({ ...approval, approved_transfer: 5999n }), code, false)),
+      ).toBe(CHECK);
+      expect(
+        await codeOf(insertRaw(row({ ...approval, approved_transfer: null }), code, false)),
+      ).toBe(CHECK);
+      expect(
+        await codeOf(insertRaw(row({ ...approval, approved_transfer: 6000n }), code, false)),
+      ).toBe('allowed');
       // An approved payout without an approver is refused too.
       expect(
         await codeOf(
           insertRaw(
             row({ ...approval, approved_by: null, approved_at: null, approved_transfer: null }),
+            code,
+            false,
           ),
         ),
       ).toBe(CHECK);
@@ -492,10 +520,10 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
     it("stores payments' transfer id once per Market", async () => {
       const transfer = randomUUID();
       const sent = { state: 'instructed', transfer_execution_id: transfer } as const;
-      await insertRaw(row(sent));
-      expect(await codeOf(insertRaw(row(sent)))).toBe(UNIQUE);
+      await insertRaw(row(sent), code, false);
+      expect(await codeOf(insertRaw(row(sent), code, false))).toBe(UNIQUE);
       // The other Market may hold the same id (it is a different Market's transfer).
-      expect(await codeOf(insertRaw(row(sent), otherMarketOf(code)))).toBe('allowed');
+      expect(await codeOf(insertRaw(row(sent), otherMarketOf(code), false))).toBe('allowed');
     });
 
     it('allows the transitions of the state machine and no others', async () => {
@@ -574,6 +602,143 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
           ]),
         ),
       ).toBe(RESTRICT);
+    });
+
+    it('lets a payout be born only in a state with nothing earned yet', async () => {
+      const approver = { approved_by: randomUUID(), approved_at: new Date(T0.epochMilliseconds) };
+      const approved = {
+        approval_mode: 'MANUAL',
+        approval_reason: 'terms',
+        state: 'approved',
+        approved_transfer: 10000n,
+        ...approver,
+      } as const;
+      for (const overrides of [
+        approved,
+        { state: 'instructed', transfer_execution_id: randomUUID() },
+        { state: 'paid', transfer_execution_id: randomUUID() },
+        { state: 'failed', outcome_code: 'transfer-failed', transfer_execution_id: randomUUID() },
+        { state: 'not-sent', outcome_code: 'transfer-refused' },
+        { state: 'voided', outcome_code: 'voided.hold' },
+      ] as readonly Partial<Row>[]) {
+        expect(await codeOf(insertRaw(row(overrides)))).toBe(RESTRICT);
+      }
+      // An initial state that already carries an approval, a transfer id, an outcome or a fence.
+      for (const overrides of [
+        { ...approved, state: 'awaiting-approval' },
+        { transfer_execution_id: randomUUID() },
+        { outcome_code: 'voided.hold' },
+        { abandoned_at: new Date(T0.epochMilliseconds) },
+      ] as readonly Partial<Row>[]) {
+        expect(await codeOf(insertRaw(row(overrides)))).toBe(RESTRICT);
+      }
+      // The four states the run creates payouts in.
+      expect(await codeOf(insertRaw(row({ state: 'instructing' })))).toBe('allowed');
+      expect(
+        await codeOf(
+          insertRaw(
+            row({
+              approval_mode: 'MANUAL',
+              approval_reason: 'terms',
+              state: 'awaiting-approval',
+              instructing_at: null,
+            }),
+          ),
+        ),
+      ).toBe('allowed');
+      expect(
+        await codeOf(
+          insertRaw(
+            row({
+              state: 'settled-by-netting',
+              netted: 10000n,
+              transfer: 0n,
+              instructing_at: null,
+            }),
+          ),
+        ),
+      ).toBe('allowed');
+      expect(await codeOf(insertRaw(row({ state: 'pending', instructing_at: null })))).toBe(
+        'allowed',
+      );
+    });
+
+    it('writes instructing_at once, on entering instructing, and abandoned_at once, while instructing', async () => {
+      const waiting = row({
+        approval_mode: 'MANUAL',
+        approval_reason: 'terms',
+        state: 'awaiting-approval',
+        instructing_at: null,
+      });
+      await insertRaw(waiting);
+      // Not outside the move into instructing.
+      expect(await codeOf(update(waiting.id, `instructing_at = now()`))).toBe(RESTRICT);
+      await update(
+        waiting.id,
+        `state = 'approved', approved_by = $2, approved_at = now(),
+         approved_transfer_minor = transfer_minor, state_changed_at = now(), version = version + 1`,
+        [randomUUID()],
+      );
+      expect(await codeOf(update(waiting.id, `instructing_at = now()`))).toBe(RESTRICT);
+      // No fence before the payout is instructing.
+      expect(await codeOf(update(waiting.id, `abandoned_at = now()`))).toBe(RESTRICT);
+      expect(await codeOf(move(waiting.id, 'instructing', `, instructing_at = now()`))).toBe(
+        'allowed',
+      );
+
+      // Neither moves again: not later, not earlier, not back to empty.
+      for (const set of [
+        `instructing_at = now() + interval '1 hour'`,
+        `instructing_at = now() - interval '1 hour'`,
+        `instructing_at = NULL`,
+      ]) {
+        expect(await codeOf(update(waiting.id, set))).toBe(RESTRICT);
+      }
+      expect(await codeOf(update(waiting.id, `abandoned_at = now()`))).toBe('allowed');
+      for (const set of [
+        `abandoned_at = now() + interval '1 hour'`,
+        `abandoned_at = now() - interval '1 hour'`,
+        `abandoned_at = NULL`,
+      ]) {
+        expect(await codeOf(update(waiting.id, set))).toBe(RESTRICT);
+      }
+      // The move on keeps both as they were.
+      expect(await codeOf(move(waiting.id, 'not-sent', `, outcome_code = 'payout-unwound'`))).toBe(
+        'allowed',
+      );
+    });
+
+    it('writes the transfer id only with the move from instructing to instructed', async () => {
+      const r = row();
+      await insertRaw(r);
+      expect(await codeOf(update(r.id, `transfer_execution_id = $2`, [randomUUID()]))).toBe(
+        RESTRICT,
+      );
+      expect(
+        await codeOf(move(r.id, 'not-sent', `, transfer_execution_id = '${randomUUID()}'`)),
+      ).toBe(RESTRICT);
+      expect(
+        await codeOf(move(r.id, 'instructed', `, transfer_execution_id = '${randomUUID()}'`)),
+      ).toBe('allowed');
+    });
+
+    it('accepts business-id-recheck as the reason a cursor shows', async () => {
+      const sellerId = randomUUID();
+      await sql.query(
+        `INSERT INTO commission_payouts.payout_schedule_cursors
+           (market_id, seller_id, tenant_id, last_slot_at, next_slot_at, block_reason, updated_at, version)
+         VALUES ($1, $2, 'platform', $3, '2999-01-01T00:00:00Z', 'business-id-recheck', $3, 1)`,
+        [code, sellerId, new Date(T0.epochMilliseconds)],
+      );
+      expect(
+        await codeOf(
+          sql.query(
+            `UPDATE commission_payouts.payout_schedule_cursors SET block_reason = 'whatever'
+              WHERE market_id = $1 AND seller_id = $2`,
+            [code, sellerId],
+          ),
+        ),
+      ).toBe(CHECK);
     });
 
     it('refuses every delete and truncate, for the application role and the owner', async () => {

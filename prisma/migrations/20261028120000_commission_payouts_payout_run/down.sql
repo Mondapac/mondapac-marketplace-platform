@@ -18,3 +18,4 @@ DROP FUNCTION "commission_payouts"."check_payout_items"();
 DROP FUNCTION "commission_payouts"."payout_items_guard_update"();
 DROP FUNCTION "commission_payouts"."payouts_free_items"();
 DROP FUNCTION "commission_payouts"."payouts_guard_update"();
+DROP FUNCTION "commission_payouts"."payouts_guard_insert"();

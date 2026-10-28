@@ -318,6 +318,8 @@ model CommissionPayoutsPayout {
   @@unique([marketId, id, sellerId, currency], map: "payouts_market_id_id_seller_id_currency_key")
   @@index([marketId, state, createdAt(sort: Desc), id(sort: Desc)], map: "payouts_market_id_state_created_at_id_idx")
   @@index([marketId, sellerId, createdAt(sort: Desc), id(sort: Desc)], map: "payouts_market_id_seller_id_created_at_id_idx")
+  @@index([marketId, createdAt(sort: Desc), id(sort: Desc)], map: "payouts_market_id_created_at_id_idx")
+  @@index([marketId, instructingAt], map: "payouts_market_id_instructing_at_idx")
   @@map("payouts")
   @@schema("commission_payouts")
 }
@@ -364,7 +366,7 @@ model CommissionPayoutsPayoutScheduleCursor {
   version     Int
 
   @@id([marketId, sellerId])
-  @@index([marketId, nextSlotAt], map: "payout_schedule_cursors_market_id_next_slot_at_idx")
+  @@index([marketId, nextSlotAt(sort: Asc, nulls: First), sellerId], map: "payout_schedule_cursors_market_id_next_slot_at_idx")
   @@map("payout_schedule_cursors")
   @@schema("commission_payouts")
 }

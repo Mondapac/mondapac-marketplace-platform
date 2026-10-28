@@ -75,7 +75,13 @@ CREATE INDEX "payouts_market_id_seller_id_created_at_id_idx" ON "commission_payo
 CREATE UNIQUE INDEX "payouts_market_id_id_seller_id_currency_key" ON "commission_payouts"."payouts"("market_id", "id", "seller_id", "currency");
 
 -- CreateIndex
-CREATE INDEX "payout_schedule_cursors_market_id_next_slot_at_idx" ON "commission_payouts"."payout_schedule_cursors"("market_id", "next_slot_at");
+CREATE INDEX "payouts_market_id_created_at_id_idx" ON "commission_payouts"."payouts"("market_id", "created_at" DESC, "id" DESC);
+
+-- CreateIndex
+CREATE INDEX "payouts_market_id_instructing_at_idx" ON "commission_payouts"."payouts"("market_id", "instructing_at");
+
+-- CreateIndex
+CREATE INDEX "payout_schedule_cursors_market_id_next_slot_at_idx" ON "commission_payouts"."payout_schedule_cursors"("market_id", "next_slot_at" NULLS FIRST, "seller_id");
 
 -- AddForeignKey
 ALTER TABLE "commission_payouts"."payout_items" ADD CONSTRAINT "payout_items_payout_fkey" FOREIGN KEY ("market_id", "payout_id", "seller_id", "currency") REFERENCES "commission_payouts"."payouts"("market_id", "id", "seller_id", "currency") ON DELETE NO ACTION ON UPDATE NO ACTION;
@@ -147,7 +153,7 @@ ALTER TABLE "commission_payouts"."payout_schedule_cursors"
   ADD CONSTRAINT "payout_schedule_cursors_block_reason_check" CHECK (
     "block_reason" IS NULL OR "block_reason" IN
       ('below-minimum', 'awaiting-approval', 'account-not-ready', 'cooling-off', 'payouts-paused',
-       'zone-missing', 'second-factor-required')),
+       'zone-missing', 'second-factor-required', 'business-id-recheck')),
   ADD CONSTRAINT "payout_schedule_cursors_zone_check" CHECK ("zone" IS NULL OR length("zone") BETWEEN 1 AND 64),
   ADD CONSTRAINT "payout_schedule_cursors_version_check" CHECK ("version" >= 1);
 
@@ -223,9 +229,25 @@ BEGIN
     RAISE EXCEPTION 'commission_payouts.payouts: an approval is written once'
       USING ERRCODE = 'restrict_violation';
   END IF;
-  IF OLD."transfer_execution_id" IS NOT NULL
-     AND NEW."transfer_execution_id" IS DISTINCT FROM OLD."transfer_execution_id" THEN
+  -- The transfer id is written once, and only with the move from instructing to instructed.
+  IF NEW."transfer_execution_id" IS DISTINCT FROM OLD."transfer_execution_id" AND NOT (
+       OLD."transfer_execution_id" IS NULL AND NEW."transfer_execution_id" IS NOT NULL
+       AND OLD."state" = 'instructing' AND NEW."state" = 'instructed') THEN
     RAISE EXCEPTION 'commission_payouts.payouts: the transfer id is written once'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  -- The two clocks the send timeout and the quarantine run on are written once: the moment the
+  -- payout became instructing, and the moment its key was fenced (while it is instructing).
+  IF NEW."instructing_at" IS DISTINCT FROM OLD."instructing_at" AND NOT (
+       OLD."instructing_at" IS NULL AND NEW."instructing_at" IS NOT NULL
+       AND OLD."state" <> 'instructing' AND NEW."state" = 'instructing') THEN
+    RAISE EXCEPTION 'commission_payouts.payouts: instructing_at is written once, on entering instructing'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW."abandoned_at" IS DISTINCT FROM OLD."abandoned_at" AND NOT (
+       OLD."abandoned_at" IS NULL AND NEW."abandoned_at" IS NOT NULL
+       AND OLD."state" = 'instructing' AND NEW."state" = 'instructing') THEN
+    RAISE EXCEPTION 'commission_payouts.payouts: abandoned_at is written once, while instructing'
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW."state" <> OLD."state" AND NEW."version" <= OLD."version" THEN
@@ -235,6 +257,23 @@ BEGIN
   RETURN NEW;
 END; $$;
 
+-- A payout is born in a state the run creates it in, with nothing earned yet: no approval, no
+-- transfer id, no outcome and no fence. Anything else is a row that skipped its history.
+CREATE FUNCTION "commission_payouts"."payouts_guard_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NEW."state" NOT IN ('pending', 'awaiting-approval', 'instructing', 'settled-by-netting')
+     OR NEW."approved_by" IS NOT NULL OR NEW."approved_at" IS NOT NULL
+     OR NEW."approved_transfer_minor" IS NOT NULL OR NEW."transfer_execution_id" IS NOT NULL
+     OR NEW."outcome_code" IS NOT NULL OR NEW."abandoned_at" IS NOT NULL THEN
+    RAISE EXCEPTION 'commission_payouts.payouts: a payout starts in a state with nothing earned yet'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "payouts_guard_insert" BEFORE INSERT ON "commission_payouts"."payouts"
+  FOR EACH ROW EXECUTE FUNCTION "commission_payouts"."payouts_guard_insert"();
 CREATE TRIGGER "payouts_guard_update" BEFORE UPDATE ON "commission_payouts"."payouts"
   FOR EACH ROW EXECUTE FUNCTION "commission_payouts"."payouts_guard_update"();
 CREATE TRIGGER "payouts_no_delete" BEFORE DELETE ON "commission_payouts"."payouts"
@@ -291,9 +330,11 @@ DECLARE
   summed bigint;
 BEGIN
   IF TG_TABLE_NAME = 'payouts' THEN target := NEW."id"; ELSE target := NEW."payout_id"; END IF;
-  SELECT p."gross_minor" INTO gross FROM "commission_payouts"."payouts" p WHERE p."id" = target;
+  SELECT p."gross_minor" INTO gross FROM "commission_payouts"."payouts" p
+   WHERE p."market_id" = NEW."market_id" AND p."id" = target;
   SELECT COALESCE(SUM(i."amount_minor"), 0) INTO summed
-    FROM "commission_payouts"."payout_items" i WHERE i."payout_id" = target;
+    FROM "commission_payouts"."payout_items" i
+   WHERE i."market_id" = NEW."market_id" AND i."payout_id" = target;
   IF gross IS DISTINCT FROM summed THEN
     RAISE EXCEPTION 'commission_payouts.payouts: the gross of a payout is the sum of its items'
       USING ERRCODE = 'check_violation';
