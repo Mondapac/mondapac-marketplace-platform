@@ -1,0 +1,317 @@
+// The blog module's tables (blog package 1, backend core): versioned posts of four kinds (product,
+// brand, event, news) of a Market, their categories and tags, redirects of old slugs and the
+// per-seller monthly quota. Every model is named Blog<Name> and mapped to its table with @@map. The
+// CHECKs, the partial unique indexes, the triggers and the grants are hand-written in the
+// migration. A body is a closed list of blocks stored as JSON (no HTML); the application validates
+// it, the database keeps the basic limits. Ids of other modules (seller, account, product, brand,
+// page, image) are plain UUIDs with no key to another schema.
+
+/// A post of a Market. `kind`, `ownerType` and `sellerId` never change. `status` is the working
+/// lifecycle of the post: draft, in_review, changes_requested, approved and scheduled while no
+/// version has been live; published, unpublished or archived after. A published post keeps
+/// `liveVersionId` (what buyers read) while `draftVersionId` is the version being edited or
+/// reviewed next. `scheduledAt` is the instant the approved draft version goes live (the worker).
+/// Public reads answer only the live version of a `published` post; an `unpublished` or `archived`
+/// slug that was live answers 410.
+model BlogPost {
+  id             String             @id @db.Uuid
+  marketId       String             @map("market_id") @db.VarChar(8)
+  tenantId       String             @map("tenant_id")
+  /// product, brand, event or news (CHECK).
+  kind           String
+  /// Lower-case words joined by hyphens, 3 to 80 characters, not a reserved word (CHECK). Unique
+  /// per Market; an old slug lives in `redirects` and is never another post's (trigger).
+  slug           String
+  /// platform or seller (CHECK); `sellerId` exactly when seller.
+  ownerType      String             @map("owner_type")
+  sellerId       String?            @map("seller_id") @db.Uuid
+  status         String
+  liveVersionId  String?            @map("live_version_id") @db.Uuid
+  draftVersionId String?            @map("draft_version_id") @db.Uuid
+  scheduledAt    DateTime?          @map("scheduled_at") @db.Timestamptz(6)
+  /// The admin who set `scheduledAt`; set exactly with it (CHECK), credited as the publisher.
+  scheduledBy    String?            @map("scheduled_by") @db.Uuid
+  /// The first time a version went live; kept after an unpublish.
+  publishedAt    DateTime?          @map("published_at") @db.Timestamptz(6)
+  unpublishedAt  DateTime?          @map("unpublished_at") @db.Timestamptz(6)
+  /// Why the post was taken off the site; set exactly while unpublished (or archived after it).
+  pausedReason   String?            @map("paused_reason")
+  /// At most one featured post per Market (partial unique index); only a published post.
+  featured       Boolean
+  /// The calendar month ("YYYY-MM", in the Market's time zone) whose seller quota this post used
+  /// when it was first submitted; null for a platform post and until the first submit.
+  quotaPeriod    String?            @map("quota_period")
+  createdAt      DateTime           @map("created_at") @db.Timestamptz(6)
+  createdBy      String             @map("created_by") @db.Uuid
+  updatedAt      DateTime           @map("updated_at") @db.Timestamptz(6)
+  updatedBy      String             @map("updated_by") @db.Uuid
+  /// Raised by every lock of the row (`lockPost`), so a lock never writes an older `updatedAt`.
+  rowVersion     Int                @default(0) @map("row_version")
+  versions       BlogPostVersion[]  @relation("PostVersions")
+  redirects      BlogRedirect[]
+  /// The version pointers are composite foreign keys into this post's own versions.
+  liveVersion    BlogPostVersion?   @relation("PostLive", fields: [marketId, id, liveVersionId], references: [marketId, postId, id], onDelete: Restrict, onUpdate: Restrict)
+  draftVersion   BlogPostVersion?   @relation("PostDraft", fields: [marketId, id, draftVersionId], references: [marketId, postId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The foreign-key target of the versions and redirects.
+  @@unique([marketId, id])
+  @@unique([marketId, slug])
+  @@index([marketId, status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([marketId, sellerId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("posts")
+  @@schema("blog")
+}
+
+/// One version of a post's content. `state`: draft (the only state whose content may change),
+/// in_review (locked, awaiting a decision), returned (changes requested; locked, the note stays),
+/// approved (locked), live (what buyers read) or retired (superseded). Editing a returned or
+/// approved version, or a live post, starts a new draft version from it. A reviewer's edit of a
+/// version in review is a new version flagged `editedByReviewer`. `body` is the closed block list
+/// (application validated; array and size CHECKs).
+model BlogPostVersion {
+  id               String           @id @db.Uuid
+  marketId         String           @map("market_id") @db.VarChar(8)
+  tenantId         String           @map("tenant_id")
+  postId           String           @map("post_id") @db.Uuid
+  /// 1 to 100 (CHECK), per post, in creation order; raising the cap needs a migration.
+  versionNo        Int              @map("version_no")
+  state            String
+  title            String
+  /// At most 160 characters (CHECK); it is also the page description when no SEO text is given.
+  excerpt          String
+  body             Json
+  coverImageId     String?          @map("cover_image_id") @db.Uuid
+  coverAlt         String?          @map("cover_alt")
+  seoTitle         String?          @map("seo_title")
+  seoDescription   String?          @map("seo_description")
+  /// A display override of the byline; null: the Market default for a platform post.
+  authorDisplay    String?          @map("author_display")
+  categoryId       String?          @map("category_id") @db.Uuid
+  createdAt        DateTime         @map("created_at") @db.Timestamptz(6)
+  createdBy        String           @map("created_by") @db.Uuid
+  updatedAt        DateTime         @map("updated_at") @db.Timestamptz(6)
+  /// True when a reviewer changed the text of a submitted version (a new version, not an edit).
+  editedByReviewer Boolean          @map("edited_by_reviewer")
+  submittedAt      DateTime?        @map("submitted_at") @db.Timestamptz(6)
+  /// The account that sent the version for review; kept on a reviewer's edit, so the approver can
+  /// differ from both the submitter and the editor (separation of duties).
+  submittedBy      String?          @map("submitted_by") @db.Uuid
+  decidedAt        DateTime?        @map("decided_at") @db.Timestamptz(6)
+  decidedBy        String?          @map("decided_by") @db.Uuid
+  /// approved or changes_requested (CHECK); with `decidedBy` and `decidedAt` (all or none).
+  decision         String?
+  decisionNote     String?          @map("decision_note")
+  /// True when the approver also wrote or submitted the version (single-admin Market, step-up).
+  selfApproved     Boolean          @map("self_approved")
+  publishedAt      DateTime?        @map("published_at") @db.Timestamptz(6)
+  publishedBy      String?          @map("published_by") @db.Uuid
+  post             BlogPost         @relation("PostVersions", fields: [marketId, postId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  liveOf           BlogPost[]       @relation("PostLive")
+  draftOf          BlogPost[]       @relation("PostDraft")
+  category         BlogCategory?    @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  event            BlogPostEvent?
+  links            BlogPostLink[]
+  tags             BlogPostTag[]
+
+  /// The foreign-key target of the post's version pointers.
+  @@unique([marketId, postId, id])
+  @@unique([marketId, postId, versionNo])
+  /// The foreign-key target of the event, link and tag rows.
+  @@unique([marketId, id])
+  @@index([marketId, state, submittedAt])
+  @@map("post_versions")
+  @@schema("blog")
+}
+
+/// The event details of a version of an `event` post (a trigger refuses another kind). The times
+/// are instants; `timeZone` is the IANA zone the organiser means. `eventStatus` and
+/// `statusMessage` may change on any version at once and without review (cancel, postpone, new
+/// time); every other column changes only while the version is a draft (trigger).
+model BlogPostEvent {
+  marketId        String          @map("market_id") @db.VarChar(8)
+  tenantId        String          @map("tenant_id")
+  versionId       String          @map("version_id") @db.Uuid
+  startsAt        DateTime        @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime        @map("ends_at") @db.Timestamptz(6)
+  timeZone        String          @map("time_zone")
+  /// offline, online or mixed (CHECK).
+  attendance      String
+  venueName       String?         @map("venue_name")
+  address         String?
+  /// The one external link a post may carry: an https URL (CHECK), approved in review.
+  registrationUrl String?         @map("registration_url")
+  /// scheduled, postponed, rescheduled or cancelled (CHECK).
+  eventStatus     String          @map("event_status")
+  statusMessage   String?         @map("status_message")
+  version         BlogPostVersion @relation(fields: [marketId, versionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, versionId])
+  @@index([marketId, startsAt])
+  @@map("post_events")
+  @@schema("blog")
+}
+
+/// A link from a version to something else in the Market, in the order the author gave: product,
+/// seller, brand, category or page. `targetRef` is a plain id of another module. The reverse index
+/// serves "From the blog" on a product page and the live checks.
+model BlogPostLink {
+  marketId   String          @map("market_id") @db.VarChar(8)
+  tenantId   String          @map("tenant_id")
+  versionId  String          @map("version_id") @db.Uuid
+  /// product, seller, brand, category or page (CHECK).
+  targetType String          @map("target_type")
+  targetRef  String          @map("target_ref") @db.Uuid
+  position   Int
+  version    BlogPostVersion @relation(fields: [marketId, versionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, versionId, position])
+  @@unique([marketId, versionId, targetType, targetRef])
+  @@index([marketId, targetType, targetRef])
+  @@map("post_links")
+  @@schema("blog")
+}
+
+/// A post category of a Market. The name lives in `category_names`, one row per locale, as the
+/// catalog category does. The slug never changes (no redirect for categories).
+model BlogCategory {
+  id        String             @id @db.Uuid
+  marketId  String             @map("market_id") @db.VarChar(8)
+  tenantId  String             @map("tenant_id")
+  slug      String
+  position  Int
+  createdAt DateTime           @map("created_at") @db.Timestamptz(6)
+  createdBy String             @map("created_by") @db.Uuid
+  updatedAt DateTime           @map("updated_at") @db.Timestamptz(6)
+  updatedBy String             @map("updated_by") @db.Uuid
+  names     BlogCategoryName[]
+  versions  BlogPostVersion[]
+
+  @@unique([marketId, id])
+  @@unique([marketId, slug])
+  @@map("categories")
+  @@schema("blog")
+}
+
+/// The name of a category in one locale.
+model BlogCategoryName {
+  marketId   String       @map("market_id") @db.VarChar(8)
+  tenantId   String       @map("tenant_id")
+  categoryId String       @map("category_id") @db.Uuid
+  locale     String       @db.VarChar(35)
+  name       String
+  category   BlogCategory @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, categoryId, locale])
+  @@map("category_names")
+  @@schema("blog")
+}
+
+/// A free tag of a Market.
+model BlogTag {
+  id        String        @id @db.Uuid
+  marketId  String        @map("market_id") @db.VarChar(8)
+  tenantId  String        @map("tenant_id")
+  slug      String
+  name      String
+  createdAt DateTime      @map("created_at") @db.Timestamptz(6)
+  createdBy String        @map("created_by") @db.Uuid
+  postTags  BlogPostTag[]
+
+  @@unique([marketId, id])
+  @@unique([marketId, slug])
+  @@map("tags")
+  @@schema("blog")
+}
+
+/// The tags of a version (versioned with the content, so a tag change on a live post goes through
+/// review like any other change).
+model BlogPostTag {
+  marketId  String          @map("market_id") @db.VarChar(8)
+  tenantId  String          @map("tenant_id")
+  versionId String          @map("version_id") @db.Uuid
+  tagId     String          @map("tag_id") @db.Uuid
+  version   BlogPostVersion @relation(fields: [marketId, versionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  tag       BlogTag         @relation(fields: [marketId, tagId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, versionId, tagId])
+  @@index([marketId, tagId])
+  @@map("post_tags")
+  @@schema("blog")
+}
+
+/// An old slug of a post: a request for `/blog/<fromSlug>` is sent to the post's current URL (or
+/// answers 410 while the post is off the site).
+model BlogRedirect {
+  id        String   @id @db.Uuid
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  fromSlug  String   @map("from_slug")
+  postId    String   @map("post_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  post      BlogPost @relation(fields: [marketId, postId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, fromSlug])
+  @@index([marketId, postId])
+  @@map("redirects")
+  @@schema("blog")
+}
+
+/// How many posts a seller used of its monthly quota, one row per Market, seller and calendar
+/// month (`period` "YYYY-MM" in the Market's time zone, CHECK). A post uses one unit when it is
+/// first submitted; the limit is Market config (`blog.sellerPostsPerMonth`), never a column.
+model BlogSellerQuota {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  sellerId  String   @map("seller_id") @db.Uuid
+  period    String
+  used      Int
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerId, period])
+  @@map("seller_quotas")
+  @@schema("blog")
+}
+
+/// Blog's outbox: the post events (submitted, approved, changes requested, edited by a reviewer,
+/// published, paused, ...). Every outbox of every module has exactly these fields.
+model BlogOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "blog.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
+  @@schema("blog")
+}
+
+/// Blog's inbox: one row per consumed event and handler, so a repeated delivery changes nothing.
+/// Written only by platform/persistence/outbox/.
+model BlogInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("blog")
+}

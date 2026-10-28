@@ -242,6 +242,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
   },
   PublishedImageRef: { noCustomerText: 'a photo id and its pixel size; no text' },
+  ProductLinkFacts: { noCustomerText: 'two flags (on sale, sold by the asked seller); no text' },
   OfferListingTag: { noCustomerText: 'tag status, basis code and the OfferListingBadge copy' },
   OfferBadge: {
     noCustomerText:

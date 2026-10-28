@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { BLOG_STEP_UP_ACTIONS } from '../../src/modules/blog/contracts/step-up';
 import { CATALOG_STEP_UP_ACTIONS } from '../../src/modules/catalog/contracts/step-up';
 import { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from '../../src/modules/commission-payouts/contracts/step-up';
 import { CUSTOMERS_STEP_UP_ACTIONS } from '../../src/modules/customers/contracts/step-up';
@@ -15,6 +16,7 @@ import { WALLET_STEP_UP_ACTIONS } from '../../src/modules/wallet/contracts/step-
 const ENFORCED_INSIDE_THE_FLOW = [
   'identity.second-factor.manage', // second-factor remove and recovery-codes use cases
   'payments.payout-account.change', // the payout-account flow asks for a code in its request
+  'blog.post.self-approve', // approvePost spends the code only when the approver wrote or sent the post
 ];
 
 const sourceRoot = path.resolve(__dirname, '../../src');
@@ -29,6 +31,7 @@ function controllerFiles(dir: string): string[] {
 
 describe('step-up enforcement contract', () => {
   const registered = [
+    ...BLOG_STEP_UP_ACTIONS,
     ...CATALOG_STEP_UP_ACTIONS,
     ...COMMISSION_PAYOUTS_STEP_UP_ACTIONS,
     ...CUSTOMERS_STEP_UP_ACTIONS,

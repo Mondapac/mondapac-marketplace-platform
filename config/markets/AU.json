@@ -38,6 +38,23 @@
     "adminRequestExpiryDays": 7,
     "expiringSoonDays": 30
   },
+  "blog": {
+    "sellerPostsPerMonth": 4,
+    "pageSize": 12,
+    "defaultAuthorDisplay": "Mondapac team",
+    "healthTerms": [
+      "cure",
+      "cures",
+      "treat",
+      "treats",
+      "heal",
+      "heals",
+      "detox",
+      "prevents disease",
+      "clinically proven"
+    ],
+    "selfApprovalWithStepUp": true
+  },
   "reviews": {
     "reviewWindowDays": 60,
     "editWindowDays": 30,

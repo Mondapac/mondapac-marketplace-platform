@@ -81,4 +81,12 @@ export class PrismaSellingFactsRepository implements SellingFactsRepository {
     if (row === null) return null;
     return row.allProductTypesAllowed ? 'all' : 'listed';
   }
+
+  async blogEnabled(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean | null> {
+    const row = await this.prisma.tx(market).sellersSellerAdminSettings.findFirst({
+      where: { marketId: market.marketId, sellerId },
+      select: { blogEnabled: true },
+    });
+    return row === null ? null : row.blogEnabled;
+  }
 }

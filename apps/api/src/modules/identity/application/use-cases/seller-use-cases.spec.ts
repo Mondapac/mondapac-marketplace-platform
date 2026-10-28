@@ -291,7 +291,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'catalogue-moderator', 9],
       ['platform', 'default', 'operations-support', 6],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 23],
+      ['platform', 'default', 'viewer', 24],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
@@ -312,10 +312,11 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // Viewer: every unprotected `view` key of the platform scope, as the registry declares them,
     // except the keys that decrypt personal data (sellers design 6.1: the Viewer never reads
     // business details in clear), and `certification.issuer.view` (certification slice 6: the
-    // issuer request read decrypts the seller's typed issuer name).
+    // issuer request read decrypts the seller's typed issuer name). The blog names its read key
+    // `blog.post.read` and the Viewer holds it too (blog package 1).
     const DECRYPTING_VIEW_KEYS = ['sellers.business-details.view', 'certification.issuer.view'];
-    // The brand read key is named `.read` (catalog brand package), so it joins the list by name.
-    const VIEWER_READ_KEYS = ['catalog.brand.read'];
+    // The brand read key is named `.read` too (catalog brand package).
+    const READ_KEYS_OF_THE_VIEWER = ['blog.post.read', 'catalog.brand.read'];
     expect(keysOf('viewer')).toEqual(
       [
         ...registry
@@ -324,7 +325,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
             (d) => !d.protected && d.key.endsWith('.view') && !DECRYPTING_VIEW_KEYS.includes(d.key),
           )
           .map((d) => d.key),
-        ...VIEWER_READ_KEYS,
+        ...READ_KEYS_OF_THE_VIEWER,
       ].sort(),
     );
     expect(keysOf('onboarding-compliance')).toEqual([

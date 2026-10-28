@@ -11,6 +11,7 @@ import type { OfferBadgesQuery } from '../application/use-cases/offer-badges.use
 import type { PublishedProductQuery } from '../application/use-cases/published-product.use-case';
 import type { PublishedProductImagesQuery } from '../application/use-cases/published-product-images.use-case';
 import type { PendingProductRevisionsQuery } from '../application/use-cases/pending-product-revisions.use-case';
+import type { ProductsForLinkingQuery } from '../application/use-cases/products-for-linking.use-case';
 import type { SellerProductOwnersQuery } from '../application/use-cases/seller-product-owners.use-case';
 import type {
   CatalogBatchTooLarge,
@@ -19,6 +20,7 @@ import type {
   OfferBadgesMap,
   OfferListingsMap,
   OfferSellUnitsMap,
+  ProductLinkFacts,
   PublishedImageRef,
   PublishedProduct,
   SellUnitKey,
@@ -39,6 +41,7 @@ export interface CatalogFacadeUseCases {
   readonly publishedProductImages: PublishedProductImagesQuery;
   readonly pendingProductRevisions: PendingProductRevisionsQuery;
   readonly sellerProductOwners: SellerProductOwnersQuery;
+  readonly productsForLinking: ProductsForLinkingQuery;
 }
 
 /**
@@ -164,5 +167,18 @@ export class CatalogFacadeImplementation implements CatalogFacade {
     >
   > {
     return this.useCases.sellerProductOwners.execute(context, { productIds });
+  }
+
+  productsForLinking(
+    context: CallContext,
+    productIds: readonly Id<'Product'>[],
+    sellerId: Id<'Seller'> | null,
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Product'>, ProductLinkFacts>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  > {
+    return this.useCases.productsForLinking.execute(context, { productIds, sellerId });
   }
 }

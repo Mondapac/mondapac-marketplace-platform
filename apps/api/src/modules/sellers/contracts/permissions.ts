@@ -92,7 +92,19 @@ export const SELLERS_STORE_PROFILE_EDIT = definePermission('sellers', {
   protected: false,
 });
 
+/**
+ * Switch a seller's blog access on or off (blog package 1; owner decision Q1). Platform scope and
+ * protected: only the Platform Administrator system role holds it by definition, and no custom
+ * role can. Turning the switch off may also take the seller's live posts off the site.
+ */
+export const SELLERS_BLOG_ACCESS_EDIT = definePermission('sellers', {
+  key: 'sellers.blog-access.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
+  SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,

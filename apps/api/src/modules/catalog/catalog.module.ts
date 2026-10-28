@@ -58,6 +58,8 @@ import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categ
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
 import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
 import { PendingProductRevisionsQuery } from './application/use-cases/pending-product-revisions.use-case';
+import { PRODUCT_LINKING_READER } from './application/ports/product-linking.reader';
+import { ProductsForLinkingQuery } from './application/use-cases/products-for-linking.use-case';
 import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product-owners.reader';
 import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
 import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
@@ -228,6 +230,7 @@ const PORT = {
   taxCategoriesReader: OFFER_TAX_CATEGORIES_READER,
   pendingRevisionsReader: PENDING_PRODUCT_REVISIONS_READER,
   productOwnersReader: SELLER_PRODUCT_OWNERS_READER,
+  productLinkingReader: PRODUCT_LINKING_READER,
   treeReader: CATEGORY_TREE_READER,
   offers: OFFER_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
@@ -792,6 +795,10 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       productOwnersReader: true,
     }),
+    useCaseProvider(ProductsForLinkingQuery, {
+      unitOfWork: true,
+      productLinkingReader: true,
+    }),
     useCaseProvider(CategoryTreeQuery, { unitOfWork: true, treeReader: true, policy: true }),
     useCaseProvider(OfferListingsQuery, {
       unitOfWork: true,
@@ -841,6 +848,7 @@ const productTypeProvider: FactoryProvider<string> = {
         PublishedProductImagesQuery,
         PendingProductRevisionsQuery,
         SellerProductOwnersQuery,
+        ProductsForLinkingQuery,
       ],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
@@ -855,6 +863,7 @@ const productTypeProvider: FactoryProvider<string> = {
         publishedProductImages: PublishedProductImagesQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
         sellerProductOwners: SellerProductOwnersQuery,
+        productsForLinking: ProductsForLinkingQuery,
       ) =>
         new CatalogFacadeImplementation({
           offerSellUnits,
@@ -869,6 +878,7 @@ const productTypeProvider: FactoryProvider<string> = {
           publishedProductImages,
           pendingProductRevisions,
           sellerProductOwners,
+          productsForLinking,
         }),
     },
     useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),

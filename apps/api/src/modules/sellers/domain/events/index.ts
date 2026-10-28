@@ -72,6 +72,23 @@ export const StoreProfilePublished = defineEvent({
 });
 
 /**
+ * An admin switched a seller's blog access on or off (blog package 1). `unpublishLive` asks the
+ * blog to take the seller's live posts off the site (only with `enabled: false`). Ids and flags
+ * only. The aggregate id is derived from the seller id and its version is the version of the
+ * seller's admin settings row, so the events of one seller are ordered and never collide with the
+ * business file's. Consumer: blog (unpublish).
+ */
+export const SellerBlogAccessChanged = defineEvent({
+  type: 'sellers.blog-access-changed.v1',
+  aggregateType: 'seller-blog-access',
+  payload: {
+    sellerId: eventField.id(),
+    enabled: eventField.boolean(),
+    unpublishLive: eventField.boolean(),
+  },
+});
+
+/**
  * Every event sellers publishes, declared with `defineEvent` and registered with the event
  * catalogue by `SellersModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -82,4 +99,5 @@ export const SELLERS_EVENTS: readonly EventDefinition[] = [
   BusinessFileSubmitted,
   BusinessFileWithdrawn,
   StoreProfilePublished,
+  SellerBlogAccessChanged,
 ];

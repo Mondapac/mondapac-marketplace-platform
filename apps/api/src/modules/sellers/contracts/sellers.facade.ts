@@ -113,6 +113,17 @@ export interface SellersFacade {
   >;
 
   /**
+   * `blogAccessOf` (blog package 1): whether an admin has switched the seller's blog access on
+   * (default off). An unknown seller, another Market's seller or a read error is
+   * `sellers.unavailable`: the caller refuses and never reads an error as "on". Two use cases
+   * behind this method, as for `sellerSummaries`. Not exposed over HTTP.
+   */
+  blogAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
    * `publishedStoreSellerId` (storefront products package): the seller that holds `slug` as a
    * store address, or `null`. Yes only under the published-store rules of the public store page
    * (an approved revision, a `held` slug, and the may-sell contract says yes); an unknown,

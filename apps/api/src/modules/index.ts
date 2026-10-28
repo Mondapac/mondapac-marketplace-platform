@@ -21,6 +21,7 @@ import { ReturnsModule } from './returns';
 import { NotificationsModule } from './notifications';
 import { SearchModule } from './search';
 import { StorefrontModule } from './storefront';
+import { BlogModule } from './blog';
 import { EngagementModule } from './engagement';
 import { AssistantModule } from './assistant';
 import { WalletModule } from './wallet';
@@ -46,6 +47,7 @@ export const CORE_MODULES = [
   NotificationsModule,
   SearchModule,
   StorefrontModule,
+  BlogModule,
   EngagementModule,
   AssistantModule,
   ReviewsModule,
