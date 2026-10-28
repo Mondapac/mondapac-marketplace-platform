@@ -292,7 +292,8 @@ export class SellerBlogController {
     summary: "Change the status of the seller's own event at once",
     description:
       'Needs blog.seller-post.edit. Body { status, message? }. Takes effect on the live post ' +
-      'without a review, and is audited.',
+      'without a review, and is audited. A message is checked first (no outside link, no ' +
+      'certification claim; 422 blog.checks-failed).',
   })
   @ApiHeader(CSRF)
   @ApiParam(POST)

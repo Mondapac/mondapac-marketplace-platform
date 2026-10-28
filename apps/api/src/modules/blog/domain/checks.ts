@@ -56,6 +56,10 @@ export function readableTexts(
   }
   if (content.coverAlt !== null) texts.push({ path: 'coverAlt', text: content.coverAlt });
   texts.push(...bodyTexts(content.body));
+  if (content.event?.venueName) {
+    texts.push({ path: 'event.venueName', text: content.event.venueName });
+  }
+  if (content.event?.address) texts.push({ path: 'event.address', text: content.event.address });
   if (content.event?.statusMessage) {
     texts.push({ path: 'event.statusMessage', text: content.event.statusMessage });
   }
@@ -200,6 +204,25 @@ function dedupe(findings: readonly Finding[]): Finding[] {
     unique.push(finding);
   }
   return unique;
+}
+
+/**
+ * The checks on the status message of an event, which goes live at once without a review: no way
+ * off the site and no certification claim. `claimFlagged` is null when the certification check could
+ * not be asked, which refuses the message (fail closed).
+ */
+export function statusMessageFindings(
+  message: string,
+  claimFlagged: boolean | null,
+): readonly Finding[] {
+  const found: Finding[] = [];
+  if (hasExternalLink(message))
+    found.push({ severity: 'error', code: 'external-link', path: 'message' });
+  if (claimFlagged === null)
+    found.push({ severity: 'error', code: 'claims-unverifiable', path: null });
+  else if (claimFlagged)
+    found.push({ severity: 'error', code: 'certification-claim', path: 'message' });
+  return found;
 }
 
 export const blocking = (findings: readonly Finding[]): readonly Finding[] =>

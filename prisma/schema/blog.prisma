@@ -29,6 +29,8 @@ model BlogPost {
   liveVersionId  String?            @map("live_version_id") @db.Uuid
   draftVersionId String?            @map("draft_version_id") @db.Uuid
   scheduledAt    DateTime?          @map("scheduled_at") @db.Timestamptz(6)
+  /// The admin who set `scheduledAt`; set exactly with it (CHECK), credited as the publisher.
+  scheduledBy    String?            @map("scheduled_by") @db.Uuid
   /// The first time a version went live; kept after an unpublish.
   publishedAt    DateTime?          @map("published_at") @db.Timestamptz(6)
   unpublishedAt  DateTime?          @map("unpublished_at") @db.Timestamptz(6)

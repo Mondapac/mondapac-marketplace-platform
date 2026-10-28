@@ -22,6 +22,8 @@ export interface PostRecord {
   readonly liveVersionId: VersionId | null;
   readonly draftVersionId: VersionId | null;
   readonly scheduledAt: Temporal.Instant | null;
+  /** The admin who set `scheduledAt` (set exactly with it); credited as the publisher. */
+  readonly scheduledBy: Id<'Account'> | null;
   readonly publishedAt: Temporal.Instant | null;
   readonly unpublishedAt: Temporal.Instant | null;
   readonly pausedReason: string | null;
@@ -71,12 +73,20 @@ export type VersionSummary = Pick<
   | 'publishedAt'
 >;
 
+/** The position of a post in the due queue. */
+export interface DueKey {
+  readonly scheduledAt: Temporal.Instant;
+  readonly id: PostId;
+}
+
 export interface PostChange {
   readonly slug?: string;
   readonly status?: PostStatus;
   readonly liveVersionId?: VersionId | null;
   readonly draftVersionId?: VersionId | null;
+  /** Clearing `scheduledAt` (null) clears `scheduledBy` too; setting it needs `scheduledBy`. */
   readonly scheduledAt?: Temporal.Instant | null;
+  readonly scheduledBy?: Id<'Account'> | null;
   readonly publishedAt?: Temporal.Instant | null;
   readonly unpublishedAt?: Temporal.Instant | null;
   readonly pausedReason?: string | null;
@@ -166,10 +176,25 @@ export interface BlogRepository {
   ): Promise<readonly PostListRow[]>;
   /** Takes `featured` off the Market's featured post, if any. */
   clearFeatured(market: MarketContext, stamp: Stamp): Promise<void>;
-  /** Posts with an instant due: `scheduledAt <= now` and an open version, oldest first. */
+  /**
+   * Features the post. False when another post became featured at the same time (the unique key of
+   * one featured post per Market refused it); the unit must then end with a refusal.
+   */
+  markFeatured(market: MarketContext, id: PostId, stamp: Stamp): Promise<boolean>;
+  /**
+   * Posts with an instant due: `scheduledAt <= now` and an approved open version, oldest first by
+   * (`scheduledAt`, `id`), after the key `after` when given (keyset paging past skipped posts).
+   */
   duePosts(
     market: MarketContext,
     now: Temporal.Instant,
+    limit: number,
+    after: DueKey | null,
+  ): Promise<readonly PostRecord[]>;
+  /** Scheduled posts of a seller, at most `limit`. */
+  scheduledPostsOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
     limit: number,
   ): Promise<readonly PostRecord[]>;
   /** Published posts of a seller, at most `limit`. */

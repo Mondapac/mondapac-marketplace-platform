@@ -244,6 +244,52 @@ describe.each([['AU'], ['ZZ']] as const)('blog permissions in %s', (code) => {
       expect(approved.open).toMatchObject({ state: 'approved', selfApproved: false });
     });
 
+    it("keeps a writer who edited another's draft from approving it: B edits A's draft, A submits, B approves", async () => {
+      const h = blogHarness(code);
+      const category = await aCategory(h);
+      const keys = [...WRITER, ...REVIEWER];
+      const a = () => h.admin('a', keys);
+      const b = () => h.admin('b', keys);
+      const post = await createNews(h, a(), category);
+      const edited = unwrap(
+        await h.cases.updateDraft.execute(b(), {
+          post: post.id,
+          body: { content: content({ categoryId: category, title: 'B wording' }) },
+        }),
+      );
+      // B's edit is a new draft version of B's own; A's draft is retired, not overwritten.
+      expect(edited.open).toMatchObject({ versionNo: 2, state: 'draft' });
+      expect(edited.versions.map((v) => [v.versionNo, v.state])).toEqual([
+        [2, 'draft'],
+        [1, 'retired'],
+      ]);
+      unwrap(await h.cases.submitPost.execute(a(), { post: post.id }));
+      for (const approver of [b(), a()]) {
+        const refused = refusal(
+          await h.cases.approvePost.execute(approver, { post: post.id, body: { versionNo: 2 } }),
+        );
+        expect(refused.code).toBe(
+          code === 'AU' ? 'second-factor.required' : 'blog.self-approval-refused',
+        );
+      }
+      // The same writer editing again stays in place.
+      const own = await createNews(h, a(), category, 'Own draft');
+      const again = unwrap(
+        await h.cases.updateDraft.execute(a(), {
+          post: own.id,
+          body: { content: content({ categoryId: category, title: 'Own draft again' }) },
+        }),
+      );
+      expect(again.open).toMatchObject({ versionNo: 1, state: 'draft' });
+      const approved = unwrap(
+        await h.cases.approvePost.execute(h.admin('reviewer', REVIEWER), {
+          post: post.id,
+          body: { versionNo: 2 },
+        }),
+      );
+      expect(approved.open).toMatchObject({ state: 'approved', selfApproved: false });
+    });
+
     if (code === 'AU') {
       it('allows a self-approval after a fresh step-up, once, and audits it as one', async () => {
         const h = blogHarness('AU');

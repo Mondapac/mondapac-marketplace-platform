@@ -50,6 +50,17 @@ describe.each([['AU'], ['ZZ']] as const)('seller posts in %s', (code) => {
     expect(created).toMatchObject({ ownerType: 'seller', sellerId: SELLER, kind: 'product' });
     // A seller's view carries no account ids.
     expect(created.open?.people).toBeNull();
+    expect(created.versions).toHaveLength(1);
+    expect(created.versions[0]).not.toHaveProperty('createdBy');
+    const viewed = unwrap(await h.cases.sellerViewPost.execute(seller, { post: created.id }));
+    expect(JSON.stringify(viewed.versions)).not.toContain(
+      seller.actor.kind === 'authenticated' ? seller.actor.accountId : 'x',
+    );
+    // An admin's view of the same post names the writer.
+    const adminView = unwrap(
+      await h.cases.viewPost.execute(h.admin('reader', ['blog.post.read']), { post: created.id }),
+    );
+    expect(adminView.versions[0]?.createdBy).toBeDefined();
 
     const sent = unwrap(await h.cases.sellerSubmitPost.execute(seller, { post: created.id }));
     expect(sent.status).toBe('in_review');
@@ -314,8 +325,47 @@ describe.each([['AU'], ['ZZ']] as const)('seller posts in %s', (code) => {
           unpublishLive: false,
         }),
       );
-      expect(kept).toEqual({ paused: 0 });
+      expect(kept).toEqual({ paused: 0, unscheduled: 0 });
       expect(h.repo.allPosts(h.market).find((p) => p.id === created.id)?.status).toBe('published');
+    });
+
+    it('removes the schedules of the seller when the switch goes off, so the due queue never holds them', async () => {
+      const h = blogHarness(code);
+      const category = await aCategory(h);
+      const seller = sellerWorld(h);
+      const created = unwrap(
+        await h.cases.sellerCreatePost.execute(seller, { body: productPost(category, 'Later') }),
+      );
+      unwrap(await h.cases.sellerSubmitPost.execute(seller, { post: created.id }));
+      unwrap(
+        await h.cases.approvePost.execute(h.admin('reviewer', REVIEWER), {
+          post: created.id,
+          body: { versionNo: 1 },
+        }),
+      );
+      unwrap(
+        await h.cases.schedulePost.execute(h.admin('publisher', PUBLISHER), {
+          post: created.id,
+          body: { versionNo: 1, scheduledAt: h.clock.now().add({ hours: 3 }).toString() },
+        }),
+      );
+      h.links.sellerAccess.set(SELLER, false);
+      const done = unwrap(
+        await h.cases.pauseSellerPosts.execute(h.system(), {
+          delivery: delivery(4),
+          sellerId: SELLER,
+          enabled: false,
+          unpublishLive: false,
+        }),
+      );
+      expect(done).toEqual({ paused: 0, unscheduled: 1 });
+      expect(h.repo.allPosts(h.market).find((p) => p.id === created.id)).toMatchObject({
+        status: 'approved',
+        scheduledAt: null,
+        scheduledBy: null,
+      });
+      const entry = h.audits.filter((a) => a.action === 'blog.post.schedule').at(-1);
+      expect(entry?.after).toMatchObject({ scheduledAt: null, cause: 'seller-switch-off' });
     });
 
     it('pauses the live posts when asked, once per delivery, and not when the switch is on again', async () => {
@@ -358,6 +408,31 @@ describe.each([['AU'], ['ZZ']] as const)('seller posts in %s', (code) => {
       ).toMatchObject({ paused: 0 });
       expect(h.repo.allPosts(h.market).find((p) => p.id === created.id)?.status).toBe('published');
     });
+  });
+
+  it('refuses a status message with an outside link or a claim from a seller as well', async () => {
+    const h = blogHarness(code);
+    const category = await aCategory(h);
+    const seller = sellerWorld(h);
+    const created = unwrap(
+      await h.cases.sellerCreatePost.execute(seller, { body: productPost(category, 'Stall') }),
+    );
+    for (const [message, finding] of [
+      ['See shop.example.com', 'external-link'],
+      ['All ISO certified now', 'certification-claim'],
+    ] as const) {
+      expect(
+        refusal(
+          await h.cases.sellerChangeEventStatus.execute(seller, {
+            post: created.id,
+            body: { status: 'cancelled', message },
+          }),
+        ),
+      ).toEqual({
+        code: 'blog.checks-failed',
+        findings: [{ severity: 'error', code: finding, path: 'message' }],
+      });
+    }
   });
 
   it('archives its own post and cannot change an event status of a post that is not an event', async () => {

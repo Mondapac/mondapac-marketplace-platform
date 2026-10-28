@@ -75,11 +75,13 @@ export const BlogPostPublished = defineAuditAction({
 export const BlogPostScheduled = defineAuditAction({
   action: 'blog.post.schedule',
   targetType: BLOG_POST_TARGET,
-  actors: ['authenticated'],
+  // The system removes the schedules of a seller whose blog access was turned off.
+  actors: ['authenticated', 'system'],
   before: { scheduledAt: auditField.optional(auditField.instant()) },
   after: {
     versionNo: auditField.integer(),
     scheduledAt: auditField.optional(auditField.instant()),
+    cause: auditField.optional(auditField.enumOf(['seller-switch-off'] as const)),
   },
 });
 

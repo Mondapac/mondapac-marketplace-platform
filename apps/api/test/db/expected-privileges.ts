@@ -626,6 +626,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'quota_period',
         'row_version',
         'scheduled_at',
+        'scheduled_by',
         'slug',
         'status',
         'unpublished_at',

@@ -219,19 +219,36 @@ describe.each(TEST_MARKETS)('blog flows in market %s (database)', (code) => {
         body: { versionNo: 1, scheduledAt: when.toString() },
       }),
     );
-    expect(unwrap(await h.cases.publishDue.execute(h.system(), undefined))).toEqual({
-      published: 0,
-      skipped: 0,
-    });
+    // Other posts of this Market share the database: assert on this post only.
+    const state = () =>
+      one(
+        `SELECT p.status, p.live_version_id, p.scheduled_at, p.scheduled_by, v.published_by
+           FROM blog.posts p LEFT JOIN blog.post_versions v
+             ON v.market_id = p.market_id AND v.id = p.live_version_id
+          WHERE p.id = $1`,
+        [approved.id],
+      );
+    const scheduler = publisher().actor;
+    const schedulerId = scheduler.kind === 'authenticated' ? scheduler.accountId : null;
+    await h.cases.publishDue.execute(h.system(), undefined);
+    expect(await state()).toMatchObject({ status: 'scheduled', live_version_id: null });
     h.clock.advance(Temporal.Duration.from({ hours: 2, minutes: 1 }));
     const runs = await Promise.all([
       h.cases.publishDue.execute(h.system(), undefined),
       h.cases.publishDue.execute(h.system(), undefined),
       h.cases.publishDue.execute(h.system(), undefined),
     ]);
-    const published = runs.map((r) => unwrap(r).published).reduce((a, b) => a + b, 0);
-    expect(published).toBe(1);
-    expect(unwrap(await h.cases.publishDue.execute(h.system(), undefined)).published).toBe(0);
+    for (const run of runs) unwrap(run);
+    unwrap(await h.cases.publishDue.execute(h.system(), undefined));
+    const after = await state();
+    expect(after).toMatchObject({
+      status: 'published',
+      live_version_id: approved.open?.id,
+      scheduled_at: null,
+      scheduled_by: null,
+    });
+    // The publisher of record is the admin who set the schedule.
+    expect(after.published_by).toBe(schedulerId);
     expect(
       (await eventTypes(approved.id)).filter((t) => t === 'blog.post-published.v1'),
     ).toHaveLength(1);
@@ -340,5 +357,86 @@ describe.each(TEST_MARKETS)('blog flows in market %s (database)', (code) => {
       [created.id, otherCode],
     );
     expect(crossed.n).toBe(0);
+  });
+  it('pages the due queue past more than a batch of blocked posts and publishes the one after them', async () => {
+    const cat = await category();
+    const blocked: string[] = [];
+    const sellers = Array.from({ length: 52 }, () => h.ids.next<'Seller'>());
+    h.links.onSale.set(PRODUCT_A, new Set(sellers));
+    const reviewerContext = reviewer();
+    const publisherContext = publisher();
+    // 52 seller posts (more than one batch of 50), due first, whose sellers lose blog access.
+    for (const [index, sellerId] of sellers.entries()) {
+      h.links.sellerAccess.set(sellerId, true);
+      const seller = h.seller(sellerId, SELLER_KEYS);
+      const created = unwrap(
+        await h.cases.sellerCreatePost.execute(seller, {
+          body: {
+            kind: 'product',
+            content: content({
+              categoryId: cat,
+              title: `Blocked ${index}`,
+              links: [{ type: 'product', id: PRODUCT_A }],
+            }),
+          },
+        }),
+      );
+      unwrap(await h.cases.sellerSubmitPost.execute(seller, { post: created.id }));
+      unwrap(
+        await h.cases.approvePost.execute(reviewerContext, {
+          post: created.id,
+          body: { versionNo: 1 },
+        }),
+      );
+      unwrap(
+        await h.cases.schedulePost.execute(publisherContext, {
+          post: created.id,
+          body: { versionNo: 1, scheduledAt: h.clock.now().add({ hours: 1 }).toString() },
+        }),
+      );
+      blocked.push(created.id);
+    }
+    const good = await approvedNews(h, cat, 'After the queue');
+    unwrap(
+      await h.cases.schedulePost.execute(publisherContext, {
+        post: good.id,
+        body: { versionNo: 1, scheduledAt: h.clock.now().add({ hours: 2 }).toString() },
+      }),
+    );
+    for (const sellerId of sellers) h.links.sellerAccess.set(sellerId, false);
+    h.clock.advance(Temporal.Duration.from({ hours: 3 }));
+
+    const run = unwrap(await h.cases.publishDue.execute(h.system(), undefined));
+    expect(run.skipped).toBeGreaterThanOrEqual(blocked.length);
+    expect(await one(`SELECT status FROM blog.posts WHERE id = $1`, [good.id])).toEqual({
+      status: 'published',
+    });
+    const left = await rows(
+      `SELECT count(*)::int AS n FROM blog.posts WHERE id = ANY($1::uuid[]) AND status = 'scheduled'`,
+      [blocked],
+    );
+    expect(left).toEqual([{ n: blocked.length }]);
+  });
+
+  it('lets two parallel features end with one featured post and a conflict, never an error', async () => {
+    const cat = await category();
+    const a = await liveNews(h, cat, 'Feature A');
+    const b = await liveNews(h, cat, 'Feature B');
+    for (let round = 0; round < 5; round += 1) {
+      const results = await Promise.all(
+        [a, b].map((post) =>
+          h.cases.featurePost.execute(publisher(), { post: post.id, body: { featured: true } }),
+        ),
+      );
+      for (const result of results) {
+        if (!result.ok) expect(result.error).toEqual({ code: 'conflict.stale' });
+      }
+      expect(results.some((r) => r.ok)).toBe(true);
+      expect(
+        await one(`SELECT count(*)::int AS n FROM blog.posts WHERE market_id = $1 AND featured`, [
+          h.market.marketId,
+        ]),
+      ).toEqual({ n: 1 });
+    }
   });
 });

@@ -152,6 +152,7 @@ export async function createPost(
       liveVersionId: null,
       draftVersionId: null,
       scheduledAt: null,
+      scheduledBy: null,
       publishedAt: null,
       unpublishedAt: null,
       pausedReason: null,
@@ -244,8 +245,12 @@ export async function updateDraft(
     const facts = factsOf(post, open);
     const refused = refusalFor('edit', facts);
     if (refused !== null) return err({ code: refused });
-    const mode = editModeOf(facts);
-    if (mode === null) return err({ code: 'blog.wrong-state' });
+    const editMode = editModeOf(facts);
+    if (editMode === null) return err({ code: 'blog.wrong-state' });
+    // Only the writer of the open draft edits it in place. Anyone else's edit is a new draft version
+    // of their own, so the draft's writer list (separation of duties) can never lose a name.
+    const mode =
+      editMode === 'in-place' && open!.createdBy !== author.accountId ? 'new-draft' : editMode;
 
     const parsed = parsePostContent(body.content, {
       kind: post.kind,
@@ -293,7 +298,8 @@ export async function updateDraft(
         stamp,
       );
     } else {
-      // The old open version (returned or approved) is retired first: a post has one open version.
+      // The old open version (another writer's draft, returned or approved) is retired first: a
+      // post has one open version.
       if (open !== null) {
         await deps.posts.updateVersion(market, post.id, open.id, { state: 'retired' }, at);
       }

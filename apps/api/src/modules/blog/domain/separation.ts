@@ -23,11 +23,20 @@ export interface WrittenVersion {
   readonly versionNo: number;
   readonly createdBy: string;
   readonly editedByReviewer: boolean;
+  readonly state: string;
+  readonly decision: string | null;
+  readonly publishedAt: unknown;
 }
 
+/** A version that was replaced before anyone decided on it or published it (another writer's draft, or the version a reviewer edited). */
+const superseded = (version: WrittenVersion): boolean =>
+  version.state === 'retired' && version.decision === null && version.publishedAt === null;
+
 /**
- * The writers of a version: its own writer and, while it is a reviewer's edit, the writer of the
- * version it replaced, back to the first version that is not a reviewer's edit (the author's).
+ * The writers of a version: everyone who wrote its text in the current round. It walks back from
+ * the version to the one before while the current one is a reviewer's edit or the one before was
+ * superseded (retired with no decision and never published), and stops at a version that carries a
+ * decision or was live: that ends the previous round.
  */
 export function writersOf(
   versions: readonly WrittenVersion[],
@@ -35,11 +44,14 @@ export function writersOf(
 ): readonly string[] {
   const byNo = new Map(versions.map((version) => [version.versionNo, version]));
   const writers = new Set<string>();
-  for (let no = versionNo; no >= 1; no -= 1) {
-    const version = byNo.get(no);
-    if (version === undefined) continue;
-    writers.add(version.createdBy);
-    if (!version.editedByReviewer) break;
+  let current = byNo.get(versionNo);
+  while (current !== undefined) {
+    writers.add(current.createdBy);
+    const previous = byNo.get(current.versionNo - 1);
+    if (previous === undefined) break;
+    if (previous.decision !== null || previous.publishedAt !== null) break;
+    if (!current.editedByReviewer && !superseded(previous)) break;
+    current = previous;
   }
   return [...writers];
 }

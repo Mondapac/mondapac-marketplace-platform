@@ -34,25 +34,88 @@ describe('separation of duties', () => {
 });
 
 describe('writersOf', () => {
-  const v = (versionNo: number, createdBy: string, editedByReviewer = false) => ({
+  type State = 'draft' | 'in_review' | 'returned' | 'approved' | 'live' | 'retired';
+  const v = (
+    versionNo: number,
+    createdBy: string,
+    state: State,
+    extra: { editedByReviewer?: boolean; decision?: string | null; published?: boolean } = {},
+  ) => ({
     versionNo,
     createdBy,
-    editedByReviewer,
+    state,
+    editedByReviewer: extra.editedByReviewer ?? false,
+    decision:
+      extra.decision !== undefined
+        ? extra.decision
+        : state === 'approved' || state === 'live'
+          ? 'approved'
+          : state === 'returned'
+            ? 'changes_requested'
+            : null,
+    publishedAt: (extra.published ?? state === 'live') ? 'at' : null,
   });
 
-  it('is the writer alone for a version that is not a reviewer edit', () => {
-    expect(writersOf([v(1, 'a'), v(2, 'b')], 2)).toEqual(['b']);
+  it('is the writer alone for a new draft after a live version', () => {
+    expect(
+      writersOf(
+        [v(1, 'a', 'retired', { decision: 'approved', published: true }), v(2, 'b', 'draft')],
+        2,
+      ),
+    ).toEqual(['b']);
+  });
+
+  it('is the writer alone for a new draft after a returned version', () => {
+    expect(writersOf([v(1, 'a', 'returned'), v(2, 'b', 'in_review')], 2)).toEqual(['b']);
   });
 
   it('walks back through reviewer edits to the author of the edited version', () => {
-    expect(writersOf([v(1, 'x'), v(2, 'a'), v(3, 'r', true), v(4, 's', true)], 4)).toEqual([
-      's',
-      'r',
-      'a',
-    ]);
+    expect(
+      writersOf(
+        [
+          v(1, 'x', 'live'),
+          v(2, 'a', 'retired'),
+          v(3, 'r', 'retired', { editedByReviewer: true }),
+          v(4, 's', 'in_review', { editedByReviewer: true }),
+        ],
+        4,
+      ),
+    ).toEqual(['s', 'r', 'a']);
   });
 
-  it('stops at the first version when every version is an edit', () => {
-    expect(writersOf([v(1, 'a', true)], 1)).toEqual(['a']);
+  it('walks back through drafts another writer replaced', () => {
+    expect(
+      writersOf([v(1, 'a', 'retired'), v(2, 'b', 'retired'), v(3, 'a', 'in_review')], 3),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('keeps every writer of the round across replaced drafts and reviewer edits', () => {
+    expect(
+      writersOf(
+        [
+          v(1, 'old', 'retired', { decision: 'approved', published: true }),
+          v(2, 'a', 'retired'),
+          v(3, 'b', 'retired'),
+          v(4, 'r', 'in_review', { editedByReviewer: true }),
+        ],
+        4,
+      ),
+    ).toEqual(['r', 'b', 'a']);
+  });
+
+  it('stops at a version that carries a decision, even when the current one is a reviewer edit', () => {
+    expect(
+      writersOf(
+        [
+          v(1, 'a', 'retired', { decision: 'changes_requested' }),
+          v(2, 'r', 'in_review', { editedByReviewer: true }),
+        ],
+        2,
+      ),
+    ).toEqual(['r']);
+  });
+
+  it('stops at the first version', () => {
+    expect(writersOf([v(1, 'a', 'in_review', { editedByReviewer: true })], 1)).toEqual(['a']);
   });
 });

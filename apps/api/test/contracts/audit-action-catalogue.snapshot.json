@@ -167,11 +167,12 @@
     "action": "blog.post.schedule",
     "targetType": "blog.post",
     "targetId": "id",
-    "actors": ["authenticated"],
+    "actors": ["authenticated", "system"],
     "before": {
       "scheduledAt": "optional(instant)"
     },
     "after": {
+      "cause": "optional(enumOf(seller-switch-off))",
       "scheduledAt": "optional(instant)",
       "versionNo": "integer"
     }

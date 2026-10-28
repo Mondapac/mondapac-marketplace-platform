@@ -11,6 +11,7 @@ import {
   BlogPostScheduled,
   BlogPostSlugChanged,
 } from '../domain/audit';
+import { statusMessageFindings } from '../domain/checks';
 import { parseEventStatusChange } from '../domain/event-details';
 import {
   BlogPostArchived as ArchivedEvent,
@@ -36,10 +37,11 @@ import {
   fieldsOf,
   loadPost,
   lockPost,
+  policyOf,
   sellerOf,
 } from './post-support';
 import type { LoadedPost, PostDetailView } from './post-support';
-import type { PostRecord, Stamp, VersionId, VersionRecord } from './ports/blog.repository';
+import type { DueKey, PostRecord, Stamp, VersionId, VersionRecord } from './ports/blog.repository';
 
 // What happens to a post once it is approved: it goes live (now, or at a scheduled instant by the
 // worker), is paused and resumed, archived, renamed (an old address redirects), featured, and an
@@ -206,14 +208,14 @@ export async function schedulePost(
     await deps.posts.updatePost(
       market,
       post.id,
-      { scheduledAt: when, status: statusAfter('schedule', facts) },
+      { scheduledAt: when, scheduledBy: admin.accountId, status: statusAfter('schedule', facts) },
       stamp,
     );
     await deps.audit.record(
       context,
       BlogPostScheduled.entry(post.id, {
         before: { scheduledAt: post.scheduledAt },
-        after: { versionNo: open!.versionNo, scheduledAt: when },
+        after: { versionNo: open!.versionNo, scheduledAt: when, cause: null },
       }),
     );
     return reload(deps, market, post);
@@ -247,7 +249,7 @@ export async function unschedulePost(
       context,
       BlogPostScheduled.entry(post.id, {
         before: { scheduledAt: post.scheduledAt },
-        after: { versionNo: open?.versionNo ?? 0, scheduledAt: null },
+        after: { versionNo: open?.versionNo ?? 0, scheduledAt: null, cause: null },
       }),
     );
     return reload(deps, market, post);
@@ -444,8 +446,15 @@ export async function setFeatured(
     const { post, open } = locked.value;
     const refused = refusalFor('feature', factsOf(post, open));
     if (refused !== null) return err({ code: refused });
-    if (featured) await deps.posts.clearFeatured(market, stamp);
-    await deps.posts.updatePost(market, post.id, { featured }, stamp);
+    if (featured) {
+      await deps.posts.clearFeatured(market, stamp);
+      // Two posts featured at once: the unique key lets one through; the other is told to retry.
+      if (!(await deps.posts.markFeatured(market, post.id, stamp))) {
+        return err({ code: 'conflict.stale' });
+      }
+    } else {
+      await deps.posts.updatePost(market, post.id, { featured }, stamp);
+    }
     await deps.audit.record(
       context,
       BlogPostFeatured.entry(post.id, { before: { featured: post.featured }, after: { featured } }),
@@ -478,6 +487,17 @@ export async function setEventStatus(
   if (caller.sellerId !== null) {
     const refused = await requireSellerAccess(deps, context, caller.sellerId);
     if (refused !== null) return err(refused);
+  }
+  if (change.message !== null) {
+    // The message goes live at once with no review: it gets the checks a reviewer would rely on.
+    const policy = policyOf(deps, market);
+    if (policy === null) return err({ code: 'blog.unavailable' });
+    const asked = await deps.links.claimsFlagged(context, [
+      { locale: policy.defaultLocale, text: change.message },
+    ]);
+    const flagged = asked.ok && asked.value.length === 1 ? asked.value[0]! : null;
+    const findings = statusMessageFindings(change.message, flagged);
+    if (findings.length > 0) return err({ code: 'blog.checks-failed', findings });
   }
   const stamp: Stamp = { at: deps.clock.now(), by: caller.accountId };
   return deps.unitOfWork.run<PostDetailView, Failure>(market, async () => {
@@ -524,15 +544,18 @@ export interface DueRun {
 }
 
 const DUE_BATCH = 50;
+/** The most batches one run reads; the rest waits for the next run (a minute later). */
+const DUE_PAGES = 20;
 
 /**
  * Publishes the approved versions whose scheduled instant has come (job `blog.publish-due`, every
  * minute, per Market). One unit per post, so one post that cannot go live does not hold back the
- * others. Idempotent: a post is published only while it is still scheduled, due and approved, and
- * publishing clears the schedule, so a second run (or a concurrent one, serialised on the post
- * row) finds nothing to do. The seller's switch is read outside the units; a seller post whose
- * switch is off, or whose switch could not be read, stays scheduled for a later run. The account
- * recorded as the publisher is the one who last changed the post: the person who scheduled it.
+ * others. The queue is read in pages keyed on (`scheduledAt`, `id`), so posts that are skipped (a
+ * seller whose switch is off or unreadable, a post that cannot be published) never block the ones
+ * after them. Idempotent: a post is published only while it is still scheduled, due and approved,
+ * and publishing clears the schedule, so a second run (or a concurrent one, serialised on the post
+ * row) finds nothing to do. The seller's switch is read outside the units. The account recorded as
+ * the publisher is the admin who set the schedule (`scheduledBy`).
  */
 export async function publishDue(
   deps: BlogDependencies,
@@ -540,53 +563,63 @@ export async function publishDue(
 ): Promise<Result<DueRun, Failure>> {
   const { market } = context;
   const now = deps.clock.now();
-  const due = await deps.unitOfWork.run<readonly PostRecord[], Failure>(
-    market,
-    async () => ok(await deps.posts.duePosts(market, now, DUE_BATCH)),
-    { readOnly: true },
-  );
-  if (!due.ok) return err(due.error);
-
   const switches = new Map<string, boolean | null>();
-  for (const post of due.value) {
-    if (post.sellerId === null || switches.has(post.sellerId)) continue;
-    const enabled = await deps.links.sellerBlogEnabled(context, post.sellerId);
-    switches.set(post.sellerId, enabled.ok ? enabled.value : null);
-  }
-
   let published = 0;
   let skipped = 0;
-  for (const candidate of due.value) {
-    if (candidate.sellerId !== null && switches.get(candidate.sellerId) !== true) {
-      skipped += 1;
-      continue;
-    }
-    const outcome = await deps.unitOfWork.run<boolean, Failure>(market, async () => {
-      const locked = await lockPost(deps, market, candidate.id);
-      if (!locked.ok) return ok(false);
-      const { post, open } = locked.value;
-      const facts = factsOf(post, open);
-      if (
-        post.scheduledAt === null ||
-        Temporal.Instant.compare(post.scheduledAt, now) > 0 ||
-        refusalFor('publish', facts) !== null
-      ) {
-        return ok(false);
-      }
-      const stamp: Stamp = { at: now, by: post.updatedBy };
-      await makeLive(deps, market, post, open!, stamp, post.updatedBy);
-      await deps.audit.record(
-        context,
-        BlogPostPublished.entry(post.id, {
-          after: { versionNo: open!.versionNo, scheduled: true },
-        }),
-      );
-      await emit(deps, context, PublishedEvent, post, open!.id);
-      return ok(true);
+  let after: DueKey | null = null;
+  for (let page = 0; page < DUE_PAGES; page += 1) {
+    const cursor: DueKey | null = after;
+    const due: Result<readonly PostRecord[], Failure> = await deps.unitOfWork.run<
+      readonly PostRecord[],
+      Failure
+    >(market, async () => ok(await deps.posts.duePosts(market, now, DUE_BATCH, cursor)), {
+      readOnly: true,
     });
-    if (!outcome.ok) return err(outcome.error);
-    if (outcome.value) published += 1;
-    else skipped += 1;
+    if (!due.ok) return err(due.error);
+    if (due.value.length === 0) break;
+    const last: PostRecord = due.value[due.value.length - 1]!;
+    after = { scheduledAt: last.scheduledAt!, id: last.id };
+
+    for (const post of due.value) {
+      if (post.sellerId === null || switches.has(post.sellerId)) continue;
+      const enabled = await deps.links.sellerBlogEnabled(context, post.sellerId);
+      switches.set(post.sellerId, enabled.ok ? enabled.value : null);
+    }
+
+    for (const candidate of due.value) {
+      if (candidate.sellerId !== null && switches.get(candidate.sellerId) !== true) {
+        skipped += 1;
+        continue;
+      }
+      const outcome = await deps.unitOfWork.run<boolean, Failure>(market, async () => {
+        const locked = await lockPost(deps, market, candidate.id);
+        if (!locked.ok) return ok(false);
+        const { post, open } = locked.value;
+        const facts = factsOf(post, open);
+        if (
+          post.scheduledAt === null ||
+          Temporal.Instant.compare(post.scheduledAt, now) > 0 ||
+          refusalFor('publish', facts) !== null
+        ) {
+          return ok(false);
+        }
+        const by = post.scheduledBy ?? post.updatedBy;
+        const stamp: Stamp = { at: now, by };
+        await makeLive(deps, market, post, open!, stamp, by);
+        await deps.audit.record(
+          context,
+          BlogPostPublished.entry(post.id, {
+            after: { versionNo: open!.versionNo, scheduled: true },
+          }),
+        );
+        await emit(deps, context, PublishedEvent, post, open!.id);
+        return ok(true);
+      });
+      if (!outcome.ok) return err(outcome.error);
+      if (outcome.value) published += 1;
+      else skipped += 1;
+    }
+    if (due.value.length < DUE_BATCH) break;
   }
   return ok({ published, skipped });
 }
@@ -597,6 +630,12 @@ export interface SellerAccessDelivery {
   readonly sellerId: string;
   readonly enabled: boolean;
   readonly unpublishLive: boolean;
+}
+
+/** What the seller-switch handler did. */
+export interface SellerPostsChanged {
+  readonly paused: number;
+  readonly unscheduled: number;
 }
 
 const PAUSE_REASON = 'Blog access of the seller was turned off';
@@ -611,20 +650,57 @@ export async function pauseSellerPosts(
   deps: BlogDependencies,
   context: CallContext,
   input: SellerAccessDelivery,
-): Promise<Result<{ readonly paused: number }, Failure>> {
+): Promise<Result<SellerPostsChanged, Failure>> {
   const { market } = context;
   const sellerId = input.sellerId as Id<'Seller'>;
-  let act = !input.enabled && input.unpublishLive;
-  if (act) {
+  // Both acts happen only while the switch is still off when the event is handled.
+  let stillOff = false;
+  if (!input.enabled) {
     const current = await deps.links.sellerBlogEnabled(context, sellerId);
     if (!current.ok) return err({ code: 'blog.unavailable' });
-    act = !current.value;
+    stillOff = !current.value;
   }
-  const handled = await deps.unitOfWork.runOnce<number, Failure>(
+  const act = stillOff && input.unpublishLive;
+  const handled = await deps.unitOfWork.runOnce<SellerPostsChanged, Failure>(
     market,
     input.delivery,
     async () => {
-      if (!act) return ok(0);
+      // A scheduled post of a seller without blog access could never be published; leaving it
+      // scheduled would only keep it at the head of the due queue. The schedule is removed (the
+      // version stays approved) whether or not the live posts come down.
+      let unscheduled = 0;
+      if (stillOff) {
+        for (let round = 0; round < 20; round += 1) {
+          const batch = await deps.posts.scheduledPostsOfSeller(market, sellerId, 100);
+          if (batch.length === 0) break;
+          for (const candidate of batch) {
+            const locked = await lockPost(deps, market, candidate.id);
+            if (!locked.ok || locked.value.post.scheduledAt === null) continue;
+            const { post, open } = locked.value;
+            const at = deps.clock.now();
+            const status = statusAfter('unschedule', factsOf(post, open));
+            await deps.posts.updatePost(
+              market,
+              post.id,
+              { scheduledAt: null, status },
+              { at, by: post.updatedBy },
+            );
+            await deps.audit.record(
+              context,
+              BlogPostScheduled.entry(post.id, {
+                before: { scheduledAt: post.scheduledAt },
+                after: {
+                  versionNo: open?.versionNo ?? 0,
+                  scheduledAt: null,
+                  cause: 'seller-switch-off',
+                },
+              }),
+            );
+            unscheduled += 1;
+          }
+        }
+      }
+      if (!act) return ok({ paused: 0, unscheduled });
       let paused = 0;
       for (let round = 0; round < 20; round += 1) {
         const batch = await deps.posts.publishedPostsOfSeller(market, sellerId, 100);
@@ -652,9 +728,9 @@ export async function pauseSellerPosts(
           paused += 1;
         }
       }
-      return ok(paused);
+      return ok({ paused, unscheduled });
     },
   );
   if (!handled.ok) return err(handled.error);
-  return ok({ paused: handled.value.handled ? handled.value.value : 0 });
+  return ok(handled.value.handled ? handled.value.value : { paused: 0, unscheduled: 0 });
 }

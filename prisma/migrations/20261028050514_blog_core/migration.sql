@@ -22,6 +22,7 @@ CREATE TABLE "blog"."posts" (
     "live_version_id" UUID,
     "draft_version_id" UUID,
     "scheduled_at" TIMESTAMPTZ(6),
+    "scheduled_by" UUID,
     "published_at" TIMESTAMPTZ(6),
     "unpublished_at" TIMESTAMPTZ(6),
     "paused_reason" TEXT,
@@ -348,6 +349,8 @@ ALTER TABLE "blog"."posts"
     ("status" <> 'scheduled' OR "scheduled_at" IS NOT NULL)
     AND ("scheduled_at" IS NULL
       OR ("status" IN ('scheduled', 'published', 'unpublished') AND "draft_version_id" IS NOT NULL))),
+  -- The admin who set the schedule, credited as the publisher when the worker publishes.
+  ADD CONSTRAINT "posts_scheduled_by_check" CHECK (("scheduled_at" IS NULL) = ("scheduled_by" IS NULL)),
   ADD CONSTRAINT "posts_unpublished_check" CHECK (
     ("status" <> 'unpublished' OR ("unpublished_at" IS NOT NULL AND "paused_reason" IS NOT NULL))
     AND ("paused_reason" IS NULL OR "status" IN ('unpublished', 'archived'))
@@ -425,8 +428,11 @@ CREATE UNIQUE INDEX "post_versions_one_open_key" ON "blog"."post_versions" ("mar
 CREATE UNIQUE INDEX "posts_one_featured_key" ON "blog"."posts" ("market_id") WHERE "featured";
 CREATE INDEX "posts_market_id_published_at_published_idx" ON "blog"."posts"
   ("market_id", "published_at" DESC, "id" DESC) WHERE "status" = 'published';
-CREATE INDEX "posts_market_id_scheduled_at_idx" ON "blog"."posts" ("market_id", "scheduled_at")
+CREATE INDEX "posts_market_id_scheduled_at_idx" ON "blog"."posts" ("market_id", "scheduled_at", "id")
   WHERE "scheduled_at" IS NOT NULL;
+-- Hand-written: the versions of a category (the public list by category, the delete guard).
+CREATE INDEX "post_versions_market_id_category_id_idx" ON "blog"."post_versions" ("market_id", "category_id")
+  WHERE "category_id" IS NOT NULL;
 
 ALTER TABLE "blog"."post_events"
   ADD CONSTRAINT "post_events_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
@@ -544,10 +550,12 @@ BEGIN
     child_market := NEW."market_id";
     child_version := NEW."version_id";
   END IF;
+  -- FOR SHARE: the parent's state cannot move on (draft to in review) until this write commits.
   SELECT v."state", p."kind" INTO parent_state, parent_kind
     FROM "blog"."post_versions" v
     JOIN "blog"."posts" p ON p."market_id" = v."market_id" AND p."id" = v."post_id"
-   WHERE v."market_id" = child_market AND v."id" = child_version;
+   WHERE v."market_id" = child_market AND v."id" = child_version
+     FOR SHARE OF v;
   IF parent_state IS DISTINCT FROM 'draft' THEN
     RAISE EXCEPTION 'blog.%: the rows of a version change only while it is a draft', TG_TABLE_NAME
       USING ERRCODE = 'restrict_violation';
@@ -581,7 +589,8 @@ BEGIN
      (OLD."starts_at", OLD."ends_at", OLD."time_zone", OLD."attendance", OLD."venue_name",
       OLD."address", OLD."registration_url") THEN
     SELECT "state" INTO parent_state FROM "blog"."post_versions"
-     WHERE "market_id" = OLD."market_id" AND "id" = OLD."version_id";
+     WHERE "market_id" = OLD."market_id" AND "id" = OLD."version_id"
+       FOR SHARE;
     IF parent_state IS DISTINCT FROM 'draft' THEN
       RAISE EXCEPTION 'blog.post_events: only the status of an event changes after the draft'
         USING ERRCODE = 'restrict_violation';
@@ -631,7 +640,7 @@ CREATE TRIGGER "redirects_slug_not_a_post"
 -- category's slug never changes. The outbox is written by the unit and marked published by the
 -- relay; the inbox is appended to.
 GRANT USAGE ON SCHEMA "blog" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("slug", "status", "live_version_id", "draft_version_id", "scheduled_at", "published_at", "unpublished_at", "paused_reason", "featured", "quota_period", "updated_at", "updated_by", "row_version") ON TABLE "blog"."posts" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("slug", "status", "live_version_id", "draft_version_id", "scheduled_at", "scheduled_by", "published_at", "unpublished_at", "paused_reason", "featured", "quota_period", "updated_at", "updated_by", "row_version") ON TABLE "blog"."posts" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("state", "title", "excerpt", "body", "cover_image_id", "cover_alt", "seo_title", "seo_description", "author_display", "category_id", "updated_at", "submitted_at", "submitted_by", "decided_at", "decided_by", "decision", "decision_note", "self_approved", "published_at", "published_by") ON TABLE "blog"."post_versions" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE, UPDATE ("starts_at", "ends_at", "time_zone", "attendance", "venue_name", "address", "registration_url", "event_status", "status_message") ON TABLE "blog"."post_events" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE ON TABLE "blog"."post_links" TO "mondapac_app";

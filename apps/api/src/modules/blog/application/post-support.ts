@@ -351,8 +351,12 @@ export interface PostDetailView extends Omit<PostSummaryView, 'title' | 'openSta
   readonly open: VersionView | null;
   /** What buyers read now, if the post is on the site (or was and is paused). */
   readonly live: VersionView | null;
-  readonly versions: readonly VersionSummary[];
+  /** The version history; `createdBy` (an account id) only in an admin's view. */
+  readonly versions: readonly VersionHistoryView[];
 }
+
+export type VersionHistoryView = Omit<VersionSummary, 'createdBy'> &
+  Partial<Pick<VersionSummary, 'createdBy'>>;
 
 export const summaryView = (
   post: PostRecord,
@@ -402,6 +406,20 @@ export async function detailOf(
     createdAt: post.createdAt,
     open: open === null ? null : versionView(open, forAdmin),
     live: live === null ? null : versionView(live, forAdmin),
-    versions: await deps.posts.versionSummaries(market, post.id),
+    versions: (await deps.posts.versionSummaries(market, post.id)).map((version) => {
+      if (forAdmin) return version;
+      const { id, versionNo, state, createdAt, editedByReviewer, submittedAt, decidedAt } = version;
+      return {
+        id,
+        versionNo,
+        state,
+        createdAt,
+        editedByReviewer,
+        submittedAt,
+        decidedAt,
+        decision: version.decision,
+        publishedAt: version.publishedAt,
+      };
+    }),
   };
 }

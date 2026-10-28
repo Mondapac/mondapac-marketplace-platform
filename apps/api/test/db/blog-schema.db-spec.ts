@@ -71,6 +71,7 @@ describe.each(TEST_MARKETS)('blog schema in market %s (database)', (code) => {
       live_version_id: null,
       draft_version_id: versionId,
       scheduled_at: null,
+      scheduled_by: null,
       published_at: null,
       unpublished_at: null,
       paused_reason: null,
@@ -81,8 +82,8 @@ describe.each(TEST_MARKETS)('blog schema in market %s (database)', (code) => {
     return sql.query(
       `INSERT INTO blog.posts (id, market_id, tenant_id, kind, slug, owner_type, seller_id, status,
          live_version_id, draft_version_id, scheduled_at, published_at, unpublished_at, paused_reason,
-         featured, quota_period, created_at, created_by, updated_at, updated_by, row_version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now(), $17, now(), $17, 0)`,
+         featured, quota_period, created_at, created_by, updated_at, updated_by, row_version, scheduled_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now(), $17, now(), $17, 0, $18)`,
       [
         id,
         r.market_id,
@@ -101,6 +102,7 @@ describe.each(TEST_MARKETS)('blog schema in market %s (database)', (code) => {
         r.featured,
         r.quota_period,
         by,
+        r.scheduled_by,
       ],
     );
   };
@@ -255,6 +257,19 @@ describe.each(TEST_MARKETS)('blog schema in market %s (database)', (code) => {
       expect(await errorCode(createPost({ post }))).toMatch(
         new RegExp(`^(${CHECK}|${FOREIGN_KEY})$`),
       );
+    });
+
+    it('keeps the scheduler with the schedule: both set or both empty', async () => {
+      const at = '2026-12-01T00:00:00Z';
+      expect(
+        await errorCode(
+          createPost({ post: { status: 'scheduled', scheduled_at: at, scheduled_by: by } }),
+        ),
+      ).toBe('allowed');
+      expect(await errorCode(createPost({ post: { status: 'scheduled', scheduled_at: at } }))).toBe(
+        CHECK,
+      );
+      expect(await errorCode(createPost({ post: { scheduled_by: by } }))).toBe(CHECK);
     });
 
     it('accepts a seller post with a month and refuses a bad month', async () => {
@@ -685,19 +700,16 @@ describe.each(TEST_MARKETS)('blog schema in market %s (database)', (code) => {
         }
         return created;
       };
-      // Both Market fixtures share one database: clear what an earlier run left featured.
-      for (const target of [market, other]) {
-        await sql.query(
-          `UPDATE blog.posts SET featured = false WHERE market_id = $1 AND featured`,
-          [target.marketId],
-        );
-      }
-      // Other Market's featured post does not count against this one.
-      await publish(true, other);
-      const first = await publish(true);
-      expect(await errorCode(publish(true))).toBe(UNIQUE);
+      // Two Markets of this test alone (the CHECK takes any well-formed id), so the specs that
+      // feature posts of the shared fixtures at the same time never meet this one.
+      const mine = { ...market, marketId: `F${code}A` } as typeof market;
+      const theirs = { ...market, marketId: `F${code}B` } as typeof market;
+      // The other Market's featured post does not count against this one.
+      await publish(true, theirs);
+      const first = await publish(true, mine);
+      expect(await errorCode(publish(true, mine))).toBe(UNIQUE);
       await sql.query(`UPDATE blog.posts SET featured = false WHERE id = $1`, [first.postId]);
-      expect(await errorCode(publish(true))).toBe('allowed');
+      expect(await errorCode(publish(true, mine))).toBe('allowed');
     });
 
     it('lets the application role change only the granted columns and delete nothing but children', async () => {

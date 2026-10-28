@@ -3,6 +3,7 @@ import type {
   BlogRepository,
   CategoryId,
   CategoryRecord,
+  DueKey,
   PostChange,
   PostFilter,
   PostId,
@@ -105,6 +106,9 @@ export class MemoryBlogRepository implements BlogRepository {
     this.t.posts.set(key(market, id), {
       ...post,
       ...change,
+      ...(change.scheduledAt === null && change.scheduledBy === undefined
+        ? { scheduledBy: null }
+        : {}),
       updatedAt: stamp.at,
       updatedBy: stamp.by,
     });
@@ -157,6 +161,10 @@ export class MemoryBlogRepository implements BlogRepository {
     );
   }
 
+  markFeatured(market: MarketContext, id: PostId, stamp: Stamp): Promise<boolean> {
+    return this.updatePost(market, id, { featured: true }, stamp).then(() => true);
+  }
+
   clearFeatured(market: MarketContext, stamp: Stamp): Promise<void> {
     for (const post of this.allPosts(market)) {
       if (post.featured) {
@@ -175,18 +183,34 @@ export class MemoryBlogRepository implements BlogRepository {
     market: MarketContext,
     now: Temporal.Instant,
     limit: number,
+    after: DueKey | null,
   ): Promise<readonly PostRecord[]> {
+    const order = (a: PostRecord | DueKey, b: PostRecord | DueKey): number =>
+      compareInstants(a.scheduledAt!, b.scheduledAt!) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     return Promise.resolve(
       this.allPosts(market)
         .filter((post) => {
           if (post.scheduledAt === null || compareInstants(post.scheduledAt, now) > 0) return false;
+          if (after !== null && order(post, after) <= 0) return false;
           const draft =
             post.draftVersionId === null
               ? undefined
               : this.t.versions.get(key(market, post.draftVersionId));
           return draft !== undefined && draft.state === 'approved';
         })
-        .sort((a, b) => compareInstants(a.scheduledAt!, b.scheduledAt!))
+        .sort(order)
+        .slice(0, limit),
+    );
+  }
+
+  scheduledPostsOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    limit: number,
+  ): Promise<readonly PostRecord[]> {
+    return Promise.resolve(
+      this.allPosts(market)
+        .filter((post) => post.sellerId === sellerId && post.scheduledAt !== null)
         .slice(0, limit),
     );
   }

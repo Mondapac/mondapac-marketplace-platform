@@ -17,7 +17,7 @@ REVOKE SELECT, INSERT, DELETE ON TABLE "blog"."post_tags" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE ON TABLE "blog"."post_links" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE, UPDATE ("starts_at", "ends_at", "time_zone", "attendance", "venue_name", "address", "registration_url", "event_status", "status_message") ON TABLE "blog"."post_events" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("state", "title", "excerpt", "body", "cover_image_id", "cover_alt", "seo_title", "seo_description", "author_display", "category_id", "updated_at", "submitted_at", "submitted_by", "decided_at", "decided_by", "decision", "decision_note", "self_approved", "published_at", "published_by") ON TABLE "blog"."post_versions" FROM "mondapac_app";
-REVOKE SELECT, INSERT, UPDATE ("slug", "status", "live_version_id", "draft_version_id", "scheduled_at", "published_at", "unpublished_at", "paused_reason", "featured", "quota_period", "updated_at", "updated_by", "row_version") ON TABLE "blog"."posts" FROM "mondapac_app";
+REVOKE SELECT, INSERT, UPDATE ("slug", "status", "live_version_id", "draft_version_id", "scheduled_at", "scheduled_by", "published_at", "unpublished_at", "paused_reason", "featured", "quota_period", "updated_at", "updated_by", "row_version") ON TABLE "blog"."posts" FROM "mondapac_app";
 REVOKE USAGE ON SCHEMA "blog" FROM "mondapac_app";
 
 -- The version pointers of a post and the versions' own key reference each other: the pointers go first.

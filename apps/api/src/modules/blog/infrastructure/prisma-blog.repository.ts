@@ -5,6 +5,7 @@ import type {
   BlogRepository,
   CategoryId,
   CategoryRecord,
+  DueKey,
   PostChange,
   PostFilter,
   PostId,
@@ -44,6 +45,7 @@ interface PostRow {
   readonly liveVersionId: string | null;
   readonly draftVersionId: string | null;
   readonly scheduledAt: Date | null;
+  readonly scheduledBy: string | null;
   readonly publishedAt: Date | null;
   readonly unpublishedAt: Date | null;
   readonly pausedReason: string | null;
@@ -56,6 +58,10 @@ interface PostRow {
   readonly rowVersion: number;
 }
 
+/** A unique violation (Prisma P2002), however the driver adapter wraps it. */
+const isUniqueViolation = (error: unknown): boolean =>
+  (error as { code?: unknown } | null)?.code === 'P2002';
+
 const toPost = (row: PostRow): PostRecord => ({
   id: row.id as PostId,
   kind: row.kind as PostKind,
@@ -66,6 +72,7 @@ const toPost = (row: PostRow): PostRecord => ({
   liveVersionId: row.liveVersionId as VersionId | null,
   draftVersionId: row.draftVersionId as VersionId | null,
   scheduledAt: toInstantOrNull(row.scheduledAt),
+  scheduledBy: row.scheduledBy as Id<'Account'> | null,
   publishedAt: toInstantOrNull(row.publishedAt),
   unpublishedAt: toInstantOrNull(row.unpublishedAt),
   pausedReason: row.pausedReason,
@@ -197,6 +204,7 @@ export class PrismaBlogRepository implements BlogRepository {
         liveVersionId: post.liveVersionId,
         draftVersionId: post.draftVersionId,
         scheduledAt: dateOrNull(post.scheduledAt),
+        scheduledBy: post.scheduledBy,
         publishedAt: dateOrNull(post.publishedAt),
         unpublishedAt: dateOrNull(post.unpublishedAt),
         pausedReason: post.pausedReason,
@@ -247,6 +255,8 @@ export class PrismaBlogRepository implements BlogRepository {
     if (change.liveVersionId !== undefined) data.liveVersionId = change.liveVersionId;
     if (change.draftVersionId !== undefined) data.draftVersionId = change.draftVersionId;
     if (change.scheduledAt !== undefined) data.scheduledAt = dateOrNull(change.scheduledAt);
+    if (change.scheduledBy !== undefined) data.scheduledBy = change.scheduledBy;
+    else if (change.scheduledAt === null) data.scheduledBy = null;
     if (change.publishedAt !== undefined) data.publishedAt = dateOrNull(change.publishedAt);
     if (change.unpublishedAt !== undefined) data.unpublishedAt = dateOrNull(change.unpublishedAt);
     if (change.pausedReason !== undefined) data.pausedReason = change.pausedReason;
@@ -304,6 +314,19 @@ export class PrismaBlogRepository implements BlogRepository {
     }));
   }
 
+  async markFeatured(market: MarketContext, id: PostId, stamp: Stamp): Promise<boolean> {
+    try {
+      await this.prisma.tx(market).blogPost.updateMany({
+        where: { marketId: market.marketId, id },
+        data: { featured: true, updatedAt: toDate(stamp.at), updatedBy: stamp.by },
+      });
+      return true;
+    } catch (error) {
+      if (isUniqueViolation(error)) return false;
+      throw error;
+    }
+  }
+
   async clearFeatured(market: MarketContext, stamp: Stamp): Promise<void> {
     await this.prisma.tx(market).blogPost.updateMany({
       where: { marketId: market.marketId, featured: true },
@@ -315,14 +338,36 @@ export class PrismaBlogRepository implements BlogRepository {
     market: MarketContext,
     now: Temporal.Instant,
     limit: number,
+    after: DueKey | null,
   ): Promise<readonly PostRecord[]> {
     const rows = await this.prisma.tx(market).blogPost.findMany({
       where: {
         marketId: market.marketId,
         scheduledAt: { not: null, lte: toDate(now) },
         draftVersion: { is: { state: 'approved' } },
+        ...(after === null
+          ? {}
+          : {
+              OR: [
+                { scheduledAt: { gt: toDate(after.scheduledAt) } },
+                { scheduledAt: toDate(after.scheduledAt), id: { gt: after.id } },
+              ],
+            }),
       },
       orderBy: [{ scheduledAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toPost);
+  }
+
+  async scheduledPostsOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    limit: number,
+  ): Promise<readonly PostRecord[]> {
+    const rows = await this.prisma.tx(market).blogPost.findMany({
+      where: { marketId: market.marketId, sellerId, scheduledAt: { not: null } },
+      orderBy: [{ id: 'asc' }],
       take: limit,
     });
     return rows.map(toPost);
@@ -628,24 +673,37 @@ export class PrismaBlogRepository implements BlogRepository {
     filter: PublicFilter,
     page: { readonly limit: number; readonly offset: number },
   ): Promise<readonly PublicRow[]> {
-    const rows = await this.prisma.tx(market).blogPost.findMany({
-      where: {
-        marketId: market.marketId,
-        status: 'published',
-        liveVersionId: { not: null },
-        ...(filter.kind === undefined ? {} : { kind: filter.kind }),
-        liveVersion: {
-          is: {
-            ...(filter.categoryId === undefined ? {} : { categoryId: filter.categoryId }),
-            ...(filter.tagId === undefined ? {} : { tags: { some: { tagId: filter.tagId } } }),
-          },
+    const db = this.prisma.tx(market);
+    const where = {
+      marketId: market.marketId,
+      status: 'published',
+      liveVersionId: { not: null },
+      ...(filter.kind === undefined ? {} : { kind: filter.kind }),
+      liveVersion: {
+        is: {
+          ...(filter.categoryId === undefined ? {} : { categoryId: filter.categoryId }),
+          ...(filter.tagId === undefined ? {} : { tags: { some: { tagId: filter.tagId } } }),
         },
       },
-      include: { liveVersion: { omit: { body: true }, include: LIST_VERSION } },
-      orderBy: [{ featured: 'desc' }, { publishedAt: 'desc' }, { id: 'desc' }],
-      take: page.limit,
-      skip: page.offset,
-    });
+    };
+    const include = { liveVersion: { omit: { body: true }, include: LIST_VERSION } } as const;
+    // The featured post (at most one per Market) leads the list. It is read on its own, so the rest
+    // is read newest first along the published-posts index, never sorted by `featured`.
+    const featured = await db.blogPost.findFirst({ where: { ...where, featured: true }, include });
+    const lead = featured === null ? 0 : 1;
+    const head = featured !== null && page.offset === 0 ? [featured] : [];
+    const restLimit = page.limit - head.length;
+    const rest =
+      restLimit <= 0
+        ? []
+        : await db.blogPost.findMany({
+            where: { ...where, featured: false },
+            include,
+            orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+            take: restLimit,
+            skip: Math.max(0, page.offset - lead),
+          });
+    const rows = [...head, ...rest];
     return rows.flatMap((row) =>
       row.liveVersion === null ? [] : [{ post: toPost(row), version: toVersion(row.liveVersion) }],
     );

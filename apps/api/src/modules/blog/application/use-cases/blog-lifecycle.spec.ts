@@ -528,6 +528,63 @@ describe.each([['AU'], ['ZZ']] as const)('blog post lifecycle in %s', (code) => 
     ).toEqual([]);
   });
 
+  it('checks a status message before it goes live: no outside link, no certification claim, fail closed', async () => {
+    const h = blogHarness(code);
+    const category = await aCategory(h);
+    const created = unwrap(
+      await h.cases.createPost.execute(writer(h), {
+        body: {
+          kind: 'event',
+          content: content({ categoryId: category, title: 'Open day', event: eventDetails(h) }),
+        },
+      }),
+    );
+    unwrap(await h.cases.submitPost.execute(writer(h), { post: created.id }));
+    unwrap(
+      await h.cases.approvePost.execute(reviewer(h), { post: created.id, body: { versionNo: 1 } }),
+    );
+    unwrap(
+      await h.cases.publishPost.execute(publisher(h), { post: created.id, body: { versionNo: 1 } }),
+    );
+    const change = (message: string) =>
+      h.cases.changeEventStatus.execute(writer(h), {
+        post: created.id,
+        body: { status: 'postponed', message },
+      });
+    expect(refusal(await change('Details at www.example.com'))).toEqual({
+      code: 'blog.checks-failed',
+      findings: [{ severity: 'error', code: 'external-link', path: 'message' }],
+    });
+    expect(refusal(await change('Now ISO certified stalls'))).toEqual({
+      code: 'blog.checks-failed',
+      findings: [{ severity: 'error', code: 'certification-claim', path: 'message' }],
+    });
+    h.links.claimsDown = true;
+    expect(refusal(await change('Moved to next week'))).toEqual({
+      code: 'blog.checks-failed',
+      findings: [{ severity: 'error', code: 'claims-unverifiable', path: null }],
+    });
+    h.links.claimsDown = false;
+    // Nothing of the refused messages reached the post; a clean one goes live at once.
+    const view = unwrap(
+      await h.cases.viewPublishedPost.execute(h.anonymous(), { slug: created.slug }),
+    );
+    expect(JSON.stringify(view)).not.toMatch(/example\.com|ISO certified/);
+    const changed = unwrap(await change('Moved to next week'));
+    expect(changed.live?.content.event).toMatchObject({
+      eventStatus: 'postponed',
+      statusMessage: 'Moved to next week',
+    });
+    // A status change with no message needs no check.
+    h.links.claimsDown = true;
+    unwrap(
+      await h.cases.changeEventStatus.execute(writer(h), {
+        post: created.id,
+        body: { status: 'scheduled' },
+      }),
+    );
+  });
+
   it('refuses an event that has ended and an event post without event details', async () => {
     const h = blogHarness(code);
     const category = await aCategory(h);
@@ -564,9 +621,28 @@ describe.each([['AU'], ['ZZ']] as const)('blog post lifecycle in %s', (code) => 
       skipped: 0,
     });
 
+    const scheduler = publisher(h);
+    const schedulerId = scheduler.actor.kind === 'authenticated' ? scheduler.actor.accountId : null;
+    expect(h.repo.allPosts(h.market)[0]?.scheduledBy).toBe(schedulerId);
+    // Someone else touches the post after it was scheduled: the scheduler is still the publisher.
+    const other = h.admin('someone-else', PUBLISHER);
+    await h.repo.updatePost(
+      h.market,
+      approved.id,
+      {},
+      {
+        at: h.clock.now(),
+        by: other.actor.kind === 'authenticated' ? other.actor.accountId : schedulerId!,
+      },
+    );
+
     h.clock.advance(Temporal.Duration.from({ hours: 2, minutes: 1 }));
     const first = unwrap(await h.cases.publishDue.execute(h.system(), undefined));
     expect(first).toEqual({ published: 1, skipped: 0 });
+    const livePost = h.repo.allPosts(h.market)[0]!;
+    expect(livePost.scheduledBy).toBeNull();
+    const liveVersion = await h.repo.findVersion(h.market, livePost.id, livePost.liveVersionId!);
+    expect(liveVersion?.publishedBy).toBe(schedulerId);
     const eventsAfterFirst = h.events.length;
     const auditsAfterFirst = h.audits.length;
     expect(h.repo.allPosts(h.market)[0]).toMatchObject({ status: 'published', scheduledAt: null });
@@ -624,6 +700,7 @@ describe.each([['AU'], ['ZZ']] as const)('blog post lifecycle in %s', (code) => 
       await h.cases.unschedulePost.execute(publisher(h), { post: approved.id }),
     );
     expect(removed.status).toBe('approved');
+    expect(h.repo.allPosts(h.market)[0]?.scheduledBy).toBeNull();
     h.clock.advance(Temporal.Duration.from({ hours: 6 }));
     expect(unwrap(await h.cases.publishDue.execute(h.system(), undefined))).toEqual({
       published: 0,

@@ -587,7 +587,9 @@ export class AdminBlogController {
   @HttpCode(200)
   @ApiOperation({
     summary: 'Feature a published post, or not (admin)',
-    description: 'Needs blog.post.publish. Body { featured }. One post per Market is featured.',
+    description:
+      'Needs blog.post.publish. Body { featured }. One post per Market is featured; two at once ' +
+      'leave one featured and answer 409 conflict.stale to the other.',
   })
   @ApiHeader(CSRF)
   @ApiParam(POST)
@@ -619,7 +621,9 @@ export class AdminBlogController {
     summary: "Change an event's status at once (admin)",
     description:
       'Needs blog.post.edit. Body { status, message? }: scheduled, postponed, rescheduled or ' +
-      'cancelled. Takes effect on the live post without a review, and is audited.',
+      'cancelled. Takes effect on the live post without a review, and is audited. A message is ' +
+      'checked first (no outside link, no certification claim; 422 blog.checks-failed, also when ' +
+      'the certification check cannot answer).',
   })
   @ApiHeader(CSRF)
   @ApiParam(POST)

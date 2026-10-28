@@ -1,5 +1,13 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import { blocking, hasExternalLink, hasHealthWording, hasPriceLikeText, runChecks } from './checks';
+import {
+  blocking,
+  hasExternalLink,
+  hasHealthWording,
+  hasPriceLikeText,
+  readableTexts,
+  runChecks,
+  statusMessageFindings,
+} from './checks';
 import type { CheckFacts } from './checks';
 import { parsePostContent } from './content';
 import type { ContentRules, PostContent } from './content';
@@ -216,6 +224,44 @@ describe('automatic checks', () => {
   it('warns about an empty excerpt', () => {
     expect(runChecks(facts({ input: { excerpt: '' } }))).toEqual([
       { severity: 'warning', code: 'excerpt-missing', path: 'excerpt' },
+    ]);
+  });
+});
+
+describe('event texts and status messages', () => {
+  it('reads the venue name and address of an event as texts readers see', () => {
+    const texts = readableTexts({
+      ...contentOf(complete, { kind: 'news', ownerType: 'platform', timeZone: 'Asia/Tokyo' }),
+      event: {
+        startsAt: now,
+        endsAt: now.add({ hours: 2 }),
+        timeZone: 'Asia/Tokyo',
+        attendance: 'offline',
+        venueName: 'Hall at www.example.com',
+        address: '1 Main St, ISO certified kitchen',
+        registrationUrl: null,
+        eventStatus: 'scheduled',
+        statusMessage: null,
+      },
+    } as never);
+    expect(texts).toEqual(
+      expect.arrayContaining([
+        { path: 'event.venueName', text: 'Hall at www.example.com' },
+        { path: 'event.address', text: '1 Main St, ISO certified kitchen' },
+      ]),
+    );
+  });
+
+  it('checks a status message for outside links and claims, and fails closed', () => {
+    expect(statusMessageFindings('Moved to Friday', false)).toEqual([]);
+    expect(statusMessageFindings('See www.example.com', false)).toEqual([
+      { severity: 'error', code: 'external-link', path: 'message' },
+    ]);
+    expect(statusMessageFindings('Moved', true)).toEqual([
+      { severity: 'error', code: 'certification-claim', path: 'message' },
+    ]);
+    expect(statusMessageFindings('Moved', null)).toEqual([
+      { severity: 'error', code: 'claims-unverifiable', path: null },
     ]);
   });
 });
