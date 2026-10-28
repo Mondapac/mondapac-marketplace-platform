@@ -163,7 +163,8 @@ export class MemoryPayouts implements PayoutRepository {
           ([k, row]) =>
             inMarket(market, k) &&
             (row.state === 'instructed' || row.state === 'paid') &&
-            row.stateChangedAt.epochMilliseconds >= since.epochMilliseconds,
+            row.instructingAt !== null &&
+            row.instructingAt.epochMilliseconds >= since.epochMilliseconds,
         )
         .reduce((sum, [, row]) => sum + row.transfer, 0n),
     );
@@ -212,6 +213,9 @@ export class ScriptedAccess implements SellerPayoutAccess {
   readonly zonesBySeller = new Map<string, SellerZone>();
   readonly eligibleSellers = new Set<string>();
   unavailable = false;
+  eligibleCalls = 0;
+  /** Runs at the start of each `eligible` call with its number: a test moves the world meanwhile. */
+  onEligible: ((call: number) => void) | null = null;
   zones(_context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
     if (this.unavailable) return Promise.resolve('unavailable' as const);
     const out = new Map<Id<'Seller'>, SellerZone>();
@@ -222,6 +226,8 @@ export class ScriptedAccess implements SellerPayoutAccess {
     return Promise.resolve(out);
   }
   eligible(_context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    this.eligibleCalls += 1;
+    this.onEligible?.(this.eligibleCalls);
     if (this.unavailable) return Promise.resolve('unavailable' as const);
     return Promise.resolve(new Map(sellerIds.map((id) => [id, this.eligibleSellers.has(id)])));
   }

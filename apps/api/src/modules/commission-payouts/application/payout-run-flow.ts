@@ -76,7 +76,6 @@ export class Tally {
   pendingAnswer = 0;
   alerts = 0;
   /** Payouts that became INSTRUCTING and still need `instructTransfer`. */
-  readonly toSend: Payout[] = [];
   summary(): RunSummary {
     return {
       evaluated: this.evaluated,
@@ -127,8 +126,6 @@ export async function runPayouts(
     for (const cursor of due.value) await evaluateSeller(deps, context, cursor, now, tally);
     if (due.value.length < BATCH_SIZE) break;
   }
-
-  for (const payout of tally.toSend) await sendTransfer(deps, context, payout, tally);
 
   const summary = tally.summary();
   logger.log({
@@ -323,7 +320,9 @@ async function evaluateSeller(
   const payout = created.value;
   if (payout.state === 'settled-by-netting') tally.settledByNetting += 1;
   else tally.created += 1;
-  if (payout.state === 'instructing') tally.toSend.push(payout);
+  // Sent now, not after the other sellers: the window between the checks and the send is the
+  // re-check's own (design 4.7 step 5).
+  if (payout.state === 'instructing') await sendWithRecheck(deps, context, payout, tally);
 }
 
 interface CursorWrite {
@@ -408,7 +407,7 @@ async function revalidateWaiting(
       if (locked === null || current === null || current.payout.state !== payout.state) {
         return err({ code: 'stale' } as const);
       }
-      const reason = await whyVoid(deps, market, current.payout, current.items, gate);
+      const reason = await whyVoid(deps, market, current.payout, current.items, gate, now);
       const next =
         reason !== null
           ? moveTo(current.payout, 'voided', now, { outcomeCode: reason })
@@ -423,7 +422,9 @@ async function revalidateWaiting(
     });
     if (!outcome.ok) continue;
     if (outcome.value.state === 'voided') tally.voided += 1;
-    if (outcome.value.state === 'instructing') tally.toSend.push(outcome.value);
+    if (outcome.value.state === 'instructing') {
+      await sendWithRecheck(deps, context, outcome.value, tally);
+    }
     if (
       outcome.value.state === 'awaiting-approval' &&
       isLongWaiting(outcome.value, now) &&
@@ -445,6 +446,7 @@ async function whyVoid(
   payout: Payout,
   items: readonly PayoutItem[],
   gate: GateAnswer,
+  at: Temporal.Instant,
 ): Promise<string | null> {
   const holds = await deps.holds.listForSeller(market, payout.sellerId, {
     activeOnly: true,
@@ -462,6 +464,20 @@ async function whyVoid(
   );
   if (items.some((item) => (nets.get(item.sellerOrderId) ?? 0n) < item.amount)) {
     return 'voided.amount-changed';
+  }
+  if (payout.state === 'approved' && payout.approval !== null) {
+    // The admin approved one amount. Plan it again: a receivable that grew (or shrank) since
+    // changes what would be transferred, and then the approval no longer covers it.
+    const fresh = await planSeller(
+      deps,
+      market,
+      payout.sellerId,
+      payout.currency,
+      payout.minimum,
+      at,
+    );
+    const netted = payout.gross < fresh.receivable ? payout.gross : fresh.receivable;
+    if (payout.gross - netted !== payout.approval.approvedTransfer) return 'voided.amount-changed';
   }
   if (payout.state === 'approved' && gate.kind === 'blocked') {
     switch (gate.reason) {
@@ -502,6 +518,53 @@ async function raiseApprovalAlert(
 // ---------------------------------------------------------------------------------------------
 // Sending
 
+const KEY_REUSED = 'idempotency.key-reused';
+
+/**
+ * Design 4.7 step 5: the seller is asked about again, after the unit that made the payout
+ * INSTRUCTING has committed and right before the call. Anything but a clear yes (a seller
+ * suspended meanwhile, an answer that is missing or odd, `unavailable`) fences the key at payments
+ * and closes the payout as NOT_SENT `payout-unwound`; nothing was sent, so there is no quarantine.
+ * When the fence cannot be confirmed the payout stays INSTRUCTING for the reconcile job.
+ */
+export async function sendWithRecheck(
+  deps: PayoutDependencies,
+  context: CallContext,
+  payout: Payout,
+  tally: Tally | null,
+): Promise<'instructed' | 'not-sent' | 'unknown'> {
+  const eligible = await deps.access.eligible(context, [payout.sellerId]);
+  if (eligible !== 'unavailable' && eligible.size === 1 && eligible.get(payout.sellerId) === true) {
+    return sendTransfer(deps, context, payout, tally);
+  }
+  const answer = await deps.payments.abandon(context, payout.id);
+  if (answer === 'unavailable' || answer.kind === 'in-flight') {
+    if (tally !== null) tally.pendingAnswer += 1;
+    return 'unknown';
+  }
+  const market = context.market;
+  const now = deps.clock.now();
+  const done = await deps.unitOfWork.run<'instructed' | 'not-sent', Stale>(market, async () => {
+    const locked = await deps.cursors.lock(market, payout.sellerId);
+    const current = await deps.payouts.find(market, payout.id);
+    if (locked === null || current === null || current.state !== 'instructing') {
+      return err({ code: 'stale' } as const);
+    }
+    const next =
+      answer.kind === 'already-sent'
+        ? moveTo(current, 'instructed', now, { transferExecutionId: answer.transferExecutionId })
+        : moveTo(current, 'not-sent', now, { outcomeCode: 'payout-unwound' });
+    if (!(await deps.payouts.change(market, current, next))) return err({ code: 'stale' } as const);
+    return ok(next.state === 'instructed' ? ('instructed' as const) : ('not-sent' as const));
+  });
+  if (!done.ok) return 'unknown';
+  if (tally !== null) {
+    if (done.value === 'instructed') tally.instructed += 1;
+    else tally.notSent += 1;
+  }
+  return done.value;
+}
+
 /**
  * Calls payments for a payout that is INSTRUCTING, after the unit that made it so has committed.
  * Accepted: INSTRUCTED with payments' transfer id. Refused: NOT_SENT with the code as given (the
@@ -526,6 +589,19 @@ export async function sendTransfer(
     return 'unknown';
   }
   const market = context.market;
+  if (answer.kind === 'refused' && answer.code === KEY_REUSED) {
+    // payments holds another record under this key, so a transfer may exist: not a definite
+    // refusal. The payout stays INSTRUCTING for the reconcile job to settle, and a person looks.
+    await deps.unitOfWork.run<true, never>(market, async () => {
+      await deps.securityEvents.record(
+        context,
+        PayoutAlert.event({ payload: { sellerId: payout.sellerId, reason: 'transfer-refused' } }),
+      );
+      return ok(true as const);
+    });
+    if (tally !== null) tally.pendingAnswer += 1;
+    return 'unknown';
+  }
   const now = deps.clock.now();
   const done = await deps.unitOfWork.run<'instructed' | 'not-sent', Stale>(market, async () => {
     const locked = await deps.cursors.lock(market, payout.sellerId);

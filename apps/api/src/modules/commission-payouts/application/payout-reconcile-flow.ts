@@ -5,7 +5,7 @@ import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { PayoutAlert } from '../../../platform/security-events/security-event-catalogue';
 import { moveTo, type Payout } from '../domain/payout';
 import type { PayoutDependencies } from './payout-dependencies';
-import { sendTransfer } from './payout-run-flow';
+import { sendWithRecheck } from './payout-run-flow';
 import type { TransferLookup } from './ports/payout-gateways';
 
 // Settling the payouts payments has been asked to pay (package 6d; G2 3.6, 11). The money left
@@ -257,7 +257,7 @@ async function reconcileOne(
 
   if (lookup.state === 'none' && !timedOut) {
     // payments never saw the key: the first call is still ours to make.
-    const result = await sendTransfer(deps, context, payout, null);
+    const result = await sendWithRecheck(deps, context, payout, null);
     if (result === 'instructed') counts.instructed += 1;
     else if (result === 'not-sent') counts.notSent += 1;
     else counts.waiting += 1;

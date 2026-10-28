@@ -589,6 +589,71 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       ]);
     });
 
+    it('unwinds a payout whose seller was suspended after the gate, minutes before the send', async () => {
+      await autoSetup();
+      // Call 1 is the gate of the evaluation; call 2 is the re-check right before the send. The
+      // suspension lands in between, the way a delayed seller-suspended event would.
+      access.onEligible = (call) => {
+        if (call === 2) {
+          clock.advance(Temporal.Duration.from({ minutes: 4 }));
+          access.eligibleSellers.delete(SELLER_A);
+        }
+      };
+      const summary = await run();
+      expect(payments.instructed).toEqual([]);
+      const unwound = only();
+      expect(payments.abandoned).toEqual([unwound.id]);
+      expect(summary).toMatchObject({ notSent: 1, instructed: 0 });
+      // Nothing was sent, so no quarantine: closed at once and the seller orders are free.
+      expect(unwound).toMatchObject({ state: 'not-sent', outcomeCode: 'payout-unwound' });
+      expect(unwound.abandonedAt).toBeNull();
+      expect((await payouts.position(market, SELLER_A)).itemAmounts.has(ORDER_1)).toBe(false);
+    });
+
+    it('unwinds when the re-check cannot be answered, and sends nothing', async () => {
+      await autoSetup();
+      access.onEligible = (call) => {
+        if (call === 2) access.unavailable = true;
+      };
+      await run();
+      expect(payments.instructed).toEqual([]);
+      expect(only()).toMatchObject({ state: 'not-sent', outcomeCode: 'payout-unwound' });
+    });
+
+    it('leaves the payout instructing when the fence cannot be confirmed', async () => {
+      await autoSetup();
+      access.onEligible = (call) => {
+        if (call === 2) access.eligibleSellers.delete(SELLER_A);
+      };
+      payments.abandonAnswer = { kind: 'in-flight' };
+      const summary = await run();
+      expect(payments.instructed).toEqual([]);
+      expect(summary.pendingAnswer).toBe(1);
+      expect(only().state).toBe('instructing');
+    });
+
+    it('takes a transfer that was already sent when the fence is refused', async () => {
+      await autoSetup();
+      access.onEligible = (call) => {
+        if (call === 2) access.eligibleSellers.delete(SELLER_A);
+      };
+      payments.abandonAnswer = { kind: 'already-sent', transferExecutionId: TRANSFER };
+      await run();
+      expect(only()).toMatchObject({ state: 'instructed', transferExecutionId: TRANSFER });
+    });
+
+    it('keeps a payout instructing on idempotency.key-reused, and raises an alert', async () => {
+      await autoSetup();
+      payments.instructAnswer = { kind: 'refused', code: 'idempotency.key-reused' };
+      const summary = await run();
+      expect(summary).toMatchObject({ notSent: 0, pendingAnswer: 1 });
+      expect(only().state).toBe('instructing');
+      expect((await payouts.position(market, SELLER_A)).itemAmounts.has(ORDER_1)).toBe(true);
+      expect(alerts().map((event) => event.payload)).toEqual([
+        { sellerId: SELLER_A, reason: 'transfer-refused' },
+      ]);
+    });
+
     it('leaves an unanswered payout instructing, and never sends it again from the run', async () => {
       await autoSetup();
       payments.instructAnswer = 'unavailable';
@@ -737,6 +802,27 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       expect(payments.instructed).toEqual([]);
     });
 
+    it('voids an approved payout whose receivable grew since the approval', async () => {
+      await addSeller();
+      await makeAuto(10000n);
+      const key = `${market.marketId}:${SELLER_A}`;
+      stores.termsOverrides.rows.set(key, {
+        ...stores.termsOverrides.rows.get(key)!,
+        override: { ...stores.termsOverrides.rows.get(key)!.override, approvalMode: 'MANUAL' },
+      });
+      await addOrder(ORDER_1, 20000n);
+      await run();
+      const payout = only();
+      expect(payout.state).toBe('awaiting-approval');
+      must(await approve(payout.id, '20000'));
+      // A refund on an order that is not in the payout: the seller now owes 3000.
+      ledger.set(SELLER_A, PRIOR_ORDER, 7000n);
+      clock.advance(Temporal.Duration.from({ minutes: 15 }));
+      await run();
+      expect(only()).toMatchObject({ state: 'voided', outcomeCode: 'voided.amount-changed' });
+      expect(payments.instructed).toEqual([]);
+    });
+
     it('alerts once when an approval has waited a day', async () => {
       const payout = await waiting();
       clock.set(payout.stateChangedAt.add(APPROVAL_ALERT_AFTER).add({ minutes: 5 }));
@@ -776,6 +862,17 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       expect(summary).toMatchObject({ asked: 1, instructed: 1 });
       expect(payments.instructed.map((call) => call.instructionKey)).toEqual([payout.id]);
       expect(only().state).toBe('instructed');
+    });
+
+    it('re-checks the seller before it makes the first call itself, and unwinds if it fails', async () => {
+      const payout = await instructing();
+      payments.instructed.length = 0;
+      access.eligibleSellers.delete(SELLER_A);
+      const summary = await reconcile();
+      expect(payments.instructed).toEqual([]);
+      expect(payments.abandoned).toEqual([payout.id]);
+      expect(summary).toMatchObject({ notSent: 1, instructed: 0 });
+      expect(only()).toMatchObject({ state: 'not-sent', outcomeCode: 'payout-unwound' });
     });
 
     it('follows an executed transfer to PAID', async () => {
