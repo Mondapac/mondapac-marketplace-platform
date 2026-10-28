@@ -112,8 +112,8 @@ describe('Earnings', () => {
     });
     const term = screen.getAllByText('Disputes').find((node) => node.tagName === 'DT');
     expect(term?.nextElementSibling?.textContent).toBe('$5.00');
-    expect(screen.getByText('Dispute debit')).toBeTruthy();
-    expect(screen.getByText('Dispute reinstated')).toBeTruthy();
+    expect(screen.getByText('Dispute: amount recovered')).toBeTruthy();
+    expect(screen.getByText('Dispute: amount returned')).toBeTruthy();
   });
 
   it('formats in the ledger currency, never assuming AUD', () => {

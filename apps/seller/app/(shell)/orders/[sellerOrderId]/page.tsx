@@ -67,6 +67,7 @@ export default async function OrderPage({
     <SellerShell session={page.session} activeId="s_orders" title={title}>
       <OrderDetail
         initial={page.order}
+        dispute={page.dispute}
         csrfToken={csrfToken}
         canMarkReady={permissionKeys.includes(ORDER_READY_PERMISSION)}
         canDeliver={permissionKeys.includes(ORDER_DELIVER_PERMISSION)}
