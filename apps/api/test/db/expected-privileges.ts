@@ -748,6 +748,31 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['score', 'updated_at', 'updated_by'],
     },
+    // Delivery models, package 4: the Market's delivery settings and the methods taken away from a
+    // seller are written once and changed; never deleted.
+    'shipping.delivery_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'instant_enabled',
+        'margin_basis_points',
+        'margin_fixed_minor',
+        'margin_kind',
+        'pickup_enabled',
+        'rounding_step_minor',
+        'same_day_cutoff_minutes',
+        'same_day_enabled',
+        'scheduled_days_ahead',
+        'scheduled_enabled',
+        'scheduled_window_minutes',
+        'updated_at',
+        'updated_by',
+        'version',
+      ],
+    },
+    'shipping.seller_delivery_methods': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['unsupported', 'updated_at', 'updated_by'],
+    },
     'shipping.fleet_booking_attempts': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['attempted_at', 'fleet'],
@@ -831,6 +856,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'account_ref',
         'cooling_off_until',
         'details_submitted',
+        'external_account_hmac',
         'last_change_id',
         'last_read_at',
         'payout_schedule_applied',
@@ -862,6 +888,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'payments.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 6c: a transfer is inserted once; only its state, Stripe id, reversed amount, send
+    // count, lease and instants move (a trigger keeps the machine); the content never changes.
+    'payments.transfer_executions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'abandoned_at',
+        'executed_at',
+        'failure_code',
+        'fence_breached_at',
+        'lease_until',
+        'provider_transfer_ref',
+        'reversed_minor',
+        'send_count',
+        'state',
+        'updated_at',
+        'version',
+      ],
+    },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'processed_at'],

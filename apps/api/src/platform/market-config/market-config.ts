@@ -18,6 +18,11 @@ const locale = z.string().refine((value) => {
   }
 }, 'must be a BCP 47 locale of the form language-REGION');
 const currency = z.string().refine((value) => CURRENCIES.has(value), 'must be an ISO 4217 code');
+/** An amount in minor units of a stated currency (payments' transfer limits). */
+const transferAmountSchema = z.strictObject({
+  amountMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  currency,
+});
 /** The Market code, by the kernel's single rule (`parseMarketId`). */
 const marketCode = z.string().transform((value, context) => {
   const marketId = parseMarketId(value);
@@ -1428,6 +1433,61 @@ const shippingSchema = z.strictObject({
       `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
     )
     .optional(),
+  /**
+   * Zoom2u, an external fleet adapter (Phase 6 package 5c). `enabled` is the Market switch: an
+   * absent section or `false` leaves it off (nothing is sent), and so does a missing
+   * ZOOM2U_API_KEY (a server secret, never here). The API hosts are fixed in the adapter;
+   * `environment` picks which set it uses. `serviceAreas` and `modes` say what the fleet serves
+   * (`on_demand` offers the instant method on the `instantSpeed` service, `VIP` or `3 hour`, and
+   * the same-day method on `Same day`; `scheduled` the buyer's window, whose start is the pickup
+   * time); `supportsWindow` says whether it may be offered for a window. `temperatures` what it
+   * keeps. `limits` are the fleet's caps (the order value is in the Market's default currency, in
+   * minor units) and `prohibitedClasses` the kinds of goods it refuses. The rest shapes the HTTP
+   * client like `realTimeCarrier`'s (a booking is never retried: Zoom2u has no idempotency key).
+   */
+  zoom2u: z
+    .strictObject({
+      enabled: z.boolean(),
+      environment: z.enum(['sandbox', 'production']),
+      serviceAreas: z
+        .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+        .min(1)
+        .max(50)
+        .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat'),
+      modes: z
+        .array(z.enum(['on_demand', 'scheduled']))
+        .min(1)
+        .refine((modes) => new Set(modes).size === modes.length, 'a mode must not repeat'),
+      /** The Zoom2u service for the instant method: `VIP` (fastest) or `3 hour`. */
+      instantSpeed: z.enum(['VIP', '3 hour']),
+      /** True when a scheduled trip may carry the buyer's window (its start is the pickup time). */
+      supportsWindow: z.boolean(),
+      temperatures: z
+        .array(z.enum(['ambient', 'chilled', 'frozen']))
+        .min(1)
+        .refine((items) => new Set(items).size === items.length, 'a temperature must not repeat'),
+      limits: z.strictObject({
+        maxItemWeightGrams: z.number().int().min(1).max(100_000),
+        maxItems: z.number().int().min(1).max(100),
+        maxOrderValueMinor: z.number().int().min(1).max(1_000_000_000),
+      }),
+      prohibitedClasses: z
+        .array(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/u))
+        .max(50)
+        .refine((classes) => new Set(classes).size === classes.length, 'a class must not repeat'),
+      timeoutMs: z.number().int().min(500).max(15_000),
+      maxAttempts: z.number().int().min(1).max(5),
+      backoffMs: z.number().int().min(0).max(5000),
+      circuitBreaker: z.strictObject({
+        failureThreshold: z.number().int().min(1).max(50),
+        cooldownSeconds: z.number().int().min(1).max(600),
+      }),
+    })
+    .refine(
+      (fleet) => carrierCallBudgetMs(fleet) <= MAX_CARRIER_CALL_MS,
+      `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
+    )
+    .optional(),
 });
 
 const marketSchema = z
@@ -1458,13 +1518,21 @@ const marketSchema = z
      * (fail closed). `bankChangeCoolingOffHours`: the waiting period after a seller's payout bank
      * account changes (VER-10); the code clamps it to 24 h to 14 d and takes 14 d when it is
      * missing. `payoutSchedule`: the Stripe payout schedule outside that period; required, so the
-     * payout pause can never be silently off for a Market that connects accounts.
+     * payout pause can never be silently off for a Market that connects accounts. Transfers to
+     * sellers (package 6c), all required and with no core default: `maxTransferAmount` (the most
+     * one transfer may be; HP-9), `dailyTransferAlertThreshold` (the day's executed total above
+     * which payments alerts), both in minor units of the Market's own currency (load fails for
+     * another), and `transferSendLeaseSeconds` (how long a send is in flight before a lookup may
+     * decide it was not made; 30 to 900, and shorter than commission-payouts' send timeout).
      */
     payments: z
       .strictObject({
         connectedAccountCountry: z.string().regex(/^[A-Z]{2}$/),
         bankChangeCoolingOffHours: z.number().optional(),
         payoutSchedule: z.enum(['daily']),
+        maxTransferAmount: transferAmountSchema,
+        dailyTransferAlertThreshold: transferAmountSchema,
+        transferSendLeaseSeconds: z.number().int().min(30).max(900),
       })
       .optional(),
     /**
@@ -1659,7 +1727,21 @@ const marketSchema = z
     message: 'supportedLocales must include defaultLocale',
     path: ['supportedLocales'],
   })
-  .superRefine(checkOriginsAgainstLinkTargets);
+  .superRefine(checkOriginsAgainstLinkTargets)
+  .superRefine((market, context) => {
+    // A transfer limit in another currency than the Market's would cap the wrong money.
+    const payments = market.payments;
+    if (payments === undefined) return;
+    for (const name of ['maxTransferAmount', 'dailyTransferAlertThreshold'] as const) {
+      if (payments[name].currency !== market.defaultCurrency) {
+        context.addIssue({
+          code: 'custom',
+          message: `payments.${name}.currency must be the Market's defaultCurrency`,
+          path: ['payments', name, 'currency'],
+        });
+      }
+    }
+  });
 
 /** Market configuration as code (ADR-0003 decision 5). */
 export type MarketConfig = Readonly<z.infer<typeof marketSchema>>;

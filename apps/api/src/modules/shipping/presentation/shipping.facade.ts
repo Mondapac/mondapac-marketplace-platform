@@ -1,12 +1,20 @@
-import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { BookCarrierDelivery } from '../application/use-cases/book-carrier-delivery.use-case';
 import type { CancelCarrierDelivery } from '../application/use-cases/cancel-carrier-delivery.use-case';
 import type { CarrierShipmentQuery } from '../application/use-cases/carrier-shipment.use-case';
+import type { DeliveryAvailability } from '../application/use-cases/delivery-availability.use-case';
+import type { DeliveryChoice } from '../application/use-cases/delivery-choice.use-case';
+import type { PriceDelivery } from '../application/use-cases/price-delivery.use-case';
 import type { DeliveryArea } from '../application/use-cases/delivery-area.use-case';
 import type { FlatFees } from '../application/use-cases/flat-fees.use-case';
 import type { PickupAvailability } from '../application/use-cases/pickup-availability.use-case';
 import type { ShippingFees } from '../application/use-cases/shipping-fees.use-case';
-import type { CarrierDeliveryRequest, QuoteDropoff, ShippingFacade } from '../contracts';
+import type {
+  CarrierDeliveryRequest,
+  QuoteDropoff,
+  ShippingFacade,
+  ShippingFailure,
+} from '../contracts';
 
 /** The use cases behind the facade. */
 export interface ShippingFacadeUseCases {
@@ -17,6 +25,23 @@ export interface ShippingFacadeUseCases {
   readonly book: BookCarrierDelivery;
   readonly shipment: CarrierShipmentQuery;
   readonly cancel: CancelCarrierDelivery;
+  readonly availability: DeliveryAvailability;
+  readonly choice: DeliveryChoice;
+  readonly price: PriceDelivery;
+}
+
+/** The facade's failure set: a refusal, a bad input, or "unavailable" for any other cause. */
+function failuresOf<T>(result: Result<T, { readonly code: string }>): Result<T, ShippingFailure> {
+  if (result.ok) return result;
+  return {
+    ok: false,
+    error:
+      result.error.code === 'validation.failed'
+        ? { code: 'validation.failed' }
+        : result.error.code === 'access.denied'
+          ? { code: 'access.denied' }
+          : { code: 'shipping.unavailable' },
+  };
 }
 
 /** Passes the caller's `CallContext` unchanged to one use case each, so the gate runs. */
@@ -44,6 +69,27 @@ export class ShippingFacadeImplementation implements ShippingFacade {
                 ? result.error
                 : ({ code: 'shipping.unavailable' } as const),
         } as const);
+  }
+
+  async deliveryAvailability(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    return failuresOf(await this.useCases.availability.execute(context, { sellerIds }));
+  }
+
+  async deliveryChoice(
+    context: CallContext,
+    request: Parameters<ShippingFacade['deliveryChoice']>[1],
+  ) {
+    return failuresOf(
+      await this.useCases.choice.execute(context, {
+        sellerId: request?.sellerId,
+        method: request?.method,
+        window: request?.window,
+      }),
+    );
+  }
+
+  async priceDelivery(context: CallContext, quote: Money) {
+    return failuresOf(await this.useCases.price.execute(context, { quote }));
   }
 
   async deliversTo(context: CallContext, postcode: string) {

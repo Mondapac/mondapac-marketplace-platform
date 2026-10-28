@@ -16,6 +16,16 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   the most units of one Offer in a cart line and the ceiling of an Offer's per-customer cap
   (inventory design 3.3, cart design 4).
 
+- `payments` (optional section; Phase 5 packages 3 and 6c): `connectedAccountCountry` (ISO 3166
+  country of the seller's connected account), `bankChangeCoolingOffHours` (the waiting period after
+  a bank change; the code clamps it to 24 h to 14 d), `payoutSchedule` (`daily`), and, for the
+  transfers payments sends to sellers, all required with no core default:
+  `maxTransferAmount` (`{ "amountMinor", "currency" }`; AU 500000 AUD, the most one transfer may be;
+  a larger one is refused), `dailyTransferAlertThreshold` (the same shape; AU 2000000 AUD, the day's
+  executed total above which payments raises an alert) and `transferSendLeaseSeconds` (30 to 900; AU
+  120, how long a send is in flight before a lookup may decide it was not made). Both amounts must be
+  in the Market's `defaultCurrency`: loading fails for another currency.
+
 - `requestLimits`: the generic per-origin rate limiter (`apps/api/src/platform/rate-limit/`;
   identity design 6.8). `anonymousIdentityPerMinute` (sign-up, sign-in and reset requests;
   20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU) and `defaultPerMinute`
@@ -352,3 +362,24 @@ Its API hosts are fixed in the adapter. The country sent to Uber is `customers.a
   the Market's default currency; AU 20000 g, 8 items, 50000 = A$500).
 - `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
 - `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
+
+### `shipping.zoom2u` (optional, Phase 6 package 5c)
+
+The external fleet Zoom2u. Off unless `enabled` is `true` AND the Region Stack holds
+`ZOOM2U_API_KEY` for the Market; the adapter then answers `carrier.not-configured` and sends
+nothing. Its API hosts are fixed in the adapter (`environment` picks the set; Zoom2u documents one
+host and a TEST flag on the key until "Go Live", so both currently point at it). Prices come
+without a currency: they are read in the Market's default currency.
+
+- `enabled` (required): the Market switch; ship `false`. `environment` (required): `sandbox` or
+  `production`.
+- `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`): what the fleet
+  serves. `on_demand` gives the instant method on the `instantSpeed` service (`VIP` or `3 hour`)
+  and the same-day method on `Same day`; `scheduled` the buyer's window. `supportsWindow`
+  (required): whether the fleet may be offered a buyer's window; its start is sent as the pickup
+  time (`ReadyDateTime`). `temperatures` (required): the temperature classes it carries (AU `ambient`).
+- `limits` (required): `maxItemWeightGrams`, `maxItems` and `maxOrderValueMinor` (minor units of
+  the Market's default currency; Zoom2u allows 30 kg a parcel).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
+  A booking is sent once whatever `maxAttempts` says: Zoom2u documents no idempotency key.

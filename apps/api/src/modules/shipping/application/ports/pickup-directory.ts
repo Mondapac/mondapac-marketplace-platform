@@ -20,6 +20,15 @@ export interface PickupDirectory {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, { readonly code: 'pickup.unavailable' }>>;
+
+  /**
+   * The operating zone (IANA id) of each seller's approved file (sellers' `operatingZones`), for
+   * a cut-off and a delivery window. A seller without one is absent: the Market zone applies.
+   */
+  zonesOf(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, { readonly code: 'pickup.unavailable' }>>;
 }
 
 export const PICKUP_DIRECTORY = Symbol('PICKUP_DIRECTORY');

@@ -41,6 +41,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
     'commission-payouts/admin/disputes',
+    // The delivery settings of the Market (shipping), read again after a conflict.
+    'shipping/admin/delivery-settings',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -66,6 +68,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'storefront/admin/slides/order',
     // The Market's wallet switch (wallet), behind a fresh two-step code.
     'wallet/admin/settings',
+    // The delivery settings of the Market (shipping): the whole set, with `expectedVersion`.
+    'shipping/admin/delivery-settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -138,8 +142,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PUT: [
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
-    // The seller's flat delivery fee (shipping), set from the seller review page.
+    // The seller's flat delivery fee and the delivery methods the seller supports (shipping), set
+    // from the seller review page.
     'shipping/admin/sellers/:id/flat-fee',
+    'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
@@ -158,6 +164,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'wallet/admin/customers/:id',
     // One dispute case, read again after a decision (commission-payouts).
     'commission-payouts/admin/disputes/:id',
+    // The delivery methods of a seller (shipping), read again after a conflict.
+    'shipping/admin/sellers/:id/delivery-methods',
   ],
 };
 

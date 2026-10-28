@@ -287,6 +287,7 @@
   },
   { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.notify-access-reviewers", "rule": "system" },
+  { "name": "identity.own-owner-email", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "identity.purge-expired", "rule": "system" },
   { "name": "identity.purge-unverified-accounts", "rule": "system" },
   {
@@ -463,12 +464,16 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "payments.abandon-transfer", "rule": "system" },
   { "name": "payments.apply-stripe-events", "rule": "system" },
   { "name": "payments.dispute-of", "rule": "system" },
   { "name": "payments.disputes-of-order", "rule": "system" },
+  { "name": "payments.instruct-transfer", "rule": "system" },
   { "name": "payments.payout-readiness", "rule": "system" },
   { "name": "payments.receive-stripe-event", "rule": "anonymous" },
+  { "name": "payments.resolve-transfers", "rule": "system" },
   { "name": "payments.sync-payout-schedules", "rule": "system" },
+  { "name": "payments.transfer-by-key", "rule": "system" },
   {
     "name": "payments.view-payout-account",
     "rule": "permissions",
@@ -558,6 +563,7 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "sellers.my-file-withdraw", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  { "name": "sellers.operating-zones", "rule": "anonymous" },
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "sellers.pickup-postcodes", "rule": "anonymous" },
   { "name": "sellers.published-store-image-read", "rule": "anonymous" },
@@ -575,9 +581,16 @@
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
+  { "name": "shipping.delivery-availability", "rule": "anonymous" },
+  { "name": "shipping.delivery-choice", "rule": "anonymous" },
   { "name": "shipping.flat-fees", "rule": "anonymous" },
   {
     "name": "shipping.pickup-availability",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "shipping.price-delivery",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
