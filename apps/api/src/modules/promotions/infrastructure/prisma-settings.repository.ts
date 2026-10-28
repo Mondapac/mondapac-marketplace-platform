@@ -10,6 +10,24 @@ import type {
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 
+const toSettings = (row: {
+  readonly enabled: boolean;
+  readonly kind: string;
+  readonly percentBps: number | null;
+  readonly amountMinor: bigint | null;
+  readonly capMinor: bigint | null;
+  readonly minSpendMinor: bigint;
+  readonly monthlyBudgetMinor: bigint;
+}): FirstOrderSettings => ({
+  enabled: row.enabled,
+  kind: row.kind as 'PERCENT' | 'FIXED',
+  percentBps: row.percentBps,
+  amountMinor: row.amountMinor,
+  capMinor: row.capMinor,
+  minSpendMinor: row.minSpendMinor,
+  monthlyBudgetMinor: row.monthlyBudgetMinor,
+});
+
 /** {@link FirstOrderSettingsRepository} on `promotions.first_order_settings`, scoped by `marketId`. */
 export class PrismaFirstOrderSettingsRepository implements FirstOrderSettingsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -18,17 +36,28 @@ export class PrismaFirstOrderSettingsRepository implements FirstOrderSettingsRep
     const row = await this.prisma
       .tx(market)
       .promotionsFirstOrderSetting.findFirst({ where: { marketId: market.marketId } });
-    return row === null
-      ? null
-      : {
-          enabled: row.enabled,
-          kind: row.kind as 'PERCENT' | 'FIXED',
-          percentBps: row.percentBps,
-          amountMinor: row.amountMinor,
-          capMinor: row.capMinor,
-          minSpendMinor: row.minSpendMinor,
-          monthlyBudgetMinor: row.monthlyBudgetMinor,
-        };
+    return row === null ? null : toSettings(row);
+  }
+
+  async findForUpdate(market: MarketContext): Promise<FirstOrderSettings | null> {
+    const tx = this.prisma.tx(market);
+    // As for a promotion: a row update that changes nothing holds the row lock until the unit ends.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const row = await tx.promotionsFirstOrderSetting.findFirst({
+        where: { marketId: market.marketId },
+      });
+      if (row === null) return null;
+      const locked = await tx.promotionsFirstOrderSetting.updateMany({
+        where: { marketId: market.marketId, updatedAt: row.updatedAt },
+        data: { updatedAt: row.updatedAt },
+      });
+      if (locked.count !== 1) continue;
+      const held = await tx.promotionsFirstOrderSetting.findFirst({
+        where: { marketId: market.marketId },
+      });
+      return held === null ? null : toSettings(held);
+    }
+    throw new Error('promotions.first-order-lock-contended');
   }
 
   async save(

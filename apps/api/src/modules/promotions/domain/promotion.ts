@@ -405,6 +405,17 @@ export function checkDraft(
   ) {
     bad('reward.bps', 'exceeds-seller-maximum');
   }
+  // A co-funded percent reward: the seller pays what the platform does not, so the seller's share
+  // of the discount (reward x (10000 - split)) must stay within the seller maximum too. A fixed
+  // amount is held to it per line by the calculation.
+  if (
+    draft.funding === 'CO_FUNDED' &&
+    draft.platformSplitBps !== null &&
+    draft.reward.kind === 'PERCENT' &&
+    draft.reward.bps * (MAX_BPS - draft.platformSplitBps) > rules.sellerMaxDiscountBps * MAX_BPS
+  ) {
+    bad('reward.bps', 'exceeds-seller-maximum');
+  }
   if (draft.reward.kind === 'FIXED' && draft.capMinor !== null) bad('capMinor', 'not-allowed');
 
   // Platform money in a Market whose tax ruling is not confirmed stays in test mode.
@@ -412,6 +423,21 @@ export function checkDraft(
     bad('testMode', 'required');
   }
   return issues;
+}
+
+/**
+ * Whether a promotion counts against the Market's maximum of promotions per seller: waiting for
+ * approval or live, and not ended. A paused, rejected or ended promotion does not, but it must fit
+ * under the maximum when it comes back (resume, or an edit that moves its end).
+ */
+export function countsTowardSellerCap(
+  promotion: Pick<PromotionRecord, 'status' | 'endsAt'>,
+  now: Temporal.Instant,
+): boolean {
+  return (
+    (promotion.status === 'ACTIVE' || promotion.status === 'PENDING_APPROVAL') &&
+    (promotion.endsAt === null || Temporal.Instant.compare(promotion.endsAt, now) > 0)
+  );
 }
 
 /** What the approval rule needs to know about the seller and the discount. */

@@ -4,6 +4,8 @@ import type { FirstOrderSettings } from './promotions-policy';
 /** The first-order discount an admin has edited (`promotions.first_order_settings`); none means the config defaults. */
 export interface FirstOrderSettingsRepository {
   find(market: MarketContext): Promise<FirstOrderSettings | null>;
+  /** Like {@link find}, with the row locked until the unit ends when it exists. */
+  findForUpdate(market: MarketContext): Promise<FirstOrderSettings | null>;
   save(
     market: MarketContext,
     settings: FirstOrderSettings,

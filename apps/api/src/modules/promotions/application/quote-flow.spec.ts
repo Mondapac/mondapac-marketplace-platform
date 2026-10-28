@@ -88,6 +88,21 @@ describe.each([['AU'], ['ZZ']] as const)('promotions for a cart in market %s', (
     );
   });
 
+  it('holds the seller share of a co-funded campaign to the seller maximum, and no other promotion', () => {
+    const campaign = record(3, {
+      type: 'CO_FUNDED_CAMPAIGN',
+      funding: 'CO_FUNDED',
+      platformSplitBps: 4000,
+      testMode: true,
+    });
+    const [co] = cart([campaign], { testMode: true, optIns: new Map([[campaign.id, [SELLER]]]) });
+    expect(co?.sellerMaxShareBps).toBe(settings.rules.sellerMaxDiscountBps);
+    const [plain] = cart([record(4, { testMode: true })], { testMode: true });
+    expect(plain?.sellerMaxShareBps ?? null).toBeNull();
+    const [own] = cart([record(5, { funding: 'SELLER', ownerSellerId: SELLER })]);
+    expect(own?.sellerMaxShareBps ?? null).toBeNull();
+  });
+
   it('holds a seller promotion to the lower of the maximum and the approval threshold until an admin approved it', () => {
     const own = { funding: 'SELLER' as const, ownerSellerId: SELLER };
     const [pending] = cart([record(1, own)]);

@@ -8,7 +8,7 @@ SET lock_timeout = '5s';
 REVOKE SELECT, INSERT, UPDATE ("status", "updated_at", "updated_by_account_id") ON TABLE "promotions"."market_settings" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE, UPDATE ("threshold_minor", "updated_at", "updated_by_account_id") ON TABLE "promotions"."free_shipping_thresholds" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("amount_minor", "cap_minor", "enabled", "kind", "min_spend_minor", "monthly_budget_minor", "percent_bps", "updated_at", "updated_by_account_id") ON TABLE "promotions"."first_order_settings" FROM "mondapac_app";
-REVOKE SELECT, INSERT, UPDATE ("decided_at", "decided_by_account_id", "status") ON TABLE "promotions"."promotion_reviews" FROM "mondapac_app";
+REVOKE SELECT, INSERT, UPDATE ("decided_at", "decided_by_account_id", "opened_at", "reason", "status") ON TABLE "promotions"."promotion_reviews" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("decided_by_account_id", "opted_in_at", "withdrawn_at") ON TABLE "promotions"."co_funding_opt_ins" FROM "mondapac_app";
 REVOKE SELECT, INSERT ON TABLE "promotions"."promotion_usage" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE ON TABLE "promotions"."promotion_targets" FROM "mondapac_app";

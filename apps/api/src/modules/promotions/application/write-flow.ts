@@ -2,6 +2,7 @@ import { err, ok, parseId, parseMinorUnits } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import {
   auditCode,
+  CoFundingOptInChanged,
   PromotionBudgetChanged,
   PromotionCreated,
   PromotionEdited,
@@ -11,6 +12,7 @@ import {
 import {
   approvalReason,
   checkDraft,
+  countsTowardSellerCap,
   needsFreshSecondFactor,
   parseDraft,
   type ApprovalReason,
@@ -50,6 +52,24 @@ function callerOf(context: CallContext, as: Actor): Caller | null {
 
 const ownerSellerOf = (owner: Owner): Id<'Seller'> | null =>
   owner.kind === 'seller' ? owner.sellerId : null;
+
+/** Whether an edit changes what a seller agreed to when it opted in to a co-funded campaign. */
+function sellerTermsChanged(before: PromotionRecord, after: PromotionRecord): boolean {
+  if (before.funding !== 'CO_FUNDED') return false;
+  const sameReward =
+    before.reward.kind === after.reward.kind &&
+    (before.reward.kind === 'PERCENT'
+      ? before.reward.bps === (after.reward as { bps: number }).bps
+      : before.reward.amount === (after.reward as { amount: bigint }).amount);
+  const sameIds = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((value) => b.includes(value));
+  return (
+    !sameReward ||
+    before.platformSplitBps !== after.platformSplitBps ||
+    !sameIds(before.productIds, after.productIds) ||
+    !sameIds(before.sellerIds, after.sellerIds)
+  );
+}
 
 const invalid = (fields: readonly { path: string; code: string }[]): PromotionsFailure => ({
   code: 'validation.failed',
@@ -103,6 +123,15 @@ export async function createPromotion(
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
+    const sellerOwner = ownerSellerOf(caller.owner);
+    // A new promotion counts from the day it is made (it is pending or live).
+    if (
+      sellerOwner !== null &&
+      (await deps.promotions.countCounting(context.market, sellerOwner, now)) >=
+        settings.maxActivePromotionsPerSeller
+    ) {
+      return err({ code: 'promotions.too-many-active' });
+    }
     let proof: { sessionId: Id<'Session'>; verifiedAt: Temporal.Instant } | null = null;
     if (as === 'admin' && needsFreshSecondFactor(null, draft, settings.rules)) {
       const spent = await spendPlatformFundingProof(deps, context);
@@ -188,7 +217,7 @@ export async function editPromotion(
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const before = await deps.promotions.find(context.market, id);
+    const before = await deps.promotions.findForUpdate(context.market, id);
     // Unknown and someone else's seller promotion are one answer.
     if (before === null) return err({ code: 'promotions.not-found' });
     if (caller.owner.kind === 'seller' && before.ownerSellerId !== caller.owner.sellerId) {
@@ -230,7 +259,30 @@ export async function editPromotion(
       priorApproved: as === 'admin' ? before.priorApproved : false,
       updatedAt: now,
     };
+    // A promotion that goes (back) to counting against the seller's maximum must fit under it.
+    if (
+      before.ownerSellerId !== null &&
+      !countsTowardSellerCap(before, now) &&
+      countsTowardSellerCap(after, now) &&
+      (await deps.promotions.countCounting(context.market, before.ownerSellerId, now)) >=
+        settings.maxActivePromotionsPerSeller
+    ) {
+      return err({ code: 'promotions.too-many-active' });
+    }
     await deps.promotions.update(context.market, after);
+    if (sellerTermsChanged(before, after)) {
+      // The sellers agreed to other terms: each must opt in again, and the withdrawal is audited.
+      const withdrawn = await deps.optIns.withdrawAll(context.market, id, now, caller.accountId);
+      for (const sellerId of withdrawn) {
+        await deps.audit.record(
+          context,
+          CoFundingOptInChanged.entry(id, {
+            before: { optedIn: true },
+            after: { optedIn: false, sellerId },
+          }),
+        );
+      }
+    }
     if (as === 'seller') {
       await deps.reviews.open(context.market, {
         id: deps.ids.next<'PromotionReview'>(),
@@ -269,13 +321,14 @@ export async function changePause(
   if (caller === null) return err({ code: 'access.denied' });
   const switched = await activeSettings(deps, context);
   if (!switched.ok) return switched;
+  const settings = switched.value;
   const id = promotionIdOf(input?.promotionId);
   if (id === null) return err(invalid([{ path: 'promotionId', code: 'value' }]));
   const now = deps.clock.now();
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const before = await deps.promotions.find(context.market, id);
+    const before = await deps.promotions.findForUpdate(context.market, id);
     if (before === null) return err({ code: 'promotions.not-found' });
     // An admin may pause any promotion; a seller only its own, and resume only what it paused.
     if (caller.owner.kind === 'seller' && before.ownerSellerId !== caller.owner.sellerId) {
@@ -291,6 +344,15 @@ export async function changePause(
       if (as === 'seller' && before.pausedBy !== 'SELLER') {
         return err({ code: 'promotions.invalid-state' });
       }
+    }
+    if (
+      !pause &&
+      before.ownerSellerId !== null &&
+      countsTowardSellerCap({ ...before, status: 'ACTIVE' }, now) &&
+      (await deps.promotions.countCounting(context.market, before.ownerSellerId, now)) >=
+        settings.maxActivePromotionsPerSeller
+    ) {
+      return err({ code: 'promotions.too-many-active' });
     }
     const after: PromotionRecord = {
       ...before,
@@ -336,7 +398,7 @@ export async function setBudget(
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const before = await deps.promotions.find(context.market, id);
+    const before = await deps.promotions.findForUpdate(context.market, id);
     if (before === null) return err({ code: 'promotions.not-found' });
     // A seller-funded promotion's budget is the seller's own to set.
     if (before.ownerSellerId !== null || before.status === 'REJECTED') {

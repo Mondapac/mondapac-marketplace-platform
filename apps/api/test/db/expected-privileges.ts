@@ -734,7 +734,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'promotions.promotion_reviews': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['decided_at', 'decided_by_account_id', 'status'],
+      columnUpdate: ['decided_at', 'decided_by_account_id', 'opened_at', 'reason', 'status'],
     },
     'promotions.first_order_settings': {
       table: ['INSERT', 'SELECT'],

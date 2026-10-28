@@ -1699,7 +1699,8 @@ const marketSchema = z
      * active fewer days than this, or a discount above this share, needs approval before the
      * promotion goes live (AU 30 days, 50 %). `wasPrice`: a struck-through earlier price is
      * allowed only if the product sold at that price on at least `minDaysAtPrice` of the last
-     * `windowDays` days (AU 28 of 90). `gstRulingConfirmed`: false until the tax adviser has
+     * `windowDays` days (AU 28 of 90). `maxActivePromotionsPerSeller`: the most promotions one seller
+     * may have active or waiting for approval at once (AU 50), which also bounds what a quote reads. `gstRulingConfirmed`: false until the tax adviser has
      * ruled on platform-funded discounts; until then a platform-funded or co-funded promotion can
      * be created and applied in test mode only. `firstOrder`: the first-order discount an admin
      * has not yet edited (the stored settings win): switch, `kind` (PERCENT uses `percentBps`,
@@ -1720,6 +1721,7 @@ const marketSchema = z
           minDaysAtPrice: z.number().int().min(1).max(365),
         }),
         gstRulingConfirmed: z.boolean(),
+        maxActivePromotionsPerSeller: z.number().int().min(1).max(10000),
         firstOrder: z
           .strictObject({
             enabled: z.boolean(),

@@ -82,9 +82,42 @@ shipping. Wallet credit is payment, not a discount, and is not here.
 - `PriceHistory` (days a product sold at a price): `pricing` publishes no price-history read, so
   the adapter answers "unknown" and the was-price check answers "not eligible".
 
+## Security review changes
+
+- **Co-funded terms.** An admin edit of a co-funded campaign that changes the reward, the platform
+  split, the products or the sellers withdraws every live seller opt-in (one audited
+  `promotions.co-funding.changed` row each); the sellers opt in again. The seller's share of a
+  co-funded discount (the part the platform does not fund) is held to `sellerMaxDiscountBps` of
+  the line: at write time for a percent reward (`reward.bps:exceeds-seller-maximum`) and per line
+  in the calculation (`sellerMaxShareBps`, also for a fixed reward). The calculation keeps one
+  unit of that limit in reserve on a split campaign, because the platform share is spread over the
+  lines with a rounding remainder and a line can receive one unit less than its exact share.
+- **Platform share rounding.** The platform share of a promotion is `floor(total x split / 10000)`
+  taken once and spread over its lines (remainder to the largest line, ties to the smaller id), so
+  the sellers do not absorb every rounding unit.
+- **Review versioning.** A seller edit moves the one open review of the promotion to the new
+  reason and time. A decision names the promotion version it read (`promotionVersion`, the
+  promotion's `updatedAt` from the queue item); a promotion changed since answers
+  `promotions.invalid-state`.
+- **Quote shape.** The currency and size checks of a quote run before the switch is read, so a
+  mixed or foreign currency is `validation.failed` with the switch on or off.
+- **Step-up.** A fresh code is also needed for a free-shipping threshold below the Market default
+  and for switching the first-order discount back on with a monthly budget above the step-up
+  amount. The threshold CHECK is now `>= 1`.
+- **Per-seller maximum.** Market config `maxActivePromotionsPerSeller` (AU 50, ZZ 20) bounds the
+  promotions a seller has active or pending (ended and paused ones do not count, but must fit
+  under the maximum when they come back by resume or edit): `promotions.too-many-active` (409).
+  The quote reads only the platform's promotions and those of the cart's sellers, each without a
+  product target or aimed at one of the cart's products. The count is not locked, so a burst of
+  parallel creates by one seller can pass the maximum by the number of racing requests.
+- **Row locks.** Writes that decide on a promotion (edit, budget, pause, resume, review decision,
+  opt-in) and the first-order settings read the row with a lock held to the end of the unit. The
+  client sends no raw SQL, so the lock is a row update that changes nothing (`updated_at` set to
+  itself, guarded by its current value).
+
 ## Open points
 
-- The identity role seed gains one key: the Viewer (seed version 20, with its append-only snapshot entry
+- The identity role seed gains one key: the Viewer (seed version 21 on top of blog's 20, with its append-only snapshot entry
   and pin) receives the unprotected `promotions.promotion.view`. No default role receives the manage
   keys yet; the Platform Administrator grants them in a custom role.
 - Permission keys have three segments (`promotions.promotion.manage`, `promotions.promotion.view`,

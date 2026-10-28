@@ -37,8 +37,15 @@ export class PrismaReviewQueueRepository implements ReviewQueueRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async open(market: MarketContext, entry: ReviewEntry): Promise<void> {
-    // The partial unique index allows one OPEN entry per promotion; a second one is skipped.
-    await this.prisma.tx(market).promotionsReview.createMany({
+    const tx = this.prisma.tx(market);
+    // A promotion has at most one OPEN entry (a partial unique index): the seller changing it
+    // again moves that entry to the new reason and time instead of being dropped.
+    const moved = await tx.promotionsReview.updateMany({
+      where: { marketId: market.marketId, promotionId: entry.promotionId, status: 'OPEN' },
+      data: { reason: entry.reason, openedAt: toDate(entry.openedAt) },
+    });
+    if (moved.count > 0) return;
+    await tx.promotionsReview.createMany({
       data: [
         {
           id: entry.id,
@@ -51,7 +58,6 @@ export class PrismaReviewQueueRepository implements ReviewQueueRepository {
           openedAt: toDate(entry.openedAt),
         },
       ],
-      skipDuplicates: true,
     });
   }
 

@@ -89,6 +89,7 @@
     "priorApprovalDiscountBps": 5000,
     "wasPrice": { "windowDays": 90, "minDaysAtPrice": 28 },
     "gstRulingConfirmed": false,
+    "maxActivePromotionsPerSeller": 50,
     "firstOrder": {
       "enabled": true,
       "kind": "FIXED",

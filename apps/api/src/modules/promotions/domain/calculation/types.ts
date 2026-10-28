@@ -60,6 +60,13 @@ export interface CalculationPromotion {
    * seller maximum here, so a fixed amount cannot go beyond it either.
    */
   readonly maxShareBps: number | null;
+  /**
+   * The most of a line's price the seller may pay through this promotion, in basis points; null
+   * for no limit. A co-funded campaign carries the Market's seller maximum here: the discount on
+   * a line is held so that the seller's share of it (the part the platform does not fund) stays
+   * within this share of the line, whatever the reward and the split.
+   */
+  readonly sellerMaxShareBps?: number | null;
   /** The most one application may give (for example 20 % up to A$30); null for none. */
   readonly capAmount: bigint | null;
   /** The most the promotion gives in one order; null for none. */

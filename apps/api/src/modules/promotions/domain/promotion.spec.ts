@@ -170,6 +170,33 @@ describe.each([
     ).toContain('platformSplitBps:not-allowed');
   });
 
+  it('holds the seller share of a co-funded percent reward to the seller maximum', () => {
+    const co = {
+      type: 'CO_FUNDED_CAMPAIGN',
+      funding: 'CO_FUNDED',
+      productIds: [],
+      budgetMinor: '100000',
+      testMode: true,
+    };
+    // The seller pays (10000 - split) / 10000 of the discount: 90 % x 100 % is far over the maximum.
+    expect(
+      codes(
+        parsed(rawSale({ ...co, platformSplitBps: 1000, reward: { kind: 'PERCENT', bps: 10000 } })),
+        platform,
+      ),
+    ).toContain('reward.bps:exceeds-seller-maximum');
+    // At the boundary it is accepted: a full discount with the platform paying the rest of the
+    // maximum leaves the seller exactly the maximum.
+    const max = rules.sellerMaxDiscountBps;
+    const full = { kind: 'PERCENT', bps: 10000 };
+    expect(
+      codes(parsed(rawSale({ ...co, platformSplitBps: 10000 - max, reward: full })), platform),
+    ).not.toContain('reward.bps:exceeds-seller-maximum');
+    expect(
+      codes(parsed(rawSale({ ...co, platformSplitBps: 10000 - max - 1, reward: full })), platform),
+    ).toContain('reward.bps:exceeds-seller-maximum');
+  });
+
   it('keeps platform money in test mode until the tax ruling is confirmed in the Market', () => {
     const live = rawSale({
       type: 'CART_DISCOUNT',

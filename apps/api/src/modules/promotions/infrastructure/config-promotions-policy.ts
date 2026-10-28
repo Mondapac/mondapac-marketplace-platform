@@ -39,6 +39,7 @@ export class ConfigPromotionsPolicy implements PromotionsPolicy {
       },
       lineDiscountCapBps: promotions.lineDiscountCapBps,
       freeShippingThresholdMinor: BigInt(promotions.freeShippingThresholdMinor),
+      maxActivePromotionsPerSeller: promotions.maxActivePromotionsPerSeller,
       wasPrice: promotions.wasPrice,
       firstOrderDefaults: defaults,
     };

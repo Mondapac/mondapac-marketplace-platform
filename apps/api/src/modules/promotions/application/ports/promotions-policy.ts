@@ -22,6 +22,8 @@ export interface PromotionsSettings {
   /** The Market default free-shipping threshold, minor units. */
   readonly freeShippingThresholdMinor: bigint;
   readonly wasPrice: { readonly windowDays: number; readonly minDaysAtPrice: number };
+  /** The most promotions one seller may have active or waiting for approval at once. */
+  readonly maxActivePromotionsPerSeller: number;
   /** The first-order discount until an admin edits it; null when the Market configures none. */
   readonly firstOrderDefaults: FirstOrderSettings | null;
 }

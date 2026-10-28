@@ -16,7 +16,11 @@ export interface ReviewEntry {
 
 /** The admin review queue of seller promotions (`promotions.promotion_reviews`). */
 export interface ReviewQueueRepository {
-  /** Opens an entry; a promotion has at most one open entry, so a second call changes nothing. */
+  /**
+   * Opens an entry. A promotion has at most one open entry: when it already has one, that entry
+   * takes the new reason and the new `openedAt` (the seller changed the promotion again, and the
+   * admin must look at it as it is now); its id and seller stay.
+   */
   open(market: MarketContext, entry: ReviewEntry): Promise<void>;
   find(market: MarketContext, id: Id<'PromotionReview'>): Promise<ReviewEntry | null>;
   /** Oldest first. */

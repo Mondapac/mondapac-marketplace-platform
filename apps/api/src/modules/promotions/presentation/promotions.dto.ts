@@ -162,6 +162,12 @@ export class OptInBody {
 
 export class ReviewDecisionRequest {
   @ApiProperty({ enum: ['APPROVE', 'REJECT'] }) decision!: string;
+  @ApiProperty({
+    format: 'date-time',
+    description:
+      'The `updatedAt` of the promotion in the queue item the admin looked at. A promotion changed since answers promotions.invalid-state (409).',
+  })
+  promotionVersion!: string;
 }
 
 export class ReviewEntryBody {

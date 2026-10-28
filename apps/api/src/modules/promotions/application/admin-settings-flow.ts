@@ -159,13 +159,17 @@ export async function setFirstOrder(
 
   return deps.unitOfWork.run<FirstOrderView, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const before = await effectiveFirstOrder(deps, context, settings);
+    // Read with the row locked, so two changes of the settings cannot both pass on a stale budget.
+    const stored = await deps.firstOrder.findForUpdate(context.market);
+    const before: { readonly settings: FirstOrderSettings | null } =
+      stored !== null ? { settings: stored } : await effectiveFirstOrder(deps, context, settings);
     const was = before.settings ?? OFF;
     let proof: { sessionId: Id<'Session'>; verifiedAt: Temporal.Instant } | null = null;
-    // The monthly budget is platform money: a larger one above the threshold needs a fresh code.
+    // The monthly budget is platform money: a larger one above the threshold needs a fresh code,
+    // and so does switching a discount back on that carries a budget above it.
     if (
       next.monthlyBudgetMinor > settings.rules.platformBudgetStepUpMinor &&
-      next.monthlyBudgetMinor > was.monthlyBudgetMinor
+      (next.monthlyBudgetMinor > was.monthlyBudgetMinor || (next.enabled && !was.enabled))
     ) {
       const spent = await spendPlatformFundingProof(deps, context);
       if (!spent.ok) return spent;
@@ -250,6 +254,13 @@ export async function setThreshold(
     const before = await deps.thresholds.find(context.market, zone);
     if ((before?.thresholdMinor ?? null) === threshold)
       return ok({ zoneCode: zone, thresholdMinor: threshold });
+    // Free shipping from a lower spend than the Market's default is platform money: a fresh code.
+    let proof: { sessionId: Id<'Session'>; verifiedAt: Temporal.Instant } | null = null;
+    if (threshold !== null && threshold < switched.value.freeShippingThresholdMinor) {
+      const spent = await spendPlatformFundingProof(deps, context);
+      if (!spent.ok) return spent;
+      proof = spent.value;
+    }
     const rowId = before?.id ?? deps.ids.next<'FreeShippingThreshold'>();
     if (threshold === null) await deps.thresholds.remove(context.market, zone);
     else await deps.thresholds.save(context.market, rowId, zone, threshold, now, adminId);
@@ -257,7 +268,11 @@ export async function setThreshold(
       context,
       ShippingThresholdChanged.entry(rowId, {
         before: { threshold: auditMoney(before?.thresholdMinor ?? null, currency) },
-        after: { threshold: auditMoney(threshold, currency) },
+        after: {
+          threshold: auditMoney(threshold, currency),
+          stepUpSessionId: proof?.sessionId ?? null,
+          stepUpVerifiedAt: proof?.verifiedAt ?? null,
+        },
       }),
     );
     return ok({ zoneCode: zone, thresholdMinor: threshold });

@@ -110,6 +110,24 @@ function limitOf(promotion: CalculationPromotion, state: State, shipping: boolea
   return limit === null ? null : limit < 0n ? 0n : limit;
 }
 
+/**
+ * The most a promotion may give on one line so that the seller's share of it stays within
+ * `sellerMaxShareBps` of the line; null when the promotion has no such limit. The seller pays
+ * `amount - platformShare` and the platform share is spread over the lines with a rounding
+ * remainder (see {@link commit}), so a line's platform share can be one unit below its exact
+ * share: one unit of the limit is kept in reserve when the platform pays part of the discount.
+ */
+function sellerLineLimit(promotion: CalculationPromotion, gross: bigint): bigint | null {
+  const max = promotion.sellerMaxShareBps ?? null;
+  const platform = promotion.platformShareBps;
+  if (max === null || platform >= 10000) return null;
+  const allowed = floorShare(gross, max);
+  const sellerPart = BigInt(10000 - platform);
+  if (platform === 0) return allowed;
+  if (allowed <= 0n) return 0n;
+  return ((allowed - 1n) * 10000n) / sellerPart;
+}
+
 function commit(
   state: State,
   promotion: CalculationPromotion,
@@ -117,11 +135,18 @@ function commit(
   kind: 'line' | 'shipping',
 ): void {
   const bps = kind === 'shipping' ? 10000 : promotion.platformShareBps;
-  const ids = [...amounts.keys()].sort(compareText);
+  const ids = [...amounts.keys()].filter((id) => (amounts.get(id) ?? 0n) > 0n).sort(compareText);
+  // The platform's share is taken once for the whole promotion and then spread over its lines
+  // (the remainder to the largest line), so the sellers do not absorb every rounding unit.
+  const total = ids.reduce((sum, id) => sum + (amounts.get(id) ?? 0n), 0n);
+  const platformTotal = floorShare(total, bps);
+  const platformShares = distribute(
+    platformTotal,
+    ids.map((id) => ({ id, weight: amounts.get(id) ?? 0n, cap: amounts.get(id) ?? 0n })),
+  );
   for (const targetId of ids) {
     const amount = amounts.get(targetId) ?? 0n;
-    if (amount <= 0n) continue;
-    const platformShare = floorShare(amount, bps);
+    const platformShare = platformShares.get(targetId) ?? 0n;
     state.placed.push({
       kind,
       targetId,
@@ -136,9 +161,9 @@ function commit(
     if (kind === 'line') {
       state.remaining.set(targetId, (state.remaining.get(targetId) ?? 0n) - amount);
       state.capLeft.set(targetId, (state.capLeft.get(targetId) ?? 0n) - amount);
-      if (!promotion.specialCampaign) state.platformLeft -= platformShare;
     }
   }
+  if (kind === 'line' && !promotion.specialCampaign) state.platformLeft -= platformTotal;
 }
 
 /** Trims per-target amounts to `limit`, keeping the split in proportion; the remainder goes to the largest. */
@@ -175,10 +200,12 @@ function applyItemLayer(
         promotion.reward.kind === 'PERCENT'
           ? floorShare(lineGross(line), promotion.reward.bps)
           : promotion.reward.amount * BigInt(line.quantity);
-      const share =
+      const byShare =
         promotion.maxShareBps === null
           ? wanted
           : min(wanted, floorShare(lineGross(line), promotion.maxShareBps));
+      const bySeller = sellerLineLimit(promotion, lineGross(line));
+      const share = bySeller === null ? byShare : min(byShare, bySeller);
       const amount = min(share, min(state.remaining.get(line.id)!, state.capLeft.get(line.id)!));
       if (amount > 0n && better(amount, promotion, best)) best = { amount, promotion };
     }
@@ -206,7 +233,11 @@ function applyCartPromotion(
   const base = eligible.reduce((sum, line) => sum + state.remaining.get(line.id)!, 0n);
   if (base <= 0n) return;
   if (promotion.minSpend !== null && base < promotion.minSpend) return;
-  const room = (line: CartLine) => min(state.remaining.get(line.id)!, state.capLeft.get(line.id)!);
+  const room = (line: CartLine) => {
+    const left = min(state.remaining.get(line.id)!, state.capLeft.get(line.id)!);
+    const bySeller = sellerLineLimit(promotion, lineGross(line));
+    return bySeller === null ? left : min(left, bySeller);
+  };
   const capacity = eligible.reduce((sum, line) => sum + room(line), 0n);
   let amount =
     promotion.reward.kind === 'PERCENT'
@@ -362,6 +393,13 @@ function validate(input: CalculationInput): CalculationError | null {
     const share = promotion.maxShareBps;
     if (share !== null && (!Number.isInteger(share) || share < 1 || share > 10000)) {
       return bad('promotions.maxShareBps');
+    }
+    const sellerShare = promotion.sellerMaxShareBps ?? null;
+    if (
+      sellerShare !== null &&
+      (!Number.isInteger(sellerShare) || sellerShare < 1 || sellerShare > 10000)
+    ) {
+      return bad('promotions.sellerMaxShareBps');
     }
     for (const limit of [
       promotion.capAmount,

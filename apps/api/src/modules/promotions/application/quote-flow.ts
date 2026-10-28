@@ -58,6 +58,9 @@ export function calculationPromotionOf(
         ? settings.rules.sellerMaxDiscountBps
         : Math.min(settings.rules.sellerMaxDiscountBps, settings.rules.priorApprovalDiscountBps)
       : null,
+    // A co-funded campaign is held to the seller maximum on the seller's own share of every line:
+    // the seller pays what the platform does not, whatever the reward and the split.
+    sellerMaxShareBps: record.funding === 'CO_FUNDED' ? settings.rules.sellerMaxDiscountBps : null,
     capAmount: record.capMinor,
     maxPerOrder: record.maxPerOrderMinor,
     budgetRemaining: remaining,
@@ -213,17 +216,15 @@ export async function quote(
   request: QuoteRequest,
   strict: boolean,
 ): Promise<Result<QuoteResult, PromotionsFailure>> {
+  // The shape of the cart comes first, with the switch on or off: every amount in the Market's
+  // currency (when the Market has no settings, in one currency), and the sizes in bounds.
+  const currency =
+    deps.policy.settings(context.market)?.currency ?? request.orderCommission.currency;
+  const shape = checkShape(request, currency);
+  if (shape.length > 0) return err({ code: 'validation.failed', fields: shape });
   const switched = await activeSettings(deps, context);
   if (!switched.ok) {
     if (strict) return switched;
-    const currency = request.lines[0]?.unitPrice.currency ?? request.orderCommission.currency;
-    if (
-      request.lines.length === 0 ||
-      request.lines.length > MAX_LINES ||
-      request.shipping.length > MAX_SHIPPING
-    ) {
-      return err({ code: 'validation.failed', fields: [{ path: 'lines', code: 'size' }] });
-    }
     const bare = calculateDiscounts(
       toInput(request, currency, [], NO_DISCOUNT_RULES.lineDiscountCapBps),
     );
@@ -232,15 +233,16 @@ export async function quote(
       : err({ code: 'validation.failed', fields: [{ path: bare.error.path, code: 'value' }] });
   }
   const settings = switched.value;
-  const shape = checkShape(request, settings.currency);
-  if (shape.length > 0) return err({ code: 'validation.failed', fields: shape });
   const now = deps.clock.now();
   const zones = [...new Set(request.shipping.map((charge) => charge.zoneCode))].sort();
 
   const loaded = await deps.unitOfWork.run(
     context.market,
     async () => {
-      const records = await deps.promotions.listLive(context.market, now);
+      const records = await deps.promotions.listLive(context.market, now, {
+        sellerIds: [...new Set(request.lines.map((line) => line.sellerId))].sort(),
+        productIds: [...new Set(request.lines.map((line) => line.productId))].sort(),
+      });
       const ids = records.map((record) => record.id);
       const usage = await deps.promotions.usageOf(context.market, ids);
       const optIns = await deps.optIns.liveSellers(

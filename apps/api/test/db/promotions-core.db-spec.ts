@@ -10,11 +10,15 @@ import type { PromotionsDependencies } from '../../src/modules/promotions/applic
 import { CreateOwnPromotion } from '../../src/modules/promotions/application/use-cases/create-own-promotion.use-case';
 import { CreatePromotion } from '../../src/modules/promotions/application/use-cases/create-promotion.use-case';
 import { DecidePromotionReview } from '../../src/modules/promotions/application/use-cases/decide-promotion-review.use-case';
+import { EditOwnPromotion } from '../../src/modules/promotions/application/use-cases/edit-own-promotion.use-case';
+import { EditPromotion } from '../../src/modules/promotions/application/use-cases/edit-promotion.use-case';
 import { ListPromotionReviews } from '../../src/modules/promotions/application/use-cases/list-promotion-reviews.use-case';
+import { PauseOwnPromotion } from '../../src/modules/promotions/application/use-cases/pause-own-promotion.use-case';
 import { PausePromotion } from '../../src/modules/promotions/application/use-cases/pause-promotion.use-case';
 import { QuoteDiscounts } from '../../src/modules/promotions/application/use-cases/quote-discounts.use-case';
 import { SetCoFundingOptIn } from '../../src/modules/promotions/application/use-cases/set-co-funding-opt-in.use-case';
 import { SetFreeShippingThreshold } from '../../src/modules/promotions/application/use-cases/set-free-shipping-threshold.use-case';
+import { SetPromotionBudget } from '../../src/modules/promotions/application/use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from '../../src/modules/promotions/application/use-cases/set-promotions-status.use-case';
 import { ViewPromotionsSettings } from '../../src/modules/promotions/application/use-cases/view-promotions-settings.use-case';
 import { ConfigPromotionsPolicy } from '../../src/modules/promotions/infrastructure/config-promotions-policy';
@@ -444,6 +448,8 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       expect(await threshold(zone, 6000)).toBe(UNIQUE);
       expect(await threshold('bad zone', 1)).toBe(CHECK);
       expect(await threshold(`y-${run}`, -1)).toBe(CHECK);
+      // A threshold of zero would make shipping free at any spend.
+      expect(await threshold(`w-${run}`, 0)).toBe(CHECK);
       // A zone may return to the Market default, so its row may go.
       expect(
         await state(
@@ -597,15 +603,18 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       if (!queue.ok) return;
       const entry = queue.value.find((item) => item.promotion.id === pending.value.id);
       expect(entry?.review.reason).toBe('NEW_SELLER');
+      const version = entry!.promotion.updatedAt.toString();
       const decided = await make(DecidePromotionReview).execute(admin, {
         reviewId: entry!.review.id,
         decision: 'APPROVE',
+        promotionVersion: version,
       });
       expect(decided.ok).toBe(true);
       expect(
         await make(DecidePromotionReview).execute(admin, {
           reviewId: entry!.review.id,
           decision: 'APPROVE',
+          promotionVersion: version,
         }),
       ).toEqual({ ok: false, error: { code: 'promotions.invalid-state' } });
       const stored = await rows(`SELECT status FROM promotions.promotions WHERE id = $1`, [
@@ -671,6 +680,172 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
           zone,
         ]),
       ).toHaveLength(0);
+    });
+
+    it('moves the one open review of a promotion to the new reason when the seller edits again', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const body = (extra: Record<string, unknown> = {}) => ({
+        type: 'SELLER_SALE',
+        name: 'Reviewed sale',
+        funding: 'SELLER',
+        startsAt: clock.now().subtract({ hours: 24 }).toString(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [ids.next<'Product'>()],
+        ...extra,
+      });
+      const created = await make(CreateOwnPromotion).execute(seller, body());
+      if (!created.ok) throw new Error('create failed');
+      const open = () =>
+        rows(
+          `SELECT id, reason, opened_at, decided_at FROM promotions.promotion_reviews
+            WHERE promotion_id = $1 AND status = 'OPEN'`,
+          [created.value.id],
+        );
+      const [first] = await open();
+      expect(first?.reason).toBe('POST_REVIEW');
+
+      clock.advance(Temporal.Duration.from({ hours: 2 }));
+      const edited = await make(EditOwnPromotion).execute(seller, {
+        ...body({
+          reward: { kind: 'PERCENT', bps: rules.priorApprovalDiscountBps + 100 },
+          productIds: [...created.value.productIds],
+        }),
+        promotionId: created.value.id,
+      });
+      expect(edited.ok && edited.value.status).toBe('PENDING_APPROVAL');
+      const after = await open();
+      expect(after).toHaveLength(1);
+      expect(after[0]).toMatchObject({ id: first?.id, reason: 'HIGH_DISCOUNT', decided_at: null });
+      expect((after[0]?.opened_at as Date).getTime()).toBe(clock.now().epochMilliseconds);
+
+      // The admin decides on the version they read; the edit above made an older one stale.
+      const stale = await make(DecidePromotionReview).execute(admin, {
+        reviewId: first?.id,
+        decision: 'APPROVE',
+        promotionVersion: created.value.updatedAt.toString(),
+      });
+      expect(stale).toEqual({ ok: false, error: { code: 'promotions.invalid-state' } });
+      const current = await make(DecidePromotionReview).execute(admin, {
+        reviewId: first?.id,
+        decision: 'APPROVE',
+        promotionVersion: edited.ok ? edited.value.updatedAt.toString() : '',
+      });
+      expect(current.ok).toBe(true);
+    });
+
+    it('withdraws the opt-ins of a campaign whose terms an admin changed', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const campaign = (extra: Record<string, unknown> = {}) =>
+        platformCart({
+          type: 'CO_FUNDED_CAMPAIGN',
+          funding: 'CO_FUNDED',
+          platformSplitBps: 5000,
+          name: 'Terms',
+          ...extra,
+        });
+      const created = await make(CreatePromotion).execute(admin, campaign());
+      if (!created.ok) throw new Error('create failed');
+      await make(SetCoFundingOptIn).execute(seller, { promotionId: created.value.id, optIn: true });
+      const live = () =>
+        rows(
+          `SELECT 1 FROM promotions.co_funding_opt_ins WHERE promotion_id = $1 AND withdrawn_at IS NULL`,
+          [created.value.id],
+        );
+      expect(await live()).toHaveLength(1);
+      await make(EditPromotion).execute(admin, {
+        ...campaign({ name: 'Renamed' }),
+        promotionId: created.value.id,
+      });
+      expect(await live()).toHaveLength(1);
+      const changed = await make(EditPromotion).execute(admin, {
+        ...campaign({ reward: { kind: 'PERCENT', bps: 700 } }),
+        promotionId: created.value.id,
+      });
+      expect(changed.ok).toBe(true);
+      expect(await live()).toHaveLength(0);
+    });
+
+    it('reads only the promotions a cart can reach, and counts what counts against a seller', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const other = ids.next<'Seller'>();
+      activity.since.set(other, clock.now().subtract({ hours: 24 * 400 }));
+      const otherSeller = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId: other,
+        }),
+        'promo-db-seller-3',
+      );
+      const sale = (productId: Id<'Product'>) => ({
+        type: 'SELLER_SALE',
+        name: 'Scoped',
+        funding: 'SELLER',
+        startsAt: clock.now().subtract({ hours: 24 }).toString(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [productId],
+      });
+      const wanted = ids.next<'Product'>();
+      const mine = await make(CreateOwnPromotion).execute(seller, sale(wanted));
+      const elsewhere = await make(CreateOwnPromotion).execute(seller, sale(ids.next<'Product'>()));
+      const theirs = await make(CreateOwnPromotion).execute(otherSeller, sale(wanted));
+      const platform = await make(CreatePromotion).execute(admin, platformCart());
+      if (!mine.ok || !elsewhere.ok || !theirs.ok || !platform.ok) throw new Error('setup failed');
+
+      const inUnit = <T>(read: () => Promise<T>) =>
+        deps.unitOfWork.run(market, async () => ({ ok: true as const, value: await read() }), {
+          readOnly: true,
+        });
+      const read = await inUnit(() =>
+        deps.promotions.listLive(market, clock.now(), {
+          sellerIds: [sellerId],
+          productIds: [wanted],
+        }),
+      );
+      const live = read.ok ? read.value : [];
+      const seen = live.map((r) => r.id);
+      expect(seen).toContain(mine.value.id);
+      expect(seen).toContain(platform.value.id);
+      expect(seen).not.toContain(elsewhere.value.id);
+      expect(seen).not.toContain(theirs.value.id);
+
+      const count = async () => {
+        const counted = await inUnit(() =>
+          deps.promotions.countCounting(market, other, clock.now()),
+        );
+        return counted.ok ? counted.value : -1;
+      };
+      expect(await count()).toBe(1);
+      await make(PauseOwnPromotion).execute(otherSeller, { promotionId: theirs.value.id });
+      expect(await count()).toBe(0);
+    });
+
+    it('serialises two parallel changes of one promotion on its row', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const created = await make(CreatePromotion).execute(admin, platformCart());
+      if (!created.ok) throw new Error('create failed');
+      const results = await Promise.all([
+        make(SetPromotionBudget).execute(admin, {
+          promotionId: created.value.id,
+          budgetMinor: '5000',
+        }),
+        make(SetPromotionBudget).execute(admin, {
+          promotionId: created.value.id,
+          budgetMinor: '6000',
+        }),
+      ]);
+      expect(results.map((r) => r.ok)).toEqual([true, true]);
+      const stored = await rows(`SELECT budget_minor FROM promotions.promotions WHERE id = $1`, [
+        created.value.id,
+      ]);
+      expect(['5000', '6000']).toContain(String(stored[0]?.budget_minor));
+      const missing = await deps.unitOfWork.run(market, async () => ({
+        ok: true as const,
+        value: await deps.promotions.findForUpdate(market, ids.next<'Promotion'>()),
+      }));
+      expect(missing.ok && missing.value).toBeNull();
     });
 
     it('uses the Market rules of its own configuration', () => {

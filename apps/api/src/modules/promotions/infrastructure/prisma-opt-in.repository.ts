@@ -71,6 +71,25 @@ export class PrismaOptInRepository implements OptInRepository {
     });
   }
 
+  async withdrawAll(
+    market: MarketContext,
+    promotionId: Id<'Promotion'>,
+    at: Temporal.Instant,
+    by: Id<'Account'>,
+  ): Promise<readonly Id<'Seller'>[]> {
+    const tx = this.prisma.tx(market);
+    const live = await tx.promotionsCoFundingOptIn.findMany({
+      where: { marketId: market.marketId, promotionId, withdrawnAt: null },
+      orderBy: { sellerId: 'asc' },
+    });
+    if (live.length === 0) return [];
+    await tx.promotionsCoFundingOptIn.updateMany({
+      where: { marketId: market.marketId, promotionId, withdrawnAt: null },
+      data: { withdrawnAt: toDate(at), decidedByAccountId: by },
+    });
+    return live.map((row) => row.sellerId as Id<'Seller'>);
+  }
+
   async liveSellers(
     market: MarketContext,
     promotionIds: readonly Id<'Promotion'>[],

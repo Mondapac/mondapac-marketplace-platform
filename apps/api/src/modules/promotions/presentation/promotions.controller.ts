@@ -368,7 +368,8 @@ export class AdminPromotionsController {
   @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
   @ApiConflictResponse({
     ...ERROR,
-    description: 'promotions.not-editable, promotions.invalid-state or promotions.code-taken',
+    description:
+      'promotions.not-editable, promotions.invalid-state, promotions.code-taken or promotions.too-many-active',
   })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
   async editPromotion(
@@ -490,8 +491,9 @@ export class AdminPromotionsController {
   @ApiOperation({
     summary: 'Approve or reject a queued seller promotion (admin manager)',
     description:
-      'Approval activates the promotion; rejection ends it. A second decision on the same review ' +
-      'answers promotions.invalid-state (409). Audited.',
+      'Approval activates the promotion; rejection ends it. The body carries the `updatedAt` of ' +
+      'the promotion as `promotionVersion`: a promotion changed since, or a second decision on the ' +
+      'same review, answers promotions.invalid-state (409). Audited.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'id', format: 'uuid' })
@@ -510,8 +512,15 @@ export class AdminPromotionsController {
     @Body() requestBody: unknown,
   ) {
     noStore(response);
-    const { decision } = bodyOf(request, requestBody, ['decision']);
-    const result = await this.decideReview.execute(context, { reviewId: id, decision });
+    const { decision, promotionVersion } = bodyOf(request, requestBody, [
+      'decision',
+      'promotionVersion',
+    ]);
+    const result = await this.decideReview.execute(context, {
+      reviewId: id,
+      decision,
+      promotionVersion,
+    });
     return reviewItemBody(
       settle(this.#logger, 'promotions.decide-review-route', context, result, 'decided'),
     );
@@ -719,7 +728,10 @@ export class SellerPromotionsController {
   @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled' })
-  @ApiConflictResponse({ ...ERROR, description: 'promotions.code-taken' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'promotions.code-taken or promotions.too-many-active',
+  })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
   async createOwn(
     @Call() context: CallContext,
@@ -747,7 +759,8 @@ export class SellerPromotionsController {
   @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
   @ApiConflictResponse({
     ...ERROR,
-    description: 'promotions.not-editable, promotions.invalid-state or promotions.code-taken',
+    description:
+      'promotions.not-editable, promotions.invalid-state, promotions.code-taken or promotions.too-many-active',
   })
   async editOwn(
     @Call() context: CallContext,
@@ -794,7 +807,10 @@ export class SellerPromotionsController {
   @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
-  @ApiConflictResponse({ ...ERROR, description: 'promotions.invalid-state' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'promotions.invalid-state or promotions.too-many-active',
+  })
   async resumeOwn(
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,

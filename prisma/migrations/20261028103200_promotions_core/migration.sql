@@ -262,7 +262,7 @@ ALTER TABLE "promotions"."free_shipping_thresholds"
   ADD CONSTRAINT "free_shipping_thresholds_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "free_shipping_thresholds_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
   ADD CONSTRAINT "free_shipping_thresholds_zone_check" CHECK ("zone_code" ~ '^[A-Za-z0-9_-]{1,64}$'),
-  ADD CONSTRAINT "free_shipping_thresholds_amount_check" CHECK ("threshold_minor" >= 0);
+  ADD CONSTRAINT "free_shipping_thresholds_amount_check" CHECK ("threshold_minor" >= 1);
 
 ALTER TABLE "promotions"."market_settings"
   ADD CONSTRAINT "market_settings_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
@@ -316,7 +316,7 @@ GRANT SELECT, INSERT, UPDATE ("budget_minor", "cap_minor", "combinable", "ends_a
 GRANT SELECT, INSERT, DELETE ON TABLE "promotions"."promotion_targets" TO "mondapac_app";
 GRANT SELECT, INSERT ON TABLE "promotions"."promotion_usage" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("decided_by_account_id", "opted_in_at", "withdrawn_at") ON TABLE "promotions"."co_funding_opt_ins" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("decided_at", "decided_by_account_id", "status") ON TABLE "promotions"."promotion_reviews" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("decided_at", "decided_by_account_id", "opened_at", "reason", "status") ON TABLE "promotions"."promotion_reviews" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("amount_minor", "cap_minor", "enabled", "kind", "min_spend_minor", "monthly_budget_minor", "percent_bps", "updated_at", "updated_by_account_id") ON TABLE "promotions"."first_order_settings" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE, UPDATE ("threshold_minor", "updated_at", "updated_by_account_id") ON TABLE "promotions"."free_shipping_thresholds" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("status", "updated_at", "updated_by_account_id") ON TABLE "promotions"."market_settings" TO "mondapac_app";

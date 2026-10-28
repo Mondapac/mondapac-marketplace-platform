@@ -18,6 +18,8 @@ export type PromotionsFailure =
   | { readonly code: 'promotions.code-taken' }
   /** The promotion's state does not allow this (pause of a paused one is idempotent, not this). */
   | { readonly code: 'promotions.invalid-state' }
+  /** The seller already has the Market's maximum of active and pending promotions. */
+  | { readonly code: 'promotions.too-many-active' }
   /** Not editable by this caller: an admin on a seller's promotion, a rejected promotion. */
   | { readonly code: 'promotions.not-editable' }
   /** The step-up refusals of identity, as the use case passes them on. */

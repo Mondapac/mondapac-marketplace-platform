@@ -11,6 +11,7 @@ import type {
 } from '../../src/modules/promotions/application/ports/opt-in.repository';
 import type { PriceHistory } from '../../src/modules/promotions/application/ports/price-history';
 import type {
+  LiveScope,
   PromotionFilter,
   PromotionRepository,
   UsageRecord,
@@ -35,6 +36,10 @@ import type { PromotionRecord } from '../../src/modules/promotions/domain/promot
 export class MemoryPromotions implements PromotionRepository {
   readonly records = new Map<Id<'Promotion'>, PromotionRecord>();
   readonly usage = new Map<Id<'Promotion'>, UsageRecord>();
+  /** The promotions read with the row lock, in order. */
+  readonly locked: Id<'Promotion'>[] = [];
+  /** The scope of the last `listLive`. */
+  lastScope: LiveScope | null = null;
 
   insert(_market: MarketContext, record: PromotionRecord) {
     if (
@@ -59,6 +64,10 @@ export class MemoryPromotions implements PromotionRepository {
   find(_market: MarketContext, id: Id<'Promotion'>) {
     return Promise.resolve(this.records.get(id) ?? null);
   }
+  findForUpdate(_market: MarketContext, id: Id<'Promotion'>) {
+    this.locked.push(id);
+    return Promise.resolve(this.records.get(id) ?? null);
+  }
   findMany(_market: MarketContext, ids: readonly Id<'Promotion'>[]) {
     return Promise.resolve(ids.flatMap((id) => this.records.get(id) ?? []));
   }
@@ -73,14 +82,27 @@ export class MemoryPromotions implements PromotionRepository {
         .slice(0, filter.limit),
     );
   }
-  listLive(_market: MarketContext, now: Temporal.Instant) {
+  listLive(_market: MarketContext, now: Temporal.Instant, scope: LiveScope) {
+    this.lastScope = scope;
     return Promise.resolve(
       [...this.records.values()].filter(
         (r) =>
           r.status === 'ACTIVE' &&
           r.startsAt.epochMilliseconds <= now.epochMilliseconds &&
-          (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds),
+          (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds) &&
+          (r.ownerSellerId === null || scope.sellerIds.includes(r.ownerSellerId)) &&
+          (r.productIds.length === 0 || r.productIds.some((p) => scope.productIds.includes(p))),
       ),
+    );
+  }
+  countCounting(_market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
+    return Promise.resolve(
+      [...this.records.values()].filter(
+        (r) =>
+          r.ownerSellerId === sellerId &&
+          (r.status === 'ACTIVE' || r.status === 'PENDING_APPROVAL') &&
+          (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds),
+      ).length,
     );
   }
   usageOf(_market: MarketContext, ids: readonly Id<'Promotion'>[]) {
@@ -122,6 +144,15 @@ export class MemoryOptIns implements OptInRepository {
     if (row) this.rows.set(this.key(promotionId, sellerId), { ...row, withdrawnAt: at });
     return Promise.resolve();
   }
+  withdrawAll(_market: MarketContext, promotionId: Id<'Promotion'>, at: Temporal.Instant) {
+    const sellers: Id<'Seller'>[] = [];
+    for (const [key, row] of this.rows) {
+      if (row.promotionId !== promotionId || row.withdrawnAt !== null) continue;
+      this.rows.set(key, { ...row, withdrawnAt: at });
+      sellers.push(row.sellerId);
+    }
+    return Promise.resolve(sellers.sort() as readonly Id<'Seller'>[]);
+  }
   liveSellers(_market: MarketContext, promotionIds: readonly Id<'Promotion'>[]) {
     const map = new Map<Id<'Promotion'>, Id<'Seller'>[]>();
     for (const row of this.rows.values()) {
@@ -135,10 +166,15 @@ export class MemoryOptIns implements OptInRepository {
 export class MemoryReviewQueue implements ReviewQueueRepository {
   readonly entries = new Map<Id<'PromotionReview'>, ReviewEntry>();
   open(_market: MarketContext, entry: ReviewEntry) {
-    const open = [...this.entries.values()].some(
+    const open = [...this.entries.values()].find(
       (e) => e.promotionId === entry.promotionId && e.status === 'OPEN',
     );
-    if (!open) this.entries.set(entry.id, entry);
+    // One open entry per promotion: a second one moves the first to the new reason and time.
+    if (open) {
+      this.entries.set(open.id, { ...open, reason: entry.reason, openedAt: entry.openedAt });
+    } else {
+      this.entries.set(entry.id, entry);
+    }
     return Promise.resolve();
   }
   find(_market: MarketContext, id: Id<'PromotionReview'>) {
@@ -178,6 +214,9 @@ export class MemoryPromotionsSetting implements MarketSettingRepository {
 export class MemoryFirstOrder implements FirstOrderSettingsRepository {
   row: FirstOrderSettings | null = null;
   find() {
+    return Promise.resolve(this.row);
+  }
+  findForUpdate() {
     return Promise.resolve(this.row);
   }
   save(_market: MarketContext, settings: FirstOrderSettings) {

@@ -1,4 +1,4 @@
-import { err, ok, parseId } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { auditCode, CoFundingOptInChanged, PromotionReviewDecided } from '../domain/audit';
 import { adminAccountId, sellerCaller } from './caller';
@@ -45,15 +45,32 @@ export async function listReviews(
   );
 }
 
+/** The promotion version the admin looked at: the instant the promotion was last changed. */
+function versionOf(raw: unknown): Temporal.Instant | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    return Temporal.Instant.from(raw);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * An admin decides an entry of the queue. Approving a promotion that waits for approval puts it
+ * An admin decides an entry of the queue on the promotion as the admin saw it: `promotionVersion`
+ * is the promotion's `updatedAt` from the queue, and a promotion changed since (a seller edit, a
+ * pause) is `promotions.invalid-state` (409), so a decision is never made on terms the admin did
+ * not read. Approving a promotion that waits for approval puts it
  * live; approving a live one records that it was reviewed (and lifts the cautious limit on a
  * fixed reward). Rejecting stops the promotion for good (REJECTED); the seller may start another.
  */
 export async function decideReview(
   deps: PromotionsDependencies,
   context: CallContext,
-  input: { readonly reviewId?: unknown; readonly decision?: unknown },
+  input: {
+    readonly reviewId?: unknown;
+    readonly decision?: unknown;
+    readonly promotionVersion?: unknown;
+  },
 ): Promise<Result<ReviewItem, PromotionsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
@@ -66,7 +83,9 @@ export async function decideReview(
   const decision = input?.decision;
   if (decision !== 'APPROVE' && decision !== 'REJECT')
     fields.push({ path: 'decision', code: 'value' });
-  if (fields.length > 0 || reviewId === null || !reviewId.ok) {
+  const version = versionOf(input?.promotionVersion);
+  if (version === null) fields.push({ path: 'promotionVersion', code: 'value' });
+  if (fields.length > 0 || reviewId === null || !reviewId.ok || version === null) {
     return err({ code: 'validation.failed', fields });
   }
   const now = deps.clock.now();
@@ -76,8 +95,10 @@ export async function decideReview(
     const entry = await deps.reviews.find(context.market, reviewId.value);
     if (entry === null) return err({ code: 'promotions.not-found' });
     if (entry.status !== 'OPEN') return err({ code: 'promotions.invalid-state' });
-    const before = await deps.promotions.find(context.market, entry.promotionId);
+    const before = await deps.promotions.findForUpdate(context.market, entry.promotionId);
     if (before === null) return err({ code: 'promotions.not-found' });
+    // The promotion changed since the admin looked at it: nothing is decided.
+    if (!before.updatedAt.equals(version)) return err({ code: 'promotions.invalid-state' });
     const approve = decision === 'APPROVE';
     const after = approve
       ? {
@@ -149,7 +170,7 @@ export async function setOptIn(
     PromotionsFailure
   >(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
-    const promotion = await deps.promotions.find(context.market, parsed.value);
+    const promotion = await deps.promotions.findForUpdate(context.market, parsed.value);
     // A campaign the admin aimed at other sellers does not exist for this one.
     if (
       promotion === null ||

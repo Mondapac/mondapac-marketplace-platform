@@ -2,6 +2,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  LiveScope,
   PromotionFilter,
   PromotionRepository,
   UsageRecord,
@@ -195,6 +196,32 @@ export class PrismaPromotionRepository implements PromotionRepository {
     return row === null ? null : toRecord(row);
   }
 
+  async findForUpdate(market: MarketContext, id: Id<'Promotion'>): Promise<PromotionRecord | null> {
+    const tx = this.prisma.tx(market);
+    // The client sends no raw SQL, so the lock is a row update that changes nothing: it takes the
+    // row lock until the unit ends. Every change moves `updated_at`, so a row that moved since it
+    // was read matches no row; read it again and lock the new version.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const row = await tx.promotionsPromotion.findFirst({
+        where: { marketId: market.marketId, id },
+        include: { targets: true },
+      });
+      if (row === null) return null;
+      const locked = await tx.promotionsPromotion.updateMany({
+        where: { marketId: market.marketId, id, updatedAt: row.updatedAt },
+        data: { updatedAt: row.updatedAt },
+      });
+      if (locked.count !== 1) continue;
+      // The row is ours now: read it again, so what is returned is what the lock protects.
+      const held = await tx.promotionsPromotion.findFirst({
+        where: { marketId: market.marketId, id },
+        include: { targets: true },
+      });
+      return held === null ? null : toRecord(held);
+    }
+    throw new Error('promotions.promotion-lock-contended');
+  }
+
   async findMany(
     market: MarketContext,
     ids: readonly Id<'Promotion'>[],
@@ -224,6 +251,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
   async listLive(
     market: MarketContext,
     now: Temporal.Instant,
+    scope: LiveScope,
   ): Promise<readonly PromotionRecord[]> {
     const at = toDate(now);
     const rows = await this.prisma.tx(market).promotionsPromotion.findMany({
@@ -231,12 +259,39 @@ export class PrismaPromotionRepository implements PromotionRepository {
         marketId: market.marketId,
         status: 'ACTIVE',
         startsAt: { lte: at },
-        OR: [{ endsAt: null }, { endsAt: { gt: at } }],
+        AND: [
+          { OR: [{ endsAt: null }, { endsAt: { gt: at } }] },
+          // The platform's promotions, and those of a seller that is in the cart.
+          { OR: [{ ownerSellerId: null }, { ownerSellerId: { in: [...scope.sellerIds] } }] },
+          // Aimed at any product, or at one of the cart's.
+          {
+            OR: [
+              { targets: { none: { kind: 'PRODUCT' } } },
+              { targets: { some: { kind: 'PRODUCT', value: { in: [...scope.productIds] } } } },
+            ],
+          },
+        ],
       },
       include: { targets: true },
       orderBy: { id: 'asc' },
     });
     return rows.map(toRecord);
+  }
+
+  countCounting(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    now: Temporal.Instant,
+  ): Promise<number> {
+    const at = toDate(now);
+    return this.prisma.tx(market).promotionsPromotion.count({
+      where: {
+        marketId: market.marketId,
+        ownerSellerId: sellerId,
+        status: { in: ['ACTIVE', 'PENDING_APPROVAL'] },
+        OR: [{ endsAt: null }, { endsAt: { gt: at } }],
+      },
+    });
   }
 
   async usageOf(

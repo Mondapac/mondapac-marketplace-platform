@@ -67,6 +67,7 @@ it('maps every refusal code of the promotions routes to its exact status', () =>
     'promotions.code-taken': 409,
     'promotions.invalid-state': 409,
     'promotions.not-editable': 409,
+    'promotions.too-many-active': 409,
     'access.unavailable': 503,
     'promotions.unavailable': 503,
   });
@@ -461,11 +462,12 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     });
     const decided = await call('admin', 'put', `/promotions/admin/reviews/${review.id}`, session, {
       decision: 'APPROVE',
+      promotionVersion: START.toString(),
     });
     expect(decided.status).toBe(200);
     expect(calls.at(-1)).toEqual({
       name: 'decide-review',
-      input: { reviewId: review.id, decision: 'APPROVE' },
+      input: { reviewId: review.id, decision: 'APPROVE', promotionVersion: START.toString() },
     });
 
     next = ok({

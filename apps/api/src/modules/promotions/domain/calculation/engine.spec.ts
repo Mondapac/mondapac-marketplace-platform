@@ -489,6 +489,89 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
       expect(out.totals.platformShare).toBe(1500n);
     });
 
+    it('holds the seller share of a co-funded discount to the seller maximum of the line', () => {
+      const co = (over: Partial<CalculationPromotion> = {}) =>
+        promo({
+          id: 'co',
+          type: 'CO_FUNDED_CAMPAIGN',
+          platformShareBps: 5000,
+          sellerMaxShareBps: 3000,
+          reward: { kind: 'PERCENT', bps: 8000 },
+          ...over,
+        });
+      const out = run(market, { lines, promotions: [co()], orderCommission: 1_000_000n });
+      const allocation = out.lines[0]!.allocations[0]!;
+      // The seller never pays more than 30 % of the line, however large the headline reward.
+      expect(allocation.sellerShare).toBeLessThanOrEqual((P * 3000n) / 10000n);
+      expect(allocation.amount).toBeLessThan((P * 8000n) / 10000n);
+      expect(allocation.amount).toBeGreaterThan((P * 5900n) / 10000n);
+      // A fixed reward is held to the same limit.
+      const fixed = run(market, {
+        lines,
+        promotions: [co({ reward: { kind: 'FIXED', amount: P } })],
+        orderCommission: 1_000_000n,
+      });
+      expect(fixed.lines[0]!.allocations[0]!.sellerShare).toBeLessThanOrEqual((P * 3000n) / 10000n);
+      // A reward inside the limit is untouched.
+      const inside = run(market, {
+        lines,
+        promotions: [co({ reward: { kind: 'PERCENT', bps: 2000 } })],
+        orderCommission: 1_000_000n,
+      });
+      expect(inside.lines[0]!.discount).toBe((P * 2000n) / 10000n);
+    });
+
+    it('holds the seller share to the maximum on every line of a split campaign', () => {
+      const many = [
+        line('l1', 's1', 333n, 3),
+        line('l2', 's1', 701n),
+        line('l3', 's2', 12345n, 2),
+        line('l4', 's2', 9n),
+      ];
+      const out = run(market, {
+        lines: many,
+        promotions: [
+          promo({
+            id: 'co',
+            type: 'CO_FUNDED_CAMPAIGN',
+            platformShareBps: 3334,
+            sellerMaxShareBps: 2500,
+            reward: { kind: 'PERCENT', bps: 6000 },
+          }),
+        ],
+        orderCommission: 1_000_000n,
+      });
+      for (const l of out.lines) {
+        for (const a of l.allocations) {
+          expect(a.sellerShare).toBeLessThanOrEqual((l.gross * 2500n) / 10000n);
+        }
+      }
+      expect(out.totals.goodsDiscount).toBeGreaterThan(0n);
+    });
+
+    it('takes the platform share of a promotion once and spreads it, so sellers do not absorb every rounding cent', () => {
+      const three = [line('l1', 's1', 100n), line('l2', 's1', 100n), line('l3', 's2', 100n)];
+      const out = run(market, {
+        lines: three,
+        promotions: [
+          promo({
+            id: 'co',
+            type: 'CO_FUNDED_CAMPAIGN',
+            platformShareBps: 3334,
+            reward: { kind: 'PERCENT', bps: 1000 },
+          }),
+        ],
+        orderCommission: 1_000_000n,
+      });
+      // 3 x 10 = 30; floor(30 x 3334 / 10000) = 10, not 3 x floor(10 x 0.3334) = 9.
+      expect(out.totals.goodsDiscount).toBe(30n);
+      expect(out.totals.platformShare).toBe(10n);
+      expect(out.totals.sellerShare).toBe(20n);
+      // The remainder goes to the largest line, ties to the smaller id.
+      expect(out.lines.map((l) => l.allocations[0]!.platformShare)).toEqual([4n, 3n, 3n]);
+      expect(out.applied[0]).toMatchObject({ platformShare: 10n, sellerShare: 20n });
+    });
+
     it('lets a special campaign go beyond the commission', () => {
       const out = run(market, {
         lines,
@@ -699,6 +782,7 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
             id: 'co',
             type: 'CO_FUNDED_CAMPAIGN',
             platformShareBps: 1 + next(9999),
+            sellerMaxShareBps: 500 + next(5000),
             sellerIds: ['s1', 's2'],
             reward: { kind: 'FIXED', amount: BigInt(1 + next(500)) },
           }),
@@ -760,6 +844,12 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
           for (const a of l.allocations) {
             expect(a.amount).toBeGreaterThan(0n);
             expect(a.sellerShare + a.platformShare).toBe(a.amount);
+            if (a.promotionId === 'co') {
+              const co = promotions.find((p) => p.id === 'co')!;
+              expect(a.sellerShare).toBeLessThanOrEqual(
+                (l.gross * BigInt(co.sellerMaxShareBps!)) / 10000n,
+              );
+            }
             sellerShare += a.sellerShare;
             platformShare += a.platformShare;
           }

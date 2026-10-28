@@ -29,6 +29,13 @@ export interface OptInRepository {
     at: Temporal.Instant,
     by: Id<'Account'>,
   ): Promise<void>;
+  /** Withdraws every live opt-in of the promotion; answers the sellers that were withdrawn. */
+  withdrawAll(
+    market: MarketContext,
+    promotionId: Id<'Promotion'>,
+    at: Temporal.Instant,
+    by: Id<'Account'>,
+  ): Promise<readonly Id<'Seller'>[]>;
   /** The sellers with a live (not withdrawn) opt-in, per promotion. */
   liveSellers(
     market: MarketContext,

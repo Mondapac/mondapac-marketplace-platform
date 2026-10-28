@@ -154,7 +154,7 @@ export const ShippingThresholdChanged = defineAuditAction({
   targetType: SHIPPING_THRESHOLD_TARGET,
   actors: ['authenticated'],
   before: { threshold: auditField.optional(auditField.money()) },
-  after: { threshold: auditField.optional(auditField.money()) },
+  after: { threshold: auditField.optional(auditField.money()), ...stepUp },
 });
 
 export const PROMOTIONS_AUDIT_ACTIONS = [

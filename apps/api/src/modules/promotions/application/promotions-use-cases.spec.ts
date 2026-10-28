@@ -561,17 +561,23 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         await decideReview(deps, actingAs(admin()), {
           reviewId,
           decision: 'APPROVE',
+          promotionVersion: queue.value[0]!.promotion.updatedAt.toString(),
         }),
       ).toEqual({ ok: false, error: { code: 'access.denied' } });
       const approved = await make(DecidePromotionReview).execute(admin(), {
         reviewId,
         decision: 'APPROVE',
+        promotionVersion: queue.value[0]!.promotion.updatedAt.toString(),
       });
       expect(approved.ok).toBe(true);
       expect(promotions.records.get(pending.value.id)?.status).toBe('ACTIVE');
       expect(audit.entries.at(-1)?.action).toBe('promotions.review.decided');
       expect(
-        await make(DecidePromotionReview).execute(admin(), { reviewId, decision: 'REJECT' }),
+        await make(DecidePromotionReview).execute(admin(), {
+          reviewId,
+          decision: 'REJECT',
+          promotionVersion: queue.value[0]!.promotion.updatedAt.toString(),
+        }),
       ).toEqual({ ok: false, error: { code: 'promotions.invalid-state' } });
     });
 
@@ -585,6 +591,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       const rejected = await make(DecidePromotionReview).execute(admin(), {
         reviewId,
         decision: 'REJECT',
+        promotionVersion: promotions.records.get(pending.value.id)!.updatedAt.toString(),
       });
       expect(rejected.ok).toBe(true);
       expect(promotions.records.get(pending.value.id)?.status).toBe('REJECTED');
@@ -814,6 +821,458 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       expect(await ask()).toEqual({ ok: true, value: { eligible: false } });
       history.days = rules.wasPrice.minDaysAtPrice;
       expect(await ask()).toEqual({ ok: true, value: { eligible: true } });
+    });
+  });
+  describe('after the security review', () => {
+    beforeEach(switchOn);
+
+    const campaign = (extra: Record<string, unknown> = {}) =>
+      platformCart({
+        type: 'CO_FUNDED_CAMPAIGN',
+        funding: 'CO_FUNDED',
+        platformSplitBps: 5000,
+        name: 'Big sale',
+        ...extra,
+      });
+    const quoteRequest = (extra: Record<string, unknown> = {}) => ({
+      lines: [
+        {
+          id: 'l1',
+          sellerId: SELLER,
+          productId: product(1),
+          unitPrice: money(10000n, currency),
+          quantity: 1,
+        },
+      ],
+      shipping: [],
+      code: null,
+      isFirstOrder: false,
+      testMode: false,
+      orderCommission: money(5000n, currency),
+      ...extra,
+    });
+    const liveOptIns = async (promotionId: Id<'Promotion'>) =>
+      (await optIns.liveSellers(market, [promotionId])).get(promotionId) ?? [];
+
+    describe('a co-funded campaign changed by an admin (M1)', () => {
+      const optedIn = async () => {
+        const created = await make(CreatePromotion).execute(admin(), campaign());
+        if (!created.ok) throw new Error('create failed');
+        for (const [who, account] of [
+          [SELLER, SELLER_ACCOUNT],
+          [SELLER_2, SELLER_2_ACCOUNT],
+        ] as const) {
+          const opted = await make(SetCoFundingOptIn).execute(seller(who, account), {
+            promotionId: created.value.id,
+            optIn: true,
+          });
+          expect(opted.ok).toBe(true);
+        }
+        audit.entries.length = 0;
+        return created.value.id;
+      };
+      const edit = (promotionId: Id<'Promotion'>, extra: Record<string, unknown>) =>
+        make(EditPromotion).execute(admin(), { ...campaign(extra), promotionId });
+
+      it('keeps the opt-ins when only the name or the schedule changes', async () => {
+        const promotionId = await optedIn();
+        expect((await edit(promotionId, { name: 'Renamed', combinable: false })).ok).toBe(true);
+        expect(await liveOptIns(promotionId)).toHaveLength(2);
+        expect(audit.entries.map((e) => e.action)).toEqual(['promotions.promotion.edited']);
+      });
+
+      it.each([
+        ['reward', { reward: { kind: 'PERCENT', bps: 700 } }],
+        ['platform split', { platformSplitBps: 6000 }],
+        ['products', { productIds: [product(7)] }],
+        ['sellers', { sellerIds: [SELLER, SELLER_2] }],
+      ])(
+        'withdraws every opt-in, audited, when the %s change; the sellers opt in again',
+        async (_name, change) => {
+          const promotionId = await optedIn();
+          const edited = await edit(promotionId, change);
+          expect(edited.ok).toBe(true);
+          expect(await liveOptIns(promotionId)).toEqual([]);
+          const withdrawals = audit.entries.filter(
+            (e) => e.action === 'promotions.co-funding.changed',
+          );
+          expect(withdrawals).toHaveLength(2);
+          expect(withdrawals.map((e) => (e.after as { sellerId: string }).sellerId).sort()).toEqual(
+            [SELLER, SELLER_2].sort(),
+          );
+          for (const entry of withdrawals) {
+            expect(entry.before).toEqual({ optedIn: true });
+            expect(entry.after).toMatchObject({ optedIn: false });
+          }
+          const again = await make(SetCoFundingOptIn).execute(seller(), {
+            promotionId,
+            optIn: true,
+          });
+          expect(again).toEqual({ ok: true, value: { promotionId, optedIn: true } });
+          expect(await liveOptIns(promotionId)).toEqual([SELLER]);
+        },
+      );
+
+      it('leaves a withdrawn opt-in alone and a refused edit changes nothing', async () => {
+        const promotionId = await optedIn();
+        await make(SetCoFundingOptIn).execute(seller(SELLER_2, SELLER_2_ACCOUNT), {
+          promotionId,
+          optIn: false,
+        });
+        audit.entries.length = 0;
+        expect((await edit(promotionId, { platformSplitBps: 6000 })).ok).toBe(true);
+        expect(
+          audit.entries.filter((e) => e.action === 'promotions.co-funding.changed'),
+        ).toHaveLength(1);
+        // An edit refused for its terms withdraws nobody.
+        const refused = await edit(promotionId, {
+          platformSplitBps: 1000,
+          reward: { kind: 'PERCENT', bps: 10000 },
+        });
+        expect(refused).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      });
+
+      it('refuses a campaign whose seller share is over the seller maximum', async () => {
+        const over = await make(CreatePromotion).execute(
+          admin(),
+          campaign({ platformSplitBps: 1000, reward: { kind: 'PERCENT', bps: 10000 } }),
+        );
+        expect(over).toMatchObject({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'reward.bps', code: 'exceeds-seller-maximum' }],
+          },
+        });
+        const within = await make(CreatePromotion).execute(
+          admin(),
+          campaign({
+            platformSplitBps: 10000 - rules.sellerMaxDiscountBps,
+            reward: { kind: 'PERCENT', bps: 10000 },
+          }),
+        );
+        expect(within.ok).toBe(true);
+      });
+    });
+
+    describe('the review queue after a seller edit (M2)', () => {
+      const pendingReview = async () => {
+        const mine = await make(CreateOwnPromotion).execute(seller(), sale());
+        if (!mine.ok) throw new Error('create failed');
+        return mine.value.id;
+      };
+
+      it('updates the one open entry instead of dropping the new reason', async () => {
+        const promotionId = await pendingReview();
+        const [first] = [...reviewQueue.entries.values()];
+        expect(first).toMatchObject({ reason: 'POST_REVIEW', status: 'OPEN' });
+
+        clock.advance(Temporal.Duration.from({ hours: 3 }));
+        const highBps = rules.priorApprovalDiscountBps + 100;
+        const edited = await make(EditOwnPromotion).execute(seller(), {
+          ...sale({ reward: { kind: 'PERCENT', bps: highBps } }),
+          promotionId,
+        });
+        expect(edited.ok && edited.value.status).toBe('PENDING_APPROVAL');
+
+        const entries = [...reviewQueue.entries.values()];
+        expect(entries).toHaveLength(1);
+        expect(entries[0]).toMatchObject({
+          id: first!.id,
+          reason: 'HIGH_DISCOUNT',
+          status: 'OPEN',
+          openedAt: clock.now(),
+        });
+      });
+
+      it('refuses a decision on a promotion that changed after the admin looked', async () => {
+        const promotionId = await pendingReview();
+        const queue = await make(ListPromotionReviews).execute(admin(), {});
+        if (!queue.ok) throw new Error('list failed');
+        const item = queue.value[0]!;
+        const seen = item.promotion.updatedAt.toString();
+
+        clock.advance(Temporal.Duration.from({ hours: 1 }));
+        await make(EditOwnPromotion).execute(seller(), {
+          ...sale({ name: 'Changed after the admin looked' }),
+          promotionId,
+        });
+
+        const stale = await make(DecidePromotionReview).execute(admin(), {
+          reviewId: item.review.id,
+          decision: 'APPROVE',
+          promotionVersion: seen,
+        });
+        expect(stale).toEqual({ ok: false, error: { code: 'promotions.invalid-state' } });
+        expect(reviewQueue.entries.get(item.review.id)?.status).toBe('OPEN');
+
+        const refreshed = await make(ListPromotionReviews).execute(admin(), {});
+        if (!refreshed.ok) throw new Error('list failed');
+        const fresh = refreshed.value[0]!;
+        expect(fresh.promotion.updatedAt.toString()).not.toBe(seen);
+        const ok = await make(DecidePromotionReview).execute(admin(), {
+          reviewId: fresh.review.id,
+          decision: 'APPROVE',
+          promotionVersion: fresh.promotion.updatedAt.toString(),
+        });
+        expect(ok.ok).toBe(true);
+      });
+
+      it('wants the promotion version in a decision', async () => {
+        await pendingReview();
+        const reviewId = [...reviewQueue.entries.keys()][0]!;
+        for (const promotionVersion of [undefined, 'yesterday', 42]) {
+          expect(
+            await make(DecidePromotionReview).execute(admin(), {
+              reviewId,
+              decision: 'APPROVE',
+              promotionVersion,
+            }),
+          ).toMatchObject({
+            ok: false,
+            error: { code: 'validation.failed', fields: [{ path: 'promotionVersion' }] },
+          });
+        }
+        expect(reviewQueue.entries.get(reviewId)?.status).toBe('OPEN');
+      });
+    });
+
+    describe('the currency of a quote (L1)', () => {
+      const foreign = (extra: Record<string, unknown> = {}) =>
+        quoteRequest({
+          lines: [
+            {
+              id: 'l1',
+              sellerId: SELLER,
+              productId: product(1),
+              unitPrice: money(10000n, 'EUR'),
+              quantity: 1,
+            },
+          ],
+          ...extra,
+        });
+      const facade = () =>
+        new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+      const mismatch = {
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'currency', code: 'mismatch' }] },
+      };
+
+      it('is refused with the switch on', async () => {
+        expect(await facade().quote(system, foreign())).toMatchObject(mismatch);
+      });
+
+      it('is refused with the switch off too, before the no-discount answer', async () => {
+        await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+        expect(await facade().quote(system, foreign())).toMatchObject(mismatch);
+        expect(
+          await facade().quote(system, quoteRequest({ orderCommission: money(5000n, 'EUR') })),
+        ).toMatchObject(mismatch);
+        const wrongShipping = quoteRequest({
+          shipping: [{ id: 's1', sellerId: null, zoneCode: 'Z1', amount: money(900n, 'EUR') }],
+        });
+        expect(await facade().quote(system, wrongShipping)).toMatchObject(mismatch);
+        const right = await facade().quote(system, quoteRequest());
+        expect(right.ok && right.value.enabled).toBe(false);
+      });
+    });
+
+    describe('the free-shipping threshold (L3)', () => {
+      const marketDefault = policy.settings(market)!.freeShippingThresholdMinor;
+      const set = (thresholdMinor: bigint | null) =>
+        make(SetFreeShippingThreshold).execute(admin(), {
+          zoneCode: 'remote',
+          thresholdMinor: thresholdMinor === null ? null : String(thresholdMinor),
+        });
+
+      it('needs a fresh code to go below the Market default', async () => {
+        expect(await set(marketDefault - 1n)).toMatchObject({
+          ok: false,
+          error: {
+            code: 'second-factor.required',
+            actionKey: 'promotions.platform-funding.approve',
+          },
+        });
+        expect(thresholds.rows.size).toBe(0);
+        stepUp.fresh = true;
+        expect((await set(marketDefault - 1n)).ok).toBe(true);
+        expect(stepUp.spent).toEqual(['promotions.platform-funding.approve']);
+        expect(thresholds.rows.get('remote')?.thresholdMinor).toBe(marketDefault - 1n);
+        expect(Object.keys(audit.entries.at(-1)?.after ?? {})).toContain('stepUpSessionId');
+      });
+
+      it('needs no code at or above the default, to clear a zone, or to repeat the stored value', async () => {
+        expect((await set(marketDefault)).ok).toBe(true);
+        expect((await set(marketDefault + 1000n)).ok).toBe(true);
+        expect((await set(null)).ok).toBe(true);
+        stepUp.fresh = true;
+        expect((await set(marketDefault - 1n)).ok).toBe(true);
+        expect((await set(marketDefault - 1n)).ok).toBe(true);
+        expect(stepUp.spent).toHaveLength(1);
+      });
+
+      it('refuses a threshold of zero', async () => {
+        expect(await set(0n)).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      });
+    });
+
+    describe('re-enabling the first-order discount (L4)', () => {
+      const budget = String(BigInt(rules.platformBudgetStepUpMinor) + 1n);
+      const save = (enabled: boolean, monthlyBudgetMinor = budget) =>
+        make(SetFirstOrderSettings).execute(admin(), {
+          enabled,
+          kind: 'PERCENT',
+          percentBps: 500,
+          minSpendMinor: '3000',
+          monthlyBudgetMinor,
+        });
+
+      it('needs a fresh code to switch it back on with a budget above the step-up amount', async () => {
+        stepUp.fresh = true;
+        expect((await save(false)).ok).toBe(true);
+        expect(await save(true)).toMatchObject({
+          ok: false,
+          error: { code: 'second-factor.required' },
+        });
+        expect(firstOrder.row?.enabled).toBe(false);
+        stepUp.fresh = true;
+        expect((await save(true)).ok).toBe(true);
+        expect(firstOrder.row?.enabled).toBe(true);
+        // Already on with the same budget, a change of nothing else needs no code.
+        expect((await save(true)).ok).toBe(true);
+        // Switching it off never does.
+        expect((await save(false)).ok).toBe(true);
+      });
+
+      it('needs no code to switch it on with a budget at or below the step-up amount', async () => {
+        const small = String(BigInt(rules.platformBudgetStepUpMinor));
+        expect((await save(false, small)).ok).toBe(true);
+        expect((await save(true, small)).ok).toBe(true);
+      });
+    });
+
+    describe('promotions per seller (L5)', () => {
+      const cap = rules.maxActivePromotionsPerSeller;
+      const fill = async (count: number, extra: Record<string, unknown> = {}) => {
+        const ids: Id<'Promotion'>[] = [];
+        for (let i = 0; i < count; i++) {
+          const made = await make(CreateOwnPromotion).execute(
+            seller(),
+            sale({ name: `s${i}`, ...extra }),
+          );
+          if (!made.ok) throw new Error(`create ${i} failed: ${JSON.stringify(made.error)}`);
+          ids.push(made.value.id);
+        }
+        return ids;
+      };
+
+      it('refuses the promotion past the Market maximum, for that seller only', async () => {
+        await fill(cap);
+        expect(
+          await make(CreateOwnPromotion).execute(seller(), sale({ name: 'one more' })),
+        ).toEqual({
+          ok: false,
+          error: { code: 'promotions.too-many-active' },
+        });
+        expect(promotions.records.size).toBe(cap);
+        const other = await make(CreateOwnPromotion).execute(
+          seller(SELLER_2, SELLER_2_ACCOUNT),
+          sale({ name: 'other seller' }),
+        );
+        expect(other.ok).toBe(true);
+      });
+
+      it('does not count a paused promotion, and does not let it come back past the maximum', async () => {
+        const ids = await fill(cap);
+        await make(PauseOwnPromotion).execute(seller(), { promotionId: ids[0] });
+        expect((await make(CreateOwnPromotion).execute(seller(), sale({ name: 'x' }))).ok).toBe(
+          true,
+        );
+        // The paused one cannot come back while the seller is at the maximum.
+        expect(await make(ResumeOwnPromotion).execute(seller(), { promotionId: ids[0] })).toEqual({
+          ok: false,
+          error: { code: 'promotions.too-many-active' },
+        });
+        expect(promotions.records.get(ids[0]!)?.status).toBe('PAUSED');
+      });
+
+      it('does not let an edit bring an ended promotion back past the maximum', async () => {
+        const startsAt = T0.subtract({ hours: 72 }).toString();
+        const ended = await fill(cap, { startsAt, endsAt: T0.subtract({ hours: 24 }).toString() });
+        // All ended: the seller is not at the maximum.
+        const live = await make(CreateOwnPromotion).execute(seller(), sale({ name: 'live' }));
+        expect(live.ok).toBe(true);
+        const stillRoom = await fill(cap - 1, { name: 'filler' });
+        expect(stillRoom).toHaveLength(cap - 1);
+        const revived = await make(EditOwnPromotion).execute(seller(), {
+          ...sale({ startsAt, endsAt: null }),
+          promotionId: ended[0],
+        });
+        expect(revived).toEqual({ ok: false, error: { code: 'promotions.too-many-active' } });
+      });
+
+      it('asks the repository for the cart sellers and products only', async () => {
+        await make(CreateOwnPromotion).execute(seller(), sale());
+        const request = quoteRequest({
+          lines: [
+            {
+              id: 'a',
+              sellerId: SELLER_2,
+              productId: product(9),
+              unitPrice: money(500n, currency),
+              quantity: 1,
+            },
+            {
+              id: 'b',
+              sellerId: SELLER,
+              productId: product(1),
+              unitPrice: money(500n, currency),
+              quantity: 2,
+            },
+            {
+              id: 'c',
+              sellerId: SELLER,
+              productId: product(1),
+              unitPrice: money(500n, currency),
+              quantity: 1,
+            },
+          ],
+        });
+        const quoted = await new PromotionsFacadeImplementation(
+          make(QuoteDiscounts),
+          make(CheckWasPrice),
+        ).quote(system, request);
+        expect(quoted.ok).toBe(true);
+        expect(promotions.lastScope).toEqual({
+          sellerIds: [SELLER, SELLER_2].sort(),
+          productIds: [product(1), product(9)].sort(),
+        });
+      });
+    });
+
+    describe('reads that decide a write take the row lock (M)', () => {
+      it('locks the promotion before an edit, a budget change, a pause and a decision', async () => {
+        const created = await make(CreatePromotion).execute(admin(), platformCart());
+        if (!created.ok) throw new Error('create failed');
+        const promotionId = created.value.id;
+        promotions.locked.length = 0;
+        await make(EditPromotion).execute(admin(), { ...platformCart({ name: 'n' }), promotionId });
+        await make(SetPromotionBudget).execute(admin(), { promotionId, budgetMinor: '5000' });
+        await make(PausePromotion).execute(admin(), { promotionId });
+        await make(ResumePromotion).execute(admin(), { promotionId });
+        expect(promotions.locked).toEqual([promotionId, promotionId, promotionId, promotionId]);
+
+        const mine = await make(CreateOwnPromotion).execute(seller(), sale());
+        if (!mine.ok) throw new Error('create failed');
+        promotions.locked.length = 0;
+        const reviewId = [...reviewQueue.entries.keys()][0]!;
+        await make(DecidePromotionReview).execute(admin(), {
+          reviewId,
+          decision: 'APPROVE',
+          promotionVersion: mine.value.updatedAt.toString(),
+        });
+        expect(promotions.locked).toEqual([mine.value.id]);
+      });
     });
   });
 });
