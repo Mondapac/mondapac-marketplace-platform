@@ -11,6 +11,8 @@ import {
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { PricingModule } from '../pricing';
+import { SellersModule } from '../sellers';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { OPT_IN_REPOSITORY } from './application/ports/opt-in.repository';
@@ -99,10 +101,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
 /**
  * Promotions (package T1): the discount domain and the pure calculation, the admin and seller
  * use cases, the review queue and the per-Market switch (off by default), in the `promotions`
- * schema. Other modules reach it through `PROMOTIONS_FACADE` only. Checkout integration, budget
+ * schema. Other modules reach it through `PROMOTIONS_FACADE` only. The seller's age and the
+ * was-price history are read through the sellers and pricing facades. Checkout integration, budget
  * reservation, the ledger and refunds come in later packages.
  */
 @Module({
+  imports: [PricingModule, SellersModule],
   controllers: [AdminPromotionsController, SellerPromotionsController],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
