@@ -64,10 +64,31 @@ export const RefundSucceeded = defineEvent({
   },
 });
 
+/**
+ * A seller order was delivered (Phase 5 package 6b): the carrier reported the parcel delivered, the
+ * seller marked it delivered, or the buyer collected a pickup order; once per seller order, in the
+ * unit that records it. Ids only: no instant, source, address or amount. `commission-payouts` is told
+ * the delivery facts (the instant and who confirmed it) by ordering's own subscriber, which reads
+ * them at handling time, so a late or repeated event acts on the stored state. The aggregate
+ * version is 3: the seller order's earlier events (ready, shipped) carry 1.
+ */
+export const SellerOrderDelivered = defineEvent({
+  type: 'ordering.seller-order-delivered.v1',
+  aggregateType: 'seller-order',
+  payload: {
+    orderId: eventField.id(),
+    sellerOrderId: eventField.id(),
+    sellerId: eventField.id(),
+    /** Who confirmed the delivery, fixed at the moment it happened: the carrier's report or the seller's click. */
+    source: eventField.enumOf(['carrier', 'seller-click'] as const),
+  },
+});
+
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
 export const ORDERING_EVENTS: readonly EventDefinition[] = [
   OrderPaid,
   OrderShipped,
   SellerOrderReady,
+  SellerOrderDelivered,
   RefundSucceeded,
 ];

@@ -1,6 +1,18 @@
 {
   "recorded": [
     {
+      "ip": false,
+      "owner": "commission-payouts",
+      "payload": {
+        "disputeId": "id",
+        "reason": "enumOf(unknown-order|payment-intent-mismatch|order-changed)"
+      },
+      "severity": "s2",
+      "targetRequired": false,
+      "targetType": null,
+      "type": "commission-payouts.dispute.order-mismatch"
+    },
+    {
       "type": "identity.password.changed",
       "owner": "identity",
       "severity": "s3",
@@ -99,6 +111,28 @@
       "ip": false,
       "payload": {
         "reason": "enumOf(unreadable|not-test-mode|no-market|malformed|changed)"
+      }
+    },
+    {
+      "type": "payments.live-check.failed",
+      "owner": "payments",
+      "severity": "s3",
+      "targetType": "payments.connected-account",
+      "targetRequired": false,
+      "ip": false,
+      "payload": {
+        "reason": "enumOf(provider-unavailable)"
+      }
+    },
+    {
+      "type": "payments.transfer.alert",
+      "owner": "payments",
+      "severity": "s2",
+      "targetType": "payments.connected-account",
+      "targetRequired": false,
+      "ip": false,
+      "payload": {
+        "kind": "enumOf(amount-out-of-range|insufficient-platform-balance|daily-total-over-threshold|fence-breached|partial-match|hmac-key-missing|transfer-unmatched)"
       }
     },
     {

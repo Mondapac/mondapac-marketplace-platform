@@ -136,4 +136,12 @@ export class PrismaDisputeStore implements DisputeStore {
     });
     return rows.map(toRecord);
   }
+
+  async findByOrder(market: MarketContext, orderId: string) {
+    const rows = await this.prisma.tx(market).paymentsDispute.findMany({
+      where: { marketId: market.marketId, orderId },
+      orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map(toRecord);
+  }
 }

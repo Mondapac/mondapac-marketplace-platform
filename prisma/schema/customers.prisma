@@ -49,7 +49,42 @@ model CustomersAccountDeletionSettings {
   @@schema("customers")
 }
 
-/// Customers' outbox: `customers.account-deletion-settings-changed.v1`.
+/// A buyer's request to delete their account (package 5b). At most one open (pending or executing) request per
+/// account (a hand-written partial unique index over pending and executing). The executor job claims
+/// a pending request once `scheduledFor` has passed (executing; the buyer can no longer cancel),
+/// carries it out and marks it `completed`; the buyer can cancel while it waits.
+/// Holds no personal data: ids, a status and times only.
+model CustomersAccountDeletionRequest {
+  id                String    @id @db.Uuid
+  marketId          String    @map("market_id") @db.VarChar(8)
+  tenantId          String    @map("tenant_id")
+  /// The customer account (identity), a plain id with no foreign key; meaningless once erased.
+  accountId         String    @map("account_id") @db.Uuid
+  /// pending, executing, cancelled or completed (CHECK). pending to executing (the job's claim),
+  /// executing back to pending (a blocker found after the claim) or to completed; pending to
+  /// cancelled. Trigger-free: the grant lets the application update only the state columns, and
+  /// every update is conditional on the status it moves from.
+  status            String
+  /// The waiting period in force when the request was made; the request keeps it.
+  waitingPeriodDays Int       @map("waiting_period_days") @db.SmallInt
+  requestedAt       DateTime  @map("requested_at") @db.Timestamptz(6)
+  /// requestedAt plus waitingPeriodDays (UTC instants; the Clock, not Date arithmetic).
+  scheduledFor      DateTime  @map("scheduled_for") @db.Timestamptz(6)
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  /// customer (the buyer cancelled) or sign-in (the buyer signed in during the wait); CHECK.
+  cancelReason      String?   @map("cancel_reason")
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  /// When the job claimed it (status executing, and kept once completed); null while pending and
+  /// on a cancelled request. A claim older than 15 minutes is taken again by the next run.
+  claimedAt         DateTime? @map("claimed_at") @db.Timestamptz(6)
+
+  // Hand-written partial indexes (the migration): one open request per account, the due query
+  // (pending, by date) and the stale-claim query (executing, by claim time).
+  @@map("account_deletion_requests")
+  @@schema("customers")
+}
+
+/// Customers' outbox: `customers.account-deletion-settings-changed.v1` and the three account deletion request events.
 model CustomersOutbox {
   /// UUIDv7 stamped by the outbox writer.
   eventId          String    @id @map("event_id") @db.Uuid

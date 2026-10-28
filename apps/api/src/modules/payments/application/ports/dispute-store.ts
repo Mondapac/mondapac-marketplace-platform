@@ -43,6 +43,9 @@ export interface DisputeStore {
 
   /** The disputes of these ids in this Market; unknown ids are left out. */
   findMany(market: MarketContext, ids: readonly string[]): Promise<DisputeRecord[]>;
+
+  /** The disputes of one order in this Market, oldest first (the `(market_id, order_id)` index). */
+  findByOrder(market: MarketContext, orderId: string): Promise<DisputeRecord[]>;
 }
 
 export const DISPUTE_STORE = Symbol('DISPUTE_STORE');

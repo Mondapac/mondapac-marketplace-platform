@@ -13,6 +13,7 @@ import type {
   CommissionRateMap,
   PaidSellerOrder,
   RefundedSellerOrder,
+  SellerOrderDelivered,
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import type {
@@ -56,6 +57,7 @@ import {
   pickupStatusOf,
   type PickupCodeRecord,
 } from '../../src/modules/ordering/domain/pickup-code';
+import type { DeliveryMethodPolicy } from '../../src/modules/ordering/application/ports/delivery-method-policy';
 import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
 import type { RefundRepository } from '../../src/modules/ordering/application/ports/refund.repository';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
@@ -65,8 +67,11 @@ import type {
   CarrierDeliveryRequest,
   CarrierShipment,
   CheckoutShippingFees,
+  ChoiceRefusal,
   FlatFeeMap,
+  PricedDelivery,
   QuoteDropoff,
+  SellerDeliveryAvailability,
   ShippingFacade,
   ShippingFailure,
 } from '../../src/modules/shipping';
@@ -117,6 +122,15 @@ export class MemoryOrders implements OrderRepository {
         (o) => o.accountId === accountId && o.status === 'pending-payment',
       ),
     );
+  }
+  countOpenOf(_m: MarketContext, accountId: Id<'Account'>) {
+    const openOrders = [...this.rows.values()].filter(
+      (o) =>
+        o.accountId === accountId &&
+        (o.status === 'pending-payment' ||
+          (o.status === 'confirmed' && o.sellerOrders.some((s) => s.fulfilment !== 'delivered'))),
+    ).length;
+    return Promise.resolve({ openOrders, pendingRefunds: 0 });
   }
   private newestFirst(rows: OrderState[], page: OrderPage) {
     return rows
@@ -416,6 +430,39 @@ export class FakeShipping implements ShippingFacade {
     if (this.pickupDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     return Promise.resolve(ok(new Set(sellerIds.filter((id) => this.pickupApproved.has(id)))));
   }
+  /** The delivery choices `deliveryChoice` refuses, by `sellerId|method`, with the reason. */
+  deliveryRefused = new Map<string, ChoiceRefusal>();
+  deliveryChoiceDown = false;
+  deliveryChoicesAsked: {
+    readonly sellerId: string;
+    readonly method: string;
+    readonly window: { readonly start: string; readonly end: string } | null;
+  }[] = [];
+  deliveryAvailability(): Promise<
+    Result<ReadonlyMap<Id<'Seller'>, SellerDeliveryAvailability>, ShippingFailure>
+  > {
+    return Promise.resolve(ok(new Map()));
+  }
+  deliveryChoice(
+    _c: CallContext,
+    request: {
+      readonly sellerId: Id<'Seller'>;
+      readonly method: string;
+      readonly window: { readonly start: string; readonly end: string } | null;
+    },
+  ): Promise<
+    Result<{ readonly allowed: boolean; readonly reason: ChoiceRefusal | null }, ShippingFailure>
+  > {
+    this.deliveryChoicesAsked.push(request);
+    if (this.deliveryChoiceDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    const reason = this.deliveryRefused.get(`${request.sellerId}|${request.method}`) ?? null;
+    return Promise.resolve(ok({ allowed: reason === null, reason }));
+  }
+  priceDelivery(_c: CallContext, quote: Money): Promise<Result<PricedDelivery, ShippingFailure>> {
+    return Promise.resolve(
+      ok({ quote, margin: { amount: 0n, currency: quote.currency }, total: quote }),
+    );
+  }
   deliversTo(_c: CallContext, postcode: string): Promise<Result<boolean, ShippingFailure>> {
     if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     return Promise.resolve(ok(!this.outside.has(postcode)));
@@ -546,6 +593,20 @@ export class FakeCommission implements CommissionPayoutsFacade {
   refundFails: CommissionPayoutsFailure | null = null;
   /** When set, only this refund is refused by `refundFails` (the others are recorded). */
   refundFailOnly: string | null = null;
+  /** The deliveries sent to the anchor; `deliveredFails` makes commission-payouts refuse them. */
+  delivered: SellerOrderDelivered[] = [];
+  deliveredFails: CommissionPayoutsFailure | null = null;
+  recordSellerOrderDelivered(
+    _c: CallContext,
+    delivered: SellerOrderDelivered,
+  ): Promise<Result<'anchored' | 'already-anchored', CommissionPayoutsFailure>> {
+    if (this.deliveredFails !== null) return Promise.resolve(err(this.deliveredFails));
+    if (this.delivered.some((d) => d.sellerOrderId === delivered.sellerOrderId)) {
+      return Promise.resolve(ok('already-anchored' as const));
+    }
+    this.delivered.push(delivered);
+    return Promise.resolve(ok('anchored' as const));
+  }
   recordRefund(
     _c: CallContext,
     refund: RefundedSellerOrder,
@@ -986,5 +1047,12 @@ export class FakePickupVault implements PickupCodeVault {
     const prefix = `sealed:${sellerOrderId}:`;
     if (!sealed.startsWith(prefix)) throw new Error('sealed for another seller order');
     return Promise.resolve(ok(sealed.slice(prefix.length)));
+  }
+}
+
+/** A {@link DeliveryMethodPolicy} for the unit tests of ordering: every method is allowed. */
+export class AllowAllDeliveryMethods implements DeliveryMethodPolicy {
+  allows(): Promise<boolean> {
+    return Promise.resolve(true);
   }
 }

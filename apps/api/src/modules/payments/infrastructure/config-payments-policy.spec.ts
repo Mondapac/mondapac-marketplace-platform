@@ -1,3 +1,4 @@
+import { money } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
@@ -22,6 +23,23 @@ describe('ConfigPaymentsPolicy', () => {
       const market = testMarketContext(code, 'default');
       expect(policy.bankChangeCoolingOffHours(market)).toBe(24);
       expect(policy.normalPayoutSchedule(market)).toBe('daily');
+    },
+  );
+
+  it.each([
+    ['AU', 'AUD', 500_000n, 2_000_000n, 120, 'Australia/Brisbane'],
+    ['ZZ', 'JPY', 800_000n, 3_000_000n, 90, 'Asia/Tokyo'],
+  ])(
+    'reads the transfer limits of market %s in its own currency %s',
+    (code, currency, max, threshold, lease, zone) => {
+      const market = testMarketContext(code, 'default');
+      expect(policy.marketCurrency(market)).toBe(currency);
+      expect(policy.marketTimeZone(market)).toBe(zone);
+      expect(policy.transferLimits(market)).toEqual({
+        maxTransferAmount: money(max, currency),
+        dailyTransferAlertThreshold: money(threshold, currency),
+        sendLeaseSeconds: lease,
+      });
     },
   );
 

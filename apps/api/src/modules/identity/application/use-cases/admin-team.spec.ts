@@ -102,12 +102,15 @@ const LEAD_KEYS = [
   'assistant.settings.view',
   'customers.account-deletion-settings.view',
   'shipping.fleet-selection.view',
+  'shipping.delivery-settings.view',
   'ordering.order.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
   'shipping.flat-fee.view',
   'commission-payouts.settlement.view',
+  'commission-payouts.payout-terms.view',
+  'commission-payouts.dispute.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {

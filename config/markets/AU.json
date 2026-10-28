@@ -11,11 +11,24 @@
   "payments": {
     "connectedAccountCountry": "AU",
     "bankChangeCoolingOffHours": 24,
-    "payoutSchedule": "daily"
+    "payoutSchedule": "daily",
+    "maxTransferAmount": { "amountMinor": 500000, "currency": "AUD" },
+    "dailyTransferAlertThreshold": { "amountMinor": 2000000, "currency": "AUD" },
+    "transferSendLeaseSeconds": 120
   },
   "commissionPayouts": {
     "defaultRateBps": 1500,
-    "provisionalTaxRateBps": 1000
+    "provisionalTaxRateBps": 1000,
+    "payoutTerms": {
+      "weekdays": ["TUE"],
+      "localTime": "10:00",
+      "holdDaysCarrier": 7,
+      "holdDaysSellerClick": 14,
+      "minimumMinor": 5000,
+      "minimumMinorCap": 100000,
+      "approvalMode": "AUTO",
+      "firstPayoutManual": true
+    }
   },
   "wallet": {
     "balanceCapMinor": 50000,

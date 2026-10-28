@@ -1,5 +1,7 @@
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { PricedDelivery } from '../domain/delivery-margin';
+import type { ChoiceRefusal, SellerDeliveryAvailability } from '../domain/delivery-settings';
 
 export type ShippingFailure =
   | AccessDenied
@@ -145,6 +147,50 @@ export interface ShippingFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<ReadonlySet<Id<'Seller'>>, ShippingFailure>>;
+
+  /**
+   * The delivery methods each asked seller (at most 100 distinct ids) offers right now, with the
+   * reason for every one that is not: `platform-off` (the Market switched the method off),
+   * `seller-unsupported` (an admin did not give it to this seller), `past-cut-off` (same day,
+   * after today's cut-off in the seller's zone) and `no-pickup-address` (pickup without an
+   * approved pickup address). The answer carries the cut-off and the scheduled days and window
+   * length for a screen. Public configuration: the same answer for every caller. A failed read
+   * is `shipping.unavailable`: callers fail closed and never read it as "everything is open".
+   * Delivery models, package 4.
+   */
+  deliveryAvailability(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, SellerDeliveryAvailability>, ShippingFailure>>;
+
+  /**
+   * Whether one seller order may be delivered the way the buyer chose: the method is open now
+   * for the seller and, for `scheduled`, the window (ISO UTC instants) starts in the future, no
+   * later than the Market's days ahead and lasts the configured length. `reason` says why not
+   * (the codes above, or `window-in-past`, `window-too-far`, `window-length`, `window-missing`).
+   * `ordering`'s delivery-method policy asks this at checkout. Fails closed like the read above.
+   */
+  deliveryChoice(
+    context: CallContext,
+    request: {
+      readonly sellerId: Id<'Seller'>;
+      readonly method: string;
+      readonly window: { readonly start: string; readonly end: string } | null;
+    },
+  ): Promise<
+    Result<{ readonly allowed: boolean; readonly reason: ChoiceRefusal | null }, ShippingFailure>
+  >;
+
+  /**
+   * What the buyer pays for a delivery whose fleet quote is `quote` (in the Market currency): the
+   * quote plus the Market's margin, rounded up to its step. `margin` is what the platform adds
+   * (the rounding included), so `total` = `quote` + `margin`. For checkout (package 5), under the
+   * customer's context. `validation.failed` for a quote in another currency or a negative one.
+   */
+  priceDelivery(
+    context: CallContext,
+    quote: Money,
+  ): Promise<Result<PricedDelivery, ShippingFailure>>;
 
   /**
    * Whether the Market delivers to the postcode: in a ServiceArea open for delivery. Anyone may

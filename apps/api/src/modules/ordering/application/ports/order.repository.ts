@@ -73,6 +73,16 @@ export interface OrderRepository {
   /** The account's orders still waiting for payment (to supersede on a new checkout). */
   findPending(market: MarketContext, accountId: Id<'Account'>): Promise<readonly OrderState[]>;
 
+  /**
+   * What is still open for the account, for a decision that must not strand a customer (account
+   * deletion): the orders waiting for payment, or paid and not yet delivered in every seller
+   * order (cancelled orders and delivered ones are closed), and the refunds still pending.
+   */
+  countOpenOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+  ): Promise<{ readonly openOrders: number; readonly pendingRefunds: number }>;
+
   listOwn(
     market: MarketContext,
     accountId: Id<'Account'>,

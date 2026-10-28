@@ -56,7 +56,7 @@ export function sellersNoindex(state: SellersState): boolean {
 }
 
 /** The origin of the listed host the request came to; none on sample data or an unknown host. */
-async function requestOrigin(): Promise<string | undefined> {
+export async function requestOrigin(): Promise<string | undefined> {
   const config = storefrontApiConfig();
   if (config === null) return undefined;
   return storefrontHostFor(config, (await headers()).get('host'))?.origin;
@@ -67,7 +67,7 @@ async function requestOrigin(): Promise<string | undefined> {
  * image. A path is checked after parsing, since the parser reads `\` as `/` and drops tabs and
  * newlines (`/\evil.example` would leave the site).
  */
-function imageUrl(value: string | undefined, origin: string): string | undefined {
+export function imageUrl(value: string | undefined, origin: string): string | undefined {
   if (value === undefined) return undefined;
   try {
     if (value.startsWith('/')) {
@@ -85,7 +85,10 @@ function imageUrl(value: string | undefined, origin: string): string | undefined
  * The absolute canonical, or none when parsing changed the path: a `.` or `..` segment from a
  * path param would collapse into another page's address.
  */
-function canonicalOf(seo: PageSeo, origin: string): string | undefined {
+export function canonicalOf(
+  seo: Pick<PageSeo, 'path' | 'page'>,
+  origin: string,
+): string | undefined {
   const url = new URL(seo.path, origin);
   if (url.origin !== origin || url.pathname !== seo.path.split('?', 1)[0]) return undefined;
   if (seo.page !== undefined && seo.page > 1) url.searchParams.set('page', String(seo.page));

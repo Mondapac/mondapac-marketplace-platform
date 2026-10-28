@@ -1,6 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { RateView } from '../application/use-cases/view-commission-rate.use-case';
 import { LEDGER_KINDS } from '../domain/ledger';
+import { HOLD_REASONS, RELEASE_REASONS, ADMIN_HOLD_REASONS } from '../domain/payout-hold';
+import { APPROVAL_MODES, PAYOUT_WEEKDAYS, TERMS_CHANGE_REASONS } from '../domain/payout-terms';
+import type { PayoutHoldView } from '../application/use-cases/place-payout-hold.use-case';
+import type { PayoutTermsView } from '../application/use-cases/view-seller-payout-terms.use-case';
 import type { LedgerView } from '../application/use-cases/view-own-ledger.use-case';
 
 // Bodies of the commission-payouts routes. Ids, basis points and minor-unit strings only.
@@ -121,4 +125,152 @@ export const ledgerBody = (view: LedgerView): LedgerBody => ({
     recordedAt: entry.recordedAt.toString(),
   })),
   nextCursor: view.nextCursor,
+});
+
+class PayoutTermsValuesBody {
+  @ApiProperty({ enum: PAYOUT_WEEKDAYS, isArray: true }) weekdays!: string[];
+  @ApiProperty({ example: '10:00', description: "HH:mm in the seller's own time zone." })
+  localTime!: string;
+  @ApiProperty({ description: 'Days held after a delivery the carrier confirmed (7 to 60).' })
+  holdDaysCarrier!: number;
+  @ApiProperty({
+    description: "Days held after a delivery only the seller's click confirmed (7 to 60).",
+  })
+  holdDaysSellerClick!: number;
+  @ApiProperty({
+    description: 'Minor units of the Market currency; a smaller payout carries over.',
+  })
+  minimumMinor!: string;
+  @ApiProperty({ enum: APPROVAL_MODES }) approvalMode!: string;
+  @ApiProperty({
+    description: 'Market config only: the first payout of a new seller waits for an admin.',
+  })
+  firstPayoutManual!: boolean;
+}
+
+class PayoutTermsOverrideBody {
+  @ApiProperty({ enum: PAYOUT_WEEKDAYS, isArray: true, nullable: true, type: [String] })
+  weekdays!: string[] | null;
+  @ApiProperty({ nullable: true, type: String }) localTime!: string | null;
+  @ApiProperty({ nullable: true, type: Number }) holdDaysCarrier!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) holdDaysSellerClick!: number | null;
+  @ApiProperty({ nullable: true, type: String }) minimumMinor!: string | null;
+  @ApiProperty({ enum: APPROVAL_MODES, nullable: true, type: String }) approvalMode!: string | null;
+}
+
+export class PayoutTermsBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ enum: ['seller', 'market'], description: 'Whether the seller has its own terms.' })
+  source!: string;
+  @ApiProperty({ type: PayoutTermsValuesBody, description: 'The terms in force.' })
+  effective!: PayoutTermsValuesBody;
+  @ApiProperty({
+    type: PayoutTermsOverrideBody,
+    nullable: true,
+    description: "The seller's own values (null fields use the Market's), or null.",
+  })
+  override!: PayoutTermsOverrideBody | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'The override version to send back as expectedVersion; null without an override.',
+  })
+  version!: number | null;
+}
+
+export class SetPayoutTermsRequest {
+  @ApiProperty({ enum: TERMS_CHANGE_REASONS, description: 'Why the terms change.' })
+  reasonCode!: string;
+  @ApiProperty({ enum: PAYOUT_WEEKDAYS, isArray: true, required: false })
+  weekdays?: string[];
+  @ApiProperty({ required: false, example: '10:00' }) localTime?: string;
+  @ApiProperty({ required: false, description: '7 to 60.' }) holdDaysCarrier?: number;
+  @ApiProperty({ required: false, description: '7 to 60.' }) holdDaysSellerClick?: number;
+  @ApiProperty({
+    required: false,
+    description: 'Minor units, at least 1 and at most the Market minimumMinorCap.',
+  })
+  minimumMinor?: number;
+  @ApiProperty({ enum: APPROVAL_MODES, required: false }) approvalMode?: string;
+  @ApiProperty({
+    nullable: true,
+    required: false,
+    type: Number,
+    description:
+      'The version the admin saw; null (or absent) when the seller had no override. A field left out uses the Market value; at least one must be set.',
+  })
+  expectedVersion?: number | null;
+}
+
+export class PayoutHoldBody {
+  @ApiProperty({ format: 'uuid' }) holdId!: string;
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) sellerOrderId!: string | null;
+  @ApiProperty({ enum: HOLD_REASONS }) reason!: string;
+  @ApiProperty({ enum: ['admin', 'system'] }) origin!: string;
+  @ApiProperty({ format: 'date-time' }) placedAt!: string;
+  @ApiProperty() active!: boolean;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) releasedAt!: string | null;
+  @ApiProperty({ enum: RELEASE_REASONS, nullable: true, type: String }) releaseReason!:
+    string | null;
+}
+
+export class PayoutHoldsBody {
+  @ApiProperty({ type: [PayoutHoldBody], description: 'Active holds first, newest first.' })
+  holds!: PayoutHoldBody[];
+}
+
+export class PlacePayoutHoldRequest {
+  @ApiProperty({ enum: ADMIN_HOLD_REASONS, description: 'The reason code (required).' })
+  reason!: string;
+  @ApiProperty({
+    format: 'uuid',
+    required: false,
+    description: "One of the seller's seller orders; absent = the whole seller.",
+  })
+  sellerOrderId?: string;
+}
+
+export class ReleasePayoutHoldRequest {
+  @ApiProperty({ enum: RELEASE_REASONS, description: 'The reason code (required).' })
+  reason!: string;
+}
+
+export const payoutTermsBody = (view: PayoutTermsView): PayoutTermsBody => ({
+  sellerId: view.sellerId,
+  source: view.source,
+  effective: {
+    weekdays: [...view.effective.weekdays],
+    localTime: view.effective.localTime,
+    holdDaysCarrier: view.effective.holdDaysCarrier,
+    holdDaysSellerClick: view.effective.holdDaysSellerClick,
+    minimumMinor: view.effective.minimumMinor.toString(),
+    approvalMode: view.effective.approvalMode,
+    firstPayoutManual: view.effective.firstPayoutManual,
+  },
+  override:
+    view.override === null
+      ? null
+      : {
+          weekdays: view.override.weekdays === null ? null : [...view.override.weekdays],
+          localTime: view.override.localTime,
+          holdDaysCarrier: view.override.holdDaysCarrier,
+          holdDaysSellerClick: view.override.holdDaysSellerClick,
+          minimumMinor:
+            view.override.minimumMinor === null ? null : view.override.minimumMinor.toString(),
+          approvalMode: view.override.approvalMode,
+        },
+  version: view.version,
+});
+
+export const payoutHoldBody = (view: PayoutHoldView): PayoutHoldBody => ({
+  holdId: view.holdId,
+  sellerId: view.sellerId,
+  sellerOrderId: view.sellerOrderId,
+  reason: view.reason,
+  origin: view.origin,
+  placedAt: view.placedAt.toString(),
+  active: view.active,
+  releasedAt: view.releasedAt === null ? null : view.releasedAt.toString(),
+  releaseReason: view.releaseReason,
 });

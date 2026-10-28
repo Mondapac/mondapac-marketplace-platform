@@ -16,6 +16,16 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   the most units of one Offer in a cart line and the ceiling of an Offer's per-customer cap
   (inventory design 3.3, cart design 4).
 
+- `payments` (optional section; Phase 5 packages 3 and 6c): `connectedAccountCountry` (ISO 3166
+  country of the seller's connected account), `bankChangeCoolingOffHours` (the waiting period after
+  a bank change; the code clamps it to 24 h to 14 d), `payoutSchedule` (`daily`), and, for the
+  transfers payments sends to sellers, all required with no core default:
+  `maxTransferAmount` (`{ "amountMinor", "currency" }`; AU 500000 AUD, the most one transfer may be;
+  a larger one is refused), `dailyTransferAlertThreshold` (the same shape; AU 2000000 AUD, the day's
+  executed total above which payments raises an alert) and `transferSendLeaseSeconds` (30 to 900; AU
+  120, how long a send is in flight before a lookup may decide it was not made). Both amounts must be
+  in the Market's `defaultCurrency`: loading fails for another currency.
+
 - `requestLimits`: the generic per-origin rate limiter (`apps/api/src/platform/rate-limit/`;
   identity design 6.8). `anonymousIdentityPerMinute` (sign-up, sign-in and reset requests;
   20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU) and `defaultPerMinute`

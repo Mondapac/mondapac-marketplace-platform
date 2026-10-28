@@ -42,6 +42,8 @@ import {
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-order-mail.use-case';
+import { SendSellerOrderDisputedMail } from './application/use-cases/send-seller-order-disputed-mail.use-case';
+import { disputeNoticeSubscriptions } from './presentation/subscribers/dispute-notice.subscriptions';
 import { SetSupportContact } from './application/use-cases/set-support-contact.use-case';
 import { UnsubscribeMarketingEmail } from './application/use-cases/unsubscribe-marketing-email.use-case';
 import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
@@ -219,6 +221,7 @@ function inAppNoticeProvider<U>(
     orderMailProvider(SendOrderConfirmationMail),
     orderMailProvider(SendSellerNewOrderMail),
     orderMailProvider(SendOrderShippedMail),
+    orderMailProvider(SendSellerOrderDisputedMail),
     marketingProvider(ViewUnsubscribeLink),
     marketingProvider(UnsubscribeMarketingEmail),
     cartReminderProvider,
@@ -252,6 +255,13 @@ function inAppNoticeProvider<U>(
         adminReviews: RecordAdminReviewNotice,
         sellerNotices: RecordSellerNotice,
       ) => inAppNoticeSubscriptions(sellerOrders, adminReviews, sellerNotices),
+    ),
+    // Package 8b: a disputed payment puts a seller order on hold (D8).
+    registerSubscriptionsFrom(
+      'notifications',
+      [RecordSellerNotice, SendSellerOrderDisputedMail],
+      (notice: RecordSellerNotice, mail: SendSellerOrderDisputedMail) =>
+        disputeNoticeSubscriptions(notice, mail),
     ),
     registerJobsFrom(
       'notifications',
