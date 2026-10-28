@@ -1174,6 +1174,49 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
       ]);
     });
 
+    it('holds a fixed amount to the units that are left, not the whole line', () => {
+      // Platform flash sale, 50.00 off per unit, one unit left, a line of 5 units at 20.00, cap 50 %.
+      const out = run(market, {
+        lines: [line('l1', 's1', 2000n, 5)],
+        promotions: [
+          flash({
+            sellerId: null,
+            platformShareBps: 10000,
+            reward: { kind: 'FIXED', amount: 5000n },
+            unitLimit: 1,
+          }),
+        ],
+        orderCommission: 100000n,
+        rules: { lineDiscountCapBps: 5000 },
+      });
+      // One unit costs 20.00 and the cap takes half of it.
+      expect(out.lines[0]!.discount).toBe(1000n);
+      const wide = run(market, {
+        lines: [line('l1', 's1', 2000n, 5)],
+        promotions: [
+          flash({
+            sellerId: null,
+            platformShareBps: 10000,
+            reward: { kind: 'FIXED', amount: 5000n },
+            unitLimit: 1,
+          }),
+        ],
+        orderCommission: 100000n,
+        rules: { lineDiscountCapBps: 10000 },
+      });
+      expect(wide.lines[0]!.discount).toBe(2000n);
+    });
+
+    it('holds the share maximum to the covered units of a limited promotion', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 1000n, 10)],
+        promotions: [
+          flash({ unitLimit: 1, maxShareBps: 5000, reward: { kind: 'PERCENT', bps: 10000 } }),
+        ],
+      });
+      expect(out.lines[0]!.discount).toBe(500n);
+    });
+
     it('works for the platform, which pays its share inside the commission', () => {
       const out = run(market, {
         lines: [line('l1', 's1', 1000n, 3)],
@@ -1182,6 +1225,61 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
       });
       expect(out.totals.goodsDiscount).toBe(150n);
       expect(out.totals.platformShare).toBe(150n);
+    });
+  });
+
+  describe('phase 2: units that qualify a multi-unit offer are paid at full price', () => {
+    const bxgy = promo({
+      id: 'bxgy',
+      type: 'BUY_X_GET_Y',
+      sellerId: 's1',
+      reward: { kind: 'PERCENT', bps: 10000 },
+      buyXGetY: { buyQty: 1, getQty: 1, maxRepeats: null },
+    });
+    const sale = (bps: number) =>
+      promo({ id: 'sale', sellerId: 's1', productIds: ['pa'], reward: { kind: 'PERCENT', bps } });
+    const lines = [line('l1', 's1', 1000n, 1, 'pa'), line('l2', 's1', 500n, 1, 'pb')];
+
+    it('does not count a unit another offer discounts as the buy unit', () => {
+      const out = run(market, { lines, promotions: [bxgy, sale(5000)] });
+      // l1 takes the sale, so l2 has no unit to be bought with and is not free.
+      expect(out.lines.map((l) => [l.lineId, l.discount])).toEqual([
+        ['l1', 500n],
+        ['l2', 0n],
+      ]);
+    });
+
+    it('gives the free unit when no other offer takes a line of the pool', () => {
+      const freeUnit = (500n * BigInt(market.lineCapBps)) / 10000n;
+      const out = run(market, { lines, promotions: [bxgy] });
+      expect(out.lines.map((l) => [l.lineId, l.discount])).toEqual([
+        ['l1', 0n],
+        ['l2', freeUnit],
+      ]);
+      // A sale on another seller's product leaves the pool alone.
+      const other = run(market, {
+        lines: [...lines, line('l3', 's2', 900n, 1, 'pc')],
+        promotions: [
+          bxgy,
+          promo({ id: 'sale', sellerId: 's2', reward: { kind: 'PERCENT', bps: 5000 } }),
+        ],
+      });
+      expect(other.lines.map((l) => [l.lineId, l.discount])).toEqual([
+        ['l1', 0n],
+        ['l2', freeUnit],
+        ['l3', 450n],
+      ]);
+    });
+
+    it('gives the same answer in any order and never discounts a pool line twice', () => {
+      const promotions = [bxgy, sale(5000)];
+      const out = run(market, { lines, promotions });
+      expect(
+        run(market, { lines: [...lines].reverse(), promotions: [...promotions].reverse() }),
+      ).toEqual(out);
+      for (const l of out.lines) {
+        expect(l.allocations.filter((a) => a.layer === 'ITEM').length).toBeLessThanOrEqual(1);
+      }
     });
   });
 
@@ -1197,6 +1295,27 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
         ...over,
       });
     const lines = [line('l1', 's1', 5000n)];
+
+    it('uses one code per order when a public code and a batch code share their text', () => {
+      const out = run(market, {
+        lines,
+        code: 'SAME',
+        orderCommission: 100000n,
+        promotions: [
+          batch('batch', 'SAME'),
+          promo({
+            id: 'public',
+            type: 'CART_CODE',
+            layer: 'PLATFORM_CART',
+            platformShareBps: 10000,
+            code: 'SAME',
+            reward: { kind: 'FIXED', amount: 300n },
+          }),
+        ],
+      });
+      expect(out.applied.map((a) => a.promotionId)).toEqual(['batch']);
+      expect(out.totals.goodsDiscount).toBe(500n);
+    });
 
     it('applies the entered code once and reports it applied', () => {
       const out = run(market, {
@@ -1336,7 +1455,10 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
             sellerId: null,
             platformShareBps: 10000,
             productIds: ['p2', 'p3'],
-            reward: { kind: 'PERCENT', bps: 500 * (1 + next(19)) },
+            reward:
+              next(2) === 0
+                ? { kind: 'PERCENT', bps: 500 * (1 + next(19)) }
+                : { kind: 'FIXED', amount: BigInt(1 + next(9000)) },
             unitLimit: next(8),
           }),
           promo({
@@ -1390,14 +1512,16 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
         const flashPromotion = promotions.find((p) => p.id === 'flash')!;
         const dearest = lines.reduce((m, l) => (l.unitPrice > m ? l.unitPrice : m), 0n);
         const flashTotal = out.applied.find((a) => a.promotionId === 'flash')?.amount ?? 0n;
-        // No more than the limit's units at the dearest price at the sale percent.
-        expect(flashTotal).toBeLessThanOrEqual(
-          (BigInt(flashPromotion.unitLimit!) *
-            dearest *
-            BigInt((flashPromotion.reward as { bps: number }).bps)) /
-            10000n +
-            1n,
-        );
+        // No more than the limit's units at the dearest price, at the sale percent or the fixed
+        // amount (itself held to the unit price), whatever the cap and the line sizes.
+        const reward = flashPromotion.reward;
+        const perUnit =
+          reward.kind === 'PERCENT'
+            ? (dearest * BigInt(reward.bps)) / 10000n + 1n
+            : reward.amount < dearest
+              ? reward.amount
+              : dearest;
+        expect(flashTotal).toBeLessThanOrEqual(BigInt(flashPromotion.unitLimit!) * perUnit);
         // The same answer in any order of lines and promotions.
         const again = run(market, {
           ...input,

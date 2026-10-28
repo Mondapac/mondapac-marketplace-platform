@@ -44,8 +44,10 @@ import type {
 //   units they qualify, each into a discount per line. That discount is the offer's candidate for
 //   the line, on the whole line amount, and competes with every other item-level candidate under
 //   the one-discount-per-line rule: a line is covered by one offer or not at all, never one unit
-//   by one offer and the rest by another. The pool is formed before the competition, so a line
-//   that prefers another offer keeps its units out of this one without the pool being re-formed.
+//   by one offer and the rest by another.
+// - The units that qualify a multi-unit offer are paid at full price: a line another item-level
+//   offer wins is taken out of the offer's pool and the competition is run again until it is
+//   stable (see applyItemLayer; owner decision 2026-10-28).
 // - A limit of units (flash sale) is spent line by line, the dearest unit price first (ties:
 //   the smaller line id), only by lines the offer wins.
 // - A tiered cart discount takes the highest tier its goods amount reaches.
@@ -308,14 +310,30 @@ function spreadOverUnits(
   return new Map([...split].filter(([, amount]) => amount > 0n));
 }
 
-function applyItemLayer(
+/** What each item-level promotion wins: its amount per line, and the line each line was won by. */
+interface ItemOutcome {
+  readonly chosen: Map<string, Map<string, bigint>>;
+  readonly winner: Map<string, string>;
+}
+
+/**
+ * One round of the per-line competition. `excluded` holds, per multi-unit promotion, the lines
+ * that are out of its pool (they were won by another offer, see {@link applyItemLayer}); nothing
+ * in the state is changed here.
+ */
+function competeOnLines(
   state: State,
   lines: readonly CartLine[],
   promotions: readonly CalculationPromotion[],
-): void {
+  lineCapBps: number,
+  excluded: ReadonlyMap<string, ReadonlySet<string>>,
+): ItemOutcome {
+  const out = (promotion: CalculationPromotion, line: CartLine): boolean =>
+    excluded.get(promotion.id)?.has(line.id) === true;
   const pooled = new Map<string, Map<string, bigint>>();
   for (const promotion of promotions) {
-    const discounts = poolDiscounts(promotion, lines);
+    const inPool = lines.filter((line) => !out(promotion, line));
+    const discounts = poolDiscounts(promotion, inPool);
     if (discounts !== null) pooled.set(promotion.id, discounts);
   }
   // The units a limited promotion may still discount in this order.
@@ -324,6 +342,7 @@ function applyItemLayer(
     if (promotion.unitLimit != null) unitsLeft.set(promotion.id, BigInt(promotion.unitLimit));
   }
   const chosen = new Map<string, Map<string, bigint>>();
+  const winner = new Map<string, string>();
   // The dearest unit price first, so a limit of units goes where it saves most (ties: line id).
   const ordered = [...lines].sort((a, b) =>
     a.unitPrice === b.unitPrice ? compareText(a.id, b.id) : a.unitPrice > b.unitPrice ? -1 : 1,
@@ -331,26 +350,28 @@ function applyItemLayer(
   for (const line of ordered) {
     let best: { amount: bigint; promotion: CalculationPromotion; units: bigint } | null = null;
     for (const promotion of promotions) {
-      if (!matchesLine(promotion, line)) continue;
+      if (!matchesLine(promotion, line) || out(promotion, line)) continue;
       const pool = pooled.get(promotion.id);
-      // A limited promotion covers only the units that are left.
-      const covered = unitsLeft.has(promotion.id)
-        ? min(unitsOf(line), unitsLeft.get(promotion.id)!)
-        : unitsOf(line);
+      // A limited promotion covers only the units that are left, and its shares are held against
+      // those units' price, not the whole line's.
+      const limited = unitsLeft.has(promotion.id);
+      const covered = limited ? min(unitsOf(line), unitsLeft.get(promotion.id)!) : unitsOf(line);
       const coveredGross = line.unitPrice * covered;
+      const base = limited ? coveredGross : lineGross(line);
       const wanted =
         pool !== undefined
           ? (pool.get(line.id) ?? 0n)
           : promotion.reward.kind === 'PERCENT'
             ? floorShare(coveredGross, promotion.reward.bps)
-            : promotion.reward.amount * covered;
+            : min(promotion.reward.amount, line.unitPrice) * covered;
       const byShare =
         promotion.maxShareBps === null
           ? wanted
-          : min(wanted, floorShare(lineGross(line), promotion.maxShareBps));
-      const bySeller = sellerLineLimit(promotion, lineGross(line));
+          : min(wanted, floorShare(base, promotion.maxShareBps));
+      const bySeller = sellerLineLimit(promotion, base);
       const share = bySeller === null ? byShare : min(byShare, bySeller);
-      const amount = min(share, min(state.remaining.get(line.id)!, state.capLeft.get(line.id)!));
+      const byCap = limited ? min(share, floorShare(coveredGross, lineCapBps)) : share;
+      const amount = min(byCap, min(state.remaining.get(line.id)!, state.capLeft.get(line.id)!));
       if (amount > 0n && better(amount, promotion, best))
         best = { amount, promotion, units: covered };
     }
@@ -358,12 +379,50 @@ function applyItemLayer(
       const perLine = chosen.get(best.promotion.id) ?? new Map<string, bigint>();
       perLine.set(line.id, best.amount);
       chosen.set(best.promotion.id, perLine);
+      winner.set(line.id, best.promotion.id);
       const left = unitsLeft.get(best.promotion.id);
       if (left !== undefined) unitsLeft.set(best.promotion.id, left - best.units);
     }
   }
+  return { chosen, winner };
+}
+
+function applyItemLayer(
+  state: State,
+  lines: readonly CartLine[],
+  promotions: readonly CalculationPromotion[],
+  lineCapBps: number,
+): void {
+  // The units that qualify a multi-unit offer (the "buy" units of buy X get Y, the units of a
+  // multi-buy or a bundle) are paid at full price: a line another item-level offer wins does not
+  // count toward the offer's pool. The pools are rebuilt without such lines and the competition is
+  // run again, until no pooled line is won by another offer. Lines only ever leave a pool, so the
+  // rounds are bounded, and every round depends on the cart alone, not on the order of its parts.
+  // Owner decision 2026-10-28.
+  const excluded = new Map<string, Set<string>>();
+  let outcome = competeOnLines(state, lines, promotions, lineCapBps, excluded);
+  for (let round = 0; round <= lines.length * promotions.length; round++) {
+    let grew = false;
+    for (const promotion of promotions) {
+      if (promotion.buyXGetY == null && promotion.multiBuy == null && promotion.bundle == null) {
+        continue;
+      }
+      for (const line of lines) {
+        const won = outcome.winner.get(line.id);
+        if (won === undefined || won === promotion.id || !matchesLine(promotion, line)) continue;
+        const set = excluded.get(promotion.id) ?? new Set<string>();
+        if (!set.has(line.id)) {
+          set.add(line.id);
+          excluded.set(promotion.id, set);
+          grew = true;
+        }
+      }
+    }
+    if (!grew) break;
+    outcome = competeOnLines(state, lines, promotions, lineCapBps, excluded);
+  }
   for (const promotion of [...promotions].sort(byFundingThenId)) {
-    const perLine = chosen.get(promotion.id);
+    const perLine = outcome.chosen.get(promotion.id);
     if (perLine === undefined) continue;
     commit(state, promotion, trim(perLine, limitOf(promotion, state, false)), 'line');
   }
@@ -501,7 +560,7 @@ function runScenario(input: CalculationInput, promotions: readonly CalculationPr
     platformLeft: input.orderCommission,
   };
   const layer = (name: Layer) => promotions.filter((promotion) => promotion.layer === name);
-  applyItemLayer(state, lines, layer('ITEM'));
+  applyItemLayer(state, lines, layer('ITEM'), input.rules.lineDiscountCapBps);
   state = applyCartLayer(state, lines, layer('SELLER_CART'), 'SELLER_CART');
   state = applyCartLayer(state, lines, layer('PLATFORM_CART'), 'PLATFORM_CART');
   applyShippingLayer(
@@ -523,7 +582,7 @@ const validReward = (reward: Reward): boolean =>
     : reward.amount >= 1n;
 
 /** The path of the first wrong phase 2 field of a promotion, or null. */
-function validatePhase2(promotion: CalculationPromotion): string | null {
+export function validatePhase2(promotion: CalculationPromotion): string | null {
   const tiers = promotion.tiers ?? null;
   if (tiers !== null) {
     if (tiers.length === 0 || tiers.length > 50) return 'promotions.tiers';
@@ -641,10 +700,20 @@ export function calculateDiscounts(
   const invalid = validate(input);
   if (invalid !== null) return err(invalid);
 
+  // One code per order: when a single-use code and a public code have the same text, the
+  // single-use code is the one entered and the public one is dropped.
+  const batchMatch =
+    input.code !== null &&
+    input.promotions.some(
+      (promotion) => promotion.type === 'BATCH_CODE' && promotion.code === input.code,
+    );
   const candidates = input.promotions
     .filter(
       (promotion) =>
-        promotion.code === null || (promotion.code === input.code && promotion.codeUsed !== true),
+        promotion.code === null ||
+        (promotion.code === input.code &&
+          promotion.codeUsed !== true &&
+          (!batchMatch || promotion.type === 'BATCH_CODE')),
     )
     .filter((promotion) => !promotion.firstOrderOnly || input.isFirstOrder)
     .sort((a, b) => compareText(a.id, b.id));
@@ -719,7 +788,8 @@ function output(input: CalculationInput, state: State): CalculationOutput {
 
   let code: CodeOutcome = 'NONE';
   if (input.code !== null) {
-    const entered = input.promotions.find((promotion) => promotion.code === input.code);
+    const matching = input.promotions.filter((promotion) => promotion.code === input.code);
+    const entered = matching.find((promotion) => promotion.type === 'BATCH_CODE') ?? matching[0];
     code = entered === undefined ? 'UNKNOWN' : applied.has(entered.id) ? 'APPLIED' : 'NOT_APPLIED';
   }
 

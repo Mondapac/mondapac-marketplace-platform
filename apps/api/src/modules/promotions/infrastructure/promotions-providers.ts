@@ -1,4 +1,6 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { APP_CONFIG } from '../../../platform/config/config.module';
+import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { BATCH_CODE_CRYPTO, type BatchCodeCrypto } from '../application/ports/batch-code-crypto';
@@ -96,7 +98,9 @@ export const promotionsProviders: readonly FactoryProvider[] = [
   },
   {
     provide: BATCH_CODE_CRYPTO,
-    useFactory: (): BatchCodeCrypto => new CryptoBatchCodeCrypto(),
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): BatchCodeCrypto =>
+      new CryptoBatchCodeCrypto(config.promotionsCodePepper),
   },
   {
     provide: FLASH_SALES,

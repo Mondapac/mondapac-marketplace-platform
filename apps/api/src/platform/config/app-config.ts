@@ -129,6 +129,10 @@ const envSchema = z.object({
   PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
   PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
   PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K3: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  // Promotions phase 2: the pepper that keys the HMAC of generated single-use codes. A server
+  // secret, never stored in the database or echoed; without it no batch of codes is generated and
+  // none is looked up.
+  PROMOTIONS_CODE_PEPPER: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
   PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: z.coerce.number().int().min(1).max(3).optional(),
   // SHP-02/03: the marketplace's merchant API key at Mondapac Drive and the secret Drive signs its
   // status webhooks with, each as MARKET=value pairs separated by commas (each Market at most once
@@ -361,6 +365,8 @@ export interface AppConfig {
    * `..._CURRENT_VERSION`, else the highest version set), or null when no key is set. Holds
    * secrets: never log this object whole; read by payments' keyring alone.
    */
+  /** `PROMOTIONS_CODE_PEPPER` (a secret, never logged), or null when unset: single-use codes are then off. */
+  readonly promotionsCodePepper: string | null;
   readonly externalAccountHmac: Readonly<{
     keys: Readonly<Record<number, string>>;
     currentVersion: number | null;
@@ -703,6 +709,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     stripeWebhookSecrets: webhookSecrets.secrets,
     stripeConnectWebhookSecrets: connectSecrets.secrets,
     externalAccountHmac: externalAccountHmac.value,
+    promotionsCodePepper: parsed.data.PROMOTIONS_CODE_PEPPER ?? null,
     clientAddressTrust: clientAddress.trust,
     assistantModels: assistant.config,
     googleSignIn:

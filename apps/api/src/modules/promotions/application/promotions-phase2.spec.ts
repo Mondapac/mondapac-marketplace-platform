@@ -22,7 +22,11 @@ import {
   MemoryReviewQueue,
   MemoryThresholds,
 } from '../../../../test/support/promotions-fakes';
-import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import {
+  TEST_CODE_PEPPER,
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+} from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AccessDecision } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -547,7 +551,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 2 types in market %s'
     };
 
     it('generates the asked number of unique codes in the Market length and alphabet, storing hashes only', async () => {
-      const real = new CryptoBatchCodeCrypto();
+      const real = new CryptoBatchCodeCrypto(TEST_CODE_PEPPER);
       deps = { ...deps, codeCrypto: real };
       const p = await adminCreate(batchPromotion());
       const out = await generate(p.id, 50);
@@ -638,6 +642,89 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 2 types in market %s'
       expect(
         await make(GenerateBatchCodes).execute(admin(), { promotionId: 'nope', count: 1 }),
       ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+
+    it('fails closed without the pepper: nothing is generated and no batch code is looked up', async () => {
+      const p = await adminCreate(batchPromotion());
+      const out = await generate(p.id, 2);
+      const [first] = out.codes;
+      const publicCode = await adminCreate(
+        platform({
+          type: 'CART_CODE',
+          name: 'Public',
+          code: 'PUBLICCODE23',
+          reward: { kind: 'PERCENT', bps: 1000 },
+        }),
+      );
+      codeCrypto.available = false;
+      expect(
+        await make(GenerateBatchCodes).execute(admin(), { promotionId: p.id, count: 1 }),
+      ).toEqual({ ok: false, error: { code: 'promotions.unavailable' } });
+      expect(batchCodes.rows.size).toBe(2);
+      // The batch code gives nothing, but the quote does not fail and a public code still works.
+      const lines = [line(1, 5000n, 1)];
+      const batchTry = await quote(request(lines, { code: first! }));
+      expect(batchTry.applied).toEqual([]);
+      expect(batchTry.code).toBe('UNKNOWN');
+      const publicTry = await quote(request(lines, { code: 'PUBLICCODE23' }));
+      expect(publicTry.applied.map((a) => a.promotionId)).toEqual([publicCode.id]);
+    });
+
+    it('refuses a public code whose text is already a generated code', async () => {
+      const p = await adminCreate(batchPromotion());
+      codeCrypto.script = ['ABCDEFGH2345'];
+      await generate(p.id, 1);
+      const clash = await make(CreatePromotion).execute(
+        admin(),
+        platform({
+          type: 'CART_CODE',
+          name: 'Clash',
+          code: 'ABCDEFGH2345',
+          reward: { kind: 'PERCENT', bps: 1000 },
+        }),
+      );
+      expect(clash).toEqual({ ok: false, error: { code: 'promotions.code-taken' } });
+    });
+
+    it('never generates a code that a public code already has', async () => {
+      await adminCreate(
+        platform({
+          type: 'CART_CODE',
+          name: 'Public',
+          code: 'ABCDEFGH2345',
+          reward: { kind: 'PERCENT', bps: 1000 },
+        }),
+      );
+      const p = await adminCreate(batchPromotion());
+      codeCrypto.script = ['ABCDEFGH2345'];
+      const out = await generate(p.id, 2);
+      expect(out.codes).toHaveLength(2);
+      expect(out.codes).not.toContain('ABCDEFGH2345');
+    });
+
+    it('lets the single-use code win when a stored public code has the same text', async () => {
+      const publicCode = await adminCreate(
+        platform({
+          type: 'CART_CODE',
+          name: 'Public',
+          code: 'ABCDEFGH2345',
+          reward: { kind: 'FIXED', amountMinor: '900' },
+        }),
+      );
+      const p = await adminCreate(batchPromotion());
+      // A clash that exists already (made before the checks): the code is also a generated one.
+      await batchCodes.insertMany(market, p.id, id<'PromotionBatch'>(0xb1), [
+        codeCrypto.hash('ABCDEFGH2345'),
+      ]);
+      const out = await quote(request([line(1, 5000n, 1)], { code: 'abcdefgh2345' }));
+      expect(out.applied.map((a) => a.promotionId)).toEqual([p.id]);
+      expect(out.applied.map((a) => a.promotionId)).not.toContain(publicCode.id);
+      expect(out.code).toBe('APPLIED');
+      // Once that code is used the public one does not take its place: one code per order.
+      batchCodes.markUsed(codeCrypto.hash('ABCDEFGH2345'), clock.now());
+      const used = await quote(request([line(1, 5000n, 1)], { code: 'ABCDEFGH2345' }));
+      expect(used.applied).toEqual([]);
+      expect(used.code).toBe('NOT_APPLIED');
     });
 
     it('fails closed in a Market that configures no batches', async () => {

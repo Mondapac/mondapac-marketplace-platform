@@ -32,7 +32,12 @@ import {
   FakeSellerActivity,
   FakeStepUp,
 } from '../support/promotions-fakes';
-import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import {
+  TEST_CODE_PEPPER,
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_MARKETS,
+} from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
@@ -96,7 +101,7 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
       thresholds: new PrismaShippingThresholdRepository(db.service),
       policy,
       batchCodes: new PrismaBatchCodeRepository(db.service),
-      codeCrypto: new CryptoBatchCodeCrypto(),
+      codeCrypto: new CryptoBatchCodeCrypto(TEST_CODE_PEPPER),
       flashSales: new FakeFlashSales(),
       sellerActivity: new FakeSellerActivity(),
       priceHistory: new FakePriceHistory(),
@@ -667,7 +672,7 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
       expect(typed.ok && typed.value.code).toBe('APPLIED');
 
       // The owner marks the code used (the redemption of package T2 does this).
-      const hash = new CryptoBatchCodeCrypto().hash(first);
+      const hash = new CryptoBatchCodeCrypto(TEST_CODE_PEPPER).hash(first);
       await owner.query(
         `UPDATE promotions.promotion_batch_codes SET used_at = $2 WHERE market_id = $3 AND code_hash = $1`,
         [hash, clock.now().add({ minutes: 1 }).toString(), mk],

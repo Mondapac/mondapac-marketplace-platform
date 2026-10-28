@@ -102,6 +102,23 @@ describe.each([['AU'], ['ZZ']] as const)('promotions for a cart in market %s', (
     expect(cart([record(4, { type: 'MULTI_BUY', ...seller })], { testMode: true })).toEqual([]);
   });
 
+  it('leaves out a row the calculation would refuse, so one bad row never fails a quote', () => {
+    const seller = { funding: 'SELLER', ownerSellerId: SELLER } as const;
+    const bad = record(7, { type: 'BUY_X_GET_Y', ...seller, buyQty: 0, getQty: 1 });
+    const good = record(8, { funding: 'SELLER', ownerSellerId: SELLER });
+    expect(cart([bad, good], { testMode: true }).map((p) => p.id)).toEqual([good.id]);
+  });
+
+  it('leaves out a public code whose text is the entered single-use code', () => {
+    const publicCode = record(9, { type: 'CART_CODE', code: 'SAMECODE1234' });
+    const batch = record(10, { type: 'BATCH_CODE', code: null });
+    const picked = cart([publicCode, batch], {
+      testMode: true,
+      batch: { promotionId: batch.id, code: 'SAMECODE1234', used: false },
+    });
+    expect(picked.map((p) => p.id)).toEqual([batch.id]);
+  });
+
   it('leaves a test-mode promotion out of a real order', () => {
     expect(cart([record(1, { funding: 'SELLER', ownerSellerId: SELLER, testMode: true })])).toEqual(
       [],

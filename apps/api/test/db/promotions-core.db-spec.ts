@@ -42,7 +42,12 @@ import {
   FakeSellerActivity,
   FakeStepUp,
 } from '../support/promotions-fakes';
-import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import {
+  TEST_CODE_PEPPER,
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_MARKETS,
+} from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
@@ -151,7 +156,7 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       thresholds: new PrismaShippingThresholdRepository(db.service),
       policy,
       batchCodes: new PrismaBatchCodeRepository(db.service),
-      codeCrypto: new CryptoBatchCodeCrypto(),
+      codeCrypto: new CryptoBatchCodeCrypto(TEST_CODE_PEPPER),
       flashSales: new FakeFlashSales(),
       sellerActivity: activity,
       priceHistory: new FakePriceHistory(),

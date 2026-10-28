@@ -59,7 +59,8 @@ export async function generateBatchCodes(
   const settings = switched.value;
   const limits = settings.batchCodes;
   // A Market that configures no batches cannot make any: fail closed.
-  if (limits === null) return err({ code: 'promotions.unavailable' });
+  // So does one without the pepper that keys the stored hashes.
+  if (limits === null || !deps.codeCrypto.available) return err({ code: 'promotions.unavailable' });
 
   const id = promotionIdOf(input?.promotionId);
   if (id === null) return err(invalid('promotionId', 'value'));
@@ -105,7 +106,12 @@ export async function generateBatchCodes(
         if (!fresh.has(hash)) drawn.set(hash, code);
       }
       const taken = await deps.batchCodes.existing(context.market, [...drawn.keys()]);
-      for (const [hash, code] of drawn) if (!taken.has(hash)) fresh.set(hash, code);
+      for (const [hash, code] of drawn) {
+        if (taken.has(hash)) continue;
+        // One code per order: never a code that a public (CART_CODE) promotion already has.
+        if (await deps.promotions.codeExists(context.market, code)) continue;
+        fresh.set(hash, code);
+      }
     }
     if (fresh.size < count) return err({ code: 'promotions.unavailable' });
 

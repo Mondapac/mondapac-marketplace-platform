@@ -145,6 +145,13 @@ Six types on top of the core (migration `20261029090000_promotions_phase2_types`
   cap, the caps and the GST test-mode rule are unchanged. A stored row without the terms its type needs
   (no tiers, fewer than two bundle items) is left out of the quote.
 
+- **Qualifying units are paid at full price (owner decision 2026-10-28).** A line that another
+  item-level offer wins does not count toward a buy X get Y, multi-buy or bundle: the pools are rebuilt
+  without such lines and the per-line competition is run again until no pooled line is won by another
+  offer. The batch-code hash is HMAC-SHA256 keyed by `PROMOTIONS_CODE_PEPPER` (without it no code is
+  generated or matched); a public code and a single-use code cannot share text (checked on both
+  sides; the single-use code wins a quote); a malformed stored row is skipped in a quote and logged.
+
 Open for package T2: marking a code used on redemption (the app has SELECT and INSERT only on the codes),
 counting flash units sold, and checking a flash limit lowered below the units already sold. There is no
 re-download of generated codes.

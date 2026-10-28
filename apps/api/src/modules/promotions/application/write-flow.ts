@@ -193,6 +193,14 @@ export async function createPromotion(
       createdAt: now,
       updatedAt: now,
     };
+    // One code per order: a public code cannot be the text of a generated single-use code.
+    if (
+      record.code !== null &&
+      deps.codeCrypto.available &&
+      (await deps.batchCodes.find(context.market, deps.codeCrypto.hash(record.code))) !== null
+    ) {
+      return err({ code: 'promotions.code-taken' });
+    }
     if ((await deps.promotions.insert(context.market, record)) === 'duplicate-code') {
       return err({ code: 'promotions.code-taken' });
     }

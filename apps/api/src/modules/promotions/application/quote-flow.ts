@@ -1,7 +1,8 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { QuoteRequest, QuoteResult } from '../contracts/promotions.facade';
-import { calculateDiscounts } from '../domain/calculation/engine';
+import { calculateDiscounts, validatePhase2 } from '../domain/calculation/engine';
 import type { CalculationInput, CalculationPromotion } from '../domain/calculation/types';
 import {
   layerOf,
@@ -115,6 +116,8 @@ export function calculationPromotionOf(
   };
 }
 
+const logger = new Logger('PromotionsQuote');
+
 /** The promotions the calculation sees: live ones that may apply to this cart, plus the settings-based ones. */
 export function promotionsForCart(args: {
   readonly records: readonly PromotionRecord[];
@@ -152,6 +155,16 @@ export function promotionsForCart(args: {
     if (record.type === 'BUY_X_GET_Y' && (record.buyQty === null || record.getQty === null))
       continue;
     if (record.type === 'MULTI_BUY' && record.groupQty === null) continue;
+    // One code per order: when the entered text is a generated single-use code, a public code
+    // with the same text is not a candidate, so the single-use code is the one that counts.
+    if (
+      record.type !== 'BATCH_CODE' &&
+      record.code !== null &&
+      args.batch != null &&
+      record.code === args.batch.code
+    ) {
+      continue;
+    }
     const extra: { unitLimit?: number; code?: string; codeUsed?: boolean } = {};
     if (record.type === 'BATCH_CODE') {
       // Only the entered code's promotion is a candidate; the others are not looked at.
@@ -172,6 +185,17 @@ export function promotionsForCart(args: {
       extra,
     );
     if (promotion.sellerIds !== null && promotion.sellerIds.length === 0) continue;
+    // The engine refuses a malformed promotion for the whole cart; one bad row must not fail the
+    // quote of every cart in the Market, so it is checked here and left out (the id is logged).
+    const malformed = validatePhase2(promotion);
+    if (malformed !== null) {
+      logger.warn({
+        msg: 'promotions.quote.skipped-malformed',
+        promotionId: record.id,
+        rule: malformed,
+      });
+      continue;
+    }
     out.push(promotion);
   }
   const firstOrder = args.firstOrder;
@@ -325,7 +349,7 @@ export async function quote(
       const thresholds = await deps.thresholds.list(context.market);
       // The entered code may be a generated single-use code: found by its hash, never by the text.
       const found =
-        code === null
+        code === null || !deps.codeCrypto.available
           ? null
           : await deps.batchCodes.find(context.market, deps.codeCrypto.hash(code));
       return ok({

@@ -1,7 +1,8 @@
+import { TEST_CODE_PEPPER } from '../../../../test/support/test-config';
 import { CryptoBatchCodeCrypto } from './crypto-batch-code-crypto';
 
 describe('CryptoBatchCodeCrypto', () => {
-  const crypto = new CryptoBatchCodeCrypto();
+  const crypto = new CryptoBatchCodeCrypto(TEST_CODE_PEPPER);
   const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
   it('draws codes of the asked length from the alphabet only', () => {
@@ -29,12 +30,32 @@ describe('CryptoBatchCodeCrypto', () => {
     }
   });
 
-  it('hashes with SHA-256 in lower-case hex, the same code to the same hash', () => {
-    // SHA-256 of "ABC".
+  it('hashes with HMAC-SHA256 keyed by the pepper, in lower-case hex', () => {
+    // HMAC-SHA256 of "ABC" under the test pepper (computed independently).
     expect(crypto.hash('ABC')).toBe(
-      'b5d4045c3f466fa91fe2cc6abe79232a1a57cdf104f7a26e716e0a1e2789df78',
+      'aa3dc81361d3961c12b8f197a90590f814857c45e0e4a65c0acfc5ea7d828baa',
     );
+    expect(crypto.hash('ABC')).toMatch(/^[0-9a-f]{64}$/);
     expect(crypto.hash('ABC')).toBe(crypto.hash('ABC'));
     expect(crypto.hash('ABC')).not.toBe(crypto.hash('ABD'));
+  });
+
+  it('gives another hash under another pepper, so the table alone cannot test guesses', () => {
+    const other = new CryptoBatchCodeCrypto(`${TEST_CODE_PEPPER}-other`);
+    expect(other.hash('ABC')).not.toBe(crypto.hash('ABC'));
+    // The unkeyed SHA-256 of "ABC" is not what is stored.
+    expect(crypto.hash('ABC')).not.toBe(
+      'b5d4045c3f466fa91fe2cc6abe79232a1a57cdf104f7a26e716e0a1e2789df78',
+    );
+  });
+
+  it('is unavailable without a long enough pepper, and then refuses to hash', () => {
+    for (const pepper of [null, '', 'short', 'x'.repeat(31)]) {
+      const none = new CryptoBatchCodeCrypto(pepper);
+      expect(none.available).toBe(false);
+      expect(() => none.hash('ABC')).toThrow();
+    }
+    expect(new CryptoBatchCodeCrypto('x'.repeat(32)).available).toBe(true);
+    expect(crypto.available).toBe(true);
   });
 });

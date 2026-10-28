@@ -107,6 +107,9 @@ export class MemoryPromotions implements PromotionRepository {
       ),
     );
   }
+  codeExists(_market: MarketContext, code: string) {
+    return Promise.resolve([...this.records.values()].some((other) => other.code === code));
+  }
   countCounting(_market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
     return Promise.resolve(
       [...this.records.values()].filter(
@@ -346,6 +349,8 @@ export class MemoryBatchCodes implements BatchCodeRepository {
  * SHA-256.
  */
 export class FakeBatchCodeCrypto implements BatchCodeCrypto {
+  /** False: the pepper is missing, as in a deployment without PROMOTIONS_CODE_PEPPER. */
+  available = true;
   /** Codes handed out first, in order, before the counter takes over. */
   script: string[] = [];
   private counter = 0;
