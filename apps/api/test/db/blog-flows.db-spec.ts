@@ -433,9 +433,11 @@ describe.each(TEST_MARKETS)('blog flows in market %s (database)', (code) => {
       }
       expect(results.some((r) => r.ok)).toBe(true);
       expect(
-        await one(`SELECT count(*)::int AS n FROM blog.posts WHERE market_id = $1 AND featured`, [
-          h.market.marketId,
-        ]),
+        // Only this test's two posts: other spec files feature posts of the same Market.
+        await one(
+          `SELECT count(*)::int AS n FROM blog.posts WHERE market_id = $1 AND id = ANY($2::uuid[]) AND featured`,
+          [h.market.marketId, [a.id, b.id]],
+        ),
       ).toEqual({ n: 1 });
     }
   });
