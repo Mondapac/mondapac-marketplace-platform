@@ -10,7 +10,7 @@ import { locked, spendPlatformFundingProof } from './shared';
 
 // Batches of unique single-use codes for a BATCH_CODE promotion (promotions phase 2). An admin
 // generates N codes in one call; the plain codes exist in that call's answer only (the CSV the
-// route returns) and only their SHA-256 hashes are stored. A code is redeemed once (package T2
+// route returns) and only their HMAC-SHA256 hashes (keyed by PROMOTIONS_CODE_PEPPER) are stored. A code is redeemed once (package T2
 // marks it used); the quote treats a used code as not applicable.
 
 /** The most attempts to draw `count` distinct new codes before the call gives up (never reached in practice). */
@@ -106,10 +106,10 @@ export async function generateBatchCodes(
         if (!fresh.has(hash)) drawn.set(hash, code);
       }
       const taken = await deps.batchCodes.existing(context.market, [...drawn.keys()]);
+      // One code per order: never a code that a public (CART_CODE) promotion already has.
+      const publicCodes = await deps.promotions.existingCodes(context.market, [...drawn.values()]);
       for (const [hash, code] of drawn) {
-        if (taken.has(hash)) continue;
-        // One code per order: never a code that a public (CART_CODE) promotion already has.
-        if (await deps.promotions.codeExists(context.market, code)) continue;
+        if (taken.has(hash) || publicCodes.has(code)) continue;
         fresh.set(hash, code);
       }
     }

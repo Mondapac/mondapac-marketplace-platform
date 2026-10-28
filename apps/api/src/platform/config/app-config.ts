@@ -359,14 +359,14 @@ export interface AppConfig {
   readonly stripeWebhookSecrets: Readonly<Record<string, string>>;
   /** The same for the Connect endpoint (`STRIPE_CONNECT_WEBHOOK_SECRET`): connected-account events. */
   readonly stripeConnectWebhookSecrets: Readonly<Record<string, string>>;
+  /** `PROMOTIONS_CODE_PEPPER` (a secret, never logged), or null when unset: single-use codes are then off. */
+  readonly promotionsCodePepper: string | null;
   /**
    * The keys of the hash of a connected account's default external account id, by version
    * (`PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K<n>`), and the version new values use (the setting
    * `..._CURRENT_VERSION`, else the highest version set), or null when no key is set. Holds
    * secrets: never log this object whole; read by payments' keyring alone.
    */
-  /** `PROMOTIONS_CODE_PEPPER` (a secret, never logged), or null when unset: single-use codes are then off. */
-  readonly promotionsCodePepper: string | null;
   readonly externalAccountHmac: Readonly<{
     keys: Readonly<Record<number, string>>;
     currentVersion: number | null;

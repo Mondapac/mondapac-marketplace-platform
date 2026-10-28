@@ -196,12 +196,16 @@ const targetRows = (market: MarketContext, record: PromotionRecord) =>
 export class PrismaPromotionRepository implements PromotionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async codeExists(market: MarketContext, code: string): Promise<boolean> {
-    const row = await this.prisma.tx(market).promotionsPromotion.findFirst({
-      where: { marketId: market.marketId, code },
-      select: { id: true },
+  async existingCodes(
+    market: MarketContext,
+    codes: readonly string[],
+  ): Promise<ReadonlySet<string>> {
+    if (codes.length === 0) return new Set();
+    const rows = await this.prisma.tx(market).promotionsPromotion.findMany({
+      where: { marketId: market.marketId, code: { in: [...codes] } },
+      select: { code: true },
     });
-    return row !== null;
+    return new Set(rows.flatMap((row) => (row.code === null ? [] : [row.code])));
   }
 
   async insert(

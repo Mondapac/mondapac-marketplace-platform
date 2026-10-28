@@ -39,8 +39,8 @@ export interface PromotionRepository {
   insert(market: MarketContext, record: PromotionRecord): Promise<'inserted' | 'duplicate-code'>;
   /** Changes the editable columns and replaces the targets as a set. */
   update(market: MarketContext, record: PromotionRecord): Promise<void>;
-  /** True when a promotion of the Market already has this (normalised) code. */
-  codeExists(market: MarketContext, code: string): Promise<boolean>;
+  /** Which of these (normalised) codes a promotion of the Market already has, in one lookup. */
+  existingCodes(market: MarketContext, codes: readonly string[]): Promise<ReadonlySet<string>>;
   find(market: MarketContext, id: Id<'Promotion'>): Promise<PromotionRecord | null>;
   /**
    * The promotion with its row locked until the unit ends, so two changes of one promotion run

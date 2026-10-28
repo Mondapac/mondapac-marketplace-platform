@@ -137,7 +137,7 @@ model PromotionsBundleItem {
   @@schema("promotions")
 }
 
-/// A generated single-use code of a BATCH_CODE promotion. Only the SHA-256 hash of the code is
+/// A generated single-use code of a BATCH_CODE promotion. Only the HMAC-SHA256 hash (keyed by PROMOTIONS_CODE_PEPPER) of the code is
 /// stored (the code is a bearer credential: it is shown once, in the CSV that generating returns).
 /// A code is unique in a Market. `usedAt` is set when an order redeems it (package T2); the quote
 /// treats a used code as not applicable. Never deleted.

@@ -1271,6 +1271,49 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
       ]);
     });
 
+    it('takes a line another offer wins out of a multi-buy pool', () => {
+      const multi = promo({
+        id: 'multi',
+        type: 'MULTI_BUY',
+        sellerId: 's1',
+        reward: { kind: 'FIXED', amount: 1n },
+        multiBuy: { groupQty: 2, groupPrice: 900n, maxRepeats: null },
+      });
+      const together = run(market, { lines, promotions: [multi] });
+      expect(together.totals.goodsDiscount).toBe(600n);
+      // l1 takes the 50 % sale, so the two units no longer make a group.
+      const out = run(market, { lines, promotions: [multi, sale(5000)] });
+      expect(out.lines.map((l) => [l.lineId, l.discount])).toEqual([
+        ['l1', 500n],
+        ['l2', 0n],
+      ]);
+    });
+
+    it('takes a line another offer wins out of a bundle set', () => {
+      const bundle = promo({
+        id: 'bundle',
+        type: 'BUNDLE',
+        sellerId: 's1',
+        productIds: ['pa', 'pb'],
+        reward: { kind: 'FIXED', amount: 1n },
+        bundle: {
+          items: [
+            { productId: 'pa', quantity: 1 },
+            { productId: 'pb', quantity: 1 },
+          ],
+          amountOff: 300n,
+          maxRepeats: null,
+        },
+      });
+      expect(run(market, { lines, promotions: [bundle] }).totals.goodsDiscount).toBe(300n);
+      // l1 takes the sale, so the set is incomplete and l2 gets nothing from the bundle.
+      const out = run(market, { lines, promotions: [bundle, sale(5000)] });
+      expect(out.lines.map((l) => [l.lineId, l.discount])).toEqual([
+        ['l1', 500n],
+        ['l2', 0n],
+      ]);
+    });
+
     it('gives the same answer in any order and never discounts a pool line twice', () => {
       const promotions = [bxgy, sale(5000)];
       const out = run(market, { lines, promotions });
@@ -1522,6 +1565,22 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
               ? reward.amount
               : dearest;
         expect(flashTotal).toBeLessThanOrEqual(BigInt(flashPromotion.unitLimit!) * perUnit);
+        // Qualifying units are paid at full price: a multi-unit offer gives exactly what it would
+        // give on the lines no other item-level offer took (its own and the undiscounted ones).
+        for (const id of ['bxgy', 'multi', 'bundle']) {
+          const own = promotions.find((p) => p.id === id)!;
+          const itemOf = (result: typeof out, lineId: string) =>
+            result.lines
+              .find((l) => l.lineId === lineId)!
+              .allocations.filter((a) => a.layer === 'ITEM');
+          const free = lines.filter((l) => itemOf(out, l.id).every((a) => a.promotionId === id));
+          const alone = run(market, { lines: free, promotions: [own] });
+          for (const l of free) {
+            const got = itemOf(out, l.id).reduce((t, a) => t + a.amount, 0n);
+            const want = itemOf(alone, l.id).reduce((t, a) => t + a.amount, 0n);
+            expect(got).toBe(want);
+          }
+        }
         // The same answer in any order of lines and promotions.
         const again = run(market, {
           ...input,

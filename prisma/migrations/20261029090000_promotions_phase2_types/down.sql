@@ -2,7 +2,9 @@
 -- code. Reverses 20261029090000_promotions_phase2_types: the grants first, then the new tables
 -- (which drops their triggers, indexes and foreign keys), then the new columns and checks, and last
 -- the two type checks of the core migration. The type checks are put back last, so the down
--- refuses (and nothing is lost) when a promotion of a phase 2 type is still stored.
+-- refuses when a promotion of a phase 2 type is still stored. Nothing is lost then because the file
+-- runs as one transaction (as the reversibility script runs it), so the refusal rolls the earlier
+-- steps back; run it any other way and the earlier steps stay applied.
 SET lock_timeout = '5s';
 
 REVOKE SELECT, INSERT ON TABLE "promotions"."promotion_batch_codes" FROM "mondapac_app";

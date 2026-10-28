@@ -135,7 +135,7 @@ Six types on top of the core (migration `20261029090000_promotions_phase2_types`
   checked against the `FlashSales.soldUnits` port; unknown counts as 0 only in test mode, otherwise the
   flash sale is left out of the quote. The production adapter returns unknown until package T2 counts sales.
 - **Batch codes** (platform, cart layer): an admin generates N codes (`POST .../batch-codes`, CSV, shown
-  once); only the SHA-256 hash is stored (`promotion_batch_codes`, unique per Market). Length and alphabet
+  once); only the HMAC-SHA256 hash (keyed by PROMOTIONS_CODE_PEPPER) is stored (`promotion_batch_codes`, unique per Market). Length and alphabet
   come from Market config `promotions.batchCodes` (absent means unavailable, fail closed; entropy at least
   60 bits). Step-up is needed for each generating call when the platform budget is above the Market
   threshold; the audit action records the count and batch id, never a code. One code per order still holds;

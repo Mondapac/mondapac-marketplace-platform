@@ -107,8 +107,15 @@ export class MemoryPromotions implements PromotionRepository {
       ),
     );
   }
-  codeExists(_market: MarketContext, code: string) {
-    return Promise.resolve([...this.records.values()].some((other) => other.code === code));
+  existingCodes(_market: MarketContext, codes: readonly string[]) {
+    const wanted = new Set(codes);
+    return Promise.resolve(
+      new Set(
+        [...this.records.values()].flatMap((r) =>
+          r.code !== null && wanted.has(r.code) ? [r.code] : [],
+        ),
+      ) as ReadonlySet<string>,
+    );
   }
   countCounting(_market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
     return Promise.resolve(
