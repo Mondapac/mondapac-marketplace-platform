@@ -14,3 +14,14 @@ export async function photoUrls(): Promise<PhotoUrl | null> {
   const host = storefrontHostFor(config, (await headers()).get('host'));
   return photoUrlBuilder(config.imageOrigin, host?.marketId ?? null);
 }
+
+/**
+ * The photo origin and Market of this request, for the browser to build photo URLs of the real
+ * cart (the same builder, `photoUrlBuilder`). Null when photos are off.
+ */
+export async function photoBase(): Promise<{ origin: string; marketId: string } | null> {
+  const config = storefrontApiConfig();
+  if (config === null || config.imageOrigin === null) return null;
+  const host = storefrontHostFor(config, (await headers()).get('host'));
+  return host === undefined ? null : { origin: config.imageOrigin, marketId: host.marketId };
+}
