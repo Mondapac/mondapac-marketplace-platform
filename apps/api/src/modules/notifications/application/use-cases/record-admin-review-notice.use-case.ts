@@ -9,6 +9,7 @@ import {
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_SELLER_FILE_SUBMITTED,
+  ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   type CERTIFICATE_SUBMISSIONS,
   type HOLD_DIRECTIONS,
   type SELLER_FILE_KINDS,
@@ -39,6 +40,10 @@ export type AdminReviewItem =
       readonly recordId: string;
       readonly offerId: string;
       readonly direction: (typeof HOLD_DIRECTIONS)[number];
+    }
+  | {
+      readonly kind: typeof ADMIN_SELLER_REINSTATED_HOLD_REMAINS;
+      readonly sellerId: string;
     };
 
 export interface RecordAdminReviewNoticeInput {
@@ -68,6 +73,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
       return { sellerId: item.sellerId, fileKind: item.fileKind };
     case ADMIN_PRICE_HOLD_OPENED:
       return { recordId: item.recordId, offerId: item.offerId, direction: item.direction };
+    case ADMIN_SELLER_REINSTATED_HOLD_REMAINS:
+      return { sellerId: item.sellerId };
   }
 }
 
@@ -76,7 +83,7 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
  * queue of the Market, so one admin notice is written, shown to each admin who holds the kind's
  * permission when they read. From the subscriptions on `certification.seller-certification-
  * submitted.v1`, `catalog.product-revision-submitted.v1`, `sellers.business-file-submitted.v1` and
- * `pricing.price-hold-opened.v1`. A product revision makes a notice only while it is still
+ * `pricing.price-hold-opened.v1` and `commission-payouts.seller-reinstated-hold-remains.v1`. A product revision makes a notice only while it is still
  * pending (a seller revision may publish at once, and a platform one is the admins' own); this is
  * read through catalog before the unit. Written in the inbox unit, so a repeated delivery adds
  * nothing; the Market's oldest admin notices of the same kind beyond the cap leave in the same

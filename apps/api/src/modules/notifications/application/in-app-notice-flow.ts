@@ -15,11 +15,16 @@ import {
 import { TEAM_MEMBER_INVITE } from '../../identity';
 import { INVENTORY_STOCK_VIEW } from '../../inventory';
 import { ORDERING_SELLER_ORDER_VIEW, type OrderingFacade } from '../../ordering';
+import {
+  COMMISSION_PAYOUTS_EARNINGS_VIEW,
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
+} from '../../commission-payouts';
 import { PRICING_PRICE_HOLD_DECIDE, PRICING_PRICE_VIEW } from '../../pricing';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
   ADMIN_NOTICE_KINDS,
   ADMIN_PRICE_HOLD_OPENED,
+  ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_SELLER_FILE_SUBMITTED,
@@ -39,6 +44,7 @@ import {
   SELLER_OFFER_TAG_CHANGED,
   SELLER_ORDER_DISPUTED,
   SELLER_ORDER_PAID,
+  SELLER_PAYOUT_TERMS_CHANGED,
   SELLER_PRICE_HOLD_DECIDED,
   SELLER_PRODUCT_CHANGES_REQUESTED,
   SELLER_PRODUCT_PUBLISHED,
@@ -108,6 +114,7 @@ const SELLER_KIND_ACCESS: Readonly<Record<SellerNoticeKind, AccessDeclaration>> 
   return {
     [SELLER_ORDER_PAID]: order,
     [SELLER_ORDER_DISPUTED]: order,
+    [SELLER_PAYOUT_TERMS_CHANGED]: seeing('earnings', COMMISSION_PAYOUTS_EARNINGS_VIEW.key),
     [SELLER_LOW_STOCK]: stock,
     [SELLER_CERTIFICATE_DECIDED]: certificate,
     [SELLER_CERTIFICATE_EXPIRING]: certificate,
@@ -147,6 +154,11 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
   [ADMIN_PRICE_HOLD_OPENED]: {
     name: 'notifications.see-admin-price-hold-notices',
     rule: { kind: 'permissions', allOf: [PRICING_PRICE_HOLD_DECIDE.key] },
+  },
+  // The admin who can release a payout hold works this: the seller is back, a hold remains.
+  [ADMIN_SELLER_REINSTATED_HOLD_REMAINS]: {
+    name: 'notifications.see-admin-reinstated-hold-notices',
+    rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE.key] },
   },
 };
 
