@@ -53,25 +53,24 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Redacts the admin-entered reason of a request that was just closed (cancelled or completed): in
-   * the unit of the closing write, so a closed admin row never keeps the text. A buyer's own request
-   * holds none and is left as it is.
+   * One closing write that also redacts (the CHECK demands it): an admin request gets `reason` NULL
+   * and `redacted_at` in the same statement, a buyer's own request holds no text and is closed as it
+   * is. The two statements match disjoint rows, so exactly one applies; each is a single UPDATE.
    */
-  async #redactClosed(
+  async #close(
     market: MarketContext,
-    id: Id<'AccountDeletionRequest'>,
+    where: Record<string, unknown>,
+    data: Record<string, unknown>,
     at: Temporal.Instant,
-  ) {
-    await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
-      where: {
-        marketId: market.marketId,
-        id,
-        requestedBy: 'admin',
-        status: { in: ['cancelled', 'completed'] },
-        redactedAt: null,
-      },
-      data: REDACTION(at),
+  ): Promise<boolean> {
+    const rows = this.prisma.tx(market).customersAccountDeletionRequest;
+    const admin = await rows.updateMany({
+      where: { ...where, requestedBy: 'admin' },
+      data: { ...data, ...REDACTION(at) },
     });
+    if (admin.count === 1) return true;
+    const buyer = await rows.updateMany({ where: { ...where, requestedBy: 'customer' }, data });
+    return buyer.count === 1;
   }
 
   async insertPending(market: MarketContext, request: AccountDeletionRequest): Promise<boolean> {
@@ -112,12 +111,12 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     at: Temporal.Instant,
   ): Promise<boolean> {
     // Only a pending request: a claimed one (executing) matches nothing and stays as it is.
-    const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
-      where: { marketId: market.marketId, id, status: 'pending' },
-      data: { status: 'cancelled', cancelledAt: toDate(at), cancelReason: reason },
-    });
-    if (count === 1) await this.#redactClosed(market, id, at);
-    return count === 1;
+    return this.#close(
+      market,
+      { marketId: market.marketId, id, status: 'pending' },
+      { status: 'cancelled', cancelledAt: toDate(at), cancelReason: reason },
+      at,
+    );
   }
 
   async findById(market: MarketContext, id: Id<'AccountDeletionRequest'>) {
@@ -134,17 +133,17 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     at: Temporal.Instant,
   ): Promise<boolean> {
     // Only a pending request, as the buyer's cancel: a claimed one matches nothing.
-    const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
-      where: { marketId: market.marketId, id, status: 'pending' },
-      data: {
+    return this.#close(
+      market,
+      { marketId: market.marketId, id, status: 'pending' },
+      {
         status: 'cancelled',
         cancelledAt: toDate(at),
         cancelReason: 'admin',
         cancelledByAdminId: adminAccountId,
       },
-    });
-    if (count === 1) await this.#redactClosed(market, id, at);
-    return count === 1;
+      at,
+    );
   }
 
   async listPending(
@@ -209,12 +208,12 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     claimedAt: Temporal.Instant,
     at: Temporal.Instant,
   ): Promise<boolean> {
-    const { count } = await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
-      where: { marketId: market.marketId, id, status: 'executing', claimedAt: toDate(claimedAt) },
-      data: { status: 'completed', completedAt: toDate(at) },
-    });
-    if (count === 1) await this.#redactClosed(market, id, at);
-    return count === 1;
+    return this.#close(
+      market,
+      { marketId: market.marketId, id, status: 'executing', claimedAt: toDate(claimedAt) },
+      { status: 'completed', completedAt: toDate(at) },
+      at,
+    );
   }
 
   async listDue(

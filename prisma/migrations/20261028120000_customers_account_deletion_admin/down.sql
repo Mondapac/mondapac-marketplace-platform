@@ -2,10 +2,15 @@
 -- Accepted loss: an admin-cancelled row cannot keep the narrower cancel_reason check, so its reason
 -- is mapped back to 'customer'; who cancelled it (cancelled_by_admin_id) and every admin-origin
 -- column (admin, ticket reference, reason, redaction time) are dropped with the columns.
+DROP TRIGGER "account_deletion_requests_guard" ON "customers"."account_deletion_requests";
+DROP FUNCTION "customers"."account_deletion_requests_guard"();
+
 REVOKE UPDATE ("cancelled_by_admin_id", "reason", "redacted_at") ON TABLE "customers"."account_deletion_requests" FROM "mondapac_app";
 
 ALTER TABLE "customers"."account_deletion_requests"
   DROP CONSTRAINT "account_deletion_requests_admin_cancel_check",
+  DROP CONSTRAINT "account_deletion_requests_admin_closed_check",
+  DROP CONSTRAINT "account_deletion_requests_redacted_at_check",
   DROP CONSTRAINT "account_deletion_requests_reason_check",
   DROP CONSTRAINT "account_deletion_requests_ticket_ref_check",
   DROP CONSTRAINT "account_deletion_requests_admin_columns_check",

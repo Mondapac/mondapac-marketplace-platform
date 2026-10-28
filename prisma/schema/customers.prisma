@@ -62,7 +62,7 @@ model CustomersAccountDeletionRequest {
   accountId         String    @map("account_id") @db.Uuid
   /// pending, executing, cancelled or completed (CHECK). pending to executing (the job's claim),
   /// executing back to pending (a blocker found after the claim) or to completed; pending to
-  /// cancelled. Trigger-free: the grant lets the application update only the state columns, and
+  /// cancelled. The grant lets the application update only the state columns, and
   /// every update is conditional on the status it moves from.
   status            String
   /// The waiting period in force when the request was made; the request keeps it.

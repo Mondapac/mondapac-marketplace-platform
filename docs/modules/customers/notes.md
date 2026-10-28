@@ -236,7 +236,7 @@ admin deletes a buyer's account for them, from a support ticket.
   admin-entered text and possible personal data: on the row only, not in audit fields (they hold no
   text) and not in events. **Redaction (Hassan M2, Mojtaba 1):** when an admin request closes
   (cancelled by the buyer or an admin, or completed) the same unit sets `reason` to NULL and
-  `redacted_at`; the CHECK allows exactly that state, tied to a closed status; the ticket reference
+  `redacted_at`; the closing write is one statement that redacts, a CHECK demands it for a closed admin request, and a trigger lets `reason` change only to NULL with `redacted_at`; the ticket reference
   stays. The admin's cancel note is validated but never stored (the admin id and the proof are in
   the audit row), so there is no `cancel_note` column. The OpenAPI text tells admins not to enter
   personal data in the reason.

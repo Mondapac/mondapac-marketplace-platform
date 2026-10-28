@@ -76,8 +76,8 @@ const STEP_UP_PROOF = {
 /**
  * An admin asked for a buyer's account to be deleted (package 5c). Target: the request; the actor
  * is the admin. No free text: the ticket reference and the reason are on the request row
- * (`customers.account_deletion_requests`, never updated after insert), which is part of the audit
- * evidence. `after` names the buyer's account, the dates and the step-up proof the request spent.
+ * (`customers.account_deletion_requests`); the reason is redacted (set to NULL) when the request
+ * closes and the ticket reference stays, and the row is part of the audit evidence. `after` names the buyer's account, the dates and the step-up proof the request spent.
  */
 export const AccountDeletionRequestedByAdmin = defineAuditAction({
   action: 'customers.account-deletion.requested-by-admin',

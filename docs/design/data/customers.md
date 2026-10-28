@@ -31,7 +31,7 @@ was asked for and carried out; the application role cannot delete it.
 | `cancelled_at`, `cancel_reason` | Set with `cancelled` only; reason `customer`, `sign-in` or `admin` |
 | `completed_at` | Set with `completed` only |
 | `requested_by` | `customer` (default) or `admin` (package 5c, CHECK) |
-| `admin_account_id`, `ticket_ref`, `reason` | Set with `requested_by = 'admin'` only (CHECK): the admin, the support ticket (1 to 64 characters, `[A-Za-z0-9][A-Za-z0-9._#/-]*`) and the reason (1 to 500). **Admin-entered text, possible personal data**: kept here, never in an event or an audit row; never rewritten after insert, except that the code sets `reason` to NULL when the request closes |
+| `admin_account_id`, `ticket_ref`, `reason` | Set with `requested_by = 'admin'` only (CHECK): the admin, the support ticket (1 to 64 characters, `[A-Za-z0-9][A-Za-z0-9._#/-]*`) and the reason (1 to 500). **Admin-entered text, possible personal data**: kept here, never in an event or an audit row; never rewritten after insert, except that `reason` is set to NULL, with `redacted_at`, in the statement that closes the request |
 | `redacted_at` | When `reason` was redacted: set, with `reason` NULL, on an admin request once it is `cancelled` or `completed`; NULL otherwise (CHECK) |
 | `cancelled_by_admin_id` | Set with `cancel_reason = 'admin'` only (CHECK): the admin who cancelled. The admin's cancel note (1 to 500 characters, possible personal data) is validated and never stored; the admin's id and the step-up proof are in the audit row |
 
@@ -65,18 +65,18 @@ There is no index on `(market_id, account_id, requested_at)`: no query reads an 
 | `..._scheduled_for_check` | `scheduled_for > requested_at` |
 | `..._cancel_reason_check` | `customer`, `sign-in` or `admin` |
 | `..._requested_by_check`, `..._admin_columns_check` | `customer` or `admin`; a buyer's request has none of the admin columns; an admin request has its admin and ticket, and either its reason (open, `redacted_at` NULL) or no reason and a `redacted_at` (closed: `cancelled` or `completed`) |
+| `..._admin_closed_check`, `..._redacted_at_check` | A closed admin request (`cancelled`, `completed`) has `redacted_at` and no reason; `redacted_at >= requested_at` |
 | `..._ticket_ref_check`, `..._reason_check` | Ticket shape; a reason, when present, is 1 to 500 characters |
 | `..._admin_cancel_check` | `cancel_reason = 'admin'` has `cancelled_by_admin_id`; any other cancel has none |
 | `..._closing_columns_check` | Each state has exactly its columns: `pending` none of `claimed_at`, `cancelled_at`, `cancel_reason`, `completed_at`; `executing` a `claimed_at` only; `cancelled` its two cancel columns and no claim; `completed` a claim and `completed_at` |
 
 The closed-once rule (a `cancelled` or `completed` row never changes again) is enforced in code
-only: every update names the status it moves from. There is no trigger (see follow-ups in
-`notes.md`).
+only: every update names the status it moves from. The one trigger (section 4) guards the admin text columns, not the status.
 
 ## 4. Grants
 
 `mondapac_app`: `SELECT`, `INSERT`, and `UPDATE` on the state columns only (`status`, `claimed_at`,
-`cancelled_at`, `cancel_reason`, `completed_at`, `cancelled_by_admin_id`, `reason`, `redacted_at`; the last two exist to redact. A column grant cannot limit `reason` to NULL, so only the code does: the repository writes nothing but NULL there, in the unit of the closing write. No trigger, as the rest of the table). No `DELETE`; `requested_by`, `admin_account_id` and `ticket_ref` are never updatable. Mirrored in
+`cancelled_at`, `cancel_reason`, `completed_at`, `cancelled_by_admin_id`, `reason`, `redacted_at`; the last two exist to redact. A column grant cannot limit `reason` to NULL, so a `BEFORE UPDATE` trigger (`customers.account_deletion_requests_guard`) does: `reason` may only go from a value to NULL together with a first `redacted_at`; `ticket_ref`, `requested_by` and `admin_account_id` never change). No `DELETE`; `requested_by`, `admin_account_id` and `ticket_ref` are never updatable. Mirrored in
 `apps/api/test/db/expected-privileges.ts`.
 
 ## 5. Retention
