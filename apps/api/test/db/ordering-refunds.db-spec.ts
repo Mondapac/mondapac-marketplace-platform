@@ -17,6 +17,7 @@ import { PayoutTermsResolver } from '../../src/modules/commission-payouts/applic
 import { ConfigPayoutTermsPolicy } from '../../src/modules/commission-payouts/infrastructure/config-payout-terms-policy';
 import { PrismaEligibilityAnchorRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-eligibility-anchor.repository';
 import { PrismaPayoutHoldRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-hold.repository';
+import { PrismaPayoutCursorRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-cursor.repository';
 import { PrismaPayoutTermsRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-terms.repository';
 import { ConfigCommissionPolicy } from '../../src/modules/commission-payouts/infrastructure/config-commission-policy';
 import { PrismaLedgerRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-ledger.repository';
@@ -970,6 +971,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         anchors: new PrismaEligibilityAnchorRepository(db.service),
         holds: new PrismaPayoutHoldRepository(db.service),
         sellers: { exists: () => Promise.resolve(true) },
+        // Only the ledger paths run here: the payout schedule, the outbox and the step-up are not used.
+        cursors: new PrismaPayoutCursorRepository(db.service),
+        outbox: { append: () => Promise.reject(new Error('not used')) },
+        stepUp: { consume: () => Promise.reject(new Error('not used')) },
         audit,
         ids,
         clock,

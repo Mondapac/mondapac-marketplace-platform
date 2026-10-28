@@ -1,4 +1,12 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { ConsumedStepUp, StepUpProofConsumer } from '../../src/platform/authz';
+import { RecordingCpOutbox } from './commission-payouts-dispute-fakes';
+import type {
+  CursorUpdate,
+  PayoutCursor,
+  PayoutCursorRepository,
+} from '../../src/modules/commission-payouts/application/ports/payout-cursor.repository';
 import type { HoldReason } from '../../src/modules/commission-payouts/domain/payout-hold';
 import type {
   EligibilityAnchor,
@@ -54,6 +62,90 @@ export class MemoryAnchors implements EligibilityAnchorRepository {
   }
   find(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.get(key(market, sellerOrderId)) ?? null);
+  }
+  findMany(market: MarketContext, sellerOrderIds: readonly Id<'SellerOrder'>[]) {
+    return Promise.resolve(
+      sellerOrderIds.flatMap((id) => {
+        const anchor = this.rows.get(key(market, id));
+        return anchor === undefined ? [] : [anchor];
+      }),
+    );
+  }
+}
+
+/** The payout schedule cursors, keyed by Market. `lock` counts as the row lock (a version bump). */
+export class MemoryCursors implements PayoutCursorRepository {
+  readonly rows = new Map<string, PayoutCursor>();
+  locks = 0;
+  ensure(market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
+    if (!this.rows.has(key(market, sellerId))) {
+      this.rows.set(key(market, sellerId), {
+        sellerId,
+        lastSlotAt: now,
+        nextSlotAt: null,
+        zone: null,
+        blockReason: null,
+        evaluatedAt: null,
+        updatedAt: now,
+        version: 1,
+      });
+    }
+    return Promise.resolve();
+  }
+  lock(market: MarketContext, sellerId: Id<'Seller'>) {
+    const row = this.rows.get(key(market, sellerId));
+    if (row === undefined) return Promise.resolve(null);
+    this.locks += 1;
+    const locked = { ...row, version: row.version + 1 };
+    this.rows.set(key(market, sellerId), locked);
+    return Promise.resolve(locked);
+  }
+  find(market: MarketContext, sellerId: Id<'Seller'>) {
+    return Promise.resolve(this.rows.get(key(market, sellerId)) ?? null);
+  }
+  save(market: MarketContext, sellerId: Id<'Seller'>, update: CursorUpdate, now: Temporal.Instant) {
+    const row = this.rows.get(key(market, sellerId));
+    if (row === undefined) return Promise.resolve();
+    this.rows.set(key(market, sellerId), { ...row, ...update, updatedAt: now });
+    return Promise.resolve();
+  }
+  listDue(market: MarketContext, now: Temporal.Instant, staleBefore: Temporal.Instant, limit: number) {
+    const due = [...this.rows.entries()]
+      .filter(([k]) => k.startsWith(`${market.marketId}:`))
+      .map(([, row]) => row)
+      .filter((row) =>
+        row.nextSlotAt !== null
+          ? row.nextSlotAt.epochMilliseconds <= now.epochMilliseconds
+          : row.evaluatedAt === null ||
+            row.evaluatedAt.epochMilliseconds < staleBefore.epochMilliseconds,
+      );
+    return Promise.resolve(due.slice(0, limit));
+  }
+  invalidate(market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
+    const row = this.rows.get(key(market, sellerId));
+    if (row !== undefined) {
+      this.rows.set(key(market, sellerId), {
+        ...row,
+        nextSlotAt: null,
+        evaluatedAt: null,
+        updatedAt: now,
+        version: row.version + 1,
+      });
+    }
+    return Promise.resolve();
+  }
+}
+
+/** Spends any proof (the tests of the other rules do not care about the step-up). */
+export class AllowingStepUp implements StepUpProofConsumer {
+  readonly spent: string[] = [];
+  consume(_context: CallContext, actionKey: string) {
+    this.spent.push(actionKey);
+    const value: ConsumedStepUp = {
+      sessionId: '01990000-0000-7000-8000-000000000061' as Id<'Session'>,
+      verifiedAt: Temporal.Instant.fromEpochMilliseconds(0),
+    };
+    return Promise.resolve(ok(value));
   }
 }
 
@@ -169,5 +261,8 @@ export function payoutStores(policy: PayoutTermsPolicy) {
     terms: new PayoutTermsResolver(policy, termsOverrides),
     anchors: new MemoryAnchors(),
     holds: new MemoryHolds(),
+    cursors: new MemoryCursors(),
+    outbox: new RecordingCpOutbox(),
+    stepUp: new AllowingStepUp(),
   };
 }

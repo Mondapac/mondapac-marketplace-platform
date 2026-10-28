@@ -65,13 +65,17 @@ export type ApprovalReason = 'first-payout' | 'terms';
 
 /** Our own outcome codes; payments' refusal codes are stored as given. */
 export const OUTCOME_CODES = [
-  'abandoned',
-  'access-lost',
+  /** The fence held and the quarantine pass found no transfer: nothing was sent. */
+  'payout-unwound',
+  /** payments reports the transfer failed after it was created. */
+  'transfer-failed',
+  /** payments reports the send refused (found by lookup, the code of the refusal unknown). */
+  'transfer-refused',
   'voided.hold',
   'voided.amount-changed',
   'voided.access',
   'voided.account-not-ready',
-  'voided.zone',
+  'voided.second-factor',
 ] as const;
 export type OutcomeCode = (typeof OUTCOME_CODES)[number];
 

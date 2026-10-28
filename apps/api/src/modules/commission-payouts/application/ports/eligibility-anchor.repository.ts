@@ -23,6 +23,12 @@ export interface EligibilityAnchorRepository {
   insertIfAbsent(market: MarketContext, anchor: EligibilityAnchor): Promise<boolean>;
 
   find(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<EligibilityAnchor | null>;
+
+  /** The anchors of these seller orders; one without an anchor is left out. */
+  findMany(
+    market: MarketContext,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<readonly EligibilityAnchor[]>;
 }
 
 export const ELIGIBILITY_ANCHOR_REPOSITORY = Symbol('ELIGIBILITY_ANCHOR_REPOSITORY');

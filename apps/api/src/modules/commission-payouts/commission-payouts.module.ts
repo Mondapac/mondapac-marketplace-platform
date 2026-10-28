@@ -5,11 +5,13 @@ import {
   AUTHORISATION_CHECK,
   registerPermissions,
   registerStepUpActions,
+  STEP_UP_CONSUMER,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
 import { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from './contracts/step-up';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { SECURITY_EVENTS } from '../../platform/security-events/security-events';
@@ -21,6 +23,27 @@ import { IdentityModule } from '../identity';
 import { SellersModule } from '../sellers';
 import type { CommissionPayoutsDependencies } from './application/commission-payouts-dependencies';
 import type { DisputeDependencies } from './application/dispute-dependencies';
+import type { PayoutDependencies } from './application/payout-dependencies';
+import { PAYOUT_CURSOR_REPOSITORY } from './application/ports/payout-cursor.repository';
+import {
+  PAYMENTS_PAYOUTS,
+  PAYOUT_POLICY,
+  PAYOUT_PREREQUISITES,
+  SELLER_PAYOUT_ACCESS,
+} from './application/ports/payout-gateways';
+import { PAYOUT_REPOSITORY } from './application/ports/payout.repository';
+import { ApplyTransferChange } from './application/use-cases/apply-transfer-change.use-case';
+import { ApprovePayout } from './application/use-cases/approve-payout.use-case';
+import { ListOwnPayoutHolds } from './application/use-cases/list-own-payout-holds.use-case';
+import { ListOwnPayouts } from './application/use-cases/list-own-payouts.use-case';
+import { ListPayouts } from './application/use-cases/list-payouts.use-case';
+import { ReconcileInstructions } from './application/use-cases/reconcile-instructions.use-case';
+import { RunPayouts } from './application/use-cases/run-payouts.use-case';
+import { ViewNextPayout } from './application/use-cases/view-next-payout.use-case';
+import { ViewPayout } from './application/use-cases/view-payout.use-case';
+import { LateBoundPaymentsPayouts } from './infrastructure/late-bound-payments-payouts';
+import { AdminPayoutsController, SellerPayoutsController } from './presentation/payout.controller';
+import { payoutRunJob, reconcileInstructionsJob } from './presentation/jobs/payout-jobs';
 import { DISPUTE_SOURCE, ORDER_PAYMENT_LOOKUP } from './application/ports/dispute-source';
 import { DISPUTE_REPOSITORY } from './application/ports/dispute.repository';
 import { SELLER_NAMES } from './application/ports/seller-names';
@@ -89,6 +112,9 @@ const PORTS: readonly [keyof CommissionPayoutsDependencies, InjectionToken][] = 
   ['anchors', ELIGIBILITY_ANCHOR_REPOSITORY],
   ['holds', PAYOUT_HOLD_REPOSITORY],
   ['sellers', SELLER_DIRECTORY],
+  ['cursors', PAYOUT_CURSOR_REPOSITORY],
+  ['outbox', OUTBOX_WRITER],
+  ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -108,10 +134,49 @@ const DISPUTE_PORTS: readonly [keyof DisputeDependencies, InjectionToken][] = [
   ['outbox', OUTBOX_WRITER],
   ['securityEvents', SECURITY_EVENTS],
   ['authorisation', AUTHORISATION_CHECK],
+  ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
+
+type PayoutUseCaseClass<U> = new (gate: UseCaseGate, deps: PayoutDependencies) => U;
+
+/** The ports of the payout use cases (package 6d); the dependency object is built the same way. */
+const PAYOUT_PORTS: readonly [keyof PayoutDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['payouts', PAYOUT_REPOSITORY],
+  ['cursors', PAYOUT_CURSOR_REPOSITORY],
+  ['ledger', LEDGER_REPOSITORY],
+  ['anchors', ELIGIBILITY_ANCHOR_REPOSITORY],
+  ['holds', PAYOUT_HOLD_REPOSITORY],
+  ['terms', PAYOUT_TERMS_RESOLVER],
+  ['policy', COMMISSION_POLICY],
+  ['payoutPolicy', PAYOUT_POLICY],
+  ['access', SELLER_PAYOUT_ACCESS],
+  ['prerequisites', PAYOUT_PREREQUISITES],
+  ['payments', PAYMENTS_PAYOUTS],
+  ['sellerNames', SELLER_NAMES],
+  ['securityEvents', SECURITY_EVENTS],
+  ['stepUp', STEP_UP_CONSUMER],
+  ['audit', AUDIT_WRITER],
+  ['ids', ID_GENERATOR],
+  ['clock', CLOCK],
+];
+
+function payoutUseCaseProvider<U>(type: PayoutUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, ...PAYOUT_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new type(
+        gate,
+        Object.fromEntries(
+          PAYOUT_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as PayoutDependencies,
+      ),
+  };
+}
 
 function disputeUseCaseProvider<U>(type: DisputeUseCaseClass<U>): FactoryProvider<U> {
   return {
@@ -151,7 +216,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * back here and the ledger records the reversal rows. Package 6b adds the payout terms (Market
  * config, an admin's override per seller), the eligibility anchor of each delivered seller order
  * (ordering sends the delivery facts) and the payout holds (an admin's, and a system hold when
- * identity suspends a seller). No money moves: the payout run is package 6d. Package 8b adds the
+ * identity suspends a seller). Package 6d adds the payout run (the payouts, their approval and
+ * their transfers to payments), the reconciliation of those transfers and the payout views. The
+ * reads and calls of payments are bound late, like the dispute reads below. Package 8b adds the
  * dispute effects: a snapshot of each payments dispute, a hold on the order's seller orders while
  * it is open, a seller notice, and the admin's decision on who bears a lost chargeback. The
  * consumer's reads of payments and ordering are bound late, by `CommissionPayoutsDisputesModule`
@@ -166,6 +233,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminPayoutHoldsController,
     AdminDisputesController,
     SellerDisputesController,
+    AdminPayoutsController,
+    SellerPayoutsController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('commission-payouts'),
@@ -173,6 +242,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('commission-payouts', COMMISSION_PAYOUTS_EVENTS),
     { provide: DISPUTE_SOURCE, useClass: LateBoundDisputeSource },
     { provide: ORDER_PAYMENT_LOOKUP, useClass: LateBoundOrderPaymentLookup },
+    { provide: PAYMENTS_PAYOUTS, useClass: LateBoundPaymentsPayouts },
     PersistenceModule.auditWriterFor('commission-payouts'),
     registerAuditActions('commission-payouts', COMMISSION_PAYOUTS_AUDIT_ACTIONS),
     registerPermissions('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS),
@@ -208,6 +278,27 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...[SyncDispute, ListDisputes, ViewDispute, DecideDispute, ListOwnDisputes].map((type) =>
       disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>),
     ),
+    ...[
+      RunPayouts,
+      ReconcileInstructions,
+      ApplyTransferChange,
+      ListPayouts,
+      ViewPayout,
+      ApprovePayout,
+      ViewNextPayout,
+      ListOwnPayouts,
+      ListOwnPayoutHolds,
+    ].map((type) => payoutUseCaseProvider(type as PayoutUseCaseClass<unknown>)),
+    // Package 6d: the payout run (every 15 minutes) and the reconciliation of instructed
+    // transfers (every 5 minutes), once per Market under the scheduler's advisory lock.
+    registerJobsFrom(
+      'commission-payouts',
+      [RunPayouts, ReconcileInstructions],
+      (run: RunPayouts, reconcile: ReconcileInstructions) => [
+        payoutRunJob(run),
+        reconcileInstructionsJob(reconcile),
+      ],
+    ),
     {
       provide: COMMISSION_PAYOUTS_FACADE,
       inject: [CommissionRates, RecordSellerOrderPaid, RecordRefund, RecordSellerOrderDelivered],
@@ -221,6 +312,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   ],
   // The dispute pieces are exported for the binding module of the same folder only (they are not
   // part of the module's entry point).
-  exports: [COMMISSION_PAYOUTS_FACADE, SyncDispute, DISPUTE_SOURCE, ORDER_PAYMENT_LOOKUP],
+  exports: [
+    COMMISSION_PAYOUTS_FACADE,
+    SyncDispute,
+    DISPUTE_SOURCE,
+    ORDER_PAYMENT_LOOKUP,
+    ApplyTransferChange,
+    PAYMENTS_PAYOUTS,
+  ],
 })
 export class CommissionPayoutsModule {}

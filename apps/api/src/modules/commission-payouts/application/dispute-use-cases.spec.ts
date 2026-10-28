@@ -1,3 +1,4 @@
+import { AllowingStepUp } from '../../../../test/support/commission-payouts-fakes';
 import { money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -204,6 +205,7 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       outbox,
       securityEvents,
       authorisation: { check: () => Promise.resolve({ allowed: true }) },
+      stepUp: new AllowingStepUp(),
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,

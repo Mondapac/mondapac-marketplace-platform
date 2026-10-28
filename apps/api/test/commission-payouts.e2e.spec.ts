@@ -17,9 +17,11 @@ import {
   COMMISSION_PAYOUTS_DISPUTE_VIEW,
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
+  COMMISSION_PAYOUTS_PAYOUT_APPROVE,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
+  COMMISSION_PAYOUTS_PAYOUT_VIEW,
 } from '../src/modules/commission-payouts/contracts/permissions';
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
@@ -105,6 +107,11 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.dispute.already-decided': 409,
     'commission-payouts.dispute.amount-out-of-range': 400,
     'commission-payouts.unavailable': 503,
+    'commission-payouts.payout-not-found': 404,
+    'commission-payouts.payout.not-awaiting-approval': 409,
+    'commission-payouts.payout.amount-changed': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
   });
 });
 
@@ -121,6 +128,8 @@ it('declares the payout terms view as unprotected and every change (the commissi
       COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
       COMMISSION_PAYOUTS_DISPUTE_VIEW,
       COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
+      COMMISSION_PAYOUTS_PAYOUT_VIEW,
+      COMMISSION_PAYOUTS_PAYOUT_APPROVE,
     ].map((p) => [p.key, p.scope, p.protected]),
   ).toEqual([
     ['commission-payouts.commission-rate.edit', 'platform', true],
@@ -130,6 +139,8 @@ it('declares the payout terms view as unprotected and every change (the commissi
     ['commission-payouts.payout-hold.release', 'platform', true],
     ['commission-payouts.dispute.view', 'platform', false],
     ['commission-payouts.dispute.attribute', 'platform', true],
+    ['commission-payouts.payout.view', 'platform', false],
+    ['commission-payouts.payout.approve', 'platform', true],
   ]);
   expect(COMMISSION_PAYOUTS_STEP_UP_ACTIONS).toEqual([
     {
@@ -158,6 +169,12 @@ it('declares the payout terms view as unprotected and every change (the commissi
     },
     {
       key: 'commission-payouts.dispute.attribute',
+      defaultRequired: true,
+      locked: true,
+      audience: 'admin',
+    },
+    {
+      key: 'commission-payouts.payout.approve',
       defaultRequired: true,
       locked: true,
       audience: 'admin',
@@ -723,8 +740,9 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         });
         try {
           const refused = await call(method, 'admin', path(), session, body);
-          expect([401, 403]).toContain(refused.status);
-          expect(refused.status).toBeGreaterThanOrEqual(401);
+          // An acting-as session is not an admin session on an admin route: the exact answer.
+          expect(refused.status).toBe(401);
+          expect(refused.body).toEqual({ statusCode: 401, code: 'session.invalid' });
         } finally {
           spy.mockRestore();
         }

@@ -17,7 +17,7 @@ import type { PaidSellerOrder, RefundedSellerOrder } from '../contracts';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { commissionBase, commissionOn, parseRateBps } from '../domain/commission';
 import { reversedAmount } from '../domain/reversal';
-import type { LedgerEntry, LedgerKind } from '../domain/ledger';
+import { netBySellerOrder, type LedgerEntry, type LedgerKind } from '../domain/ledger';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
@@ -103,6 +103,9 @@ class MemoryLedger implements LedgerRepository {
   }
   hasSellerOrder(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.some((row) => row.sellerOrderId === sellerOrderId));
+  }
+  netBySellerOrder(_m: MarketContext, sellerId: Id<'Seller'>, currency: string) {
+    return Promise.resolve(netBySellerOrder(this.rows, sellerId, currency));
   }
   append(_m: MarketContext, entries: readonly LedgerEntry[]) {
     let count = 0;

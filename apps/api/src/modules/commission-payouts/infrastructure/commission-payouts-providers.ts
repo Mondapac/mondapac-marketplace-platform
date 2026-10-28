@@ -31,6 +31,24 @@ import {
   type DisputeRepository,
 } from '../application/ports/dispute.repository';
 import { SELLER_NAMES, type SellerNames } from '../application/ports/seller-names';
+import {
+  PAYOUT_CURSOR_REPOSITORY,
+  type PayoutCursorRepository,
+} from '../application/ports/payout-cursor.repository';
+import {
+  PAYOUT_POLICY,
+  PAYOUT_PREREQUISITES,
+  SELLER_PAYOUT_ACCESS,
+  type PayoutPolicy,
+  type PayoutPrerequisites,
+  type SellerPayoutAccess,
+} from '../application/ports/payout-gateways';
+import { PAYOUT_REPOSITORY, type PayoutRepository } from '../application/ports/payout.repository';
+import { ConfigPayoutPolicy } from './config-payout-policy';
+import { PrismaPayoutCursorRepository } from './prisma-payout-cursor.repository';
+import { PrismaPayoutRepository } from './prisma-payout.repository';
+import { SellersSellerPayoutAccess } from './sellers-seller-payout-access';
+import { UnwiredPayoutPrerequisites } from './unwired-payout-prerequisites';
 import { PrismaDisputeRepository } from './prisma-dispute.repository';
 import { SellersSellerNames } from './sellers-seller-names';
 import { ConfigCommissionPolicy } from './config-commission-policy';
@@ -104,5 +122,31 @@ export const commissionPayoutsProviders: readonly FactoryProvider[] = [
     provide: SELLER_DIRECTORY,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerDirectory => new SellersSellerDirectory(sellers),
+  },
+  {
+    provide: PAYOUT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PayoutRepository => new PrismaPayoutRepository(prisma),
+  },
+  {
+    provide: PAYOUT_CURSOR_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PayoutCursorRepository =>
+      new PrismaPayoutCursorRepository(prisma),
+  },
+  {
+    provide: PAYOUT_POLICY,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): PayoutPolicy => new ConfigPayoutPolicy(markets),
+  },
+  {
+    provide: SELLER_PAYOUT_ACCESS,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerPayoutAccess =>
+      new SellersSellerPayoutAccess(sellers),
+  },
+  {
+    provide: PAYOUT_PREREQUISITES,
+    useFactory: (): PayoutPrerequisites => new UnwiredPayoutPrerequisites(),
   },
 ];

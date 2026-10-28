@@ -1,5 +1,5 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
-import type { AuthorisationCheck } from '../../../platform/authz';
+import type { AuthorisationCheck, StepUpProofConsumer } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { SecurityEvents } from '../../../platform/security-events/security-events';
@@ -23,6 +23,8 @@ export interface DisputeDependencies {
   readonly securityEvents: SecurityEvents;
   /** Asked whether a seller-side reader also holds `commission-payouts.earnings.view`. */
   readonly authorisation: AuthorisationCheck;
+  /** Spends the admin step-up of a decision once, in the decision's own unit. */
+  readonly stepUp: StepUpProofConsumer;
   readonly audit: AuditWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;

@@ -106,6 +106,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'certification.issuer-request-mail',
       'certification.revoked-mail',
       // Phase 5 package 6b: payout holds from identity's seller access.
+      // Phase 5 package 6d: payments' transfer events settle the payout they belong to.
+      'commission-payouts.apply-transfer-change',
       'commission-payouts.note-seller-reinstated',
       'commission-payouts.place-suspended-hold',
       // Phase 5 package 8b: dispute effects from payments' dispute events.

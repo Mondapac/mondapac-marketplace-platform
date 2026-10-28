@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { PayoutTermsCleared, PayoutTermsSet } from '../domain/audit';
+import { PayoutTermsChanged } from '../domain/events';
 import {
   localTimeToMinute,
   isTermsChangeReason,
@@ -9,7 +10,9 @@ import {
   type PayoutTermsOverride,
   type TermsChangeReason,
 } from '../domain/payout-terms';
+import { COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT } from '../contracts/permissions';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
+import { spendStepUp, type StepUpFailure } from './step-up';
 import type { PayoutTermsOverrideRecord } from './ports/payout-terms.repository';
 import type { EffectivePayoutTerms } from './payout-terms-resolver';
 import { sellerIdOf } from './rate-flow';
@@ -34,7 +37,8 @@ export type TermsFailure =
   | { readonly code: 'commission-payouts.terms-unavailable' }
   /** The version the admin saw is not the stored one (or the seller has no override yet). */
   | { readonly code: 'commission-payouts.version-conflict' }
-  | { readonly code: 'commission-payouts.unavailable' };
+  | { readonly code: 'commission-payouts.unavailable' }
+  | StepUpFailure;
 
 export interface PayoutTermsView {
   readonly sellerId: Id<'Seller'>;
@@ -88,6 +92,29 @@ async function sellerCheck(
   const known = await deps.sellers.exists(context, sellerId);
   if (known === 'unavailable') return { code: 'commission-payouts.unavailable' };
   return known ? null : { code: 'commission-payouts.seller-not-found' };
+}
+
+/**
+ * The seller's terms changed (package 6d, carried over from 6b), inside the unit of the change: the
+ * schedule is worked out again at the next run, and the seller is told through notifications (an
+ * event with ids only). The event is its own aggregate, so any number of changes are allowed.
+ */
+async function announceTermsChange(
+  deps: CommissionPayoutsDependencies,
+  context: CallContext,
+  sellerId: Id<'Seller'>,
+  now: Temporal.Instant,
+): Promise<void> {
+  await deps.cursors.invalidate(context.market, sellerId, now);
+  const changeId = deps.ids.next<'PayoutTermsChange'>();
+  await deps.outbox.append(context, [
+    PayoutTermsChanged.record({
+      aggregateId: changeId,
+      aggregateVersion: 1,
+      occurredAt: now,
+      payload: { changeId, sellerId },
+    }),
+  ]);
 }
 
 /** An admin reads a seller's effective payout terms. */
@@ -162,6 +189,8 @@ export async function setPayoutTerms(
       updatedAt: now,
       updatedBy: actor.accountId,
     };
+    const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT.key);
+    if (!spent.ok) return err(spent.error);
     const written =
       before === null
         ? await deps.termsOverrides.insert(context.market, record)
@@ -178,6 +207,7 @@ export async function setPayoutTerms(
         after: { ...auditValues(record), reasonCode },
       }),
     );
+    await announceTermsChange(deps, context, sellerId, now);
     return ok(toView(sellerId, effective.value));
   });
 }
@@ -216,6 +246,8 @@ export async function clearPayoutTerms(
     if (before.version !== expected) {
       return err({ code: 'commission-payouts.version-conflict' } as const);
     }
+    const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT.key);
+    if (!spent.ok) return err(spent.error);
     if (!(await deps.termsOverrides.remove(context.market, sellerId, before.version))) {
       return err({ code: 'commission-payouts.version-conflict' } as const);
     }
@@ -228,6 +260,7 @@ export async function clearPayoutTerms(
         after: { version: null, reasonCode },
       }),
     );
+    await announceTermsChange(deps, context, sellerId, deps.clock.now());
     return ok(toView(sellerId, effective.value));
   });
 }

@@ -136,6 +136,27 @@ export const DisputeDecided = defineAuditAction({
   },
 });
 
+/** The audit target type of a payout. */
+export const PAYOUT_TARGET = 'commission-payouts.payout';
+
+/**
+ * An admin approved a payout that waited for it (package 6d), with the transfer amount they saw:
+ * the approval binds that amount. Nothing is transferred in the admin's request; the worker
+ * instructs the payout. `before` is the state the admin saw.
+ */
+export const PayoutApproved = defineAuditAction({
+  action: 'commission-payouts.payout.approve',
+  targetType: PAYOUT_TARGET,
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(['awaiting-approval'] as const) },
+  after: {
+    sellerId: auditField.id(),
+    state: auditField.enumOf(['approved'] as const),
+    transfer: auditField.money(),
+    approvalReason: auditField.enumOf(['first-payout', 'terms'] as const),
+  },
+});
+
 export const COMMISSION_PAYOUTS_AUDIT_ACTIONS = [
   CommissionRateSet,
   CommissionRateCleared,
@@ -144,4 +165,5 @@ export const COMMISSION_PAYOUTS_AUDIT_ACTIONS = [
   PayoutHoldPlaced,
   PayoutHoldReleased,
   DisputeDecided,
+  PayoutApproved,
 ] as const;
