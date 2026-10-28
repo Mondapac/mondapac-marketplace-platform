@@ -38,6 +38,13 @@
     "adminRequestExpiryDays": 3,
     "expiringSoonDays": 14
   },
+  "blog": {
+    "sellerPostsPerMonth": 2,
+    "pageSize": 2,
+    "defaultAuthorDisplay": "Zork desk",
+    "healthTerms": ["zorkcure", "blargheal"],
+    "selfApprovalWithStepUp": false
+  },
   "reviews": {
     "reviewWindowDays": 30,
     "editWindowDays": 7,
