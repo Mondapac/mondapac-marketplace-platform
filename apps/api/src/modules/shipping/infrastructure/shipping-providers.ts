@@ -39,6 +39,9 @@ import { ConfigCarrierPolicy } from './config-carrier-policy';
 import { ConfigShippingPolicy } from './config-shipping-policy';
 import { ConfigUberDirectPolicy } from './config-uber-direct-policy';
 import { ConfigZoom2uPolicy } from './config-zoom2u-policy';
+import { ConfigAusPostPolicy } from './config-auspost-policy';
+import { AusPostCarrier } from './auspost-carrier';
+import { AusPostHttpClient } from './auspost-http-client';
 import { DriveHttpClient } from './drive-http-client';
 import { FakeTestCarrier } from './fake-test-carrier';
 import { capabilitiesOf } from './fleet-config';
@@ -108,8 +111,8 @@ export const shippingProviders: readonly FactoryProvider[] = [
       new PrismaDeliverySettingsRepository(prisma),
   },
   {
-    // One gateway per fleet. Mondapac Drive, Uber Direct and Zoom2u are registered here;
-    // Australia Post registers its own beside them. The fake is for tests and development: it is
+    // One gateway per fleet. Mondapac Drive, Uber Direct, Zoom2u and Australia Post are registered
+    // here. The fake is for tests and development: it is
     // never registered in production and is on only where a Market's `shipping.fleets` lists it.
     provide: FLEET_REGISTRY,
     inject: [CARRIER_POLICY, MarketRegistry, APP_CONFIG, CLOCK],
@@ -138,6 +141,13 @@ export const shippingProviders: readonly FactoryProvider[] = [
         new Zoom2uCarrier(
           new ConfigZoom2uPolicy(markets, config.zoom2u),
           new Zoom2uHttpClient(new CircuitBreaker(clock)),
+          clock,
+        ),
+        // Off unless the Market's `shipping.auspost.enabled` is true AND the Region Stack holds
+        // its API key, password and account number.
+        new AusPostCarrier(
+          new ConfigAusPostPolicy(markets, config.auspost),
+          new AusPostHttpClient(new CircuitBreaker(clock)),
           clock,
         ),
       ];

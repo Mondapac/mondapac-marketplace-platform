@@ -473,6 +473,36 @@
       "maxAttempts": 2,
       "backoffMs": 250,
       "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 }
+    },
+    "auspost": {
+      "enabled": false,
+      "environment": "testbed",
+      "outsideCityAreasOnly": true,
+      "serviceAreas": ["greater-brisbane"],
+      "modes": ["scheduled"],
+      "productId": "7E55",
+      "limits": {
+        "maxItemWeightGrams": 22000,
+        "maxItems": 8,
+        "maxOrderValueMinor": 50000
+      },
+      "prohibitedClasses": [
+        "alcohol",
+        "tobacco",
+        "firearms",
+        "hazardous-materials",
+        "live-animals",
+        "perishable",
+        "chilled",
+        "frozen"
+      ],
+      "timeoutMs": 2500,
+      "maxAttempts": 2,
+      "backoffMs": 250,
+      "circuitBreaker": {
+        "failureThreshold": 5,
+        "cooldownSeconds": 30
+      }
     }
   }
 }
