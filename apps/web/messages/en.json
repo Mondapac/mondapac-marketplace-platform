@@ -294,7 +294,9 @@
         "renew": "Get a new code",
         "renew-note": "A new code replaces the old one. The old code stops working.",
         "renewed": "New code ready. The old one no longer works."
-      }
+      },
+      "unnamed-item": "Item no longer listed",
+      "unnamed-seller": "Seller"
     },
     "addresses": {
       "area-note": "We deliver to {area} for now. You can save an address outside it, but we cannot deliver there yet.",

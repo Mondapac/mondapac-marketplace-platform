@@ -52,7 +52,7 @@ export function AccountOverview() {
             </div>
           </dl>
           <div className="ac-acts">
-            <Link className="btn" href={`/account/orders/${latest.reference}`}>
+            <Link className="btn" href={`/account/orders/${latest.id ?? latest.reference}`}>
               {t('overview.view-order')}
             </Link>
             <Link className="btn ghost" href="/account/orders">
