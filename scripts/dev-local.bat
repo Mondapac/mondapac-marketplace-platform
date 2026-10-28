@@ -60,6 +60,15 @@ findstr /b /c:"PANEL_LOCALE=" "apps\admin\.env.local" >nul 2>nul || (
   echo apps\admin\.env.local has no PANEL_LOCALE: adding PANEL_LOCALE=en-AU, the AU Market's locale
   echo PANEL_LOCALE=en-AU>>"apps\admin\.env.local"
 )
+rem The buyer site's server.mjs refuses to start without CLIENT_ADDRESS_SOURCE (ADR-0037 decision 9).
+if not exist "apps\web\.env.local" (
+  echo Creating apps\web\.env.local from apps\web\.env.example
+  copy /y "apps\web\.env.example" "apps\web\.env.local" >nul
+)
+findstr /b /c:"CLIENT_ADDRESS_SOURCE=" "apps\web\.env.local" >nul 2>nul || (
+  echo apps\web\.env.local has no CLIENT_ADDRESS_SOURCE: adding CLIENT_ADDRESS_SOURCE=socket
+  echo CLIENT_ADDRESS_SOURCE=socket>>"apps\web\.env.local"
+)
 
 echo [1/5] Installing packages
 call pnpm install || goto :fail
