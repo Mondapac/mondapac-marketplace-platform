@@ -22,6 +22,192 @@
     }
   },
   {
+    "action": "blog.category.delete",
+    "targetType": "blog.category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "deleted": "boolean"
+    }
+  },
+  {
+    "action": "blog.category.save",
+    "targetType": "blog.category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "boolean",
+      "localeCount": "integer"
+    }
+  },
+  {
+    "action": "blog.post.approve",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "selfApproved": "boolean",
+      "stepUpVerifiedAt": "optional(instant)",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "blog.post.archive",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "wasLive": "boolean"
+    }
+  },
+  {
+    "action": "blog.post.change-event-status",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "eventStatus": "enumOf(scheduled|postponed|rescheduled|cancelled)"
+    },
+    "after": {
+      "eventStatus": "enumOf(scheduled|postponed|rescheduled|cancelled)",
+      "messageSet": "boolean"
+    }
+  },
+  {
+    "action": "blog.post.create",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "copied": "boolean",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "action": "blog.post.feature",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "featured": "boolean"
+    },
+    "after": {
+      "featured": "boolean"
+    }
+  },
+  {
+    "action": "blog.post.pause",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(editor|seller-switch-off)"
+    }
+  },
+  {
+    "action": "blog.post.publish",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "scheduled": "boolean",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "blog.post.rename-slug",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "redirected": "boolean"
+    }
+  },
+  {
+    "action": "blog.post.request-changes",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "blog.post.resume",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "blog.post.save-draft",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "operation": "enumOf(update|new-draft|reviewer-edit)",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "blog.post.schedule",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "scheduledAt": "optional(instant)"
+    },
+    "after": {
+      "scheduledAt": "optional(instant)",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "blog.post.submit",
+    "targetType": "blog.post",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "quotaUsed": "boolean",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "blog.tag.delete",
+    "targetType": "blog.tag",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "deleted": "boolean"
+    }
+  },
+  {
+    "action": "blog.tag.save",
+    "targetType": "blog.tag",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "boolean"
+    }
+  },
+  {
     "action": "certification.claim-policy.relaxation-approved",
     "targetType": "certification.claim-policy",
     "targetId": "id",
@@ -1394,6 +1580,19 @@
     },
     "after": {
       "status": "enumOf(off|active)"
+    }
+  },
+  {
+    "action": "sellers.blog-access.change",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean"
+    },
+    "after": {
+      "enabled": "boolean",
+      "unpublishLive": "boolean"
     }
   },
   {
