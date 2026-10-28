@@ -13,10 +13,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import {
-  orderingOrdersOwnerTestDatabaseUrl,
-  orderingOrdersTestDatabaseUrl,
-} from './test-database';
+import { orderingOrdersOwnerTestDatabaseUrl, orderingOrdersTestDatabaseUrl } from './test-database';
 
 // The order store on PostgreSQL (ordering.orders, seller_orders, order_lines), as the application
 // role, for both Market fixtures: round trip with the seller split, the optimistic version, the
