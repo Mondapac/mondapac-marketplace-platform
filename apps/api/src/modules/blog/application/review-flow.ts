@@ -14,7 +14,7 @@ import { closedObject, plainText } from '../domain/fields';
 import type { Problems } from '../domain/fields';
 import { refusalFor, statusAfter } from '../domain/lifecycle';
 import { hasQuotaLeft, quotaPeriod } from '../domain/quota';
-import { approvalDecision } from '../domain/separation';
+import { approvalDecision, writersOf } from '../domain/separation';
 import type { BlogDependencies } from './blog-dependencies';
 import { requireSellerAccess, accessToPost } from './edit-flow';
 import type { Author } from './edit-flow';
@@ -278,7 +278,10 @@ export async function approvePost(
   const reviewed = reviewedVersion(input?.body);
   if (reviewed.versionNo === null) return err(fieldsOf(reviewed.problems));
 
-  const first = await deps.unitOfWork.run<LoadedPost, BlogFailure>(
+  const first = await deps.unitOfWork.run<
+    LoadedPost & { readonly writers: readonly string[] },
+    BlogFailure
+  >(
     market,
     async () => {
       const loaded = await loadPost(deps, market, input?.post);
@@ -287,7 +290,8 @@ export async function approvePost(
       const refused = refusalFor('approve', factsOf(post, open));
       if (refused !== null) return err({ code: refused });
       if (open!.versionNo !== reviewed.versionNo) return err({ code: 'conflict.stale' });
-      return ok(loaded.value);
+      const versions = await deps.posts.versionSummaries(market, post.id);
+      return ok({ ...loaded.value, writers: writersOf(versions, open!.versionNo) });
     },
     { readOnly: true },
   );
@@ -295,8 +299,9 @@ export async function approvePost(
   const checked = first.value;
   const version = checked.open!;
 
+  // The writers are read with the version; the write below refuses a version changed since.
   const decision = approvalDecision(
-    { approver: admin.accountId, createdBy: version.createdBy, submittedBy: version.submittedBy },
+    { approver: admin.accountId, writers: checked.writers, submittedBy: version.submittedBy },
     policy.selfApprovalWithStepUp,
   );
   if (decision.kind === 'denied') return err({ code: 'blog.self-approval-refused' });

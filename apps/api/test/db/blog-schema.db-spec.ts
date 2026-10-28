@@ -554,6 +554,43 @@ describe.each(TEST_MARKETS)('blog schema in market %s (database)', (code) => {
       ).toBe('allowed');
     });
 
+    it('keeps the pair apart when a post slug and an old slug are written at the same time', async () => {
+      const a = await createPost();
+      const b = await createPost();
+      const contested = slugOf();
+      const second = new Client({ connectionString: testDatabaseUrl() });
+      await second.connect();
+      try {
+        await sql.query('BEGIN');
+        await sql.query(`UPDATE blog.posts SET slug = $1 WHERE id = $2`, [contested, a.postId]);
+        const pid = (await second.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!
+          .pid;
+        await second.query('BEGIN');
+        // Attach the expectation before waiting, so a refusal is never unhandled.
+        const racing = errorCode(
+          second.query(
+            `INSERT INTO blog.redirects (id, market_id, tenant_id, from_slug, post_id, created_at)
+             VALUES ($1,$2,$3,$4,$5, now())`,
+            [randomUUID(), market.marketId, market.tenantId, contested, b.postId],
+          ),
+        );
+        // Wait until the second writer is blocked on the slug lock, then commit the first.
+        for (;;) {
+          const waiting = await sql.query(
+            `SELECT 1 FROM pg_locks WHERE pid = $1 AND NOT granted AND locktype = 'advisory'`,
+            [pid],
+          );
+          if (waiting.rowCount !== null && waiting.rowCount > 0) break;
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        await sql.query('COMMIT');
+        expect(await racing).toBe(UNIQUE);
+        await second.query('ROLLBACK');
+      } finally {
+        await second.end();
+      }
+    });
+
     it('refuses an old slug of a form that is not a slug and a post of another Market', async () => {
       const a = await createPost();
       expect(await errorCode(redirect('Bad Slug', a.postId))).toBe(CHECK);

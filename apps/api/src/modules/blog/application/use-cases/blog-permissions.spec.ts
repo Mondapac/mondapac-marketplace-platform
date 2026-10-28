@@ -212,6 +212,38 @@ describe.each([['AU'], ['ZZ']] as const)('blog permissions in %s', (code) => {
       expect(h.audits.map((a) => a.action)).not.toContain('blog.post.approve');
     });
 
+    it('keeps the author and the editing reviewer from approving a reviewer-edited version', async () => {
+      const h = blogHarness(code);
+      const category = await aCategory(h);
+      const keys = [...WRITER, ...REVIEWER];
+      const post = await createNews(h, h.admin('writer', keys), category);
+      unwrap(await h.cases.submitPost.execute(h.admin('sender', WRITER), { post: post.id }));
+      unwrap(
+        await h.cases.reviewerEdit.execute(h.admin('editor', REVIEWER), {
+          post: post.id,
+          body: { content: content({ categoryId: category, title: 'Reviewer wording' }) },
+        }),
+      );
+      for (const name of ['writer', 'editor']) {
+        const refused = refusal(
+          await h.cases.approvePost.execute(h.admin(name, keys), {
+            post: post.id,
+            body: { versionNo: 2 },
+          }),
+        );
+        expect(refused.code).toBe(
+          code === 'AU' ? 'second-factor.required' : 'blog.self-approval-refused',
+        );
+      }
+      const approved = unwrap(
+        await h.cases.approvePost.execute(h.admin('reviewer', REVIEWER), {
+          post: post.id,
+          body: { versionNo: 2 },
+        }),
+      );
+      expect(approved.open).toMatchObject({ state: 'approved', selfApproved: false });
+    });
+
     if (code === 'AU') {
       it('allows a self-approval after a fresh step-up, once, and audits it as one', async () => {
         const h = blogHarness('AU');

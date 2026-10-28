@@ -595,9 +595,12 @@ CREATE TRIGGER "post_events_status_only_after_draft"
 
 -- Hand-written: a slug is either a post's or an old slug of a post, never both, and never an old
 -- slug of another post. The unique keys cover one table each; these two triggers cover the pair.
--- (A post that takes back its own old slug deletes that redirect first.)
+-- (A post that takes back its own old slug deletes that redirect first.) Both triggers take the
+-- same transaction lock on the Market and slug, so two writers of one slug in the two tables run
+-- one after the other and the second sees the first's row.
 CREATE FUNCTION "blog"."posts_guard_slug"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('blog.slug:' || NEW."market_id" || ':' || NEW."slug", 0));
   IF EXISTS (SELECT 1 FROM "blog"."redirects"
               WHERE "market_id" = NEW."market_id" AND "from_slug" = NEW."slug") THEN
     RAISE EXCEPTION 'blog.posts: the slug is an old slug of a post' USING ERRCODE = 'unique_violation';
@@ -610,6 +613,7 @@ CREATE TRIGGER "posts_slug_not_a_redirect"
 
 CREATE FUNCTION "blog"."redirects_guard_slug"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('blog.slug:' || NEW."market_id" || ':' || NEW."from_slug", 0));
   IF EXISTS (SELECT 1 FROM "blog"."posts"
               WHERE "market_id" = NEW."market_id" AND "slug" = NEW."from_slug") THEN
     RAISE EXCEPTION 'blog.redirects: the slug is a post''s slug' USING ERRCODE = 'unique_violation';
