@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    promotions: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
     assistant: ['USAGE'],
@@ -697,6 +698,66 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_at'],
     },
     'blog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Promotions (package T1): a promotion changes only the columns named and is never deleted;
+    // usage is insert-only; the target list and the zone thresholds may be deleted; the rest
+    // change only the columns named (triggers refuse DELETE and TRUNCATE where it is not granted).
+    'promotions.promotions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'budget_minor',
+        'cap_minor',
+        'combinable',
+        'ends_at',
+        'max_per_order_minor',
+        'max_total_uses',
+        'max_uses_per_customer',
+        'min_spend_minor',
+        'name',
+        'paused_by',
+        'platform_split_bps',
+        'prior_approved',
+        'reward_amount_minor',
+        'reward_bps',
+        'reward_kind',
+        'special_campaign',
+        'starts_at',
+        'status',
+        'test_mode',
+        'updated_at',
+      ],
+    },
+    'promotions.promotion_targets': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.promotion_usage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.co_funding_opt_ins': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['decided_by_account_id', 'opted_in_at', 'withdrawn_at'],
+    },
+    'promotions.promotion_reviews': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['decided_at', 'decided_by_account_id', 'opened_at', 'reason', 'status'],
+    },
+    'promotions.first_order_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'amount_minor',
+        'cap_minor',
+        'enabled',
+        'kind',
+        'min_spend_minor',
+        'monthly_budget_minor',
+        'percent_bps',
+        'updated_at',
+        'updated_by_account_id',
+      ],
+    },
+    'promotions.free_shipping_thresholds': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['threshold_minor', 'updated_at', 'updated_by_account_id'],
+    },
+    'promotions.market_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],
+    },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.

@@ -7,6 +7,7 @@ import { CUSTOMERS_STEP_UP_ACTIONS } from '../../src/modules/customers/contracts
 import { IDENTITY_STEP_UP_ACTIONS } from '../../src/modules/identity/contracts/step-up';
 import { PAYMENTS_STEP_UP_ACTIONS } from '../../src/modules/payments/contracts/step-up';
 import { PRICING_STEP_UP_ACTIONS } from '../../src/modules/pricing/contracts/step-up';
+import { PROMOTIONS_STEP_UP_ACTIONS } from '../../src/modules/promotions/contracts/step-up';
 import { SELLERS_STEP_UP_ACTIONS } from '../../src/modules/sellers/contracts/step-up';
 import { WALLET_STEP_UP_ACTIONS } from '../../src/modules/wallet/contracts/step-up';
 
@@ -17,6 +18,7 @@ const ENFORCED_INSIDE_THE_FLOW = [
   'identity.second-factor.manage', // second-factor remove and recovery-codes use cases
   'payments.payout-account.change', // the payout-account flow asks for a code in its request
   'blog.post.self-approve', // approvePost spends the code only when the approver wrote or sent the post
+  'promotions.platform-funding.approve', // the create, edit and budget use cases spend a code only above the Market step-up amount
 ];
 
 const sourceRoot = path.resolve(__dirname, '../../src');
@@ -38,6 +40,7 @@ describe('step-up enforcement contract', () => {
     ...IDENTITY_STEP_UP_ACTIONS,
     ...PAYMENTS_STEP_UP_ACTIONS,
     ...PRICING_STEP_UP_ACTIONS,
+    ...PROMOTIONS_STEP_UP_ACTIONS,
     ...SELLERS_STEP_UP_ACTIONS,
     ...WALLET_STEP_UP_ACTIONS,
   ].map((action) => action.key);

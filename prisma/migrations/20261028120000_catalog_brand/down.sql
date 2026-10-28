@@ -1,4 +1,4 @@
--- Reverses 20261028051000_catalog_brand. Drops the brand entity with its aliases and merge queue
+-- Reverses 20261028120000_catalog_brand. Drops the brand entity with its aliases and merge queue
 -- and the products.brand_id column: the brands, aliases, queue decisions and every product's
 -- brand_id are lost. The `brand` attribute values in the revisions are untouched, so running the
 -- migration again rebuilds the backfilled brands (not an admin's edits to them).

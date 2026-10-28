@@ -1310,8 +1310,8 @@
       "refund-sale": "Refund of sale",
       "refund-shipping": "Refund of shipping",
       "refund-commission": "Commission returned",
-      "dispute-debit": "Dispute debit",
-      "dispute-reinstate": "Dispute reinstated"
+      "dispute-debit": "Dispute: amount recovered",
+      "dispute-reinstate": "Dispute: amount returned"
     },
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",
@@ -1914,6 +1914,16 @@
         "unavailable": "The store profile is unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
+    }
+  },
+  "disputes": {
+    "badge": "Payment disputed",
+    "held": "Held until the dispute is closed.",
+    "closed-recovered": "Dispute closed. {amount} was taken from your earnings.",
+    "card": {
+      "title": "Disputed orders",
+      "order": "Order {id}",
+      "since": "Since {when}"
     }
   }
 }

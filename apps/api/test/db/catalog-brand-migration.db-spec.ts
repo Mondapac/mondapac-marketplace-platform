@@ -7,13 +7,13 @@ import { brandNameKey } from '../../src/modules/catalog/domain/brand';
 import { TEST_MARKETS } from '../support/test-config';
 import { migrationDatabaseUrl, REPO_ROOT } from './test-database';
 
-// The backfill of migration 20261028051000_catalog_brand, run against fixtures. The spec builds a
+// The backfill of migration 20261028120000_catalog_brand, run against fixtures. The spec builds a
 // database of its own (so no product of another file is backfilled), applies every migration but
 // that one, inserts products whose published revision has a `brand` attribute in both Market
 // fixtures, then applies the brand migration and reads the result.
 
 const MIGRATIONS = join(REPO_ROOT, 'prisma', 'migrations');
-const BRAND_MIGRATION = '20261028051000_catalog_brand';
+const BRAND_MIGRATION = '20261028120000_catalog_brand';
 let sequence = 0;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));

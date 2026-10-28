@@ -1488,6 +1488,57 @@ const shippingSchema = z.strictObject({
       `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
     )
     .optional(),
+  /**
+   * Australia Post (MyPost Business, Shipping and Tracking API), an external fleet adapter
+   * (Phase 6 package 5d) for scheduled, multi-day parcels to addresses outside the city fleets'
+   * service areas. `enabled` is the Market switch: an absent section or `false` leaves it off
+   * (nothing is sent), and so does a missing API key, password or account number (server
+   * secrets, never here). The API hosts are fixed in the adapter; `environment` picks the
+   * production or the testbed host. `outsideCityAreasOnly` true means `serviceAreas` names the
+   * city areas the fleet does NOT serve (the city fleets do); the router offers it every address
+   * outside them. `productId` is the Australia Post product (service) code the Market ships with.
+   * `limits` are the fleet's caps (the order value is in the Market's default currency, in minor
+   * units) and `prohibitedClasses` the kinds of goods it refuses (perishable, chilled and frozen
+   * goods among them: the adapter also refuses any parcel that is not ambient). The rest shapes
+   * the HTTP client like `realTimeCarrier`'s (a shipment is never created twice: no idempotency
+   * key is documented, so a create is not retried).
+   */
+  auspost: z
+    .strictObject({
+      enabled: z.boolean(),
+      environment: z.enum(['testbed', 'production']),
+      outsideCityAreasOnly: z.boolean(),
+      serviceAreas: z
+        .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+        .max(50)
+        .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat'),
+      modes: z
+        .array(z.enum(['scheduled']))
+        .min(1)
+        .refine((modes) => new Set(modes).size === modes.length, 'a mode must not repeat'),
+      productId: z.string().regex(/^[A-Za-z0-9_-]{1,20}$/u),
+      limits: z.strictObject({
+        maxItemWeightGrams: z.number().int().min(1).max(100_000),
+        maxItems: z.number().int().min(1).max(100),
+        maxOrderValueMinor: z.number().int().min(1).max(1_000_000_000),
+      }),
+      prohibitedClasses: z
+        .array(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/u))
+        .max(50)
+        .refine((classes) => new Set(classes).size === classes.length, 'a class must not repeat'),
+      timeoutMs: z.number().int().min(500).max(15_000),
+      maxAttempts: z.number().int().min(1).max(5),
+      backoffMs: z.number().int().min(0).max(5000),
+      circuitBreaker: z.strictObject({
+        failureThreshold: z.number().int().min(1).max(50),
+        cooldownSeconds: z.number().int().min(1).max(600),
+      }),
+    })
+    .refine(
+      (fleet) => carrierCallBudgetMs(fleet) <= MAX_CARRIER_CALL_MS,
+      `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
+    )
+    .optional(),
 });
 
 const marketSchema = z
@@ -1634,6 +1685,61 @@ const marketSchema = z
         defaultAuthorDisplay: z.string().trim().min(1).max(80),
         healthTerms: z.array(z.string().trim().min(2).max(64)).max(500),
         selfApprovalWithStepUp: z.boolean(),
+      })
+      .optional(),
+    /**
+     * Promotions settings (promotions package T1), owned by `promotions`. All values are Market
+     * config, never constants; amounts are minor units of the Market's currency. Without this
+     * section promotions are unavailable (fail closed). `lineDiscountCapBps`: the most of one
+     * line's price that all discounts together may take (AU 80 %). `sellerMaxDiscountBps`: the
+     * most a seller may give on one promotion (AU 70 %). `platformBudgetStepUpMinor`: a platform
+     * budget above this needs a fresh two-step code (AU A$2,000). `freeShippingThresholdMinor`:
+     * the Market default of the free-shipping threshold, used for a delivery zone that has no
+     * threshold of its own (AU A$50). `newSellerDays` and `priorApprovalDiscountBps`: a seller
+     * active fewer days than this, or a discount above this share, needs approval before the
+     * promotion goes live (AU 30 days, 50 %). `wasPrice`: a struck-through earlier price is
+     * allowed only if the product sold at that price on at least `minDaysAtPrice` of the last
+     * `windowDays` days (AU 28 of 90). `maxActivePromotionsPerSeller`: the most promotions one seller
+     * may have active or waiting for approval at once (AU 50), which also bounds what a quote reads. `gstRulingConfirmed`: false until the tax adviser has
+     * ruled on platform-funded discounts; until then a platform-funded or co-funded promotion can
+     * be created and applied in test mode only. `firstOrder`: the first-order discount an admin
+     * has not yet edited (the stored settings win): switch, `kind` (PERCENT uses `percentBps`,
+     * FIXED uses `amountMinor`), optional `capMinor`, `minSpendMinor` and `monthlyBudgetMinor`.
+     * Whether promotions are on is not config: an admin sets it at runtime
+     * (`promotions.market_settings`), off by default.
+     */
+    promotions: z
+      .strictObject({
+        lineDiscountCapBps: z.number().int().min(1).max(10000),
+        sellerMaxDiscountBps: z.number().int().min(1).max(10000),
+        platformBudgetStepUpMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        freeShippingThresholdMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+        newSellerDays: z.number().int().min(0).max(365),
+        priorApprovalDiscountBps: z.number().int().min(1).max(10000),
+        wasPrice: z.strictObject({
+          windowDays: z.number().int().min(1).max(365),
+          minDaysAtPrice: z.number().int().min(1).max(365),
+        }),
+        gstRulingConfirmed: z.boolean(),
+        maxActivePromotionsPerSeller: z.number().int().min(1).max(10000),
+        firstOrder: z
+          .strictObject({
+            enabled: z.boolean(),
+            kind: z.enum(['PERCENT', 'FIXED']),
+            percentBps: z.number().int().min(1).max(10000).optional(),
+            amountMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+            capMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+            minSpendMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+            monthlyBudgetMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+          })
+          .refine(
+            (value) =>
+              value.kind === 'PERCENT'
+                ? value.percentBps !== undefined && value.amountMinor === undefined
+                : value.amountMinor !== undefined && value.percentBps === undefined,
+            'PERCENT needs percentBps only; FIXED needs amountMinor only',
+          )
+          .optional(),
       })
       .optional(),
     /**
