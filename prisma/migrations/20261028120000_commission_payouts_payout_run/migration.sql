@@ -157,10 +157,16 @@ CREATE UNIQUE INDEX "payouts_market_id_seller_id_live_key"
   ON "commission_payouts"."payouts" ("market_id", "seller_id")
   WHERE "state" IN ('pending', 'awaiting-approval', 'approved', 'instructing');
 
--- The worker pass, the approval list and the reconcile job read the live payouts by state.
+-- The worker pass, the approval list and the reconcile job read the payouts that are not final by
+-- state (the live ones, and an instructed one until payments reports it paid or failed).
 CREATE INDEX "payouts_market_id_open_idx"
   ON "commission_payouts"."payouts" ("market_id", "state", "state_changed_at", "id")
-  WHERE "state" IN ('pending', 'awaiting-approval', 'approved', 'instructing');
+  WHERE "state" IN ('pending', 'awaiting-approval', 'approved', 'instructing', 'instructed');
+
+-- payments' transfer-changed event names the transfer, not our key: it finds its payout here.
+CREATE UNIQUE INDEX "payouts_market_id_transfer_execution_id_key"
+  ON "commission_payouts"."payouts" ("market_id", "transfer_execution_id")
+  WHERE "transfer_execution_id" IS NOT NULL;
 
 -- One live item per seller order: a seller order is in at most one payout that has not ended
 -- without paying (an item is freed only when its payout is voided, not sent or failed).
