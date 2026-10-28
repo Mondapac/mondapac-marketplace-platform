@@ -279,6 +279,21 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       expect(disputes.cases.get(`${market.marketId}:${DISPUTE}`)?.bucket).toBe('closed');
     });
 
+    it('spends the step-up proof exactly once per decision, and none on a refusal', async () => {
+      publish({ version: 1 });
+      await sync();
+      lost();
+      await sync();
+      expect((await decide(SO_A, 'seller', '100')).ok).toBe(true);
+      expect(stepUp.spent).toEqual([COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE.key]);
+      // Already decided, a bad amount, a bad bearer and a non-admin caller spend nothing.
+      expect((await decide(SO_A, 'seller', '100')).ok).toBe(false);
+      expect((await decide(SO_A, 'seller', 'x')).ok).toBe(false);
+      expect((await decide(SO_A, 'nobody')).ok).toBe(false);
+      expect((await decide(SO_A, 'platform', undefined, 'other', sellerA)).ok).toBe(false);
+      expect(stepUp.spent).toHaveLength(1);
+    });
+
     it("takes the seller's cursor lock for a decision", async () => {
       publish({ version: 1 });
       await sync();

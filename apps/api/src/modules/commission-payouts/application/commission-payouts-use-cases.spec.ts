@@ -18,7 +18,7 @@ import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { commissionBase, commissionOn, parseRateBps } from '../domain/commission';
 import { reversedAmount } from '../domain/reversal';
 import { netBySellerOrder, type LedgerEntry, type LedgerKind } from '../domain/ledger';
-import { AllowingStepUp, payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
 import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
@@ -324,7 +324,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     });
 
     it('spends the step-up proof exactly once per set and per clear, and none on a refusal', async () => {
-      const spent = (deps.stepUp as AllowingStepUp).spent;
+      const spent = (deps.stepUp as { spent: string[] }).spent;
       const clear = (sellerId: unknown, context: CallContext = admin) =>
         new ClearCommissionRate(gate, deps).execute(context, { sellerId });
       expect((await setRate(SELLER_A, 1000)).ok).toBe(true);
