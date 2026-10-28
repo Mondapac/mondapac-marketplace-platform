@@ -29,8 +29,9 @@ model PromotionsPromotion {
   code               String?
   startsAt           DateTime                   @map("starts_at") @db.Timestamptz(6)
   endsAt             DateTime?                  @map("ends_at") @db.Timestamptz(6)
-  /// A test-mode promotion applies only to test orders (CHECK: platform money needs it until the
-  /// Market confirms the tax ruling; the use case checks the Market flag).
+  /// A test-mode promotion applies only to test orders. Platform money needs it until the Market
+  /// confirms the tax ruling; the use case enforces this from the Market flag (no CHECK, since the
+  /// rule depends on Market config).
   testMode           Boolean                    @map("test_mode")
   /// The platform's share is outside the commission cap; platform-funded or co-funded only (CHECK).
   specialCampaign    Boolean                    @map("special_campaign")
