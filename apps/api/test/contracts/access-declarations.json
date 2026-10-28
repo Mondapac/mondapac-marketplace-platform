@@ -486,6 +486,8 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "pricing.days-at-price", "rule": "anonymous" },
+  { "name": "pricing.days-at-price-system", "rule": "system" },
   { "name": "pricing.effective-prices", "rule": "anonymous" },
   { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.publish-special-price-boundaries", "rule": "system" },
