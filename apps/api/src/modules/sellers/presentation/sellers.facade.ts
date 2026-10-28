@@ -3,6 +3,7 @@ import type { AccessDenied } from '../../../platform/authz';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
+import type { OperatingZones } from '../application/use-cases/operating-zones.use-case';
 import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
@@ -36,6 +37,7 @@ export interface SellersFacadeUseCases {
   readonly publishedStoreSlugs: PublishedStoreSlugs;
   readonly carrierPickup: CarrierPickupRead;
   readonly pickupPostcodes: PickupPostcodes;
+  readonly operatingZones: OperatingZones;
 }
 
 /**
@@ -137,5 +139,17 @@ export class SellersFacadeImplementation implements SellersFacade {
     >
   > {
     return this.useCases.pickupPostcodes.execute(context, { sellerIds });
+  }
+
+  operatingZones(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    return this.useCases.operatingZones.execute(context, { sellerIds });
   }
 }

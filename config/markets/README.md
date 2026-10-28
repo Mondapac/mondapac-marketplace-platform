@@ -16,6 +16,16 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   the most units of one Offer in a cart line and the ceiling of an Offer's per-customer cap
   (inventory design 3.3, cart design 4).
 
+- `payments` (optional section; Phase 5 packages 3 and 6c): `connectedAccountCountry` (ISO 3166
+  country of the seller's connected account), `bankChangeCoolingOffHours` (the waiting period after
+  a bank change; the code clamps it to 24 h to 14 d), `payoutSchedule` (`daily`), and, for the
+  transfers payments sends to sellers, all required with no core default:
+  `maxTransferAmount` (`{ "amountMinor", "currency" }`; AU 500000 AUD, the most one transfer may be;
+  a larger one is refused), `dailyTransferAlertThreshold` (the same shape; AU 2000000 AUD, the day's
+  executed total above which payments raises an alert) and `transferSendLeaseSeconds` (30 to 900; AU
+  120, how long a send is in flight before a lookup may decide it was not made). Both amounts must be
+  in the Market's `defaultCurrency`: loading fails for another currency.
+
 - `requestLimits`: the generic per-origin rate limiter (`apps/api/src/platform/rate-limit/`;
   identity design 6.8). `anonymousIdentityPerMinute` (sign-up, sign-in and reset requests;
   20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU) and `defaultPerMinute`
@@ -303,11 +313,20 @@ is required; no value has a default. The review checks and reasons are table-sha
 
 ## `shipping` section (optional)
 
-Owned by `shipping` (SHP-02/03, `docs/modules/shipping/carrier-mondapac-drive.md`). One key,
-`realTimeCarrier`; a Market without it, or without both carrier secrets in the Region Stack
+Owned by `shipping` (SHP-02/03, `docs/modules/shipping/carrier-mondapac-drive.md`). Two keys,
+`realTimeCarrier` and `fleets`; a Market without it, or without both carrier secrets in the Region Stack
 (`MONDAPAC_DRIVE_API_KEY`, `MONDAPAC_DRIVE_WEBHOOK_SECRET`), has no real-time carrier and every
 seller ships as in SHP-01.
 
+- `fleets` (optional, delivery models package 3): the fleets a Market lists, by fleet code
+  (`mondapac_drive`, `uber_direct`, `zoom2u`, `auspost`; `fake_test` is for tests and is not
+  registered in production). Each entry has `enabled` (default true), `displayName`,
+  `serviceAreas` (city areas where both ends of a trip must fall) or `outsideCityAreasOnly: true`
+  (the drop-off must be in no city area; Australia Post), `methods` (`instant`, `same_day`,
+  `scheduled`), `temperatures`, `maxItemWeightGrams`, `maxItems`, `maxOrderValueMinor`,
+  `prohibitedClasses` and the adapter's own non-secret `settings`. A fleet that is absent or
+  `enabled: false` is OFF in that Market. With no `fleets`, `realTimeCarrier` declares Mondapac
+  Drive alone. Listing a fleet is a launch decision: AU lists none here yet and Brisbane stays OFF.
 - `carrier` (required): `mondapac-drive`, the only carrier.
 - `displayName` (required, 1 to 60 letters, digits, spaces and `.&'-`): the carrier name the
   customer and the seller see on the shipment (AU "Mondapac Drive").
@@ -326,3 +345,41 @@ seller ships as in SHP-01.
 - `quoteBounds.minMinor` and `quoteBounds.maxMinor` (required): the range, in minor units of the
   Market's currency, a live quote must fall in to be charged at checkout; outside it the seller's
   flat fee is charged (AU 500 to 10000, that is 5 to 100 AUD).
+
+### `shipping.uberDirect` (optional, Phase 6 package 5b)
+
+The external fleet Uber Direct. Off unless `enabled` is `true` AND the Region Stack holds all three
+credentials for the Market (`UBER_DIRECT_CUSTOMER_ID`, `UBER_DIRECT_CLIENT_ID`,
+`UBER_DIRECT_CLIENT_SECRET`); the adapter then answers `carrier.not-configured` and sends nothing.
+Its API hosts are fixed in the adapter. The country sent to Uber is `customers.address.countryCode`.
+
+- `enabled` (required): the Market switch; ship `false`.
+- `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`):
+  what the fleet serves (`on_demand` gives the instant and same-day methods, `scheduled` the
+  buyer's window, which is sent to Uber as the drop-off window). `temperatures` (required): the
+  temperature classes it carries (AU `ambient`).
+- `limits` (required): `maxItemWeightGrams`, `maxItems` and `maxOrderValueMinor` (minor units of
+  the Market's default currency; AU 20000 g, 8 items, 50000 = A$500).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
+
+### `shipping.zoom2u` (optional, Phase 6 package 5c)
+
+The external fleet Zoom2u. Off unless `enabled` is `true` AND the Region Stack holds
+`ZOOM2U_API_KEY` for the Market; the adapter then answers `carrier.not-configured` and sends
+nothing. Its API hosts are fixed in the adapter (`environment` picks the set; Zoom2u documents one
+host and a TEST flag on the key until "Go Live", so both currently point at it). Prices come
+without a currency: they are read in the Market's default currency.
+
+- `enabled` (required): the Market switch; ship `false`. `environment` (required): `sandbox` or
+  `production`.
+- `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`): what the fleet
+  serves. `on_demand` gives the instant method on the `instantSpeed` service (`VIP` or `3 hour`)
+  and the same-day method on `Same day`; `scheduled` the buyer's window. `supportsWindow`
+  (required): whether the fleet may be offered a buyer's window; its start is sent as the pickup
+  time (`ReadyDateTime`). `temperatures` (required): the temperature classes it carries (AU `ambient`).
+- `limits` (required): `maxItemWeightGrams`, `maxItems` and `maxOrderValueMinor` (minor units of
+  the Market's default currency; Zoom2u allows 30 kg a parcel).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
+  A booking is sent once whatever `maxAttempts` says: Zoom2u documents no idempotency key.

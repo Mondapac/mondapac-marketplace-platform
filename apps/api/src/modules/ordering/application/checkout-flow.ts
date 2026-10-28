@@ -71,7 +71,7 @@ export interface OrderingDependencies {
   readonly clock: Clock;
   /** Display names for the panel order pages (advisory; never inside a unit). */
   readonly labels: OrderLabels;
-  /** Which delivery methods a seller order may use (the seam for the platform and seller settings). */
+  /** Which delivery methods a seller order may use (shipping's delivery settings, through the facade). */
   readonly deliveryMethods: DeliveryMethodPolicy;
   /** The pickup codes of seller orders the buyer collects in person (delivery models, package 2). */
   readonly pickupCodes: PickupCodeRepository;
@@ -260,7 +260,8 @@ export async function startCheckout(
     choices.choices.get(sellerId) ?? { method: DEFAULT_DELIVERY_METHOD, window: null };
   const refused: Id<'Seller'>[] = [];
   for (const { sellerId } of planned.plan.sellers) {
-    if (!(await deps.deliveryMethods.allows(context, sellerId, choiceOf(sellerId).method))) {
+    const choice = choiceOf(sellerId);
+    if (!(await deps.deliveryMethods.allows(context, sellerId, choice.method, choice.window))) {
       refused.push(sellerId);
     }
   }

@@ -142,7 +142,13 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // (certification slice 14; it never reads the number). Version 14 adds
     // `assistant.settings.view`, likewise unprotected (buyer assistant settings). Version 15 adds
     // `customers.account-deletion-settings.view`, likewise unprotected (customers package 5a).
-    seedVersion: 15,
+    // Version 16 adds `shipping.fleet-selection.view`, likewise unprotected (delivery package 3).
+    // Version 17 adds `commission-payouts.payout-terms.view`, likewise unprotected (Phase 5
+    // package 6b); `.payout-terms.edit` and the payout-hold keys are protected and not listed.
+    // Version 18 adds `commission-payouts.dispute.view`, likewise unprotected (Phase 5 package
+    // 8b); the protected `commission-payouts.dispute.attribute` is not listed.
+    // Version 19 adds `shipping.delivery-settings.view`, likewise unprotected (delivery package 4).
+    seedVersion: 19,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -163,6 +169,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.product-certificate.view',
       'assistant.settings.view',
       'customers.account-deletion-settings.view',
+      'shipping.fleet-selection.view',
+      'commission-payouts.payout-terms.view',
+      'commission-payouts.dispute.view',
+      'shipping.delivery-settings.view',
     ],
   },
   {

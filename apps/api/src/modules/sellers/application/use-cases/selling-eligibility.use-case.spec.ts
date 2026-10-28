@@ -172,6 +172,7 @@ describe.each([
       publishedStoreSellerId: undefined as never,
       carrierPickup: undefined as never,
       pickupPostcodes: undefined as never,
+      operatingZones: undefined as never,
     });
   });
 

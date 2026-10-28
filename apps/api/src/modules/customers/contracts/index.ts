@@ -7,6 +7,10 @@ export {
   type DeliveryAddress,
   type DeliveryAddressFailure,
 } from './customers-checkout.facade';
+export {
+  CUSTOMERS_ACCOUNT_DELETION_FACADE,
+  type CustomersAccountDeletionFacade,
+} from './account-deletion.facade';
 export { ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP, CUSTOMERS_STEP_UP_ACTIONS } from './step-up';
 export { CUSTOMERS_AUDIT_ACTIONS } from '../domain/audit';
 export {

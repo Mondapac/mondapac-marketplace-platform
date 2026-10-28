@@ -1,7 +1,8 @@
-import type { FactoryProvider } from '@nestjs/common';
+import { Logger, type FactoryProvider } from '@nestjs/common';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { SHIPPING_FACADE, type ShippingFacade } from '../../shipping';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -29,10 +30,10 @@ import {
   type PickupCodeRepository,
 } from '../application/ports/pickup-code.repository';
 import { PICKUP_CODE_VAULT, type PickupCodeVault } from '../application/ports/pickup-code-vault';
-import { AllowAllDeliveryMethods } from './allow-all-delivery-methods';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
+import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
@@ -91,8 +92,19 @@ export const orderingProviders: readonly FactoryProvider[] = [
   {
     provide: CHECKOUT_GATEWAY,
     inject: [APP_CONFIG],
-    useFactory: (config: AppConfig): CheckoutGateway =>
-      new StripeCheckoutGateway(config.stripeSecretKey),
+    useFactory: (config: AppConfig): CheckoutGateway => {
+      // A key without the card-only configuration opens no payment page (the gateway fails
+      // closed); said once at boot so the cause is not a silent "unavailable" at checkout.
+      if (config.stripeSecretKey !== null && config.stripePaymentMethodConfiguration === null) {
+        new Logger('OrderingProviders').warn(
+          'STRIPE_SECRET_KEY is set without STRIPE_PAYMENT_METHOD_CONFIGURATION: checkout answers unavailable',
+        );
+      }
+      return new StripeCheckoutGateway(
+        config.stripeSecretKey,
+        config.stripePaymentMethodConfiguration,
+      );
+    },
   },
   {
     provide: ORDERING_POLICY,
@@ -101,7 +113,9 @@ export const orderingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: DELIVERY_METHOD_POLICY,
-    useFactory: (): DeliveryMethodPolicy => new AllowAllDeliveryMethods(),
+    inject: [SHIPPING_FACADE],
+    useFactory: (shipping: ShippingFacade): DeliveryMethodPolicy =>
+      new ShippingDeliveryMethodPolicy(shipping),
   },
   {
     provide: ORDER_TAX_CATEGORIES,

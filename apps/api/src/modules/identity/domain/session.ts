@@ -132,4 +132,6 @@ export type SessionRevokedReason =
   | 'seller-rejected'
   | 'seller-suspended'
   /** The holder signed out of every other device from the profile (profile package 4). */
-  | 'signed-out-elsewhere';
+  | 'signed-out-elsewhere'
+  /** The account is being erased for account deletion: every session ends first (customers package 5b). */
+  | 'account-erasure';

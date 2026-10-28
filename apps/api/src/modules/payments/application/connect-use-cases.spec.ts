@@ -12,14 +12,20 @@ import {
   FakeConnectGateway,
   FakeIdentityFacade,
   FakeOrderingFacade,
+  FakeTransferGateway,
   FakeSessionReader,
   MemoryAccountStore,
   MemoryInbox,
+  MemoryTransferStore,
   RecordingPaymentsAudit,
   StaticPaymentsPolicy,
+  testKeyring,
   stripeSignatureHeader,
   TEST_CONNECT_WEBHOOK_SECRET,
   TEST_WEBHOOK_SECRET,
+  FakeDisputeReader,
+  MemoryDisputeStore,
+  RecordingPaymentsOutbox,
 } from '../../../../test/support/payments-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -87,9 +93,15 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
         [code]: TEST_CONNECT_WEBHOOK_SECRET,
       }),
       reader: new FakeSessionReader(),
+      disputeReader: new FakeDisputeReader(),
+      disputes: new MemoryDisputeStore(),
+      outbox: new RecordingPaymentsOutbox(),
       ordering: new FakeOrderingFacade(),
       accounts,
       connect,
+      transfers: new MemoryTransferStore(),
+      transferGateway: new FakeTransferGateway(),
+      keyring: testKeyring(),
       policy,
       identity: new FakeIdentityFacade(),
       audit: new RecordingPaymentsAudit(),
@@ -119,6 +131,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
     disabledReason: null,
     payoutScheduleInterval: 'daily',
     externalAccountCount: 1,
+    defaultExternalAccountId: null,
     ...fields,
   });
 
@@ -147,6 +160,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
           country: code === 'AU' ? 'AU' : 'JP',
           marketId: code,
           sellerId: SELLER,
+          contactEmail: 'owner@seller.example',
         },
       ]);
       expect(connect.links).toEqual([
@@ -178,6 +192,22 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
         `connected-account:${code}:${SELLER}`,
         `connected-account:${code}:${SELLER}`,
       ]);
+    });
+
+    it('creates no account without the Seller Owner address (Stripe requires one), and keeps the row', async () => {
+      const identity = deps.identity as FakeIdentityFacade;
+      identity.ownerEmail = null;
+      const connectCase = new ConnectPayoutAccount(gate, deps);
+      expect(await connectCase.execute(seller(SELLER), { code: CODE })).toEqual(
+        err({ code: 'payments.unavailable' }),
+      );
+      identity.ownerEmail = 'owner@seller.example';
+      identity.ownerEmailDenied = true;
+      expect(await connectCase.execute(seller(SELLER), { code: CODE })).toEqual(
+        err({ code: 'payments.unavailable' }),
+      );
+      expect(connect.creates).toEqual([]);
+      expect(accounts.rows.get(`${code}/${SELLER}`)).toMatchObject({ accountRef: null });
     });
 
     it('creates once when two requests race, and refuses a repeat after the key may have expired', async () => {

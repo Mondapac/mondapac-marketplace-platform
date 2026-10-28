@@ -29,8 +29,10 @@ describe('loadAppConfig', () => {
       mailCatcherUrl: null,
       objectStoreDir: null,
       stripeSecretKey: null,
+      stripePaymentMethodConfiguration: null,
       stripeWebhookSecrets: {},
       stripeConnectWebhookSecrets: {},
+      externalAccountHmac: { keys: {}, currentVersion: null },
       clientAddressTrust: null,
       assistantModels: {
         apiKeys: {},
@@ -39,6 +41,62 @@ describe('loadAppConfig', () => {
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
+      uberDirect: { customerIds: {}, clientIds: {}, clientSecrets: {} },
+      zoom2u: { apiKeys: {} },
+    });
+  });
+
+  describe('the external account hash keys (payments, package 6c)', () => {
+    const K1 = 'k1_0123456789abcdefghijABCDEFGHIJ-xyz';
+    const K2 = 'k2_0123456789abcdefghijABCDEFGHIJ-xyz';
+
+    it('has no key and no current version by default', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).externalAccountHmac).toEqual({
+        keys: {},
+        currentVersion: null,
+      });
+    });
+
+    it('reads the keys by version and uses the highest as the current one', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: K1,
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: K2,
+      });
+      expect(config.externalAccountHmac).toEqual({ keys: { 1: K1, 2: K2 }, currentVersion: 2 });
+    });
+
+    it('lets the current version be named, as long as it has a key', () => {
+      const env = {
+        HOSTED_MARKETS: 'AU',
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: K1,
+        PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: K2,
+      };
+      expect(
+        loadAppConfig({ ...env, PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: '1' })
+          .externalAccountHmac.currentVersion,
+      ).toBe(1);
+      expect(() =>
+        loadAppConfig({ ...env, PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: '3' }),
+      ).toThrow(/no key is set for version 3/);
+    });
+
+    it('refuses a short key, the same key twice, and never echoes a key', () => {
+      let message = '';
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: 'short' });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: must be 32 to 200/);
+      expect(message).not.toContain('short');
+      expect(() =>
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: K1,
+          PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: K1,
+        }),
+      ).toThrow(/K2: must differ from the key of another version/);
     });
   });
 
@@ -82,6 +140,61 @@ describe('loadAppConfig', () => {
           MONDAPAC_DRIVE_WEBHOOK_SECRET: `AU=${KEY}`,
         }),
       ).toThrow('must differ from MONDAPAC_DRIVE_API_KEY');
+    });
+  });
+
+  describe('the Uber Direct credentials (per Market: customer id, client id, client secret)', () => {
+    const SECRET = 'uber_secret_0123456789abcdefghij';
+
+    it('reads each value per hosted Market, and none when unset', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU,ZZ',
+        UBER_DIRECT_CUSTOMER_ID: 'AU=cust-0001-aaaa',
+        UBER_DIRECT_CLIENT_ID: 'AU=client-0001,ZZ=client-0002',
+        UBER_DIRECT_CLIENT_SECRET: `AU=${SECRET}`,
+      });
+      expect(config.uberDirect).toEqual({
+        customerIds: { AU: 'cust-0001-aaaa' },
+        clientIds: { AU: 'client-0001', ZZ: 'client-0002' },
+        clientSecrets: { AU: SECRET },
+      });
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).uberDirect.clientSecrets).toEqual({});
+    });
+
+    it('refuses a short secret and an unhosted Market without echoing the value', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_CLIENT_SECRET: 'AU=too-short' }),
+      ).toThrow('UBER_DIRECT_CLIENT_SECRET');
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_CLIENT_SECRET: `NZ=${SECRET}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('NZ is not in HOSTED_MARKETS');
+        expect((error as Error).message).not.toContain(SECRET);
+      }
+    });
+  });
+
+  describe('the Zoom2u API key (per Market)', () => {
+    const KEY = 'zoom2u.key_0123456789abcdefghij';
+
+    it('reads the key per hosted Market, and none when unset', () => {
+      const config = loadAppConfig({ HOSTED_MARKETS: 'AU,ZZ', ZOOM2U_API_KEY: `AU=${KEY}` });
+      expect(config.zoom2u).toEqual({ apiKeys: { AU: KEY } });
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).zoom2u.apiKeys).toEqual({});
+    });
+
+    it('refuses a short key and an unhosted Market without echoing the value', () => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', ZOOM2U_API_KEY: 'AU=too-short' })).toThrow(
+        'ZOOM2U_API_KEY',
+      );
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ZOOM2U_API_KEY: `NZ=${KEY}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('NZ is not in HOSTED_MARKETS');
+        expect((error as Error).message).not.toContain(KEY);
+      }
     });
   });
 
@@ -229,6 +342,19 @@ describe('loadAppConfig', () => {
       );
     },
   );
+
+  it('takes a Stripe payment method configuration id and refuses anything else', () => {
+    const id = 'pmc_1UR7zDD18uuXstC3BTXOaZWh';
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_PAYMENT_METHOD_CONFIGURATION: id })
+        .stripePaymentMethodConfiguration,
+    ).toBe(id);
+    for (const value of ['card', 'pm_1UR7zDD18uuXstC3', 'pmc_', 'pmc_short']) {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_PAYMENT_METHOD_CONFIGURATION: value }),
+      ).toThrow(/STRIPE_PAYMENT_METHOD_CONFIGURATION/);
+    }
+  });
 
   it('takes a Stripe test-mode key and refuses a live one without echoing it', () => {
     const test = 'sk_test_abcdefgh12345678';

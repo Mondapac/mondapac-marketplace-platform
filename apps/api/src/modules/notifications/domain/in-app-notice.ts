@@ -57,6 +57,8 @@ export const SELLER_IMAGE_TAKEN_DOWN = 'seller.image-taken-down';
 export const SELLER_PRICE_HOLD_DECIDED = 'seller.price-hold-decided';
 /** The seller's access was approved or reinstated. */
 export const SELLER_ACCESS_CHANGED = 'seller.access-changed';
+/** A payment of the seller's order was disputed; its money is on hold (package 8b). Ids only. */
+export const SELLER_ORDER_DISPUTED = 'seller.order-disputed';
 
 export const CERTIFICATE_OUTCOMES = ['approved', 'changes-requested', 'declined'] as const;
 export const CERTIFICATE_END_CAUSES = ['expired', 'revoked'] as const;
@@ -95,7 +97,8 @@ export type SellerNoticeKind =
   | typeof SELLER_OFFER_TAG_CHANGED
   | typeof SELLER_IMAGE_TAKEN_DOWN
   | typeof SELLER_PRICE_HOLD_DECIDED
-  | typeof SELLER_ACCESS_CHANGED;
+  | typeof SELLER_ACCESS_CHANGED
+  | typeof SELLER_ORDER_DISPUTED;
 export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_ORDER_PAID,
   SELLER_LOW_STOCK,
@@ -111,6 +114,7 @@ export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_IMAGE_TAKEN_DOWN,
   SELLER_PRICE_HOLD_DECIDED,
   SELLER_ACCESS_CHANGED,
+  SELLER_ORDER_DISPUTED,
 ];
 
 /** The seller kinds that ring the new-order sound (plan 6b): orders only. */
@@ -233,6 +237,7 @@ const PARAM_SHAPES: Readonly<
     enums: { outcome: HOLD_OUTCOMES, priceKind: PRICE_KINDS },
   },
   [SELLER_ACCESS_CHANGED]: { ids: [], enums: { change: ACCESS_CHANGES } },
+  [SELLER_ORDER_DISPUTED]: { ids: ['sellerOrderId', 'orderId'], enums: {} },
   [ADMIN_SELLER_CERTIFICATE_SUBMITTED]: {
     ids: ['sellerId', 'sellerCertificationId'],
     enums: { submission: CERTIFICATE_SUBMISSIONS },

@@ -18,4 +18,45 @@ export const AccountDeletionSettingsChangedEvent = defineEvent({
   },
 });
 
-export const CUSTOMERS_EVENTS: readonly EventDefinition[] = [AccountDeletionSettingsChangedEvent];
+/** Why a pending deletion request was cancelled. */
+export const ACCOUNT_DELETION_CANCEL_REASONS = ['customer', 'sign-in'] as const;
+export type AccountDeletionCancelReason = (typeof ACCOUNT_DELETION_CANCEL_REASONS)[number];
+
+// The account deletion request events (customers package 5b). The aggregate is the request: its id
+// is the aggregate id, version 1 is the request and version 2 how it ended. No account id, no
+// email and no name travels in any of them (the account is meaningless once erased).
+
+/** A buyer asked to delete their account; it will be carried out at `scheduledFor`. */
+export const AccountDeletionRequestedEvent = defineEvent({
+  type: 'customers.account-deletion-requested.v1',
+  aggregateType: 'account-deletion-request',
+  payload: {
+    waitingPeriodDays: eventField.integer(),
+    scheduledFor: eventField.instant(),
+  },
+});
+
+/** The buyer cancelled the request during the wait, or by signing in. */
+export const AccountDeletionCancelledEvent = defineEvent({
+  type: 'customers.account-deletion-cancelled.v1',
+  aggregateType: 'account-deletion-request',
+  payload: {
+    reason: eventField.enumOf(ACCOUNT_DELETION_CANCEL_REASONS),
+  },
+});
+
+/** The account was erased: its key destroyed and its data deleted or forgotten. */
+export const AccountDeletionCompletedEvent = defineEvent({
+  type: 'customers.account-deletion-completed.v1',
+  aggregateType: 'account-deletion-request',
+  payload: {
+    waitingPeriodDays: eventField.integer(),
+  },
+});
+
+export const CUSTOMERS_EVENTS: readonly EventDefinition[] = [
+  AccountDeletionSettingsChangedEvent,
+  AccountDeletionRequestedEvent,
+  AccountDeletionCancelledEvent,
+  AccountDeletionCompletedEvent,
+];

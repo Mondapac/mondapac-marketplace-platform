@@ -9,7 +9,14 @@ import {
   isCoolingOff,
   isExternalAccountEvent,
   kindOf,
+  type ChangeKind,
 } from '../domain/payout-change';
+import { decideHmac } from './external-account-check';
+import { alertHmacKeyMissing } from './transfer-alerts';
+import { isDisputeEventType } from '../domain/dispute';
+import { isTransferEventType } from '../domain/transfer';
+import { applyDisputeEvent } from './dispute-flow';
+import { applyTransferEvent } from './transfer-events';
 import type { PaymentsDependencies } from './payments-dependencies';
 import {
   isAccountEventType,
@@ -89,13 +96,22 @@ async function applyAccountEvent(
         readAt,
       );
       let pausedUntil = row.payoutsPausedUntil;
-      if (isExternalAccountEvent(event.type)) {
-        const kind = kindOf(event.type, {
-          hasEarlierChange: row.lastChangeId !== null,
-          neverEnabled:
-            (row.status === 'not-started' || row.status === 'pending') && !row.payoutsEnabled,
-          externalAccountCount: snapshot.externalAccountCount,
-        });
+      // The default external account's keyed hash (package 6c): first stamped, re-stamped under a
+      // newer key, or found different, which is a changed bank account whatever event brought it.
+      const decision = decideHmac(
+        deps.keyring,
+        row.externalAccountHmac,
+        snapshot.defaultExternalAccountId,
+      );
+      const nextHmac =
+        decision.kind === 'stamp' || decision.kind === 'restamp' || decision.kind === 'changed'
+          ? decision.next
+          : undefined;
+      if (decision.kind === 'key-missing' && row.externalAccountHmac !== null) {
+        await alertHmacKeyMissing(deps, context, sellerId);
+      }
+      /** Records one change with its cooling-off and pause (and the new hash) in this unit. */
+      const record = async (kind: ChangeKind): Promise<'recorded' | 'duplicate' | 'conflict'> => {
         const until = coolingOffAfter(
           kind,
           readAt,
@@ -109,6 +125,8 @@ async function applyAccountEvent(
           detectedAt: readAt,
           coolingOffUntil: kind === 'initial' ? null : until,
           sourceEventId: event.eventId,
+          detectedBy: 'webhook' as const,
+          ...(nextHmac === undefined ? {} : { externalAccountHmac: nextHmac }),
         };
         const recorded = await deps.accounts.recordChange(
           market,
@@ -118,8 +136,6 @@ async function applyAccountEvent(
           until,
           readAt,
         );
-        // Another change got in first: nothing is kept, the event is read and applied again.
-        if (recorded === 'conflict') return err({ code: 'conflict' });
         if (recorded === 'recorded') {
           pausedUntil = until;
           await deps.audit.record(
@@ -128,6 +144,40 @@ async function applyAccountEvent(
               after: { changeId, kind, coolingOffUntil: change.coolingOffUntil },
             }),
           );
+        }
+        return recorded;
+      };
+      let hmacWritten = false;
+      if (isExternalAccountEvent(event.type)) {
+        const kind = kindOf(event.type, {
+          hasEarlierChange: row.lastChangeId !== null,
+          neverEnabled:
+            (row.status === 'not-started' || row.status === 'pending') && !row.payoutsEnabled,
+          externalAccountCount: snapshot.externalAccountCount,
+        });
+        // A different account than the one on record is never the onboarding.
+        const recorded = await record(
+          decision.kind === 'changed' && kind === 'initial' ? 'updated' : kind,
+        );
+        // Another change got in first: nothing is kept, the event is read and applied again.
+        if (recorded === 'conflict') return err({ code: 'conflict' });
+        hmacWritten = recorded === 'recorded';
+      }
+      if (!hmacWritten && nextHmac !== undefined) {
+        if (decision.kind === 'changed') {
+          // A bank account that differs from the one on record, found by a read that no
+          // external-account event reported: the same change, waiting period and pause.
+          if ((await record('updated')) === 'conflict') return err({ code: 'conflict' });
+        } else if (
+          (await deps.accounts.stampExternalAccountHmac(
+            market,
+            sellerId,
+            row.externalAccountHmac,
+            nextHmac,
+            readAt,
+          )) !== 'stamped'
+        ) {
+          return err({ code: 'conflict' });
         }
       }
       // A pause that Stripe does not show (never applied, or the schedule was changed back) is
@@ -158,6 +208,12 @@ async function applyOne(
 ): Promise<Applied> {
   if (isAccountEventType(event.type)) {
     return applyAccountEvent(deps, context, event);
+  }
+  if (isDisputeEventType(event.type)) {
+    return applyDisputeEvent(deps, context, event);
+  }
+  if (isTransferEventType(event.type)) {
+    return applyTransferEvent(deps, context, event);
   }
   const read = await deps.reader.readCheckoutSession(event.objectId);
   if (!read.ok) return read.error.code === 'payment.provider-unavailable' ? 'retry' : 'rejected';

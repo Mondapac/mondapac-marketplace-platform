@@ -22,6 +22,7 @@ import { WalletFacadeImplementation } from '../presentation/wallet.facade';
 import { viewMyWallet } from './customer-flow';
 import { setStatus } from './settings-flow';
 import { BalanceOf } from './use-cases/balance-of.use-case';
+import { OwnBalanceOf } from './use-cases/own-balance-of.use-case';
 import { CaptureHold } from './use-cases/capture-hold.use-case';
 import { ExpireWalletCredit } from './use-cases/expire-wallet-credit.use-case';
 import { GrantCredit } from './use-cases/grant-credit.use-case';
@@ -839,6 +840,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       new CaptureHold(gate, deps),
       new ReleaseHold(gate, deps),
       new BalanceOf(gate, deps),
+      new OwnBalanceOf(gate, deps),
     );
     const granted = await facade.grantCredit(system, {
       customerAccountId: CUSTOMER,
@@ -861,5 +863,14 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
         idempotencyKey: 'facade-key-2',
       }),
     ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+    // The customer's own balance comes from the session, in any state; the system actor has none.
+    expect(await facade.ownBalanceOf(customerCtx())).toMatchObject({
+      ok: true,
+      value: { available: amount(100n) },
+    });
+    expect(await facade.ownBalanceOf(system)).toMatchObject({
+      ok: false,
+      error: { code: 'access.denied' },
+    });
   });
 });

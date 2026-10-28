@@ -1,5 +1,7 @@
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { PricedDelivery } from '../domain/delivery-margin';
+import type { ChoiceRefusal, SellerDeliveryAvailability } from '../domain/delivery-settings';
 
 export type ShippingFailure =
   | AccessDenied
@@ -30,18 +32,40 @@ export interface CarrierDeliveryRequest {
     /** The address lines in the Market's order, without the postcode. */
     readonly addressLines: readonly string[];
     readonly postcode: string;
+    /**
+     * The suburb or town and the state or region of the saved delivery address (never text typed
+     * for the occasion), so a fleet can locate the stop. Optional until every caller sends them.
+     */
+    readonly locality?: string;
+    readonly region?: string | null;
     readonly notes: string | null;
+  };
+  /**
+   * What is carried, for the fleets' limits (items, value, weight, temperature, classes).
+   * Optional: what is missing is taken from the Market's parcel defaults (one item, no value).
+   */
+  readonly parcel?: {
+    readonly itemCount?: number;
+    /** The seller order's total, in minor units of the Market currency. */
+    readonly declaredValueMinor?: number;
+    readonly weightGrams?: number;
+    readonly temperature?: 'ambient' | 'chilled' | 'frozen';
+    /** Classes of the goods a fleet may refuse (for example `alcohol`). */
+    readonly classes?: readonly string[];
   };
 }
 
 /**
  * What `bookCarrierDelivery` did. `booked`: the carrier holds it now; `already-booked`: an
  * earlier call booked it (nothing was sent); `no-carrier`: the `real_time_delivery` strategy
- * does not apply (carrier off for the Market, or either end outside its areas); `refused`: the
- * carrier said no. In both cases the seller does nothing: the order needs the platform's
- * attention, and ordering records that state.
+ * does not apply (no fleet is on for the Market, or none can carry the order); `refused`: every
+ * fleet that could carry it said no; `unknown`: a fleet that cannot dedupe a repeated booking
+ * went quiet, so the order may be booked there (never repeated, never given to another fleet).
+ * In these three cases the seller does nothing: the order needs the platform's attention, and
+ * ordering records that state.
  */
-export type CarrierBookingOutcome = 'booked' | 'already-booked' | 'no-carrier' | 'refused';
+export type CarrierBookingOutcome =
+  'booked' | 'already-booked' | 'no-carrier' | 'refused' | 'unknown';
 
 /** The progress of a carrier delivery as shipping tracks it (see the booking rules). */
 export type CarrierDeliveryProgress =
@@ -50,7 +74,7 @@ export type CarrierDeliveryProgress =
 /** A seller order's carrier delivery, for `ordering` to record the shipment and the delivery. */
 export interface CarrierShipment {
   readonly sellerOrderId: Id<'SellerOrder'>;
-  /** The carrier name to show, from the Market's carrier settings. */
+  /** The name of the fleet that carries it, from the Market's settings. */
   readonly carrierName: string;
   /** The carrier's id of the delivery: the tracking reference. */
   readonly trackingRef: string;
@@ -125,6 +149,50 @@ export interface ShippingFacade {
   ): Promise<Result<ReadonlySet<Id<'Seller'>>, ShippingFailure>>;
 
   /**
+   * The delivery methods each asked seller (at most 100 distinct ids) offers right now, with the
+   * reason for every one that is not: `platform-off` (the Market switched the method off),
+   * `seller-unsupported` (an admin did not give it to this seller), `past-cut-off` (same day,
+   * after today's cut-off in the seller's zone) and `no-pickup-address` (pickup without an
+   * approved pickup address). The answer carries the cut-off and the scheduled days and window
+   * length for a screen. Public configuration: the same answer for every caller. A failed read
+   * is `shipping.unavailable`: callers fail closed and never read it as "everything is open".
+   * Delivery models, package 4.
+   */
+  deliveryAvailability(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, SellerDeliveryAvailability>, ShippingFailure>>;
+
+  /**
+   * Whether one seller order may be delivered the way the buyer chose: the method is open now
+   * for the seller and, for `scheduled`, the window (ISO UTC instants) starts in the future, no
+   * later than the Market's days ahead and lasts the configured length. `reason` says why not
+   * (the codes above, or `window-in-past`, `window-too-far`, `window-length`, `window-missing`).
+   * `ordering`'s delivery-method policy asks this at checkout. Fails closed like the read above.
+   */
+  deliveryChoice(
+    context: CallContext,
+    request: {
+      readonly sellerId: Id<'Seller'>;
+      readonly method: string;
+      readonly window: { readonly start: string; readonly end: string } | null;
+    },
+  ): Promise<
+    Result<{ readonly allowed: boolean; readonly reason: ChoiceRefusal | null }, ShippingFailure>
+  >;
+
+  /**
+   * What the buyer pays for a delivery whose fleet quote is `quote` (in the Market currency): the
+   * quote plus the Market's margin, rounded up to its step. `margin` is what the platform adds
+   * (the rounding included), so `total` = `quote` + `margin`. For checkout (package 5), under the
+   * customer's context. `validation.failed` for a quote in another currency or a negative one.
+   */
+  priceDelivery(
+    context: CallContext,
+    quote: Money,
+  ): Promise<Result<PricedDelivery, ShippingFailure>>;
+
+  /**
    * Whether the Market delivers to the postcode: in a ServiceArea open for delivery. Anyone may
    * ask (the areas are public configuration). `validation.failed` for a postcode that is not 1
    * to 16 printable characters.
@@ -155,12 +223,13 @@ export interface ShippingFacade {
    * Asks the carrier to drop the delivery of a seller order that is not picked up yet. Rule
    * `system`, for ordering when an order is cancelled after payment. `cancelled`: the carrier
    * dropped it now or before; `not-cancellable`: already picked up, delivered or failed;
-   * `none`: the seller order has no carrier delivery.
+   * `none`: the seller order has no carrier delivery; `unknown`: the fleet cannot dedupe, so its
+   * refusal does not say whether the delivery is still booked (an admin checks).
    */
   cancelCarrierDelivery(
     context: CallContext,
     sellerOrderId: string,
-  ): Promise<Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure>>;
+  ): Promise<Result<'cancelled' | 'not-cancellable' | 'none' | 'unknown', CarrierDeliveryFailure>>;
 }
 
 /** Nest token of the {@link ShippingFacade}, provided and exported by `ShippingModule`. */

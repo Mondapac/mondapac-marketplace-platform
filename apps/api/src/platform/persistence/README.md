@@ -40,6 +40,10 @@ Implements platform persistence design sections 3 to 9 and 12.3
   - `inventory.lock-stock-items` locks stock items `FOR NO KEY UPDATE` in ascending id order
     (inventory data design 4.3). One to 1,000 distinct ids; fewer rows back than ids is
     `NamedStatementRefusedError('rows-missing')`.
+  - `commission-payouts.lock-dispute-case` locks one dispute case row `FOR UPDATE` and
+    `commission-payouts.lock-seller-order` takes an advisory lock (class 1702) on one seller
+    order; an admin dispute decision takes both (case first), so decisions of one dispute, and
+    decisions on one seller order, run one after the other.
   - The Market and tenant are bound from the open unit, never from `params`; every other value
     is a bound parameter. The text is fixed.
   - It needs an open read-write unit of the same Market; a read-only unit gets

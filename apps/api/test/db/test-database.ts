@@ -75,7 +75,13 @@ function exported(
     | 'TEST_WALLET_SWITCH_OWNER_DATABASE_URL'
     | 'TEST_WALLET_CREDIT_DATABASE_URL'
     | 'TEST_WALLET_CREDIT_OWNER_DATABASE_URL'
-    | 'TEST_ORDERING_REFUNDS_DATABASE_URL',
+    | 'TEST_ORDERING_REFUNDS_DATABASE_URL'
+    | 'TEST_PAYOUT_HOLDS_DATABASE_URL'
+    | 'TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL'
+    | 'TEST_DISPUTES_DATABASE_URL'
+    | 'TEST_DISPUTES_OWNER_DATABASE_URL'
+    | 'TEST_SELLERS_LIST_DATABASE_URL'
+    | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -344,4 +350,40 @@ export function walletCreditOwnerTestDatabaseUrl(): string {
  */
 export function orderingRefundsTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_REFUNDS_DATABASE_URL');
+}
+
+/**
+ * The copy that commission-payouts-terms-holds.db-spec.ts runs on (global-setup.ts), as the
+ * application login: it relays and dispatches identity's seller-access events there.
+ */
+export function payoutHoldsTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_HOLDS_DATABASE_URL');
+}
+
+export function payoutHoldsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that commission-payouts-disputes.db-spec.ts runs on (global-setup.ts), as the
+ * application login and as its owner: it relays and dispatches payments' dispute events there.
+ */
+export function disputesTestDatabaseUrl(): string {
+  return exported('TEST_DISPUTES_DATABASE_URL');
+}
+
+export function disputesOwnerTestDatabaseUrl(): string {
+  return exported('TEST_DISPUTES_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that sellers-list.db-spec.ts makes seller files and counts the tabs of whole Markets
+ * on (global-setup.ts), as the application login and as its owner (the owner patches the files).
+ */
+export function sellersListTestDatabaseUrl(): string {
+  return exported('TEST_SELLERS_LIST_DATABASE_URL');
+}
+
+export function sellersListOwnerTestDatabaseUrl(): string {
+  return exported('TEST_SELLERS_LIST_OWNER_DATABASE_URL');
 }

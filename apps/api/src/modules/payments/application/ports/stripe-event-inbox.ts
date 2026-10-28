@@ -1,5 +1,7 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { DISPUTE_EVENT_TYPES } from '../../domain/dispute';
 import { EXTERNAL_ACCOUNT_EVENT_TYPES } from '../../domain/payout-change';
+import { TRANSFER_EVENT_TYPES } from '../../domain/transfer';
 
 /** The platform's Checkout events the receiver keeps; every other platform type is dropped. */
 export const CHECKOUT_EVENT_TYPES = [
@@ -7,13 +9,19 @@ export const CHECKOUT_EVENT_TYPES = [
   'checkout.session.expired',
   'checkout.session.async_payment_failed',
 ] as const;
+/** The platform's events the receiver keeps: Checkout, disputes (8a) and transfers (6c). */
+export const PLATFORM_EVENT_TYPES = [
+  ...CHECKOUT_EVENT_TYPES,
+  ...DISPUTE_EVENT_TYPES,
+  ...TRANSFER_EVENT_TYPES,
+] as const;
 /** The connected-account events (Connect endpoint) the receiver keeps. */
 export const ACCOUNT_EVENT_TYPES = [
   'account.updated',
   'capability.updated',
   ...EXTERNAL_ACCOUNT_EVENT_TYPES,
 ] as const;
-export const KEPT_EVENT_TYPES = [...CHECKOUT_EVENT_TYPES, ...ACCOUNT_EVENT_TYPES] as const;
+export const KEPT_EVENT_TYPES = [...PLATFORM_EVENT_TYPES, ...ACCOUNT_EVENT_TYPES] as const;
 export type KeptEventType = (typeof KEPT_EVENT_TYPES)[number];
 export type AccountEventType = (typeof ACCOUNT_EVENT_TYPES)[number];
 
@@ -32,6 +40,12 @@ export type EventOutcome =
   | 'rejected'
   /** A connected account's state was read again and stored. */
   | 'account-updated'
+  /** A dispute was read again and its new state stored (package 8a). */
+  | 'dispute-recorded'
+  /** A transfer was read again and its state stored (package 6c). */
+  | 'transfer-recorded'
+  /** A dispute of another Market's order: Stripe sends it to every endpoint, nothing is stored. */
+  | 'other-market'
   /** Gave up after the last attempt; needs an admin. */
   | 'failed';
 
@@ -39,7 +53,7 @@ export type EventOutcome =
 export interface ReceivedEvent {
   readonly eventId: string;
   readonly type: KeptEventType;
-  /** The Checkout session (cs_...) or the connected account (acct_...) the event is about. */
+  /** The Checkout session (cs_...), dispute (dp_..., du_...), transfer (tr_...) or account (acct_...). */
   readonly objectId: string;
   readonly receivedAt: Temporal.Instant;
 }

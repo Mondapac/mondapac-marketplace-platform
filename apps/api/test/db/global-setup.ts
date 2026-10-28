@@ -73,6 +73,9 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'WALLET_SWITCH');
   await createCopy(name, 'WALLET_CREDIT');
   await createCopy(name, 'ORDERING_REFUNDS');
+  await createCopy(name, 'PAYOUT_HOLDS');
+  await createCopy(name, 'DISPUTES');
+  await createCopy(name, 'SELLERS_LIST');
 }
 
 /**
@@ -131,6 +134,12 @@ export default async function globalSetup(): Promise<void> {
  *   Market-wide ledger steps (`RecordLedger`, `RecordRefundLedger`, `SettleRefunds`), so it never
  *   records another file's queued seller order or refund, and never moves the Market-wide order
  *   counts another file reads (ordering-order-repository.db-spec.ts compares them).
+ * - `payout_holds`: commission-payouts-terms-holds.db-spec.ts relays and dispatches identity's
+ *   seller-access events to the commission-payouts handlers, and the relay and the dispatcher claim
+ *   every due row of a Market.
+ * - `sellers_list`: sellers-list.db-spec.ts compares the tab counts of a whole Market before and
+ *   after making its own seller files, so no other file makes or submits a seller file in that
+ *   Market between the two reads.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -159,7 +168,10 @@ async function createCopy(
     | 'CERTIFIED_CATEGORIES'
     | 'WALLET_SWITCH'
     | 'WALLET_CREDIT'
-    | 'ORDERING_REFUNDS',
+    | 'ORDERING_REFUNDS'
+    | 'PAYOUT_HOLDS'
+    | 'DISPUTES'
+    | 'SELLERS_LIST',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

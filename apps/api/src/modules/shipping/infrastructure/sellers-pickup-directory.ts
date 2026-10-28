@@ -40,17 +40,28 @@ export class SellersPickupDirectory implements PickupDirectory {
       .filter((field) => field.key !== format.postcodeField)
       .map((field) => (Object.hasOwn(address, field.key) ? (address[field.key] ?? '') : ''))
       .filter((line) => line !== '');
+    const field = (key: string | undefined): string | null =>
+      key !== undefined && Object.hasOwn(address, key) ? (address[key] ?? '') || null : null;
     return ok({
       contactName: read.value.storeName,
       contactPhone: read.value.phone,
       addressLines,
       postcode,
+      // From the seller's approved business file, never free text.
+      locality: field(format.localityField) ?? '',
+      region: field(format.regionField),
+      location: null,
       notes: null,
     });
   }
 
   async postcodesOf(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
     const read = await this.sellers.pickupPostcodes(context, sellerIds);
+    return read.ok ? ok(read.value) : err({ code: 'pickup.unavailable' } as const);
+  }
+
+  async zonesOf(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    const read = await this.sellers.operatingZones(context, sellerIds);
     return read.ok ? ok(read.value) : err({ code: 'pickup.unavailable' } as const);
   }
 }

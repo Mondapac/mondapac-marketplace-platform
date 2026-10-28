@@ -43,8 +43,12 @@ import { SellerOrderCustomerNames } from './application/use-cases/seller-order-c
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
+import { RecordDeliveryAnchor } from './application/use-cases/record-delivery-anchor.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
+import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
+import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
+import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordRefundLedger } from './application/use-cases/record-refund-ledger.use-case';
@@ -89,6 +93,7 @@ import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
 import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
+import { deliverySubscriptions } from './presentation/subscribers/delivery.subscriptions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: OrderingDependencies) => U;
 
@@ -185,6 +190,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         cancel: CancelCarrierAfterRefund,
       ) => carrierSubscriptions(book, bookReady, record, cancel),
     ),
+    // Payout eligibility (package 6b): a delivered seller order's facts go to commission-payouts.
+    registerSubscriptionsFrom('ordering', [RecordDeliveryAnchor], (record: RecordDeliveryAnchor) =>
+      deliverySubscriptions(record),
+    ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
     ...[
@@ -208,13 +217,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordLedger,
       RecordRefundLedger,
       OrderNoticeQuery,
+      OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      OwnOpenObligationsQuery,
+      OpenObligationsOfQuery,
       MyDeliveredSellerOrders,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
       CancelCarrierAfterRefund,
+      RecordDeliveryAnchor,
       AdminRefundOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
@@ -226,7 +239,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OrderNoticeQuery,
         ShipmentNoticeQuery,
         SellerOrderCustomerNames,
+        OwnOpenObligationsQuery,
+        OpenObligationsOfQuery,
         MyDeliveredSellerOrders,
+        OrderPaymentRefQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -234,7 +250,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         notice: OrderNoticeQuery,
         shipment: ShipmentNoticeQuery,
         customerNames: SellerOrderCustomerNames,
+        openObligations: OwnOpenObligationsQuery,
+        openObligationsOfAccount: OpenObligationsOfQuery,
         delivered: MyDeliveredSellerOrders,
+        paymentRef: OrderPaymentRefQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -242,7 +261,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           notice,
           shipment,
           customerNames,
+          openObligations,
+          openObligationsOfAccount,
           delivered,
+          paymentRef,
         ),
     },
     {

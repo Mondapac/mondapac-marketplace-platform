@@ -11,12 +11,21 @@ import {
   CARRIER_BOOKING_REPOSITORY,
   type CarrierBookingRepository,
 } from '../application/ports/carrier-booking.repository';
-import { CARRIER_GATEWAY, type CarrierGateway } from '../application/ports/carrier-gateway';
+import type { CarrierGateway } from '../application/ports/carrier-gateway';
 import { CARRIER_POLICY } from '../application/ports/carrier-policy';
 import {
   CARRIER_WEBHOOK_SIGNATURE,
   type CarrierWebhookSignature,
 } from '../application/ports/carrier-webhook-signature';
+import { FLEET_REGISTRY, type FleetRegistry } from '../application/ports/fleet-registry';
+import {
+  DELIVERY_SETTINGS_REPOSITORY,
+  type DeliverySettingsRepository,
+} from '../application/ports/delivery-settings.repository';
+import {
+  FLEET_SELECTION_REPOSITORY,
+  type FleetSelectionRepository,
+} from '../application/ports/fleet-selection.repository';
 import {
   FLAT_FEE_REPOSITORY,
   type FlatFeeRepository,
@@ -28,14 +37,25 @@ import { SHIPPING_POLICY, type ShippingPolicy } from '../application/ports/shipp
 import { CircuitBreaker } from './circuit-breaker';
 import { ConfigCarrierPolicy } from './config-carrier-policy';
 import { ConfigShippingPolicy } from './config-shipping-policy';
+import { ConfigUberDirectPolicy } from './config-uber-direct-policy';
+import { ConfigZoom2uPolicy } from './config-zoom2u-policy';
 import { DriveHttpClient } from './drive-http-client';
+import { FakeTestCarrier } from './fake-test-carrier';
+import { capabilitiesOf } from './fleet-config';
+import { StaticFleetRegistry } from './fleet-registry';
 import { DriveWebhookSignature } from './drive-webhook-signature';
 import { MondapacDriveCarrier } from './mondapac-drive-carrier';
 import { PrismaCarrierBookingRepository } from './prisma-carrier-booking.repository';
+import { PrismaDeliverySettingsRepository } from './prisma-delivery-settings.repository';
+import { PrismaFleetSelectionRepository } from './prisma-fleet-selection.repository';
 import { PrismaFlatFeeRepository } from './prisma-flat-fee.repository';
 import { SellersPickupDirectory } from './sellers-pickup-directory';
 import { SellersSellerDirectory } from './sellers-seller-directory';
 import { SellersStoreDirectory } from './sellers-store-directory';
+import { UberDirectCarrier } from './uber-direct-carrier';
+import { UberDirectHttpClient } from './uber-direct-http-client';
+import { Zoom2uCarrier } from './zoom2u-carrier';
+import { Zoom2uHttpClient } from './zoom2u-http-client';
 
 /** Binds the ports of shipping. Only this layer may reach `PrismaService`. */
 export const shippingProviders: readonly FactoryProvider[] = [
@@ -76,15 +96,66 @@ export const shippingProviders: readonly FactoryProvider[] = [
     ): ConfigCarrierPolicy => new ConfigCarrierPolicy(markets, areas, config.mondapacDrive),
   },
   {
-    provide: CARRIER_GATEWAY,
-    inject: [CARRIER_POLICY, APP_CONFIG, CLOCK],
-    useFactory: (policy: ConfigCarrierPolicy, config: AppConfig, clock: Clock): CarrierGateway =>
-      new MondapacDriveCarrier(
-        policy,
-        config.mondapacDrive.apiKeys,
-        new DriveHttpClient(new CircuitBreaker(clock)),
-        clock,
-      ),
+    provide: FLEET_SELECTION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): FleetSelectionRepository =>
+      new PrismaFleetSelectionRepository(prisma),
+  },
+  {
+    provide: DELIVERY_SETTINGS_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): DeliverySettingsRepository =>
+      new PrismaDeliverySettingsRepository(prisma),
+  },
+  {
+    // One gateway per fleet. Mondapac Drive, Uber Direct and Zoom2u are registered here;
+    // Australia Post registers its own beside them. The fake is for tests and development: it is
+    // never registered in production and is on only where a Market's `shipping.fleets` lists it.
+    provide: FLEET_REGISTRY,
+    inject: [CARRIER_POLICY, MarketRegistry, APP_CONFIG, CLOCK],
+    useFactory: (
+      policy: ConfigCarrierPolicy,
+      markets: MarketRegistry,
+      config: AppConfig,
+      clock: Clock,
+    ): FleetRegistry => {
+      const gateways: CarrierGateway[] = [
+        new MondapacDriveCarrier(
+          policy,
+          config.mondapacDrive.apiKeys,
+          new DriveHttpClient(new CircuitBreaker(clock)),
+          clock,
+        ),
+        // Off (no capabilities, so never a candidate) unless the Market's
+        // `shipping.uberDirect.enabled` is true AND the Region Stack holds its credentials.
+        new UberDirectCarrier(
+          new ConfigUberDirectPolicy(markets, config.uberDirect),
+          new UberDirectHttpClient(new CircuitBreaker(clock), clock),
+          clock,
+        ),
+        // Off unless the Market's `shipping.zoom2u.enabled` is true AND the Region Stack holds
+        // its API key.
+        new Zoom2uCarrier(
+          new ConfigZoom2uPolicy(markets, config.zoom2u),
+          new Zoom2uHttpClient(new CircuitBreaker(clock)),
+          clock,
+        ),
+      ];
+      if (config.nodeEnv !== 'production') {
+        gateways.push(
+          new FakeTestCarrier((market) => {
+            const entry = policy.fleetEntry(market.marketId, 'fake_test');
+            return entry === undefined
+              ? null
+              : capabilitiesOf('fake_test', entry, markets.get(market.marketId).defaultCurrency, {
+                  idempotentBooking: true,
+                  supportsWindow: true,
+                });
+          }),
+        );
+      }
+      return new StaticFleetRegistry(gateways);
+    },
   },
   {
     provide: CARRIER_WEBHOOK_SIGNATURE,

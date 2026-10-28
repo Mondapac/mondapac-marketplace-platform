@@ -56,7 +56,7 @@ export interface SellerOrderView {
   /** When this shop said the order is ready; null until then. */
   readonly readyAt: string | null;
   /** Set when the platform must arrange the delivery itself; the shop does nothing. */
-  readonly deliveryAttention: 'no-carrier' | null;
+  readonly deliveryAttention: 'no-carrier' | 'carrier-unknown' | 'cancel-unknown' | null;
   /** Tries left and the lock of a ready pickup order; null for any other order. */
   readonly pickup?: PickupStatus | null;
   readonly lines: readonly OrderLineView[];

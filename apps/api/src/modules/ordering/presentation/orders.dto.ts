@@ -7,7 +7,9 @@ import type {
   LabelledSellerOrderDetailView,
   LabelledSellerOrderPageView,
   LabelledSellerOrderShipView,
-  OwnOrderView,
+  LabelledOrderView,
+  LabelledOwnOrderView,
+  LabelledSellerOrderView,
   OwnPickupCodeView,
 } from '../domain/order-views';
 import type { ShipTo } from '../domain/order';
@@ -114,11 +116,12 @@ export class SellerOrderBody {
   })
   readyAt!: string | null;
   @ApiProperty({
-    enum: ['no-carrier'],
+    enum: ['no-carrier', 'carrier-unknown', 'cancel-unknown'],
     nullable: true,
     description:
-      'Set when no carrier could take the order and the platform must arrange the delivery. ' +
-      'The seller never delivers instead.',
+      'Set when the platform must look at the delivery: no-carrier (no fleet can carry it), ' +
+      'carrier-unknown (a fleet may already hold the booking) or cancel-unknown (a cancel was not ' +
+      'confirmed). The seller never delivers instead.',
   })
   deliveryAttention!: string | null;
   @ApiProperty({ type: [OrderLineBody] }) lines!: OrderLineBody[];
@@ -196,6 +199,8 @@ export class PickupConfirmRequest {
 }
 
 export class OwnOrderBody extends OrderBody {
+  @ApiProperty({ type: () => [OwnSellerOrderBody] }) declare sellerOrders: OwnSellerOrderBody[];
+
   @ApiProperty({ type: ShipToBody, nullable: true, description: SHIP_TO_DESCRIPTION })
   shipTo!: ShipToBody | null;
 
@@ -272,6 +277,16 @@ export class LabelledOrderLineBody extends OrderLineBody {
   variantLabel!: string | null;
 }
 
+export class OwnSellerOrderBody extends SellerOrderBody {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The seller's public store name; null when unknown.",
+  })
+  storeName!: string | null;
+  @ApiProperty({ type: [LabelledOrderLineBody] }) declare lines: LabelledOrderLineBody[];
+}
+
 export class AdminSellerOrderBody extends SellerOrderBody {
   @ApiProperty({
     type: String,
@@ -307,8 +322,12 @@ export class AdminOrderBody extends OrderBody {
   @ApiProperty({ type: [AdminSellerOrderBody] }) declare sellerOrders: AdminSellerOrderBody[];
 }
 
+export class OwnOrderListItemBody extends OrderBody {
+  @ApiProperty({ type: [OwnSellerOrderBody] }) declare sellerOrders: OwnSellerOrderBody[];
+}
+
 export class OrderPageBody {
-  @ApiProperty({ type: [OrderBody] }) orders!: OrderBody[];
+  @ApiProperty({ type: [OwnOrderListItemBody] }) orders!: OwnOrderListItemBody[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
 }
 
@@ -485,8 +504,21 @@ export const ownPickupCodeBody = (view: OwnPickupCodeView): OwnPickupCodeBody =>
   locked: view.locked,
 });
 
-export const ownOrderBody = (order: OwnOrderView): OwnOrderBody => ({
+const ownSellerOrderBody = (seller: LabelledSellerOrderView): OwnSellerOrderBody => ({
+  ...sellerOrderBody(seller),
+  storeName: seller.storeName,
+  lines: seller.lines.map(labelledLineBody),
+});
+
+/** One of the customer's own orders in their list, with product and store names. */
+export const ownListOrderBody = (order: LabelledOrderView): OwnOrderListItemBody => ({
   ...orderBody(order),
+  sellerOrders: order.sellerOrders.map(ownSellerOrderBody),
+});
+
+export const ownOrderBody = (order: LabelledOwnOrderView): OwnOrderBody => ({
+  ...orderBody(order),
+  sellerOrders: order.sellerOrders.map(ownSellerOrderBody),
   shipTo: shipToBody(order.shipTo),
   sellerNotes: { ...(order.shipTo?.sellerNotes ?? {}) },
   pickupCodes: order.pickupCodes.map(ownPickupCodeBody),

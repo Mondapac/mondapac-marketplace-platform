@@ -70,6 +70,7 @@ describe.each(TEST_MARKETS)('payout account changes in market %s (database)', (c
     detectedAt: at,
     coolingOffUntil: until,
     sourceEventId: nextEvent(),
+    detectedBy: 'webhook' as const,
   });
 
   it('records changes guarded by the latest change, once per Stripe event, newest first', async () => {

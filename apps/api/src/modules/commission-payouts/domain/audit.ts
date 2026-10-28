@@ -1,4 +1,7 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
+import { TERMS_CHANGE_REASONS } from './payout-terms';
+import { HOLD_REASONS, RELEASE_REASONS } from './payout-hold';
+import { DECISION_BEARERS, DECISION_REASON_CODES } from './dispute';
 
 // The audited actions of commission-payouts (Phase 5 package 5), registered at boot with
 // `registerAuditActions('commission-payouts', COMMISSION_PAYOUTS_AUDIT_ACTIONS)`. Ids and whole
@@ -32,4 +35,113 @@ export const CommissionRateCleared = defineAuditAction({
   after: { marketRateBps: auditField.integer() },
 });
 
-export const COMMISSION_PAYOUTS_AUDIT_ACTIONS = [CommissionRateSet, CommissionRateCleared] as const;
+/** The audit target type of a seller's payout terms override. */
+export const SELLER_PAYOUT_TERMS_TARGET = 'commission-payouts.seller-payout-terms';
+
+/**
+ * The override fields as audited: whole numbers and codes only. `weekdaysMask` is the ISO weekday
+ * bitmask (bit 0 = Monday) and `localMinute` the minute of the local day; null = the Market's value.
+ * `before` carries the same fields with `version` null when the seller had no override. The approval
+ * mode is audited in lower case (`auto`, `manual`), as an audit code must be.
+ */
+const termsFields = {
+  weekdaysMask: auditField.optional(auditField.integer()),
+  localMinute: auditField.optional(auditField.integer()),
+  holdDaysCarrier: auditField.optional(auditField.integer()),
+  holdDaysSellerClick: auditField.optional(auditField.integer()),
+  minimumMinor: auditField.optional(auditField.integer()),
+  approvalMode: auditField.optional(auditField.enumOf(['auto', 'manual'] as const)),
+  version: auditField.optional(auditField.integer()),
+};
+
+/** An admin set a seller's payout terms override (created it, or replaced it). */
+export const PayoutTermsSet = defineAuditAction({
+  action: 'commission-payouts.payout-terms.set',
+  targetType: SELLER_PAYOUT_TERMS_TARGET,
+  actors: ['authenticated'],
+  before: termsFields,
+  after: { ...termsFields, reasonCode: auditField.enumOf(TERMS_CHANGE_REASONS) },
+});
+
+/** An admin removed a seller's override: the seller is back on the Market's terms. */
+export const PayoutTermsCleared = defineAuditAction({
+  action: 'commission-payouts.payout-terms.clear',
+  targetType: SELLER_PAYOUT_TERMS_TARGET,
+  actors: ['authenticated'],
+  before: termsFields,
+  after: {
+    version: auditField.optional(auditField.integer()),
+    reasonCode: auditField.enumOf(TERMS_CHANGE_REASONS),
+  },
+});
+
+/** The audit target type of a payout hold. */
+export const PAYOUT_HOLD_TARGET = 'commission-payouts.payout-hold';
+
+/** A hold was placed: by an admin (reason `admin-review` or `bank-change`) or by the system. */
+export const PayoutHoldPlaced = defineAuditAction({
+  action: 'commission-payouts.payout-hold.place',
+  targetType: PAYOUT_HOLD_TARGET,
+  actors: ['authenticated', 'system'],
+  after: {
+    sellerId: auditField.id(),
+    sellerOrderId: auditField.optional(auditField.id()),
+    reason: auditField.enumOf(HOLD_REASONS),
+    sourceRef: auditField.id(),
+  },
+});
+
+/**
+ * A hold was released: by an admin (any reason, `seller-suspended` included) with a reason code, or
+ * by the system when a dispute closes (package 8b: won, a closed inquiry, or every seller order
+ * decided).
+ */
+export const PayoutHoldReleased = defineAuditAction({
+  action: 'commission-payouts.payout-hold.release',
+  targetType: PAYOUT_HOLD_TARGET,
+  actors: ['authenticated', 'system'],
+  before: {
+    sellerId: auditField.id(),
+    sellerOrderId: auditField.optional(auditField.id()),
+    reason: auditField.enumOf(HOLD_REASONS),
+  },
+  after: { releaseReason: auditField.enumOf(RELEASE_REASONS) },
+});
+
+/** The audit target type of an admin's decision on a lost chargeback. */
+export const DISPUTE_DECISION_TARGET = 'commission-payouts.dispute-decision';
+
+/**
+ * An admin decided who bears a lost chargeback on one seller order (package 8b): the platform
+ * (no ledger row) or the seller up to its unreversed share (a `dispute-debit`), or, in needs-review
+ * only, reversed a seller decision (a `dispute-reinstate`). `before` is the state the admin saw:
+ * the bearer already decided (absent when none) and the cap on offer (absent when it is zero); `after` is the decision.
+ */
+export const DisputeDecided = defineAuditAction({
+  action: 'commission-payouts.dispute.decide',
+  targetType: DISPUTE_DECISION_TARGET,
+  actors: ['authenticated'],
+  before: {
+    bearer: auditField.optional(auditField.enumOf(DECISION_BEARERS)),
+    capAmount: auditField.optional(auditField.money()),
+  },
+  after: {
+    disputeId: auditField.id(),
+    sellerOrderId: auditField.id(),
+    sellerId: auditField.id(),
+    bearer: auditField.enumOf(DECISION_BEARERS),
+    amount: auditField.optional(auditField.money()),
+    reasonCode: auditField.enumOf(DECISION_REASON_CODES),
+    reversal: auditField.boolean(),
+  },
+});
+
+export const COMMISSION_PAYOUTS_AUDIT_ACTIONS = [
+  CommissionRateSet,
+  CommissionRateCleared,
+  PayoutTermsSet,
+  PayoutTermsCleared,
+  PayoutHoldPlaced,
+  PayoutHoldReleased,
+  DisputeDecided,
+] as const;

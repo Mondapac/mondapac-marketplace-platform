@@ -28,6 +28,12 @@ const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 const idGenerator: IdGenerator = { next: <K extends string>() => uuid7() as Id<K> };
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** A promise and its resolve, to hand a point in one unit to the test. */
+function signal() {
+  let resolve!: () => void;
+  const reached = new Promise<void>((r) => (resolve = r));
+  return { reached, resolve };
+}
 
 describe.each(TEST_MARKETS)('claim basis policy in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -68,6 +74,25 @@ describe.each(TEST_MARKETS)('claim basis policy in market %s (database)', (code)
     } catch (error) {
       return (error as { code?: string }).code ?? 'unknown';
     }
+  }
+
+  /**
+   * Waits until a statement on `table` in this database is waiting for a lock, so that a unit
+   * holding that lock commits only once the other unit is queued behind it. Fixed delays raced
+   * under the full parallel run: the second unit could run before the first had written.
+   */
+  async function untilWaitingOn(table: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const { rows } = await sql.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE $1`,
+        [`%"certification"."${table}"%`],
+      );
+      if (rows[0]!.n > 0) return;
+      await delay(5);
+    }
+    throw new Error(`no statement on ${table} waited for a lock within ${timeoutMs} ms`);
   }
 
   /** A type with no revision: enough for the policy's foreign key. */
@@ -186,45 +211,55 @@ describe.each(TEST_MARKETS)('claim basis policy in market %s (database)', (code)
   it('makes a second decision wait behind the row lock of the first (lock first)', async () => {
     const { policyId, revisionId } = await policyWithRevision([]);
     const order: string[] = [];
+    const locked = signal();
     const first = inUnit(async () => {
       await policies.lockPolicy(market, policyId, 2);
       order.push('first-locked');
-      await delay(300);
+      locked.resolve();
+      await untilWaitingOn('claim_basis_policies');
       await policies.publishRevision(market, policyId, revisionId, 2);
       order.push('first-done');
     });
-    await delay(50);
-    const second = inUnit(async () => {
-      await policies.lockPolicy(market, policyId, 2);
-      order.push('second-locked');
-    });
+    const second = locked.reached.then(() =>
+      inUnit(async () => {
+        await policies.lockPolicy(market, policyId, 2);
+        order.push('second-locked');
+      }),
+    );
+    // The second waited for the first to commit, then found the version moved. The handler goes
+    // on before awaiting the first: the second can settle first, and an unhandled rejection fails
+    // the test.
+    const secondIsStale = expect(second).rejects.toBeInstanceOf(StaleAggregateError);
     await first;
-    // The second waited for the first to commit, then found the version moved.
-    await expect(second).rejects.toBeInstanceOf(StaleAggregateError);
+    await secondIsStale;
     expect(order).toEqual(['first-locked', 'first-done']);
   });
 
   it('makes the second of two concurrent first saves of a type stale (F2)', async () => {
     const typeId = await type();
+    const written = signal();
     const first = inUnit(async () => {
       await policies.addPolicy(market, {
         id: uuid7() as Id<'ClaimBasisPolicy'>,
         typeId,
         createdAt: T0,
       });
-      await delay(300);
+      written.resolve();
+      await untilWaitingOn('claim_basis_policies');
     });
-    await delay(50);
     // Waits on the unique (market_id, type_id) until the first commits, then clashes.
-    const second = inUnit(() =>
-      policies.addPolicy(market, {
-        id: uuid7() as Id<'ClaimBasisPolicy'>,
-        typeId,
-        createdAt: T0,
-      }),
+    const second = written.reached.then(() =>
+      inUnit(() =>
+        policies.addPolicy(market, {
+          id: uuid7() as Id<'ClaimBasisPolicy'>,
+          typeId,
+          createdAt: T0,
+        }),
+      ),
     );
+    const secondIsStale = expect(second).rejects.toBeInstanceOf(StaleAggregateError);
     await first;
-    await expect(second).rejects.toBeInstanceOf(StaleAggregateError);
+    await secondIsStale;
     const { rows } = await sql.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM certification.claim_basis_policies WHERE market_id = $1 AND type_id = $2`,
       [market.marketId, typeId],
@@ -242,15 +277,19 @@ describe.each(TEST_MARKETS)('claim basis policy in market %s (database)', (code)
       changeReasonCiphertext: null,
       createdAt: T0,
     });
+    const written = signal();
     const first = inUnit(async () => {
       expect(await policies.addRevision(market, revision())).toBe(2);
-      await delay(300);
+      written.resolve();
+      await untilWaitingOn('claim_policy_revisions');
     });
-    await delay(50);
     // Reads the same last number (the first has not committed), then waits on the unique.
-    const second = inUnit(() => policies.addRevision(market, revision()));
+    const second = written.reached.then(() =>
+      inUnit(() => policies.addRevision(market, revision())),
+    );
+    const secondIsStale = expect(second).rejects.toBeInstanceOf(StaleAggregateError);
     await first;
-    await expect(second).rejects.toBeInstanceOf(StaleAggregateError);
+    await secondIsStale;
   });
 
   it("refuses a pointer to another policy's revision (F4, 23503)", async () => {

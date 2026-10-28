@@ -21,7 +21,7 @@ export type DriveFetch = (
 export const MAX_ANSWER_BYTES = 64 * 1024;
 
 /** The body as JSON, or null when it is empty, not JSON or larger than the cap. */
-async function boundedJson(body: ReadableStream<Uint8Array> | null): Promise<unknown> {
+export async function boundedJson(body: ReadableStream<Uint8Array> | null): Promise<unknown> {
   if (body === null) return null;
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -60,7 +60,8 @@ export interface DriveEndpoint {
   readonly circuit: CircuitBreakerSettings;
 }
 
-export type DriveCallFailure = 'unavailable' | 'refused';
+/** `unauthorized`: a 401 or 403, the key is missing or wrong (nothing was done). */
+export type DriveCallFailure = 'unavailable' | 'refused' | 'unauthorized' | 'not-sent';
 
 /**
  * The HTTP client of the Mondapac Drive API: JSON over HTTPS with the Market in `x-market-id`
@@ -80,24 +81,42 @@ export class DriveHttpClient {
    * `call` names the kind of call (`book`, `cancel`, `quote`): each has its own circuit, so
    * failing quotes at checkout never stop the bookings of paid orders (Hassan, PR 1 follow-up).
    */
-  async post(
+  post(
     endpoint: DriveEndpoint,
     path: string,
     body: unknown,
     call: 'book' | 'cancel' | 'quote',
   ): Promise<Result<{ readonly status: number; readonly body: unknown }, DriveCallFailure>> {
+    return this.send(endpoint, 'POST', path, body, call);
+  }
+
+  /** A read (`status`): no body, its own circuit, retried like a booking. */
+  get(
+    endpoint: DriveEndpoint,
+    path: string,
+  ): Promise<Result<{ readonly status: number; readonly body: unknown }, DriveCallFailure>> {
+    return this.send(endpoint, 'GET', path, undefined, 'status');
+  }
+
+  private async send(
+    endpoint: DriveEndpoint,
+    method: 'GET' | 'POST',
+    path: string,
+    body: unknown,
+    call: 'book' | 'cancel' | 'quote' | 'status',
+  ): Promise<Result<{ readonly status: number; readonly body: unknown }, DriveCallFailure>> {
     const key = `${endpoint.marketId}|${endpoint.baseUrl}|${call}`;
-    if (!this.breaker.allow(key)) return err('unavailable');
+    // An open circuit sends nothing: the caller may safely try another fleet.
+    if (!this.breaker.allow(key)) return err('not-sent');
     const url = `${endpoint.baseUrl.replace(/\/+$/, '')}${path}`;
-    const payload = JSON.stringify(body);
+    const payload = body === undefined ? undefined : JSON.stringify(body);
     for (let attempt = 1; ; attempt += 1) {
-      const answer = await this.once(endpoint, url, payload);
+      const answer = await this.once(endpoint, method, url, payload);
       if (answer.kind === 'answer') {
         // A 4xx is Drive's decision about the request, not a fault of Drive.
         this.breaker.succeeded(key);
-        return answer.status < 400
-          ? ok({ status: answer.status, body: answer.body })
-          : err('refused');
+        if (answer.status < 400) return ok({ status: answer.status, body: answer.body });
+        return err(answer.status === 401 || answer.status === 403 ? 'unauthorized' : 'refused');
       }
       // A quote waits on a customer at checkout: a 429 falls back to the flat fee at once
       // instead of adding retries while Drive sheds load (Hassan, SHP-02/03 re-check).
@@ -111,21 +130,22 @@ export class DriveHttpClient {
 
   private async once(
     endpoint: DriveEndpoint,
+    method: 'GET' | 'POST',
     url: string,
-    payload: string,
+    payload: string | undefined,
   ): Promise<
     { kind: 'answer'; status: number; body: unknown } | { kind: 'fault'; throttled: boolean }
   > {
     try {
       const response = await this.fetchFn(url, {
-        method: 'POST',
+        method,
         headers: {
           accept: 'application/json',
-          'content-type': 'application/json',
+          ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
           authorization: `Bearer ${endpoint.apiKey}`,
           'x-market-id': endpoint.marketId,
         },
-        body: payload,
+        ...(payload === undefined ? {} : { body: payload }),
         signal: AbortSignal.timeout(endpoint.timeoutMs),
         redirect: 'error',
       });
