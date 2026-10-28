@@ -976,10 +976,15 @@ describe.each(TEST_MARKETS)(
         expect(foreign.rowCount).toBe(0);
       });
 
-      it('the application role cannot rewrite the ticket or admin of a request', async () => {
+      it('the application role cannot rewrite the ticket, reason or admin of an open request', async () => {
         await adminAsk();
         const [row] = await adminRow(BUYER);
-        for (const data of [{ ticketRef: 'SUP-9' }, { adminAccountId: BUYER }]) {
+        for (const data of [
+          { ticketRef: 'SUP-9' },
+          { reason: 'changed' },
+          { requestedBy: 'customer' },
+          { adminAccountId: BUYER },
+        ]) {
           await expect(
             db.unitOfWork.run(market, async () => {
               await db.service.tx(market).customersAccountDeletionRequest.updateMany({
@@ -990,6 +995,35 @@ describe.each(TEST_MARKETS)(
             }),
           ).rejects.toBeDefined();
         }
+      });
+
+      it('lets the application redact a reason once, and nothing else about the evidence changes', async () => {
+        await adminAsk();
+        const [row] = await adminRow(BUYER);
+        const update = (data: Record<string, unknown>) =>
+          db.unitOfWork.run(market, async () => {
+            await db.service.tx(market).customersAccountDeletionRequest.updateMany({
+              where: { marketId: code, id: row!.id },
+              data,
+            });
+            return ok(undefined);
+          });
+        // Redacting an open request is refused by the CHECK (an open admin request keeps its text).
+        await expect(update({ reason: null, redactedAt: new Date() })).rejects.toBeDefined();
+        // Closing and redacting in one statement is accepted.
+        await expect(
+          update({
+            status: 'cancelled',
+            cancelledAt: new Date(),
+            cancelReason: 'customer',
+            reason: null,
+            redactedAt: new Date(),
+          }),
+        ).resolves.toBeDefined();
+        expect((await adminRow(BUYER))[0]).toMatchObject({ status: 'cancelled', reason: null });
+        // Redacted once: a second redaction time, or text back, is refused.
+        await expect(update({ redactedAt: new Date() })).rejects.toBeDefined();
+        await expect(update({ reason: 'back again' })).rejects.toBeDefined();
       });
 
       it('refuses inconsistent admin columns and a malformed ticket (CHECK)', async () => {
