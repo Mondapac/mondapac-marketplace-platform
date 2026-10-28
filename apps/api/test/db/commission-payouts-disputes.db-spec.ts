@@ -32,6 +32,8 @@ import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/event
 import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
+import { STEP_UP_CONSUMER } from '../../src/platform/authz';
+import { AllowingStepUp } from '../support/commission-payouts-fakes';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { eventContext } from './outbox-support';
@@ -56,6 +58,7 @@ const CHECK = '23514';
 const NO_PRIVILEGE = '42501';
 const RESTRICT = '23001';
 const UNIQUE = '23505';
+const stepUp = new AllowingStepUp();
 const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFn';
 
 describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) => {
@@ -111,7 +114,12 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
     disputes = new PrismaDisputeRepository(db.service);
     ledger = new PrismaLedgerRepository(db.service);
     holds = new PrismaPayoutHoldRepository(db.service);
-    ({ app } = await createTestApp({ env: { DATABASE_URL: disputesTestDatabaseUrl() } }));
+    // The decision spends the admin's step-up (issue #491); the proof itself is identity's and has
+    // its own suite, so a consumer that always accepts stands in for it here.
+    ({ app } = await createTestApp({
+      env: { DATABASE_URL: disputesTestDatabaseUrl() },
+      override: (builder) => builder.overrideProvider(STEP_UP_CONSUMER).useValue(stepUp),
+    }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
     // payments and ordering are replaced by the test: the dispute and the order's PaymentIntent.

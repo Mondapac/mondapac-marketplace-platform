@@ -137,6 +137,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX payout_holds_active_seller_idx ON commission_payouts.payout_holds USING btree (market_id, seller_id) WHERE (released_at IS NULL)',
   'commission_payouts.payout_holds_system_source_key':
     "CREATE UNIQUE INDEX payout_holds_system_source_key ON commission_payouts.payout_holds USING btree (market_id, reason, source_ref, seller_id, seller_order_id) NULLS NOT DISTINCT WHERE (origin = 'system'::text)",
+  'commission_payouts.payout_holds_active_seller_order_idx':
+    'CREATE INDEX payout_holds_active_seller_order_idx ON commission_payouts.payout_holds USING btree (market_id, seller_order_id) WHERE ((released_at IS NULL) AND (seller_order_id IS NOT NULL))',
+  'commission_payouts.payout_items_market_id_seller_id_unfreed_idx':
+    'CREATE INDEX payout_items_market_id_seller_id_unfreed_idx ON commission_payouts.payout_items USING btree (market_id, seller_id) WHERE (freed_at IS NULL)',
+  'commission_payouts.payout_items_market_id_seller_order_id_unfreed_key':
+    'CREATE UNIQUE INDEX payout_items_market_id_seller_order_id_unfreed_key ON commission_payouts.payout_items USING btree (market_id, seller_order_id) WHERE (freed_at IS NULL)',
+  'commission_payouts.payouts_market_id_open_idx':
+    "CREATE INDEX payouts_market_id_open_idx ON commission_payouts.payouts USING btree (market_id, state, state_changed_at, id) WHERE (state = ANY (ARRAY['pending'::text, 'awaiting-approval'::text, 'approved'::text, 'instructing'::text, 'instructed'::text]))",
+  'commission_payouts.payouts_market_id_seller_id_live_key':
+    "CREATE UNIQUE INDEX payouts_market_id_seller_id_live_key ON commission_payouts.payouts USING btree (market_id, seller_id) WHERE (state = ANY (ARRAY['pending'::text, 'awaiting-approval'::text, 'approved'::text, 'instructing'::text]))",
+  'commission_payouts.payouts_market_id_transfer_execution_id_key':
+    'CREATE UNIQUE INDEX payouts_market_id_transfer_execution_id_key ON commission_payouts.payouts USING btree (market_id, transfer_execution_id) WHERE (transfer_execution_id IS NOT NULL)',
   'customers.addresses_one_default_key':
     'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
