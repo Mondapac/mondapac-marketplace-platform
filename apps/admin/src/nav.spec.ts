@@ -39,3 +39,22 @@ describe('admin nav: Wallet', () => {
     ]);
   });
 });
+
+describe('admin nav: Disputes', () => {
+  it('is there for commission-payouts.dispute.view, in Money after the connected accounts', () => {
+    expect(ids(['commission-payouts.dispute.view'])).toEqual(['home', 'disputes']);
+    const money = adminNav.items.filter((item) => item.group === 'money').map((item) => item.id);
+    expect(money.indexOf('disputes')).toBe(money.indexOf('payout-accounts') + 1);
+    expect(adminNav.items.find((item) => item.id === 'disputes')).toMatchObject({
+      icon: 'shield-check',
+      href: '/disputes',
+      labelKey: 'nav.disputes',
+      group: 'money',
+    });
+  });
+
+  it('is hidden without it, also with the decision key alone', () => {
+    expect(ids([])).not.toContain('disputes');
+    expect(ids(['commission-payouts.dispute.attribute'])).not.toContain('disputes');
+  });
+});

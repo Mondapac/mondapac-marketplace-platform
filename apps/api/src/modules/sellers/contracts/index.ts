@@ -3,9 +3,15 @@
 // definitions are declared in domain/events/ and re-exported here (ADR-0006 decision 6).
 export { SELLERS_AUDIT_ACTIONS } from '../domain/audit';
 // BusinessFileSubmitted: consumed by notifications' admin review notice (package 3).
-export { BusinessFileSubmitted, SELLERS_EVENTS, SellerFileCreated } from '../domain/events';
+export {
+  BusinessFileSubmitted,
+  SELLERS_EVENTS,
+  SellerBlogAccessChanged,
+  SellerFileCreated,
+} from '../domain/events';
 export type { ApprovedSellerZone, SellerSummary } from '../domain/seller-summary';
 export {
+  SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_PERMISSIONS,

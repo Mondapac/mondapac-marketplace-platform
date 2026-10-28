@@ -21,10 +21,12 @@ import { ReturnsModule } from './returns';
 import { NotificationsModule } from './notifications';
 import { SearchModule } from './search';
 import { StorefrontModule } from './storefront';
+import { BlogModule } from './blog';
 import { EngagementModule } from './engagement';
 import { AssistantModule } from './assistant';
 import { WalletModule } from './wallet';
 import { ReviewsModule } from './reviews';
+import { PromotionsModule } from './promotions';
 
 export const CORE_MODULES = [
   IdentityModule,
@@ -46,9 +48,11 @@ export const CORE_MODULES = [
   NotificationsModule,
   SearchModule,
   StorefrontModule,
+  BlogModule,
   EngagementModule,
   AssistantModule,
   ReviewsModule,
+  PromotionsModule,
 ];
 
 /**

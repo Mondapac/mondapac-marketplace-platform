@@ -63,6 +63,7 @@ describe.each(TEST_MARKETS)('offerSellUnits in market %s', (code) => {
     publishedProductImages: undefined as never,
     pendingProductRevisions: undefined as never,
     sellerProductOwners: undefined as never,
+    productsForLinking: undefined as never,
   });
   beforeEach(() => {
     units.length = 0;

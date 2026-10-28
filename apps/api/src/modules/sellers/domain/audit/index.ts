@@ -106,6 +106,18 @@ export const PickupDetailsReadForCarrier = defineAuditAction({
   },
 });
 
+/**
+ * An admin switched a seller's blog access on or off (blog package 1). `unpublishLive`: the admin
+ * also asked for the seller's live posts to be taken off the site (only when switching off).
+ */
+export const BlogAccessChanged = defineAuditAction({
+  action: 'sellers.blog-access.change',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: { enabled: auditField.boolean() },
+  after: { enabled: auditField.boolean(), unpublishLive: auditField.boolean() },
+});
+
 /** Every audited action of sellers, for its module's registration. */
 export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   BusinessDetailsViewed,
@@ -114,4 +126,5 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   StoreProfileSaved,
   StoreImageChanged,
   PickupDetailsReadForCarrier,
+  BlogAccessChanged,
 ]);

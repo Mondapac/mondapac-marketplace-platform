@@ -13,6 +13,8 @@ import {
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { DisputedOrders } from '../disputes/disputed-orders.tsx';
+import type { OwnDispute } from '../disputes/types.ts';
 import { shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import type { Ledger, LedgerEntry, LedgerKind } from './types.ts';
@@ -67,7 +69,14 @@ function totalItems(
 const shortId = (id: string): string => id.slice(-8).toUpperCase();
 
 /** The seller's earnings: totals (sales, shipping, commission, balance) and the ledger. */
-export function Earnings({ initial }: { readonly initial: Ledger }) {
+export function Earnings({
+  initial,
+  disputes = [],
+}: {
+  readonly initial: Ledger;
+  /** The orders a dispute holds now, listed in a card above the ledger. */
+  readonly disputes?: readonly OwnDispute[];
+}) {
   const t = useTranslations('earnings');
   const locale = useLocale();
   const zone = useTimeZone();
@@ -112,6 +121,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
       <LedgerTotals items={totalItems(totals, t, money)} />
+      <DisputedOrders disputes={disputes} />
       {/* An empty ledger is its own region: the empty state's heading stands for it. */}
       {rows.length === 0 ? null : <h2 className="text-lg font-semibold">{t('ledger')}</h2>}
       {rows.length === 0 ? (

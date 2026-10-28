@@ -1,0 +1,202 @@
+// The promotions module's tables (promotions package T1, discount engine and domain). Every model
+// is named Promotions<Name> and mapped to its table with @@map. The CHECKs, the partial unique
+// indexes and the grants are hand-written in the migration. Sellers, products, delivery zones and
+// accounts (other modules) are plain ids and codes with no foreign key. Money is minor units
+// (BigInt) in the Market's currency. A promotion's code is free text of the owner's choosing and
+// is never copied into an audit row.
+
+/// One promotion: its type, state, funding, schedule, reward and limits. The targets live in
+/// `promotion_targets`, the counters of use in `promotion_usage`. The type, owner, currency and
+/// code of a promotion never change after creation; everything else is changed by its owner (a
+/// seller for its own, an admin for the platform's) and every change is audited.
+model PromotionsPromotion {
+  id                 String                     @id @db.Uuid
+  marketId           String                     @map("market_id") @db.VarChar(8)
+  tenantId           String                     @map("tenant_id")
+  /// SELLER_SALE, CART_DISCOUNT, CART_CODE, FREE_SHIPPING or CO_FUNDED_CAMPAIGN (CHECK).
+  type               String
+  /// PENDING_APPROVAL, ACTIVE, PAUSED or REJECTED (CHECK).
+  status             String
+  name               String
+  /// SELLER, PLATFORM or CO_FUNDED (CHECK).
+  funding            String
+  /// The platform's share of a CO_FUNDED promotion, 1 to 9999 basis points; null otherwise (CHECK).
+  platformSplitBps   Int?                       @map("platform_split_bps") @db.SmallInt
+  /// The owner seller (sellers); null for a platform promotion (CHECK ties it to the funding).
+  ownerSellerId      String?                    @map("owner_seller_id") @db.Uuid
+  combinable         Boolean
+  /// Upper case; set if and only if the type is CART_CODE (CHECK). Unique per Market.
+  code               String?
+  startsAt           DateTime                   @map("starts_at") @db.Timestamptz(6)
+  endsAt             DateTime?                  @map("ends_at") @db.Timestamptz(6)
+  /// A test-mode promotion applies only to test orders. Platform money needs it until the Market
+  /// confirms the tax ruling; the use case enforces this from the Market flag (no CHECK, since the
+  /// rule depends on Market config).
+  testMode           Boolean                    @map("test_mode")
+  /// The platform's share is outside the commission cap; platform-funded or co-funded only (CHECK).
+  specialCampaign    Boolean                    @map("special_campaign")
+  /// An admin approved or reviewed this promotion as it is now.
+  priorApproved      Boolean                    @map("prior_approved")
+  /// ADMIN or SELLER while PAUSED; null otherwise (CHECK).
+  pausedBy           String?                    @map("paused_by")
+  currency           String                     @db.VarChar(3)
+  /// PERCENT or FIXED (CHECK); PERCENT sets `rewardBps`, FIXED sets `rewardAmountMinor`.
+  rewardKind         String                     @map("reward_kind")
+  rewardBps          Int?                       @map("reward_bps")
+  rewardAmountMinor  BigInt?                    @map("reward_amount_minor")
+  capMinor           BigInt?                    @map("cap_minor")
+  maxPerOrderMinor   BigInt?                    @map("max_per_order_minor")
+  maxTotalUses       Int?                       @map("max_total_uses")
+  maxUsesPerCustomer Int?                       @map("max_uses_per_customer")
+  budgetMinor        BigInt?                    @map("budget_minor")
+  minSpendMinor      BigInt?                    @map("min_spend_minor")
+  createdByAccountId String                     @map("created_by_account_id") @db.Uuid
+  createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                   @map("updated_at") @db.Timestamptz(6)
+  targets            PromotionsTarget[]
+  usage              PromotionsUsage?
+  optIns             PromotionsCoFundingOptIn[]
+  reviews            PromotionsReview[]
+
+  /// The foreign-key target of the children.
+  @@unique([marketId, id])
+  /// A code is unique in a Market. NULL codes are distinct.
+  @@unique([marketId, code])
+  /// The live promotions of a Market (quote) and the admin list.
+  @@index([marketId, status, startsAt])
+  /// A seller's own promotions.
+  @@index([marketId, ownerSellerId, createdAt(sort: Desc)])
+  @@map("promotions")
+  @@schema("promotions")
+}
+
+/// What a promotion is aimed at: product ids, seller ids or delivery zone codes. No row of a kind
+/// means "any" of that kind. The targets of a promotion are replaced as a set when it is edited.
+model PromotionsTarget {
+  marketId    String              @map("market_id") @db.VarChar(8)
+  tenantId    String              @map("tenant_id")
+  promotionId String              @map("promotion_id") @db.Uuid
+  /// PRODUCT, SELLER or ZONE (CHECK).
+  kind        String
+  /// A product or seller id, or a zone code.
+  value       String
+  promotion   PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, promotionId, kind, value])
+  @@map("promotion_targets")
+  @@schema("promotions")
+}
+
+/// How much a promotion has been used. One row per promotion, made with it, all zero. Package T2
+/// (budget reservation) keeps the counters; this package only reads them. The money columns are
+/// financial data: a Viewer's answer carries `usesCount` only.
+model PromotionsUsage {
+  marketId           String              @map("market_id") @db.VarChar(8)
+  tenantId           String              @map("tenant_id")
+  promotionId        String              @map("promotion_id") @db.Uuid
+  usesCount          Int                 @map("uses_count")
+  spentMinor         BigInt              @map("spent_minor")
+  sellerShareMinor   BigInt              @map("seller_share_minor")
+  platformShareMinor BigInt              @map("platform_share_minor")
+  updatedAt          DateTime            @map("updated_at") @db.Timestamptz(6)
+  promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, promotionId])
+  @@map("promotion_usage")
+  @@schema("promotions")
+}
+
+/// A seller's opt-in to a co-funded campaign, for its own products only. Withdrawing sets
+/// `withdrawnAt`; opting in again clears it. Without a live opt-in a seller's products are not in
+/// the campaign.
+model PromotionsCoFundingOptIn {
+  marketId           String              @map("market_id") @db.VarChar(8)
+  tenantId           String              @map("tenant_id")
+  promotionId        String              @map("promotion_id") @db.Uuid
+  sellerId           String              @map("seller_id") @db.Uuid
+  optedInAt          DateTime            @map("opted_in_at") @db.Timestamptz(6)
+  withdrawnAt        DateTime?           @map("withdrawn_at") @db.Timestamptz(6)
+  decidedByAccountId String              @map("decided_by_account_id") @db.Uuid
+  promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, promotionId, sellerId])
+  @@map("co_funding_opt_ins")
+  @@schema("promotions")
+}
+
+/// The admin review queue of seller promotions. A promotion that needs prior approval waits here
+/// (PENDING_APPROVAL); one that went live is reviewed afterwards. At most one OPEN entry per
+/// promotion (a partial unique index in the migration).
+model PromotionsReview {
+  id                 String              @id @db.Uuid
+  marketId           String              @map("market_id") @db.VarChar(8)
+  tenantId           String              @map("tenant_id")
+  promotionId        String              @map("promotion_id") @db.Uuid
+  sellerId           String              @map("seller_id") @db.Uuid
+  /// NEW_SELLER, HIGH_DISCOUNT or POST_REVIEW (CHECK); POST_REVIEW is a promotion that went live.
+  reason             String
+  /// OPEN, APPROVED or REJECTED (CHECK).
+  status             String
+  openedAt           DateTime            @map("opened_at") @db.Timestamptz(6)
+  decidedAt          DateTime?           @map("decided_at") @db.Timestamptz(6)
+  decidedByAccountId String?             @map("decided_by_account_id") @db.Uuid
+  promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// The open queue, oldest first.
+  @@index([marketId, status, openedAt])
+  @@map("promotion_reviews")
+  @@schema("promotions")
+}
+
+/// The first-order discount of a Market, edited by an admin. No row means the Market's defaults
+/// from config (and none in config means off). The discount is platform-funded.
+model PromotionsFirstOrderSetting {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  enabled            Boolean
+  /// PERCENT or FIXED (CHECK); PERCENT sets `percentBps`, FIXED sets `amountMinor`.
+  kind               String
+  percentBps         Int?     @map("percent_bps")
+  amountMinor        BigInt?  @map("amount_minor")
+  capMinor           BigInt?  @map("cap_minor")
+  minSpendMinor      BigInt   @map("min_spend_minor")
+  monthlyBudgetMinor BigInt   @map("monthly_budget_minor")
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@id([marketId])
+  @@map("first_order_settings")
+  @@schema("promotions")
+}
+
+/// The free-shipping threshold of one delivery zone. A zone without a row uses the Market's
+/// default from config. The row has its own id so that an audit row can name it.
+model PromotionsFreeShippingThreshold {
+  id                 String   @id @db.Uuid
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  zoneCode           String   @map("zone_code")
+  thresholdMinor     BigInt   @map("threshold_minor")
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  /// One threshold per zone in a Market.
+  @@unique([marketId, zoneCode])
+  @@map("free_shipping_thresholds")
+  @@schema("promotions")
+}
+
+/// The runtime switch of promotions in one Market. No row means `off`. Set by an admin.
+model PromotionsMarketSetting {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  /// off or active (CHECK).
+  status             String
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@id([marketId])
+  @@map("market_settings")
+  @@schema("promotions")
+}

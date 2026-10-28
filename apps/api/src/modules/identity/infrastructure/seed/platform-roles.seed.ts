@@ -148,9 +148,13 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 18 adds `commission-payouts.dispute.view`, likewise unprotected (Phase 5 package
     // 8b); the protected `commission-payouts.dispute.attribute` is not listed.
     // Version 19 adds `shipping.delivery-settings.view`, likewise unprotected (delivery package 4).
-    // Version 20 drops `shipping.flat-fee.view`, a retired key (delivery package 5): a stored role
+    // Version 20 adds `blog.post.read`, likewise unprotected (blog package 1); the keys that edit,
+    // review, publish or pause a post are not listed.
+    // Version 21 adds `promotions.promotion.view`, likewise unprotected (promotions package T1:
+    // usage counts only); the manage keys of promotions are not listed.
+    // Version 22 drops `shipping.flat-fee.view`, a retired key (delivery package 5): a stored role
     // keeps it harmlessly, as the registry still knows it.
-    seedVersion: 20,
+    seedVersion: 22,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -174,6 +178,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'commission-payouts.payout-terms.view',
       'commission-payouts.dispute.view',
       'shipping.delivery-settings.view',
+      'blog.post.read',
+      'promotions.promotion.view',
     ],
   },
   {

@@ -220,6 +220,13 @@ model SellersSellerAdminSettings {
   aiEnabled                           Boolean           @map("ai_enabled")
   aiEnabledChangedAt                  DateTime?         @map("ai_enabled_changed_at") @db.Timestamptz(6)
   aiEnabledChangedByAccountId         String?           @map("ai_enabled_changed_by_account_id") @db.Uuid
+  /// Whether the seller may write blog posts (blog package 1; owner decision Q1). Off by default,
+  /// set by an admin with `sellers.blog-access.edit`; the blog module reads it through the sellers
+  /// facade only. This is the one column with a database default: a row that predates the column
+  /// is off, and the creating handler still writes `false` explicitly.
+  blogEnabled                         Boolean           @default(false) @map("blog_enabled")
+  blogEnabledAt                       DateTime?         @map("blog_enabled_at") @db.Timestamptz(6)
+  blogEnabledBy                       String?           @map("blog_enabled_by") @db.Uuid
   version                             Int
   createdAt                           DateTime          @map("created_at") @db.Timestamptz(6)
   sellerFile                          SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)

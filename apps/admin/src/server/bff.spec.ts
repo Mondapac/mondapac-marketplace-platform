@@ -1099,4 +1099,26 @@ describe('relay of the wallet and step-up routes', () => {
     const settings = await run('GET', 'wallet/admin/settings?x=1', readHeaders);
     expect(settings.upstream.mock.calls[0]?.[0]).toBe('http://api.test/wallet/admin/settings');
   });
+
+  it('passes a dispute list cursor only in the shape the API issues', async () => {
+    const cursor = `1790000000000.${id}`;
+    const ok = await run(
+      'GET',
+      `commission-payouts/admin/disputes?filter=closed&limit=20&cursor=${cursor}&x=1`,
+      readHeaders,
+    );
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/disputes?filter=closed&cursor=${encodeURIComponent(cursor)}&limit=20`,
+    );
+    for (const bad of ['a%20b', "1790000000000.x'%20OR%201=1", `${id}`, '1.2.3', '..%2F..']) {
+      const dropped = await run(
+        'GET',
+        `commission-payouts/admin/disputes?filter=closed&cursor=${bad}`,
+        readHeaders,
+      );
+      expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/commission-payouts/admin/disputes?filter=closed',
+      );
+    }
+  });
 });
