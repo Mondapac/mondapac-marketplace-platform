@@ -83,7 +83,7 @@ export function slotsBetween(
     }
     date = date.add({ days: 1 });
   }
-  return slots.sort(Temporal.Instant.compare);
+  return slots.sort((a, b) => Temporal.Instant.compare(a, b));
 }
 
 /** The latest slot in `(after, upTo]`, or null when none: the seller is not due. */

@@ -109,7 +109,12 @@ export class MemoryCursors implements PayoutCursorRepository {
     this.rows.set(key(market, sellerId), { ...row, ...update, updatedAt: now });
     return Promise.resolve();
   }
-  listDue(market: MarketContext, now: Temporal.Instant, staleBefore: Temporal.Instant, limit: number) {
+  listDue(
+    market: MarketContext,
+    now: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+    limit: number,
+  ) {
     const due = [...this.rows.entries()]
       .filter(([k]) => k.startsWith(`${market.marketId}:`))
       .map(([, row]) => row)

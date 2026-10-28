@@ -241,11 +241,11 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
         outcomeCode: 'payments.transfer.account-not-ready',
       });
       await value(market, () => payouts.change(market, payout, refused));
-      const freed = await sql.query(
+      const freed = await sql.query<{ freed_at: Date | null }>(
         `SELECT freed_at FROM commission_payouts.payout_items WHERE payout_id = $1`,
         [payout.id],
       );
-      expect(freed.rows[0].freed_at).not.toBeNull();
+      expect(freed.rows[0]!.freed_at).not.toBeNull();
       expect((await value(market, () => payouts.position(market, sellerId))).itemAmounts.size).toBe(
         0,
       );
@@ -376,7 +376,7 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
       ...overrides,
     });
     /** A payout and one item in one transaction, as the repository writes them. */
-    async function insertRaw(r: Row, marketId = code): Promise<void> {
+    async function insertRaw(r: Row, marketId: string = code): Promise<void> {
       await sql.query('BEGIN');
       try {
         await sql.query(
@@ -670,12 +670,12 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
     });
 
     it('has the index of active holds by seller order that the payout run reads', async () => {
-      const found = await sql.query(
+      const found = await sql.query<{ indexdef: string }>(
         `SELECT indexdef FROM pg_indexes
           WHERE schemaname = 'commission_payouts' AND indexname = 'payout_holds_active_seller_order_idx'`,
       );
       expect(found.rows).toHaveLength(1);
-      expect(found.rows[0].indexdef).toContain('released_at IS NULL');
+      expect(found.rows[0]!.indexdef).toContain('released_at IS NULL');
     });
   });
 

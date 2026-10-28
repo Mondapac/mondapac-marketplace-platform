@@ -66,7 +66,6 @@ const ORDER_2 = id<'SellerOrder'>(0x202);
 const PRIOR_ORDER = id<'SellerOrder'>(0x2f0);
 const TRANSFER = '01990000-0000-7000-8000-0000000000e1';
 const PRIOR_TRANSFER = '01990000-0000-7000-8000-0000000000e0';
-const HOUR = (n: number) => Temporal.Duration.from({ hours: n });
 const json = (value: unknown) =>
   JSON.stringify(value, (_key, v: unknown) => (typeof v === 'bigint' ? v.toString() : v));
 const ACTIONS = new Set<string>(COMMISSION_PAYOUTS_AUDIT_ACTIONS.map((a) => a.action));
@@ -1048,11 +1047,11 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
 
   describe('the seller views', () => {
     const next = (context: CallContext = sellerCtx) =>
-      new ViewNextPayout(gate, deps).execute(context, {});
+      new ViewNextPayout(gate, deps).execute(context, undefined);
     const history = (input: Record<string, unknown> = {}, context: CallContext = sellerCtx) =>
       new ListOwnPayouts(gate, deps).execute(context, input);
     const held = (context: CallContext = sellerCtx) =>
-      new ListOwnPayoutHolds(gate, deps).execute(context, undefined as never);
+      new ListOwnPayoutHolds(gate, deps).execute(context, undefined);
 
     it('estimates the next payout with its slot and amount before the slot', async () => {
       await addSeller();

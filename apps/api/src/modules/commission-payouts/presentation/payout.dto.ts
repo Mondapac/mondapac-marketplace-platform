@@ -1,16 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { ApprovedPayoutView } from '../application/use-cases/approve-payout.use-case';
+import type { PayoutListView, PayoutRowView } from '../application/use-cases/list-payouts.use-case';
+import type { OwnHeldView } from '../application/use-cases/list-own-payout-holds.use-case';
 import type {
-  ApprovedPayoutView,
-  PayoutDetailView,
-  PayoutListView,
-  PayoutRowView,
-} from '../application/payout-admin-flow';
-import type {
-  NextPayoutView,
-  OwnHeldView,
   OwnPayoutsView,
   OwnPayoutView,
-} from '../application/payout-seller-flow';
+} from '../application/use-cases/list-own-payouts.use-case';
+import type { NextPayoutView } from '../application/use-cases/view-next-payout.use-case';
+import type { PayoutDetailView } from '../application/use-cases/view-payout.use-case';
 import { BLOCK_REASONS, PAYOUT_STATES } from '../domain/payout';
 
 // Bodies of the payout routes (package 6d). Ids, enums, minor-unit strings and instants only. A

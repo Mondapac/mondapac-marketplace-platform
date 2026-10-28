@@ -200,7 +200,9 @@ describe('properties over generated terms, zones and windows', () => {
         expect(Temporal.Instant.compare(slot, upTo)).toBeLessThanOrEqual(0);
       }
       expect(new Set(slots.map(String)).size).toBe(slots.length);
-      expect([...slots].sort(Temporal.Instant.compare).map(String)).toEqual(slots.map(String));
+      expect([...slots].sort((a, b) => Temporal.Instant.compare(a, b)).map(String)).toEqual(
+        slots.map(String),
+      );
       const names = slots.map((slot) => DAYS[slot.toZonedDateTimeISO(zone).dayOfWeek - 1]);
       for (const name of names) expect(terms.weekdays).toContain(name);
     },
