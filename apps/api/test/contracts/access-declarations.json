@@ -493,6 +493,8 @@
   { "name": "pricing.retire-series-for-removed-offer", "rule": "system" },
   { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
   { "name": "pricing.specials-in-force", "rule": "anonymous" },
+  { "name": "promotions.check-was-price", "rule": "anonymous" },
+  { "name": "promotions.quote-discounts", "rule": "system" },
   {
     "name": "reviews.delete-product-review",
     "rule": "own-resources",

@@ -1688,6 +1688,61 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * Promotions settings (promotions package T1), owned by `promotions`. All values are Market
+     * config, never constants; amounts are minor units of the Market's currency. Without this
+     * section promotions are unavailable (fail closed). `lineDiscountCapBps`: the most of one
+     * line's price that all discounts together may take (AU 80 %). `sellerMaxDiscountBps`: the
+     * most a seller may give on one promotion (AU 70 %). `platformBudgetStepUpMinor`: a platform
+     * budget above this needs a fresh two-step code (AU A$2,000). `freeShippingThresholdMinor`:
+     * the Market default of the free-shipping threshold, used for a delivery zone that has no
+     * threshold of its own (AU A$50). `newSellerDays` and `priorApprovalDiscountBps`: a seller
+     * active fewer days than this, or a discount above this share, needs approval before the
+     * promotion goes live (AU 30 days, 50 %). `wasPrice`: a struck-through earlier price is
+     * allowed only if the product sold at that price on at least `minDaysAtPrice` of the last
+     * `windowDays` days (AU 28 of 90). `maxActivePromotionsPerSeller`: the most promotions one seller
+     * may have active or waiting for approval at once (AU 50), which also bounds what a quote reads. `gstRulingConfirmed`: false until the tax adviser has
+     * ruled on platform-funded discounts; until then a platform-funded or co-funded promotion can
+     * be created and applied in test mode only. `firstOrder`: the first-order discount an admin
+     * has not yet edited (the stored settings win): switch, `kind` (PERCENT uses `percentBps`,
+     * FIXED uses `amountMinor`), optional `capMinor`, `minSpendMinor` and `monthlyBudgetMinor`.
+     * Whether promotions are on is not config: an admin sets it at runtime
+     * (`promotions.market_settings`), off by default.
+     */
+    promotions: z
+      .strictObject({
+        lineDiscountCapBps: z.number().int().min(1).max(10000),
+        sellerMaxDiscountBps: z.number().int().min(1).max(10000),
+        platformBudgetStepUpMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        freeShippingThresholdMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+        newSellerDays: z.number().int().min(0).max(365),
+        priorApprovalDiscountBps: z.number().int().min(1).max(10000),
+        wasPrice: z.strictObject({
+          windowDays: z.number().int().min(1).max(365),
+          minDaysAtPrice: z.number().int().min(1).max(365),
+        }),
+        gstRulingConfirmed: z.boolean(),
+        maxActivePromotionsPerSeller: z.number().int().min(1).max(10000),
+        firstOrder: z
+          .strictObject({
+            enabled: z.boolean(),
+            kind: z.enum(['PERCENT', 'FIXED']),
+            percentBps: z.number().int().min(1).max(10000).optional(),
+            amountMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+            capMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+            minSpendMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+            monthlyBudgetMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+          })
+          .refine(
+            (value) =>
+              value.kind === 'PERCENT'
+                ? value.percentBps !== undefined && value.amountMinor === undefined
+                : value.amountMinor !== undefined && value.percentBps === undefined,
+            'PERCENT needs percentBps only; FIXED needs amountMinor only',
+          )
+          .optional(),
+      })
+      .optional(),
+    /**
      * Tax settings, owned by `tax`. `defaultRateBps`: the tax rate of the built-in strategy used
      * while an admin has not activated a strategy of their own (AU GST 1000 = 10 %). Without this
      * section the Market has no built-in strategy and tax calculation fails closed.
