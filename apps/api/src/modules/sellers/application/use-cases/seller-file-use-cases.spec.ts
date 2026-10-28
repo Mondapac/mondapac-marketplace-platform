@@ -322,6 +322,7 @@ describe('the Market policy of sellers (design 14.1)', () => {
 describe('the defaults of a new seller (data design 3.9)', () => {
   it('are all types allowed, category proposals off, AI off', () => {
     expect(NEW_SELLER_ADMIN_SETTINGS).toEqual({
+      blogEnabled: false,
       allProductTypesAllowed: true,
       categoryProposalsAllowed: false,
       aiEnabled: false,

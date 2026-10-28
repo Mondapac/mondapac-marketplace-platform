@@ -175,6 +175,14 @@ export interface PublishedImageRef {
   readonly height: number;
 }
 
+/** What `productsForLinking` says about one product (blog package 1). */
+export interface ProductLinkFacts {
+  /** The product is published and at least one Offer of it is listed. */
+  readonly onSale: boolean;
+  /** A listed Offer of the asked seller is on this product; false when no seller was asked. */
+  readonly soldBySeller: boolean;
+}
+
 /** A request refused before any read: a code and the fields, never their values. */
 export interface CatalogValidationFailed {
   readonly code: 'validation.failed';
@@ -349,6 +357,23 @@ export interface CatalogFacade {
   ): Promise<
     Result<
       ReadonlyMap<Id<'Product'>, Id<'Seller'>>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
+
+  /**
+   * For a blog post that links to products: per requested product that is published, whether it is
+   * on sale now and whether `sellerId` (when given) sells it, at most 200, refused whole above. Rule
+   * `anonymous`; ids and two flags only. An unknown product, another Market's and a product that
+   * is not published are absent. In-process only.
+   */
+  productsForLinking(
+    context: CallContext,
+    productIds: readonly Id<'Product'>[],
+    sellerId: Id<'Seller'> | null,
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Product'>, ProductLinkFacts>,
       AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
     >
   >;

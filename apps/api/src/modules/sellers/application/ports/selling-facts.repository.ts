@@ -36,6 +36,9 @@ export interface SellingFactsRepository {
     market: MarketContext,
     sellerId: Id<'Seller'>,
   ): Promise<AllowedProductTypesSetting | null>;
+
+  /** Whether the seller may write blog posts; null when there is no setting row (a fault). */
+  blogEnabled(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean | null>;
 }
 
 export const SELLING_FACTS_REPOSITORY = Symbol('SELLING_FACTS_REPOSITORY');
