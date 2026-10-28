@@ -15,8 +15,17 @@ export interface PayoutChangeRecord {
 
 /** A change as it is stored: no bank detail, no Stripe id. */
 export interface NewPayoutChange extends PayoutChangeRecord {
-  /** The Stripe event that reported it: stored once, so a repeated event adds nothing. */
-  readonly sourceEventId: string;
+  /**
+   * The Stripe event that reported it: stored once, so a repeated event adds nothing. Null only
+   * for a change the live check found before a transfer, which no event reported.
+   */
+  readonly sourceEventId: string | null;
+  readonly detectedBy: 'webhook' | 'live-check';
+  /**
+   * The hash of the account's default external account after the change, written in the same
+   * statement as the change: a different value under the same key version has no other way in.
+   */
+  readonly externalAccountHmac?: string;
 }
 
 /** A page of the admin list: newest created first, `after` is the last row of the page before. */
@@ -47,6 +56,11 @@ export interface ConnectedAccountRecord {
   readonly payoutScheduleRevision: number;
   /** The latest change; null before any. */
   readonly lastChangeId: string | null;
+  /**
+   * `hmac-sha256:k<version>:<hex>` of the default external account's Stripe id (package 6c), or
+   * null until a re-read stamped it. Never the id, never bank data.
+   */
+  readonly externalAccountHmac: string | null;
 }
 
 /**
@@ -102,6 +116,30 @@ export interface ConnectedAccountStore {
     until: Temporal.Instant | null,
     at: Temporal.Instant,
   ): Promise<'recorded' | 'duplicate' | 'conflict'>;
+
+  /**
+   * Takes the account row's lock for the rest of the unit (a concurrent webhook unit waits) and
+   * returns the committed row, or null when the seller has none.
+   */
+  lockForTransfer(
+    market: MarketContext,
+    sellerId: string,
+    at: Temporal.Instant,
+  ): Promise<ConnectedAccountRecord | null>;
+
+  /**
+   * Stores the hash while the stored value is still `expected` (null = never stamped). Refused
+   * (`needs-change`, nothing written) when it would replace a value with a different one under
+   * the same key version: that needs a change row, through `recordChange`. `conflict` when the
+   * stored value moved.
+   */
+  stampExternalAccountHmac(
+    market: MarketContext,
+    sellerId: string,
+    expected: string | null,
+    next: string,
+    at: Temporal.Instant,
+  ): Promise<'stamped' | 'conflict' | 'needs-change'>;
 
   /** The latest changes of the seller, newest first. */
   changesOf(

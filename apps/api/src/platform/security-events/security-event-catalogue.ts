@@ -208,6 +208,31 @@ export const StripeDisputeUnmatched = defineSecurityEvent({
 });
 
 /**
+ * An alert of the transfer execution (package 6c): an amount above the Market's ceiling, an
+ * insufficient platform balance, a day's executed total above its threshold, a transfer found for
+ * a key that was abandoned (fence breach), a partial match, a stored key version whose key is
+ * missing, or a Stripe transfer payments cannot match to a stored row. Ids and a code only.
+ */
+export const TransferAlert = defineSecurityEvent({
+  type: 'payments.transfer.alert',
+  severity: 's2',
+  targetType: 'payments.connected-account',
+  targetRequired: false,
+  ip: false,
+  payload: {
+    kind: eventField.enumOf([
+      'amount-out-of-range',
+      'insufficient-platform-balance',
+      'daily-total-over-threshold',
+      'fence-breached',
+      'partial-match',
+      'hmac-key-missing',
+      'transfer-unmatched',
+    ] as const),
+  },
+});
+
+/**
  * A dispute payments recorded names an order that commission-payouts cannot match (package 8b):
  * the order is unknown in this Market, or the dispute's PaymentIntent is not the order's own. Its
  * money may move all the same, so it holds nothing and an admin looks at it in the Stripe
@@ -226,6 +251,20 @@ export const DisputeOrderMismatch = defineSecurityEvent({
       'order-changed',
     ] as const),
   },
+});
+
+/**
+ * The live read of a connected account before a transfer failed (package 6c, HP-1 condition 2):
+ * the transfer was not made and nothing else changed. This is the counter behind
+ * `payments_live_check_failures_total{market}`: Kazem's rule counts these per Market.
+ */
+export const LiveCheckFailed = defineSecurityEvent({
+  type: 'payments.live-check.failed',
+  severity: 's3',
+  targetType: 'payments.connected-account',
+  targetRequired: false,
+  ip: false,
+  payload: { reason: eventField.enumOf(['provider-unavailable'] as const) },
 });
 
 /** A carrier webhook whose signature did not verify (Mondapac Drive; Uber Direct and Zoom2u when built). */
@@ -251,6 +290,8 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       PasswordReset,
       StripeWebhookSignatureFailed,
       StripeDisputeUnmatched,
+      TransferAlert,
+      LiveCheckFailed,
       DisputeOrderMismatch,
       CarrierWebhookSignatureFailed,
     ] as readonly SecurityEventDefinition[]

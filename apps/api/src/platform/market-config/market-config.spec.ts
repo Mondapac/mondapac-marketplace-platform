@@ -19,6 +19,15 @@ import { MarketNotHostedError, MarketRegistry } from './market-registry';
 
 const QQ = testMarketId('QQ');
 
+const TRANSFER_PAYMENTS = {
+  connectedAccountCountry: 'NZ',
+  bankChangeCoolingOffHours: 24,
+  payoutSchedule: 'daily',
+  maxTransferAmount: { amountMinor: 500000, currency: 'NZD' },
+  dailyTransferAlertThreshold: { amountMinor: 2000000, currency: 'NZD' },
+  transferSendLeaseSeconds: 120,
+};
+
 const VALID = {
   code: 'QQ',
   status: 'active',
@@ -150,6 +159,43 @@ describe('loadMarketConfigs', () => {
       'a connected-account country without a payout schedule',
       { payments: { connectedAccountCountry: 'NZ', bankChangeCoolingOffHours: 24 } },
       /payments\.payoutSchedule/,
+    ],
+    [
+      'transfer settings missing',
+      { payments: { connectedAccountCountry: 'AU', payoutSchedule: 'daily' } },
+      /payments\.maxTransferAmount/,
+    ],
+    [
+      'a transfer ceiling in another currency than the Market',
+      {
+        payments: {
+          ...TRANSFER_PAYMENTS,
+          maxTransferAmount: { amountMinor: 500000, currency: 'AUD' },
+        },
+      },
+      /payments\.maxTransferAmount\.currency must be the Market's defaultCurrency/,
+    ],
+    [
+      'an alert threshold in another currency than the Market',
+      {
+        payments: {
+          ...TRANSFER_PAYMENTS,
+          dailyTransferAlertThreshold: { amountMinor: 2000000, currency: 'JPY' },
+        },
+      },
+      /payments\.dailyTransferAlertThreshold\.currency must be the Market's defaultCurrency/,
+    ],
+    [
+      'a zero transfer ceiling',
+      {
+        payments: { ...TRANSFER_PAYMENTS, maxTransferAmount: { amountMinor: 0, currency: 'NZD' } },
+      },
+      /payments\.maxTransferAmount/,
+    ],
+    [
+      'a send lease under 30 seconds',
+      { payments: { ...TRANSFER_PAYMENTS, transferSendLeaseSeconds: 29 } },
+      /payments\.transferSendLeaseSeconds/,
     ],
     ['a code that differs from the file name', { code: 'QX' }, /must match the file name/],
     ['no request limits', { requestLimits: undefined }, /requestLimits/],

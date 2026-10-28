@@ -179,6 +179,21 @@ function externalCount(value: unknown): number | null {
   return value.has_more === true ? Math.max(2, value.data.length) : value.data.length;
 }
 
+/**
+ * The Stripe id of the default external account (`default_for_currency`), or null when none is
+ * shown. It is for the keyed hash only: it is never stored, logged or returned.
+ */
+function defaultExternalAccountId(value: unknown): string | null {
+  if (!isObject(value) || !Array.isArray(value.data)) return null;
+  for (const item of value.data) {
+    if (isObject(item) && item.default_for_currency === true) {
+      const id = text(item.id);
+      if (id !== null && id.length > 0) return id;
+    }
+  }
+  return null;
+}
+
 /** Stripe's account object, narrowed; null when it is not a well-formed account. */
 function toSnapshot(body: unknown): AccountSnapshot | null {
   if (
@@ -209,5 +224,6 @@ function toSnapshot(body: unknown): AccountSnapshot | null {
     disabledReason: text(requirements.disabled_reason),
     payoutScheduleInterval: text(schedule.interval),
     externalAccountCount: externalCount(body.external_accounts),
+    defaultExternalAccountId: defaultExternalAccountId(body.external_accounts),
   };
 }

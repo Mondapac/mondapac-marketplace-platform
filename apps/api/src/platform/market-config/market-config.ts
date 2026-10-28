@@ -18,6 +18,11 @@ const locale = z.string().refine((value) => {
   }
 }, 'must be a BCP 47 locale of the form language-REGION');
 const currency = z.string().refine((value) => CURRENCIES.has(value), 'must be an ISO 4217 code');
+/** An amount in minor units of a stated currency (payments' transfer limits). */
+const transferAmountSchema = z.strictObject({
+  amountMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  currency,
+});
 /** The Market code, by the kernel's single rule (`parseMarketId`). */
 const marketCode = z.string().transform((value, context) => {
   const marketId = parseMarketId(value);
@@ -1513,13 +1518,21 @@ const marketSchema = z
      * (fail closed). `bankChangeCoolingOffHours`: the waiting period after a seller's payout bank
      * account changes (VER-10); the code clamps it to 24 h to 14 d and takes 14 d when it is
      * missing. `payoutSchedule`: the Stripe payout schedule outside that period; required, so the
-     * payout pause can never be silently off for a Market that connects accounts.
+     * payout pause can never be silently off for a Market that connects accounts. Transfers to
+     * sellers (package 6c), all required and with no core default: `maxTransferAmount` (the most
+     * one transfer may be; HP-9), `dailyTransferAlertThreshold` (the day's executed total above
+     * which payments alerts), both in minor units of the Market's own currency (load fails for
+     * another), and `transferSendLeaseSeconds` (how long a send is in flight before a lookup may
+     * decide it was not made; 30 to 900, and shorter than commission-payouts' send timeout).
      */
     payments: z
       .strictObject({
         connectedAccountCountry: z.string().regex(/^[A-Z]{2}$/),
         bankChangeCoolingOffHours: z.number().optional(),
         payoutSchedule: z.enum(['daily']),
+        maxTransferAmount: transferAmountSchema,
+        dailyTransferAlertThreshold: transferAmountSchema,
+        transferSendLeaseSeconds: z.number().int().min(30).max(900),
       })
       .optional(),
     /**
@@ -1714,7 +1727,21 @@ const marketSchema = z
     message: 'supportedLocales must include defaultLocale',
     path: ['supportedLocales'],
   })
-  .superRefine(checkOriginsAgainstLinkTargets);
+  .superRefine(checkOriginsAgainstLinkTargets)
+  .superRefine((market, context) => {
+    // A transfer limit in another currency than the Market's would cap the wrong money.
+    const payments = market.payments;
+    if (payments === undefined) return;
+    for (const name of ['maxTransferAmount', 'dailyTransferAlertThreshold'] as const) {
+      if (payments[name].currency !== market.defaultCurrency) {
+        context.addIssue({
+          code: 'custom',
+          message: `payments.${name}.currency must be the Market's defaultCurrency`,
+          path: ['payments', name, 'currency'],
+        });
+      }
+    }
+  });
 
 /** Market configuration as code (ADR-0003 decision 5). */
 export type MarketConfig = Readonly<z.infer<typeof marketSchema>>;

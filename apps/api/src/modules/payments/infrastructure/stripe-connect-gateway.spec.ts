@@ -27,7 +27,10 @@ const ACCOUNT = {
   settings: { payouts: { schedule: { interval: 'daily', delay_days: 2 } } },
   external_accounts: {
     object: 'list',
-    data: [{ id: 'ba_secret', last4: '6789' }],
+    data: [
+      { id: 'ba_other', last4: '1111', default_for_currency: false },
+      { id: 'ba_secret', last4: '6789', default_for_currency: true },
+    ],
     has_more: false,
   },
   business_profile: { name: 'Should not be kept' },
@@ -156,9 +159,25 @@ describe('StripeConnectGateway', () => {
         requirementsPastDue: false,
         disabledReason: null,
         payoutScheduleInterval: 'daily',
-        externalAccountCount: 1,
+        externalAccountCount: 2,
+        defaultExternalAccountId: 'ba_secret',
       },
     });
+  });
+
+  it.each([
+    ['no external accounts listed', undefined],
+    ['none marked as the default', { object: 'list', data: [{ id: 'ba_x' }], has_more: false }],
+    ['a default without an id', { object: 'list', data: [{ default_for_currency: true }] }],
+  ])('has no default external account id with %s', async (_label, accounts) => {
+    const gateway = new StripeConnectGateway(
+      KEY,
+      answer(200, { ...ACCOUNT, external_accounts: accounts }),
+    );
+
+    const read = await gateway.readAccount('acct_test_a1');
+
+    expect(read.ok && read.value.defaultExternalAccountId).toBeNull();
   });
 
   it('sets the payout schedule through Balance Settings as the connected account, with the idempotency key', async () => {
