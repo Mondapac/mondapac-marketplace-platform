@@ -31,6 +31,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { openPayout, type Payout, type PayoutItem } from '../domain/payout';
 import { latestSlot } from '../domain/payout-schedule';
+import { UnwiredPayoutPrerequisites } from '../infrastructure/unwired-payout-prerequisites';
 import { spendStepUp } from './step-up';
 import type { PayoutTermsOverrideRecord } from './ports/payout-terms.repository';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
@@ -491,6 +492,17 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       await run();
       expect(only().state).toBe('instructed');
       expect(only().slotAt.toString()).toBe(Temporal.Instant.from(fixture.slot).toString());
+    });
+
+    it('pays nothing against the live provider while the prerequisites are unwired', async () => {
+      await addSeller();
+      await makeAuto(10000n);
+      await addOrder(ORDER_1, 20000n);
+      deps = { ...deps, prerequisites: new UnwiredPayoutPrerequisites(true) };
+      const summary = await run();
+      expect(summary).toMatchObject({ created: 0, instructed: 0, skipped: 1 });
+      expect(payments.instructed).toEqual([]);
+      expect([...payouts.rows.values()].filter((row) => row.state !== 'paid')).toEqual([]);
     });
 
     it('decides nothing when another module cannot answer', async () => {

@@ -48,7 +48,9 @@ import { ConfigPayoutPolicy } from './config-payout-policy';
 import { PrismaPayoutCursorRepository } from './prisma-payout-cursor.repository';
 import { PrismaPayoutRepository } from './prisma-payout.repository';
 import { SellersSellerPayoutAccess } from './sellers-seller-payout-access';
-import { UnwiredPayoutPrerequisites } from './unwired-payout-prerequisites';
+import { isLiveStripeKey, UnwiredPayoutPrerequisites } from './unwired-payout-prerequisites';
+import { APP_CONFIG } from '../../../platform/config/config.module';
+import type { AppConfig } from '../../../platform/config/app-config';
 import { PrismaDisputeRepository } from './prisma-dispute.repository';
 import { SellersSellerNames } from './sellers-seller-names';
 import { ConfigCommissionPolicy } from './config-commission-policy';
@@ -147,6 +149,8 @@ export const commissionPayoutsProviders: readonly FactoryProvider[] = [
   },
   {
     provide: PAYOUT_PREREQUISITES,
-    useFactory: (): PayoutPrerequisites => new UnwiredPayoutPrerequisites(),
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): PayoutPrerequisites =>
+      new UnwiredPayoutPrerequisites(isLiveStripeKey(config.stripeSecretKey)),
   },
 ];
