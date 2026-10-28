@@ -29,6 +29,11 @@ export interface AccountSnapshot {
   readonly payoutScheduleInterval: string | null;
   /** How many bank accounts and cards Stripe lists (a count only); null when not shown. */
   readonly externalAccountCount: number | null;
+  /**
+   * The Stripe id of the default external account (`default_for_currency`), or null when Stripe
+   * shows none. Only the keyed hash of it is ever kept: never store, log or return this value.
+   */
+  readonly defaultExternalAccountId: string | null;
 }
 
 /**

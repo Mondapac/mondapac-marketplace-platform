@@ -11,7 +11,10 @@
   "payments": {
     "connectedAccountCountry": "AU",
     "bankChangeCoolingOffHours": 24,
-    "payoutSchedule": "daily"
+    "payoutSchedule": "daily",
+    "maxTransferAmount": { "amountMinor": 500000, "currency": "AUD" },
+    "dailyTransferAlertThreshold": { "amountMinor": 2000000, "currency": "AUD" },
+    "transferSendLeaseSeconds": 120
   },
   "commissionPayouts": {
     "defaultRateBps": 1500,
