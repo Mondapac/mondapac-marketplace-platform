@@ -82,6 +82,8 @@ import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
+import { ActiveSinceSystem } from './application/use-cases/active-since-system.use-case';
+import { ActiveSince } from './application/use-cases/active-since.use-case';
 import { BlogAccessSystem } from './application/use-cases/blog-access-system.use-case';
 import { BlogAccess } from './application/use-cases/blog-access.use-case';
 import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
@@ -620,6 +622,9 @@ const REVIEW_DECISION_PORTS = {
     // The blog switch of a seller (blog package 1): the read pair and the admin's set.
     useCaseProvider(BlogAccess, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(BlogAccessSystem, { unitOfWork: true, sellingFacts: true }),
+    // Since when a seller has been approved, for promotions' new-seller rule: the read pair.
+    useCaseProvider(ActiveSince, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(ActiveSinceSystem, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(BlogAccessSetUseCase, {
       unitOfWork: true,
       blogAccess: true,
@@ -657,6 +662,8 @@ const REVIEW_DECISION_PORTS = {
         AllowedProductTypesSystem,
         BlogAccess,
         BlogAccessSystem,
+        ActiveSince,
+        ActiveSinceSystem,
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
         PublishedStoreSlugs,
@@ -673,6 +680,8 @@ const REVIEW_DECISION_PORTS = {
         allowedProductTypesSystem: AllowedProductTypesSystem,
         blogAccess: BlogAccess,
         blogAccessSystem: BlogAccessSystem,
+        activeSince: ActiveSince,
+        activeSinceSystem: ActiveSinceSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
         publishedStoreSlugs: PublishedStoreSlugs,
@@ -689,6 +698,8 @@ const REVIEW_DECISION_PORTS = {
           allowedProductTypesSystem,
           blogAccess,
           blogAccessSystem,
+          activeSince,
+          activeSinceSystem,
           reviewerBusinessDetails,
           publishedStoreSellerId,
           publishedStoreSlugs,

@@ -531,6 +531,8 @@
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
+  { "name": "sellers.active-since", "rule": "anonymous" },
+  { "name": "sellers.active-since-system", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },
