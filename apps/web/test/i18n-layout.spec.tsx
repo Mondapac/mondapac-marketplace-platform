@@ -23,10 +23,15 @@ vi.mock('../src/shell/store-shell.tsx', () => ({
 vi.mock('../src/storefront/source.ts', () => ({
   loadStorefrontContent: () => Promise.resolve({}),
   loadCartSource: () => Promise.resolve({}),
+  loadLiveCart: () => Promise.resolve(null),
   loadCheckout: () => Promise.resolve({ customer: null }),
   loadAssistant: () => Promise.resolve({}),
   loadDeliveryLocator: () => Promise.resolve({}),
   storefrontIsLive: () => false,
+}));
+
+vi.mock('../src/storefront/photo-source.ts', () => ({
+  photoBase: () => Promise.resolve(null),
 }));
 
 const { default: RootLayout } = await import('../app/layout.tsx');

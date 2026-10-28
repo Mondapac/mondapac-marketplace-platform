@@ -3,6 +3,7 @@
 import { IdentityModule } from './identity';
 import { LegalModule } from './legal';
 import { CustomersModule } from './customers';
+import { CustomersAccountDeletionModule } from './customers/account-deletion.module';
 import { SellersModule } from './sellers';
 import { SellerStoreProfileModule } from './sellers/store-profile.module';
 import { CertificationModule } from './certification';
@@ -13,12 +14,14 @@ import { CartModule } from './cart';
 import { OrderingModule } from './ordering';
 import { PaymentsModule } from './payments';
 import { CommissionPayoutsModule } from './commission-payouts';
+import { CommissionPayoutsDisputesModule } from './commission-payouts/disputes-binding.module';
 import { TaxModule } from './tax';
 import { ShippingModule } from './shipping';
 import { ReturnsModule } from './returns';
 import { NotificationsModule } from './notifications';
 import { SearchModule } from './search';
 import { StorefrontModule } from './storefront';
+import { BlogModule } from './blog';
 import { EngagementModule } from './engagement';
 import { AssistantModule } from './assistant';
 import { WalletModule } from './wallet';
@@ -44,6 +47,7 @@ export const CORE_MODULES = [
   NotificationsModule,
   SearchModule,
   StorefrontModule,
+  BlogModule,
   EngagementModule,
   AssistantModule,
   ReviewsModule,
@@ -53,6 +57,13 @@ export const CORE_MODULES = [
  * Modules that only bind one core module to another and are not a bounded context of their own
  * (so they are not in {@link CORE_MODULES}, one per folder). `SellerStoreProfileModule` binds
  * certification's claim-term matching to the sellers store profile texts; sellers cannot import
- * certification without a module cycle.
+ * certification without a module cycle. `CustomersAccountDeletionModule` runs the buyer's account
+ * deletion flow, which asks ordering, wallet, identity and engagement (ordering imports customers).
+ * `CommissionPayoutsDisputesModule` binds the dispute consumer of commission-payouts to payments
+ * and ordering, which reach commission-payouts.
  */
-export const BINDING_MODULES = [SellerStoreProfileModule];
+export const BINDING_MODULES = [
+  SellerStoreProfileModule,
+  CustomersAccountDeletionModule,
+  CommissionPayoutsDisputesModule,
+];

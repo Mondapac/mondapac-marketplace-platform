@@ -23,6 +23,10 @@ import {
 } from '../application/ports/fleet-webhook-signature';
 import { FLEET_REGISTRY, type FleetRegistry } from '../application/ports/fleet-registry';
 import {
+  DELIVERY_SETTINGS_REPOSITORY,
+  type DeliverySettingsRepository,
+} from '../application/ports/delivery-settings.repository';
+import {
   FLEET_SELECTION_REPOSITORY,
   type FleetSelectionRepository,
 } from '../application/ports/fleet-selection.repository';
@@ -50,6 +54,7 @@ import { UberWebhookSignature } from './uber-webhook-signature';
 import { DriveWebhookSignature } from './drive-webhook-signature';
 import { MondapacDriveCarrier } from './mondapac-drive-carrier';
 import { PrismaCarrierBookingRepository } from './prisma-carrier-booking.repository';
+import { PrismaDeliverySettingsRepository } from './prisma-delivery-settings.repository';
 import { PrismaFleetSelectionRepository } from './prisma-fleet-selection.repository';
 import { PrismaFlatFeeRepository } from './prisma-flat-fee.repository';
 import { SellersPickupDirectory } from './sellers-pickup-directory';
@@ -103,6 +108,12 @@ export const shippingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): FleetSelectionRepository =>
       new PrismaFleetSelectionRepository(prisma),
+  },
+  {
+    provide: DELIVERY_SETTINGS_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): DeliverySettingsRepository =>
+      new PrismaDeliverySettingsRepository(prisma),
   },
   {
     // One gateway per fleet. Mondapac Drive, Uber Direct, Zoom2u and Australia Post are registered

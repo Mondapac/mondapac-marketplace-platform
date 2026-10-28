@@ -11,13 +11,16 @@ import {
   FakeDisputeReader,
   FakeIdentityFacade,
   FakeOrderingFacade,
+  FakeTransferGateway,
   FakeSessionReader,
   MemoryAccountStore,
   MemoryDisputeStore,
   MemoryInbox,
+  MemoryTransferStore,
   RecordingPaymentsAudit,
   RecordingPaymentsOutbox,
   StaticPaymentsPolicy,
+  testKeyring,
   stripeSignatureHeader,
   TEST_WEBHOOK_SECRET,
 } from '../../../../test/support/payments-fakes';
@@ -33,6 +36,7 @@ import type { PaymentsDependencies } from './payments-dependencies';
 import type { DisputeSnapshot } from './ports/stripe-dispute-reader';
 import { ApplyStripeEvents } from './use-cases/apply-stripe-events.use-case';
 import { DisputeOfQuery } from './use-cases/dispute-of.use-case';
+import { DisputesOfOrderQuery } from './use-cases/disputes-of-order.use-case';
 import { ReceiveStripeEvent } from './use-cases/receive-stripe-event.use-case';
 
 // Dispute intake (package 8a) in memory on both Market fixtures (AU in AUD, ZZ in JPY): the
@@ -65,6 +69,7 @@ describe.each([
   let receive: ReceiveStripeEvent;
   let apply: ApplyStripeEvents;
   let disputeOf: DisputeOfQuery;
+  let disputesOfOrder: DisputesOfOrderQuery;
 
   const snapshot = (fields: Partial<DisputeSnapshot> = {}): DisputeSnapshot => ({
     id: 'dp_test_0001',
@@ -100,6 +105,9 @@ describe.each([
       ordering,
       accounts: new MemoryAccountStore(),
       connect: new FakeConnectGateway(),
+      transfers: new MemoryTransferStore(),
+      transferGateway: new FakeTransferGateway(),
+      keyring: testKeyring(),
       policy: new StaticPaymentsPolicy(),
       identity: new FakeIdentityFacade(),
       audit: new RecordingPaymentsAudit(),
@@ -110,6 +118,7 @@ describe.each([
     receive = new ReceiveStripeEvent(gate, deps);
     apply = new ApplyStripeEvents(gate, deps);
     disputeOf = new DisputeOfQuery(gate, deps);
+    disputesOfOrder = new DisputesOfOrderQuery(gate, deps);
   });
 
   const deliver = (event: Record<string, unknown>) => {
@@ -456,6 +465,39 @@ describe.each([
       });
       const query = new DisputeOfQuery(gate, {} as PaymentsDependencies);
       expect(await query.execute(anonymous, [])).toEqual(err({ code: 'access.denied' }));
+    });
+  });
+
+  describe('disputes-of-order', () => {
+    it("answers the order's stored disputes in this Market only", async () => {
+      reader.answer = ok(snapshot());
+      await applyEvent('evt_dp_1');
+      const id = stored()[0]!.id;
+
+      const answer = await disputesOfOrder.execute(system, ORDER);
+      expect(answer).toMatchObject({ ok: true, value: [{ disputeId: id, orderId: ORDER }] });
+      expect(await disputesOfOrder.execute(system, '01990000-0000-7000-8000-00000000ffff')).toEqual(
+        ok([]),
+      );
+      const other = testCallContext(
+        testMarketContext(otherCode, 'default'),
+        'system',
+        'dsp-y-abcd',
+      );
+      expect(await disputesOfOrder.execute(other, ORDER)).toEqual(ok([]));
+    });
+
+    it('refuses an id that is not a UUID, and every caller but the system', async () => {
+      expect(await disputesOfOrder.execute(system, 'order-1')).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+      expect(DisputesOfOrderQuery.access).toEqual({
+        name: 'payments.disputes-of-order',
+        rule: { kind: 'system' },
+      });
+      expect(await disputesOfOrder.execute(anonymous, ORDER)).toEqual(
+        err({ code: 'access.denied' }),
+      );
     });
   });
 });

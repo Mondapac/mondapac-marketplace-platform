@@ -23,13 +23,16 @@ import { Header } from './header.tsx';
 import { PageFrame } from './page-frame.tsx';
 import { Rail } from './rail.tsx';
 import { SearchView } from './search-view.tsx';
-import { StoreProvider } from './store-context.tsx';
+import type { LiveCart } from '../cart/live-cart.ts';
+import { StoreProvider, type PhotoBase } from './store-context.tsx';
 import { TabBar } from './tab-bar.tsx';
 
 /** The locked frame of every buyer page: header, side rail, footer, the cookie bar and the bottom bar, overlays (the cart drawer, the log-in dialog and the account menu among them) and the buyer assistant when it is on. */
 export function StoreShell({
   content,
   cartSource,
+  liveCart = null,
+  photoBase = null,
   locator,
   deliverTo,
   consent,
@@ -40,6 +43,9 @@ export function StoreShell({
 }: {
   readonly content: StorefrontContent;
   readonly cartSource: CartSource;
+  /** Live: the buyer's cart as this page's server read it; null reads it in the browser. */
+  readonly liveCart?: LiveCart | null;
+  readonly photoBase?: PhotoBase | null;
   readonly locator: DeliveryLocatorSource;
   readonly deliverTo: DeliverTo | null;
   readonly consent: Consent | null;
@@ -52,7 +58,13 @@ export function StoreShell({
   readonly children: ReactNode;
 }) {
   return (
-    <StoreProvider cartSource={cartSource} initialDeliverTo={deliverTo} live={live}>
+    <StoreProvider
+      cartSource={cartSource}
+      initialLiveCart={liveCart}
+      photoBase={photoBase}
+      initialDeliverTo={deliverTo}
+      live={live}
+    >
       <div className="page">
         <BrowsePanel categories={content.categories} />
         <CartDrawer />

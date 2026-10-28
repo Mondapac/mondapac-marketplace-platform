@@ -175,6 +175,7 @@ describe.each([
       fees: undefined as never,
       policy: {
         currency: () => markets.get(market.marketId).defaultCurrency,
+        timeZone: () => markets.get(market.marketId).timezone,
         deliversTo: () => true,
       },
       sellers: undefined as never,
@@ -197,6 +198,7 @@ describe.each([
       bookings,
       fleets: registry,
       selection: new MemorySelection(),
+      deliverySettings: undefined as never,
       carrierPolicy: undefined as never,
       pickups,
       webhookSignature: undefined as never,
@@ -508,7 +510,11 @@ describe.each([
       ]);
       deps = {
         ...deps,
-        policy: { currency: () => currency, deliversTo: () => true },
+        policy: {
+          currency: () => currency,
+          timeZone: () => 'Australia/Brisbane',
+          deliversTo: () => true,
+        },
         fees: {
           findMany: (_m: MarketContext, ids: readonly Id<'Seller'>[]) =>
             Promise.resolve(

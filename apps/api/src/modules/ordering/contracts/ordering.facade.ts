@@ -88,6 +88,28 @@ export interface DeliveredSellerOrder {
 
 export type DeliveredSellerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
 
+/** The PaymentIntent an order holds (null before checkout created one). */
+export interface OrderPaymentRef {
+  readonly orderId: string;
+  readonly paymentIntentId: string | null;
+}
+
+export type OrderPaymentRefFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'ordering.order-not-found' };
+
+/**
+ * What is still open for the calling customer: orders waiting for payment or not yet delivered in
+ * every seller order, and refunds still pending. Counts only.
+ */
+export interface OwnOpenObligations {
+  readonly openOrders: number;
+  readonly pendingRefunds: number;
+}
+
+export type OwnOpenObligationsFailure = AccessDenied;
+
 /**
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
@@ -132,6 +154,15 @@ export interface OrderingFacade {
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
 
   /**
+   * The PaymentIntent the order itself holds, for the dispute consumer of `commission-payouts`.
+   * Rule `system`. An unknown or foreign-Market order is `ordering.order-not-found`.
+   */
+  orderPaymentRef(
+    context: CallContext,
+    orderId: string,
+  ): Promise<Result<OrderPaymentRef, OrderPaymentRefFailure>>;
+
+  /**
    * The short customer name of each of the seller's own paid seller orders asked for, for the
    * seller's order notices (read at render time; a notice stores no name). Rule `permissions
    * [ordering.seller-order.view]`, seller scope; a name shows only while the member also holds
@@ -142,6 +173,24 @@ export interface OrderingFacade {
     context: CallContext,
     sellerOrderIds: readonly string[],
   ): Promise<Result<readonly SellerOrderCustomerName[], SellerOrderCustomerNamesFailure>>;
+
+  /**
+   * The calling customer's own open orders and pending refunds, as counts (rule `own-resources`,
+   * customers only; the account is the session's), for account deletion's blocker check. Returns,
+   * disputes and chargebacks have no module yet, so they are not counted here.
+   */
+  ownOpenObligations(
+    context: CallContext,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
+   * The same counts for one customer account, for the system actor only (rule `system`): the
+   * account deletion job re-checks a due request before it erases the account.
+   */
+  openObligationsOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
 
   /**
    * The signed-in customer's own seller orders whose fulfilment is `delivered`, delivered at or

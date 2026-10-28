@@ -1,8 +1,11 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { BlogAccessSystem } from '../application/use-cases/blog-access-system.use-case';
+import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
+import type { OperatingZones } from '../application/use-cases/operating-zones.use-case';
 import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
@@ -31,11 +34,14 @@ export interface SellersFacadeUseCases {
   readonly sellingEligibilitySystem: SellingEligibilitySystem;
   readonly allowedProductTypes: AllowedProductTypes;
   readonly allowedProductTypesSystem: AllowedProductTypesSystem;
+  readonly blogAccess: BlogAccess;
+  readonly blogAccessSystem: BlogAccessSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
   readonly publishedStoreSlugs: PublishedStoreSlugs;
   readonly carrierPickup: CarrierPickupRead;
   readonly pickupPostcodes: PickupPostcodes;
+  readonly operatingZones: OperatingZones;
 }
 
 /**
@@ -83,6 +89,15 @@ export class SellersFacadeImplementation implements SellersFacade {
       context.actor.kind === 'system'
         ? this.useCases.allowedProductTypesSystem
         : this.useCases.allowedProductTypes;
+    return useCase.execute(context, { sellerId });
+  }
+
+  blogAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
+    const useCase =
+      context.actor.kind === 'system' ? this.useCases.blogAccessSystem : this.useCases.blogAccess;
     return useCase.execute(context, { sellerId });
   }
 
@@ -137,5 +152,17 @@ export class SellersFacadeImplementation implements SellersFacade {
     >
   > {
     return this.useCases.pickupPostcodes.execute(context, { sellerIds });
+  }
+
+  operatingZones(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    return this.useCases.operatingZones.execute(context, { sellerIds });
   }
 }

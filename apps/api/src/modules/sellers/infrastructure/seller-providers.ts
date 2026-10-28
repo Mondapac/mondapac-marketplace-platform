@@ -48,6 +48,11 @@ import {
 } from '../application/ports/published-store.repository';
 import { PrismaPublishedStoreRepository } from './prisma-published-store.repository';
 import {
+  BLOG_ACCESS_REPOSITORY,
+  type BlogAccessRepository,
+} from '../application/ports/blog-access.repository';
+import { PrismaBlogAccessRepository } from './prisma-blog-access.repository';
+import {
   SELLING_FACTS_REPOSITORY,
   type SellingFactsRepository,
 } from '../application/ports/selling-facts.repository';
@@ -363,6 +368,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminFlagRepository =>
       new PrismaAdminFlagRepository(prisma),
+  },
+  {
+    provide: BLOG_ACCESS_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BlogAccessRepository =>
+      new PrismaBlogAccessRepository(prisma),
   },
   {
     provide: SELLING_FACTS_REPOSITORY,

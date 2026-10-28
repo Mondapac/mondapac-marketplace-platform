@@ -73,6 +73,7 @@ import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-ca
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
+import { OperatingZones } from './application/use-cases/operating-zones.use-case';
 import { PickupPostcodes } from './application/use-cases/pickup-postcodes.use-case';
 import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
@@ -81,6 +82,11 @@ import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
+import { BlogAccessSystem } from './application/use-cases/blog-access-system.use-case';
+import { BlogAccess } from './application/use-cases/blog-access.use-case';
+import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
+import { BlogAccessController } from './presentation/blog-access.controller';
+import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
 import { AllowedProductTypesSystem } from './application/use-cases/allowed-product-types-system.use-case';
 import { AllowedProductTypes } from './application/use-cases/allowed-product-types.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
@@ -175,6 +181,7 @@ const PORT = {
   claims: IDENTIFIER_CLAIM_REPOSITORY,
   flags: ADMIN_FLAG_REPOSITORY,
   sellingFacts: SELLING_FACTS_REPOSITORY,
+  blogAccess: BLOG_ACCESS_REPOSITORY,
   storeProfiles: STORE_PROFILE_REPOSITORY,
   publishedStores: PUBLISHED_STORE_REPOSITORY,
   minimumOrderPolicy: MINIMUM_ORDER_POLICY,
@@ -275,6 +282,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewReadController,
     ReviewRegisterCheckController,
     ReviewDecisionController,
+    BlogAccessController,
     SellerListController,
     StoreSettingsController,
     OwnZoneController,
@@ -609,6 +617,16 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(SellingEligibilitySystem, SELLING_ELIGIBILITY_PORTS),
     useCaseProvider(AllowedProductTypes, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(AllowedProductTypesSystem, { unitOfWork: true, sellingFacts: true }),
+    // The blog switch of a seller (blog package 1): the read pair and the admin's set.
+    useCaseProvider(BlogAccess, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(BlogAccessSystem, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(BlogAccessSetUseCase, {
+      unitOfWork: true,
+      blogAccess: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
     // The certification reviewer's read of one approved revision's names and addresses
     // (design 7.1, Hassan M4): audited per read.
     useCaseProvider(ReviewerBusinessDetailsRead, {
@@ -626,6 +644,8 @@ const REVIEW_DECISION_PORTS = {
     }),
     // The pickup postcode the real-time carrier quotes from at checkout: a clear column, no audit.
     useCaseProvider(PickupPostcodes, { unitOfWork: true, revisions: true }),
+    // The seller's approved operating zone, for shipping's cut-off and windows: a clear column.
+    useCaseProvider(OperatingZones, { unitOfWork: true, revisions: true }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -635,11 +655,14 @@ const REVIEW_DECISION_PORTS = {
         SellingEligibilitySystem,
         AllowedProductTypes,
         AllowedProductTypesSystem,
+        BlogAccess,
+        BlogAccessSystem,
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
         PublishedStoreSlugs,
         CarrierPickupRead,
         PickupPostcodes,
+        OperatingZones,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -648,11 +671,14 @@ const REVIEW_DECISION_PORTS = {
         sellingEligibilitySystem: SellingEligibilitySystem,
         allowedProductTypes: AllowedProductTypes,
         allowedProductTypesSystem: AllowedProductTypesSystem,
+        blogAccess: BlogAccess,
+        blogAccessSystem: BlogAccessSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
         publishedStoreSlugs: PublishedStoreSlugs,
         carrierPickup: CarrierPickupRead,
         pickupPostcodes: PickupPostcodes,
+        operatingZones: OperatingZones,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -661,11 +687,14 @@ const REVIEW_DECISION_PORTS = {
           sellingEligibilitySystem,
           allowedProductTypes,
           allowedProductTypesSystem,
+          blogAccess,
+          blogAccessSystem,
           reviewerBusinessDetails,
           publishedStoreSellerId,
           publishedStoreSlugs,
           carrierPickup,
           pickupPostcodes,
+          operatingZones,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

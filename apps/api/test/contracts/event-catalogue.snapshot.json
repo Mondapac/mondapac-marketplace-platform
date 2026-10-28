@@ -1,5 +1,93 @@
 [
   {
+    "type": "blog.post-approved.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "blog.post-archived.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "blog.post-changes-requested.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "blog.post-edited-by-reviewer.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "blog.post-paused.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "blog.post-published.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "blog.post-resumed.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
+    "type": "blog.post-submitted.v1",
+    "aggregateType": "blog-post",
+    "fields": {
+      "postId": "id",
+      "versionId": "id",
+      "kind": "enumOf(product|brand|event|news)",
+      "ownerType": "enumOf(platform|seller)",
+      "sellerId": "optional(id)"
+    }
+  },
+  {
     "type": "catalog.image-taken-down.v1",
     "aggregateType": "product-image",
     "fields": {
@@ -363,12 +451,44 @@
     }
   },
   {
+    "type": "commission-payouts.seller-order-disputed.v1",
+    "aggregateType": "seller-order",
+    "fields": {
+      "sellerOrderId": "id",
+      "sellerId": "id",
+      "orderId": "id",
+      "disputeId": "id"
+    }
+  },
+  {
     "type": "customers.account-deletion-settings-changed.v1",
     "aggregateType": "account-deletion-settings",
     "fields": {
       "previousEnabled": "boolean",
       "enabled": "boolean",
       "previousWaitingPeriodDays": "integer",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
+    "type": "customers.account-deletion-requested.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "waitingPeriodDays": "integer",
+      "scheduledFor": "instant"
+    }
+  },
+  {
+    "type": "customers.account-deletion-cancelled.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "reason": "enumOf(customer|sign-in)"
+    }
+  },
+  {
+    "type": "customers.account-deletion-completed.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
       "waitingPeriodDays": "integer"
     }
   },
@@ -621,6 +741,16 @@
     }
   },
   {
+    "type": "ordering.seller-order-delivered.v1",
+    "aggregateType": "seller-order",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "sellerId": "id",
+      "source": "enumOf(carrier|seller-click)"
+    }
+  },
+  {
     "type": "ordering.order-shipped.v1",
     "aggregateType": "seller-order",
     "fields": {
@@ -644,6 +774,15 @@
     "fields": {
       "disputeId": "id",
       "orderId": "id"
+    }
+  },
+  {
+    "type": "payments.transfer-changed.v1",
+    "aggregateType": "transfer-execution",
+    "fields": {
+      "transferExecutionId": "id",
+      "sellerId": "id",
+      "state": "enumOf(reserved|sending|executed|refused|abandoned|failed)"
     }
   },
   {
@@ -721,6 +860,15 @@
     "aggregateType": "seller-tax-profile",
     "fields": {
       "sellerId": "id"
+    }
+  },
+  {
+    "type": "sellers.blog-access-changed.v1",
+    "aggregateType": "seller-blog-access",
+    "fields": {
+      "sellerId": "id",
+      "enabled": "boolean",
+      "unpublishLive": "boolean"
     }
   },
   {

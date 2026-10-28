@@ -15,6 +15,7 @@ import {
   FakeInventory,
   FakeLabels,
   FakePickupVault,
+  AllowAllDeliveryMethods,
   FakeShipping,
   FakeShipToCipher,
   FakeTax,
@@ -31,7 +32,6 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CheckoutLine } from '../../cart';
-import { AllowAllDeliveryMethods } from '../infrastructure/allow-all-delivery-methods';
 import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import { PICKUP_MAX_FAILED_ATTEMPTS } from '../domain/pickup-code';
 import type { OrderingDependencies } from './checkout-flow';

@@ -82,6 +82,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     const subscriptions = graphs.get('worker')!.get(SubscriptionRegistry);
 
     expect(subscriptions.names()).toEqual([
+      // Blog package 1: a seller's blog access turned off with its live posts to come down.
+      'blog.pause-seller-posts',
       // Catalog slice 12: tag re-evaluation from certification events (design 5.5, 9.5);
       // certification slice 14 adds the type-wide causes, slice 15 the manufacturer endings.
       'catalog.reevaluate-on-claim-policy-changed',
@@ -103,6 +105,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'certification.expiry-warning-mail',
       'certification.issuer-request-mail',
       'certification.revoked-mail',
+      // Phase 5 package 6b: payout holds from identity's seller access.
+      'commission-payouts.note-seller-reinstated',
+      'commission-payouts.place-suspended-hold',
+      // Phase 5 package 8b: dispute effects from payments' dispute events.
+      'commission-payouts.sync-dispute',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -139,6 +146,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.seller-new-order-mail',
       'notifications.seller-offer-changes-notice',
       'notifications.seller-offer-published-notice',
+      'notifications.seller-order-disputed-mail',
+      'notifications.seller-order-disputed-notice',
       'notifications.seller-order-notice',
       'notifications.seller-price-hold-notice',
       'notifications.seller-product-changes-notice',
@@ -150,6 +159,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'ordering.book-ready-carrier-delivery',
       'ordering.cancel-carrier-after-refund',
       'ordering.record-carrier-progress',
+      'ordering.record-delivery-anchor',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'search.index-deleted-offer',
@@ -171,6 +181,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-ready.v1')).toEqual([
       'ordering.book-ready-carrier-delivery',
+    ]);
+    expect(subscriptions.subscribersOf('ordering.seller-order-delivered.v1')).toEqual([
+      'ordering.record-delivery-anchor',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'ordering.cancel-carrier-after-refund',
@@ -245,10 +258,12 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'sellers.close-decision-rejected',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-suspended.v1')).toEqual([
+      'commission-payouts.place-suspended-hold',
       'identity.seller-suspended-mail',
       'search.unindex-suspended-seller',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-reinstated.v1')).toEqual([
+      'commission-payouts.note-seller-reinstated',
       'identity.seller-reinstated-mail',
       'notifications.seller-access-reinstated-notice',
       'search.index-reinstated-seller',

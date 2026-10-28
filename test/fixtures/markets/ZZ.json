@@ -11,11 +11,24 @@
   "payments": {
     "connectedAccountCountry": "JP",
     "bankChangeCoolingOffHours": 24,
-    "payoutSchedule": "daily"
+    "payoutSchedule": "daily",
+    "maxTransferAmount": { "amountMinor": 800000, "currency": "JPY" },
+    "dailyTransferAlertThreshold": { "amountMinor": 3000000, "currency": "JPY" },
+    "transferSendLeaseSeconds": 90
   },
   "commissionPayouts": {
     "defaultRateBps": 1200,
-    "provisionalTaxRateBps": 1500
+    "provisionalTaxRateBps": 1500,
+    "payoutTerms": {
+      "weekdays": ["THU", "FRI"],
+      "localTime": "14:30",
+      "holdDaysCarrier": 10,
+      "holdDaysSellerClick": 21,
+      "minimumMinor": 3000,
+      "minimumMinorCap": 200000,
+      "approvalMode": "MANUAL",
+      "firstPayoutManual": false
+    }
   },
   "wallet": {
     "balanceCapMinor": 30000,
@@ -24,6 +37,13 @@
     "adminDailyCapMinor": 30000,
     "adminRequestExpiryDays": 3,
     "expiringSoonDays": 14
+  },
+  "blog": {
+    "sellerPostsPerMonth": 2,
+    "pageSize": 2,
+    "defaultAuthorDisplay": "Zork desk",
+    "healthTerms": ["zorkcure", "blargheal"],
+    "selfApprovalWithStepUp": false
   },
   "reviews": {
     "reviewWindowDays": 30,

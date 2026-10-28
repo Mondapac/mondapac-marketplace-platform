@@ -10,6 +10,26 @@
     "reason": "The storefront asks whether to show the buyer assistant to a visitor who may have no session; the answer is the safe subset only (on for this visitor, guests allowed, reply language, welcome text) and changes nothing."
   },
   {
+    "name": "blog.view-public-taxonomy",
+    "rule": "anonymous",
+    "reason": "The blog's categories and tags for the buyer site: names in the asked or default locale; no session, no personal data."
+  },
+  {
+    "name": "blog.view-published-post",
+    "rule": "anonymous",
+    "reason": "One live post of the blog by its address for a visitor with no session: only the live version of a published post of the request's Market (an old address answers where the post is now, a post taken off answers 410); plain texts, ids and ready-made image keys only."
+  },
+  {
+    "name": "blog.view-published-posts",
+    "rule": "anonymous",
+    "reason": "The live posts of the blog for a visitor with no session: only the live version of published posts of the request's Market, paged by the Market's page size; no draft, no review data and no account id."
+  },
+  {
+    "name": "blog.view-upcoming-events",
+    "rule": "anonymous",
+    "reason": "The upcoming events of the blog for a visitor with no session: live event posts that have not ended, in the request's Market; no draft and no account id."
+  },
+  {
     "name": "cart.add-guest-item",
     "rule": "anonymous",
     "reason": "A guest adds to the cart held by the cart cookie: a guest has no account or session."

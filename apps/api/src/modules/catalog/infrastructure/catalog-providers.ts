@@ -98,6 +98,11 @@ import {
   SELLER_PRODUCT_OWNERS_READER,
   type SellerProductOwnersReader,
 } from '../application/ports/seller-product-owners.reader';
+import {
+  PRODUCT_LINKING_READER,
+  type ProductLinkingReader,
+} from '../application/ports/product-linking.reader';
+import { PrismaProductLinkingReader } from './prisma-product-linking.reader';
 import { PrismaSellerProductOwnersReader } from './prisma-seller-product-owners.reader';
 import {
   CATEGORY_TREE_READER,
@@ -281,6 +286,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerProductOwnersReader =>
       new PrismaSellerProductOwnersReader(prisma),
+  },
+  {
+    provide: PRODUCT_LINKING_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductLinkingReader =>
+      new PrismaProductLinkingReader(prisma),
   },
   {
     provide: CATEGORY_TREE_READER,

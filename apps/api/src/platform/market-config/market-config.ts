@@ -18,6 +18,11 @@ const locale = z.string().refine((value) => {
   }
 }, 'must be a BCP 47 locale of the form language-REGION');
 const currency = z.string().refine((value) => CURRENCIES.has(value), 'must be an ISO 4217 code');
+/** An amount in minor units of a stated currency (payments' transfer limits). */
+const transferAmountSchema = z.strictObject({
+  amountMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  currency,
+});
 /** The Market code, by the kernel's single rule (`parseMarketId`). */
 const marketCode = z.string().transform((value, context) => {
   const marketId = parseMarketId(value);
@@ -60,6 +65,53 @@ const perMinute = z.number().int().min(1).max(100_000);
  * ADR-0015 decision 3). The counters are kept per origin and are not split by Market (PF I11):
  * the limiter is the cross-Market control, and the request's Market chooses only the limit.
  */
+/**
+ * The platform-wide bounds of a payout hold, in days (commission-payouts G2 4.4): code constants,
+ * not Market values. `platform/` cannot import a module, so these are the schema's own copy of
+ * commission-payouts' `MIN_HOLD_DAYS` and `MAX_HOLD_DAYS`; a test asserts the two agree, and the
+ * same numbers are CHECKs of `commission_payouts`.
+ */
+export const PAYOUT_TERMS_MIN_HOLD_DAYS = 7;
+export const PAYOUT_TERMS_MAX_HOLD_DAYS = 60;
+
+export const PAYOUT_TERMS_WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
+
+/** Payout terms of a Market (package 6b): when, how long to hold, the minimum and the approval. */
+const payoutTermsSchema = z
+  .strictObject({
+    weekdays: z
+      .array(z.enum(PAYOUT_TERMS_WEEKDAYS))
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days).size === days.length, 'must not repeat a weekday'),
+    /** HH:mm in the seller's own zone (24 hour clock). */
+    localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    holdDaysCarrier: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    holdDaysSellerClick: z
+      .number()
+      .int()
+      .min(PAYOUT_TERMS_MIN_HOLD_DAYS)
+      .max(PAYOUT_TERMS_MAX_HOLD_DAYS),
+    /** Minor units of the Market currency; a payout under it carries over. */
+    minimumMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    /**
+     * The most any minimum may be, the Market's own and a seller's override alike (AU 100000 =
+     * 1,000.00): an admin cannot park a seller's money behind an unreachable minimum.
+     */
+    minimumMinorCap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    approvalMode: z.enum(['AUTO', 'MANUAL']),
+    /** The first payout of each new seller waits for an admin (package 6d acts on it). */
+    firstPayoutManual: z.boolean(),
+  })
+  .refine((terms) => terms.minimumMinor <= terms.minimumMinorCap, {
+    message: 'minimumMinor must not exceed minimumMinorCap',
+    path: ['minimumMinor'],
+  });
+
 const requestLimitsSchema = z.strictObject({
   /** Routes marked `@RateLimit('anonymous-identity')`: sign-up, sign-in, reset requests. */
   anonymousIdentityPerMinute: perMinute,
@@ -1517,13 +1569,21 @@ const marketSchema = z
      * (fail closed). `bankChangeCoolingOffHours`: the waiting period after a seller's payout bank
      * account changes (VER-10); the code clamps it to 24 h to 14 d and takes 14 d when it is
      * missing. `payoutSchedule`: the Stripe payout schedule outside that period; required, so the
-     * payout pause can never be silently off for a Market that connects accounts.
+     * payout pause can never be silently off for a Market that connects accounts. Transfers to
+     * sellers (package 6c), all required and with no core default: `maxTransferAmount` (the most
+     * one transfer may be; HP-9), `dailyTransferAlertThreshold` (the day's executed total above
+     * which payments alerts), both in minor units of the Market's own currency (load fails for
+     * another), and `transferSendLeaseSeconds` (how long a send is in flight before a lookup may
+     * decide it was not made; 30 to 900, and shorter than commission-payouts' send timeout).
      */
     payments: z
       .strictObject({
         connectedAccountCountry: z.string().regex(/^[A-Z]{2}$/),
         bankChangeCoolingOffHours: z.number().optional(),
         payoutSchedule: z.enum(['daily']),
+        maxTransferAmount: transferAmountSchema,
+        dailyTransferAlertThreshold: transferAmountSchema,
+        transferSendLeaseSeconds: z.number().int().min(30).max(900),
       })
       .optional(),
     /**
@@ -1532,11 +1592,14 @@ const marketSchema = z
      * separate rate per seller. `provisionalTaxRateBps`: the tax rate taken out of a tax-inclusive
      * line before commission (AU GST 1000) until the tax module gives each line's tax. Without
      * this section the Market has no commission rate and checkout fails closed.
+     * `payoutTerms` (package 6b): the Market's payout terms; every field is required, there is no
+     * core default, and a Market without them has no payout terms (fail closed).
      */
     commissionPayouts: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(3000),
         provisionalTaxRateBps: z.number().int().min(0).max(5000),
+        payoutTerms: payoutTermsSchema.optional(),
       })
       .optional(),
     /**
@@ -1603,6 +1666,25 @@ const marketSchema = z
           repeatedWordMinTokens: z.number().int().min(3).max(100),
           repeatedWordShareBps: z.number().int().min(5000).max(10000),
         }),
+      })
+      .optional(),
+    /**
+     * Blog settings (blog package 1), owned by `blog`. `sellerPostsPerMonth`: the posts a seller may
+     * submit for the first time in one calendar month, counted in the Market `timezone` (AU 4).
+     * `pageSize`: posts per public page (AU 12). `defaultAuthorDisplay`: the byline of a platform
+     * post that gives none. `healthTerms`: words and phrases that make the automatic check ask the
+     * reviewer to look at health wording (a warning, never a block). `selfApprovalWithStepUp`:
+     * whether, in a Market with a single admin, the person who wrote or submitted a post may also
+     * approve it after a fresh step-up (audited); false: the approver is always another person.
+     * Without this section the blog is unavailable (fail closed).
+     */
+    blog: z
+      .strictObject({
+        sellerPostsPerMonth: z.number().int().min(0).max(100),
+        pageSize: z.number().int().min(1).max(50),
+        defaultAuthorDisplay: z.string().trim().min(1).max(80),
+        healthTerms: z.array(z.string().trim().min(2).max(64)).max(500),
+        selfApprovalWithStepUp: z.boolean(),
       })
       .optional(),
     /**
@@ -1715,7 +1797,21 @@ const marketSchema = z
     message: 'supportedLocales must include defaultLocale',
     path: ['supportedLocales'],
   })
-  .superRefine(checkOriginsAgainstLinkTargets);
+  .superRefine(checkOriginsAgainstLinkTargets)
+  .superRefine((market, context) => {
+    // A transfer limit in another currency than the Market's would cap the wrong money.
+    const payments = market.payments;
+    if (payments === undefined) return;
+    for (const name of ['maxTransferAmount', 'dailyTransferAlertThreshold'] as const) {
+      if (payments[name].currency !== market.defaultCurrency) {
+        context.addIssue({
+          code: 'custom',
+          message: `payments.${name}.currency must be the Market's defaultCurrency`,
+          path: ['payments', name, 'currency'],
+        });
+      }
+    }
+  });
 
 /** Market configuration as code (ADR-0003 decision 5). */
 export type MarketConfig = Readonly<z.infer<typeof marketSchema>>;

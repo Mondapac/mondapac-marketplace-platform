@@ -8,6 +8,13 @@ import type {
   CarrierQuoteRequest,
   CarrierStop,
 } from '../../src/modules/shipping/application/ports/carrier-gateway';
+import type { DeliverySettingsRepository } from '../../src/modules/shipping/application/ports/delivery-settings.repository';
+import type { DeliveryMethod } from '../../src/modules/shipping/domain/delivery-methods';
+import {
+  DEFAULT_DELIVERY_SETTINGS,
+  type DeliverySettings,
+  type DeliverySettingsInput,
+} from '../../src/modules/shipping/domain/delivery-settings';
 import type { FleetRegistry } from '../../src/modules/shipping/application/ports/fleet-registry';
 import type { FleetSelectionRepository } from '../../src/modules/shipping/application/ports/fleet-selection.repository';
 import type { PickupDirectory } from '../../src/modules/shipping/application/ports/pickup-directory';
@@ -159,6 +166,34 @@ export class MemorySelection implements FleetSelectionRepository {
   }
 }
 
+/** The delivery settings of each Market and the methods taken away from each seller, in memory. */
+export class MemoryDeliverySettings implements DeliverySettingsRepository {
+  readonly rows = new Map<string, DeliverySettings>();
+  readonly sellers = new Map<string, readonly DeliveryMethod[]>();
+  settings(m: MarketContext) {
+    return Promise.resolve(this.rows.get(m.marketId) ?? DEFAULT_DELIVERY_SETTINGS);
+  }
+  saveSettings(m: MarketContext, input: DeliverySettingsInput, expectedVersion: number) {
+    const current = this.rows.get(m.marketId)?.version ?? 0;
+    if (current !== expectedVersion) return Promise.resolve('conflict' as const);
+    const saved: DeliverySettings = { ...input, version: expectedVersion + 1 };
+    this.rows.set(m.marketId, saved);
+    return Promise.resolve(saved);
+  }
+  unsupportedOf(m: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
+    const map = new Map<Id<'Seller'>, readonly DeliveryMethod[]>();
+    for (const id of sellerIds) {
+      const row = this.sellers.get(`${m.marketId}|${id}`);
+      if (row !== undefined) map.set(id, row);
+    }
+    return Promise.resolve(map);
+  }
+  setUnsupported(m: MarketContext, sellerId: Id<'Seller'>, methods: readonly DeliveryMethod[]) {
+    this.sellers.set(`${m.marketId}|${sellerId}`, methods);
+    return Promise.resolve();
+  }
+}
+
 export class FakePickups implements PickupDirectory {
   answer: Result<CarrierStop, { readonly code: 'pickup.not-found' | 'pickup.unavailable' }> = err({
     code: 'pickup.not-found',
@@ -170,6 +205,12 @@ export class FakePickups implements PickupDirectory {
     ok(new Map());
   postcodesOf() {
     return Promise.resolve(this.postcodes);
+  }
+  zones: Result<ReadonlyMap<Id<'Seller'>, string>, { readonly code: 'pickup.unavailable' }> = ok(
+    new Map(),
+  );
+  zonesOf() {
+    return Promise.resolve(this.zones);
   }
 }
 

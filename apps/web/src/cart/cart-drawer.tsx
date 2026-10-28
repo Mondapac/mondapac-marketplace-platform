@@ -87,10 +87,12 @@ export function CartDrawer() {
                       <SellerLogo logo={seller.logo} />
                       <div>
                         <b id={`drawer-${seller.id}`}>{seller.name}</b>
-                        <small>
-                          <Icon name="truck" />
-                          {seller.deliveryWindow}
-                        </small>
+                        {seller.deliveryWindow ? (
+                          <small>
+                            <Icon name="truck" />
+                            {seller.deliveryWindow}
+                          </small>
+                        ) : null}
                       </div>
                     </div>
                     {group.shortfall.amount > 0 && seller.minimumOrder ? (

@@ -47,6 +47,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     legal: ['USAGE'],
     tax: ['USAGE'],
     storefront: ['USAGE'],
+    blog: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
     shipping: ['USAGE'],
@@ -476,6 +477,54 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 6b: the inbox is appended to; a seller's payout terms override is set, changed and
+    // removed (back to the Market's terms); an eligibility anchor is written once (a trigger
+    // refuses UPDATE and DELETE); a payout hold is inserted and released (a trigger allows only the
+    // three release columns, once, and refuses DELETE).
+    'commission_payouts.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.payout_terms_overrides': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'approval_mode',
+        'hold_days_carrier',
+        'hold_days_seller_click',
+        'local_minute',
+        'minimum_minor',
+        'schedule_weekdays',
+        'updated_at',
+        'updated_by',
+        'version',
+      ],
+    },
+    'commission_payouts.eligibility_anchors': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.payout_holds': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['release_reason', 'released_at', 'released_by'],
+    },
+    // Package 8b: a dispute case is inserted and refreshed (its state columns only; a trigger keeps
+    // the identity columns and the one-way flags), a decision is insert-only (a trigger refuses
+    // more), and commission-payouts has its own outbox (the relay marks events published).
+    'commission_payouts.dispute_cases': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'bucket',
+        'closed',
+        'closed_at',
+        'evidence_due_by',
+        'funds_reinstated',
+        'funds_reinstated_at',
+        'funds_withdrawn',
+        'funds_withdrawn_at',
+        'inquiry',
+        'last_synced_version',
+        'outcome',
+        'reason',
+        'status',
+        'updated_at',
+      ],
+    },
+    'commission_payouts.dispute_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
     // (triggers refuse more for every role); the rest change only the columns named and are never
     // deleted (a trigger refuses DELETE and TRUNCATE for every role).
@@ -561,6 +610,93 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],
     },
+    // Blog (blog package 1): a post changes its slug, status, pointers, schedule and stamps (never
+    // its kind, owner or seller); a version's content and review stamps change while it is a draft
+    // or is decided (a trigger refuses the rest); links and tags are rewritten with the draft; an
+    // event's status changes at once; a redirect is removed when its post takes the slug back; a
+    // category and its names are changed and deleted; a quota row is counted. Outbox as every module.
+    'blog.posts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'draft_version_id',
+        'featured',
+        'live_version_id',
+        'paused_reason',
+        'published_at',
+        'quota_period',
+        'row_version',
+        'scheduled_at',
+        'scheduled_by',
+        'slug',
+        'status',
+        'unpublished_at',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'blog.post_versions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'author_display',
+        'body',
+        'category_id',
+        'cover_alt',
+        'cover_image_id',
+        'decided_at',
+        'decided_by',
+        'decision',
+        'decision_note',
+        'excerpt',
+        'published_at',
+        'published_by',
+        'self_approved',
+        'seo_description',
+        'seo_title',
+        'state',
+        'submitted_at',
+        'submitted_by',
+        'title',
+        'updated_at',
+      ],
+    },
+    'blog.post_events': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'address',
+        'attendance',
+        'ends_at',
+        'event_status',
+        'registration_url',
+        'starts_at',
+        'status_message',
+        'time_zone',
+        'venue_name',
+      ],
+    },
+    'blog.post_links': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.post_tags': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.redirects': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['position', 'updated_at', 'updated_by'],
+    },
+    'blog.category_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'blog.tags': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'blog.seller_quotas': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['updated_at', 'used'],
+    },
+    'blog.outbox': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_at'],
+    },
+    'blog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.
@@ -644,6 +780,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // part of the audit evidence); the outbox is immutable to the application except the relay's
     // published_at.
     'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 5b: a deletion request is inserted and moved on (only the state columns: status, the
+    // job's claim and the closing columns), never deleted.
+    'customers.account_deletion_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cancel_reason', 'cancelled_at', 'claimed_at', 'completed_at', 'status'],
+    },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
@@ -700,6 +842,31 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'shipping.fleet_reliability': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['score', 'updated_at', 'updated_by'],
+    },
+    // Delivery models, package 4: the Market's delivery settings and the methods taken away from a
+    // seller are written once and changed; never deleted.
+    'shipping.delivery_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'instant_enabled',
+        'margin_basis_points',
+        'margin_fixed_minor',
+        'margin_kind',
+        'pickup_enabled',
+        'rounding_step_minor',
+        'same_day_cutoff_minutes',
+        'same_day_enabled',
+        'scheduled_days_ahead',
+        'scheduled_enabled',
+        'scheduled_window_minutes',
+        'updated_at',
+        'updated_by',
+        'version',
+      ],
+    },
+    'shipping.seller_delivery_methods': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['unsupported', 'updated_at', 'updated_by'],
     },
     'shipping.fleet_booking_attempts': {
       table: ['DELETE', 'INSERT', 'SELECT'],
@@ -784,6 +951,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'account_ref',
         'cooling_off_until',
         'details_submitted',
+        'external_account_hmac',
         'last_change_id',
         'last_read_at',
         'payout_schedule_applied',
@@ -815,6 +983,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'payments.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 6c: a transfer is inserted once; only its state, Stripe id, reversed amount, send
+    // count, lease and instants move (a trigger keeps the machine); the content never changes.
+    'payments.transfer_executions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'abandoned_at',
+        'executed_at',
+        'failure_code',
+        'fence_breached_at',
+        'lease_until',
+        'provider_transfer_ref',
+        'reversed_minor',
+        'send_count',
+        'state',
+        'updated_at',
+        'version',
+      ],
+    },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'processed_at'],

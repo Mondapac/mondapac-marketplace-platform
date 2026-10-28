@@ -23,9 +23,19 @@ import {
   type CartView,
   type DeliveryChoice,
 } from '../cart/cart.ts';
+import {
+  EMPTY_LIVE_CART,
+  liveCartOf,
+  liveSavedOf,
+  unitOf,
+  type LiveCart,
+  type UnavailableLine,
+} from '../cart/live-cart.ts';
 import type { DeliverTo } from '../delivery/deliver-to.ts';
+import { photoUrlBuilder } from '../storefront/photos.ts';
 import type {
   AppliedDiscount,
+  CartItem,
   CartSource,
   CheckoutCustomer,
   DeliverySpeed,
@@ -70,6 +80,10 @@ interface StoreState {
   readonly setStockChanges: (changes: readonly StockChange[] | null) => void;
   readonly clearCart: () => void;
   readonly cartSource: CartSource;
+  /** Lines of the real cart that cannot be bought now; always empty on sample data. */
+  readonly unavailable: readonly UnavailableLine[];
+  /** Removes a line that cannot be bought now. */
+  readonly removeUnavailable: (key: string) => void;
   /** Saved-for-later offer ids, newest last; not in the cart or its totals. */
   readonly saved: readonly string[];
   readonly saveForLater: (id: string) => void;
@@ -147,17 +161,31 @@ export interface StockChange {
 const StoreContext = createContext<StoreState | null>(null);
 
 /** Client state shared by the shell and the page: the cart and the overlays. */
+/** Where product photos come from, for the real cart's thumbnails (null: no photos). */
+export interface PhotoBase {
+  readonly origin: string;
+  readonly marketId: string;
+}
+
 export function StoreProvider({
   cartSource = NO_SOURCE,
   initialCart = {},
+  initialLiveCart = null,
+  photoBase = null,
   initialDeliverTo = null,
   initialCustomer = null,
   live = false,
   children,
 }: {
   readonly cartSource?: CartSource;
-  /** The lines to start with (the server cart once it is read; tests). */
+  /** The lines to start with (sample data; tests). */
   readonly initialCart?: Cart;
+  /**
+   * Live: the buyer's cart as the server read it for this page; null reads it in the browser
+   * once the page is up.
+   */
+  readonly initialLiveCart?: LiveCart | null;
+  readonly photoBase?: PhotoBase | null;
   /** The location kept in this browser (the delivery cookie). */
   readonly initialDeliverTo?: DeliverTo | null;
   /** The signed-in customer to start with (tests; the session once it is read). */
@@ -166,7 +194,13 @@ export function StoreProvider({
   readonly live?: boolean;
   readonly children: ReactNode;
 }) {
-  const [cart, setCart] = useState<Cart>(initialCart);
+  const [cart, setCart] = useState<Cart>(initialLiveCart?.cart ?? initialCart);
+  const [source, setSource] = useState<CartSource>(
+    initialLiveCart?.source ?? (live ? EMPTY_LIVE_CART.source : cartSource),
+  );
+  const [unavailable, setUnavailable] = useState<readonly UnavailableLine[]>(
+    initialLiveCart?.unavailable ?? [],
+  );
   const [cartOpen, setCartOpen] = useState(false);
   const [customer, setCustomer] = useState<CheckoutCustomer | null>(initialCustomer);
   const [sessionReady, setSessionReady] = useState(!live);
@@ -209,15 +243,114 @@ export function StoreProvider({
     setOnline(ok);
     return ok;
   }, [setOnline]);
-  const add = useCallback((id: string, unitPrice: Money, limit: number) => {
-    if (onlineRef.current) setCart((current) => addOne(current, id, unitPrice, limit));
+  // The real cart (live): every change shows at once and is then sent to the API one at a time;
+  // once nothing is waiting, the cart is read again, so a refused change goes back to the truth.
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  const lineIds = useRef<Record<string, string>>(initialLiveCart?.lineIds ?? {});
+  const savedIds = useRef<Record<string, string>>({});
+  // What saved items look like: they are no longer in the cart read.
+  const savedItems = useRef<Record<string, CartItem>>({});
+  const customerRef = useRef(customer);
+  customerRef.current = customer;
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const waiting = useRef(0);
+  const photo = useMemo(
+    () => (photoBase === null ? null : photoUrlBuilder(photoBase.origin, photoBase.marketId)),
+    [photoBase],
+  );
+  const applyCart = useCallback((next: LiveCart) => {
+    lineIds.current = { ...next.lineIds };
+    setCart(next.cart);
+    setSource({ ...next.source, items: { ...savedItems.current, ...next.source.items } });
+    setUnavailable(next.unavailable);
   }, []);
-  const remove = useCallback((id: string) => {
-    if (onlineRef.current) setCart((current) => removeOne(current, id));
-  }, []);
-  const dropLine = useCallback((id: string) => {
-    if (onlineRef.current) setCart((current) => removeLine(current, id));
-  }, []);
+  const readCart = useCallback(async () => {
+    const read = await api.readCart();
+    const next = read.kind === 'ok' ? liveCartOf(read.value, photo) : null;
+    if (next !== null && waiting.current === 0) applyCart(next);
+  }, [photo, applyCart]);
+  const readSaved = useCallback(async () => {
+    const read = await api.readSaved();
+    const items = read.kind === 'ok' ? liveSavedOf(read.value, photo) : null;
+    if (items === null) return;
+    savedIds.current = Object.fromEntries(items.map((entry) => [entry.key, entry.savedId]));
+    savedItems.current = Object.fromEntries(
+      items.flatMap((entry) => (entry.item === null ? [] : [[entry.key, entry.item]])),
+    );
+    setSaved(items.map((entry) => entry.key));
+    setSource((current) => ({ ...current, items: { ...current.items, ...savedItems.current } }));
+  }, [photo]);
+  /** Runs one API change after the ones before it, then reads the cart (and the list) again. */
+  const send = useCallback(
+    (change: () => Promise<unknown>, alsoSaved = false) => {
+      waiting.current += 1;
+      queue.current = queue.current
+        .then(change)
+        .catch(() => undefined)
+        .then(async () => {
+          waiting.current -= 1;
+          if (waiting.current > 0) return;
+          await readCart();
+          if (alsoSaved && customerRef.current !== null) await readSaved();
+        });
+    },
+    [readCart, readSaved],
+  );
+  /** Sends a line's quantity as the screen now shows it: add, set or remove. */
+  const syncLine = useCallback(
+    (id: string) => {
+      const unit = unitOf(id);
+      if (unit === null) return;
+      send(async () => {
+        const quantity = cartRef.current[id]?.quantity ?? 0;
+        const lineId = lineIds.current[id];
+        if (lineId === undefined) {
+          if (quantity > 0) await api.addCartItem(unit.offerId, unit.variantId, quantity);
+        } else if (quantity === 0) {
+          await api.removeCartLine(lineId);
+          delete lineIds.current[id];
+        } else {
+          await api.setCartLineQuantity(lineId, quantity);
+        }
+      });
+    },
+    [send],
+  );
+  /** Changes the cart on screen; live, then sends the line. A sample product id is not sent. */
+  const change = useCallback(
+    (id: string, next: (current: Cart) => Cart) => {
+      if (!onlineRef.current) return;
+      if (live && unitOf(id) === null) return;
+      const updated = next(cartRef.current);
+      cartRef.current = updated;
+      setCart(updated);
+      if (live) syncLine(id);
+    },
+    [live, syncLine],
+  );
+  const add = useCallback(
+    (id: string, unitPrice: Money, limit: number) =>
+      change(id, (current) => addOne(current, id, unitPrice, limit)),
+    [change],
+  );
+  const remove = useCallback(
+    (id: string) => change(id, (current) => removeOne(current, id)),
+    [change],
+  );
+  const dropLine = useCallback(
+    (id: string) => change(id, (current) => removeLine(current, id)),
+    [change],
+  );
+  const removeUnavailable = useCallback(
+    (key: string) => {
+      const lineId = lineIds.current[key];
+      if (!onlineRef.current || lineId === undefined) return;
+      setUnavailable((current) => current.filter((line) => line.key !== key));
+      send(() => api.removeCartLine(lineId));
+    },
+    [send],
+  );
   const [stockChanges, setStockChanges] = useState<readonly StockChange[] | null>(null);
   const limitLines = useCallback((left: Readonly<Record<string, number>>) => {
     setCart((current) =>
@@ -231,23 +364,52 @@ export function StoreProvider({
     setDeliveryWishes({});
     setDelivery({});
   }, []);
-  const saveForLater = useCallback((id: string) => {
-    if (!onlineRef.current) return;
-    setCart((current) => removeLine(current, id));
-    setSaved((current) => (current.includes(id) ? current : [...current, id]));
-  }, []);
+  const saveForLater = useCallback(
+    (id: string) => {
+      if (!onlineRef.current) return;
+      const item = source.items[id];
+      if (item) savedItems.current = { ...savedItems.current, [id]: item };
+      setSaved((current) => (current.includes(id) ? current : [...current, id]));
+      const lineId = lineIds.current[id];
+      if (live && customerRef.current !== null && lineId !== undefined) {
+        // The account keeps the list: the API moves the line in one step.
+        const updated = removeLine(cartRef.current, id);
+        cartRef.current = updated;
+        setCart(updated);
+        send(() => api.saveCartLine(lineId), true);
+        return;
+      }
+      // A guest's list stays in this browser; the line leaves the cart.
+      change(id, (current) => removeLine(current, id));
+    },
+    [live, source, send, change],
+  );
   const removeSaved = useCallback(
-    (id: string) => setSaved((current) => current.filter((s) => s !== id)),
-    [],
+    (id: string) => {
+      setSaved((current) => current.filter((s) => s !== id));
+      const savedId = savedIds.current[id];
+      if (live && customerRef.current !== null && savedId !== undefined) {
+        send(() => api.removeSavedItem(savedId), true);
+      }
+    },
+    [live, send],
   );
   const moveToCart = useCallback(
     (id: string) => {
-      const item = cartSource.items[id];
+      const item = source.items[id];
       if (!item || !onlineRef.current) return;
       setSaved((current) => current.filter((s) => s !== id));
-      setCart((current) => addOne(current, id, item.price, lineLimit(item.lowStock)));
+      const savedId = savedIds.current[id];
+      if (live && customerRef.current !== null && savedId !== undefined) {
+        const updated = addOne(cartRef.current, id, item.price, lineLimit(item.lowStock));
+        cartRef.current = updated;
+        setCart(updated);
+        send(() => api.moveSavedToCart(savedId), true);
+        return;
+      }
+      change(id, (current) => addOne(current, id, item.price, lineLimit(item.lowStock)));
     },
-    [cartSource],
+    [live, source, send, change],
   );
   const setNote = useCallback(
     (sellerId: string, note: string) => setNotes((current) => ({ ...current, [sellerId]: note })),
@@ -258,43 +420,63 @@ export function StoreProvider({
       setDeliveryWishes((current) => ({ ...current, [sellerId]: speed })),
     [],
   );
-  // Live: the first load asks the API who is signed in (401 means nobody).
+  // Live: the first load asks the API who is signed in (401 means nobody), reads the cart when
+  // the server could not, and a signed-in buyer's saved list.
   useEffect(() => {
     if (!live) return;
     let current = true;
+    if (initialLiveCart === null) void readCart();
     void readCustomer().then((read) => {
       if (!current) return;
-      if (read) setCustomer(read);
+      if (read) {
+        customerRef.current = read;
+        setCustomer(read);
+        void readSaved();
+      }
       setSessionReady(true);
     });
     return () => {
       current = false;
     };
+    // Only on the first load: later reads follow the buyer's own changes.
   }, [live]);
-  const signIn = useCallback(async (email: string, password: string): Promise<SignInOutcome> => {
-    const result = await api.signIn(email, password);
-    if (result.kind === 'signed-out') return 'wrong';
-    if (result.kind === 'throttled') return 'throttled';
-    if (result.kind === 'invalid') {
-      if (result.code === 'email-verification-required') return 'unverified';
-      return result.code === 'account.disabled' ? 'disabled' : 'failed';
-    }
-    if (result.kind !== 'ok') return 'failed';
-    const read = await readCustomer();
-    if (!read) return 'failed';
-    setCustomer(read);
-    return 'ok';
-  }, []);
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<SignInOutcome> => {
+      const result = await api.signIn(email, password);
+      if (result.kind === 'signed-out') return 'wrong';
+      if (result.kind === 'throttled') return 'throttled';
+      if (result.kind === 'invalid') {
+        if (result.code === 'email-verification-required') return 'unverified';
+        return result.code === 'account.disabled' ? 'disabled' : 'failed';
+      }
+      if (result.kind !== 'ok') return 'failed';
+      const read = await readCustomer();
+      if (!read) return 'failed';
+      customerRef.current = read;
+      setCustomer(read);
+      // The relay moved this browser's guest cart into the account: show the account's cart and
+      // list. Items saved as a guest stay in this browser's list until moved.
+      void readCart().then(readSaved);
+      return 'ok';
+    },
+    [readCart, readSaved],
+  );
   // The buyer is logged out here only once the API ended the session (or it had already ended):
   // on a shared computer a live cookie would sign them back in on the next page.
   const signOut = useCallback(async (): Promise<boolean> => {
     if (live) {
       const result = await api.signOut();
       if (result.kind !== 'ok' && result.kind !== 'signed-out') return false;
+      // The account's cart and list are not this browser's: show the (empty) guest cart.
+      customerRef.current = null;
+      savedIds.current = {};
+      savedItems.current = {};
+      setSaved([]);
+      void readCart();
     }
     setCustomer(null);
     return true;
-  }, [live]);
+  }, [live, readCart]);
   const value = useMemo(
     () => ({
       cart,
@@ -305,7 +487,9 @@ export function StoreProvider({
       stockChanges,
       setStockChanges,
       clearCart,
-      cartSource,
+      cartSource: source,
+      unavailable,
+      removeUnavailable,
       saved,
       saveForLater,
       moveToCart,
@@ -357,7 +541,9 @@ export function StoreProvider({
       limitLines,
       stockChanges,
       clearCart,
-      cartSource,
+      source,
+      unavailable,
+      removeUnavailable,
       saved,
       saveForLater,
       moveToCart,

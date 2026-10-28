@@ -6,9 +6,10 @@ import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import { AccountEmpty, AccountFrame, OrderBadge, useDay } from './account-area.tsx';
+import { AccountMenuList } from './account-menu-list.tsx';
 import { orderTotals, useAccount } from './account-state.tsx';
 
-/** Overview: hello card, the latest order (or "No orders yet") and quick tiles. No Log out here. */
+/** Overview: hello card, the latest order (or "No orders yet") and quick tiles (phone and tablet: a menu list with Log out). */
 export function AccountOverview() {
   const t = useTranslations('account');
   const locale = useLocale();
@@ -51,7 +52,7 @@ export function AccountOverview() {
             </div>
           </dl>
           <div className="ac-acts">
-            <Link className="btn" href={`/account/orders/${latest.reference}`}>
+            <Link className="btn" href={`/account/orders/${latest.id ?? latest.reference}`}>
               {t('overview.view-order')}
             </Link>
             <Link className="btn ghost" href="/account/orders">
@@ -84,6 +85,7 @@ export function AccountOverview() {
           <span>{t('overview.settings-body')}</span>
         </Link>
       </div>
+      <AccountMenuList />
     </AccountFrame>
   );
 }

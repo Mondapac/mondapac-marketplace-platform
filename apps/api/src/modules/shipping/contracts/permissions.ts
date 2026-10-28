@@ -46,7 +46,30 @@ export const SHIPPING_FLEET_SELECTION_MANAGE = definePermission('shipping', {
   protected: true,
 });
 
+/**
+ * See the delivery settings of the Market (the methods on, the same-day cut-off, the scheduled
+ * days and window, the margin) and the methods each seller supports (delivery models, package 4).
+ */
+export const SHIPPING_DELIVERY_SETTINGS_VIEW = definePermission('shipping', {
+  key: 'shipping.delivery-settings.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change the delivery settings of the Market and the delivery methods of a seller. It decides
+ * which ways every buyer can have an order delivered and what the delivery costs on top of the
+ * fleet's quote, so it is a protected platform key.
+ */
+export const SHIPPING_DELIVERY_SETTINGS_MANAGE = definePermission('shipping', {
+  key: 'shipping.delivery-settings.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SHIPPING_PERMISSIONS = declarePermissions('shipping', [
+  SHIPPING_DELIVERY_SETTINGS_MANAGE,
+  SHIPPING_DELIVERY_SETTINGS_VIEW,
   SHIPPING_FLEET_SELECTION_MANAGE,
   SHIPPING_FLEET_SELECTION_VIEW,
   SHIPPING_FLAT_FEE_MANAGE,

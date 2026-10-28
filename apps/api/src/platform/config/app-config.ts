@@ -24,6 +24,8 @@ const WEBHOOK_SECRET = 'whsec_[A-Za-z0-9+/=_]{8,200}';
 const MARKET_SECRET = `[A-Z][A-Z0-9_]{1,7}=${WEBHOOK_SECRET}`;
 const MODEL_ID = '[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}';
 const API_KEY = '[A-Za-z0-9_-]{20,500}';
+const HMAC_KEY = /^[A-Za-z0-9_+/=.-]{32,200}$/;
+const HMAC_KEY_MESSAGE = 'must be 32 to 200 characters of A-Z a-z 0-9 _ + / = . -';
 const PRICE = '\\d{1,4}(?:\\.\\d{1,6})?/\\d{1,4}(?:\\.\\d{1,6})?';
 const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
 /** A carrier key or webhook secret: long enough to be guessed by no one, in a URL-safe alphabet. */
@@ -89,6 +91,15 @@ const envSchema = z.object({
       'must be a Stripe test-mode key (sk_test_ or rk_test_); live keys are refused until the live gates are passed',
     )
     .optional(),
+  // The Stripe payment method configuration (pmc_) hosted Checkout uses: cards with Apple Pay and
+  // Google Pay only. Stripe no longer takes payment_method_types on a Checkout Session, so the
+  // allowed methods live in this configuration (scripts/stripe-test/ensure-card-only-config.mjs makes
+  // it). Unset: ordering opens no payment page, rather than one with every method of the account.
+  // An id, not a secret.
+  STRIPE_PAYMENT_METHOD_CONFIGURATION: z
+    .string()
+    .regex(/^pmc_[A-Za-z0-9]{8,64}$/, 'must be a Stripe payment method configuration id (pmc_)')
+    .optional(),
   // Phase 5 package 2: the signing secrets of the Stripe webhook endpoints (whsec_), one endpoint
   // per Market. Either one secret for every hosted Market (`stripe listen`, or one Market) or
   // `AU=whsec_...,NZ=whsec_...`. Unset for a Market, its webhook answers 503 and Stripe retries.
@@ -110,6 +121,15 @@ const envSchema = z.object({
       'must be a Stripe webhook signing secret (whsec_), or MARKET=whsec_ pairs separated by commas',
     )
     .optional(),
+  // Phase 5 package 6c: the keys that make the keyed hash of a connected account's default external
+  // account id (HP-1 condition 2), one per version, and the version new values are made with. A key
+  // is long enough to be guessed by no one. Without a key for the current version no transfer is
+  // made (payments.unavailable). Server secrets, never echoed; a key is retired only when no stored
+  // hash carries its version (runbook).
+  PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K3: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: z.coerce.number().int().min(1).max(3).optional(),
   // SHP-02/03: the marketplace's merchant API key at Mondapac Drive and the secret Drive signs its
   // status webhooks with, each as MARKET=value pairs separated by commas (each Market at most once
   // and only hosted ones). A Market without both has its real-time carrier off (sellers ship
@@ -334,6 +354,11 @@ export interface AppConfig {
    */
   readonly stripeSecretKey: string | null;
   /**
+   * The card-only payment method configuration of hosted Checkout
+   * (`STRIPE_PAYMENT_METHOD_CONFIGURATION`), or null: then ordering opens no payment page.
+   */
+  readonly stripePaymentMethodConfiguration: string | null;
+  /**
    * The Stripe webhook signing secret of each hosted Market (`STRIPE_WEBHOOK_SECRET`); a Market
    * without one refuses every event with 503 and Stripe retries it later. Holds secrets: read
    * by payments' signature check alone.
@@ -341,6 +366,16 @@ export interface AppConfig {
   readonly stripeWebhookSecrets: Readonly<Record<string, string>>;
   /** The same for the Connect endpoint (`STRIPE_CONNECT_WEBHOOK_SECRET`): connected-account events. */
   readonly stripeConnectWebhookSecrets: Readonly<Record<string, string>>;
+  /**
+   * The keys of the hash of a connected account's default external account id, by version
+   * (`PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K<n>`), and the version new values use (the setting
+   * `..._CURRENT_VERSION`, else the highest version set), or null when no key is set. Holds
+   * secrets: never log this object whole; read by payments' keyring alone.
+   */
+  readonly externalAccountHmac: Readonly<{
+    keys: Readonly<Record<number, string>>;
+    currentVersion: number | null;
+  }>;
   /**
    * Who may prove a client address, and with which keys (ADR-0037 decisions 4 and 5): from
    * `TRUSTED_BFF_CIDRS` and `CLIENT_ADDRESS_KEYS`. `null` when both are empty: the address is the
@@ -395,6 +430,47 @@ export interface AppConfig {
     apiPasswords: Readonly<Record<string, string>>;
     accountNumbers: Readonly<Record<string, string>>;
   }>;
+}
+
+/**
+ * The external-account hash keys as `{version: key}` and the current version: the one named, else
+ * the highest set. A named current version without a key is refused at boot, and so are two
+ * versions with the same key (a rotation that changed nothing would hide a bank change).
+ */
+function parseExternalAccountHmac(env: {
+  readonly PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1?: string | undefined;
+  readonly PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2?: string | undefined;
+  readonly PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K3?: string | undefined;
+  readonly PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION?: number | undefined;
+}): {
+  readonly value: { keys: Record<number, string>; currentVersion: number | null };
+  readonly issues: string[];
+} {
+  const issues: string[] = [];
+  const keys: Record<number, string> = {};
+  const given: readonly [number, string | undefined][] = [
+    [1, env.PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K1],
+    [2, env.PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K2],
+    [3, env.PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K3],
+  ];
+  for (const [version, key] of given) {
+    if (key === undefined) continue;
+    if (Object.values(keys).includes(key)) {
+      issues.push(
+        `PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K${version}: must differ from the key of another version`,
+      );
+    }
+    keys[version] = key;
+  }
+  const set = Object.keys(keys).map(Number);
+  const named = env.PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION;
+  if (named !== undefined && keys[named] === undefined) {
+    issues.push(
+      `PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: no key is set for version ${named}`,
+    );
+  }
+  const currentVersion = named ?? (set.length === 0 ? null : Math.max(...set));
+  return { value: { keys, currentVersion }, issues };
 }
 
 /** The log levels a worker may run at: every one that still writes info lines. */
@@ -555,6 +631,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       );
     }
   }
+  const externalAccountHmac = parsed.success
+    ? parseExternalAccountHmac(parsed.data)
+    : { value: { keys: {}, currentVersion: null }, issues: [] };
+  issues.push(...externalAccountHmac.issues);
   const driveKeys = parsed.success
     ? parseMarketValues(
         parsed.data.MONDAPAC_DRIVE_API_KEY,
@@ -652,8 +732,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
         ? null
         : path.resolve(parsed.data.OBJECT_STORE_DIR),
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
+    stripePaymentMethodConfiguration: parsed.data.STRIPE_PAYMENT_METHOD_CONFIGURATION ?? null,
     stripeWebhookSecrets: webhookSecrets.secrets,
     stripeConnectWebhookSecrets: connectSecrets.secrets,
+    externalAccountHmac: externalAccountHmac.value,
     clientAddressTrust: clientAddress.trust,
     assistantModels: assistant.config,
     googleSignIn:

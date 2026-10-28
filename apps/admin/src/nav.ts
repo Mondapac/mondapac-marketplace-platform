@@ -71,6 +71,14 @@ export const adminNav: NavConfig = {
       anyOf: ['shipping.fleet-selection.view'],
     },
     {
+      id: 'delivery-settings',
+      icon: 'sliders',
+      labelKey: 'nav.delivery-settings',
+      href: '/delivery-settings',
+      group: 'orders',
+      anyOf: ['shipping.delivery-settings.view'],
+    },
+    {
       id: 'payout-accounts',
       icon: 'wallet',
       labelKey: 'nav.payout-accounts',

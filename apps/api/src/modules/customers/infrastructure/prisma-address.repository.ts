@@ -106,4 +106,11 @@ export class PrismaAddressRepository implements AddressRepository {
     });
     return removed.count > 0;
   }
+
+  async removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<number> {
+    const removed = await this.prisma.tx(market).customersAddress.deleteMany({
+      where: { marketId: market.marketId, accountId },
+    });
+    return removed.count;
+  }
 }

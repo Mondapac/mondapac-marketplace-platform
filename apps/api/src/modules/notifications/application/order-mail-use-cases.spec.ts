@@ -17,6 +17,7 @@ import type { OrderMailDependencies } from './order-mail-flow';
 import { SendOrderConfirmationMail } from './use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './use-cases/send-seller-new-order-mail.use-case';
+import { SendSellerOrderDisputedMail } from './use-cases/send-seller-order-disputed-mail.use-case';
 
 // The two order emails in memory on both Market fixtures (AU in AUD, ZZ in JPY): who gets what,
 // that no customer address reaches a seller, that names stay one plain line, that a send
@@ -295,6 +296,59 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
       const denied = await new SendSellerNewOrderMail(gate, deps).execute(anonymous, {
         delivery: delivery('notifications.seller-new-order-mail'),
         orderId: ORDER,
+      });
+      expect(denied).toEqual(err({ code: 'access.denied' }));
+    });
+  });
+
+  describe('payment dispute (seller)', () => {
+    const disputed = (sellerId: Id<'Seller'> = SELLER_A, eventNo = nextEvent++) =>
+      new SendSellerOrderDisputedMail(gate, deps).execute(system, {
+        delivery: delivery('notifications.seller-order-disputed-mail', eventNo),
+        orderId: ORDER,
+        sellerId,
+      });
+
+    it('mails the Owner of the seller the order reference, and nothing of the dispute', async () => {
+      const result = await disputed();
+
+      expect(result).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
+      expect(sent.map((m) => m.to)).toEqual([OWNER_A]);
+      expect(sent[0]!.subject).toBe('Payment dispute on an order');
+      expect(sent[0]!.text).toContain(`A payment on order ${ORDER} was disputed.`);
+      expect(sent[0]!.text).toContain('on hold until the dispute is closed');
+      const everything = JSON.stringify(sent[0]);
+      expect(everything).not.toContain(CUSTOMER_EMAIL);
+      expect(everything).not.toContain(ACCOUNT);
+      expect(everything).not.toContain(OWNER_B);
+      expect(everything).not.toMatch(/fraud|card|bank|evidence|https?:\/\//i);
+    });
+
+    it('sends nothing when the seller has no usable owner address, and marks the delivery', async () => {
+      addresses.set(SELLER_A, null);
+      const result = await disputed();
+
+      expect(result).toMatchObject({ ok: true });
+      expect(sent).toEqual([]);
+      expect(unitOfWork.handled.size).toBe(1);
+    });
+
+    it('throws a send failure back to the delivery and marks a repeat once', async () => {
+      sendError = new MailSendError('mail.transport-timeout');
+      await expect(disputed()).rejects.toThrow();
+      expect(unitOfWork.handled.size).toBe(0);
+      sendError = null;
+      expect(await disputed(SELLER_A, 7)).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
+      // Mail is at least once; the delivery itself is marked handled a single time.
+      expect(await disputed(SELLER_A, 7)).toEqual(ok({ code: 'order-mail.already-handled' }));
+      expect(unitOfWork.handled.size).toBe(1);
+    });
+
+    it('is for the system actor only', async () => {
+      const denied = await new SendSellerOrderDisputedMail(gate, deps).execute(anonymous, {
+        delivery: delivery('notifications.seller-order-disputed-mail'),
+        orderId: ORDER,
+        sellerId: SELLER_A,
       });
       expect(denied).toEqual(err({ code: 'access.denied' }));
     });

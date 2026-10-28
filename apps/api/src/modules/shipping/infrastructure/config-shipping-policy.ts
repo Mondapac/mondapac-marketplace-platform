@@ -17,6 +17,10 @@ export class ConfigShippingPolicy implements ShippingPolicy {
     return this.markets.get(market.marketId).defaultCurrency;
   }
 
+  timeZone(market: MarketContext): string {
+    return this.markets.get(market.marketId).timezone;
+  }
+
   deliversTo(market: MarketContext, postcode: string): boolean {
     return this.areas.areaFor(market.marketId, postcode)?.deliveryEnabled === true;
   }

@@ -51,6 +51,7 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  */
 const AUDITING_MODULES = [
   'AssistantModule',
+  'BlogModule',
   'CertificationModule',
   'CommissionPayoutsModule',
   'CustomersModule',
@@ -151,6 +152,10 @@ const isAmountKind = (kind: AuditFieldKind): boolean =>
  * never enters an audit row (ADR-0024), which `costLeakProblems` checks apart from this list.
  */
 const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
+  // Dispute effects package 8b: an admin's decision on who bears a lost chargeback records the
+  // amount the seller repays and the most it could repay (the seller's own share, never Cost).
+  'commission-payouts.dispute.decide.after.amount',
+  'commission-payouts.dispute.decide.before.capAmount',
   'ordering.refund.requested.after.amount',
   'ordering.refund.requested.after.tax',
   'pricing.price-hold.approved.after.amount',
@@ -263,7 +268,9 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.account-role.changed',
       'identity.account.disabled',
       'identity.account.enabled',
+      'identity.account.erased',
       'identity.account.other-sessions-signed-out',
+      'identity.account.sessions-ended-for-erasure',
       'identity.admin-session.opened',
       'identity.admin-step-up.refused',
       'identity.admin-step-up.verified',
@@ -453,6 +460,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
 
     expect(binders.sort()).toEqual([
       ['AssistantModule', 'assistant'],
+      ['BlogModule', 'blog'],
       ['CertificationModule', 'certification'],
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['CustomersModule', 'customers'],
@@ -490,6 +498,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     expect(found.map((entry) => [entry.module, entry.kind]).sort()).toEqual([
       ['AssistantModule', 'actions'],
       ['AssistantModule', 'writer'],
+      ['BlogModule', 'actions'],
+      ['BlogModule', 'writer'],
       ['CertificationModule', 'actions'],
       ['CertificationModule', 'writer'],
       ['CommissionPayoutsModule', 'actions'],
@@ -599,6 +609,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     expect(calls.sort()).toEqual([
       `${path.join('modules', 'assistant', 'assistant.module.ts')}: auditWriterFor('assistant')`,
       `${path.join('modules', 'assistant', 'assistant.module.ts')}: registerAuditActions('assistant')`,
+      `${path.join('modules', 'blog', 'blog.module.ts')}: auditWriterFor('blog')`,
+      `${path.join('modules', 'blog', 'blog.module.ts')}: registerAuditActions('blog')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: auditWriterFor('certification')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: registerAuditActions('certification')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: auditWriterFor('commission-payouts')`,

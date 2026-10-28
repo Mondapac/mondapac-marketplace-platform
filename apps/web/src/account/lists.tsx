@@ -171,7 +171,7 @@ function ListRow({
       <LineThumb imageUrl={item.imageUrl} category={item.category} />
       <div>
         <b>{item.name}</b>
-        <small>{cartSource.sellers[item.sellerId]?.name}</small>
+        <small>{cartSource.sellers[item.sellerId]?.name ?? item.sellerName}</small>
         <small className="num">{formatMoney(item.price, locale)}</small>
       </div>
       <div className="ac-acts">{children(item.name)}</div>

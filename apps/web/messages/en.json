@@ -164,6 +164,10 @@
       "settings": "Settings"
     },
     "log-out": "Log out",
+    "back": {
+      "account": "Account",
+      "aria": "Back to {to}"
+    },
     "titles": {
       "overview": "My account",
       "orders": "My orders",
@@ -292,7 +296,9 @@
         "renew": "Get a new code",
         "renew-note": "A new code replaces the old one. The old code stops working.",
         "renewed": "New code ready. The old one no longer works."
-      }
+      },
+      "unnamed-item": "Item no longer listed",
+      "unnamed-seller": "Seller"
     },
     "addresses": {
       "area-note": "We deliver to {area} for now. You can save an address outside it, but we cannot deliver there yet.",
@@ -630,6 +636,9 @@
     "move-to-cart": "Move to cart",
     "move-item": "Move {name} to cart",
     "remove-saved": "Remove {name} from saved items",
+    "unavailable-title": "Not available right now",
+    "unavailable-body": "These items can't be bought at the moment, so they are not in your total. Remove them or check back later.",
+    "unavailable-unnamed": "An item that is no longer listed",
     "discount-open": "Have a discount code?",
     "discount-label": "Discount code",
     "discount-apply": "Apply",

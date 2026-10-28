@@ -19,6 +19,7 @@ import {
   type SellerOrderPageView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
+import { deliveredEvent } from './delivery-event';
 import { labelSellerOrders } from './order-labels';
 import type { SellerOrderPage, SellerOrderRecord } from './ports/order.repository';
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
@@ -348,9 +349,11 @@ export async function deliverSellerOrder(
       delivered,
       record.sellerOrder.fulfilment,
     );
-    return saved === 'saved'
-      ? ok({ view: sellerOrderDetailView({ ...record, sellerOrder: delivered }), record })
-      : err({ code: 'ordering.fulfilment-conflict' } as const);
+    if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
+    await deps.outbox.append(context, [
+      deliveredEvent(record.orderId, delivered, now, 'seller-click'),
+    ]);
+    return ok({ view: sellerOrderDetailView({ ...record, sellerOrder: delivered }), record });
   });
   return labelled(deps, context, done);
 }
@@ -447,9 +450,11 @@ export async function confirmSellerPickup(
     const collected = markCollected(record.sellerOrder, now);
     if (collected === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
     const saved = await deps.orders.saveFulfilment(market, collected, 'to-ship');
-    return saved === 'saved'
-      ? ok({ kind: 'collected', record: { ...record, sellerOrder: collected } } as const)
-      : err({ code: 'ordering.fulfilment-conflict' } as const);
+    if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
+    await deps.outbox.append(context, [
+      deliveredEvent(record.orderId, collected, now, 'seller-click'),
+    ]);
+    return ok({ kind: 'collected', record: { ...record, sellerOrder: collected } } as const);
   });
   if (!done.ok) {
     log(done.error.code);

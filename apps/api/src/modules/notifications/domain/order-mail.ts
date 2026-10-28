@@ -77,6 +77,17 @@ export function httpsLink(value: string | null | undefined): string | null {
   }
 }
 
+/** The seller's "Payment dispute" notice: the order reference only. No reason, amount or buyer data. */
+export function sellerOrderDisputedMail(input: {
+  readonly orderId: string;
+  readonly locale?: string;
+}): ComposedMail {
+  const { subject, text } = renderTemplate('seller-order-disputed', input.locale ?? 'en', {
+    orderId: input.orderId,
+  });
+  return { subject, text };
+}
+
 /** The customer's "Shipped": the carrier, the tracking number when there is one, and the order link. */
 export function orderShippedMail(input: {
   readonly orderId: string;

@@ -7,7 +7,12 @@ export type CommissionPayoutsFailure =
   /** The Market has no commission settings or the read failed: callers fail closed. */
   | { readonly code: 'commission-payouts.rate-unavailable' }
   /** The seller order's ledger rows are missing or do not fit the refund: nothing is posted. */
-  | { readonly code: 'commission-payouts.ledger-inconsistent' };
+  | { readonly code: 'commission-payouts.ledger-inconsistent' }
+  /**
+   * The Market has no usable payout terms (none configured, or a stored value outside the hold
+   * bounds): nothing is anchored and the caller tries again later.
+   */
+  | { readonly code: 'commission-payouts.terms-unavailable' };
 
 /** The rate in force for a seller now: its own rate if an admin set one, else the Market's. */
 export interface CommissionRate {
@@ -83,6 +88,22 @@ export interface RefundedSellerOrder {
   readonly shipping: RefundedShipping | null;
 }
 
+/** Who confirmed a delivery: the carrier's booking reached `delivered`, or the seller clicked. */
+export type DeliverySource = 'carrier' | 'seller-click';
+
+/**
+ * The delivery of one seller order, as ordering stored it (package 6b). `source` is `carrier` when
+ * the seller order's carrier booking reached progress `delivered`; every other delivery (the
+ * seller's click, a pickup handover) is `seller-click`.
+ */
+export interface SellerOrderDelivered {
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly deliveredAt: Temporal.Instant;
+  readonly source: DeliverySource;
+}
+
 /**
  * What `ordering` calls. Each method takes the caller's `CallContext` unchanged and is not
  * exposed over HTTP.
@@ -116,6 +137,17 @@ export interface CommissionPayoutsFacade {
     context: CallContext,
     refund: RefundedSellerOrder,
   ): Promise<Result<'recorded' | 'already-recorded' | 'nothing-to-post', CommissionPayoutsFailure>>;
+
+  /**
+   * Freezes the eligibility anchor of a delivered seller order (system actor only): the delivery
+   * instant plus the hold days of the seller's effective payout terms (carrier hold or
+   * seller-click hold by `source`). Set once and idempotent: a seller order already anchored
+   * changes nothing and answers `already-anchored`.
+   */
+  recordSellerOrderDelivered(
+    context: CallContext,
+    delivered: SellerOrderDelivered,
+  ): Promise<Result<'anchored' | 'already-anchored', CommissionPayoutsFailure>>;
 }
 
 /** Nest token of the {@link CommissionPayoutsFacade}, provided by `CommissionPayoutsModule`. */

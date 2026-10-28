@@ -170,6 +170,7 @@ export const NEW_SELLER_ADMIN_SETTINGS = Object.freeze({
   allProductTypesAllowed: true,
   categoryProposalsAllowed: false,
   aiEnabled: false,
+  blogEnabled: false,
 });
 
 /**

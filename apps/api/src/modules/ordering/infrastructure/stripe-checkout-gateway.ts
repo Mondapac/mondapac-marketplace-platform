@@ -52,26 +52,38 @@ function refundAnswer(
  * Stripe Checkout over its REST API with `fetch` (no SDK). One request per call, never retried
  * here (the equivalent of `maxNetworkRetries: 0`): a caller that retries sends the same
  * idempotency key. Manual capture: the page authorises the card, `capture` takes the money once
- * ordering has committed the stock. Card (with Apple Pay and Google Pay) only; no eftpos.
+ * ordering has committed the stock. Card (with Apple Pay and Google Pay) only; no eftpos: Stripe
+ * no longer takes `payment_method_types` on a session, so the session names a payment method
+ * configuration that allows only those, and without one no session is opened.
  *
  * The secret key, the client secret and Stripe's answer bodies never reach a log or an error: a
  * failure is a code only.
  */
+/** A Stripe payment method configuration id; the same shape app-config accepts. */
+const PAYMENT_METHOD_CONFIGURATION = /^pmc_[A-Za-z0-9]{8,64}$/;
+
 export class StripeCheckoutGateway implements CheckoutGateway {
   constructor(
     private readonly secretKey: string | null,
+    private readonly paymentMethodConfiguration: string | null,
     private readonly fetchFn: StripeFetch = (url, init) => fetch(url, init),
     private readonly timeoutMs: number = STRIPE_TIMEOUT_MS,
   ) {}
 
   async createSession(request: CreateSessionRequest) {
+    // Fail closed: a session without the card-only configuration would offer every payment
+    // method the account has switched on. Anything but a pmc_ id (an empty value from a script)
+    // counts as unset, because Stripe would fall back to the account's default configuration.
+    if (!PAYMENT_METHOD_CONFIGURATION.test(this.paymentMethodConfiguration ?? '')) {
+      return err(UNAVAILABLE);
+    }
     const form = new URLSearchParams();
     form.set('mode', 'payment');
     form.set('client_reference_id', request.orderId);
     form.set('success_url', request.successUrl);
     form.set('cancel_url', request.cancelUrl);
     form.set('expires_at', String(Math.floor(request.expiresAt.epochMilliseconds / 1000)));
-    form.set('payment_method_types[0]', 'card');
+    form.set('payment_method_configuration', this.paymentMethodConfiguration as string);
     form.set('payment_intent_data[capture_method]', 'manual');
     form.set('payment_intent_data[metadata][order_id]', request.orderId);
     form.set('payment_intent_data[metadata][market_id]', request.marketId);

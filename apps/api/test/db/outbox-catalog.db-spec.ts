@@ -13,6 +13,22 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Blog (blog package 1): one open and one live version per post, one featured post per Market,
+  // the public list and the worker's due-posts index, and the outbox's unpublished index.
+  'blog.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON blog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'blog.post_versions_market_id_category_id_idx':
+    'CREATE INDEX post_versions_market_id_category_id_idx ON blog.post_versions USING btree (market_id, category_id) WHERE (category_id IS NOT NULL)',
+  'blog.post_versions_one_live_key':
+    "CREATE UNIQUE INDEX post_versions_one_live_key ON blog.post_versions USING btree (market_id, post_id) WHERE (state = 'live'::text)",
+  'blog.post_versions_one_open_key':
+    "CREATE UNIQUE INDEX post_versions_one_open_key ON blog.post_versions USING btree (market_id, post_id) WHERE (state = ANY (ARRAY['draft'::text, 'in_review'::text, 'returned'::text, 'approved'::text]))",
+  'blog.posts_market_id_published_at_published_idx':
+    "CREATE INDEX posts_market_id_published_at_published_idx ON blog.posts USING btree (market_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  'blog.posts_market_id_scheduled_at_idx':
+    'CREATE INDEX posts_market_id_scheduled_at_idx ON blog.posts USING btree (market_id, scheduled_at, id) WHERE (scheduled_at IS NOT NULL)',
+  'blog.posts_one_featured_key':
+    'CREATE UNIQUE INDEX posts_one_featured_key ON blog.posts USING btree (market_id) WHERE featured',
   // Cart (speed mode): one active cart per account, one cart per guest token hash.
   'cart.carts_market_id_account_id_active_key':
     "CREATE UNIQUE INDEX carts_market_id_account_id_active_key ON cart.carts USING btree (market_id, account_id) WHERE ((account_id IS NOT NULL) AND (status = 'active'::text))",
@@ -103,6 +119,24 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_certifications_market_id_pending_idx ON certification.seller_certifications USING btree (market_id, status_changed_at, id) WHERE (pending_submission_id IS NOT NULL)',
   'certification.seller_certifications_market_id_seller_id_type_id_open_key':
     "CREATE UNIQUE INDEX seller_certifications_market_id_seller_id_type_id_open_key ON certification.seller_certifications USING btree (market_id, seller_id, type_id) WHERE (status <> ALL (ARRAY['declined'::text, 'revoked'::text]))",
+  // Customers (package 5b): one open (pending or executing) deletion request per account, and the
+  // executor's due query (pending, by date) and stale-claim query (executing, by claim time).
+  'customers.account_deletion_requests_one_open_idx':
+    "CREATE UNIQUE INDEX account_deletion_requests_one_open_idx ON customers.account_deletion_requests USING btree (market_id, account_id) WHERE (status = ANY (ARRAY['pending'::text, 'executing'::text]))",
+  'customers.account_deletion_requests_market_id_scheduled_for_pending_idx':
+    "CREATE INDEX account_deletion_requests_market_id_scheduled_for_pending_idx ON customers.account_deletion_requests USING btree (market_id, scheduled_for, id) WHERE (status = 'pending'::text)",
+  'customers.account_deletion_requests_market_id_claimed_at_executing_idx':
+    "CREATE INDEX account_deletion_requests_market_id_claimed_at_executing_idx ON customers.account_deletion_requests USING btree (market_id, claimed_at, id) WHERE (status = 'executing'::text)",
+  'commission_payouts.dispute_decisions_first_key':
+    'CREATE UNIQUE INDEX dispute_decisions_first_key ON commission_payouts.dispute_decisions USING btree (market_id, dispute_id, seller_order_id) WHERE (supersedes IS NULL)',
+  'commission_payouts.dispute_decisions_reversal_key':
+    'CREATE UNIQUE INDEX dispute_decisions_reversal_key ON commission_payouts.dispute_decisions USING btree (market_id, supersedes) WHERE (supersedes IS NOT NULL)',
+  'commission_payouts.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON commission_payouts.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'commission_payouts.payout_holds_active_seller_idx':
+    'CREATE INDEX payout_holds_active_seller_idx ON commission_payouts.payout_holds USING btree (market_id, seller_id) WHERE (released_at IS NULL)',
+  'commission_payouts.payout_holds_system_source_key':
+    "CREATE UNIQUE INDEX payout_holds_system_source_key ON commission_payouts.payout_holds USING btree (market_id, reason, source_ref, seller_id, seller_order_id) NULLS NOT DISTINCT WHERE (origin = 'system'::text)",
   'customers.addresses_one_default_key':
     'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
