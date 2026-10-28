@@ -291,7 +291,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'catalogue-moderator', 9],
       ['platform', 'default', 'operations-support', 6],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 22],
+      ['platform', 'default', 'viewer', 23],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
@@ -314,14 +314,18 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // business details in clear), and `certification.issuer.view` (certification slice 6: the
     // issuer request read decrypts the seller's typed issuer name).
     const DECRYPTING_VIEW_KEYS = ['sellers.business-details.view', 'certification.issuer.view'];
+    // The brand read key is named `.read` (catalog brand package), so it joins the list by name.
+    const VIEWER_READ_KEYS = ['catalog.brand.read'];
     expect(keysOf('viewer')).toEqual(
-      registry
-        .list('platform')
-        .filter(
-          (d) => !d.protected && d.key.endsWith('.view') && !DECRYPTING_VIEW_KEYS.includes(d.key),
-        )
-        .map((d) => d.key)
-        .sort(),
+      [
+        ...registry
+          .list('platform')
+          .filter(
+            (d) => !d.protected && d.key.endsWith('.view') && !DECRYPTING_VIEW_KEYS.includes(d.key),
+          )
+          .map((d) => d.key),
+        ...VIEWER_READ_KEYS,
+      ].sort(),
     );
     expect(keysOf('onboarding-compliance')).toEqual([
       'certification.issuer.view',

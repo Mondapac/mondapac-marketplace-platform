@@ -49,6 +49,8 @@
   { "name": "catalog.own-product-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
+  { "name": "catalog.public-brand", "rule": "anonymous" },
+  { "name": "catalog.public-brands-az", "rule": "anonymous" },
   { "name": "catalog.published-image-read", "rule": "anonymous" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.published-product", "rule": "anonymous" },

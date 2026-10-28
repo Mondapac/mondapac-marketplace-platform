@@ -35,6 +35,16 @@
     "reason": "The buyer site's left menu and Browse drawer for a visitor with no session: the live platform category tree (ids, slugs, names, order); no seller category, no count, nothing unpublished."
   },
   {
+    "name": "catalog.public-brand",
+    "rule": "anonymous",
+    "reason": "The public page of a brand (/brands/<slug>) for a visitor with no session: an ACTIVE brand's name, summary, origin country and image ids, with the count of its products that are published and on sale in the request's Market; a draft, an archived or an unknown slug answers the same not-found; no seller, account or version; no-store; rate limited per origin."
+  },
+  {
+    "name": "catalog.public-brands-az",
+    "rule": "anonymous",
+    "reason": "The public brands A to Z index (/brands) for a visitor with no session: the slug, name and logo image id of every ACTIVE brand, grouped by first letter; nothing about drafts, proposals or sellers; no-store; rate limited per origin."
+  },
+  {
     "name": "catalog.published-image-read",
     "rule": "anonymous",
     "reason": "The buyer site shows product photos to a visitor with no session: one rendition (thumb, medium or large) of a photo that is in the current published revision of a published product and is not taken down; every other case answers the same not-found. JPEG written by the server, sandboxed, nosniff, never a cookie."
