@@ -139,6 +139,7 @@ async function createRecipient() {
     },
     defaults: {
       currency: CURRENCY.toLowerCase(),
+      profile: { business_url: 'https://example.com' },
       responsibilities: { fees_collector: 'application', losses_collector: 'application' },
     },
     configuration: {
@@ -154,6 +155,21 @@ async function createRecipient() {
     created.status === 200 && id !== null,
     id ?? stripeError(created),
   );
+  if (id === null) return null;
+  // Stripe's AU test bank account (BSB 110000), through the v1 external-account route; the first
+  // run left the capability pending with `external_account` still due.
+  const bank = await stripe(key, 'POST', `/v1/accounts/${id}/external_accounts`, {
+    'external_account[object]': 'bank_account',
+    'external_account[country]': 'AU',
+    'external_account[currency]': CURRENCY.toLowerCase(),
+    'external_account[routing_number]': '110000',
+    'external_account[account_number]': '000123456',
+  });
+  report.check(
+    'add the AU test bank account',
+    bank.status === 200,
+    bank.status === 200 ? bank.body.id : stripeError(bank),
+  );
   return id;
 }
 
@@ -161,7 +177,7 @@ async function createRecipient() {
 async function waitForTransfers(id) {
   const query = '?include=configuration.recipient&include=requirements&include=identity';
   let last = null;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  for (let attempt = 0; attempt < 24; attempt += 1) {
     last = await v2('GET', `/v2/core/accounts/${id}${query}`);
     const status =
       last.body?.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers?.status;
