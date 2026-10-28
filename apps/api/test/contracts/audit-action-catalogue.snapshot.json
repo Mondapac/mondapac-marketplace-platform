@@ -1572,6 +1572,19 @@
     }
   },
   {
+    "action": "promotions.batch-codes.generated",
+    "targetType": "promotions.promotion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "batchId": "id",
+      "count": "integer",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
     "action": "promotions.co-funding.changed",
     "targetType": "promotions.promotion",
     "targetId": "id",
@@ -1619,9 +1632,9 @@
       "threshold": "optional(money)"
     },
     "after": {
-      "threshold": "optional(money)",
       "stepUpSessionId": "optional(id)",
-      "stepUpVerifiedAt": "optional(instant)"
+      "stepUpVerifiedAt": "optional(instant)",
+      "threshold": "optional(money)"
     }
   },
   {
@@ -1673,7 +1686,7 @@
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)",
       "testMode": "boolean",
-      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign)"
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code)"
     }
   },
   {
@@ -1696,7 +1709,7 @@
       "startsAt": "instant",
       "status": "enumOf(pending-approval|active|paused|rejected)",
       "testMode": "boolean",
-      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign)"
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code)"
     },
     "after": {
       "budget": "optional(money)",
@@ -1715,7 +1728,7 @@
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)",
       "testMode": "boolean",
-      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign)"
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code)"
     }
   },
   {

@@ -115,6 +115,40 @@ shipping. Wallet credit is payment, not a discount, and is not here.
   client sends no raw SQL, so the lock is a row update that changes nothing (`updated_at` set to
   itself, guarded by its current value).
 
+## Phase 2 discount types
+
+Six types on top of the core (migration `20261029090000_promotions_phase2_types`). Rules as built:
+
+- **Tiered cart** (platform, cart layer): tiers are rows (`promotion_tiers`); the highest tier whose
+  threshold the goods amount (after the earlier layers) reaches applies. Thresholds strictly increase,
+  rewards increase, one kind per promotion, a FIXED amount stays below its threshold.
+- **Buy X get Y** (seller): of every `buyQty + getQty` qualifying units the `getQty` cheapest get the
+  reward (PERCENT or FIXED per unit); `maxRepeatsPerOrder` limits the groups. For the seller maximum
+  and the approval threshold the headline share is `floor(getQty * bps / (buyQty + getQty))`.
+- **Multi-buy** (seller): every `groupQty` units, cheapest first, cost the group price together
+  (stored as a FIXED reward; API `groupPriceMinor`); never more than their own price.
+- **Bundle** (seller): items `{productId, quantity}` (at least two); each complete set takes the FIXED
+  amount off, spread over the lines by value. The items are also the promotion's product targets.
+- **Flash sale** (seller or platform): `flash:{unitLimit, timeZone, startsLocal?, endsLocal?}`; local
+  wall-clock times in the stated IANA zone become UTC (nonexistent or ambiguous DST times are refused),
+  or plain `startsAt`/`endsAt` instants; mixing both is refused. An end is required. The unit limit is
+  checked against the `FlashSales.soldUnits` port; unknown counts as 0 only in test mode, otherwise the
+  flash sale is left out of the quote. The production adapter returns unknown until package T2 counts sales.
+- **Batch codes** (platform, cart layer): an admin generates N codes (`POST .../batch-codes`, CSV, shown
+  once); only the SHA-256 hash is stored (`promotion_batch_codes`, unique per Market). Length and alphabet
+  come from Market config `promotions.batchCodes` (absent means unavailable, fail closed; entropy at least
+  60 bits). Step-up is needed for each generating call when the platform budget is above the Market
+  threshold; the audit action records the count and batch id, never a code. One code per order still holds;
+  a used code quotes as `NOT_APPLIED`, an unknown one as `UNKNOWN`.
+- Multi-unit offers are worked out over the whole pool of qualifying units and become per-line candidates;
+  a line is then covered by one offer or none (best for the buyer). One item discount per line, the line
+  cap, the caps and the GST test-mode rule are unchanged. A stored row without the terms its type needs
+  (no tiers, fewer than two bundle items) is left out of the quote.
+
+Open for package T2: marking a code used on redemption (the app has SELECT and INSERT only on the codes),
+counting flash units sold, and checking a flash limit lowered below the units already sold. There is no
+re-download of generated codes.
+
 ## Open points
 
 - The identity role seed gains one key: the Viewer (seed version 21 on top of blog's 20, with its append-only snapshot entry

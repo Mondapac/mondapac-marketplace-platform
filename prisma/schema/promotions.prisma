@@ -13,7 +13,8 @@ model PromotionsPromotion {
   id                 String                     @id @db.Uuid
   marketId           String                     @map("market_id") @db.VarChar(8)
   tenantId           String                     @map("tenant_id")
-  /// SELLER_SALE, CART_DISCOUNT, CART_CODE, FREE_SHIPPING or CO_FUNDED_CAMPAIGN (CHECK).
+  /// SELLER_SALE, CART_DISCOUNT, CART_CODE, FREE_SHIPPING, CO_FUNDED_CAMPAIGN, TIERED_CART,
+  /// BUY_X_GET_Y, MULTI_BUY, BUNDLE, FLASH_SALE or BATCH_CODE (CHECK).
   type               String
   /// PENDING_APPROVAL, ACTIVE, PAUSED or REJECTED (CHECK).
   status             String
@@ -50,6 +51,18 @@ model PromotionsPromotion {
   maxUsesPerCustomer Int?                       @map("max_uses_per_customer")
   budgetMinor        BigInt?                    @map("budget_minor")
   minSpendMinor      BigInt?                    @map("min_spend_minor")
+  /// BUY_X_GET_Y: units to buy; set if and only if the type is BUY_X_GET_Y (CHECK).
+  buyQty             Int?                       @map("buy_qty") @db.SmallInt
+  /// BUY_X_GET_Y: the cheapest units that get the reward per group.
+  getQty             Int?                       @map("get_qty") @db.SmallInt
+  /// MULTI_BUY: units in one group, 2 or more; its price is `rewardAmountMinor` (FIXED).
+  groupQty           Int?                       @map("group_qty") @db.SmallInt
+  /// BUY_X_GET_Y, MULTI_BUY or BUNDLE: the most groups or sets in one order; null for no limit.
+  maxRepeatsPerOrder Int?                       @map("max_repeats_per_order") @db.SmallInt
+  /// FLASH_SALE: the units the sale may sell in all, and the IANA zone its window was written in;
+  /// both set if and only if the type is FLASH_SALE (CHECK), which also has an end.
+  flashUnitLimit     Int?                       @map("flash_unit_limit")
+  flashTimeZone      String?                    @map("flash_time_zone")
   createdByAccountId String                     @map("created_by_account_id") @db.Uuid
   createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime                   @map("updated_at") @db.Timestamptz(6)
@@ -57,6 +70,9 @@ model PromotionsPromotion {
   usage              PromotionsUsage?
   optIns             PromotionsCoFundingOptIn[]
   reviews            PromotionsReview[]
+  tiers              PromotionsTier[]
+  bundleItems        PromotionsBundleItem[]
+  batchCodes         PromotionsBatchCode[]
 
   /// The foreign-key target of the children.
   @@unique([marketId, id])
@@ -84,6 +100,62 @@ model PromotionsTarget {
 
   @@id([marketId, promotionId, kind, value])
   @@map("promotion_targets")
+  @@schema("promotions")
+}
+
+/// A tier of a TIERED_CART promotion: from this goods amount the tier's reward applies, and the
+/// highest tier reached wins. The tiers of a promotion are replaced as a set when it is edited.
+/// PERCENT sets `rewardBps`, FIXED sets `rewardAmountMinor` (CHECK). Rows exist for TIERED_CART
+/// only (the use case writes them; a CHECK cannot look at another table).
+model PromotionsTier {
+  marketId          String              @map("market_id") @db.VarChar(8)
+  tenantId          String              @map("tenant_id")
+  promotionId       String              @map("promotion_id") @db.Uuid
+  thresholdMinor    BigInt              @map("threshold_minor")
+  rewardKind        String              @map("reward_kind")
+  rewardBps         Int?                @map("reward_bps")
+  rewardAmountMinor BigInt?             @map("reward_amount_minor")
+  promotion         PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, promotionId, thresholdMinor])
+  @@map("promotion_tiers")
+  @@schema("promotions")
+}
+
+/// An item of the set of a BUNDLE promotion: a product and the units of it in one set. Replaced as
+/// a set when the promotion is edited. The products are also the promotion's PRODUCT targets.
+model PromotionsBundleItem {
+  marketId    String              @map("market_id") @db.VarChar(8)
+  tenantId    String              @map("tenant_id")
+  promotionId String              @map("promotion_id") @db.Uuid
+  productId   String              @map("product_id") @db.Uuid
+  quantity    Int                 @db.SmallInt
+  promotion   PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, promotionId, productId])
+  @@map("promotion_bundle_items")
+  @@schema("promotions")
+}
+
+/// A generated single-use code of a BATCH_CODE promotion. Only the SHA-256 hash of the code is
+/// stored (the code is a bearer credential: it is shown once, in the CSV that generating returns).
+/// A code is unique in a Market. `usedAt` is set when an order redeems it (package T2); the quote
+/// treats a used code as not applicable. Never deleted.
+model PromotionsBatchCode {
+  marketId    String              @map("market_id") @db.VarChar(8)
+  tenantId    String              @map("tenant_id")
+  codeHash    String              @map("code_hash")
+  promotionId String              @map("promotion_id") @db.Uuid
+  /// The generating call that made the code (to tell batches of one promotion apart).
+  batchId     String              @map("batch_id") @db.Uuid
+  createdAt   DateTime            @map("created_at") @db.Timestamptz(6)
+  usedAt      DateTime?           @map("used_at") @db.Timestamptz(6)
+  promotion   PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, codeHash])
+  /// Counting and listing the codes of one promotion.
+  @@index([marketId, promotionId])
+  @@map("promotion_batch_codes")
   @@schema("promotions")
 }
 

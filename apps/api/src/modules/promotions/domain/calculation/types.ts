@@ -8,7 +8,7 @@
 export const LAYERS = ['ITEM', 'SELLER_CART', 'PLATFORM_CART', 'SHIPPING'] as const;
 export type Layer = (typeof LAYERS)[number];
 
-/** The phase 1 promotion types. */
+/** The promotion types: phase 1, then the phase 2 types after CO_FUNDED_CAMPAIGN. */
 export const PROMOTION_TYPES = [
   /** A seller's sale price on products: percent or fixed amount per unit off. */
   'SELLER_SALE',
@@ -22,6 +22,18 @@ export const PROMOTION_TYPES = [
   'FIRST_ORDER',
   /** A platform and seller co-funded campaign on the products of opted-in sellers. */
   'CO_FUNDED_CAMPAIGN',
+  /** A platform cart discount by tiers of the goods amount; the highest tier reached applies. */
+  'TIERED_CART',
+  /** A seller's item offer: buy X, get Y of the cheapest units free or at a discount. */
+  'BUY_X_GET_Y',
+  /** A seller's item offer: N units for a fixed total price. */
+  'MULTI_BUY',
+  /** A seller's item offer: a set of its products bought together gets a fixed amount off. */
+  'BUNDLE',
+  /** An item sale in a time window with a limit of units (a seller's or the platform's). */
+  'FLASH_SALE',
+  /** A platform cart discount that applies once per generated single-use code. */
+  'BATCH_CODE',
 ] as const;
 export type PromotionType = (typeof PROMOTION_TYPES)[number];
 
@@ -83,6 +95,53 @@ export interface CalculationPromotion {
   readonly zones: readonly string[] | null;
   /** Only for a customer whose first order this is. */
   readonly firstOrderOnly: boolean;
+  /**
+   * TIERED_CART: the tiers, by goods amount (the eligible goods after the earlier layers). The
+   * highest tier whose threshold the goods reach gives the reward; `reward` is not used.
+   */
+  readonly tiers?: readonly Tier[] | null;
+  /**
+   * BUY_X_GET_Y: of every `buyQty + getQty` qualifying units, the `getQty` cheapest get `reward`
+   * (PERCENT off the unit price, 10000 is free; FIXED off the unit price). `maxRepeats` limits the
+   * groups in one order; null for no limit.
+   */
+  readonly buyXGetY?: {
+    readonly buyQty: number;
+    readonly getQty: number;
+    readonly maxRepeats: number | null;
+  } | null;
+  /**
+   * MULTI_BUY: every `groupQty` qualifying units (the cheapest first) cost `groupPrice` together;
+   * never more than their own price. `reward` is not used.
+   */
+  readonly multiBuy?: {
+    readonly groupQty: number;
+    readonly groupPrice: bigint;
+    readonly maxRepeats: number | null;
+  } | null;
+  /**
+   * BUNDLE: one set holds `quantity` units of each item; every complete set takes `amountOff` off
+   * the units in it, spread over their lines. `reward` is not used.
+   */
+  readonly bundle?: {
+    readonly items: readonly { readonly productId: string; readonly quantity: number }[];
+    readonly amountOff: bigint;
+    readonly maxRepeats: number | null;
+  } | null;
+  /**
+   * The units this promotion may still discount in all orders (a flash sale's limit minus the
+   * units already sold); null for no limit. One order never discounts more units than this.
+   */
+  readonly unitLimit?: number | null;
+  /** The promotion's single-use code was already redeemed: the entered code matches but gives nothing. */
+  readonly codeUsed?: boolean;
+}
+
+/** One tier of a tiered cart discount. */
+export interface Tier {
+  /** The goods amount (minor units) from which this tier applies. */
+  readonly threshold: bigint;
+  readonly reward: Reward;
 }
 
 export interface CartLine {

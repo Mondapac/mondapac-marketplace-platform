@@ -756,6 +756,659 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
     );
   });
 
+  describe('phase 2: tiered cart discount', () => {
+    const tiered = (over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id: 'tier',
+        type: 'TIERED_CART',
+        layer: 'PLATFORM_CART',
+        platformShareBps: 10000,
+        reward: { kind: 'FIXED', amount: 1500n },
+        tiers: [
+          { threshold: 5000n, reward: { kind: 'FIXED', amount: 500n } },
+          { threshold: 10000n, reward: { kind: 'FIXED', amount: 1500n } },
+        ],
+        ...over,
+      });
+
+    it('gives nothing below the first tier and the highest tier reached above it', () => {
+      const below = run(market, {
+        lines: [line('l1', 's1', 4999n)],
+        promotions: [tiered()],
+        orderCommission: 99999n,
+      });
+      expect(below.totals.goodsDiscount).toBe(0n);
+      const first = run(market, {
+        lines: [line('l1', 's1', 5000n)],
+        promotions: [tiered()],
+        orderCommission: 99999n,
+      });
+      expect(first.totals.goodsDiscount).toBe(500n);
+      const second = run(market, {
+        lines: [line('l1', 's1', 6000n), line('l2', 's2', 4000n)],
+        promotions: [tiered()],
+        orderCommission: 99999n,
+      });
+      // The highest tier only, never the tiers added up.
+      expect(second.totals.goodsDiscount).toBe(1500n);
+      expect(second.applied).toHaveLength(1);
+      expect(second.applied[0]!.platformShare).toBe(1500n);
+    });
+
+    it('reads percent tiers on the goods left by the item layer', () => {
+      const promotions = [
+        promo({ id: 'sale', sellerId: 's1', reward: { kind: 'PERCENT', bps: 2000 } }),
+        tiered({
+          tiers: [
+            { threshold: 5000n, reward: { kind: 'PERCENT', bps: 500 } },
+            { threshold: 10000n, reward: { kind: 'PERCENT', bps: 1000 } },
+          ],
+        }),
+      ];
+      // 12 000 less the 20 % sale is 9 600: below the second tier, so the first tier's 5 %.
+      const out = run(market, {
+        lines: [line('l1', 's1', 12000n)],
+        promotions,
+        orderCommission: 99999n,
+      });
+      expect(out.lines[0]!.discount).toBe(2400n + 480n);
+      const noSale = run(market, {
+        lines: [line('l1', 's2', 12000n)],
+        promotions,
+        orderCommission: 99999n,
+      });
+      expect(noSale.lines[0]!.discount).toBe(1200n);
+    });
+
+    it('splits over the lines, books the platform share and stops at the commission', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 7000n), line('l2', 's2', 3000n)],
+        promotions: [tiered()],
+        orderCommission: 1000n,
+      });
+      expect(out.totals.goodsDiscount).toBe(1000n);
+      expect(out.totals.platformShare).toBe(1000n);
+      expect(out.lines[0]!.discount + out.lines[1]!.discount).toBe(1000n);
+      const free = run(market, {
+        lines: [line('l1', 's1', 7000n), line('l2', 's2', 3000n)],
+        promotions: [tiered({ specialCampaign: true })],
+        orderCommission: 0n,
+      });
+      expect(free.totals.goodsDiscount).toBe(1500n);
+    });
+
+    it('does not depend on the order of the tiers', () => {
+      const a = tiered();
+      const b = tiered({ tiers: [...a.tiers!].reverse() });
+      const lines = [line('l1', 's1', 10000n)];
+      expect(run(market, { lines, promotions: [b], orderCommission: 9999n })).toEqual(
+        run(market, { lines, promotions: [a], orderCommission: 9999n }),
+      );
+    });
+
+    it('refuses tiers that are not valid', () => {
+      for (const tiers of [
+        [],
+        [
+          { threshold: 100n, reward: { kind: 'FIXED', amount: 1n } },
+          { threshold: 100n, reward: { kind: 'FIXED', amount: 2n } },
+        ],
+        [{ threshold: -1n, reward: { kind: 'FIXED', amount: 1n } }],
+        [{ threshold: 1n, reward: { kind: 'PERCENT', bps: 0 } }],
+      ] as const) {
+        const result = calculateDiscounts({
+          currency: market.currency,
+          lines: [line('l1', 's1', 100n)],
+          shipping: [],
+          promotions: [tiered({ tiers })],
+          code: null,
+          isFirstOrder: false,
+          orderCommission: 0n,
+          rules: { lineDiscountCapBps: market.lineCapBps },
+        });
+        expect(result.ok ? null : result.error.path).toBe('promotions.tiers');
+      }
+    });
+  });
+
+  describe('phase 2: buy X get Y', () => {
+    const bxgy = (over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id: 'bxgy',
+        type: 'BUY_X_GET_Y',
+        sellerId: 's1',
+        reward: { kind: 'PERCENT', bps: 10000 },
+        buyXGetY: { buyQty: 2, getQty: 1, maxRepeats: null },
+        ...over,
+      });
+
+    it('gives the third unit free and repeats per complete group', () => {
+      const discountFor = (quantity: number) =>
+        run(market, { lines: [line('l1', 's1', 1000n, quantity)], promotions: [bxgy()] }).lines[0]!
+          .discount;
+      expect(discountFor(2)).toBe(0n);
+      expect(discountFor(3)).toBe(1000n);
+      expect(discountFor(5)).toBe(1000n);
+      expect(discountFor(6)).toBe(2000n);
+    });
+
+    it('limits the groups of one order', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 1000n, 9)],
+        promotions: [bxgy({ buyXGetY: { buyQty: 2, getQty: 1, maxRepeats: 2 } })],
+      });
+      expect(out.lines[0]!.discount).toBe(2000n);
+    });
+
+    it('rewards the cheapest units of the qualifying lines', () => {
+      const out = run(market, {
+        lines: [line('a', 's1', 1000n, 2, 'pa'), line('b', 's1', 400n, 1, 'pb')],
+        promotions: [bxgy()],
+      });
+      // Free, but all discounts together take at most the Market's share of a line.
+      expect(out.lines.find((l) => l.lineId === 'b')!.discount).toBe(
+        (400n * BigInt(market.lineCapBps)) / 10000n,
+      );
+      expect(out.lines.find((l) => l.lineId === 'a')!.discount).toBe(0n);
+    });
+
+    it('takes a percent or a fixed amount off the rewarded units, never above their price', () => {
+      const half = run(market, {
+        lines: [line('l1', 's1', 1001n, 3)],
+        promotions: [bxgy({ reward: { kind: 'PERCENT', bps: 5000 } })],
+      });
+      expect(half.lines[0]!.discount).toBe(500n);
+      const fixed = run(market, {
+        lines: [line('l1', 's1', 1001n, 3)],
+        promotions: [bxgy({ reward: { kind: 'FIXED', amount: 300n } })],
+      });
+      expect(fixed.lines[0]!.discount).toBe(300n);
+      const over = run(market, {
+        lines: [line('l1', 's1', 200n, 3)],
+        promotions: [bxgy({ reward: { kind: 'FIXED', amount: 300n } })],
+      });
+      expect(over.lines[0]!.discount).toBe(200n);
+    });
+
+    it('is held to the share of the line a seller may give', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 1000n, 2)],
+        promotions: [
+          bxgy({ buyXGetY: { buyQty: 1, getQty: 1, maxRepeats: null }, maxShareBps: 3000 }),
+        ],
+      });
+      expect(out.lines[0]!.discount).toBe(600n);
+    });
+
+    it('covers a whole line by the better of its offers, never one unit by each', () => {
+      const lines = [line('l1', 's1', 1000n, 3)];
+      const weak = run(market, {
+        lines,
+        promotions: [
+          promo({ id: 'sale', sellerId: 's1', reward: { kind: 'PERCENT', bps: 2000 } }),
+          bxgy(),
+        ],
+      });
+      expect(weak.lines[0]!.allocations.map((a) => [a.promotionId, a.amount])).toEqual([
+        ['bxgy', 1000n],
+      ]);
+      const strong = run(market, {
+        lines,
+        promotions: [
+          promo({ id: 'sale', sellerId: 's1', reward: { kind: 'PERCENT', bps: 4000 } }),
+          bxgy(),
+        ],
+      });
+      expect(strong.lines[0]!.allocations.map((a) => [a.promotionId, a.amount])).toEqual([
+        ['sale', 1200n],
+      ]);
+    });
+
+    it('rewards only the lines of its seller and products', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 1000n, 3, 'pa'), line('l2', 's2', 1000n, 3, 'pa')],
+        promotions: [bxgy({ productIds: ['pa'] })],
+      });
+      expect(out.lines.map((l) => l.discount)).toEqual([1000n, 0n]);
+      const none = run(market, {
+        lines: [line('l1', 's1', 1000n, 3, 'pb')],
+        promotions: [bxgy({ productIds: ['pa'] })],
+      });
+      expect(none.totals.goodsDiscount).toBe(0n);
+    });
+  });
+
+  describe('phase 2: multi-buy', () => {
+    const multi = (over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id: 'multi',
+        type: 'MULTI_BUY',
+        sellerId: 's1',
+        reward: { kind: 'FIXED', amount: 1000n },
+        multiBuy: { groupQty: 3, groupPrice: 1000n, maxRepeats: null },
+        ...over,
+      });
+
+    it('prices every complete group at the group price', () => {
+      const discountFor = (quantity: number) =>
+        run(market, { lines: [line('l1', 's1', 400n, quantity)], promotions: [multi()] }).lines[0]!
+          .discount;
+      expect(discountFor(2)).toBe(0n);
+      expect(discountFor(3)).toBe(200n);
+      expect(discountFor(5)).toBe(200n);
+      expect(discountFor(6)).toBe(400n);
+    });
+
+    it('limits the groups of one order', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 400n, 9)],
+        promotions: [multi({ multiBuy: { groupQty: 3, groupPrice: 1000n, maxRepeats: 1 } })],
+      });
+      expect(out.lines[0]!.discount).toBe(200n);
+    });
+
+    it('never raises a price: a group price above the units cost gives nothing', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 300n, 3)],
+        promotions: [multi()],
+      });
+      expect(out.totals.goodsDiscount).toBe(0n);
+    });
+
+    it('groups the cheapest units of several lines and splits the discount by their cost', () => {
+      const out = run(market, {
+        lines: [line('a', 's1', 500n, 2, 'pa'), line('b', 's1', 300n, 2, 'pb')],
+        promotions: [multi()],
+      });
+      // Cheapest three units: b, b and one a: 300 + 300 + 500 = 1100, 100 above the group price.
+      const a = out.lines.find((l) => l.lineId === 'a')!;
+      const b = out.lines.find((l) => l.lineId === 'b')!;
+      expect(a.discount + b.discount).toBe(100n);
+      expect(b.discount).toBe(55n);
+      expect(a.discount).toBe(45n);
+    });
+  });
+
+  describe('phase 2: bundle', () => {
+    const bundle = (over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id: 'bundle',
+        type: 'BUNDLE',
+        sellerId: 's1',
+        reward: { kind: 'FIXED', amount: 400n },
+        productIds: ['cheese', 'bread', 'jam'],
+        bundle: {
+          items: [
+            { productId: 'cheese', quantity: 1 },
+            { productId: 'bread', quantity: 1 },
+            { productId: 'jam', quantity: 1 },
+          ],
+          amountOff: 400n,
+          maxRepeats: null,
+        },
+        ...over,
+      });
+    const cart = (cheese = 1, bread = 1, jam = 1) => [
+      line('l1', 's1', 1500n, cheese, 'cheese'),
+      line('l2', 's1', 500n, bread, 'bread'),
+      line('l3', 's1', 800n, jam, 'jam'),
+    ];
+
+    it('takes the amount off a complete set and spreads it over the lines by their value', () => {
+      const out = run(market, { lines: cart(), promotions: [bundle()] });
+      expect(out.lines.map((l) => l.discount)).toEqual([215n, 71n, 114n]);
+      expect(out.totals.goodsDiscount).toBe(400n);
+    });
+
+    it('needs every item of the set', () => {
+      const out = run(market, { lines: cart().slice(0, 2), promotions: [bundle()] });
+      expect(out.totals.goodsDiscount).toBe(0n);
+    });
+
+    it('counts complete sets and limits them', () => {
+      expect(
+        run(market, { lines: cart(2, 1, 3), promotions: [bundle()] }).totals.goodsDiscount,
+      ).toBe(400n);
+      expect(
+        run(market, { lines: cart(2, 2, 2), promotions: [bundle()] }).totals.goodsDiscount,
+      ).toBe(800n);
+      const limited = bundle({
+        bundle: { ...bundle().bundle!, maxRepeats: 1 },
+      });
+      expect(
+        run(market, { lines: cart(2, 2, 2), promotions: [limited] }).totals.goodsDiscount,
+      ).toBe(400n);
+    });
+
+    it('needs the quantity each item has in the set', () => {
+      const two = bundle({
+        bundle: {
+          items: [
+            { productId: 'cheese', quantity: 2 },
+            { productId: 'bread', quantity: 1 },
+          ],
+          amountOff: 300n,
+          maxRepeats: null,
+        },
+        productIds: ['cheese', 'bread'],
+      });
+      expect(
+        run(market, { lines: cart(1, 1, 0 + 1), promotions: [two] }).totals.goodsDiscount,
+      ).toBe(0n);
+      expect(run(market, { lines: cart(3, 1, 1), promotions: [two] }).totals.goodsDiscount).toBe(
+        300n,
+      );
+    });
+
+    it('never takes more than the units cost, and ignores another seller', () => {
+      const big = bundle({ bundle: { ...bundle().bundle!, amountOff: 99999n } });
+      const out = run(market, { lines: cart(), promotions: [big] });
+      // The line cap holds the discount to its share of each line.
+      expect(out.totals.goodsDiscount).toBeLessThanOrEqual(
+        (2800n * BigInt(market.lineCapBps)) / 10000n,
+      );
+      const other = run(market, {
+        lines: [
+          line('l1', 's2', 1500n, 1, 'cheese'),
+          line('l2', 's2', 500n, 1, 'bread'),
+          line('l3', 's2', 800n, 1, 'jam'),
+        ],
+        promotions: [bundle()],
+      });
+      expect(other.totals.goodsDiscount).toBe(0n);
+    });
+  });
+
+  describe('phase 2: flash sale (limit of units)', () => {
+    const flash = (over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id: 'flash',
+        type: 'FLASH_SALE',
+        sellerId: 's1',
+        reward: { kind: 'PERCENT', bps: 2000 },
+        unitLimit: 2,
+        ...over,
+      });
+
+    it('discounts at most the units that are left', () => {
+      const out = run(market, { lines: [line('l1', 's1', 1000n, 5)], promotions: [flash()] });
+      expect(out.lines[0]!.discount).toBe(400n);
+      const none = run(market, {
+        lines: [line('l1', 's1', 1000n, 5)],
+        promotions: [flash({ unitLimit: 0 })],
+      });
+      expect(none.totals.goodsDiscount).toBe(0n);
+      const unlimited = run(market, {
+        lines: [line('l1', 's1', 1000n, 5)],
+        promotions: [flash({ unitLimit: null })],
+      });
+      expect(unlimited.lines[0]!.discount).toBe(1000n);
+    });
+
+    it('spends the limit on the dearest unit price first, whatever the order of the lines', () => {
+      const lines = [line('l1', 's1', 500n, 2, 'pa'), line('l2', 's1', 1000n, 2, 'pb')];
+      const promotions = [flash({ unitLimit: 3 })];
+      const out = run(market, { lines, promotions });
+      expect(out.lines.map((l) => l.discount)).toEqual([100n, 400n]);
+      expect(run(market, { lines: [...lines].reverse(), promotions })).toEqual(out);
+    });
+
+    it('keeps its units for the lines it wins', () => {
+      const lines = [line('l1', 's1', 500n, 1, 'pa'), line('l2', 's1', 1000n, 1, 'pb')];
+      const out = run(market, {
+        lines,
+        promotions: [
+          flash({ unitLimit: 1 }),
+          promo({
+            id: 'deep',
+            sellerId: 's1',
+            productIds: ['pb'],
+            reward: { kind: 'PERCENT', bps: 5000 },
+          }),
+        ],
+      });
+      // l2 prefers the deeper sale, so the single flash unit goes to l1.
+      expect(out.lines.map((l) => [l.allocations[0]!.promotionId, l.discount])).toEqual([
+        ['flash', 100n],
+        ['deep', 500n],
+      ]);
+    });
+
+    it('works for the platform, which pays its share inside the commission', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', 1000n, 3)],
+        promotions: [flash({ sellerId: null, platformShareBps: 10000 })],
+        orderCommission: 150n,
+      });
+      expect(out.totals.goodsDiscount).toBe(150n);
+      expect(out.totals.platformShare).toBe(150n);
+    });
+  });
+
+  describe('phase 2: single-use batch codes', () => {
+    const batch = (id: string, code: string | null, over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id,
+        type: 'BATCH_CODE',
+        layer: 'PLATFORM_CART',
+        platformShareBps: 10000,
+        code,
+        reward: { kind: 'FIXED', amount: 500n },
+        ...over,
+      });
+    const lines = [line('l1', 's1', 5000n)];
+
+    it('applies the entered code once and reports it applied', () => {
+      const out = run(market, {
+        lines,
+        promotions: [batch('b1', 'AAAA')],
+        code: 'AAAA',
+        orderCommission: 9999n,
+      });
+      expect(out.code).toBe('APPLIED');
+      expect(out.totals.goodsDiscount).toBe(500n);
+    });
+
+    it('gives nothing for a code that was already used', () => {
+      const out = run(market, {
+        lines,
+        promotions: [batch('b1', 'AAAA', { codeUsed: true })],
+        code: 'AAAA',
+        orderCommission: 9999n,
+      });
+      expect(out.code).toBe('NOT_APPLIED');
+      expect(out.totals.goodsDiscount).toBe(0n);
+    });
+
+    it('applies one code per order and only the entered one', () => {
+      const out = run(market, {
+        lines,
+        promotions: [
+          batch('b1', 'AAAA'),
+          batch('b2', 'BBBB'),
+          promo({
+            id: 'public',
+            type: 'CART_CODE',
+            layer: 'PLATFORM_CART',
+            platformShareBps: 10000,
+            code: 'PUB',
+            reward: { kind: 'FIXED', amount: 700n },
+          }),
+        ],
+        code: 'BBBB',
+        orderCommission: 9999n,
+      });
+      expect(out.applied.map((a) => a.promotionId)).toEqual(['b2']);
+      const noCode = run(market, {
+        lines,
+        promotions: [batch('b1', 'AAAA')],
+        orderCommission: 9999n,
+      });
+      expect(noCode.totals.goodsDiscount).toBe(0n);
+      expect(noCode.code).toBe('NONE');
+    });
+
+    it('does not stack with the first-order discount: the larger applies', () => {
+      const first = promo({
+        id: 'first',
+        type: 'FIRST_ORDER',
+        layer: 'PLATFORM_CART',
+        platformShareBps: 10000,
+        firstOrderOnly: true,
+        reward: { kind: 'FIXED', amount: 800n },
+      });
+      const out = run(market, {
+        lines,
+        promotions: [batch('b1', 'AAAA'), first],
+        code: 'AAAA',
+        isFirstOrder: true,
+        orderCommission: 9999n,
+      });
+      expect(out.applied.map((a) => a.promotionId)).toEqual(['first']);
+    });
+  });
+
+  describe('phase 2: invariants over generated carts', () => {
+    let seed = 987;
+    const next = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const shuffled = <T>(items: readonly T[]): T[] => {
+      const copy = [...items];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = next(i + 1);
+        [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+      }
+      return copy;
+    };
+
+    it('keeps the books exact, the caps and the order independence for the new types', () => {
+      for (let round = 0; round < 300; round++) {
+        const lines: CartLine[] = [];
+        for (let i = 0; i < 1 + next(6); i++) {
+          lines.push(
+            line(`l${i}`, `s${next(2)}`, BigInt(1 + next(5000)), 1 + next(6), `p${next(4)}`),
+          );
+        }
+        const promotions: CalculationPromotion[] = [
+          promo({
+            id: 'bxgy',
+            type: 'BUY_X_GET_Y',
+            sellerId: 's0',
+            maxShareBps: next(2) === 0 ? null : 1000 * (1 + next(9)),
+            reward: { kind: 'PERCENT', bps: 1000 * (1 + next(10)) },
+            buyXGetY: {
+              buyQty: 1 + next(3),
+              getQty: 1 + next(2),
+              maxRepeats: next(2) === 0 ? null : 1 + next(3),
+            },
+          }),
+          promo({
+            id: 'multi',
+            type: 'MULTI_BUY',
+            sellerId: 's1',
+            reward: { kind: 'FIXED', amount: 1n },
+            multiBuy: {
+              groupQty: 2 + next(3),
+              groupPrice: BigInt(1 + next(8000)),
+              maxRepeats: null,
+            },
+          }),
+          promo({
+            id: 'bundle',
+            type: 'BUNDLE',
+            sellerId: 's0',
+            productIds: ['p0', 'p1'],
+            reward: { kind: 'FIXED', amount: 1n },
+            bundle: {
+              items: [
+                { productId: 'p0', quantity: 1 + next(2) },
+                { productId: 'p1', quantity: 1 },
+              ],
+              amountOff: BigInt(1 + next(4000)),
+              maxRepeats: next(2) === 0 ? null : 1 + next(2),
+            },
+          }),
+          promo({
+            id: 'flash',
+            type: 'FLASH_SALE',
+            sellerId: null,
+            platformShareBps: 10000,
+            productIds: ['p2', 'p3'],
+            reward: { kind: 'PERCENT', bps: 500 * (1 + next(19)) },
+            unitLimit: next(8),
+          }),
+          promo({
+            id: 'tier',
+            type: 'TIERED_CART',
+            layer: 'PLATFORM_CART',
+            platformShareBps: 10000,
+            reward: { kind: 'FIXED', amount: 1n },
+            tiers: [
+              {
+                threshold: BigInt(1 + next(3000)),
+                reward: { kind: 'FIXED', amount: BigInt(1 + next(500)) },
+              },
+              {
+                threshold: BigInt(3001 + next(9000)),
+                reward: { kind: 'FIXED', amount: BigInt(501 + next(900)) },
+              },
+            ],
+          }),
+          promo({
+            id: 'batch',
+            type: 'BATCH_CODE',
+            layer: 'PLATFORM_CART',
+            platformShareBps: 10000,
+            code: 'C',
+            codeUsed: next(4) === 0,
+            reward: { kind: 'PERCENT', bps: 100 * (1 + next(40)) },
+          }),
+        ];
+        const commission = BigInt(next(3000));
+        const input = {
+          lines,
+          promotions,
+          code: next(2) === 0 ? 'C' : null,
+          orderCommission: commission,
+        };
+        const out = run(market, input);
+        let platformShare = 0n;
+        for (const l of out.lines) {
+          expect(l.allocations.reduce((t, a) => t + a.amount, 0n)).toBe(l.discount);
+          expect(l.net).toBeGreaterThanOrEqual(0n);
+          expect(l.discount).toBeLessThanOrEqual((l.gross * BigInt(market.lineCapBps)) / 10000n);
+          expect(l.allocations.filter((a) => a.layer === 'ITEM').length).toBeLessThanOrEqual(1);
+          for (const a of l.allocations) {
+            expect(a.amount).toBeGreaterThan(0n);
+            expect(a.sellerShare + a.platformShare).toBe(a.amount);
+            platformShare += a.platformShare;
+          }
+        }
+        expect(platformShare).toBeLessThanOrEqual(commission);
+        const flashPromotion = promotions.find((p) => p.id === 'flash')!;
+        const dearest = lines.reduce((m, l) => (l.unitPrice > m ? l.unitPrice : m), 0n);
+        const flashTotal = out.applied.find((a) => a.promotionId === 'flash')?.amount ?? 0n;
+        // No more than the limit's units at the dearest price at the sale percent.
+        expect(flashTotal).toBeLessThanOrEqual(
+          (BigInt(flashPromotion.unitLimit!) *
+            dearest *
+            BigInt((flashPromotion.reward as { bps: number }).bps)) /
+            10000n +
+            1n,
+        );
+        // The same answer in any order of lines and promotions.
+        const again = run(market, {
+          ...input,
+          lines: shuffled(lines),
+          promotions: shuffled(promotions),
+        });
+        expect(again).toEqual(out);
+      }
+    });
+  });
+
   describe('invariants over generated carts', () => {
     // A small seeded generator, so the carts are the same on every run.
     let seed = 12345;

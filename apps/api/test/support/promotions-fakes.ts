@@ -1,6 +1,14 @@
+import { createHash } from 'node:crypto';
 import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpProofConsumer, StepUpRefusal } from '../../src/platform/authz';
+import type { BatchCodeCrypto } from '../../src/modules/promotions/application/ports/batch-code-crypto';
+import type {
+  BatchCodeCount,
+  BatchCodeRecord,
+  BatchCodeRepository,
+} from '../../src/modules/promotions/application/ports/batch-code.repository';
+import type { FlashSales } from '../../src/modules/promotions/application/ports/flash-sales';
 import type {
   MarketSettingRecord,
   MarketSettingRepository,
@@ -286,5 +294,83 @@ export class FakeStepUp implements StepUpProofConsumer {
       verifiedAt: this.now(),
     };
     return Promise.resolve(ok(value));
+  }
+}
+
+/** The generated single-use codes in memory: unique per Market by hash, never deleted. */
+export class MemoryBatchCodes implements BatchCodeRepository {
+  readonly rows = new Map<
+    string,
+    { promotionId: Id<'Promotion'>; batchId: Id<'PromotionBatch'>; usedAt: Temporal.Instant | null }
+  >();
+  find(_market: MarketContext, codeHash: string) {
+    const row = this.rows.get(codeHash);
+    const record: BatchCodeRecord | null =
+      row === undefined ? null : { promotionId: row.promotionId, usedAt: row.usedAt };
+    return Promise.resolve(record);
+  }
+  existing(_market: MarketContext, hashes: readonly string[]) {
+    return Promise.resolve(new Set(hashes.filter((hash) => this.rows.has(hash))));
+  }
+  insertMany(
+    _market: MarketContext,
+    promotionId: Id<'Promotion'>,
+    batchId: Id<'PromotionBatch'>,
+    hashes: readonly string[],
+  ) {
+    for (const hash of hashes) {
+      if (this.rows.has(hash)) throw new Error('unique violation: promotion_batch_codes');
+      this.rows.set(hash, { promotionId, batchId, usedAt: null });
+    }
+    return Promise.resolve();
+  }
+  count(_market: MarketContext, promotionId: Id<'Promotion'>) {
+    const mine = [...this.rows.values()].filter((row) => row.promotionId === promotionId);
+    const count: BatchCodeCount = {
+      total: mine.length,
+      used: mine.filter((row) => row.usedAt !== null).length,
+    };
+    return Promise.resolve(count);
+  }
+  /** What package T2 does when an order redeems a code. */
+  markUsed(hash: string, at: Temporal.Instant) {
+    const row = this.rows.get(hash);
+    if (row === undefined) throw new Error('no such code');
+    this.rows.set(hash, { ...row, usedAt: at });
+  }
+}
+
+/**
+ * A repeatable code source: the n-th code is the n-th string over the alphabet in base-N counting
+ * (so a test can name the codes it expects), or the next of `script` first. The hash is the real
+ * SHA-256.
+ */
+export class FakeBatchCodeCrypto implements BatchCodeCrypto {
+  /** Codes handed out first, in order, before the counter takes over. */
+  script: string[] = [];
+  private counter = 0;
+  readonly requests: { alphabet: string; length: number }[] = [];
+  generate(alphabet: string, length: number): string {
+    this.requests.push({ alphabet, length });
+    const scripted = this.script.shift();
+    if (scripted !== undefined) return scripted;
+    let n = ++this.counter;
+    let code = '';
+    for (let i = 0; i < length; i++) {
+      code = alphabet[n % alphabet.length]! + code;
+      n = Math.floor(n / alphabet.length);
+    }
+    return code;
+  }
+  hash(code: string): string {
+    return createHash('sha256').update(code, 'utf8').digest('hex');
+  }
+}
+
+/** The units-sold counter of flash sales: unknown (null) until a test says otherwise. */
+export class FakeFlashSales implements FlashSales {
+  sold: Map<Id<'Promotion'>, number> | null = null;
+  soldUnits() {
+    return Promise.resolve(this.sold as ReadonlyMap<Id<'Promotion'>, number> | null);
   }
 }

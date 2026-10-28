@@ -15,6 +15,8 @@ import type {
   LineResult,
   ShippingCharge,
   ShippingResult,
+  Reward,
+  Tier,
 } from './types';
 
 // The pure discount calculation (promotions package T1; plan sections 6 and 8). Four layers in
@@ -36,6 +38,18 @@ import type {
 //   platform-funded and are outside this cap (shipping is not a seller transfer).
 // - Money is integer minor units; every share is floored and the rounding remainder goes to the
 //   largest line (ties: the smaller line id). The result never depends on the input order.
+//
+// Phase 2 types:
+// - Multi-unit item offers (buy X get Y, multi-buy, bundle) are worked out over the whole pool of
+//   units they qualify, each into a discount per line. That discount is the offer's candidate for
+//   the line, on the whole line amount, and competes with every other item-level candidate under
+//   the one-discount-per-line rule: a line is covered by one offer or not at all, never one unit
+//   by one offer and the rest by another. The pool is formed before the competition, so a line
+//   that prefers another offer keeps its units out of this one without the pool being re-formed.
+// - A limit of units (flash sale) is spent line by line, the dearest unit price first (ties:
+//   the smaller line id), only by lines the offer wins.
+// - A tiered cart discount takes the highest tier its goods amount reaches.
+// - A single-use code that was already redeemed matches the entered code and gives nothing.
 
 interface Placed {
   readonly kind: 'line' | 'shipping';
@@ -186,20 +200,150 @@ function better(
   return byFundingThenId(promotion, best.promotion) < 0;
 }
 
+const unitsOf = (line: CartLine): bigint => BigInt(line.quantity);
+
+/** Whole groups of `size` that `units` hold, within `maxRepeats` (null for none). */
+function groupsOf(units: bigint, size: bigint, maxRepeats: number | null): bigint {
+  const groups = units / size;
+  return maxRepeats === null || groups <= BigInt(maxRepeats) ? groups : BigInt(maxRepeats);
+}
+
+/** Cheapest unit price first; equal prices by the smaller line id. */
+const byPriceThenId = (a: CartLine, b: CartLine): number =>
+  a.unitPrice === b.unitPrice ? compareText(a.id, b.id) : a.unitPrice < b.unitPrice ? -1 : 1;
+
+/**
+ * Takes `count` units from the lines, cheapest first, and answers the units taken per line.
+ * Lines with no unit taken are left out.
+ */
+function takeCheapest(lines: readonly CartLine[], count: bigint): Map<string, bigint> {
+  const taken = new Map<string, bigint>();
+  let left = count;
+  for (const line of [...lines].sort(byPriceThenId)) {
+    if (left <= 0n) break;
+    const units = unitsOf(line) < left ? unitsOf(line) : left;
+    taken.set(line.id, units);
+    left -= units;
+  }
+  return taken;
+}
+
+const rewardPerUnit = (reward: CalculationPromotion['reward'], unitPrice: bigint): bigint =>
+  reward.kind === 'PERCENT' ? floorShare(unitPrice, reward.bps) : min(reward.amount, unitPrice);
+
+/**
+ * The discount per line of a promotion that works over the pool of units it qualifies (buy X get
+ * Y, multi-buy, bundle); null for a promotion that is worked out line by line. Lines it gives
+ * nothing to are not in the map.
+ */
+function poolDiscounts(
+  promotion: CalculationPromotion,
+  lines: readonly CartLine[],
+): Map<string, bigint> | null {
+  const pool = lines.filter((line) => matchesLine(promotion, line));
+  const out = new Map<string, bigint>();
+  const buyXGetY = promotion.buyXGetY ?? null;
+  if (buyXGetY !== null) {
+    const size = BigInt(buyXGetY.buyQty + buyXGetY.getQty);
+    const units = pool.reduce((sum, line) => sum + unitsOf(line), 0n);
+    const rewarded = groupsOf(units, size, buyXGetY.maxRepeats) * BigInt(buyXGetY.getQty);
+    for (const [lineId, count] of takeCheapest(pool, rewarded)) {
+      const line = pool.find((candidate) => candidate.id === lineId)!;
+      out.set(lineId, count * rewardPerUnit(promotion.reward, line.unitPrice));
+    }
+    return out;
+  }
+  const multiBuy = promotion.multiBuy ?? null;
+  if (multiBuy !== null) {
+    const size = BigInt(multiBuy.groupQty);
+    const units = pool.reduce((sum, line) => sum + unitsOf(line), 0n);
+    const groups = groupsOf(units, size, multiBuy.maxRepeats);
+    const groupsPrice = groups * multiBuy.groupPrice;
+    return spreadOverUnits(pool, takeCheapest(pool, groups * size), (cost) => cost - groupsPrice);
+  }
+  const bundle = promotion.bundle ?? null;
+  if (bundle !== null) {
+    let sets: bigint | null = null;
+    for (const item of bundle.items) {
+      const have = pool
+        .filter((line) => line.productId === item.productId)
+        .reduce((sum, line) => sum + unitsOf(line), 0n);
+      const complete = have / BigInt(item.quantity);
+      sets = sets === null || complete < sets ? complete : sets;
+    }
+    sets = sets === null ? 0n : groupsOf(sets, 1n, bundle.maxRepeats);
+    const taken = new Map<string, bigint>();
+    for (const item of bundle.items) {
+      const ofItem = pool.filter((line) => line.productId === item.productId);
+      for (const [lineId, count] of takeCheapest(ofItem, sets * BigInt(item.quantity))) {
+        taken.set(lineId, (taken.get(lineId) ?? 0n) + count);
+      }
+    }
+    const setsOff = sets * bundle.amountOff;
+    return spreadOverUnits(pool, taken, () => setsOff);
+  }
+  return null;
+}
+
+/**
+ * Spreads a group offer over the lines whose units it uses: `discountOf` is the discount for those
+ * units given what they cost on their own (multi-buy: that cost less the groups' price; bundle: the
+ * amount off the sets). Never more than the units cost; the split follows each line's share of that
+ * cost and the remainder goes to the largest line.
+ */
+function spreadOverUnits(
+  pool: readonly CartLine[],
+  taken: ReadonlyMap<string, bigint>,
+  discountOf: (cost: bigint) => bigint,
+): Map<string, bigint> {
+  const value = (line: CartLine) => (taken.get(line.id) ?? 0n) * line.unitPrice;
+  const used = pool.filter((line) => value(line) > 0n);
+  const cost = used.reduce((sum, line) => sum + value(line), 0n);
+  const total = min(discountOf(cost), cost);
+  if (total <= 0n) return new Map();
+  const split = distribute(
+    total,
+    used.map((line) => ({ id: line.id, weight: value(line), cap: value(line) })),
+  );
+  return new Map([...split].filter(([, amount]) => amount > 0n));
+}
+
 function applyItemLayer(
   state: State,
   lines: readonly CartLine[],
   promotions: readonly CalculationPromotion[],
 ): void {
+  const pooled = new Map<string, Map<string, bigint>>();
+  for (const promotion of promotions) {
+    const discounts = poolDiscounts(promotion, lines);
+    if (discounts !== null) pooled.set(promotion.id, discounts);
+  }
+  // The units a limited promotion may still discount in this order.
+  const unitsLeft = new Map<string, bigint>();
+  for (const promotion of promotions) {
+    if (promotion.unitLimit != null) unitsLeft.set(promotion.id, BigInt(promotion.unitLimit));
+  }
   const chosen = new Map<string, Map<string, bigint>>();
-  for (const line of lines) {
-    let best: { amount: bigint; promotion: CalculationPromotion } | null = null;
+  // The dearest unit price first, so a limit of units goes where it saves most (ties: line id).
+  const ordered = [...lines].sort((a, b) =>
+    a.unitPrice === b.unitPrice ? compareText(a.id, b.id) : a.unitPrice > b.unitPrice ? -1 : 1,
+  );
+  for (const line of ordered) {
+    let best: { amount: bigint; promotion: CalculationPromotion; units: bigint } | null = null;
     for (const promotion of promotions) {
       if (!matchesLine(promotion, line)) continue;
+      const pool = pooled.get(promotion.id);
+      // A limited promotion covers only the units that are left.
+      const covered = unitsLeft.has(promotion.id)
+        ? min(unitsOf(line), unitsLeft.get(promotion.id)!)
+        : unitsOf(line);
+      const coveredGross = line.unitPrice * covered;
       const wanted =
-        promotion.reward.kind === 'PERCENT'
-          ? floorShare(lineGross(line), promotion.reward.bps)
-          : promotion.reward.amount * BigInt(line.quantity);
+        pool !== undefined
+          ? (pool.get(line.id) ?? 0n)
+          : promotion.reward.kind === 'PERCENT'
+            ? floorShare(coveredGross, promotion.reward.bps)
+            : promotion.reward.amount * covered;
       const byShare =
         promotion.maxShareBps === null
           ? wanted
@@ -207,12 +351,15 @@ function applyItemLayer(
       const bySeller = sellerLineLimit(promotion, lineGross(line));
       const share = bySeller === null ? byShare : min(byShare, bySeller);
       const amount = min(share, min(state.remaining.get(line.id)!, state.capLeft.get(line.id)!));
-      if (amount > 0n && better(amount, promotion, best)) best = { amount, promotion };
+      if (amount > 0n && better(amount, promotion, best))
+        best = { amount, promotion, units: covered };
     }
     if (best !== null) {
       const perLine = chosen.get(best.promotion.id) ?? new Map<string, bigint>();
       perLine.set(line.id, best.amount);
       chosen.set(best.promotion.id, perLine);
+      const left = unitsLeft.get(best.promotion.id);
+      if (left !== undefined) unitsLeft.set(best.promotion.id, left - best.units);
     }
   }
   for (const promotion of [...promotions].sort(byFundingThenId)) {
@@ -220,6 +367,17 @@ function applyItemLayer(
     if (perLine === undefined) continue;
     commit(state, promotion, trim(perLine, limitOf(promotion, state, false)), 'line');
   }
+}
+
+/** The reward of the highest tier whose threshold `base` reaches; null below the first tier. */
+function tierReward(tiers: readonly Tier[], base: bigint): Reward | null {
+  let reached: Tier | null = null;
+  for (const tier of tiers) {
+    if (tier.threshold <= base && (reached === null || tier.threshold > reached.threshold)) {
+      reached = tier;
+    }
+  }
+  return reached === null ? null : reached.reward;
 }
 
 function applyCartPromotion(
@@ -239,10 +397,10 @@ function applyCartPromotion(
     return bySeller === null ? left : min(left, bySeller);
   };
   const capacity = eligible.reduce((sum, line) => sum + room(line), 0n);
-  let amount =
-    promotion.reward.kind === 'PERCENT'
-      ? floorShare(base, promotion.reward.bps)
-      : min(promotion.reward.amount, base);
+  // A tiered promotion gives the reward of the highest tier its goods amount reaches.
+  const reward = promotion.tiers == null ? promotion.reward : tierReward(promotion.tiers, base);
+  if (reward === null) return;
+  let amount = reward.kind === 'PERCENT' ? floorShare(base, reward.bps) : min(reward.amount, base);
   amount = min(amount, capacity);
   if (promotion.maxShareBps !== null) amount = min(amount, floorShare(base, promotion.maxShareBps));
   const limit = limitOf(promotion, state, false);
@@ -357,6 +515,64 @@ function runScenario(input: CalculationInput, promotions: readonly CalculationPr
 const buyerDiscount = (state: State): bigint =>
   state.placed.reduce((sum, placed) => sum + placed.allocation.amount, 0n);
 
+const isCount = (value: number, max = 1_000_000): boolean =>
+  Number.isInteger(value) && value >= 1 && value <= max;
+const validReward = (reward: Reward): boolean =>
+  reward.kind === 'PERCENT'
+    ? Number.isInteger(reward.bps) && reward.bps >= 1 && reward.bps <= 10000
+    : reward.amount >= 1n;
+
+/** The path of the first wrong phase 2 field of a promotion, or null. */
+function validatePhase2(promotion: CalculationPromotion): string | null {
+  const tiers = promotion.tiers ?? null;
+  if (tiers !== null) {
+    if (tiers.length === 0 || tiers.length > 50) return 'promotions.tiers';
+    const seen = new Set<bigint>();
+    for (const tier of tiers) {
+      if (tier.threshold < 0n || seen.has(tier.threshold) || !validReward(tier.reward)) {
+        return 'promotions.tiers';
+      }
+      seen.add(tier.threshold);
+    }
+  }
+  const buyXGetY = promotion.buyXGetY ?? null;
+  if (
+    buyXGetY !== null &&
+    (!isCount(buyXGetY.buyQty) ||
+      !isCount(buyXGetY.getQty) ||
+      (buyXGetY.maxRepeats !== null && !isCount(buyXGetY.maxRepeats)))
+  ) {
+    return 'promotions.buyXGetY';
+  }
+  const multiBuy = promotion.multiBuy ?? null;
+  if (
+    multiBuy !== null &&
+    (!isCount(multiBuy.groupQty) ||
+      multiBuy.groupPrice < 0n ||
+      (multiBuy.maxRepeats !== null && !isCount(multiBuy.maxRepeats)))
+  ) {
+    return 'promotions.multiBuy';
+  }
+  const bundle = promotion.bundle ?? null;
+  if (bundle !== null) {
+    const products = new Set(bundle.items.map((item) => item.productId));
+    if (
+      bundle.items.length === 0 ||
+      products.size !== bundle.items.length ||
+      bundle.items.some((item) => !isCount(item.quantity)) ||
+      bundle.amountOff < 0n ||
+      (bundle.maxRepeats !== null && !isCount(bundle.maxRepeats))
+    ) {
+      return 'promotions.bundle';
+    }
+  }
+  const unitLimit = promotion.unitLimit ?? null;
+  if (unitLimit !== null && (!Number.isInteger(unitLimit) || unitLimit < 0)) {
+    return 'promotions.unitLimit';
+  }
+  return null;
+}
+
 function validate(input: CalculationInput): CalculationError | null {
   const bad = (path: string): CalculationError => ({ code: 'calculation.invalid-input', path });
   if (!/^[A-Z]{3}$/.test(input.currency)) return bad('currency');
@@ -401,6 +617,8 @@ function validate(input: CalculationInput): CalculationError | null {
     ) {
       return bad('promotions.sellerMaxShareBps');
     }
+    const shape = validatePhase2(promotion);
+    if (shape !== null) return bad(shape);
     for (const limit of [
       promotion.capAmount,
       promotion.maxPerOrder,
@@ -424,7 +642,10 @@ export function calculateDiscounts(
   if (invalid !== null) return err(invalid);
 
   const candidates = input.promotions
-    .filter((promotion) => promotion.code === null || promotion.code === input.code)
+    .filter(
+      (promotion) =>
+        promotion.code === null || (promotion.code === input.code && promotion.codeUsed !== true),
+    )
     .filter((promotion) => !promotion.firstOrderOnly || input.isFirstOrder)
     .sort((a, b) => compareText(a.id, b.id));
   const stack = candidates.filter((promotion) => promotion.combinable);

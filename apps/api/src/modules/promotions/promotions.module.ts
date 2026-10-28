@@ -12,6 +12,9 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
+import { BATCH_CODE_REPOSITORY } from './application/ports/batch-code.repository';
+import { FLASH_SALES } from './application/ports/flash-sales';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { OPT_IN_REPOSITORY } from './application/ports/opt-in.repository';
 import { PRICE_HISTORY } from './application/ports/price-history';
@@ -24,6 +27,8 @@ import {
   SHIPPING_THRESHOLD_REPOSITORY,
 } from './application/ports/settings.repository';
 import type { PromotionsDependencies } from './application/promotions-dependencies';
+import { GenerateBatchCodes } from './application/use-cases/generate-batch-codes.use-case';
+import { ViewBatchCodeSummary } from './application/use-cases/view-batch-code-summary.use-case';
 import { CheckWasPrice } from './application/use-cases/check-was-price.use-case';
 import { CreateOwnPromotion } from './application/use-cases/create-own-promotion.use-case';
 import { CreatePromotion } from './application/use-cases/create-promotion.use-case';
@@ -73,6 +78,9 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['firstOrder', FIRST_ORDER_SETTINGS_REPOSITORY],
   ['thresholds', SHIPPING_THRESHOLD_REPOSITORY],
   ['policy', PROMOTIONS_POLICY],
+  ['batchCodes', BATCH_CODE_REPOSITORY],
+  ['codeCrypto', BATCH_CODE_CRYPTO],
+  ['flashSales', FLASH_SALES],
   ['sellerActivity', SELLER_ACTIVITY],
   ['priceHistory', PRICE_HISTORY],
   ['stepUp', STEP_UP_CONSUMER],
@@ -121,6 +129,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PausePromotion,
       ResumePromotion,
       SetPromotionBudget,
+      GenerateBatchCodes,
+      ViewBatchCodeSummary,
       ListPromotionReviews,
       DecidePromotionReview,
       ViewFirstOrderSettings,

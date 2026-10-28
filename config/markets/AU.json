@@ -90,6 +90,12 @@
     "wasPrice": { "windowDays": 90, "minDaysAtPrice": 28 },
     "gstRulingConfirmed": false,
     "maxActivePromotionsPerSeller": 50,
+    "batchCodes": {
+      "codeLength": 12,
+      "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+      "maxPerBatch": 5000,
+      "maxPerPromotion": 50000
+    },
     "firstOrder": {
       "enabled": true,
       "kind": "FIXED",

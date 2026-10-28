@@ -9,6 +9,9 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import {
+  FakeBatchCodeCrypto,
+  FakeFlashSales,
+  MemoryBatchCodes,
   FakePriceHistory,
   FakeSellerActivity,
   FakeStepUp,
@@ -105,6 +108,9 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
   let setting: MemoryPromotionsSetting;
   let firstOrder: MemoryFirstOrder;
   let thresholds: MemoryThresholds;
+  let batchCodes: MemoryBatchCodes;
+  let codeCrypto: FakeBatchCodeCrypto;
+  let flashSales: FakeFlashSales;
   let activity: FakeSellerActivity;
   let history: FakePriceHistory;
   let stepUp: FakeStepUp;
@@ -167,6 +173,9 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
     setting = new MemoryPromotionsSetting();
     firstOrder = new MemoryFirstOrder();
     thresholds = new MemoryThresholds();
+    batchCodes = new MemoryBatchCodes();
+    codeCrypto = new FakeBatchCodeCrypto();
+    flashSales = new FakeFlashSales();
     activity = new FakeSellerActivity();
     history = new FakePriceHistory();
     stepUp = new FakeStepUp(() => clock.now());
@@ -181,6 +190,9 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       firstOrder,
       thresholds,
       policy,
+      batchCodes,
+      codeCrypto,
+      flashSales,
       sellerActivity: activity,
       priceHistory: history,
       stepUp,

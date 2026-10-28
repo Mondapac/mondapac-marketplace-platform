@@ -49,8 +49,24 @@ interface Row {
   readonly createdByAccountId: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly buyQty: number | null;
+  readonly getQty: number | null;
+  readonly groupQty: number | null;
+  readonly maxRepeatsPerOrder: number | null;
+  readonly flashUnitLimit: number | null;
+  readonly flashTimeZone: string | null;
   readonly targets: readonly { readonly kind: string; readonly value: string }[];
+  readonly tiers: readonly {
+    readonly thresholdMinor: bigint;
+    readonly rewardKind: string;
+    readonly rewardBps: number | null;
+    readonly rewardAmountMinor: bigint | null;
+  }[];
+  readonly bundleItems: readonly { readonly productId: string; readonly quantity: number }[];
 }
+
+/** Every read loads a promotion with its targets, tiers and bundle items. */
+const WITH_CHILDREN = { targets: true, tiers: true, bundleItems: true } as const;
 
 function toRecord(row: Row): PromotionRecord {
   const targets = (kind: string) =>
@@ -88,6 +104,26 @@ function toRecord(row: Row): PromotionRecord {
     productIds: targets('PRODUCT') as Id<'Product'>[],
     sellerIds: targets('SELLER') as Id<'Seller'>[],
     zones: targets('ZONE'),
+    tiers: [...row.tiers]
+      .sort((a, b) =>
+        a.thresholdMinor < b.thresholdMinor ? -1 : a.thresholdMinor > b.thresholdMinor ? 1 : 0,
+      )
+      .map((tier) => ({
+        thresholdMinor: tier.thresholdMinor,
+        reward:
+          tier.rewardKind === 'PERCENT'
+            ? { kind: 'PERCENT' as const, bps: tier.rewardBps ?? 0 }
+            : { kind: 'FIXED' as const, amount: tier.rewardAmountMinor ?? 0n },
+      })),
+    buyQty: row.buyQty,
+    getQty: row.getQty,
+    groupQty: row.groupQty,
+    bundleItems: [...row.bundleItems]
+      .sort((a, b) => (a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0))
+      .map((item) => ({ productId: item.productId as Id<'Product'>, quantity: item.quantity })),
+    maxRepeatsPerOrder: row.maxRepeatsPerOrder,
+    flashUnitLimit: row.flashUnitLimit,
+    flashTimeZone: row.flashTimeZone,
     createdByAccountId: row.createdByAccountId as Id<'Account'>,
     createdAt: fromDate(row.createdAt),
     updatedAt: fromDate(row.updatedAt),
@@ -115,8 +151,34 @@ const editable = (record: PromotionRecord) => ({
   maxUsesPerCustomer: record.maxUsesPerCustomer,
   budgetMinor: record.budgetMinor,
   minSpendMinor: record.minSpendMinor,
+  buyQty: record.buyQty,
+  getQty: record.getQty,
+  groupQty: record.groupQty,
+  maxRepeatsPerOrder: record.maxRepeatsPerOrder,
+  flashUnitLimit: record.flashUnitLimit,
+  flashTimeZone: record.flashTimeZone,
   updatedAt: toDate(record.updatedAt),
 });
+
+const tierRows = (market: MarketContext, record: PromotionRecord) =>
+  record.tiers.map((tier) => ({
+    marketId: market.marketId,
+    tenantId: market.tenantId,
+    promotionId: record.id,
+    thresholdMinor: tier.thresholdMinor,
+    rewardKind: tier.reward.kind,
+    rewardBps: tier.reward.kind === 'PERCENT' ? tier.reward.bps : null,
+    rewardAmountMinor: tier.reward.kind === 'FIXED' ? tier.reward.amount : null,
+  }));
+
+const bundleRows = (market: MarketContext, record: PromotionRecord) =>
+  record.bundleItems.map((item) => ({
+    marketId: market.marketId,
+    tenantId: market.tenantId,
+    promotionId: record.id,
+    productId: item.productId,
+    quantity: item.quantity,
+  }));
 
 const targetRows = (market: MarketContext, record: PromotionRecord) =>
   [
@@ -173,6 +235,10 @@ export class PrismaPromotionRepository implements PromotionRepository {
     });
     const targets = targetRows(market, record);
     if (targets.length > 0) await tx.promotionsTarget.createMany({ data: targets });
+    const tiers = tierRows(market, record);
+    if (tiers.length > 0) await tx.promotionsTier.createMany({ data: tiers });
+    const items = bundleRows(market, record);
+    if (items.length > 0) await tx.promotionsBundleItem.createMany({ data: items });
     return 'inserted';
   }
 
@@ -187,12 +253,23 @@ export class PrismaPromotionRepository implements PromotionRepository {
     });
     const targets = targetRows(market, record);
     if (targets.length > 0) await tx.promotionsTarget.createMany({ data: targets });
+    // The tiers and the bundle items are replaced as sets too.
+    await tx.promotionsTier.deleteMany({
+      where: { marketId: market.marketId, promotionId: record.id },
+    });
+    const tiers = tierRows(market, record);
+    if (tiers.length > 0) await tx.promotionsTier.createMany({ data: tiers });
+    await tx.promotionsBundleItem.deleteMany({
+      where: { marketId: market.marketId, promotionId: record.id },
+    });
+    const items = bundleRows(market, record);
+    if (items.length > 0) await tx.promotionsBundleItem.createMany({ data: items });
   }
 
   async find(market: MarketContext, id: Id<'Promotion'>): Promise<PromotionRecord | null> {
     const row = await this.prisma.tx(market).promotionsPromotion.findFirst({
       where: { marketId: market.marketId, id },
-      include: { targets: true },
+      include: WITH_CHILDREN,
     });
     return row === null ? null : toRecord(row);
   }
@@ -205,7 +282,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
     for (let attempt = 0; attempt < 5; attempt++) {
       const row = await tx.promotionsPromotion.findFirst({
         where: { marketId: market.marketId, id },
-        include: { targets: true },
+        include: WITH_CHILDREN,
       });
       if (row === null) return null;
       const locked = await tx.promotionsPromotion.updateMany({
@@ -216,7 +293,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
       // The row is ours now: read it again, so what is returned is what the lock protects.
       const held = await tx.promotionsPromotion.findFirst({
         where: { marketId: market.marketId, id },
-        include: { targets: true },
+        include: WITH_CHILDREN,
       });
       return held === null ? null : toRecord(held);
     }
@@ -230,7 +307,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
     if (ids.length === 0) return [];
     const rows = await this.prisma.tx(market).promotionsPromotion.findMany({
       where: { marketId: market.marketId, id: { in: [...ids] } },
-      include: { targets: true },
+      include: WITH_CHILDREN,
     });
     return rows.map(toRecord);
   }
@@ -242,7 +319,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
         ...(filter.status === undefined ? {} : { status: filter.status }),
         ...(filter.ownerSellerId === undefined ? {} : { ownerSellerId: filter.ownerSellerId }),
       },
-      include: { targets: true },
+      include: WITH_CHILDREN,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: filter.limit,
     });
@@ -273,7 +350,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
           },
         ],
       },
-      include: { targets: true },
+      include: WITH_CHILDREN,
       orderBy: { id: 'asc' },
     });
     return rows.map(toRecord);

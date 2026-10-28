@@ -705,10 +705,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
         'budget_minor',
+        'buy_qty',
         'cap_minor',
         'combinable',
         'ends_at',
+        'flash_time_zone',
+        'flash_unit_limit',
+        'get_qty',
+        'group_qty',
         'max_per_order_minor',
+        'max_repeats_per_order',
         'max_total_uses',
         'max_uses_per_customer',
         'min_spend_minor',
@@ -728,6 +734,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'promotions.promotion_targets': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.promotion_usage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 2: tiers and bundle items are replaced as a set; generated codes are insert-only here
+    // (package T2 grants the update of used_at).
+    'promotions.promotion_tiers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.promotion_bundle_items': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['decided_by_account_id', 'opted_in_at', 'withdrawn_at'],

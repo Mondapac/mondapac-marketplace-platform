@@ -56,6 +56,14 @@ describe.each([['AU'], ['ZZ']] as const)('promotions for a cart in market %s', (
     productIds: [],
     sellerIds: [],
     zones: [],
+    tiers: [],
+    buyQty: null,
+    getQty: null,
+    groupQty: null,
+    bundleItems: [],
+    maxRepeatsPerOrder: null,
+    flashUnitLimit: null,
+    flashTimeZone: null,
     ...extra,
   });
   const cart = (
@@ -80,6 +88,18 @@ describe.each([['AU'], ['ZZ']] as const)('promotions for a cart in market %s', (
     expect(cart([record(1, { testMode: true })], { testMode: true })).toHaveLength(1);
     // Seller money is never held back by the ruling.
     expect(cart([record(2, { funding: 'SELLER', ownerSellerId: SELLER })])).toHaveLength(1);
+  });
+
+  it('leaves out a row without the terms its type needs, so one bad row never fails a quote', () => {
+    const seller = { funding: 'SELLER', ownerSellerId: SELLER } as const;
+    expect(
+      cart(
+        [record(1, { type: 'TIERED_CART', tiers: [] }), record(2, { type: 'BUNDLE', ...seller })],
+        { testMode: true },
+      ),
+    ).toEqual([]);
+    expect(cart([record(3, { type: 'BUY_X_GET_Y', ...seller })], { testMode: true })).toEqual([]);
+    expect(cart([record(4, { type: 'MULTI_BUY', ...seller })], { testMode: true })).toEqual([]);
   });
 
   it('leaves a test-mode promotion out of a real order', () => {

@@ -1,6 +1,12 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import { BATCH_CODE_CRYPTO, type BatchCodeCrypto } from '../application/ports/batch-code-crypto';
+import {
+  BATCH_CODE_REPOSITORY,
+  type BatchCodeRepository,
+} from '../application/ports/batch-code.repository';
+import { FLASH_SALES, type FlashSales } from '../application/ports/flash-sales';
 import {
   MARKET_SETTING_REPOSITORY,
   type MarketSettingRepository,
@@ -32,7 +38,13 @@ import {
   PrismaFirstOrderSettingsRepository,
   PrismaShippingThresholdRepository,
 } from './prisma-settings.repository';
-import { UnknownPriceHistory, UnknownSellerActivity } from './unavailable-adapters';
+import { CryptoBatchCodeCrypto } from './crypto-batch-code-crypto';
+import { PrismaBatchCodeRepository } from './prisma-batch-code.repository';
+import {
+  UnknownFlashSales,
+  UnknownPriceHistory,
+  UnknownSellerActivity,
+} from './unavailable-adapters';
 
 /** Binds the ports of promotions. Only this layer may reach `PrismaService`. */
 export const promotionsProviders: readonly FactoryProvider[] = [
@@ -75,6 +87,20 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     provide: PROMOTIONS_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): PromotionsPolicy => new ConfigPromotionsPolicy(markets),
+  },
+  {
+    provide: BATCH_CODE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BatchCodeRepository =>
+      new PrismaBatchCodeRepository(prisma),
+  },
+  {
+    provide: BATCH_CODE_CRYPTO,
+    useFactory: (): BatchCodeCrypto => new CryptoBatchCodeCrypto(),
+  },
+  {
+    provide: FLASH_SALES,
+    useFactory: (): FlashSales => new UnknownFlashSales(),
   },
   {
     provide: SELLER_ACTIVITY,

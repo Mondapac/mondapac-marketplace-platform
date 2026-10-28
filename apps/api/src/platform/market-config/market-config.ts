@@ -1705,6 +1705,11 @@ const marketSchema = z
      * be created and applied in test mode only. `firstOrder`: the first-order discount an admin
      * has not yet edited (the stored settings win): switch, `kind` (PERCENT uses `percentBps`,
      * FIXED uses `amountMinor`), optional `capMinor`, `minSpendMinor` and `monthlyBudgetMinor`.
+     * `batchCodes` (phase 2, single-use code batches; absent means an admin cannot generate
+     * them): `codeLength` and `alphabet` (upper-case letters and digits, each once) of a generated
+     * code, whose entropy (`codeLength` x log2 of the alphabet size) must be at least 60 bits;
+     * `maxPerBatch` the most codes one generating call makes; `maxPerPromotion` the most codes
+     * one promotion may hold in all.
      * Whether promotions are on is not config: an admin sets it at runtime
      * (`promotions.market_settings`), off by default.
      */
@@ -1722,6 +1727,25 @@ const marketSchema = z
         }),
         gstRulingConfirmed: z.boolean(),
         maxActivePromotionsPerSeller: z.number().int().min(1).max(10000),
+        batchCodes: z
+          .strictObject({
+            codeLength: z.number().int().min(8).max(32),
+            alphabet: z
+              .string()
+              .regex(/^[A-Z0-9]{16,36}$/, 'upper-case letters and digits, 16 to 36 of them')
+              .refine((value) => new Set(value).size === value.length, 'each character once'),
+            maxPerBatch: z.number().int().min(1).max(100000),
+            maxPerPromotion: z.number().int().min(1).max(1000000),
+          })
+          .refine(
+            (value) => value.codeLength * Math.log2(value.alphabet.length) >= 60,
+            'a code needs at least 60 bits of entropy (codeLength x log2 alphabet size)',
+          )
+          .refine(
+            (value) => value.maxPerPromotion >= value.maxPerBatch,
+            'maxPerPromotion must be at least maxPerBatch',
+          )
+          .optional(),
         firstOrder: z
           .strictObject({
             enabled: z.boolean(),
