@@ -74,7 +74,9 @@ async function fund() {
   const form = {
     amount: String(FUNDING_MINOR),
     currency: CURRENCY.toLowerCase(),
-    payment_method: 'pm_card_bypassPending',
+    // The US bypass card (pm_card_bypassPending) leaves an AU platform's funds pending (first
+    // run of this check); the international one settles into the available balance.
+    payment_method: 'pm_card_bypassPendingInternational',
     confirm: 'true',
     'automatic_payment_methods[enabled]': 'true',
     'automatic_payment_methods[allow_redirects]': 'never',
@@ -94,14 +96,14 @@ async function fund() {
     return false;
   }
   const balance = await stripe(key, 'GET', '/v1/balance');
-  const available = (balance.body.available ?? []).find(
-    (entry) => entry.currency === CURRENCY.toLowerCase(),
-  );
+  const pick = (list) =>
+    (list ?? []).find((entry) => entry.currency === CURRENCY.toLowerCase())?.amount ?? 0;
+  const available = { amount: pick(balance.body.available) };
   return report.check(
     'the platform has an available balance to transfer',
     balance.status === 200 && (available?.amount ?? 0) >= AMOUNT_MINOR,
     balance.status === 200
-      ? `available ${available?.amount ?? 0} ${CURRENCY}`
+      ? `available ${available.amount}, pending ${pick(balance.body.pending)} ${CURRENCY}`
       : stripeError(balance),
   );
 }
