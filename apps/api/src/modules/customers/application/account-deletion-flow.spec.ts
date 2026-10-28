@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import {
@@ -986,10 +987,61 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       expect(units.units.some((u) => u.options.isolation === 'serializable')).toBe(true);
     });
 
-    it('keeps the request after identity cannot end the sessions', async () => {
-      facades.adminEnd = err({ code: 'access.denied' });
-      expect((await adminAsking()).ok).toBe(true);
-      expect(rowsOf()).toHaveLength(1);
+    it('keeps the request after identity cannot end the sessions, retries once and warns with ids only', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        facades.adminEnd = err({ code: 'access.denied' });
+        const made = await adminAsking();
+        expect(made.ok).toBe(true);
+        expect(rowsOf()).toHaveLength(1);
+        expect(facades.adminEndFor).toHaveLength(2);
+        expect(warn).toHaveBeenCalledTimes(1);
+        const logged = warn.mock.calls[0]![0] as Record<string, unknown>;
+        expect(logged).toMatchObject({
+          msg: 'customers.admin-request-account-deletion.sessions-not-ended',
+          sessions: 'access.denied',
+          requestId: rowsOf()[0]!.id,
+          accountId: BUYER,
+          marketId: market.marketId,
+        });
+        for (const text of [TICKET, WHY]) expect(JSON.stringify(logged)).not.toContain(text);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('does not retry or warn when the sessions end the first time', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect((await adminAsking()).ok).toBe(true);
+        expect(facades.adminEndFor).toHaveLength(1);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('refuses an admin session that carries a seller', async () => {
+      // Unreachable through the actor's minting (a seller id means the seller population): the
+      // check is defence in depth, so the context is forged here.
+      const sellerAdmin = {
+        ...adminContext(),
+        actor: { ...adminContext().actor, sellerId: id<'Seller'>(0x5e) },
+      } as unknown as CallContext;
+      expect(await adminAsking(sellerAdmin)).toEqual(err({ code: 'access.denied' }));
+      expect(rowsOf()).toEqual([]);
+      expect(stepUp.asked).toEqual([]);
+    });
+
+    it('redacts the admin text when the request completes, keeping the ticket', async () => {
+      await adminAsking();
+      clock.set(T0.add({ hours: 30 * 24 }));
+      await run();
+      expect(rowsOf()[0]).toMatchObject({
+        status: 'completed',
+        redactedAt: clock.now(),
+        adminOrigin: { adminAccountId: ADMIN, ticketRef: TICKET, reason: null },
+      });
     });
 
     it('is for a platform admin only: not a buyer, a seller, the system or an acting-as session', async () => {
@@ -1117,6 +1169,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       await adminAsking();
       expect(await cancel()).toEqual(ok({ code: 'cancelled' }));
       expect(rowsOf()[0]?.status).toBe('cancelled');
+      expect(rowsOf()[0]?.adminOrigin?.reason).toBeNull();
     });
 
     describe('the admin cancel', () => {
@@ -1130,7 +1183,10 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
         expect(rowsOf()[0]).toMatchObject({
           status: 'cancelled',
           cancelReason: 'admin',
-          cancelledByAdmin: { adminAccountId: ADMIN, note: 'Buyer changed their mind' },
+          cancelledByAdmin: { adminAccountId: ADMIN },
+          redactedAt: T0,
+          // The free text goes with the closing; the ticket stays (Hassan M2).
+          adminOrigin: { adminAccountId: ADMIN, ticketRef: TICKET, reason: null },
         });
         expect(stepUp.asked).toEqual(['customers.buyer-account.delete']);
         expect(audit.entries).toEqual([

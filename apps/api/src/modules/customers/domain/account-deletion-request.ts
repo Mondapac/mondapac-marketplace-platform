@@ -36,12 +36,14 @@ export type AccountDeletionRequester = 'customer' | 'admin';
 
 /**
  * What an admin entered when asking for a buyer's deletion. Free text: kept on the request row
- * (part of the audit evidence), never in an event or an audit row.
+ * (part of the audit evidence) while the request is open and its reason redacted when it closes;
+ * never in an event or an audit row.
  */
 export interface AdminDeletionOrigin {
   readonly adminAccountId: Id<'Account'>;
   readonly ticketRef: string;
-  readonly reason: string;
+  /** Free text, possible personal data: null once the request is closed (redacted, ticket kept). */
+  readonly reason: string | null;
 }
 
 /** A support ticket reference: 1 to 64 characters, letters, digits and `. _ # / -`, no spaces. */

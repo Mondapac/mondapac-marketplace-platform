@@ -110,10 +110,9 @@ export type StoredDeletionRequest = AccountDeletionRequest & {
   readonly market: string;
   readonly closedAt: Temporal.Instant | null;
   readonly cancelReason: 'customer' | 'sign-in' | 'admin' | null;
-  readonly cancelledByAdmin: {
-    readonly adminAccountId: Id<'Account'>;
-    readonly note: string;
-  } | null;
+  readonly cancelledByAdmin: { readonly adminAccountId: Id<'Account'> } | null;
+  /** When an admin request's reason was redacted at its closing; null otherwise. */
+  readonly redactedAt: Temporal.Instant | null;
 };
 
 /**
@@ -129,6 +128,13 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     const hook = this.beforeNextTransition;
     this.beforeNextTransition = null;
     hook?.();
+  }
+
+  /** The closing of an admin request drops its free text, as the database does; the ticket stays. */
+  private redacted(row: StoredDeletionRequest, at: Temporal.Instant) {
+    return row.adminOrigin === null
+      ? {}
+      : { adminOrigin: { ...row.adminOrigin, reason: null }, redactedAt: at };
   }
 
   private isOpen(row: StoredDeletionRequest) {
@@ -149,6 +155,7 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
       closedAt: null,
       cancelReason: null,
       cancelledByAdmin: null,
+      redactedAt: null,
     });
     return Promise.resolve(true);
   }
@@ -162,7 +169,6 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     market: MarketContext,
     id: Id<'AccountDeletionRequest'>,
     adminAccountId: Id<'Account'>,
-    note: string,
     at: Temporal.Instant,
   ) {
     this.interleave();
@@ -175,7 +181,8 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
       status: 'cancelled',
       closedAt: at,
       cancelReason: 'admin',
-      cancelledByAdmin: { adminAccountId, note },
+      cancelledByAdmin: { adminAccountId },
+      ...this.redacted(row, at),
     });
     return Promise.resolve(true);
   }
@@ -218,7 +225,13 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     if (row === undefined || row.market !== market.marketId || row.status !== 'pending') {
       return Promise.resolve(false);
     }
-    this.rows.set(id, { ...row, status: 'cancelled', closedAt: at, cancelReason: reason });
+    this.rows.set(id, {
+      ...row,
+      status: 'cancelled',
+      closedAt: at,
+      cancelReason: reason,
+      ...this.redacted(row, at),
+    });
     return Promise.resolve(true);
   }
 
@@ -273,7 +286,7 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     ) {
       return Promise.resolve(false);
     }
-    this.rows.set(id, { ...row, status: 'completed', closedAt: at });
+    this.rows.set(id, { ...row, status: 'completed', closedAt: at, ...this.redacted(row, at) });
     return Promise.resolve(true);
   }
 

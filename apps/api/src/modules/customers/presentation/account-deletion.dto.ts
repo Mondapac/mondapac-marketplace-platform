@@ -86,7 +86,10 @@ export class AdminRequestAccountDeletionRequest {
   ticketRef!: string;
   @ApiProperty({
     maxLength: BOUNDS.reasonLength,
-    description: 'Why: 1 to 500 characters of one line of plain text. Kept on the request only.',
+    description:
+      'Why: 1 to 500 characters of one line of plain text, not blank. Do not enter personal data ' +
+      '(no name, email, phone or address of the buyer): put those in the support ticket. Kept on ' +
+      'the request only while it is open; removed when it is closed.',
   })
   reason!: string;
   @ApiProperty({ enum: [true], description: 'Must be true: the admin confirms the request.' })
@@ -96,7 +99,10 @@ export class AdminRequestAccountDeletionRequest {
 export class AdminCancelAccountDeletionRequest {
   @ApiProperty({
     maxLength: BOUNDS.reasonLength,
-    description: 'Why: 1 to 500 characters of one line of plain text. Kept on the request only.',
+    description:
+      'Why: 1 to 500 characters of one line of plain text, not blank. Do not enter personal data ' +
+      '(no name, email, phone or address of the buyer). Checked and audited by the admin id only; ' +
+      'the text itself is not stored.',
   })
   reason!: string;
 }

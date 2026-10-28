@@ -84,12 +84,14 @@ model CustomersAccountDeletionRequest {
   adminAccountId    String?   @map("admin_account_id") @db.Uuid
   /// The support ticket of an admin request: admin-entered text, kept here and out of events and audit.
   ticketRef         String?   @map("ticket_ref") @db.VarChar(64)
-  /// Why an admin made the request: admin-entered text, 1 to 500 characters; same rule as ticketRef.
+  /// Why an admin made the request: admin-entered free text, 1 to 500 characters, possible personal
+  /// data. Set to null (with redactedAt) when the request is closed; the ticket reference stays.
   reason            String?   @db.VarChar(500)
   /// The admin who cancelled the request (cancelReason admin); null otherwise.
   cancelledByAdminId String?  @map("cancelled_by_admin_id") @db.Uuid
-  /// Why the admin cancelled: admin-entered text, 1 to 500 characters; null unless cancelReason admin.
-  cancelNote        String?   @map("cancel_note") @db.VarChar(500)
+  /// When the reason was redacted (the request closed, cancelled or completed); null for a buyer's
+  /// request and while an admin's is open. CHECK: set if and only if an admin request has no reason.
+  redactedAt        DateTime? @map("redacted_at") @db.Timestamptz(6)
 
   // Hand-written partial indexes (the migration): one open request per account, the due query
   // (pending, by date) and the stale-claim query (executing, by claim time).

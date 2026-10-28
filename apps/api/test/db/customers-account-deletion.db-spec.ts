@@ -845,10 +845,10 @@ describe.each(TEST_MARKETS)(
             reason: string | null;
             cancel_reason: string | null;
             cancelled_by_admin_id: string | null;
-            cancel_note: string | null;
+            redacted_at: Date | null;
           }>(
             `SELECT id, status, requested_by, admin_account_id, ticket_ref, reason, cancel_reason,
-                    cancelled_by_admin_id, cancel_note
+                    cancelled_by_admin_id, redacted_at
                FROM customers.account_deletion_requests
               WHERE market_id = $1 AND account_id = $2 ORDER BY requested_at, id`,
             [code, accountId],
@@ -895,7 +895,7 @@ describe.each(TEST_MARKETS)(
         expect(results.filter((r) => r.ok)).toHaveLength(1);
       });
 
-      it('cancels by admin with the admin and note on the row, once, and lists only pending ones', async () => {
+      it('cancels by admin with the admin on the row and the reason redacted, once, and lists only pending ones', async () => {
         await adminAsk();
         await adminAsk(OTHER_BUYER, 'SUP-2002');
         const [row] = await adminRow(BUYER);
@@ -917,12 +917,39 @@ describe.each(TEST_MARKETS)(
           status: 'cancelled',
           cancel_reason: 'admin',
           cancelled_by_admin_id: ADMIN,
-          cancel_note: 'Buyer changed their mind',
+          // Closing redacts the free text and keeps the ticket (Hassan M2).
+          reason: null,
+          ticket_ref: 'SUP-2001',
         });
+        expect((await adminRow(BUYER))[0]!.redacted_at).toBeInstanceOf(Date);
         const after = await new AdminListAccountDeletions(gate, deps()).execute(admin(), {});
         expect(after.ok && after.value.entries.map((e) => e.requestId)).not.toContain(row!.id);
         // The buyer may ask again once it is cancelled.
         expect((await ask()).ok).toBe(true);
+      });
+
+      it('redacts the reason when the buyer cancels or the executor completes an admin request', async () => {
+        await adminAsk();
+        await adminAsk(OTHER_BUYER, 'SUP-2004');
+        const cancelled = await new CancelAccountDeletion(gate, deps()).execute(buyer(), {
+          reason: 'customer',
+        });
+        expect(cancelled.ok).toBe(true);
+        expect((await adminRow(BUYER))[0]).toMatchObject({
+          status: 'cancelled',
+          cancel_reason: 'customer',
+          reason: null,
+          ticket_ref: 'SUP-2001',
+        });
+        expect((await adminRow(BUYER))[0]!.redacted_at).toBeInstanceOf(Date);
+        const executor = new ExecuteAccountDeletions(gate, { ...deps(), clock: later() });
+        expect((await executor.execute(system(), {})).ok).toBe(true);
+        expect((await adminRow(OTHER_BUYER))[0]).toMatchObject({
+          status: 'completed',
+          reason: null,
+          ticket_ref: 'SUP-2004',
+        });
+        expect((await adminRow(OTHER_BUYER))[0]!.redacted_at).toBeInstanceOf(Date);
       });
 
       it('pages the pending list by a keyset cursor and stays in its Market', async () => {
@@ -994,6 +1021,19 @@ describe.each(TEST_MARKETS)(
           insert(
             'requested_by, admin_account_id, ticket_ref, reason',
             `'admin', '${ADMIN}', 'T-1', ''`,
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        // An open admin request keeps its reason; a redacted one is closed and has none.
+        await expect(
+          insert(
+            'requested_by, admin_account_id, ticket_ref, reason, redacted_at',
+            `'admin', '${ADMIN}', 'T-1', 'r', now()`,
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        await expect(
+          insert(
+            'requested_by, admin_account_id, ticket_ref, redacted_at',
+            `'admin', '${ADMIN}', 'T-1', now()`,
           ),
         ).rejects.toMatchObject({ code: '23514' });
         await expect(

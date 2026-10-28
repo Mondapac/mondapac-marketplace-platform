@@ -1,10 +1,11 @@
 -- Reverses 20261028120000_customers_account_deletion_admin: the grant, the checks, then the columns.
--- An admin-cancelled row cannot keep the narrower check, so its reason is mapped back to customer.
-REVOKE UPDATE ("cancelled_by_admin_id", "cancel_note") ON TABLE "customers"."account_deletion_requests" FROM "mondapac_app";
+-- Accepted loss: an admin-cancelled row cannot keep the narrower cancel_reason check, so its reason
+-- is mapped back to 'customer'; who cancelled it (cancelled_by_admin_id) and every admin-origin
+-- column (admin, ticket reference, reason, redaction time) are dropped with the columns.
+REVOKE UPDATE ("cancelled_by_admin_id", "reason", "redacted_at") ON TABLE "customers"."account_deletion_requests" FROM "mondapac_app";
 
 ALTER TABLE "customers"."account_deletion_requests"
   DROP CONSTRAINT "account_deletion_requests_admin_cancel_check",
-  DROP CONSTRAINT "account_deletion_requests_cancel_note_check",
   DROP CONSTRAINT "account_deletion_requests_reason_check",
   DROP CONSTRAINT "account_deletion_requests_ticket_ref_check",
   DROP CONSTRAINT "account_deletion_requests_admin_columns_check",
@@ -15,7 +16,7 @@ UPDATE "customers"."account_deletion_requests" SET "cancel_reason" = 'customer' 
 
 ALTER TABLE "customers"."account_deletion_requests"
   ADD CONSTRAINT "account_deletion_requests_cancel_reason_check" CHECK ("cancel_reason" IN ('customer', 'sign-in')),
-  DROP COLUMN "cancel_note",
+  DROP COLUMN "redacted_at",
   DROP COLUMN "cancelled_by_admin_id",
   DROP COLUMN "reason",
   DROP COLUMN "ticket_ref",

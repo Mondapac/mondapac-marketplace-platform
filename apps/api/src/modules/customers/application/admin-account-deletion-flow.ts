@@ -99,7 +99,12 @@ export const DELETION_LIST_MAX_LIMIT = 100;
 /** A platform admin on a real admin session: not the system, a seller, a buyer or an acting-as session. */
 function adminActor(context: CallContext): Id<'Account'> | null {
   const actor = context.actor;
-  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
+  if (
+    actor.kind !== 'authenticated' ||
+    actor.population !== 'admin' ||
+    actor.sellerId !== null ||
+    isActingAs(context)
+  ) {
     return null;
   }
   return actor.accountId;
@@ -226,16 +231,35 @@ export async function requestAccountDeletionForBuyer(
   if (!created.ok) return err(created.error);
 
   // The lock: every session of the buyer ends. A refusal does not undo the request (it is
-  // committed and will run); the buyer's sessions can still be ended by the next sign-out.
-  const ended = await deps.identity.endCustomerSessionsForAdmin(
-    context,
+  // committed and will run); one retry, then a warning with ids only. The sessions can still be
+  // ended by the executor before it erases the account.
+  const endSessions = async () => {
+    try {
+      return await deps.identity.endCustomerSessionsForAdmin(context, accountId, created.value.id);
+    } catch {
+      return err({ code: 'customers.unavailable' } as const);
+    }
+  };
+  let ended = await endSessions();
+  if (!ended.ok) ended = await endSessions();
+  const outcome = { sessions: ended.ok ? 'ended' : ended.error.code };
+  const ids = {
+    requestId: created.value.id,
     accountId,
-    created.value.id,
-  );
+    marketId: market.marketId,
+    correlationId: context.correlationId,
+  };
+  if (!ended.ok) {
+    logger.warn({
+      msg: 'customers.admin-request-account-deletion.sessions-not-ended',
+      ...outcome,
+      ...ids,
+    });
+  }
   logger.log({
     msg: 'customers.admin-request-account-deletion',
     outcome: 'requested',
-    sessions: ended.ok ? 'ended' : ended.error.code,
+    ...outcome,
     marketId: market.marketId,
     correlationId: context.correlationId,
   });
@@ -286,7 +310,7 @@ export async function cancelAccountDeletionForBuyer(
         const spent = await deps.stepUp.consume(context, BUYER_ACCOUNT_DELETE_STEP_UP);
         if (!spent.ok) return err(stepUpFailure(spent.error) as AdminCancelDeletionFailure);
         const now = deps.clock.now();
-        if (!(await deps.requests.cancelByAdmin(market, requestId, adminId, reason.value, now))) {
+        if (!(await deps.requests.cancelByAdmin(market, requestId, adminId, now))) {
           // Not pending any more: claimed or closed since the read. Say which.
           const again = await deps.requests.findById(market, requestId);
           return again?.status === 'executing'

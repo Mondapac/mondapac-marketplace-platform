@@ -40,13 +40,12 @@ export interface AccountDeletionRequestRepository {
 
   /**
    * Closes a pending request as cancelled by an admin (`cancel_reason` admin), keeping the admin
-   * and the note on the row; false when it was not pending (claimed, closed or gone).
+   * on the row; false when it was not pending (claimed, closed or gone).
    */
   cancelByAdmin(
     market: MarketContext,
     id: Id<'AccountDeletionRequest'>,
     adminAccountId: Id<'Account'>,
-    note: string,
     at: Temporal.Instant,
   ): Promise<boolean>;
 

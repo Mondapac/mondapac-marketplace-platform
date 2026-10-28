@@ -842,16 +842,17 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // published_at.
     'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Package 5b: a deletion request is inserted and moved on (only the state columns: status, the
-    // job's claim and the closing columns, plus the admin cancel's two in package 5c), never deleted.
+    // job's claim and the closing columns, plus, in package 5c, the admin cancel's id and the redaction (reason, redacted_at)), never deleted.
     'customers.account_deletion_requests': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
-        'cancel_note',
         'cancel_reason',
         'cancelled_at',
         'cancelled_by_admin_id',
         'claimed_at',
         'completed_at',
+        'reason',
+        'redacted_at',
         'status',
       ],
     },

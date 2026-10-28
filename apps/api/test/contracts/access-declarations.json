@@ -221,11 +221,6 @@
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   {
-    "name": "identity.admin-end-customer-sessions",
-    "rule": "own-resources",
-    "whenSellerNotApproved": "deny"
-  },
-  {
     "name": "identity.change-display-name",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
@@ -435,11 +430,6 @@
   { "name": "notifications.unsubscribe-marketing-email", "rule": "anonymous" },
   { "name": "notifications.view-public-support-contact", "rule": "anonymous" },
   { "name": "notifications.view-unsubscribe-link", "rule": "anonymous" },
-  {
-    "name": "ordering.admin-open-obligations-of",
-    "rule": "own-resources",
-    "whenSellerNotApproved": "deny"
-  },
   { "name": "ordering.best-selling-offers", "rule": "anonymous" },
   { "name": "ordering.book-carrier-deliveries", "rule": "system" },
   { "name": "ordering.book-ready-carrier-delivery", "rule": "system" },
@@ -626,7 +616,6 @@
   { "name": "storefront.view-served-placements", "rule": "anonymous" },
   { "name": "tax.calculate-tax", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
-  { "name": "wallet.admin-balance-of", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
   { "name": "wallet.expire-admin-credit-requests", "rule": "system" },

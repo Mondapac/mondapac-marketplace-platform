@@ -192,7 +192,7 @@ export class AdminAccountDeletionRequestsController {
   @ApiOperation({
     summary: 'Cancel a pending deletion request (admin)',
     description:
-      'Needs customers.buyer-account.delete (protected), a reason (1 to 500 characters) and a ' +
+      'Needs customers.buyer-account.delete (protected), a reason (1 to 500 characters, no personal data: it is checked, not stored) and a ' +
       `fresh two-step proof for \`${BUYER_ACCOUNT_DELETE_STEP_UP}\`. Cancels a request during ` +
       'the wait, whoever made it. 404 when there is no pending request (also one already ' +
       'closed). 409 customers.account-deletion-in-progress once the job has claimed it; 204 ' +

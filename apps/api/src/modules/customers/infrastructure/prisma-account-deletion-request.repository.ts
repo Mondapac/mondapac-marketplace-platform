@@ -36,7 +36,7 @@ const toRequest = (row: {
   claimedAt: row.claimedAt === null ? null : toInstant(row.claimedAt),
   requestedBy: row.requestedBy === 'admin' ? 'admin' : 'customer',
   adminOrigin:
-    row.adminAccountId === null || row.ticketRef === null || row.reason === null
+    row.adminAccountId === null || row.ticketRef === null
       ? null
       : {
           adminAccountId: row.adminAccountId as Id<'Account'>,
@@ -45,9 +45,34 @@ const toRequest = (row: {
         },
 });
 
+/** The two closing writes an admin-origin row needs: the free text goes, the ticket reference stays. */
+const REDACTION = (at: Temporal.Instant) => ({ reason: null, redactedAt: toDate(at) });
+
 /** {@link AccountDeletionRequestRepository} on `customers.account_deletion_requests`, scoped by `marketId`. */
 export class PrismaAccountDeletionRequestRepository implements AccountDeletionRequestRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Redacts the admin-entered reason of a request that was just closed (cancelled or completed): in
+   * the unit of the closing write, so a closed admin row never keeps the text. A buyer's own request
+   * holds none and is left as it is.
+   */
+  async #redactClosed(
+    market: MarketContext,
+    id: Id<'AccountDeletionRequest'>,
+    at: Temporal.Instant,
+  ) {
+    await this.prisma.tx(market).customersAccountDeletionRequest.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        requestedBy: 'admin',
+        status: { in: ['cancelled', 'completed'] },
+        redactedAt: null,
+      },
+      data: REDACTION(at),
+    });
+  }
 
   async insertPending(market: MarketContext, request: AccountDeletionRequest): Promise<boolean> {
     // ON CONFLICT DO NOTHING answers the partial unique index (one open request per account).
@@ -91,6 +116,7 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
       where: { marketId: market.marketId, id, status: 'pending' },
       data: { status: 'cancelled', cancelledAt: toDate(at), cancelReason: reason },
     });
+    if (count === 1) await this.#redactClosed(market, id, at);
     return count === 1;
   }
 
@@ -105,7 +131,6 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     market: MarketContext,
     id: Id<'AccountDeletionRequest'>,
     adminAccountId: Id<'Account'>,
-    note: string,
     at: Temporal.Instant,
   ): Promise<boolean> {
     // Only a pending request, as the buyer's cancel: a claimed one matches nothing.
@@ -116,9 +141,9 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
         cancelledAt: toDate(at),
         cancelReason: 'admin',
         cancelledByAdminId: adminAccountId,
-        cancelNote: note,
       },
     });
+    if (count === 1) await this.#redactClosed(market, id, at);
     return count === 1;
   }
 
@@ -188,6 +213,7 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
       where: { marketId: market.marketId, id, status: 'executing', claimedAt: toDate(claimedAt) },
       data: { status: 'completed', completedAt: toDate(at) },
     });
+    if (count === 1) await this.#redactClosed(market, id, at);
     return count === 1;
   }
 

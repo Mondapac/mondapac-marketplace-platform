@@ -1,14 +1,22 @@
 import { err } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
-import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  UseCase,
+  type AccessDeclaration,
+  type PermissionKey,
+  type UseCaseGate,
+} from '../../../../platform/authz';
 import type { WalletBalanceView, WalletFailure } from '../../contracts/wallet.facade';
 import type { WalletDependencies } from '../wallet-dependencies';
 import { isActingAs } from '../settings-flow';
 import { balanceOf } from '../wallet-flow';
 
+/** The protected key of customers' `buyer-account.delete`; only the declaring module can brand it, so it is cast here. */
+const DELETION_KEY = 'customers.buyer-account.delete' as PermissionKey;
+
 /**
  * `wallet.admin-balance-of`: a customer's balance for an admin's deletion request for a buyer
- * (customers package 5c). Rule `own-resources`: the actor must be a platform admin and not an
+ * (customers package 5c). Rule `permissions [customers.buyer-account.delete]`: the actor must be a platform admin and not an
  * acting-as session, checked here; the calling use case holds the permission. Reads work in every
  * wallet state, as `wallet.balance-of`.
  */
@@ -19,8 +27,9 @@ export class AdminBalanceOf extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'wallet.admin-balance-of',
-    rule: { kind: 'own-resources' },
-    whenSellerNotApproved: 'deny',
+    // The key is customers' (package 5c, Hassan M1): only a caller that may delete a buyer's account
+    // reads this; the key is customers' (a contract test pins it to the declaration).
+    rule: { kind: 'permissions', allOf: [DELETION_KEY] },
   };
 
   constructor(

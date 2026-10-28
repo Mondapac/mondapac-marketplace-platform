@@ -8,29 +8,34 @@ ALTER TABLE "customers"."account_deletion_requests"
   ADD COLUMN "ticket_ref" VARCHAR(64),
   ADD COLUMN "reason" VARCHAR(500),
   ADD COLUMN "cancelled_by_admin_id" UUID,
-  ADD COLUMN "cancel_note" VARCHAR(500);
+  ADD COLUMN "redacted_at" TIMESTAMPTZ(6);
 
--- Hand-written: who asked. A buyer's request carries none of the admin columns; an admin's carries
--- the admin, a ticket reference and a reason (admin-entered text: never in events or audit rows).
+-- Hand-written: who asked. A buyer's request carries none of the admin columns. An admin's carries
+-- the admin and a ticket reference, and a reason while it is open; the reason is admin-entered free
+-- text that may hold personal data, so it is set to NULL, with `redacted_at`, when the request is
+-- closed (cancelled or completed). The ticket reference is kept. Never in events or audit rows.
 ALTER TABLE "customers"."account_deletion_requests"
   ADD CONSTRAINT "account_deletion_requests_requested_by_check" CHECK ("requested_by" IN ('customer', 'admin')),
   ADD CONSTRAINT "account_deletion_requests_admin_columns_check" CHECK (
-    ("requested_by" = 'customer' AND "admin_account_id" IS NULL AND "ticket_ref" IS NULL AND "reason" IS NULL)
-    OR ("requested_by" = 'admin' AND "admin_account_id" IS NOT NULL AND "ticket_ref" IS NOT NULL AND "reason" IS NOT NULL)
+    ("requested_by" = 'customer' AND "admin_account_id" IS NULL AND "ticket_ref" IS NULL AND "reason" IS NULL AND "redacted_at" IS NULL)
+    OR ("requested_by" = 'admin' AND "admin_account_id" IS NOT NULL AND "ticket_ref" IS NOT NULL AND (
+      ("redacted_at" IS NULL AND "reason" IS NOT NULL)
+      OR ("redacted_at" IS NOT NULL AND "reason" IS NULL AND "status" IN ('cancelled', 'completed'))
+    ))
   ),
   ADD CONSTRAINT "account_deletion_requests_ticket_ref_check" CHECK ("ticket_ref" ~ '^[A-Za-z0-9][A-Za-z0-9._#/-]{0,63}$'),
-  ADD CONSTRAINT "account_deletion_requests_reason_check" CHECK (char_length("reason") BETWEEN 1 AND 500),
-  ADD CONSTRAINT "account_deletion_requests_cancel_note_check" CHECK (char_length("cancel_note") BETWEEN 1 AND 500);
+  ADD CONSTRAINT "account_deletion_requests_reason_check" CHECK (char_length("reason") BETWEEN 1 AND 500);
 
--- Hand-written: an admin cancel names the admin and the note, no other cancel carries either.
+-- Hand-written: an admin cancel names the admin; no other cancel carries one. (The admin's cancel
+-- note is validated and audited by the admin's id only: it is never stored.)
 ALTER TABLE "customers"."account_deletion_requests"
   DROP CONSTRAINT "account_deletion_requests_cancel_reason_check",
   ADD CONSTRAINT "account_deletion_requests_cancel_reason_check" CHECK ("cancel_reason" IN ('customer', 'sign-in', 'admin')),
   ADD CONSTRAINT "account_deletion_requests_admin_cancel_check" CHECK (
-    ("cancel_reason" = 'admin' AND "cancelled_by_admin_id" IS NOT NULL AND "cancel_note" IS NOT NULL)
-    OR (("cancel_reason" IS NULL OR "cancel_reason" <> 'admin') AND "cancelled_by_admin_id" IS NULL AND "cancel_note" IS NULL)
+    ("cancel_reason" = 'admin' AND "cancelled_by_admin_id" IS NOT NULL)
+    OR (("cancel_reason" IS NULL OR "cancel_reason" <> 'admin') AND "cancelled_by_admin_id" IS NULL)
   );
 
--- Grant: the application may also set the two admin cancel columns when it cancels (the insert
--- grant is table-wide and already covers the new request columns).
-GRANT UPDATE ("cancelled_by_admin_id", "cancel_note") ON TABLE "customers"."account_deletion_requests" TO "mondapac_app";
+-- Grant: the application may also set the admin cancel column and redact (reason, redacted_at) when
+-- it closes a request (the insert grant is table-wide and already covers the new request columns).
+GRANT UPDATE ("cancelled_by_admin_id", "reason", "redacted_at") ON TABLE "customers"."account_deletion_requests" TO "mondapac_app";

@@ -227,20 +227,25 @@ admin deletes a buyer's account for them, from a support ticket.
   the typed list, 503 when a module cannot answer); one serializable unit: one open request per
   account (409), proof spent, insert at `now + waitingPeriodDays` of the setting in force (version
   0 means 30), audit, event; then `identity.endCustomerSessionsForAdmin` ends every buyer session
-  (a failure is logged, the request stays). The Market's self-service switch does not apply.
+  (a failure is retried once, then logged at warn with ids only; the request stays). The Market's self-service switch does not apply.
 - **Cancel.** Whoever made the request, `pending` only; `executing` is 409 in-progress, a closed or
   unknown request 404, as the buyer's cancel. The buyer can still cancel an admin request.
 - **Data.** Migration `20261028120000_customers_account_deletion_admin`: `requested_by`,
-  `admin_account_id`, `ticket_ref`, `reason`, `cancelled_by_admin_id`, `cancel_note`, `cancel_reason`
-  gains `admin` (see `docs/design/data/customers.md`). The ticket, reason and note are free text:
-  on the row only (never updatable, no delete grant), not in audit fields (they hold no text; the
-  row is part of the audit evidence, as 5a's history row) and not in events.
+  `admin_account_id`, `ticket_ref`, `reason`, `cancelled_by_admin_id`, `redacted_at`; `cancel_reason`
+  gains `admin` (see `docs/design/data/customers.md`). The ticket reference and the reason are
+  admin-entered text and possible personal data: on the row only, not in audit fields (they hold no
+  text) and not in events. **Redaction (Hassan M2, Mojtaba 1):** when an admin request closes
+  (cancelled by the buyer or an admin, or completed) the same unit sets `reason` to NULL and
+  `redacted_at`; the CHECK allows exactly that state, tied to a closed status; the ticket reference
+  stays. The admin's cancel note is validated but never stored (the admin id and the proof are in
+  the audit row), so there is no `cancel_note` column. The OpenAPI text tells admins not to enter
+  personal data in the reason.
 - **Events and audit.** `customers.account-deletion-requested-by-admin.v1` (waiting period,
   scheduled instant) and `customers.account-deletion-cancelled-by-admin.v1` (empty payload), both on
   the request aggregate; audit `customers.account-deletion.requested-by-admin` (account id, dates,
   step-up proof) and `.cancelled-by-admin`. The admin is the audit row's actor.
-- **Peers added (rule `own-resources`, platform admin only, not acting-as; the customers use case
-  holds the permission).** identity `endCustomerSessionsForAdmin` (audit
+- **Peers added (rule `permissions [customers.buyer-account.delete]`, platform admin only, no
+  seller, not acting-as; Hassan M1: any other admin, a Viewer included, is refused at the gate).** identity `endCustomerSessionsForAdmin` (audit
   `identity.account.sessions-ended-for-erasure` now also allows an authenticated actor), ordering
   `adminOpenObligationsOf`, wallet `adminBalanceOf`. A module may not mint a system context, so the
   system-only reads of 5b could not be reused.
@@ -257,6 +262,16 @@ admin deletes a buyer's account for them, from a support ticket.
   dispute id; there is no per-account query, so open disputes are not a blocker (also in 5b).
 - **A disabled buyer account** answers 404 (`customerAccountOf` answers active accounts only).
 - **Admin cancel notice to the buyer** is also not sent (no email facade).
+
+### 5c review follow-ups (not built)
+
+- **Keyset `OR` form (Mojtaba 2).** The pending list pages with `scheduled_for > x OR (scheduled_for = x
+  AND id > y)`. A row-value comparison (`(scheduled_for, id) > (x, y)`) would use the partial index
+  more exactly; do it when the list grows past a screen of rows (Prisma needs a raw query).
+- **Probe before the proof (Hassan L2).** The admin request reads the buyer's account and the
+  blockers before the step-up proof is spent, so an admin with a valid proof can probe whether an
+  account id is a customer of the Market without spending it. Only an admin holding the protected
+  key gets here; move the proof ahead of the probes if that is thought too much.
 
 ## Open follow-ups (Hassan, PR #405 review: GO, two low findings)
 
