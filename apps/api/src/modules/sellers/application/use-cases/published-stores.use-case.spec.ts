@@ -132,6 +132,7 @@ describe.each([
         ),
       allowedProductTypes: () => Promise.reject(new Error('not used')),
       blogEnabled: () => Promise.reject(new Error('not used')),
+      firstApprovedAt: () => Promise.reject(new Error('not used')),
     };
     const accessReader = {
       accessOfMany: (_context: CallContext, sellerIds: readonly Id<'Seller'>[]) => {

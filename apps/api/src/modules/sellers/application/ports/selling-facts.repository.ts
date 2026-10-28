@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 
 /**
  * What `sellers` holds about a seller with an approved revision, for the may-sell contract
@@ -39,6 +39,13 @@ export interface SellingFactsRepository {
 
   /** Whether the seller may write blog posts; null when there is no setting row (a fault). */
   blogEnabled(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean | null>;
+
+  /**
+   * The instant the seller's business file was first approved in the Market (the earliest
+   * decision of a revision that is or was approved); null when no revision was ever approved, or
+   * the seller is unknown or of another Market.
+   */
+  firstApprovedAt(market: MarketContext, sellerId: Id<'Seller'>): Promise<Temporal.Instant | null>;
 }
 
 export const SELLING_FACTS_REPOSITORY = Symbol('SELLING_FACTS_REPOSITORY');
