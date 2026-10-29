@@ -31,7 +31,8 @@ import type { ShippingDependencies } from './shipping-dependencies';
 // change is audited in the same unit. Authorization is the use case's access declaration; these
 // functions only re-check that the actor is an admin account (defence in depth).
 
-type AuditFleet = 'mondapac-drive' | 'uber-direct' | 'zoom2u' | 'auspost' | 'fake-test';
+type AuditFleet =
+  'mondapac-drive' | 'uber-direct' | 'zoom2u' | 'doordash-drive' | 'auspost' | 'fake-test';
 
 export type FleetSelectionFailure =
   | { readonly code: 'access.denied' }

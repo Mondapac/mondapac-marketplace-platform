@@ -1898,7 +1898,7 @@
     "before": null,
     "after": {
       "kind": "enumOf(cheapest|weighted|fixed-priority)",
-      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test), max 8)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test), max 8)",
       "version": "integer",
       "weightEta": "optional(integer)",
       "weightPrice": "optional(integer)",
@@ -1912,7 +1912,7 @@
     "actors": ["authenticated"],
     "before": {
       "kind": "enumOf(cheapest|weighted|fixed-priority)",
-      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test), max 8)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test), max 8)",
       "version": "integer",
       "weightEta": "optional(integer)",
       "weightPrice": "optional(integer)",
@@ -1920,7 +1920,7 @@
     },
     "after": {
       "kind": "enumOf(cheapest|weighted|fixed-priority)",
-      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test), max 8)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test), max 8)",
       "version": "integer",
       "weightEta": "optional(integer)",
       "weightPrice": "optional(integer)",
@@ -1930,7 +1930,7 @@
   {
     "action": "shipping.fleet-reliability.set",
     "targetType": "shipping.fleet-reliability",
-    "targetId": "enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test)",
+    "targetId": "enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test)",
     "actors": ["authenticated"],
     "before": {
       "score": "optional(integer)"

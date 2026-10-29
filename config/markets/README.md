@@ -319,7 +319,7 @@ Owned by `shipping` (SHP-02/03, `docs/modules/shipping/carrier-mondapac-drive.md
 seller ships as in SHP-01.
 
 - `fleets` (optional, delivery models package 3): the fleets a Market lists, by fleet code
-  (`mondapac_drive`, `uber_direct`, `zoom2u`, `auspost`; `fake_test` is for tests and is not
+  (`mondapac_drive`, `uber_direct`, `zoom2u`, `doordash_drive`, `auspost`; `fake_test` is for tests and is not
   registered in production). Each entry has `enabled` (default true), `displayName`,
   `serviceAreas` (city areas where both ends of a trip must fall) or `outsideCityAreasOnly: true`
   (the drop-off must be in no city area; Australia Post), `methods` (`instant`, `same_day`,
@@ -383,6 +383,25 @@ without a currency: they are read in the Market's default currency.
 - `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
 - `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
   A booking is sent once whatever `maxAttempts` says: Zoom2u documents no idempotency key.
+
+### `shipping.doordashDrive` (optional)
+
+The external fleet DoorDash Drive (Drive v2 API; available in AU, NZ, US and CA). Off unless
+`enabled` is `true` AND the Region Stack holds `DOORDASH_DEVELOPER_ID`, `DOORDASH_KEY_ID` and
+`DOORDASH_SIGNING_SECRET` for the Market (`MARKET=value` pairs, names only in `.env.example`); the
+adapter then answers `carrier.not-configured` and sends nothing. The API host is fixed in the
+adapter. Every call carries a short-lived HS256 JWT signed with the key's secret. The seller
+order id is DoorDash's `external_delivery_id`, so a booking is idempotent (a 409 on create is
+"already booked" and the delivery is read back).
+
+- `enabled` (required): the Market switch; ship `false`.
+- `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`): what the fleet
+  serves. `on_demand` gives the instant and same-day methods; `scheduled` the buyer's window.
+  `temperatures` (required): the temperature classes it carries (AU `ambient`).
+- `limits` (required): `maxItemWeightGrams`, `maxItems` and `maxOrderValueMinor` (minor units of
+  the Market's default currency).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
 
 ### `shipping.auspost` (optional, Phase 6 package 5d)
 

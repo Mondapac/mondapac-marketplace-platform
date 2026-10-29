@@ -14,7 +14,7 @@ model ShippingCarrierBooking {
   /// Plain ids of ordering and sellers (no foreign key across schemas).
   orderId          String   @map("order_id") @db.Uuid
   sellerId         String   @map("seller_id") @db.Uuid
-  /// The fleet that booked it (mondapac_drive | uber_direct | zoom2u | auspost | fake_test, CHECK).
+  /// The fleet that booked it (mondapac_drive | uber_direct | zoom2u | doordash_drive | auspost | fake_test, CHECK).
   fleet            String
   /// The fleet's own id of the delivery: the tracking reference.
   carrierReference String   @map("carrier_reference")
@@ -217,7 +217,7 @@ model ShippingDeliveryQuote {
   /// instant | same_day | scheduled (CHECK); a pickup is free and has no quote.
   method          String
   dropoffPostcode String    @map("dropoff_postcode") @db.VarChar(16)
-  /// The fleet that quoted (mondapac_drive | uber_direct | zoom2u | auspost | fake_test, CHECK).
+  /// The fleet that quoted (mondapac_drive | uber_direct | zoom2u | doordash_drive | auspost | fake_test, CHECK).
   fleet           String
   /// Minor units of `currency`: the fleet's price, the platform's margin, and what the buyer pays
   /// (`total` = `quote_amount` + `margin_amount`, CHECK).
