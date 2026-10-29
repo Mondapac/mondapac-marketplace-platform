@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { toast, Toaster } from '@mondapac/ui';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +8,6 @@ import messages from '../../messages/en.json';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
-import { NoticeProvider } from '../team/notice.tsx';
 import { OrphanedList } from './orphaned-list.tsx';
 import type { InviteHint, OrphanPage, OrphanRow } from './orphaned-types.ts';
 
@@ -39,9 +39,8 @@ const fail = (status: number, code: string, details?: object) => ({
 function mount() {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <NoticeProvider>
-        <OrphanedList csrfToken="csrf-1" />
-      </NoticeProvider>
+      <OrphanedList csrfToken="csrf-1" />
+      <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     </NextIntlClientProvider>,
   );
 }
@@ -57,6 +56,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  toast.dismiss();
   vi.useRealTimers();
 });
 

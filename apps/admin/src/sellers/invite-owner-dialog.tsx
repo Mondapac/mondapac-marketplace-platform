@@ -1,10 +1,9 @@
 'use client';
 
-import { Banner, Button, Dialog, TextField } from '@mondapac/ui';
+import { Banner, Button, Dialog, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { useNotice } from '../team/notice.tsx';
 import { shortSellerId } from './orphaned-types.ts';
 
 /** The longest owner name the API accepts (identity display-name rule). */
@@ -74,7 +73,6 @@ export function InviteOwnerDialog({
   readonly onStale: () => void;
 }) {
   const t = useTranslations('sellers.orphaned.invite');
-  const notify = useNotice();
   const messageFor = useMessageFor();
   const flight = useSingleFlight();
   const [email, setEmail] = useState('');
@@ -139,7 +137,7 @@ export function InviteOwnerDialog({
       if (result.ok) {
         onClose();
         onInvited(sellerId);
-        notify({ tone: 'success', text: t('toast-sent', { email: address }) });
+        toast.success(t('toast-sent', { email: address }));
         return;
       }
       const failure = result.failure;

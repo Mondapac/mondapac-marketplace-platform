@@ -5,7 +5,6 @@ import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
 import { InviteAdminButton } from '../../../src/team/invite-admin-button.tsx';
-import { NoticeProvider } from '../../../src/team/notice.tsx';
 import { TeamTable } from '../../../src/team/team-table.tsx';
 import { TeamTabs, tabLabels } from '../../../src/team/team-tabs.tsx';
 import type { PlatformRole, TeamPage } from '../../../src/team/types.ts';
@@ -73,19 +72,17 @@ export default async function TeamPageRoute({
       <TeamTabs active="admins" labels={keys.has(ROLES_PERMISSION) ? tabLabels(t) : null} />
       {result.kind === 'ok' ? (
         <>
-          <NoticeProvider>
-            {canInvite && roles !== undefined ? (
-              <div className="mb-4 flex justify-end">
-                <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
-              </div>
-            ) : null}
-            <TeamTable
-              page={result.body}
-              after={after}
-              csrfToken={gate.session.csrfToken}
-              roles={canAssign ? roles : undefined}
-            />
-          </NoticeProvider>
+          {canInvite && roles !== undefined ? (
+            <div className="mb-4 flex justify-end">
+              <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
+            </div>
+          ) : null}
+          <TeamTable
+            page={result.body}
+            after={after}
+            csrfToken={gate.session.csrfToken}
+            roles={canAssign ? roles : undefined}
+          />
           {result.body.next === null || !UUID.test(result.body.next) ? null : (
             <p className="mt-4">
               <a

@@ -1,13 +1,12 @@
 'use client';
 
-import { Banner, Button, Dialog, Menu, type MenuItem } from '@mondapac/ui';
+import { Banner, Button, Dialog, Menu, toast, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { ChangeRoleDialog } from './role-dialog.tsx';
 import type { ActionHint, PlatformRole } from './types.ts';
-import { useNotice } from './notice.tsx';
 
 /** What a row needs to act; plain data, built on the server from the team row. */
 export type RowTarget =
@@ -111,7 +110,6 @@ export function RowActions({
   const t = useTranslations('identity.members');
   const te = useTranslations('identity');
   const router = useRouter();
-  const notify = useNotice();
   const [asking, setAsking] = useState<ActionDef | null>(null);
   const [changingRole, setChangingRole] = useState(false);
   const [pending, setPending] = useState(false);
@@ -135,7 +133,7 @@ export function RowActions({
     setPending(false);
     if (result.ok) {
       setAsking(null);
-      notify({ tone: 'success', text: t(`toast.${action.id}`, { name: target.name }) });
+      toast.success(t(`toast.${action.id}`, { name: target.name }));
       router.refresh();
       return;
     }
@@ -147,12 +145,12 @@ export function RowActions({
     if (CHANGED_MEANWHILE.has(failure.code)) {
       // The row changed or went away meanwhile: close, say so, and show it as it is now.
       setAsking(null);
-      notify({ tone: 'critical', text: messageFor(failure.code) });
+      toast.error(messageFor(failure.code));
       router.refresh();
       return;
     }
     if (action.confirm) setProblem(messageFor(failure.code));
-    else notify({ tone: 'critical', text: messageFor(failure.code) });
+    else toast.error(messageFor(failure.code));
   }
 
   const items: MenuItem[] = definitionsFor(target).map((action) => ({

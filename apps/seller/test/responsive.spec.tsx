@@ -24,6 +24,7 @@ const labels = {
   main: 'Main',
   collapse: 'Collapse sidebar',
   expand: 'Expand sidebar',
+  toasts: { region: 'Action notifications', close: 'Close notification' },
 };
 const tabs = [
   { id: 'a', href: '/', label: 'Home', icon: 'home' as const, active: true },
