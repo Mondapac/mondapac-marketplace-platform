@@ -41,7 +41,7 @@ describe('loadAppConfig', () => {
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
-      uberDirect: { customerIds: {}, clientIds: {}, clientSecrets: {} },
+      uberDirect: { customerIds: {}, clientIds: {}, clientSecrets: {}, webhookSecrets: {} },
       zoom2u: { apiKeys: {} },
       auspost: { apiKeys: {}, apiPasswords: {}, accountNumbers: {} },
     });
@@ -153,13 +153,31 @@ describe('loadAppConfig', () => {
         UBER_DIRECT_CUSTOMER_ID: 'AU=cust-0001-aaaa',
         UBER_DIRECT_CLIENT_ID: 'AU=client-0001,ZZ=client-0002',
         UBER_DIRECT_CLIENT_SECRET: `AU=${SECRET}`,
+        UBER_DIRECT_WEBHOOK_SECRET: `AU=${SECRET}_hook,ZZ=${SECRET}_zz`,
       });
       expect(config.uberDirect).toEqual({
         customerIds: { AU: 'cust-0001-aaaa' },
         clientIds: { AU: 'client-0001', ZZ: 'client-0002' },
         clientSecrets: { AU: SECRET },
+        webhookSecrets: { AU: `${SECRET}_hook`, ZZ: `${SECRET}_zz` },
       });
       expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).uberDirect.clientSecrets).toEqual({});
+    });
+
+    it('refuses a webhook secret that is short, unhosted or the client secret', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_WEBHOOK_SECRET: 'AU=short' }),
+      ).toThrow('UBER_DIRECT_WEBHOOK_SECRET');
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_WEBHOOK_SECRET: `NZ=${SECRET}` }),
+      ).toThrow('NZ is not in HOSTED_MARKETS');
+      expect(() =>
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          UBER_DIRECT_CLIENT_SECRET: `AU=${SECRET}`,
+          UBER_DIRECT_WEBHOOK_SECRET: `AU=${SECRET}`,
+        }),
+      ).toThrow('must differ from UBER_DIRECT_CLIENT_SECRET');
     });
 
     it('refuses a short secret and an unhosted Market without echoing the value', () => {

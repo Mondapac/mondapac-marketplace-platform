@@ -3,6 +3,7 @@ import type { CancelPayment } from '../application/use-cases/cancel-payment.use-
 import type { MyDeliveredSellerOrders } from '../application/use-cases/my-delivered-seller-orders.use-case';
 import type { OrderPaymentRefQuery } from '../application/use-cases/order-payment-ref.use-case';
 import type { OrderNoticeQuery } from '../application/use-cases/order-notice.use-case';
+import type { AdminOpenObligationsOfQuery } from '../application/use-cases/admin-open-obligations-of.use-case';
 import type { OpenObligationsOfQuery } from '../application/use-cases/open-obligations-of.use-case';
 import type { OwnOpenObligationsQuery } from '../application/use-cases/own-open-obligations.use-case';
 import type { SellerOrderCustomerNames } from '../application/use-cases/seller-order-customer-names.use-case';
@@ -22,6 +23,7 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly openObligationsOfAccount: OpenObligationsOfQuery,
     private readonly delivered: MyDeliveredSellerOrders,
     private readonly paymentRef: OrderPaymentRefQuery,
+    private readonly adminOpenObligations: AdminOpenObligationsOfQuery,
   ) {}
 
   orderPaymentRef(context: CallContext, orderId: string) {
@@ -60,6 +62,10 @@ export class OrderingFacadeImplementation implements OrderingFacade {
 
   openObligationsOf(context: CallContext, accountId: Id<'Account'>) {
     return this.openObligationsOfAccount.execute(context, { accountId });
+  }
+
+  adminOpenObligationsOf(context: CallContext, accountId: Id<'Account'>) {
+    return this.adminOpenObligations.execute(context, { accountId });
   }
 
   myDeliveredSellerOrders(

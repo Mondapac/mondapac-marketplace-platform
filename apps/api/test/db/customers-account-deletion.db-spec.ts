@@ -13,6 +13,9 @@ import {
   InMemoryAddresses,
   ReversibleAddressCipher,
 } from '../../src/modules/customers/application/testing/in-memory-address-book';
+import { AdminCancelAccountDeletion } from '../../src/modules/customers/application/use-cases/admin-cancel-account-deletion.use-case';
+import { AdminListAccountDeletions } from '../../src/modules/customers/application/use-cases/admin-list-account-deletions.use-case';
+import { AdminRequestAccountDeletion } from '../../src/modules/customers/application/use-cases/admin-request-account-deletion.use-case';
 import { CancelAccountDeletion } from '../../src/modules/customers/application/use-cases/cancel-account-deletion.use-case';
 import { ExecuteAccountDeletions } from '../../src/modules/customers/application/use-cases/execute-account-deletions.use-case';
 import { RequestAccountDeletion } from '../../src/modules/customers/application/use-cases/request-account-deletion.use-case';
@@ -366,6 +369,9 @@ describe.each(TEST_MARKETS)(
             return Promise.resolve(ok({ revokedSessions: 0 }));
           },
           customerAccountExists: () => Promise.resolve(ok({ exists: true })),
+          customerAccountOf: (_c: CallContext, accountId: Id<'Account'>) =>
+            Promise.resolve(ok({ accountId })),
+          endCustomerSessionsForAdmin: () => Promise.resolve(ok({ revokedSessions: 0 })),
           endAllCustomerSessions: () => {
             return Promise.resolve(ok({ revokedSessions: 0 }));
           },
@@ -377,10 +383,12 @@ describe.each(TEST_MARKETS)(
         wallet: {
           ownBalanceOf: () => Promise.resolve(ok({ available: zero, held: zero })),
           balanceOf: () => Promise.resolve(ok({ available: zero, held: zero })),
+          adminBalanceOf: () => Promise.resolve(ok({ available: zero, held: zero })),
         },
         ordering: {
           ownOpenObligations: () => Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 })),
           openObligationsOf: () => Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 })),
+          adminOpenObligationsOf: () => Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 })),
         },
         reviews: {
           detachAuthor: () => Promise.resolve(ok({ reviews: 0, ratings: 0 })),
@@ -388,6 +396,7 @@ describe.each(TEST_MARKETS)(
         engagement: {
           forgetAccount: () => Promise.resolve(ok({ events: 0 })),
         },
+        stepUp: new RecordingStepUp(clock.now()),
       };
     };
     const settingsDeps = () => ({
@@ -814,6 +823,258 @@ describe.each(TEST_MARKETS)(
           return ok(undefined);
         }),
       ).rejects.toBeDefined();
+    });
+
+    describe('admin manual deletion (package 5c)', () => {
+      const WHY = 'Buyer asked by phone, identity checked';
+      const adminAsk = (accountId = BUYER, ticketRef = 'SUP-2001') =>
+        new AdminRequestAccountDeletion(gate, deps()).execute(admin(), {
+          accountId,
+          ticketRef,
+          reason: WHY,
+          confirm: true,
+        });
+      const adminRow = async (accountId: Id<'Account'>) =>
+        (
+          await sql.query<{
+            id: string;
+            status: string;
+            requested_by: string;
+            admin_account_id: string | null;
+            ticket_ref: string | null;
+            reason: string | null;
+            cancel_reason: string | null;
+            cancelled_by_admin_id: string | null;
+            redacted_at: Date | null;
+          }>(
+            `SELECT id, status, requested_by, admin_account_id, ticket_ref, reason, cancel_reason,
+                    cancelled_by_admin_id, redacted_at
+               FROM customers.account_deletion_requests
+              WHERE market_id = $1 AND account_id = $2 ORDER BY requested_at, id`,
+            [code, accountId],
+          )
+        ).rows;
+
+      it('stores the admin, ticket and reason on the row; audit and event carry no text', async () => {
+        await setTo(false, 21);
+        const made = await adminAsk();
+        expect(made.ok).toBe(true);
+        const [row] = await adminRow(BUYER);
+        expect(row).toMatchObject({
+          status: 'pending',
+          requested_by: 'admin',
+          admin_account_id: ADMIN,
+          ticket_ref: 'SUP-2001',
+          reason: WHY,
+        });
+        const audit = await sql.query<{ after: unknown }>(
+          `SELECT after FROM platform.audit_log WHERE market_id = $1 AND action = $2 AND target_id = $3`,
+          [code, 'customers.account-deletion.requested-by-admin', row!.id],
+        );
+        expect(audit.rowCount).toBe(1);
+        const event = await sql.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM customers.outbox WHERE market_id = $1 AND aggregate_id = $2`,
+          [code, row!.id],
+        );
+        expect(event.rows.map((r) => Object.keys(r.payload).sort())).toEqual([
+          ['scheduledFor', 'waitingPeriodDays'],
+        ]);
+        const written = JSON.stringify([audit.rows, event.rows]);
+        expect(written).not.toContain('SUP-2001');
+        expect(written).not.toContain(WHY);
+        expect(ended).toBe(0);
+      });
+
+      it('keeps one open request per account across buyer and admin requests', async () => {
+        expect((await ask()).ok).toBe(true);
+        expect(await adminAsk()).toEqual({
+          ok: false,
+          error: { code: 'customers.account-deletion-already-requested' },
+        });
+        const results = await Promise.all([adminAsk(OTHER_BUYER), adminAsk(OTHER_BUYER)]);
+        expect(results.filter((r) => r.ok)).toHaveLength(1);
+      });
+
+      it('cancels by admin with the admin on the row and the reason redacted, once, and lists only pending ones', async () => {
+        await adminAsk();
+        await adminAsk(OTHER_BUYER, 'SUP-2002');
+        const [row] = await adminRow(BUYER);
+        const listed = await new AdminListAccountDeletions(gate, deps()).execute(admin(), {});
+        expect(listed.ok && listed.value.entries.map((e) => e.requestId)).toEqual(
+          expect.arrayContaining([row!.id]),
+        );
+        const cancel = () =>
+          new AdminCancelAccountDeletion(gate, deps()).execute(admin(), {
+            requestId: row!.id,
+            reason: 'Buyer changed their mind',
+          });
+        expect((await cancel()).ok).toBe(true);
+        expect(await cancel()).toEqual({
+          ok: false,
+          error: { code: 'customers.account-deletion-request-not-found' },
+        });
+        expect((await adminRow(BUYER))[0]).toMatchObject({
+          status: 'cancelled',
+          cancel_reason: 'admin',
+          cancelled_by_admin_id: ADMIN,
+          // Closing redacts the free text and keeps the ticket (Hassan M2).
+          reason: null,
+          ticket_ref: 'SUP-2001',
+        });
+        expect((await adminRow(BUYER))[0]!.redacted_at).toBeInstanceOf(Date);
+        const after = await new AdminListAccountDeletions(gate, deps()).execute(admin(), {});
+        expect(after.ok && after.value.entries.map((e) => e.requestId)).not.toContain(row!.id);
+        // The buyer may ask again once it is cancelled.
+        expect((await ask()).ok).toBe(true);
+      });
+
+      it('redacts the reason when the buyer cancels or the executor completes an admin request', async () => {
+        await adminAsk();
+        await adminAsk(OTHER_BUYER, 'SUP-2004');
+        const cancelled = await new CancelAccountDeletion(gate, deps()).execute(buyer(), {
+          reason: 'customer',
+        });
+        expect(cancelled.ok).toBe(true);
+        expect((await adminRow(BUYER))[0]).toMatchObject({
+          status: 'cancelled',
+          cancel_reason: 'customer',
+          reason: null,
+          ticket_ref: 'SUP-2001',
+        });
+        expect((await adminRow(BUYER))[0]!.redacted_at).toBeInstanceOf(Date);
+        const executor = new ExecuteAccountDeletions(gate, { ...deps(), clock: later() });
+        expect((await executor.execute(system(), {})).ok).toBe(true);
+        expect((await adminRow(OTHER_BUYER))[0]).toMatchObject({
+          status: 'completed',
+          reason: null,
+          ticket_ref: 'SUP-2004',
+        });
+        expect((await adminRow(OTHER_BUYER))[0]!.redacted_at).toBeInstanceOf(Date);
+      });
+
+      it('pages the pending list by a keyset cursor and stays in its Market', async () => {
+        await adminAsk();
+        await adminAsk(OTHER_BUYER, 'SUP-2003');
+        const seen: string[] = [];
+        let cursor: string | null = null;
+        for (let page = 0; page < 200; page += 1) {
+          const result = await new AdminListAccountDeletions(gate, deps()).execute(admin(), {
+            limit: 1,
+            ...(cursor === null ? {} : { cursor }),
+          });
+          if (!result.ok) throw new Error(result.error.code);
+          seen.push(...result.value.entries.map((e) => e.accountId));
+          cursor = result.value.nextCursor;
+          if (cursor === null) break;
+        }
+        expect(seen).toEqual(expect.arrayContaining([BUYER, OTHER_BUYER]));
+        expect(new Set(seen).size).toBe(seen.length);
+        const foreign = await sql.query(
+          `SELECT 1 FROM customers.account_deletion_requests WHERE market_id <> $1 AND id = ANY($2)`,
+          [code, seen],
+        );
+        expect(foreign.rowCount).toBe(0);
+      });
+
+      it('the application role cannot rewrite the ticket, reason or admin of an open request', async () => {
+        await adminAsk();
+        const [row] = await adminRow(BUYER);
+        for (const data of [
+          { ticketRef: 'SUP-9' },
+          { reason: 'changed' },
+          { requestedBy: 'customer' },
+          { adminAccountId: BUYER },
+        ]) {
+          await expect(
+            db.unitOfWork.run(market, async () => {
+              await db.service.tx(market).customersAccountDeletionRequest.updateMany({
+                where: { marketId: code, id: row!.id },
+                data,
+              });
+              return ok(undefined);
+            }),
+          ).rejects.toBeDefined();
+        }
+      });
+
+      it('lets the application redact a reason once, and nothing else about the evidence changes', async () => {
+        await adminAsk();
+        const [row] = await adminRow(BUYER);
+        const update = (data: Record<string, unknown>) =>
+          db.unitOfWork.run(market, async () => {
+            await db.service.tx(market).customersAccountDeletionRequest.updateMany({
+              where: { marketId: code, id: row!.id },
+              data,
+            });
+            return ok(undefined);
+          });
+        // Redacting an open request is refused by the CHECK (an open admin request keeps its text).
+        await expect(update({ reason: null, redactedAt: new Date() })).rejects.toBeDefined();
+        // Closing and redacting in one statement is accepted.
+        await expect(
+          update({
+            status: 'cancelled',
+            cancelledAt: new Date(),
+            cancelReason: 'customer',
+            reason: null,
+            redactedAt: new Date(),
+          }),
+        ).resolves.toBeDefined();
+        expect((await adminRow(BUYER))[0]).toMatchObject({ status: 'cancelled', reason: null });
+        // Redacted once: a second redaction time, or text back, is refused.
+        await expect(update({ redactedAt: new Date() })).rejects.toBeDefined();
+        await expect(update({ reason: 'back again' })).rejects.toBeDefined();
+      });
+
+      it('refuses inconsistent admin columns and a malformed ticket (CHECK)', async () => {
+        const insert = (cols: string, values: string) =>
+          sql.query(
+            `INSERT INTO customers.account_deletion_requests
+               (id, market_id, tenant_id, account_id, status, waiting_period_days, requested_at, scheduled_for, ${cols})
+             VALUES ($1, $2, 'default', $3, 'pending', 14, now(), now() + interval '14 days', ${values})`,
+            [ids.next(), code, id<'Account'>(0xfe00 + counter)],
+          );
+        await expect(insert('requested_by', "'admin'")).rejects.toMatchObject({ code: '23514' });
+        await expect(
+          insert(
+            'requested_by, admin_account_id, ticket_ref, reason',
+            `'customer', '${ADMIN}', 'T-1', 'r'`,
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        await expect(
+          insert(
+            'requested_by, admin_account_id, ticket_ref, reason',
+            `'admin', '${ADMIN}', 'has space', 'r'`,
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        await expect(
+          insert(
+            'requested_by, admin_account_id, ticket_ref, reason',
+            `'admin', '${ADMIN}', 'T-1', ''`,
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        // An open admin request keeps its reason; a redacted one is closed and has none.
+        await expect(
+          insert(
+            'requested_by, admin_account_id, ticket_ref, reason, redacted_at',
+            `'admin', '${ADMIN}', 'T-1', 'r', now()`,
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        await expect(
+          insert(
+            'requested_by, admin_account_id, ticket_ref, redacted_at',
+            `'admin', '${ADMIN}', 'T-1', now()`,
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        await expect(
+          sql.query(
+            `INSERT INTO customers.account_deletion_requests
+               (id, market_id, tenant_id, account_id, status, waiting_period_days, requested_at, scheduled_for, cancelled_at, cancel_reason)
+             VALUES ($1, $2, 'default', $3, 'cancelled', 14, now(), now() + interval '14 days', now(), 'admin')`,
+            [ids.next(), code, id<'Account'>(0xfd00 + counter)],
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+      });
     });
 
     it('refuses an inconsistent status row (CHECK)', async () => {

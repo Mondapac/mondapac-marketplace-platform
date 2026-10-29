@@ -154,7 +154,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // usage counts only); the manage keys of promotions are not listed.
     // Version 22 drops `shipping.flat-fee.view`, a retired key (delivery package 5): a stored role
     // keeps it harmlessly, as the registry still knows it.
-    seedVersion: 22,
+    // Version 23 adds `customers.account-deletion-requests.view`, likewise unprotected (customers
+    // package 5c); the protected `customers.buyer-account.delete` is not listed.
+    seedVersion: 23,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -180,6 +182,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'shipping.delivery-settings.view',
       'blog.post.read',
       'promotions.promotion.view',
+      'customers.account-deletion-requests.view',
     ],
   },
   {

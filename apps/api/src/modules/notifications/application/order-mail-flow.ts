@@ -276,6 +276,7 @@ export async function sendOrderShipped(
     orderId: notice.value.orderId,
     carrier: notice.value.carrier,
     trackingRef: notice.value.trackingRef,
+    trackingUrl: notice.value.trackingUrl,
     orderUrl: url,
     locale: deps.policy.defaultLocale(context.market),
   });

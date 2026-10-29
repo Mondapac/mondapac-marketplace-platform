@@ -52,6 +52,8 @@ export interface ShipmentNotice {
   readonly sellerOrderId: Id<'SellerOrder'>;
   readonly carrier: string;
   readonly trackingRef: string | null;
+  /** The fleet's tracking page when a delivery fleet carried it and gave one: https only. */
+  readonly trackingUrl: string | null;
 }
 
 /** An unknown, foreign-Market, unpaid or not yet shipped seller order is `ordering.order-not-found`. */
@@ -186,6 +188,16 @@ export interface OrderingFacade {
    * account deletion job re-checks a due request before it erases the account.
    */
   openObligationsOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
+   * The same counts for one customer account, asked by an admin's deletion request for a buyer
+   * (customers package 5c). Rule `own-resources`: a platform admin that is not acting as a seller,
+   * any other caller `access.denied`; the calling use case holds the permission.
+   */
+  adminOpenObligationsOf(
     context: CallContext,
     accountId: Id<'Account'>,
   ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;

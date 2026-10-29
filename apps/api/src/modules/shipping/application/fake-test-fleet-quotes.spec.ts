@@ -132,6 +132,7 @@ describe('checkout delivery quotes from the fake_test fleet in market ZZ', () =>
       ledger: new MemoryFleetLedger(),
       pickups,
       webhookSignature: undefined as never,
+      uberWebhookSignature: undefined as never,
       securityEvents: undefined as never,
     };
     await settings.saveSettings(

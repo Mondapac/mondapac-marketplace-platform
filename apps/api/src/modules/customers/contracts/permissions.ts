@@ -19,7 +19,28 @@ export const ACCOUNT_DELETION_SETTINGS_MANAGE = definePermission('customers', {
   protected: true,
 });
 
+/**
+ * Delete a buyer's account for them, through the support ticket that asked (package 5c), and cancel
+ * such a request during the wait. The deletion ends in the erasure of the account, so the key is
+ * protected: only the Platform Administrator holds it, or a custom role it grants it to. Every use
+ * also needs a fresh admin step-up proof of `customers.buyer-account.delete`.
+ */
+export const BUYER_ACCOUNT_DELETE = definePermission('customers', {
+  key: 'customers.buyer-account.delete',
+  scope: 'platform',
+  protected: true,
+});
+
+/** See the pending buyer deletion requests of the Market (ids and dates, no personal data). */
+export const ACCOUNT_DELETION_REQUESTS_VIEW = definePermission('customers', {
+  key: 'customers.account-deletion-requests.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
+  ACCOUNT_DELETION_REQUESTS_VIEW,
   ACCOUNT_DELETION_SETTINGS_MANAGE,
   ACCOUNT_DELETION_SETTINGS_VIEW,
+  BUYER_ACCOUNT_DELETE,
 ]);

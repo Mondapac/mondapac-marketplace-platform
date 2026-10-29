@@ -505,6 +505,8 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "pricing.days-at-price", "rule": "anonymous" },
+  { "name": "pricing.days-at-price-system", "rule": "system" },
   { "name": "pricing.effective-prices", "rule": "anonymous" },
   { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.publish-special-price-boundaries", "rule": "system" },
@@ -552,6 +554,8 @@
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
+  { "name": "sellers.active-since", "rule": "anonymous" },
+  { "name": "sellers.active-since-system", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },
@@ -610,6 +614,11 @@
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },
+  {
+    "name": "shipping.carrier-tracking-links",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "shipping.charge-delivery", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.delivery-availability", "rule": "anonymous" },
@@ -619,6 +628,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "shipping.poll-fleet-status", "rule": "system" },
   {
     "name": "shipping.price-delivery",
     "rule": "own-resources",
@@ -626,6 +636,7 @@
   },
   { "name": "shipping.quote-deliveries", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
+  { "name": "shipping.receive-uber-webhook", "rule": "anonymous" },
   { "name": "shipping.record-fleet-fee", "rule": "system" },
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },

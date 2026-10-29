@@ -1,6 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, Result, Temporal } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Id,
+  MarketContext,
+  Money,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
 import {
   StaleAggregateError,
   TransactionConflictError,
@@ -78,7 +85,10 @@ export type CancelAccountDeletionFailure =
   /** A claim or another cancel won the race: ask again (the answer is then definite). */
   | { readonly code: 'customers.conflict' };
 
-type BlockerReading = Result<readonly AccountDeletionBlocker[], { readonly code: 'unavailable' }>;
+export type BlockerReading = Result<
+  readonly AccountDeletionBlocker[],
+  { readonly code: 'unavailable' }
+>;
 
 /**
  * What stands in the way of erasing an account, asked of each owning module through its facade.
@@ -98,17 +108,41 @@ async function readBlockers(
     account === null ? deps.wallet.ownBalanceOf(context) : deps.wallet.balanceOf(context, account),
   ]);
   if (!obligations.ok || !balance.ok) return err({ code: 'unavailable' });
+  return ok(blockersFrom(obligations.value, balance.value));
+}
+
+type Obligations = { readonly openOrders: number; readonly pendingRefunds: number };
+type Balance = { readonly available: Money; readonly held: Money };
+
+function blockersFrom(obligations: Obligations, balance: Balance): AccountDeletionBlocker[] {
   const blockers: AccountDeletionBlocker[] = [];
-  if (obligations.value.openOrders > 0) {
-    blockers.push({ code: 'open-orders', count: obligations.value.openOrders });
+  if (obligations.openOrders > 0) {
+    blockers.push({ code: 'open-orders', count: obligations.openOrders });
   }
-  if (obligations.value.pendingRefunds > 0) {
-    blockers.push({ code: 'pending-refunds', count: obligations.value.pendingRefunds });
+  if (obligations.pendingRefunds > 0) {
+    blockers.push({ code: 'pending-refunds', count: obligations.pendingRefunds });
   }
-  if (balance.value.available.amount > 0n || balance.value.held.amount > 0n) {
+  if (balance.available.amount > 0n || balance.held.amount > 0n) {
     blockers.push({ code: 'wallet-balance' });
   }
-  return ok(blockers);
+  return blockers;
+}
+
+/**
+ * The same blockers for an admin's request for a buyer (package 5c): each module answers an admin
+ * of the calling context (rule `own-resources`, admin), so the admin's context goes unchanged.
+ */
+export async function readBlockersAsAdmin(
+  deps: AccountDeletionDependencies,
+  context: CallContext,
+  account: Id<'Account'>,
+): Promise<BlockerReading> {
+  const [obligations, balance] = await Promise.all([
+    deps.ordering.adminOpenObligationsOf(context, account),
+    deps.wallet.adminBalanceOf(context, account),
+  ]);
+  if (!obligations.ok || !balance.ok) return err({ code: 'unavailable' });
+  return ok(blockersFrom(obligations.value, balance.value));
 }
 
 const isCustomerSession = (context: CallContext) =>
@@ -176,6 +210,8 @@ export async function requestAccountDeletion(
           requestedAt: now,
           scheduledFor: scheduledForRequest(now, waitingPeriodDays),
           claimedAt: null,
+          requestedBy: 'customer',
+          adminOrigin: null,
         };
         if (!(await deps.requests.insertPending(market, request))) {
           return err({ code: 'customers.account-deletion-already-requested' } as const);

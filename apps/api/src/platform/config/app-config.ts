@@ -174,6 +174,17 @@ const envSchema = z.object({
       'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
     )
     .optional(),
+  // Phase 6 package 5e: the signing secret of Uber Direct's delivery status webhook, as
+  // MARKET=secret pairs separated by commas (each Market at most once and only hosted ones). A
+  // Market without it has the Uber webhook answer 503 (Uber retries). A server secret, never
+  // echoed; it must differ from the OAuth client secret.
+  UBER_DIRECT_WEBHOOK_SECRET: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
+      'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
   // Phase 6 package 5c, the external fleet Zoom2u: its API key (a bearer token) as MARKET=key
   // pairs separated by commas (each Market at most once and only hosted ones). A Market without
   // it has Zoom2u off, whatever its `shipping.zoom2u.enabled` says. A server secret, never
@@ -399,6 +410,8 @@ export interface AppConfig {
     customerIds: Readonly<Record<string, string>>;
     clientIds: Readonly<Record<string, string>>;
     clientSecrets: Readonly<Record<string, string>>;
+    /** The signing secret of the status webhook (`UBER_DIRECT_WEBHOOK_SECRET`). */
+    webhookSecrets: Readonly<Record<string, string>>;
   }>;
   /**
    * The Zoom2u API key of each hosted Market (`ZOOM2U_API_KEY`). Holds secrets: read by
@@ -656,7 +669,27 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
   const uberCustomers = uberValues('UBER_DIRECT_CUSTOMER_ID');
   const uberClients = uberValues('UBER_DIRECT_CLIENT_ID');
   const uberSecrets = uberValues('UBER_DIRECT_CLIENT_SECRET');
-  issues.push(...uberCustomers.issues, ...uberClients.issues, ...uberSecrets.issues);
+  const uberWebhook = parsed.success
+    ? parseMarketValues(
+        parsed.data.UBER_DIRECT_WEBHOOK_SECRET,
+        parsed.data.HOSTED_MARKETS,
+        'UBER_DIRECT_WEBHOOK_SECRET',
+      )
+    : { values: {}, issues: [] };
+  issues.push(
+    ...uberCustomers.issues,
+    ...uberClients.issues,
+    ...uberSecrets.issues,
+    ...uberWebhook.issues,
+  );
+  // The client secret goes out with every call; the webhook secret proves Uber's events.
+  for (const [market, secret] of Object.entries(uberWebhook.values)) {
+    if (uberSecrets.values[market] === secret) {
+      issues.push(
+        `UBER_DIRECT_WEBHOOK_SECRET: ${market} must differ from UBER_DIRECT_CLIENT_SECRET`,
+      );
+    }
+  }
   const zoom2uKeys = parsed.success
     ? parseMarketValues(parsed.data.ZOOM2U_API_KEY, parsed.data.HOSTED_MARKETS, 'ZOOM2U_API_KEY')
     : { values: {}, issues: [] };
@@ -721,6 +754,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       customerIds: uberCustomers.values,
       clientIds: uberClients.values,
       clientSecrets: uberSecrets.values,
+      webhookSecrets: uberWebhook.values,
     }),
     zoom2u: Object.freeze({ apiKeys: zoom2uKeys.values }),
     auspost: Object.freeze({

@@ -22,16 +22,34 @@ export class LateBoundAccountDeletionPeers implements AccountDeletionPeers {
       this.#bound === null
         ? UNAVAILABLE()
         : this.#bound.ordering.openObligationsOf(context, accountId),
+    adminOpenObligationsOf: (context: CallContext, accountId: Id<'Account'>) =>
+      this.#bound === null
+        ? UNAVAILABLE()
+        : this.#bound.ordering.adminOpenObligationsOf(context, accountId),
   };
   readonly wallet = {
     ownBalanceOf: (context: CallContext) =>
       this.#bound === null ? UNAVAILABLE() : this.#bound.wallet.ownBalanceOf(context),
     balanceOf: (context: CallContext, accountId: Id<'Account'>) =>
       this.#bound === null ? UNAVAILABLE() : this.#bound.wallet.balanceOf(context, accountId),
+    adminBalanceOf: (context: CallContext, accountId: Id<'Account'>) =>
+      this.#bound === null ? UNAVAILABLE() : this.#bound.wallet.adminBalanceOf(context, accountId),
   };
   readonly identity = {
     endOtherCustomerSessions: (context: CallContext) =>
       this.#bound === null ? UNAVAILABLE() : this.#bound.identity.endOtherCustomerSessions(context),
+    customerAccountOf: (context: CallContext, accountId: Id<'Account'>) =>
+      this.#bound === null
+        ? UNAVAILABLE()
+        : this.#bound.identity.customerAccountOf(context, accountId),
+    endCustomerSessionsForAdmin: (
+      context: CallContext,
+      accountId: Id<'Account'>,
+      requestId: Id<'AccountDeletionRequest'>,
+    ) =>
+      this.#bound === null
+        ? UNAVAILABLE()
+        : this.#bound.identity.endCustomerSessionsForAdmin(context, accountId, requestId),
     endAllCustomerSessions: (
       context: CallContext,
       accountId: Id<'Account'>,

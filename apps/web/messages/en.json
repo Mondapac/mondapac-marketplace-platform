@@ -262,6 +262,8 @@
       "delivered-on": "Delivered {date}",
       "cancelled-part": "Cancelled",
       "progress": "Delivery progress",
+      "track": "Track delivery",
+      "track-new-tab": "(opens the delivery partner's page in a new tab)",
       "steps": {
         "placed": "Placed",
         "confirmed": "Confirmed",
