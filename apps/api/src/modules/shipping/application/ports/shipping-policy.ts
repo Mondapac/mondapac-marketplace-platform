@@ -2,7 +2,7 @@ import type { MarketContext } from '@mondapac/shared-kernel';
 
 /** The Market settings shipping reads. */
 export interface ShippingPolicy {
-  /** The currency every flat fee of the Market is in. */
+  /** The currency of every delivery price of the Market. */
   currency(market: MarketContext): string;
 
   /** The Market's IANA zone: only the fallback for a seller without a zone (ADR-0005). */
@@ -14,6 +14,21 @@ export interface ShippingPolicy {
    * open for delivery, is false (fail closed).
    */
   deliversTo(market: MarketContext, postcode: string): boolean;
+
+  /**
+   * The most the platform absorbs, in minor units, when a booking goes to a dearer fleet than the
+   * one the buyer was charged for (the Market's `shipping.fleetFallbackAbsorbCapMinor`; 0 when the
+   * Market sets none, so every difference alerts).
+   */
+  fleetFallbackCapMinor(market: MarketContext): number;
+
+  /**
+   * The range, in minor units, a fleet's quote must fall in to be shown and charged (the Market's
+   * `shipping.realTimeCarrier.quoteBounds`), or null when the Market sets none.
+   */
+  quoteBounds(
+    market: MarketContext,
+  ): { readonly minMinor: number; readonly maxMinor: number } | null;
 }
 
 export const SHIPPING_POLICY = Symbol('SHIPPING_POLICY');

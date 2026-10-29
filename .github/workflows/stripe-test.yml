@@ -100,6 +100,12 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.SK_TEST }}
         run: node scripts/stripe-test/f3-payout-schedule.mjs
 
+      - name: '6c: one transfer to an onboarded Accounts v2 account'
+        if: ${{ !cancelled() }}
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.SK_TEST }}
+        run: node scripts/stripe-test/f6c-transfer.mjs
+
       # A signing secret made for this run only: the API is started with it and the script signs
       # the real Stripe event with it, as Stripe signs a delivery.
       - name: Webhook round trip with a real test-mode event

@@ -131,7 +131,6 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
   const market = testMarketContext(code, 'default');
   const ceiling = markets.get(market.marketId).maxLineQuantity;
   const currency = markets.get(market.marketId).defaultCurrency;
-  const FEE = money(750n, currency);
   const clock = new FixedClock(T0);
   let carts: MemoryCarts;
   let verdicts: Map<string, LineVerdict>;
@@ -190,10 +189,6 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
         ),
       );
     },
-    sellerDeliveryFees: (_c, sellerIds) =>
-      Promise.resolve(
-        new Map(sellerIds.flatMap((sellerId) => (sellerId === SELLER ? [[sellerId, FEE]] : []))),
-      ),
     // Only OFFER has a published listing; the other units show their state only.
     lineDisplays: (_c, refs) =>
       Promise.resolve(
@@ -733,15 +728,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       });
 
       expect((await groupOf())?.minimumOrder).toEqual({ state: 'not-applicable', minimum: null });
-      expect((await groupOf())?.deliveryFee).toBeNull();
       expect(minimumCalls).toBe(0);
-    });
-
-    it("shows the seller's delivery fee on a group with a buyable line", async () => {
-      await fill();
-      verdicts.set(verdictKey(line), buyable(1000n));
-
-      expect((await groupOf())?.deliveryFee).toEqual(FEE);
     });
 
     it.each([

@@ -1,4 +1,5 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { AdminBalanceOf } from '../application/use-cases/admin-balance-of.use-case';
 import type { BalanceOf } from '../application/use-cases/balance-of.use-case';
 import type { CaptureHold } from '../application/use-cases/capture-hold.use-case';
 import type { GrantCredit } from '../application/use-cases/grant-credit.use-case';
@@ -21,6 +22,7 @@ export class WalletFacadeImplementation implements WalletFacade {
     private readonly release: ReleaseHold,
     private readonly balance: BalanceOf,
     private readonly ownBalance: OwnBalanceOf,
+    private readonly adminBalance: AdminBalanceOf,
   ) {}
 
   grantCredit(context: CallContext, request: GrantCreditRequest) {
@@ -41,6 +43,10 @@ export class WalletFacadeImplementation implements WalletFacade {
 
   balanceOf(context: CallContext, customerAccountId: Id<'Account'>) {
     return this.balance.execute(context, { customerAccountId });
+  }
+
+  adminBalanceOf(context: CallContext, customerAccountId: Id<'Account'>) {
+    return this.adminBalance.execute(context, { customerAccountId });
   }
 
   ownBalanceOf(context: CallContext) {

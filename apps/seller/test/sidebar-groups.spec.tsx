@@ -197,7 +197,6 @@ describe('seller menu structure', () => {
       's_offers',
       's_stock',
       's_store_profile',
-      's_delivery',
       's_earnings',
       's_payout',
       's_team',
@@ -214,16 +213,13 @@ describe('seller menu structure', () => {
     expect(ids(['payments.payout-account.view'])).toContain('s_payout');
   });
 
-  it('puts Store profile and Delivery in My store, each behind its own permission', () => {
+  it('puts Store profile in My store, behind its own permission; sellers have no delivery page', () => {
     const ids = (keys: string[]) => sellerNavItems('approved', keys).map((item) => item.id);
     const groups = sellerNav.groups?.map((group) => group.id);
     expect(groups?.indexOf('store')).toBe((groups?.indexOf('catalogue') ?? -2) + 1);
     expect(groups?.indexOf('money')).toBe((groups?.indexOf('store') ?? -2) + 1);
     expect(ids([])).not.toContain('s_store_profile');
-    expect(ids([])).not.toContain('s_delivery');
     expect(ids(['sellers.store-profile.view'])).toContain('s_store_profile');
-    expect(ids(['sellers.store-profile.view'])).not.toContain('s_delivery');
-    expect(ids(['sellers.store-settings.edit'])).toContain('s_delivery');
-    expect(ids(['sellers.store-settings.edit'])).not.toContain('s_store_profile');
+    expect(ids(['sellers.store-settings.edit'])).not.toContain('s_delivery');
   });
 });

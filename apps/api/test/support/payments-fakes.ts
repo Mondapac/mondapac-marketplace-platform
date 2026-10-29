@@ -223,6 +223,10 @@ export class FakeOrderingFacade implements OrderingFacade {
     return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
   }
 
+  adminOpenObligationsOf(): ReturnType<OrderingFacade['adminOpenObligationsOf']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
+  }
+
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
     return Promise.resolve(ok([]));
   }

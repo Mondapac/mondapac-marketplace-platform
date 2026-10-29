@@ -1,5 +1,6 @@
 import { unitKey } from '../cart/live-cart.ts';
 import type {
+  DeliveryMethod,
   AccountOrder,
   Money,
   OrderLine,
@@ -16,6 +17,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const CURRENCY = /^[A-Z]{3}$/u;
 const DIGITS = /^[0-9]{1,15}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T/u;
+const METHODS: readonly DeliveryMethod[] = ['pickup', 'instant', 'same_day', 'scheduled'];
 
 type Json = Readonly<Record<string, unknown>>;
 
@@ -93,9 +95,12 @@ export function accountOrderOf(
     if (!isRecord(seller) || !Array.isArray(seller.lines)) return null;
     const sellerId = typeof seller.sellerId === 'string' ? seller.sellerId : null;
     const status = partStatus(cancelled, seller.fulfilment);
+    const deliveryMethod = METHODS.find((method) => method === seller.deliveryMethod) ?? null;
     const deliveryFee = moneyOf(seller.shipping);
     const lines = seller.lines.map((line) => lineOf(line, labels.unnamedItem));
-    if (sellerId === null || status === null || deliveryFee === null) return null;
+    if (sellerId === null || status === null || deliveryMethod === null || deliveryFee === null) {
+      return null;
+    }
     if (lines.length === 0 || lines.some((line) => line === null)) return null;
     const deliveredOn = status === 'delivered' ? dayOf(seller.deliveredAt) : null;
     const note = text(notes[sellerId], 200);
@@ -103,8 +108,7 @@ export function accountOrderOf(
       sellerId,
       sellerName: text(seller.storeName) ?? labels.unnamedSeller,
       status,
-      // No delivery promise in the backend yet: the page shows the day it was delivered, if any.
-      deliveryWindow: '',
+      deliveryMethod,
       ...(deliveredOn === null ? {} : { deliveredOn }),
       deliveryFee,
       ...(note === null ? {} : { note }),

@@ -242,6 +242,19 @@ export interface IdentityFacade {
   ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
 
   /**
+   * Ends every session of a customer account because an admin asked for its deletion (customers
+   * package 5c). Rule `own-resources`: a platform admin that is not acting as a seller, any other
+   * caller `access.denied`; the calling use case holds the permission and has checked the
+   * account's Market. Answers how many sessions were ended, 0 for an account that is gone or is
+   * not a customer's; audited with `requestId`. Not exposed over HTTP.
+   */
+  endCustomerSessionsForAdmin(
+    context: CallContext,
+    accountId: Id<'Account'>,
+    requestId: Id<'AccountDeletionRequest'>,
+  ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
+
+  /**
    * Whether a customer account is still there (false once erased). Rule `system`; a boolean and
    * nothing else. The deletion job asks it before handing a resumed claim back. Not exposed over HTTP.
    */

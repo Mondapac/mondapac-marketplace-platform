@@ -17,7 +17,7 @@ import {
   type DeliverySettings,
   type SellerDeliveryAvailability,
 } from '../domain/delivery-settings';
-import { sellerIdsOf } from './flat-fee-flow';
+import { sellerIdsOf } from './seller-ids';
 import type { ActorId } from './ports/fleet-selection.repository';
 import type { ShippingDependencies } from './shipping-dependencies';
 
@@ -319,11 +319,52 @@ function factsOf(
   };
 }
 
+/** What `readAvailability` knows of the asked sellers. */
+export interface AvailabilityRead {
+  readonly availability: ReadonlyMap<Id<'Seller'>, SellerDeliveryAvailability>;
+  /** The Market's settings, for the margin of a quote. */
+  readonly settings: DeliverySettings;
+  /** The pickup postcode of each seller that has an approved pickup address. */
+  readonly pickupPostcodes: ReadonlyMap<Id<'Seller'>, string>;
+}
+
+/**
+ * The delivery methods each of up to 100 distinct sellers offers now, with the reason for every
+ * one that is not, and what was read to say so. Platform off, then seller does not support it,
+ * then the rule of the method (pickup address; same-day cut-off in the seller's zone). Any failed
+ * read fails the whole, never "all open".
+ */
+export async function readAvailability(
+  deps: ShippingDependencies,
+  context: CallContext,
+  sellerIds: readonly Id<'Seller'>[],
+): Promise<Result<AvailabilityRead, OfferFailure>> {
+  const offer = await readOfferFacts(deps, context, sellerIds);
+  if (!offer.ok) return offer;
+  const now = deps.clock.now();
+  const availability = new Map<Id<'Seller'>, SellerDeliveryAvailability>();
+  for (const sellerId of sellerIds) {
+    const { zone, facts } = factsOf(deps, context, offer.value, sellerId, now);
+    availability.set(sellerId, {
+      sellerId,
+      zone,
+      methods: evaluateMethods(facts),
+      sameDayCutoff: formatCutoff(offer.value.settings.sameDayCutoffMinutes),
+      scheduledDaysAhead: offer.value.settings.scheduledDaysAhead,
+      scheduledWindowMinutes: offer.value.settings.scheduledWindowMinutes,
+    });
+  }
+  return ok({
+    availability,
+    settings: offer.value.settings,
+    pickupPostcodes: offer.value.postcodes,
+  });
+}
+
 /**
  * `delivery-availability`: for each asked seller (at most 100), the four delivery methods now
- * with the reason for every one that is unavailable. Platform off, then seller does not support
- * it, then the rule of the method (pickup address; same-day cut-off in the seller's zone). The
- * answer is the same for every caller. A failed read is `shipping.unavailable`, never "all open".
+ * with the reason for every one that is unavailable. The answer is the same for every caller. A
+ * failed read is `shipping.unavailable`, never "all open".
  */
 export async function deliveryAvailability(
   deps: ShippingDependencies,
@@ -333,22 +374,8 @@ export async function deliveryAvailability(
   const parsed = sellerIdsOf(input?.sellerIds);
   if (!parsed.ok) return parsed;
   if (parsed.value.length === 0) return ok(new Map());
-  const offer = await readOfferFacts(deps, context, parsed.value);
-  if (!offer.ok) return offer;
-  const now = deps.clock.now();
-  const answer = new Map<Id<'Seller'>, SellerDeliveryAvailability>();
-  for (const sellerId of parsed.value) {
-    const { zone, facts } = factsOf(deps, context, offer.value, sellerId, now);
-    answer.set(sellerId, {
-      sellerId,
-      zone,
-      methods: evaluateMethods(facts),
-      sameDayCutoff: formatCutoff(offer.value.settings.sameDayCutoffMinutes),
-      scheduledDaysAhead: offer.value.settings.scheduledDaysAhead,
-      scheduledWindowMinutes: offer.value.settings.scheduledWindowMinutes,
-    });
-  }
-  return ok(answer);
+  const read = await readAvailability(deps, context, parsed.value);
+  return read.ok ? ok(read.value.availability) : read;
 }
 
 export interface DeliveryChoiceVerdict {

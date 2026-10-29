@@ -99,7 +99,6 @@ export class StoreSettingsSaveMinimumOrder extends UseCase<
           minimumOrder,
           currency: rule.currency,
           maximumAmount: rule.max,
-          delivery: current.delivery,
         });
         if (sameMoney(current.minimumOrder, wanted.value)) {
           return ok(view(current.version, current.minimumOrder));

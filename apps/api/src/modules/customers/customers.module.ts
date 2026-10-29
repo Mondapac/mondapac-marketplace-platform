@@ -21,6 +21,9 @@ import {
   type AccountDeletionPeers,
 } from './application/ports/account-deletion-peers';
 import { ACCOUNT_DELETION_REQUEST_REPOSITORY } from './application/ports/account-deletion-request.repository';
+import { AdminCancelAccountDeletion } from './application/use-cases/admin-cancel-account-deletion.use-case';
+import { AdminListAccountDeletions } from './application/use-cases/admin-list-account-deletions.use-case';
+import { AdminRequestAccountDeletion } from './application/use-cases/admin-request-account-deletion.use-case';
 import { CancelAccountDeletion } from './application/use-cases/cancel-account-deletion.use-case';
 import { ExecuteAccountDeletions } from './application/use-cases/execute-account-deletions.use-case';
 import { RequestAccountDeletion } from './application/use-cases/request-account-deletion.use-case';
@@ -52,6 +55,7 @@ import { CustomersAccountDeletionFacadeImplementation } from './presentation/cus
 import { executeAccountDeletionsJob } from './presentation/jobs/execute-account-deletions.job';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { AccountDeletionController } from './presentation/account-deletion.controller';
+import { AdminAccountDeletionRequestsController } from './presentation/admin-account-deletion-requests.controller';
 import { AdminAccountDeletionSettingsController } from './presentation/admin-account-deletion-settings.controller';
 import { AddressBookController } from './presentation/address-book.controller';
 import { CustomersCheckoutFacadeImplementation } from './presentation/customers-checkout.facade';
@@ -82,6 +86,7 @@ const DELETION_PORTS: readonly [keyof AccountDeletionDependencies, InjectionToke
   ['clock', CLOCK],
   ['audit', AUDIT_WRITER],
   ['outbox', OUTBOX_WRITER],
+  ['stepUp', STEP_UP_CONSUMER],
 ];
 
 /** The deletion flow's use cases: the same ports, plus the peers bound at start. */
@@ -129,6 +134,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AccountDeletionController,
     AccountDeletionRequestController,
     AdminAccountDeletionSettingsController,
+    AdminAccountDeletionRequestsController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('customers'),
@@ -154,6 +160,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewAccountDeletionRequest,
       CancelAccountDeletion,
       ExecuteAccountDeletions,
+      AdminRequestAccountDeletion,
+      AdminCancelAccountDeletion,
+      AdminListAccountDeletions,
     ].map((type) => deletionUseCaseProvider(type as DeletionUseCaseClass<unknown>)),
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,

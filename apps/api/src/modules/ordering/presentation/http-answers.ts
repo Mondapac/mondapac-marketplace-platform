@@ -19,10 +19,10 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.cart-not-purchasable': 422,
   'ordering.stock-insufficient': 409,
   'ordering.cart-not-ready': 409,
+  'ordering.delivery-quote-changed': 409,
   'conflict.retry': 409,
   'request.throttled': 429,
   'ordering.check-unavailable': 503,
-  'ordering.shipping-unavailable': 503,
   'ordering.seller-order-not-found': 404,
   'ordering.fulfilment-conflict': 409,
   'ordering.pickup-code-invalid': 422,
@@ -78,6 +78,7 @@ const DETAILS = [
   'lines',
   'sellers',
   'methodSellerIds',
+  'quotes',
   'attemptsLeft',
 ] as const;
 
@@ -90,6 +91,17 @@ const sellersBody = (sellers: unknown) =>
       minimum: seller.minimum === null ? null : moneyBody(seller.minimum),
     }),
   );
+
+/** The quotes of `ordering.delivery-quote-changed`: the new total leaves as a money body. */
+const quotesBody = (quotes: unknown) =>
+  (
+    quotes as readonly { sellerId: string; quoteId: string; total: Money; validUntil: string }[]
+  ).map((quote) => ({
+    sellerId: quote.sellerId,
+    quoteId: quote.quoteId,
+    total: moneyBody(quote.total),
+    validUntil: quote.validUntil,
+  }));
 
 /** Turns a use case's refusal into the HTTP error; an unmapped code is a 500 and is logged. */
 export function refusal(
@@ -112,7 +124,11 @@ export function refusal(
   const details = Object.fromEntries(
     DETAILS.filter((key) => error[key] !== undefined).map((key) => [
       key,
-      key === 'sellers' ? sellersBody(error[key]) : error[key],
+      key === 'sellers'
+        ? sellersBody(error[key])
+        : key === 'quotes'
+          ? quotesBody(error[key])
+          : error[key],
     ]),
   );
   return Object.keys(details).length === 0

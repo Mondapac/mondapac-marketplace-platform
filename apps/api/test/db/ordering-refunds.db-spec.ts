@@ -229,6 +229,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           deliveryWindow: null,
           readyAt: null,
           deliveryAttention: null,
+          deliveryQuote: null,
         },
       ],
       lines: [

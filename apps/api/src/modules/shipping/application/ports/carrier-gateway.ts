@@ -78,6 +78,12 @@ export interface CarrierBookingAnswer {
   readonly carrierStatus: string;
   /** A link the buyer can follow, when the fleet gives one. */
   readonly trackingUrl: string | null;
+  /**
+   * What the booking costs the platform, when the fleet's booking answer says. Optional: when it
+   * is missing and the booking replaced the fleet the buyer was charged for, the router asks the
+   * fleet for a quote of the trip to learn it (delivery models, package 5).
+   */
+  readonly price?: Money | null;
 }
 
 export type CarrierFailure =

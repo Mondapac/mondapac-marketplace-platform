@@ -186,7 +186,6 @@ describe('sellers page', () => {
     expect(kedron.textContent).toContain('Kedron · Selling since 2025');
     expect(kedron.textContent).toContain('Halal certificate checked');
     expect(kedron.textContent).toContain('A$40.00 minimum order');
-    expect(kedron.textContent).toContain('Delivery A$7.50');
     expect(kedron.textContent).toContain('6 products');
     expect(kedron.querySelectorAll('.slc-th')).toHaveLength(3);
     expect(card('Paddington Bakehouse').textContent).toContain('No minimum order');

@@ -8,7 +8,6 @@ import { StoreCard } from '../src/sellers/store-card.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import {
   listingOf,
-  flatFeeOf,
   publicStoreOf,
   publicStorePageOf,
   sellerResultsOf,
@@ -53,60 +52,6 @@ describe('reading the API store answer', () => {
     expect(() => publicStoreOf(body)).toThrow(StoreAnswerRefused);
   });
 
-  describe('delivery terms', () => {
-    const TERMS = { day: 'same-day', from: '09:00', to: '12:30', cutoff: '08:30' };
-
-    it('reads the terms when the store has them, and has none otherwise', () => {
-      expect(publicStoreOf({ ...STORE, delivery: TERMS }).delivery).toEqual(TERMS);
-      expect(
-        publicStoreOf({ ...STORE, delivery: { ...TERMS, to: '24:00', day: 'next-day' } }).delivery,
-      ).toMatchObject({ to: '24:00' });
-      expect('delivery' in publicStoreOf(STORE)).toBe(false);
-    });
-
-    it.each([
-      ['null', null],
-      ['a string', 'next-day'],
-      ['an unknown day', { ...TERMS, day: 'daily' }],
-      ['a time that is not a half hour', { ...TERMS, from: '09:15' }],
-      ['a time with a zone', { ...TERMS, from: '09:00Z' }],
-      ['a numeric time', { ...TERMS, cutoff: 830 }],
-      ['a missing time', { ...TERMS, to: undefined }],
-      ['a window that closes when it opens', { ...TERMS, from: '12:30' }],
-      ['a window that closes before it opens', { ...TERMS, from: '13:00' }],
-      ['a window that opens at the end of the day', { ...TERMS, from: '24:00' }],
-      ['a cut-off at the end of the day', { ...TERMS, cutoff: '24:00' }],
-    ])('refuses %s whole', (_name, delivery) => {
-      expect(() => publicStoreOf({ ...STORE, delivery })).toThrow(StoreAnswerRefused);
-    });
-
-    it('puts the terms on the store page and not on a card', () => {
-      const store = publicStoreOf({ ...STORE, delivery: TERMS });
-      expect(shopOf(store, 'Greater Brisbane').delivery).toEqual(TERMS);
-      expect('delivery' in listingOf(store, 'Greater Brisbane')).toBe(false);
-    });
-  });
-
-  describe('flat fee', () => {
-    it('reads money as minor units', () => {
-      expect(flatFeeOf({ amount: '995', currency: 'AUD' })).toEqual({
-        amount: 995,
-        currency: 'AUD',
-      });
-      expect(flatFeeOf({ amount: '0', currency: 'AUD' })).toEqual({ amount: 0, currency: 'AUD' });
-    });
-
-    it.each([
-      ['no body', undefined],
-      ['a numeric amount', { amount: 995, currency: 'AUD' }],
-      ['a negative amount', { amount: '-5', currency: 'AUD' }],
-      ['a decimal amount', { amount: '9.95', currency: 'AUD' }],
-      ['a bad currency', { amount: '995', currency: 'aud' }],
-    ])('refuses %s', (_name, body) => {
-      expect(() => flatFeeOf(body)).toThrow(StoreAnswerRefused);
-    });
-  });
-
   it('reads a page and refuses one without a total', () => {
     expect(publicStorePageOf({ items: [STORE], total: 1 }).total).toBe(1);
     expect(() => publicStorePageOf({ items: [STORE] })).toThrow(StoreAnswerRefused);
@@ -141,64 +86,6 @@ describe('seller pages with real data', () => {
     expect(document.body.textContent).toContain('$30.00');
     expect(document.body.textContent).not.toMatch(/no certificates|no products/i);
     expect(document.querySelector('.shop-text')).toBeNull();
-  });
-
-  describe('delivery line on the store page', () => {
-    const shopWith = (
-      delivery: object | undefined,
-      fee?: { amount: number; currency: string },
-    ) => ({
-      ...shopOf(publicStoreOf({ ...STORE, ...(delivery ? { delivery } : {}) }), 'Greater Brisbane'),
-      ...(fee ? { deliveryFee: fee } : {}),
-    });
-    const chips = () =>
-      Array.from(document.querySelectorAll('.shop-chips li')).map((li) => li.textContent);
-
-    it('words next-day terms with the seller’s clock, in the locale', () => {
-      wrap(
-        <SellerPage
-          shop={shopWith({ day: 'next-day', from: '08:00', to: '12:00', cutoff: '14:00' })}
-          ratingsShown={false}
-        />,
-      );
-      expect(chips()).toContain('Order by 2 PM for delivery tomorrow, 8 AM–12 PM');
-    });
-
-    it('words same-day terms, minutes, and the end of the day', () => {
-      wrap(
-        <SellerPage
-          shop={shopWith({ day: 'same-day', from: '09:30', to: '24:00', cutoff: '08:30' })}
-          ratingsShown={false}
-        />,
-      );
-      expect(chips()).toContain('Order by 8:30 AM for delivery today, 9:30 AM–midnight');
-    });
-
-    it('shows no delivery line when the seller has set no terms', () => {
-      wrap(<SellerPage shop={shopWith(undefined)} ratingsShown={false} />);
-      expect(chips().join(' ')).not.toMatch(/delivery/i);
-    });
-
-    it('shows the flat fee, and says free delivery for zero, never a made-up fee', () => {
-      wrap(
-        <SellerPage
-          shop={shopWith(undefined, { amount: 995, currency: 'AUD' })}
-          ratingsShown={false}
-        />,
-      );
-      expect(chips()).toContain('Delivery A$9.95');
-      cleanup();
-      wrap(
-        <SellerPage
-          shop={shopWith(undefined, { amount: 0, currency: 'AUD' })}
-          ratingsShown={false}
-        />,
-      );
-      expect(chips()).toContain('Free delivery');
-      cleanup();
-      wrap(<SellerPage shop={shopWith(undefined)} ratingsShown={false} />);
-      expect(chips().join(' ')).not.toMatch(/A\$9\.95|free delivery/i);
-    });
   });
 
   it('shows a store card without delivery terms or a product count', () => {

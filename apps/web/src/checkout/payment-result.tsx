@@ -169,12 +169,10 @@ export function Confirmation() {
               <span className="badge">{t('waiting-seller')}</span>
             </header>
             <small className="legal">
-              {g.speed === 'express'
-                ? t('part-express', { reference: `${order.reference}-${n + 1}` })
-                : t('part', {
-                    reference: `${order.reference}-${n + 1}`,
-                    window: g.seller.deliveryWindow,
-                  })}
+              {t('part', {
+                reference: `${order.reference}-${n + 1}`,
+                method: g.delivery?.method ?? 'scheduled',
+              })}
             </small>
             <ul>
               {g.lines.map((l) => (

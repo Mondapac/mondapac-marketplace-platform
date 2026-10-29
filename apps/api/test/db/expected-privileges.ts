@@ -842,10 +842,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // published_at.
     'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Package 5b: a deletion request is inserted and moved on (only the state columns: status, the
-    // job's claim and the closing columns), never deleted.
+    // job's claim and the closing columns, plus, in package 5c, the admin cancel's id and the redaction (reason, redacted_at)), never deleted.
     'customers.account_deletion_requests': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['cancel_reason', 'cancelled_at', 'claimed_at', 'completed_at', 'status'],
+      columnUpdate: [
+        'cancel_reason',
+        'cancelled_at',
+        'cancelled_by_admin_id',
+        'claimed_at',
+        'completed_at',
+        'reason',
+        'redacted_at',
+        'status',
+      ],
     },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
@@ -862,17 +871,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['changed_at', 'enabled'],
     },
+    // Delivery models, package 5: a quote is written once and the buyer's expired ones removed;
+    // a fee a fleet charged the platform is written once; a fallback booking is written once.
+    'shipping.delivery_quotes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'shipping.fleet_fees': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'shipping.delivery_fallbacks': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Engagement (personalization 1d-3): a block count is inserted by its first event of the day,
     // then only its counters and time change (the upsert); the retention purge deletes it.
     'engagement.block_counts': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['clicks', 'impressions', 'updated_at'],
-    },
-    // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
-    // change, the identity never, and no row is deleted.
-    'shipping.seller_flat_fees': {
-      table: ['INSERT', 'SELECT'],
-      columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
     },
     // Shipping, the real-time carrier (SHP-02/03): a booking is stored once the carrier confirms
     // it and only its progress moves; a carrier webhook event is taken once by its id; shipping
