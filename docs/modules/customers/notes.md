@@ -230,7 +230,7 @@ admin deletes a buyer's account for them, from a support ticket.
   (a failure is retried once, then logged at warn with ids only; the request stays). The Market's self-service switch does not apply.
 - **Cancel.** Whoever made the request, `pending` only; `executing` is 409 in-progress, a closed or
   unknown request 404, as the buyer's cancel. The buyer can still cancel an admin request.
-- **Data.** Migration `20261028120000_customers_account_deletion_admin`: `requested_by`,
+- **Data.** Migration `20261029140000_customers_account_deletion_admin`: `requested_by`,
   `admin_account_id`, `ticket_ref`, `reason`, `cancelled_by_admin_id`, `redacted_at`; `cancel_reason`
   gains `admin` (see `docs/design/data/customers.md`). The ticket reference and the reason are
   admin-entered text and possible personal data: on the row only, not in audit fields (they hold no

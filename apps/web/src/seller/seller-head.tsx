@@ -3,7 +3,6 @@ import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import type { SellerShop } from '../storefront/types.ts';
-import { useDeliveryLine } from './delivery-line.ts';
 import { BannerPicture } from './store-picture.tsx';
 import { Ring } from './rings.tsx';
 import { ShareMenu } from './share-menu.tsx';
@@ -23,7 +22,6 @@ export function SellerHead({
   const t = useTranslations('seller');
   const tp = useTranslations('product');
   const locale = useLocale();
-  const deliveryLine = useDeliveryLine(shop);
   const rated = shop.ratings !== undefined && shop.ratings.count > 0;
   return (
     <header className="shop-head">
@@ -66,28 +64,12 @@ export function SellerHead({
               {t('new-seller')}
             </li>
           )}
-          {deliveryLine === undefined ? null : (
-            <li>
-              <Icon name="truck" />
-              {deliveryLine}
-            </li>
-          )}
           {shop.minimumUnknown ? null : (
             <li>
               <Icon name="receipt" />
               {shop.minimumOrder
                 ? t('minimum', { amount: formatMoney(shop.minimumOrder, locale) })
                 : t('no-minimum')}
-            </li>
-          )}
-          {shop.deliveryFee === undefined ? null : (
-            <li>
-              <Icon name="truck" />
-              <span className="num">
-                {shop.deliveryFee.amount === 0
-                  ? t('free-delivery')
-                  : t('delivery-fee', { fee: formatMoney(shop.deliveryFee, locale) })}
-              </span>
             </li>
           )}
         </ul>

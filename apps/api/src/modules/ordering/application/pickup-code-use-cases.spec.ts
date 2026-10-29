@@ -136,8 +136,8 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
     written = [];
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: ACCOUNT, address: TEST_DELIVERY_ADDRESS });
-    shipping.fees.set(SELLER_A, money(500n, currency));
-    shipping.fees.set(SELLER_B, money(500n, currency));
+    shipping.quotedTotals.set(SELLER_A, money(500n, currency));
+    shipping.quotedTotals.set(SELLER_B, money(500n, currency));
     shipping.pickupApproved = new Set([SELLER_A]);
     cart.lines = [line(1, SELLER_A, 1000n), line(2, SELLER_B, 250n)];
     deps = {
@@ -210,16 +210,21 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       const { order, pickup } = await paid();
 
       expect(pickup).toMatchObject({ deliveryMethod: 'pickup', shipping: 0n, total: 1000n });
-      // The other seller delivers and keeps its flat fee; a pickup was never quoted.
+      // The other seller delivers and pays its quoted delivery; a pickup was never quoted.
       expect(order.sellerOrders.find((s) => s.sellerId === SELLER_B)!.shipping).toBe(500n);
       expect(order.total.amount).toBe(1000n + 250n + 500n);
       expect(shipping.pickupAsked).toEqual([[SELLER_A]]);
-      expect(shipping.quoteDropoffs).toEqual([{ postcode: TEST_DELIVERY_ADDRESS.postcode }]);
+      expect(shipping.chargeRequests.map((r) => r.sellerId)).toEqual([SELLER_B]);
+      expect(shipping.chargeRequests[0]!.dropoff).toEqual({
+        postcode: TEST_DELIVERY_ADDRESS.postcode,
+        locality: TEST_DELIVERY_ADDRESS.suburb,
+        region: TEST_DELIVERY_ADDRESS.region,
+      });
     });
 
-    it('needs no flat fee for a pickup seller and asks no quote when everything is pickup', async () => {
+    it('needs no quote for a pickup seller and asks no quote when everything is pickup', async () => {
       shipping.pickupApproved = new Set([SELLER_A, SELLER_B]);
-      shipping.fees.clear();
+      shipping.quotedTotals.clear();
 
       const { order } = await paid({
         [SELLER_A]: { method: 'pickup' },
@@ -228,7 +233,7 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
 
       expect(order.total.amount).toBe(1250n);
       expect(order.sellerOrders.map((s) => s.shipping)).toEqual([0n, 0n]);
-      expect(shipping.quoteDropoffs).toEqual([]);
+      expect(shipping.chargeRequests).toEqual([]);
     });
 
     it('refuses pickup with a coded 422 for a seller without an approved pickup address', async () => {

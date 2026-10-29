@@ -15,7 +15,8 @@ import type { CardFieldsState } from './stripe-card.ts';
 // and Google Pay are offered). Above the tiles, what Pay found when it checked the order again.
 
 /** Why Pay is off, for the line under it; null when the buyer can pay. */
-export type PayBlock = 'address' | 'loading' | 'delivery' | 'offline' | 'stock' | 'card' | null;
+export type PayBlock =
+  'address' | 'loading' | 'delivery' | 'choose' | 'offline' | 'stock' | 'card' | null;
 
 /** The stock notice says why Pay is held; both Pay buttons point to it. */
 const NOTICE_ID = 'checkout-pay-notice';
@@ -26,6 +27,8 @@ export type PayNotice =
       readonly kind: 'price-changed';
       readonly changes: readonly {
         readonly seller: string;
+        /** The delivery method the buyer chose with this seller, by its label. */
+        readonly method: string;
         readonly was: Money;
         readonly now: Money;
       }[];
@@ -239,6 +242,7 @@ function Notice({ notice }: { readonly notice: PayNotice }) {
             .map((c) =>
               t('notice-price-line', {
                 seller: c.seller,
+                method: c.method,
                 was: formatMoney(c.was, locale),
                 now: formatMoney(c.now, locale),
               }),

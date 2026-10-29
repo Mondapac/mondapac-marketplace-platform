@@ -47,6 +47,7 @@ import { AdminOpenObligationsOfQuery } from './use-cases/admin-open-obligations-
 import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
+import { DeliveryQuotes } from './use-cases/delivery-quotes.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
 import { RecordCarrierProgress } from './use-cases/record-carrier-progress.use-case';
 import { RecordDeliveryAnchor } from './use-cases/record-delivery-anchor.use-case';
@@ -152,8 +153,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     shipToCipher = new FakeShipToCipher();
     written = [];
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
-    shipping.fees.set(SELLER_A, money(500n, currency));
-    shipping.fees.set(SELLER_B, money(0n, currency));
+    shipping.quotedTotals.set(SELLER_A, money(500n, currency));
+    shipping.quotedTotals.set(SELLER_B, money(0n, currency));
     // Both sellers have an approved pickup address (pickup is offered only with one).
     shipping.pickupApproved = new Set([SELLER_A, SELLER_B]);
     cart.lines = [
@@ -1121,50 +1122,128 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(labels.calls).toEqual([]);
     });
   });
-  describe('flat delivery fee', () => {
-    it('refuses the whole cart when a seller has no fee, naming no seller to the customer', async () => {
-      shipping.fees.delete(SELLER_B);
+  describe('delivery quote', () => {
+    it('refuses the whole cart when a courier cannot carry a seller order, naming only the sellers', async () => {
+      shipping.quotedTotals.delete(SELLER_B);
       const result = await start();
 
-      expect(result).toEqual(err({ code: 'ordering.shipping-unavailable', sellerIds: [SELLER_B] }));
+      expect(result).toEqual(
+        err({ code: 'ordering.delivery-method-unavailable', methodSellerIds: [SELLER_B] }),
+      );
       // Nothing is reserved, stored or sent to Stripe.
       expect(inventory.calls).toEqual([]);
       expect(orders.rows.size).toBe(0);
       expect(gateway.sessions).toEqual([]);
     });
 
-    it('refuses a fee in another currency and a fee that cannot be read', async () => {
-      shipping.fees.set(SELLER_A, money(500n, currency === 'AUD' ? 'JPY' : 'AUD'));
-      expect(await start()).toMatchObject({
-        ok: false,
-        error: { code: 'ordering.shipping-unavailable', sellerIds: [SELLER_A] },
-      });
+    it('refuses a quote in another currency and a quote that cannot be read', async () => {
+      shipping.quotedTotals.set(SELLER_A, money(500n, currency === 'AUD' ? 'JPY' : 'AUD'));
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
 
       shipping.down = true;
       expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
       expect(orders.rows.size).toBe(0);
     });
 
-    it('freezes the fee in the order: a later change does not touch it', async () => {
+    it('freezes the price in the order: a later change does not touch it', async () => {
       const first = await start();
       if (!first.ok) throw new Error('checkout failed');
-      shipping.fees.set(SELLER_A, money(9_900n, currency));
+      shipping.quotedTotals.set(SELLER_A, money(9_900n, currency));
 
       const stored = orders.rows.get(first.value.orderId)!;
       expect(stored.sellerOrders[0]).toMatchObject({ shipping: 500n, total: 2599n });
     });
 
-    it('charges the real-time carrier quote as a tax-inclusive price, asked with the postcode only', async () => {
-      shipping.quotes.set(SELLER_A, money(1_250n, currency));
-      const first = await start();
+    it('binds the charged quote to the seller order: fleet, price, margin and expiry, tax inclusive', async () => {
+      shipping.quotedTotals.set(SELLER_A, money(1_250n, currency));
+      shipping.margins.set(SELLER_A, 250n);
+      const first = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: {
+          [SELLER_A]: { method: 'same_day', quoteId: '11111111-1111-4111-8111-111111111111' },
+        },
+      });
       if (!first.ok) throw new Error('checkout failed');
 
-      const stored = orders.rows.get(first.value.orderId)!;
-      expect(stored.sellerOrders[0]).toMatchObject({
+      const stored = orders.rows.get(first.value.orderId)!.sellerOrders[0]!;
+      expect(stored).toMatchObject({
         shipping: 1_250n,
         shippingTaxInclusive: true,
+        deliveryQuote: { fleet: 'fake_test', quoteAmount: 1_000n, marginAmount: 250n },
       });
-      expect(shipping.quoteDropoffs).toEqual([{ postcode: '4109' }]);
+      expect(stored.deliveryQuote!.expiresAt.toString()).toBe('2026-01-01T00:10:00Z');
+      // The client named a quote id, never a price; only the saved address's place goes out.
+      expect(shipping.chargeRequests[0]).toMatchObject({
+        sellerId: SELLER_A,
+        method: 'same_day',
+        quoteId: '11111111-1111-4111-8111-111111111111',
+        dropoff: { postcode: '4109', locality: 'Sunnybank', region: 'QLD' },
+      });
+    });
+
+    it('stores no quote for a pickup and charges nothing for it', async () => {
+      const first = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: { [SELLER_A]: { method: 'pickup' } },
+      });
+      if (!first.ok) throw new Error('checkout failed');
+
+      expect(orders.rows.get(first.value.orderId)!.sellerOrders[0]).toMatchObject({
+        shipping: 0n,
+        deliveryQuote: null,
+      });
+    });
+
+    it('stops with the new price when the quote the buyer saw has moved, and charges nothing', async () => {
+      shipping.moved.set(SELLER_A, money(777n, currency));
+      const result = await start();
+
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          code: 'ordering.delivery-quote-changed',
+          quotes: [{ sellerId: SELLER_A, total: money(777n, currency) }],
+        },
+      });
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+      expect(gateway.sessions).toEqual([]);
+    });
+
+    it('refuses a quote id shipping does not know, naming the field', async () => {
+      const unknown = '22222222-2222-4222-8222-222222222222';
+      shipping.unknownQuoteIds.add(unknown);
+      const result = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: { [SELLER_A]: { method: 'instant', quoteId: unknown } },
+      });
+
+      expect(result).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [{ path: `deliveryMethods.${SELLER_A}.quoteId`, code: 'unknown' }],
+        }),
+      );
+    });
+
+    it('refuses a quote id that is not an id, or sent for a pickup', async () => {
+      const bad = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: { [SELLER_A]: { method: 'instant', quoteId: 'not-an-id' } },
+      });
+      expect(bad).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [{ path: `deliveryMethods.${SELLER_A}.quoteId`, code: 'format' }],
+        }),
+      );
+      const pickup = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: {
+          [SELLER_A]: { method: 'pickup', quoteId: '11111111-1111-4111-8111-111111111111' },
+        },
+      });
+      expect(pickup).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
     });
 
     it('confirms against the total with delivery, and voids a payment of the goods only', async () => {
@@ -1177,6 +1256,93 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const short = await confirm(order.id, 2000n + 750n + 99n);
       expect(short).toEqual(ok('voided'));
       expect(gateway.captured).toEqual([]);
+    });
+  });
+
+  describe('delivery options for the checkout page (delivery-quotes)', () => {
+    const options = (
+      context: CallContext = customer,
+      input: { readonly addressId: unknown } = { addressId: ADDRESS },
+    ) => new DeliveryQuotes(gate, deps).execute(context, input);
+
+    it('is the signed-in customer only', () => {
+      expect(DeliveryQuotes.access.rule).toEqual({ kind: 'own-resources' });
+    });
+
+    it('gives every seller its methods and prices, GST inside the total and shown apart', async () => {
+      shipping.quotedTotals.set(SELLER_A, money(1_100n, currency));
+      const result = await options();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.map((seller) => seller.sellerId)).toEqual([SELLER_A, SELLER_B]);
+      const first = result.value[0]!;
+      expect(first.pickupPostcode).toBe('4000');
+      const instant = first.prices.instant;
+      // The fake tax is a flat 10% inclusive: 1100 holds 100 of tax.
+      expect(instant).toMatchObject({
+        state: 'quoted',
+        price: { total: money(1_100n, currency), tax: money(100n, currency), taxRateBps: 1000 },
+      });
+      // The quote id and expiry are shipping's; only the saved address's place went out.
+      expect(shipping.quoteRequests[0]!.dropoff).toEqual({
+        postcode: '4109',
+        locality: 'Sunnybank',
+        region: 'QLD',
+      });
+      expect(shipping.quoteRequests[0]!.sellers).toEqual([
+        { sellerId: SELLER_A, itemCount: 3, declaredValueMinor: 2099 },
+        { sellerId: SELLER_B, itemCount: 3, declaredValueMinor: 750 },
+      ]);
+      // One tax call for every quoted price (3 methods x 2 sellers), taxed as inclusive.
+      expect(tax.calls).toHaveLength(1);
+      expect(tax.calls[0]).toHaveLength(6);
+      expect(tax.calls[0]!.every((line) => line.taxInclusive && line.categoryCode === null)).toBe(
+        true,
+      );
+    });
+
+    it('says no fleet for a seller no courier can carry, and has no price to tax for it', async () => {
+      shipping.quotedTotals.delete(SELLER_B);
+      const result = await options();
+      expect(result.ok && result.value[1]!.prices).toEqual({
+        instant: { state: 'no-fleet' },
+        same_day: { state: 'no-fleet' },
+        scheduled: { state: 'no-fleet' },
+      });
+      expect(tax.calls[0]).toHaveLength(3);
+    });
+
+    it('does not ask anyone for an address that is not the buyer own, or a basket that is not ready', async () => {
+      customers.addresses.set(id<'CustomerAddress'>(0xae), {
+        accountId: OTHER,
+        address: TEST_DELIVERY_ADDRESS,
+      });
+      expect(await options(customer, { addressId: id<'CustomerAddress'>(0xae) })).toEqual(
+        err({ code: 'ordering.address-not-found' }),
+      );
+      expect(await options(customer, { addressId: 'nope' })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      cart.lines = [];
+      expect((await options()).ok).toBe(false);
+      expect(shipping.quoteRequests).toEqual([]);
+    });
+
+    it('fails whole when shipping or the tax module cannot answer', async () => {
+      shipping.down = true;
+      expect(await options()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      shipping.down = false;
+      tax.dropLast = true;
+      expect(await options()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      tax.dropLast = false;
+      tax.failure = { code: 'tax.unavailable' } as never;
+      expect(await options()).toEqual(err({ code: 'ordering.check-unavailable' }));
+    });
+
+    it('keeps no one else out: an anonymous caller is denied', async () => {
+      const result = await options(anonymous);
+      expect(result.ok).toBe(false);
     });
   });
 
@@ -2469,20 +2635,20 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         [OFFER_2]: [1000, 75n],
         [OFFER_3]: [1000, 10n],
       });
-      // The 500 delivery fee is taxed on top as well: 50 at 10%.
+      // The 500 delivery price is always tax-inclusive: 45 of it is the 10% tax, nothing on top.
       expect(
         order.sellerOrders.map((s) => [s.subtotal, s.shipping, s.shippingTax, s.total]),
       ).toEqual([
-        [2099n, 500n, 50n, 2099n + 500n + 210n + 50n],
+        [2099n, 500n, 45n, 2099n + 500n + 210n],
         [750n, 0n, 0n, 750n + 75n],
       ]);
-      expect(order.sellerOrders.every((s) => s.shippingTaxInclusive === false)).toBe(true);
-      expect(order.total.amount).toBe(2859n + 825n);
+      expect(order.sellerOrders.every((s) => s.shippingTaxInclusive)).toBe(true);
+      expect(order.total.amount).toBe(2809n + 825n);
       const session = gateway.sessions[0]!;
       expect(session.packages.map((p) => [p.label, p.amount])).toEqual([
         ['MondaPac order, package 1', 2099n],
         ['Delivery, package 1', 500n],
-        ['Tax, package 1', 260n],
+        ['Tax, package 1', 210n],
         ['MondaPac order, package 2', 750n],
         ['Tax, package 2', 75n],
       ]);
@@ -2491,13 +2657,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect((await confirm(order.id)).ok).toBe(true);
     });
 
-    it('taxes the delivery fee as tax-exclusive when any line of the seller excludes tax', async () => {
+    it('keeps the delivery price tax-inclusive even when a line of the seller excludes tax', async () => {
       cart.lines = cart.lines.map((l, i) => ({ ...l, taxInclusive: i !== 0 }));
       const order = await placed();
       const firstLine = order.lines.find((l) => l.offerId === cart.lines[0]!.offerId)!;
       const first = order.sellerOrders.find((s) => s.id === firstLine.sellerOrderId)!;
-      expect(first.shippingTaxInclusive).toBe(false);
-      expect(first.shippingTax).toBe(first.shipping / 10n);
+      expect(first.shippingTaxInclusive).toBe(true);
+      expect(first.shippingTax).toBe(45n);
     });
 
     it('opens no order when the tax answer misses a delivery line (fail closed)', async () => {

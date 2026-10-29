@@ -437,6 +437,7 @@
   { "name": "ordering.cancel-carrier-after-refund", "rule": "system" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
+  { "name": "ordering.delivery-quotes", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "ordering.my-delivered-seller-orders",
@@ -591,10 +592,10 @@
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },
+  { "name": "shipping.charge-delivery", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.delivery-availability", "rule": "anonymous" },
   { "name": "shipping.delivery-choice", "rule": "anonymous" },
-  { "name": "shipping.flat-fees", "rule": "anonymous" },
   {
     "name": "shipping.pickup-availability",
     "rule": "own-resources",
@@ -605,10 +606,9 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "shipping.quote-deliveries", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
-  { "name": "shipping.shipping-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
-  { "name": "shipping.view-own-flat-fee", "rule": "permissions", "whenSellerNotApproved": "allow" },
-  { "name": "shipping.view-store-flat-fee", "rule": "anonymous" },
+  { "name": "shipping.record-fleet-fee", "rule": "system" },
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },
   { "name": "storefront.view-published-page", "rule": "anonymous" },

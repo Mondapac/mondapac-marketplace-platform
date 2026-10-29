@@ -713,7 +713,7 @@ Correctness of expiry and `CLOSED` never depends on a job: both are evaluated ag
 | ORD-07 `allowedActions`, ORD-08 tabs | P1, slice 9 |
 | ORD-09 manual order by admin | P2 |
 | RET-01..05, 07..10 (`returns`), RMA, restock | Phase 7; public launch condition (Q12) |
-| Real shipping rates, carriers, labels (SHP-02..06) | Phase 6 `shipping`; the flat fee is removed then |
+| Real shipping rates, carriers, labels (SHP-02..06) | Phase 6 `shipping`; the seller flat fee was removed in delivery models package 5 (fleet quote plus margin, bound to the order by `quoteId`; see `docs/modules/shipping/carrier-mondapac-drive.md`) |
 | PDF invoice (a new dependency, ADR-0029 libraries) | When asked; HTML document at launch |
 | Customer erasure versus invoice retention (CUS-03) | Designed with `sellers` and the tax agent's retention answer |
 | `OrderWorkflowExtension` implementations | When a Vertical needs sub-states |

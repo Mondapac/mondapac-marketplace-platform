@@ -16,9 +16,11 @@ import { TEAM_MEMBER_INVITE } from '../../identity';
 import { INVENTORY_STOCK_VIEW } from '../../inventory';
 import { ORDERING_SELLER_ORDER_VIEW, type OrderingFacade } from '../../ordering';
 import { PRICING_PRICE_HOLD_DECIDE, PRICING_PRICE_VIEW } from '../../pricing';
+import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../shipping';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
   ADMIN_NOTICE_KINDS,
+  ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
@@ -147,6 +149,11 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
   [ADMIN_PRICE_HOLD_OPENED]: {
     name: 'notifications.see-admin-price-hold-notices',
     rule: { kind: 'permissions', allOf: [PRICING_PRICE_HOLD_DECIDE.key] },
+  },
+  // The admin who works the delivery settings follows up a booking the platform paid more for.
+  [ADMIN_DELIVERY_FALLBACK_OVER_CAP]: {
+    name: 'notifications.see-admin-delivery-fallback-notices',
+    rule: { kind: 'permissions', allOf: [SHIPPING_DELIVERY_SETTINGS_VIEW.key] },
   },
 };
 

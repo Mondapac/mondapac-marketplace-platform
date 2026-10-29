@@ -12,18 +12,24 @@ import { Confirmation } from '../src/checkout/payment-result.tsx';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider, useStore } from '../src/shell/store-context.tsx';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
-import type { CartSource } from '../src/storefront/types.ts';
+import type {
+  CartSource,
+  DeliveryMethod,
+  MethodOption,
+  MethodPrice,
+  SellerDeliveryOptions,
+} from '../src/storefront/types.ts';
 
 const push = vi.fn();
 const scrolled = vi.fn();
 const replace = vi.fn();
 let path = '/';
-const { deliveryAreaFor, deliveryQuotesFor, payOrder } = vi.hoisted(() => ({
+const { deliveryAreaFor, deliveryOptionsFor, payOrder } = vi.hoisted(() => ({
   deliveryAreaFor: vi.fn<(postcode: string) => Promise<{ kind: string }>>(),
-  deliveryQuotesFor: vi.fn<(request: unknown) => Promise<Record<string, unknown>>>(),
+  deliveryOptionsFor: vi.fn<(request: unknown) => Promise<Record<string, unknown>>>(),
   payOrder: vi.fn<(request: unknown) => Promise<Record<string, unknown>>>(),
 }));
-vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor, deliveryQuotesFor, payOrder }));
+vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor, deliveryOptionsFor, payOrder }));
 vi.mock('next/navigation', () => ({
   usePathname: () => path,
   useSearchParams: () => new URLSearchParams(),
@@ -35,7 +41,7 @@ beforeEach(() => {
   push.mockReset();
   replace.mockReset();
   deliveryAreaFor.mockReset();
-  deliveryQuotesFor.mockReset();
+  deliveryOptionsFor.mockReset();
   payOrder.mockReset();
   payOrder.mockImplementation((request) =>
     Promise.resolve(
@@ -44,17 +50,8 @@ beforeEach(() => {
         : { kind: 'paid', reference: 'MP-1' },
     ),
   );
-  // The sample courier: Express for Kedron, none for Paddington (its cut-off has passed).
-  deliveryQuotesFor.mockImplementation((request) =>
-    Promise.resolve(
-      Object.fromEntries(
-        (request as { sellerIds: string[] }).sellerIds.map((id) => [
-          id,
-          { kind: 'quote', express: id === 'kedron' ? { amount: 1290, currency: 'AUD' } : null },
-        ]),
-      ),
-    ),
-  );
+  // The sample options: every method open for Kedron, no same-day for Paddington (past cut-off).
+  deliveryOptionsFor.mockImplementation((request) => sampleAnswer(request));
   Element.prototype.scrollIntoView = scrolled;
   scrolled.mockReset();
 });
@@ -64,6 +61,45 @@ afterEach(() => {
 });
 
 const aud = (amount: number) => ({ amount, currency: 'AUD' });
+
+/** The sample delivery options for the sellers a request names. */
+async function sampleOf(
+  sellerIds: readonly string[],
+): Promise<Record<string, SellerDeliveryOptions>> {
+  const { sampleDeliveryOptions } = await import('../src/storefront/sample-delivery-options.ts');
+  return sampleDeliveryOptions(sellerIds);
+}
+
+async function sampleAnswer(request: unknown): Promise<Record<string, unknown>> {
+  return { kind: 'ok', sellers: await sampleOf((request as { sellerIds: string[] }).sellerIds) };
+}
+
+/** One seller's options with a method's price changed. */
+function priced(
+  options: SellerDeliveryOptions,
+  method: DeliveryMethod,
+  change: Partial<MethodOption>,
+): SellerDeliveryOptions {
+  return {
+    ...options,
+    methods: options.methods.map((m) => (m.method === method ? { ...m, ...change } : m)),
+  };
+}
+
+const quotedPrice = (id: string, total: number): MethodPrice => ({
+  state: 'quoted',
+  quoteId: id,
+  total: aud(total),
+  tax: aud(Math.round(total / 11)),
+  etaMinutes: 45,
+  validUntil: '2099-01-01T00:00:00Z',
+});
+
+/** Picks Instant (A$12.90 each in the sample) for every seller that offers it. */
+async function pickInstant() {
+  for (const radio of await screen.findAllByRole('radio', { name: /^Instant/ }))
+    if (radio.getAttribute('aria-disabled') !== 'true') fireEvent.click(radio);
+}
 
 /** A line as the store holds it, priced from the sample source. */
 function line(id: string, quantity: number): Cart {
@@ -107,40 +143,46 @@ describe('cart view', () => {
     expect(limitLine(MET, 'nothing', 1)).toBe(MET);
   });
 
-  it('groups lines by seller with each seller delivery fee and shortfall', () => {
+  it('groups lines by seller with each seller shortfall; delivery is priced at checkout', () => {
     const view = viewCart(SHORT, SAMPLE_CART_SOURCE)!;
     expect(view.groups.map((g) => g.seller.id)).toEqual(['kedron', 'paddington']);
     expect(view.groups[0]!.shortfall).toEqual(aud(4000 - 2290));
     expect(view.groups[1]!.shortfall).toEqual(aud(0));
     expect(view.items).toEqual(aud(2290 + 2 * 850));
-    expect(view.delivery).toEqual(aud(750 + 500));
-    expect(view.total).toEqual(aud(2290 + 1700 + 1250));
+    expect(view.delivery).toEqual(aud(0));
+    expect(view.deliveryPending).toBe(true);
+    expect(view.total).toEqual(aud(2290 + 1700));
     expect(view.blocked.map((g) => g.seller.id)).toEqual(['kedron']);
     expect(view.count).toBe(3);
   });
 
-  it('takes the included tax from the source preview, never from a rule of its own', () => {
+  it('takes the items tax from the source preview and the delivery tax from the quote', () => {
     const view = viewCart(MET, SAMPLE_CART_SOURCE)!;
-    expect(view.includedTax).toEqual(aud(Math.round((4690 + 850 + 750 + 500) / 11)));
-    const noDelivery = viewCart(MET, {
+    expect(view.includedTax).toEqual(aud(Math.round(5540 / 11)));
+    const other = viewCart(MET, {
       ...SAMPLE_CART_SOURCE,
-      tax: { share: { numerator: 3, denominator: 23 }, includesDelivery: false },
+      tax: { share: { numerator: 3, denominator: 23 } },
     })!;
-    expect(noDelivery.includedTax).toEqual(aud(Math.round(((4690 + 850) * 3) / 23)));
+    expect(other.includedTax).toEqual(aud(Math.round((5540 * 3) / 23)));
+    const chosen = viewCart(MET, SAMPLE_CART_SOURCE, null, {
+      kedron: { method: 'instant', quoteId: 'q', total: aud(1290), tax: aud(117), window: null },
+      paddington: { method: 'pickup', quoteId: null, total: aud(0), tax: aud(0), window: null },
+    })!;
+    expect(chosen.deliveryPending).toBe(false);
+    expect(chosen.total).toEqual(aud(5540 + 1290));
+    expect(chosen.includedTax).toEqual(aud(Math.round(5540 / 11) + 117));
   });
 
   it('works in another Market currency', () => {
     const nzd = (amount: number) => ({ amount, currency: 'NZD' });
     const source: CartSource = {
       items: { a: { name: 'Feijoa jam', sellerId: 's', category: 'pantry', price: nzd(900) } },
-      sellers: {
-        s: { id: 's', name: 'Seller', deliveryWindow: 'Today', deliveryFee: nzd(400) },
-      },
-      tax: { share: { numerator: 3, denominator: 23 }, includesDelivery: true },
+      sellers: { s: { id: 's', name: 'Seller' } },
+      tax: { share: { numerator: 3, denominator: 23 } },
       sampleDiscounts: {},
     };
     const view = viewCart({ a: { quantity: 2, unitPrice: nzd(900), limit: 12 } }, source)!;
-    expect(view.total).toEqual(nzd(2200));
+    expect(view.total).toEqual(nzd(1800));
     expect(view.blocked).toEqual([]);
   });
 
@@ -214,7 +256,8 @@ describe('cart page', () => {
   it('goes to checkout once every seller meets its minimum, with the GST line', () => {
     renderWith(<CartPage />, MET);
     expect(screen.queryByText('Minimum order not reached')).toBeNull();
-    expect(screen.getByText('Prices include GST. Includes A$6.17 GST.')).toBeTruthy();
+    expect(screen.getByText('Includes GST')).toBeTruthy();
+    expect(screen.getByText('A$5.04')).toBeTruthy();
     expect(screen.getByText('Minimum order of A$40.00 reached.')).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Checkout' })[0]!);
     expect(push).toHaveBeenCalledWith('/checkout');
@@ -301,31 +344,52 @@ describe('checkout', () => {
     ).toEqual(['Cart (done)', '2Delivery and payment', '3Confirmation']);
   });
 
-  it('pays for a saved address with each seller on Scheduled delivery by default', async () => {
+  it('holds Pay until each seller has a delivery method, then pays with the stored quote', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    await waitFor(() => expect(payOff()).toBe(false));
-    expect(deliveryQuotesFor).toHaveBeenCalledWith({
+    await screen.findAllByRole('radio', { name: /^Instant/ });
+    expect(deliveryOptionsFor).toHaveBeenCalledWith({
       address: { kind: 'saved', id: 'home' },
       sellerIds: ['kedron', 'paddington'],
     });
+    // Nothing is chosen for the buyer: Pay says what is missing and the total is items only.
+    expect(payOff()).toBe(true);
+    expect(
+      screen.getAllByText('Choose a delivery method for each seller above to pay.'),
+    ).toHaveLength(1);
     const kedron = screen.getByRole('radiogroup', {
-      name: 'Delivery speed for Kedron Halal Butchers',
+      name: 'Delivery method for Kedron Halal Butchers',
     });
-    expect(within(kedron).getByRole('radio', { name: /Scheduled/ })).toHaveProperty(
-      'checked',
-      true,
-    );
-    expect(payButtons()[0]!.textContent).toBe('Pay A$67.90');
+    for (const radio of within(kedron).getAllByRole('radio'))
+      expect(radio).toHaveProperty('checked', false);
+    fireEvent.click(within(kedron).getByRole('radio', { name: /^Instant/ }));
+    expect(payOff()).toBe(true);
+    await pickInstant();
+    await waitFor(() => expect(payOff()).toBe(false));
+    expect(payButtons()[0]!.textContent).toBe('Pay A$81.20');
     fireEvent.click(payButtons()[0]!);
     await waitFor(() => expect(push).toHaveBeenCalledWith('/checkout/confirmation'));
+    // The order carries the method and the stored quote's id, and the price only to compare.
     expect(payOrder).toHaveBeenCalledWith({
       method: 'card',
       confirmationToken: null,
       address: { kind: 'saved', id: 'home' },
       lines: { brisket: 1, sourdough: 1 },
-      delivery: { kedron: { speed: 'scheduled' }, paddington: { speed: 'scheduled' } },
+      delivery: {
+        kedron: {
+          method: 'instant',
+          quoteId: 'sample-kedron-instant',
+          window: null,
+          total: aud(1290),
+        },
+        paddington: {
+          method: 'instant',
+          quoteId: 'sample-paddington-instant',
+          window: null,
+          total: aud(1290),
+        },
+      },
       discountCode: null,
-      total: aud(6790),
+      total: aud(8120),
     });
     expect(replace).not.toHaveBeenCalled();
   });
@@ -337,9 +401,10 @@ describe('checkout', () => {
     expect(screen.getByText(/^Sample: card fields are not connected yet\./)).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: /^Stripe/ }));
     expect(screen.getByText('Pay securely on Stripe')).toBeTruthy();
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
     const pay = payButtons()[0]!;
-    expect(pay.textContent).toBe('Pay A$67.90 with Stripe');
+    expect(pay.textContent).toBe('Pay A$81.20 with Stripe');
     fireEvent.click(pay);
     expect(pay.textContent).toBe('Taking you to Stripe...');
     expect(pay.getAttribute('aria-disabled')).toBe('true');
@@ -390,14 +455,14 @@ describe('checkout', () => {
     expect(mounted).toHaveBeenCalledTimes(1);
     expect(elementsOptions[0]).toMatchObject({
       mode: 'payment',
-      amount: 6790,
+      amount: 5540,
       currency: 'aud',
       captureMethod: 'manual',
       paymentMethodTypes: ['card'],
     });
-    // Express changes the total: the fields follow.
-    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
-    await waitFor(() => expect(updates.at(-1)).toEqual({ amount: 7330, currency: 'aud' }));
+    // The delivery prices change the total: the fields follow.
+    await pickInstant();
+    await waitFor(() => expect(updates.at(-1)).toEqual({ amount: 8120, currency: 'aud' }));
     // The name on the card is asked for first.
     fireEvent.click(payButtons()[0]!);
     const name = screen.getByLabelText('Name on card');
@@ -414,7 +479,7 @@ describe('checkout', () => {
       expect.objectContaining({
         method: 'card',
         confirmationToken: 'ctoken_test1',
-        total: aud(7330),
+        total: aud(8120),
       }),
     );
   });
@@ -422,17 +487,18 @@ describe('checkout', () => {
   it("mounts Stripe's fields with the total of the moment after a switch back to Card", async () => {
     const stripe = fakeStripe();
     renderWith(<CheckoutPage source={STRIPE_CHECKOUT} />, MET, true);
-    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
+    await pickInstant();
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$81.20'));
     fireEvent.click(screen.getByRole('radio', { name: /^Stripe/ }));
     fireEvent.click(screen.getByRole('radio', { name: /^Card/ }));
     await waitFor(() => expect(stripe.elements).toHaveLength(2));
-    expect(stripe.elements[1]).toMatchObject({ amount: 7330, currency: 'aud' });
+    expect(stripe.elements[1]).toMatchObject({ amount: 8120, currency: 'aud' });
   });
 
   it('holds Pay while the card fields cannot load, and loads them again on Try again', async () => {
     const stripe = fakeStripe({ load: 'loaderror' });
     renderWith(<CheckoutPage source={STRIPE_CHECKOUT} />, MET, true);
+    await pickInstant();
     expect(
       await screen.findByText('The card fields did not load. Try again, or pay with Stripe.'),
     ).toBeTruthy();
@@ -450,12 +516,13 @@ describe('checkout', () => {
   it("leaves Stripe's own errors in its fields and puts the focus there", async () => {
     const stripe = fakeStripe({ submit: { error: { type: 'validation_error' } } });
     renderWith(<CheckoutPage source={STRIPE_CHECKOUT} />, MET, true);
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
     fireEvent.change(screen.getByLabelText('Name on card'), { target: { value: 'Alex Nguyen' } });
     fireEvent.click(payButtons()[0]!);
     await waitFor(() => expect(stripe.focused).toHaveBeenCalled());
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(payButtons()[0]!.textContent).toBe('Pay A$67.90');
+    expect(payButtons()[0]!.textContent).toBe('Pay A$81.20');
     expect(payOrder).not.toHaveBeenCalled();
   });
 
@@ -463,6 +530,7 @@ describe('checkout', () => {
     let answer: (value: Record<string, unknown>) => void = () => {};
     payOrder.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
     const [form, side] = payButtons();
     fireEvent.click(form!);
@@ -485,33 +553,41 @@ describe('checkout', () => {
   it('says the payment failed when Pay gets no answer', async () => {
     payOrder.mockRejectedValueOnce(new Error('network'));
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
     fireEvent.click(payButtons()[0]!);
     expect((await screen.findByRole('alert')).textContent).toContain(
       'We could not take the payment.',
     );
-    expect(payButtons()[0]!.textContent).toBe('Pay A$67.90');
+    expect(payButtons()[0]!.textContent).toBe('Pay A$81.20');
   });
 
-  it('falls back to Scheduled when Express is gone at Pay', async () => {
+  it('drops a method the seller no longer offers at Pay, and asks the buyer to choose again', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
+    await pickInstant();
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$81.20'));
+    const options = await sampleOf(['kedron', 'paddington']);
     payOrder.mockResolvedValueOnce({
       kind: 'price-changed',
-      changes: [{ sellerId: 'kedron', was: aud(1290), now: aud(750) }],
-      quotes: { kedron: { kind: 'quote', express: null } },
+      changes: [{ sellerId: 'kedron', was: aud(1290), now: aud(0) }],
+      options: {
+        kedron: priced(options.kedron!, 'instant', {
+          available: false,
+          reason: 'seller-unsupported',
+          price: null,
+        }),
+        paddington: options.paddington!,
+      },
     });
     fireEvent.click(payButtons()[0]!);
     await screen.findByRole('alert');
-    expect(payButtons()[0]!.textContent).toBe('Pay A$67.90');
     const kedron = screen.getByRole('radiogroup', {
-      name: 'Delivery speed for Kedron Halal Butchers',
+      name: 'Delivery method for Kedron Halal Butchers',
     });
-    expect(within(kedron).getByRole('radio', { name: /Scheduled/ })).toHaveProperty(
-      'checked',
-      true,
-    );
+    const instant = within(kedron).getByRole('radio', { name: /^Instant/ });
+    expect(instant.getAttribute('aria-disabled')).toBe('true');
+    expect(within(kedron).getByText("This store doesn't support instant delivery")).toBeTruthy();
+    expect(payOff()).toBe(true);
   });
 
   it('follows only Stripe or a page of this site', () => {
@@ -536,27 +612,39 @@ describe('checkout', () => {
       expect(safeRedirect(url, origin)).toBeNull();
   });
 
-  it('shows a changed Express price with the new total, charging nothing', async () => {
+  it('shows a changed delivery price with the new total, charging nothing', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
+    await pickInstant();
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$81.20'));
+    const options = await sampleOf(['kedron', 'paddington']);
     payOrder.mockResolvedValueOnce({
       kind: 'price-changed',
       changes: [{ sellerId: 'kedron', was: aud(1290), now: aud(1490) }],
-      quotes: { kedron: { kind: 'quote', express: aud(1490) } },
+      options: {
+        kedron: priced(options.kedron!, 'instant', { price: quotedPrice('q-new', 1490) }),
+        paddington: options.paddington!,
+      },
     });
     fireEvent.click(payButtons()[0]!);
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe(
-      'A delivery price changed. Kedron Halal Butchers: A$12.90 is now A$14.90. Your new total is shown. Nothing has been charged.',
+      'A delivery price changed. Kedron Halal Butchers, Instant: A$12.90 → A$14.90. Your delivery choices are kept and your new total is shown. Nothing has been charged.',
     );
-    expect(payButtons()[0]!.textContent).toBe('Pay A$75.30');
+    expect(payButtons()[0]!.textContent).toBe('Pay A$83.20');
     expect(document.activeElement?.textContent).toBe('Payment method');
     expect(push).not.toHaveBeenCalled();
+    // The next Pay sends the new quote's id.
+    fireEvent.click(payButtons()[0]!);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/checkout/confirmation'));
+    const sent = payOrder.mock.calls.at(-1)![0] as {
+      delivery: Record<string, { quoteId: string; total: unknown }>;
+    };
+    expect(sent.delivery.kedron).toMatchObject({ quoteId: 'q-new', total: aud(1490) });
   });
 
   it('lowers a line whose stock ran out and holds Pay until the cart is reviewed', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
     payOrder.mockResolvedValueOnce({
       kind: 'stock-changed',
@@ -591,6 +679,7 @@ describe('checkout', () => {
       MET,
       true,
     );
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
     payOrder.mockResolvedValueOnce({
       kind: 'stock-changed',
@@ -611,6 +700,7 @@ describe('checkout', () => {
 
   it('says a declined card or a failure charged nothing, and Pay can be pressed again', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
     payOrder.mockResolvedValueOnce({ kind: 'declined' });
     fireEvent.click(payButtons()[0]!);
@@ -629,68 +719,122 @@ describe('checkout', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it('adds Express at the courier price, and says why a seller has none', async () => {
+  it('shows the four methods with their prices, and why a method is off', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    const kedron = screen.getByRole('radiogroup', {
-      name: 'Delivery speed for Kedron Halal Butchers',
+    const kedron = await screen.findByRole('radiogroup', {
+      name: 'Delivery method for Kedron Halal Butchers',
     });
-    const express = await within(kedron).findByRole('radio', { name: /Express.*A\$12\.90/ });
-    fireEvent.click(express);
-    expect(express).toHaveProperty('checked', true);
-    // A$67.90 - A$7.50 Scheduled + A$12.90 Express.
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
+    const names = within(kedron)
+      .getAllByRole('radio')
+      .map((r) => r.closest('label')!.textContent);
+    expect(names).toEqual([
+      'PickupCollect it from the seller, postcode 4031Free',
+      'InstantAbout 45 minutes once the seller has it readyA$12.90incl. GST',
+      'Same dayDelivered todayA$9.90incl. GST',
+      'ScheduledDelivered in the day and window you chooseA$7.90incl. GST',
+    ]);
+    // Same day closed at the cut-off for Paddington: disabled, with the reason.
     const paddington = screen.getByRole('radiogroup', {
-      name: 'Delivery speed for Paddington Bakehouse',
+      name: 'Delivery method for Paddington Bakehouse',
     });
-    expect(within(paddington).queryAllByRole('radio')).toHaveLength(1);
+    const sameDay = within(paddington).getByRole('radio', { name: /^Same day/ });
+    expect(sameDay.getAttribute('aria-disabled')).toBe('true');
     expect(
-      within(paddington).getByText(
-        /Not available\. Express orders for this seller closed at 3\sPM today \(Brisbane time\)\./i,
-      ),
+      within(paddington).getByText('Same-day delivery closes at 12:00 pm (Brisbane time)'),
     ).toBeTruthy();
+    expect(
+      within(paddington)
+        .getByRole('radio', { name: /^Instant/ })
+        .getAttribute('aria-disabled'),
+    ).toBe(null);
+    // The GST is shown inside the price and in the summary, apart from it.
+    fireEvent.click(within(kedron).getByRole('radio', { name: /^Instant/ }));
+    fireEvent.click(within(paddington).getByRole('radio', { name: /^Pickup/ }));
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$68.30'));
+    expect(screen.getAllByText('Includes GST').length).toBeGreaterThan(0);
   });
 
-  it('holds Pay while quotes load, and offers Try again for a seller without a price', async () => {
+  it('shows the reasons a store cannot offer a method, and what no courier can carry', async () => {
+    deliveryOptionsFor.mockResolvedValueOnce({
+      kind: 'ok',
+      sellers: {
+        kedron: (await sampleOf(['sunnybank']))['sunnybank']!,
+        paddington: (await sampleOf(['inala']))['inala']!,
+      },
+    });
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    const kedron = await screen.findByRole('radiogroup', {
+      name: 'Delivery method for Kedron Halal Butchers',
+    });
+    expect(within(kedron).getByText("This store doesn't support instant delivery")).toBeTruthy();
+    const paddington = screen.getByRole('radiogroup', {
+      name: 'Delivery method for Paddington Bakehouse',
+    });
+    expect(within(paddington).getByText("Pickup isn't offered by this store")).toBeTruthy();
+    expect(
+      within(paddington)
+        .getByRole('radio', { name: /^Pickup/ })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+
+  it('disables a method no courier can carry or price now', async () => {
+    const options = await sampleOf(['kedron', 'paddington']);
+    deliveryOptionsFor.mockResolvedValueOnce({
+      kind: 'ok',
+      sellers: {
+        kedron: priced(
+          priced(options.kedron!, 'scheduled', { price: { state: 'no-fleet' } }),
+          'instant',
+          {
+            price: { state: 'failed' },
+          },
+        ),
+        paddington: options.paddington!,
+      },
+    });
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    const kedron = await screen.findByRole('radiogroup', {
+      name: 'Delivery method for Kedron Halal Butchers',
+    });
+    expect(within(kedron).getByText('No courier can deliver this to your address')).toBeTruthy();
+    expect(within(kedron).getByText('Price not available right now')).toBeTruthy();
+    expect(
+      within(kedron)
+        .getByRole('radio', { name: /^Scheduled/ })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+    expect(
+      within(kedron)
+        .getByRole('radio', { name: /^Instant/ })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+
+  it('holds Pay while prices load, and offers Try again when they could not be asked', async () => {
     let answer: (value: Record<string, unknown>) => void = () => {};
-    deliveryQuotesFor.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    deliveryOptionsFor.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
     expect(payOff()).toBe(true);
     // The form's line, the right column's and the sticky Pay bar's.
     expect(screen.getAllByText('Getting delivery prices...')).toHaveLength(3);
-    answer({ kedron: { kind: 'quote', express: aud(1290) }, paddington: { kind: 'failed' } });
-    const failed = await screen.findByRole('alert');
+    answer({ kind: 'failed' });
+    const failed = (await screen.findAllByRole('alert'))[0]!;
     expect(failed.textContent).toContain('We could not get a delivery price.');
     expect(payOff()).toBe(true);
     expect(screen.getAllByText('Fix the delivery problem above to pay.').length).toBe(1);
     fireEvent.click(within(failed).getByRole('button', { name: 'Try again' }));
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
-    expect(deliveryQuotesFor).toHaveBeenLastCalledWith({
+    expect(deliveryOptionsFor).toHaveBeenLastCalledWith({
       address: { kind: 'saved', id: 'home' },
-      sellerIds: ['paddington'],
+      sellerIds: ['kedron', 'paddington'],
     });
-  });
-
-  it('says when a seller cannot deliver to the address', async () => {
-    deliveryQuotesFor.mockResolvedValueOnce({
-      kedron: { kind: 'out-of-range' },
-      paddington: { kind: 'quote', express: null },
-    });
-    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain(
-      'Its couriers do not reach 12 Example Street, Kedron QLD 4031.',
-    );
-    expect(within(alert).getByRole('link', { name: 'Back to cart' }).getAttribute('href')).toBe(
-      '/cart',
-    );
-    fireEvent.click(within(alert).getByRole('button', { name: 'Change address' }));
-    expect(document.activeElement?.textContent).toBe('Delivery address');
-    expect(payOff()).toBe(true);
   });
 
   it('drops a late answer for an address the buyer has left', async () => {
     const answers: Record<string, (value: Record<string, unknown>) => void> = {};
-    deliveryQuotesFor.mockImplementation(
+    deliveryOptionsFor.mockImplementation(
       (request) =>
         new Promise((resolve) => {
           answers[(request as { address: { id: string } }).address.id] = resolve;
@@ -699,56 +843,55 @@ describe('checkout', () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
     fireEvent.click(screen.getByRole('radio', { name: /^Sam Nguyen/ }));
     await waitFor(() => expect(answers.work).toBeDefined());
-    act(() =>
-      answers.work!({
-        kedron: { kind: 'quote', express: aud(990) },
-        paddington: { kind: 'quote', express: null },
-      }),
-    );
-    await screen.findByRole('radio', { name: /Express.*A\$9\.90/ });
+    const options = await sampleOf(['kedron', 'paddington']);
+    const cheaper = {
+      kedron: priced(options.kedron!, 'instant', { price: quotedPrice('q-work', 990) }),
+      paddington: options.paddington!,
+    };
+    act(() => answers.work!({ kind: 'ok', sellers: cheaper }));
+    await screen.findByRole('radio', { name: /^Instant.*A\$9\.90/ });
     // Home's answer arrives after Work's: it is not shown.
-    act(() =>
-      answers.home!({
-        kedron: { kind: 'quote', express: aud(1290) },
-        paddington: { kind: 'quote', express: null },
-      }),
-    );
+    act(() => answers.home!({ kind: 'ok', sellers: options }));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.queryByRole('radio', { name: /Express.*A\$12\.90/ })).toBeNull();
-    expect(screen.getByRole('radio', { name: /Express.*A\$9\.90/ })).toBeTruthy();
+    // Only Paddington's Instant is still A$12.90; Kedron's is Work's A$9.90.
+    expect(screen.getAllByRole('radio', { name: /^Instant.*A\$12\.90/ })).toHaveLength(1);
+    expect(screen.getByRole('radio', { name: /^Instant.*A\$9\.90/ })).toBeTruthy();
   });
 
-  it('updates the total to a new Express price, and keeps Express wished through a failure', async () => {
+  it('updates the total to a new price, and keeps the wished method through a failure', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
-    // Another address prices Express differently; the total follows.
-    deliveryQuotesFor.mockResolvedValueOnce({
-      kedron: { kind: 'quote', express: aud(1590) },
-      paddington: { kind: 'quote', express: null },
+    await pickInstant();
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$81.20'));
+    // Another address prices Instant differently; the total follows.
+    const options = await sampleOf(['kedron', 'paddington']);
+    deliveryOptionsFor.mockResolvedValueOnce({
+      kind: 'ok',
+      sellers: {
+        kedron: priced(options.kedron!, 'instant', { price: quotedPrice('q-work', 1590) }),
+        paddington: options.paddington!,
+      },
     });
     fireEvent.click(screen.getByRole('radio', { name: /^Sam Nguyen/ }));
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$76.30'));
-    // A failed quote shows Scheduled only and holds Pay; Try again brings Express back.
-    deliveryQuotesFor.mockResolvedValueOnce({
-      kedron: { kind: 'failed' },
-      paddington: { kind: 'quote', express: null },
-    });
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$84.20'));
+    // A failed answer holds Pay; Try again brings the choice back.
+    deliveryOptionsFor.mockResolvedValueOnce({ kind: 'failed' });
     fireEvent.click(screen.getByRole('radio', { name: /^Alex Nguyen/ }));
-    const failed = await screen.findByRole('alert');
-    expect(screen.queryByRole('radio', { name: /Express.*A\$/ })).toBeNull();
+    const failed = (await screen.findAllByRole('alert'))[0]!;
+    expect(screen.queryByRole('radio', { name: /^Instant/ })).toBeNull();
     expect(payOff()).toBe(true);
     fireEvent.click(within(failed).getByRole('button', { name: 'Try again' }));
-    const express = await screen.findByRole('radio', { name: /Express.*A\$12\.90/ });
-    expect(express).toHaveProperty('checked', true);
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
+    const instant = await screen.findAllByRole('radio', { name: /^Instant.*A\$12\.90/ });
+    expect(instant[0]).toHaveProperty('checked', true);
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$81.20'));
   });
 
-  it('turns Express off until there is an address to price', () => {
+  it('shows no methods until there is an address to price', () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
     fireEvent.click(screen.getByRole('radio', { name: /Add a new address/ }));
-    expect(screen.getAllByText('Choose an address to see the price.')).toHaveLength(2);
-    expect(screen.queryByRole('radio', { name: /Express/ })).toBeNull();
+    expect(
+      screen.getAllByText('Choose a saved address to see delivery methods and prices.'),
+    ).toHaveLength(2);
+    expect(screen.queryByRole('radio', { name: /^Instant/ })).toBeNull();
     // Pay says why it is off, and a press takes the buyer to the first missing field.
     const pay = payButtons()[0]!;
     const reason = document.getElementById(pay.getAttribute('aria-describedby')!)!;
@@ -759,16 +902,13 @@ describe('checkout', () => {
   });
 
   it('holds Pay offline, and asks failed prices again when the connection is back', async () => {
-    deliveryQuotesFor.mockResolvedValueOnce({
-      kedron: { kind: 'failed' },
-      paddington: { kind: 'quote', express: null },
-    });
+    deliveryOptionsFor.mockResolvedValueOnce({ kind: 'failed' });
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.resolve(new Response(null, { status: 200 }))),
     );
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    await screen.findByRole('alert');
+    await screen.findAllByRole('alert');
     act(() => {
       window.dispatchEvent(new Event('offline'));
     });
@@ -779,10 +919,11 @@ describe('checkout', () => {
     act(() => {
       window.dispatchEvent(new Event('online'));
     });
+    await pickInstant();
     await waitFor(() => expect(payOff()).toBe(false));
-    expect(deliveryQuotesFor).toHaveBeenLastCalledWith({
+    expect(deliveryOptionsFor).toHaveBeenLastCalledWith({
       address: { kind: 'saved', id: 'home' },
-      sellerIds: ['kedron'],
+      sellerIds: ['kedron', 'paddington'],
     });
   });
 
@@ -814,11 +955,12 @@ describe('checkout', () => {
     });
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Alex Nguyen' } });
     fireEvent.change(screen.getByLabelText('Mobile number'), { target: { value: '0400 000 000' } });
-    await waitFor(() => expect(payOff()).toBe(false));
-    expect(deliveryQuotesFor).toHaveBeenLastCalledWith({
-      address: { kind: 'new', postcode: '4031' },
-      sellerIds: ['kedron', 'paddington'],
-    });
+    await waitFor(() =>
+      expect(deliveryOptionsFor).toHaveBeenLastCalledWith({
+        address: { kind: 'new', postcode: '4031' },
+        sellerIds: ['kedron', 'paddington'],
+      }),
+    );
     // Change goes back to the search, with the focus in it.
     fireEvent.click(screen.getByRole('button', { name: 'Change address' }));
     expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Address' }));
@@ -922,8 +1064,8 @@ describe('checkout', () => {
     // Short of four characters, nothing is asked.
     fireEvent.change(postcode, { target: { value: '40' } });
     fireEvent.change(postcode, { target: { value: ' 4031 ' } });
-    await waitFor(() => expect(payOff()).toBe(false));
-    expect(screen.queryByRole('alert')).toBeNull();
+    await waitFor(() => expect(deliveryAreaFor).toHaveBeenCalledWith('4031'));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     expect(deliveryAreaFor.mock.calls.map(([value]) => value)).toEqual(['4210', '4000', '4031']);
   });
 
@@ -944,20 +1086,14 @@ describe('discount code, save for later and seller note (sample data)', () => {
   it('takes the discount off items only and checks minimums before it', () => {
     const view = viewCart(MET, SAMPLE_CART_SOURCE, { code: 'HALAL10', percentOff: 10 })!;
     expect(view.discount).toEqual(aud(554));
-    expect(view.delivery).toEqual(aud(1250));
-    expect(view.total).toEqual(aud(5540 - 554 + 1250));
+    expect(view.delivery).toEqual(aud(0));
+    expect(view.total).toEqual(aud(5540 - 554));
     const source: CartSource = {
       items: { a: { name: 'Lamb', sellerId: 's', category: 'meat', price: aud(1000) } },
       sellers: {
-        s: {
-          id: 's',
-          name: 'Seller',
-          deliveryWindow: 'Today',
-          minimumOrder: aud(1000),
-          deliveryFee: aud(400),
-        },
+        s: { id: 's', name: 'Seller', minimumOrder: aud(1000) },
       },
-      tax: { share: { numerator: 1, denominator: 11 }, includesDelivery: true },
+      tax: { share: { numerator: 1, denominator: 11 } },
       sampleDiscounts: {},
     };
     const minimum = viewCart({ a: { quantity: 1, unitPrice: aud(1000), limit: 12 } }, source, {
@@ -965,7 +1101,7 @@ describe('discount code, save for later and seller note (sample data)', () => {
       percentOff: 10,
     })!;
     expect(minimum.blocked).toEqual([]);
-    expect(minimum.total).toEqual(aud(900 + 400));
+    expect(minimum.total).toEqual(aud(900));
   });
 
   it('applies a sample code on the cart page and refuses an unknown one', () => {
@@ -979,7 +1115,7 @@ describe('discount code, save for later and seller note (sample data)', () => {
     fireEvent.submit(input.closest('form')!);
     expect(screen.getByText('Discount (HALAL10)')).toBeTruthy();
     expect(screen.getByText('−A$5.54')).toBeTruthy();
-    expect(screen.getAllByText('A$62.36').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('A$49.86').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Remove discount code HALAL10' }));
     expect(screen.queryByText('Discount (HALAL10)')).toBeNull();
     expect(screen.getByRole('button', { name: 'Have a discount code?' })).toBeTruthy();
@@ -992,16 +1128,16 @@ describe('discount code, save for later and seller note (sample data)', () => {
     const saved = screen.getByRole('region', { name: 'Saved for later (1)' });
     expect(within(saved).getByText(name)).toBeTruthy();
     expect(within(saved).getByText(/Saved items stay in this browser/)).toBeTruthy();
-    expect(screen.getAllByText('A$54.40').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('A$46.90').length).toBeGreaterThan(0);
     fireEvent.click(within(saved).getByRole('button', { name: `Move ${name} to cart` }));
     expect(screen.queryByRole('region', { name: /Saved for later/ })).toBeNull();
-    expect(screen.getAllByText('A$67.90').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('A$55.40').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: `Save ${name} for later` }));
     fireEvent.click(screen.getByRole('button', { name: `Remove ${name} from saved items` }));
     expect(screen.queryByRole('region', { name: /Saved for later/ })).toBeNull();
   });
 
-  it('keeps a seller note and the Express choice up to the confirmation', async () => {
+  it('keeps a seller note and the delivery choice up to the confirmation', async () => {
     renderWith(
       <>
         <CheckoutPage source={SAMPLE_CHECKOUT} />
@@ -1010,7 +1146,8 @@ describe('discount code, save for later and seller note (sample data)', () => {
       MET,
       true,
     );
-    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
+    fireEvent.click((await screen.findAllByRole('radio', { name: /^Instant.*A\$12\.90/ }))[0]!);
+    fireEvent.click(screen.getAllByRole('radio', { name: /^Pickup/ })[1]!);
     fireEvent.click(screen.getAllByRole('button', { name: 'Add a note for this seller' })[0]!);
     const note = screen.getByLabelText(/^Note for Kedron Halal Butchers/);
     expect(note.getAttribute('maxlength')).toBe('200');
@@ -1024,9 +1161,9 @@ describe('discount code, save for later and seller note (sample data)', () => {
     )!;
     expect(within(part).getByText('<b>Ring the bell</b>')).toBeTruthy();
     expect(part.querySelector('p b b')).toBeNull();
-    expect(within(part).getByText('Order MP-1-1 · Delivery: Express, within 2 hours')).toBeTruthy();
+    expect(within(part).getByText('Order MP-1-1 · Delivery: Instant')).toBeTruthy();
     const other = screen.getByRole('heading', { name: 'Paddington Bakehouse' }).closest('article')!;
-    expect(within(other).getByText(/^Order MP-1-2 · Delivery: Scheduled, /)).toBeTruthy();
+    expect(within(other).getByText('Order MP-1-2 · Delivery: Pickup')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Payment summary' })).toBeTruthy();
   });
 });
