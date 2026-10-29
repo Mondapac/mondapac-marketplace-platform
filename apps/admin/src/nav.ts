@@ -79,6 +79,14 @@ export const adminNav: NavConfig = {
       anyOf: ['shipping.delivery-settings.view'],
     },
     {
+      id: 'payouts',
+      icon: 'receipt',
+      labelKey: 'nav.payouts',
+      href: '/payouts',
+      group: 'money',
+      anyOf: ['commission-payouts.payout.view'],
+    },
+    {
       id: 'payout-accounts',
       icon: 'wallet',
       labelKey: 'nav.payout-accounts',

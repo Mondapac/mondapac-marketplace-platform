@@ -21,6 +21,18 @@ import {
   type CommissionRate,
   type Ledger,
 } from '../../../../src/commission/types.ts';
+import { PayoutHoldsCard } from '../../../../src/payouts/holds-card.tsx';
+import { PayoutTermsCard } from '../../../../src/payouts/terms-card.tsx';
+import {
+  HOLD_PLACE_PERMISSION,
+  HOLD_RELEASE_PERMISSION,
+  HOLD_VIEW_PERMISSION,
+  TERMS_EDIT_PERMISSION,
+  TERMS_VIEW_PERMISSION,
+  type PayoutHold,
+  type PayoutTerms,
+} from '../../../../src/payouts/seller-types.ts';
+import { displayZone } from '../../../../src/shared/format.ts';
 import { SellerMethodsCard } from '../../../../src/delivery-settings/seller-methods-card.tsx';
 import {
   DELIVERY_MANAGE_PERMISSION,
@@ -53,6 +65,26 @@ async function loadMethods(sellerId: string, canView: boolean): Promise<SellerMe
   const read = await serverGet<SellerMethods>(sellerMethodsPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's payout terms, or null when the role cannot see them or they cannot be read. */
+async function loadTerms(sellerId: string, canView: boolean): Promise<PayoutTerms | null> {
+  if (!canView) return null;
+  const read = await serverGet<PayoutTerms>(
+    `commission-payouts/admin/sellers/${sellerId}/payout-terms`,
+  );
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's payout holds, or null when the role cannot see them or they cannot be read. */
+async function loadHolds(sellerId: string, canView: boolean): Promise<PayoutHold[] | null> {
+  if (!canView) return null;
+  const read = await serverGet<{ holds: PayoutHold[] }>(
+    `commission-payouts/admin/sellers/${sellerId}/payout-holds`,
+  );
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? read.body.holds : null;
 }
 
 type CommissionRead =
@@ -136,10 +168,12 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [fee, commission, methods] = await Promise.all([
+    const [fee, commission, methods, terms, holds] = await Promise.all([
       loadFee(sellerId, permissionKeys.includes(FEE_VIEW_PERMISSION)),
       loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
       loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
+      loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
+      loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
     ]);
     return shell(
       <div className="flex flex-col gap-6">
@@ -167,6 +201,29 @@ export default async function SellerReviewPage({
                 csrfToken={csrfToken}
               />
             ) : null}
+          </div>
+        )}
+        {terms === null && holds === null ? null : (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {terms === null ? null : (
+              <PayoutTermsCard
+                initial={terms}
+                // The terms answer carries minor units only; the Market currency is the ledger's.
+                currency={commission.kind === 'ok' ? commission.ledger.currency : null}
+                canEdit={permissionKeys.includes(TERMS_EDIT_PERMISSION)}
+                csrfToken={csrfToken}
+              />
+            )}
+            {holds === null ? null : (
+              <PayoutHoldsCard
+                sellerId={sellerId}
+                initial={holds}
+                zone={displayZone(gate.session.timezone)}
+                canPlace={permissionKeys.includes(HOLD_PLACE_PERMISSION)}
+                canRelease={permissionKeys.includes(HOLD_RELEASE_PERMISSION)}
+                csrfToken={csrfToken}
+              />
+            )}
           </div>
         )}
         {commission.kind === 'ok' ? <LedgerCard initial={commission.ledger} /> : null}
