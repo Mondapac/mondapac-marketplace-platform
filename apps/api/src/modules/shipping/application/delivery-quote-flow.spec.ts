@@ -189,6 +189,7 @@ describe.each([
       ledger,
       pickups,
       webhookSignature: undefined as never,
+      uberWebhookSignature: undefined as never,
       securityEvents: undefined as never,
     };
     void shippingPolicy;

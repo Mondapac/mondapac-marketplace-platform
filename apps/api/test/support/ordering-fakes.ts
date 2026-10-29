@@ -623,6 +623,29 @@ export class FakeShipping implements ShippingFacade {
       shipment === undefined ? err({ code: 'shipping.carrier-delivery-not-found' }) : ok(shipment),
     );
   }
+  /** The tracking link of each seller order id; `trackingDown` makes the read fail. */
+  trackingLinks = new Map<string, string>();
+  trackingDown = false;
+  /** The `orderId` of each `carrierTrackingLinks` call, in order. */
+  trackingOrderIds: string[] = [];
+  carrierTrackingLinks(
+    _c: CallContext,
+    orderId: string,
+    sellerOrderIds: readonly string[],
+  ): Promise<Result<ReadonlyMap<string, string>, ShippingFailure>> {
+    this.trackingOrderIds.push(orderId);
+    if (this.trackingDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    return Promise.resolve(
+      ok(
+        new Map(
+          sellerOrderIds.flatMap((id) => {
+            const url = this.trackingLinks.get(id);
+            return url === undefined ? [] : [[id, url] as const];
+          }),
+        ),
+      ),
+    );
+  }
   /** The seller order ids `cancelCarrierDelivery` was asked for, and its answer. */
   carrierCancels: string[] = [];
   cancelAnswer: Result<

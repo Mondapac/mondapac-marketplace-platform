@@ -5,6 +5,7 @@ import {
   isFinalProgress,
   newBooking,
   progressOfFleetStatus,
+  safeTrackingUrl,
   type CarrierBooking,
 } from './carrier-booking';
 import { addressLineOf, parseCarrierStop } from './carrier-stop';
@@ -253,5 +254,86 @@ describe('parseDriveWebhook', () => {
     ['a bad status', event({}, { status: 'picked up' })],
   ])('refuses %s', (_label, payload) => {
     expect(parseDriveWebhook(payload)).toEqual({ kind: 'invalid' });
+  });
+});
+
+describe('safeTrackingUrl', () => {
+  it('keeps a plain https URL, re-serialised', () => {
+    expect(safeTrackingUrl('https://Track.Example.com/d/abc?x=1')).toBe(
+      'https://track.example.com/d/abc?x=1',
+    );
+  });
+  it.each([
+    null,
+    undefined,
+    42,
+    '',
+    'http://track.example.com/x',
+    'javascript:alert(1)',
+    'data:text/html,<b>',
+    'ftp://x.example.com/a',
+    '//x.example.com/a',
+    '/relative',
+    'https://user:pass@x.example.com/a',
+    'https://x.example.com/' + 'a'.repeat(500),
+    'not a url',
+  ])('answers null for %p', (value) => {
+    expect(safeTrackingUrl(value)).toBeNull();
+  });
+});
+
+describe('advanceBooking and the proof of delivery', () => {
+  const NOW = Temporal.Instant.from('2026-10-25T10:00:00Z');
+  const base = booking();
+  const proofBooking = newBooking({
+    id: base.id,
+    sellerOrderId: base.sellerOrderId,
+    orderId: base.orderId,
+    sellerId: base.sellerId,
+    fleet: 'uber_direct',
+    carrierReference: 'del_abcdefgh',
+    carrierStatus: 'PENDING',
+    now: NOW,
+  });
+
+  it('records only the instant when the delivered report says a proof exists', () => {
+    const booking = proofBooking;
+    const later = NOW.add({ seconds: 60 });
+    const delivered = advanceBooking(
+      booking,
+      { progress: 'delivered', carrierStatus: 'DELIVERED', proofOfDelivery: true },
+      later,
+    );
+    expect(delivered?.podRecordedAt?.toString()).toBe(later.toString());
+    expect(
+      advanceBooking(booking, { progress: 'delivered', carrierStatus: 'DELIVERED' }, later)
+        ?.podRecordedAt,
+    ).toBeNull();
+    expect(
+      advanceBooking(
+        booking,
+        { progress: 'picked-up', carrierStatus: 'X', proofOfDelivery: true },
+        later,
+      )?.podRecordedAt,
+    ).toBeNull();
+  });
+
+  it('starts a booking with the safe link and no proof or poll', () => {
+    const withLink = newBooking({
+      id: base.id,
+      sellerOrderId: base.sellerOrderId,
+      orderId: base.orderId,
+      sellerId: base.sellerId,
+      fleet: 'zoom2u',
+      carrierReference: 'z1',
+      carrierStatus: 'NEW',
+      trackingUrl: 'http://insecure.example.com',
+      now: NOW,
+    });
+    expect([withLink.trackingUrl, withLink.podRecordedAt, withLink.polledAt]).toEqual([
+      null,
+      null,
+      null,
+    ]);
   });
 });

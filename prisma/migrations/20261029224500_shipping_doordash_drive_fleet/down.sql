@@ -1,7 +1,7 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
 
--- Reverses 20261029150000_shipping_doordash_drive_fleet: the fleet lists lose 'doordash_drive'.
+-- Reverses 20261029224500_shipping_doordash_drive_fleet: the fleet lists lose 'doordash_drive'.
 -- Fails if a row already names DoorDash Drive (remove those rows first, deliberately).
 
 ALTER TABLE "shipping"."carrier_bookings" DROP CONSTRAINT "carrier_bookings_fleet_check";

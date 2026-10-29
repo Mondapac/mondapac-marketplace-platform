@@ -6,6 +6,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CarrierBookingRepository } from './ports/carrier-booking.repository';
 import type { CarrierPolicy } from './ports/carrier-policy';
 import type { CarrierWebhookSignature } from './ports/carrier-webhook-signature';
+import type { FleetWebhookSignature } from './ports/fleet-webhook-signature';
 import type { DeliverySettingsRepository } from './ports/delivery-settings.repository';
 import type { FleetRegistry } from './ports/fleet-registry';
 import type { FleetSelectionRepository } from './ports/fleet-selection.repository';
@@ -35,5 +36,7 @@ export interface ShippingDependencies {
   readonly ledger: FleetLedgerRepository;
   readonly pickups: PickupDirectory;
   readonly webhookSignature: CarrierWebhookSignature;
+  /** Uber Direct's status webhook signature (one header, no timestamp). */
+  readonly uberWebhookSignature: FleetWebhookSignature;
   readonly securityEvents: SecurityEvents;
 }

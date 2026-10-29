@@ -52,6 +52,8 @@ export interface ShipmentNotice {
   readonly sellerOrderId: Id<'SellerOrder'>;
   readonly carrier: string;
   readonly trackingRef: string | null;
+  /** The fleet's tracking page when a delivery fleet carried it and gave one: https only. */
+  readonly trackingUrl: string | null;
 }
 
 /** An unknown, foreign-Market, unpaid or not yet shipped seller order is `ordering.order-not-found`. */

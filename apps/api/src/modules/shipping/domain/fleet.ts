@@ -36,6 +36,13 @@ export const DEFAULT_FLEET_ORDER: readonly FleetCode[] = [
   'fake_test',
 ];
 
+/**
+ * The fleets whose delivery status the platform polls because they send no webhook it can verify
+ * (Zoom2u: no signed webhook is known; Australia Post: none). Uber Direct and Mondapac Drive
+ * push signed webhooks and are not polled.
+ */
+export const POLLED_FLEETS: readonly FleetCode[] = ['zoom2u', 'auspost'];
+
 export const TEMPERATURES = ['ambient', 'chilled', 'frozen'] as const;
 export type Temperature = (typeof TEMPERATURES)[number];
 

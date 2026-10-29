@@ -14,6 +14,7 @@ import {
   type OrderPageView,
   type OrderView,
   type OwnOrderView,
+  type OwnTrackingLinkView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
 import { labelAdminOrders, labelOwnOrders } from './order-labels';
@@ -141,6 +142,38 @@ export async function openShipTo(
 }
 
 /**
+ * The carrier tracking links of the shipped parts of the buyer's own order, asked of shipping
+ * under the buyer's context. Called after the read unit. A failure is no link, never an error:
+ * the page works without one. Only an https link is passed on.
+ */
+async function trackingLinksOf(
+  deps: OrderingDependencies,
+  context: CallContext,
+  order: OrderState,
+): Promise<readonly OwnTrackingLinkView[]> {
+  const shipped = order.sellerOrders.filter(
+    (seller) => seller.fulfilment === 'shipped' && seller.carrier !== null,
+  );
+  if (order.status !== 'confirmed' || shipped.length === 0) return [];
+  try {
+    const found = await deps.shipping.carrierTrackingLinks(
+      context,
+      order.id,
+      shipped.map((seller) => seller.id),
+    );
+    if (!found.ok) return [];
+    return shipped.flatMap((seller) => {
+      const url = found.value.get(seller.id);
+      return url === undefined || !url.startsWith('https://')
+        ? []
+        : [{ sellerOrderId: seller.id, sellerId: seller.sellerId, url }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
  * The customer's own order, with its delivery address and the names of its products and stores.
  * Unknown and foreign are one answer.
  */
@@ -172,6 +205,7 @@ export async function viewOwnOrder(
     shipTo: await openShipTo(deps, context, accountId, order.shipToSealed),
     // The buyer's own codes, opened after the unit: only this view ever shows one.
     pickupCodes: await openPickupCodes(deps, context, accountId, order, stored),
+    trackingLinks: await trackingLinksOf(deps, context, order),
   };
   const [labelled] = await labelOwnOrders(deps.labels, context, [own]);
   return ok(labelled!);
