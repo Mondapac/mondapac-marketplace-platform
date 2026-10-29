@@ -30,6 +30,8 @@ import { RejectPriceHold } from './application/use-cases/reject-price-hold.use-c
 import { RetireSeriesForRemovedOffer } from './application/use-cases/retire-series-for-removed-offer.use-case';
 import { RetireSeriesForRemovedVariant } from './application/use-cases/retire-series-for-removed-variant.use-case';
 import { ViewPriceHold } from './application/use-cases/view-price-hold.use-case';
+import { DaysAtPriceSystemQuery } from './application/use-cases/days-at-price-system.use-case';
+import { DaysAtPriceQuery } from './application/use-cases/days-at-price.use-case';
 import { EffectivePricesSystemQuery } from './application/use-cases/effective-prices-system.use-case';
 import { EffectivePricesQuery } from './application/use-cases/effective-prices.use-case';
 import { PublishSpecialPriceBoundaries } from './application/use-cases/publish-special-price-boundaries.use-case';
@@ -170,6 +172,8 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),
+    useCaseProvider(DaysAtPriceQuery, { unitOfWork: true, series: true, clock: true }),
+    useCaseProvider(DaysAtPriceSystemQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(SpecialsInForceQuery, {
       unitOfWork: true,
       specials: true,
@@ -184,11 +188,24 @@ function useCaseProvider<D, U>(
     },
     {
       provide: PRICING_FACADE,
-      inject: [EffectivePricesQuery, EffectivePricesSystemQuery],
+      inject: [
+        EffectivePricesQuery,
+        EffectivePricesSystemQuery,
+        DaysAtPriceQuery,
+        DaysAtPriceSystemQuery,
+      ],
       useFactory: (
         effectivePrices: EffectivePricesQuery,
         effectivePricesSystem: EffectivePricesSystemQuery,
-      ) => new PricingFacadeImplementation({ effectivePrices, effectivePricesSystem }),
+        daysAtPrice: DaysAtPriceQuery,
+        daysAtPriceSystem: DaysAtPriceSystemQuery,
+      ) =>
+        new PricingFacadeImplementation({
+          effectivePrices,
+          effectivePricesSystem,
+          daysAtPrice,
+          daysAtPriceSystem,
+        }),
     },
     useCaseProvider(ListPriceHolds, {
       unitOfWork: true,
