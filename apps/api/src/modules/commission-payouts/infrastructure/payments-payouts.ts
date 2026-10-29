@@ -53,6 +53,8 @@ export class PaymentsFacadePayouts implements PaymentsPayouts {
       instructionKey: row.instructionKey,
       state: row.state,
       transferExecutionId: row.transferExecutionId,
+      amountMinor: row.amount?.amount ?? null,
+      currency: row.amount?.currency ?? null,
     }));
   }
 

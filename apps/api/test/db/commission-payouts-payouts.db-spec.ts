@@ -1134,6 +1134,8 @@ describe.each(TEST_MARKETS)('payouts in market %s (database)', (code) => {
         instructionKey: waiting!.id,
         state: 'executed',
         transferExecutionId: sent!.transferExecutionId,
+        amountMinor: sent!.transfer,
+        currency: sent!.currency,
       });
       expect(await reconcileInstructions(deps, system)).toMatchObject({
         ok: true,

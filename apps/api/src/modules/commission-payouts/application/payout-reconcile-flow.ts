@@ -184,6 +184,28 @@ export async function reconcileInstructions(
 
 const summaryOf = (counts: Counts): ReconcileSummary => ({ ...counts });
 
+/**
+ * Whether the transfer payments holds under the payout's key is the payout's own: the same amount
+ * and currency. A record under the key with another amount (after `idempotency.key-reused`, say)
+ * settles nothing (N-3).
+ */
+export const transferMatches = (payout: Payout, lookup: TransferLookup): boolean =>
+  lookup.amountMinor === payout.transfer && lookup.currency === payout.currency;
+
+async function raiseUnmatched(
+  deps: PayoutDependencies,
+  context: CallContext,
+  payout: Payout,
+): Promise<void> {
+  await deps.unitOfWork.run<true, never>(context.market, async () => {
+    await deps.securityEvents.record(
+      context,
+      PayoutAlert.event({ payload: { sellerId: payout.sellerId, reason: 'transfer-unmatched' } }),
+    );
+    return ok(true as const);
+  });
+}
+
 async function reconcileOne(
   deps: PayoutDependencies,
   context: CallContext,
@@ -194,6 +216,15 @@ async function reconcileOne(
 ): Promise<void> {
   const now = deps.clock.now();
   const executionId = lookup.transferExecutionId;
+  if (
+    (lookup.state === 'executed' || lookup.state === 'failed') &&
+    !transferMatches(payout, lookup)
+  ) {
+    // Not this payout's transfer: nothing changes, a person looks.
+    await raiseUnmatched(deps, context, payout);
+    counts.waiting += 1;
+    return;
+  }
   if (lookup.state === 'executed' && executionId !== null) {
     const state = await settle(deps, context, payout, {
       kind: 'executed',
@@ -326,8 +357,12 @@ export async function applyTransferChange(
   if (lookups === 'unavailable') return err({ code: 'commission-payouts.try-again' });
   const lookup = lookups.find((candidate) => candidate.instructionKey === payout.id);
   if (lookup === undefined) return err({ code: 'commission-payouts.try-again' });
-  if (lookup.transferExecutionId !== null && lookup.transferExecutionId !== executionId.value) {
-    // The transfer the event names is not the one payments holds for this payout's key.
+  if (
+    (lookup.transferExecutionId !== null && lookup.transferExecutionId !== executionId.value) ||
+    ((lookup.state === 'executed' || lookup.state === 'failed') && !transferMatches(payout, lookup))
+  ) {
+    // The transfer the event names is not the one payments holds for this payout's key, or the
+    // record under the key is not for this payout's amount.
     return alertUnmatched(deps, context, input.delivery, payout);
   }
 

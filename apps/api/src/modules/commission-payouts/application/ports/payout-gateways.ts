@@ -56,6 +56,9 @@ export interface TransferLookup {
   readonly instructionKey: string;
   readonly state: TransferStateName;
   readonly transferExecutionId: string | null;
+  /** What payments holds under the key; null when it holds no transfer (none, a tombstone). */
+  readonly amountMinor: bigint | null;
+  readonly currency: string | null;
 }
 
 export type AbandonAnswer =

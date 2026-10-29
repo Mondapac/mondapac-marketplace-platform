@@ -889,8 +889,16 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       payout: Payout,
       state: 'none' | 'reserved' | 'sending' | 'executed' | 'refused' | 'abandoned' | 'failed',
       transferExecutionId: string | null = null,
+      amountMinor: bigint | null = payout.transfer,
+      currency: string | null = payout.currency,
     ) =>
-      payments.transfers.set(payout.id, { instructionKey: payout.id, state, transferExecutionId });
+      payments.transfers.set(payout.id, {
+        instructionKey: payout.id,
+        state,
+        transferExecutionId,
+        amountMinor,
+        currency,
+      });
 
     it('asks again by key, and makes the first call itself when payments never saw the key', async () => {
       const payout = await instructing();
@@ -918,6 +926,26 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       expect(await reconcile()).toMatchObject({ paid: 1 });
       expect(only()).toMatchObject({ state: 'paid', transferExecutionId: TRANSFER });
     });
+
+    it.each(['executed', 'failed'] as const)(
+      'leaves the payout as it is and alerts when the %s transfer under its key is for another amount',
+      async (state) => {
+        const payout = await instructing();
+        lookupIs(payout, state, TRANSFER, payout.transfer + 1n);
+        expect(await reconcile()).toMatchObject({ paid: 0, failed: 0, instructed: 0, waiting: 1 });
+        expect(only()).toMatchObject({ state: 'instructing', transferExecutionId: null });
+        expect(alerts().map((event) => event.payload)).toEqual([
+          { sellerId: SELLER_A, reason: 'transfer-unmatched' },
+        ]);
+        // Another currency, or no amount at all, is not this payout's transfer either.
+        lookupIs(payout, state, TRANSFER, payout.transfer, 'XXX');
+        await reconcile();
+        lookupIs(payout, state, TRANSFER, null, null);
+        await reconcile();
+        expect(only().state).toBe('instructing');
+        expect(alerts()).toHaveLength(3);
+      },
+    );
 
     it('marks a failed transfer FAILED and frees the seller orders', async () => {
       const payout = await instructing();
@@ -1012,6 +1040,8 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
         instructionKey: payout.id,
         state: 'executed',
         transferExecutionId: TRANSFER,
+        amountMinor: payout.transfer,
+        currency: payout.currency,
       });
       expect(await apply(TRANSFER)).toEqual(ok('paid'));
       expect(only().state).toBe('paid');
@@ -1024,6 +1054,8 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
         instructionKey: payout.id,
         state: 'failed',
         transferExecutionId: TRANSFER,
+        amountMinor: payout.transfer,
+        currency: payout.currency,
       });
       expect(await apply(TRANSFER)).toEqual(ok('failed'));
       expect(only()).toMatchObject({ state: 'failed', outcomeCode: 'transfer-failed' });
@@ -1035,6 +1067,8 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
         instructionKey: payout.id,
         state: 'sending',
         transferExecutionId: TRANSFER,
+        amountMinor: payout.transfer,
+        currency: payout.currency,
       });
       expect(await apply(TRANSFER)).toEqual(ok('unchanged'));
       expect(only().state).toBe('instructed');
@@ -1049,12 +1083,39 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       expect(await apply('nope')).toEqual({ ok: false, error: { code: 'validation.failed' } });
     });
 
+    it.each([
+      ['another amount', (p: Payout) => ({ amountMinor: p.transfer - 1n, currency: p.currency })],
+      ['another currency', (p: Payout) => ({ amountMinor: p.transfer, currency: 'XXX' })],
+      ['no amount', () => ({ amountMinor: null, currency: null })],
+    ] as const)(
+      'raises an alert and changes nothing when the record under the key has %s',
+      async (_label, amount) => {
+        const payout = await instructed();
+        for (const state of ['executed', 'failed'] as const) {
+          payments.transfers.set(payout.id, {
+            instructionKey: payout.id,
+            state,
+            transferExecutionId: TRANSFER,
+            ...amount(payout),
+          });
+          expect(await apply(TRANSFER, state === 'executed' ? 1 : 2)).toEqual(ok('alerted'));
+          expect(only().state).toBe('instructed');
+        }
+        expect(alerts().map((event) => event.payload)).toEqual([
+          { sellerId: SELLER_A, reason: 'transfer-unmatched' },
+          { sellerId: SELLER_A, reason: 'transfer-unmatched' },
+        ]);
+      },
+    );
+
     it('raises an alert instead of paying when payments holds another transfer for the key', async () => {
       const payout = await instructed();
       payments.transfers.set(payout.id, {
         instructionKey: payout.id,
         state: 'executed',
         transferExecutionId: id<'TransferExecution'>(0x777),
+        amountMinor: payout.transfer,
+        currency: payout.currency,
       });
       expect(await apply(TRANSFER)).toEqual(ok('alerted'));
       expect(only().state).toBe('instructed');

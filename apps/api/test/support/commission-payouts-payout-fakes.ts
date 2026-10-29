@@ -283,6 +283,8 @@ export class ScriptedPayments implements PaymentsPayouts {
             instructionKey,
             state: 'none',
             transferExecutionId: null,
+            amountMinor: null,
+            currency: null,
           },
       ),
     );
