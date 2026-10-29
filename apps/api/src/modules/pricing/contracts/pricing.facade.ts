@@ -4,6 +4,9 @@ import type { AccessDenied } from '../../../platform/authz';
 /** At most this many keys per batch call; a larger call is refused whole. */
 export const MAX_PRICE_BATCH = 200;
 
+/** The longest window `daysAtPrice` measures, in days; a longer one is refused. */
+export const MAX_PRICE_HISTORY_WINDOW_DAYS = 366;
+
 /** One priced unit: an Offer and one of its Variants. */
 export interface PriceKey {
   readonly offerId: Id<'Offer'>;
@@ -59,6 +62,24 @@ export interface PricingFacade {
   ): Promise<
     Result<EffectivePriceMap, AccessDenied | PricingValidationFailed | PricingBatchTooLarge>
   >;
+
+  /**
+   * How many whole days of the last `windowDays` days (ending now; at most
+   * {@link MAX_PRICE_HISTORY_WINDOW_DAYS}) the effective price of one key was exactly `price`:
+   * the fact behind promotions' was-price rule (AU: at least 28 of the last 90). The time at the
+   * price is summed over the window and floored to whole 24-hour days. Only prices that were in
+   * force count (accepted or approved regular records, specials in force below the regular): a
+   * pending, rejected or never-effective record never does, and no Cost is read. A retired
+   * series counts until its retirement. `null` when the key has no series in the context's
+   * Market (another Market's key alike); the caller treats `null` as "not eligible". Two use
+   * cases behind this method, as for `effectivePrices`. Not exposed over HTTP.
+   */
+  daysAtPrice(
+    context: CallContext,
+    key: PriceKey,
+    price: Money,
+    windowDays: number,
+  ): Promise<Result<number | null, AccessDenied | PricingValidationFailed>>;
 }
 
 /** Nest token of the {@link PricingFacade}, provided and exported by `PricingModule`. */

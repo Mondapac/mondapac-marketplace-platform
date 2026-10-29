@@ -14,7 +14,17 @@ export const CUSTOMERS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
     locked: true,
     audience: 'admin',
   },
+  // Package 5c: an admin deletes a buyer's account for them (and cancels such a request). Guarded
+  // on both routes with `@RequiresStepUp` and spent in the unit of the request or the cancel.
+  {
+    key: 'customers.buyer-account.delete',
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
 ];
 
 export const ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP =
   'customers.account-deletion-settings.change';
+
+export const BUYER_ACCOUNT_DELETE_STEP_UP = 'customers.buyer-account.delete';

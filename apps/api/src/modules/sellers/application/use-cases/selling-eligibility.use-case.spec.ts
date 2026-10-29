@@ -70,6 +70,10 @@ class Store implements SellingFactsRepository {
     if (this.fail) return Promise.reject(new Error('read failed'));
     return Promise.resolve(this.blogs.get(`${market.marketId}|${sellerId}`) ?? null);
   }
+
+  firstApprovedAt(): Promise<null> {
+    return Promise.reject(new Error('not used'));
+  }
 }
 
 class Access implements SellerAccessReader {
@@ -177,6 +181,8 @@ describe.each([
       }),
       blogAccess: undefined as never,
       blogAccessSystem: undefined as never,
+      activeSince: undefined as never,
+      activeSinceSystem: undefined as never,
       reviewerBusinessDetails: undefined as never,
       publishedStoreSellerId: undefined as never,
       carrierPickup: undefined as never,

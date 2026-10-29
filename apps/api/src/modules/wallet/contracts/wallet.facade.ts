@@ -117,6 +117,16 @@ export interface WalletFacade {
   ): Promise<Result<WalletBalanceView, WalletFailure>>;
 
   /**
+   * A customer's balance for an admin's deletion request for a buyer (customers package 5c). Rule
+   * `own-resources`: a platform admin that is not acting as a seller, any other caller
+   * `access.denied`; the calling use case holds the permission. Reads work in every state.
+   */
+  adminBalanceOf(
+    context: CallContext,
+    customerAccountId: Id<'Account'>,
+  ): Promise<Result<WalletBalanceView, WalletFailure>>;
+
+  /**
    * The calling customer's own balance (rule `own-resources`, customers only; the account is the
    * session's). For a customer's own request that needs a yes or no on the wallet, such as account
    * deletion. Reads work in every state.

@@ -45,6 +45,7 @@ import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deli
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
 import { RecordDeliveryAnchor } from './application/use-cases/record-delivery-anchor.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
+import { AdminOpenObligationsOfQuery } from './application/use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
@@ -225,6 +226,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerOrderCustomerNames,
       OwnOpenObligationsQuery,
       OpenObligationsOfQuery,
+      AdminOpenObligationsOfQuery,
       MyDeliveredSellerOrders,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
@@ -246,6 +248,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OpenObligationsOfQuery,
         MyDeliveredSellerOrders,
         OrderPaymentRefQuery,
+        AdminOpenObligationsOfQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -257,6 +260,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         openObligationsOfAccount: OpenObligationsOfQuery,
         delivered: MyDeliveredSellerOrders,
         paymentRef: OrderPaymentRefQuery,
+        adminOpenObligations: AdminOpenObligationsOfQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -268,6 +272,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           openObligationsOfAccount,
           delivered,
           paymentRef,
+          adminOpenObligations,
         ),
     },
     {

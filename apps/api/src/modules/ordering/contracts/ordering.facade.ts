@@ -191,6 +191,16 @@ export interface OrderingFacade {
   ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
 
   /**
+   * The same counts for one customer account, asked by an admin's deletion request for a buyer
+   * (customers package 5c). Rule `own-resources`: a platform admin that is not acting as a seller,
+   * any other caller `access.denied`; the calling use case holds the permission.
+   */
+  adminOpenObligationsOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
    * The signed-in customer's own seller orders whose fulfilment is `delivered`, delivered at or
    * after `deliveredSince`, newest delivery first, at most {@link MAX_DELIVERED_SELLER_ORDERS}.
    * With `sellerOrderId` only that seller order (the customer's own, else an empty list). Rule
