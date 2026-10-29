@@ -873,10 +873,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // published_at.
     'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Package 5b: a deletion request is inserted and moved on (only the state columns: status, the
-    // job's claim and the closing columns), never deleted.
+    // job's claim and the closing columns, plus, in package 5c, the admin cancel's id and the redaction (reason, redacted_at)), never deleted.
     'customers.account_deletion_requests': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['cancel_reason', 'cancelled_at', 'claimed_at', 'completed_at', 'status'],
+      columnUpdate: [
+        'cancel_reason',
+        'cancelled_at',
+        'cancelled_by_admin_id',
+        'claimed_at',
+        'completed_at',
+        'reason',
+        'redacted_at',
+        'status',
+      ],
     },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
@@ -909,7 +918,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // writes `shipping.carrier-delivery-progressed.v1` and ordering records each one it handled.
     'shipping.carrier_bookings': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['carrier_status', 'progress', 'updated_at', 'version'],
+      columnUpdate: [
+        'carrier_status',
+        'pod_recorded_at',
+        'polled_at',
+        'progress',
+        'updated_at',
+        'version',
+      ],
     },
     'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Delivery models, package 3 (the fleet router): selection models are created and edited,

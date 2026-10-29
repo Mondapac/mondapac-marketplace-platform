@@ -1,5 +1,7 @@
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { ActiveSinceSystem } from '../application/use-cases/active-since-system.use-case';
+import type { ActiveSince } from '../application/use-cases/active-since.use-case';
 import type { BlogAccessSystem } from '../application/use-cases/blog-access-system.use-case';
 import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
@@ -36,6 +38,8 @@ export interface SellersFacadeUseCases {
   readonly allowedProductTypesSystem: AllowedProductTypesSystem;
   readonly blogAccess: BlogAccess;
   readonly blogAccessSystem: BlogAccessSystem;
+  readonly activeSince: ActiveSince;
+  readonly activeSinceSystem: ActiveSinceSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
   readonly publishedStoreSlugs: PublishedStoreSlugs;
@@ -98,6 +102,17 @@ export class SellersFacadeImplementation implements SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
     const useCase =
       context.actor.kind === 'system' ? this.useCases.blogAccessSystem : this.useCases.blogAccess;
+    return useCase.execute(context, { sellerId });
+  }
+
+  activeSinceOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<Temporal.Instant | null, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  > {
+    const useCase =
+      context.actor.kind === 'system' ? this.useCases.activeSinceSystem : this.useCases.activeSince;
     return useCase.execute(context, { sellerId });
   }
 

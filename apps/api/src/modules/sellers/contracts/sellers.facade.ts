@@ -1,4 +1,4 @@
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { SellerSummary } from '../domain/seller-summary';
 
@@ -122,6 +122,23 @@ export interface SellersFacade {
     context: CallContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
+   * `activeSinceOf` (promotions T1): the instant the seller's business file was first approved in
+   * the context's Market, the clock of promotions' "a seller active for fewer than N days needs
+   * approval" rule. A revision approved and later superseded still counts; a rejected or
+   * withdrawn one never does. `null` when no revision was ever approved, and for an unknown seller
+   * or another Market's seller, byte-identical. An instant only: no store field, no personal data,
+   * no audit row. A read error is `sellers.unavailable`; the caller treats it and `null` as a new
+   * seller (fail closed). Two use cases behind this method, as for `sellerSummaries`. Not exposed
+   * over HTTP.
+   */
+  activeSinceOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<Temporal.Instant | null, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
 
   /**
    * `publishedStoreSellerId` (storefront products package): the seller that holds `slug` as a

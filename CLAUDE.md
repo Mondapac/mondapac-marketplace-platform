@@ -154,8 +154,9 @@ strategy implementation, not in core logic.
   `pnpm db:*`, `pnpm test:db` and `pnpm verify` use `MIGRATION_DATABASE_URL`
   (`mondapac_migrator`, owner of the database). `pnpm db:bootstrap` re-runs
   `scripts/db/bootstrap-dev.sql` on an existing Compose volume.
-- `pnpm verify` regenerates the Prisma client, then runs typecheck, lint, boundaries, test, test:db and db:check-reversible.
-  It is what CI runs; run it before saying "done" (rule 3). It needs Postgres running.
+- `pnpm verify` regenerates the Prisma client, then runs typecheck, lint, boundaries, test, db:check-reversible and test:db.
+  It is what CI runs (CI splits it: `pnpm verify:without-test-db` in the Verify jobs, `pnpm test:db --shard=N/2`
+  in two Database tests jobs); run it before saying "done" (rule 3). It needs Postgres running.
 (Update this section when scripts change.)
 
 ## Working rules for Claude

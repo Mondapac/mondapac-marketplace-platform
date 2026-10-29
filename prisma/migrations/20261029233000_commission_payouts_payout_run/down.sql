@@ -1,7 +1,7 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
 
--- Reverses 20261029170000_commission_payouts_payout_run: grants, the payout_holds index, the
+-- Reverses 20261029233000_commission_payouts_payout_run: grants, the payout_holds index, the
 -- triggers, their functions and the three tables (their constraints and indexes go with them).
 -- The cursors and payouts written since are lost; down runs only on a throwaway or pre-data database.
 REVOKE ALL ON TABLE "commission_payouts"."payout_schedule_cursors" FROM "mondapac_app";

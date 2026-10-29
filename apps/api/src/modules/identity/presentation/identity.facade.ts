@@ -8,6 +8,7 @@ import type { CustomerAccountOf } from '../application/use-cases/customer-accoun
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
 import type { CustomerAccountExists } from '../application/use-cases/customer-account-exists.use-case';
+import type { AdminEndCustomerSessions } from '../application/use-cases/admin-end-customer-sessions.use-case';
 import type { EndAllCustomerSessions } from '../application/use-cases/end-all-customer-sessions.use-case';
 import type { EndOtherCustomerSessions } from '../application/use-cases/end-other-customer-sessions.use-case';
 import type { EraseCustomerAccount } from '../application/use-cases/erase-customer-account.use-case';
@@ -47,6 +48,7 @@ export interface IdentityFacadeUseCases {
   readonly teamMemberLabels: TeamMemberLabels;
   readonly endOtherCustomerSessions: EndOtherCustomerSessions;
   readonly endAllCustomerSessions: EndAllCustomerSessions;
+  readonly adminEndCustomerSessions: AdminEndCustomerSessions;
   readonly customerAccountExists: CustomerAccountExists;
   readonly eraseCustomerAccount: EraseCustomerAccount;
 }
@@ -170,6 +172,18 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     requestId: Id<'AccountDeletionRequest'>,
   ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>> {
     const result = await this.useCases.endAllCustomerSessions.execute(context, {
+      accountId,
+      requestId,
+    });
+    return result.ok ? ok({ revokedSessions: result.value.revokedSessions }) : err(result.error);
+  }
+
+  async endCustomerSessionsForAdmin(
+    context: CallContext,
+    accountId: Id<'Account'>,
+    requestId: Id<'AccountDeletionRequest'>,
+  ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>> {
+    const result = await this.useCases.adminEndCustomerSessions.execute(context, {
       accountId,
       requestId,
     });

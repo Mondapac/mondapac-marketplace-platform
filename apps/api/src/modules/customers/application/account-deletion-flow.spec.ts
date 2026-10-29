@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import {
@@ -12,7 +13,12 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/suppo
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
-import { AccountDeletionCancelled, AccountDeletionCompleted } from '../domain/audit';
+import {
+  AccountDeletionCancelled,
+  AccountDeletionCancelledByAdmin,
+  AccountDeletionCompleted,
+  AccountDeletionRequestedByAdmin,
+} from '../domain/audit';
 import { AccountDeletionRequested } from '../domain/audit';
 import type { AccountDeletionDependencies } from './account-deletion-dependencies';
 import { DELETION_BATCH_SIZE } from './account-deletion-flow';
@@ -22,8 +28,12 @@ import {
   MemoryAccountDeletionSettings,
   RecordingAudit,
   RecordingOutbox,
+  RecordingStepUp,
 } from './testing/in-memory-account-deletion';
 import { InMemoryAddresses } from './testing/in-memory-address-book';
+import { AdminCancelAccountDeletion } from './use-cases/admin-cancel-account-deletion.use-case';
+import { AdminListAccountDeletions } from './use-cases/admin-list-account-deletions.use-case';
+import { AdminRequestAccountDeletion } from './use-cases/admin-request-account-deletion.use-case';
 import { CancelAccountDeletion } from './use-cases/cancel-account-deletion.use-case';
 import { ExecuteAccountDeletions } from './use-cases/execute-account-deletions.use-case';
 import { RequestAccountDeletion } from './use-cases/request-account-deletion.use-case';
@@ -65,6 +75,19 @@ class Facades {
   /** Runs when the sessions are ended: lets a test make an order appear at that moment. */
   onEndAll: (() => void) | null = null;
   exists: Result<{ exists: boolean }, { code: 'access.denied' }> = ok({ exists: true });
+  /** Accounts that exist as active customers of the context's Market; a test may fail the read. */
+  readonly knownBuyers = new Set<Id<'Account'>>([BUYER, OTHER_BUYER]);
+  accountOfFails = false;
+  accountOf = (
+    accountId: Id<'Account'>,
+  ): Result<{ accountId: Id<'Account'> } | null, { code: 'access.unavailable' }> =>
+    this.accountOfFails
+      ? err({ code: 'access.unavailable' })
+      : ok(this.knownBuyers.has(accountId) ? { accountId } : null);
+  adminEnd: Result<{ revokedSessions: number }, { code: 'access.denied' }> = ok({
+    revokedSessions: 3,
+  });
+  readonly adminEndFor: Id<'AccountDeletionRequest'>[] = [];
   readonly endAllFor: Id<'AccountDeletionRequest'>[] = [];
   readonly erasedFor: Id<'AccountDeletionRequest'>[] = [];
   eraseAnswer: 'erased' | 'already-erased' | 'throw' = 'erased';
@@ -83,6 +106,11 @@ class Facades {
       this.contexts.push(context);
       return Promise.resolve(this.obligations);
     },
+    adminOpenObligationsOf: (context: CallContext, accountId: Id<'Account'>) => {
+      this.calls.push(`ordering.admin:${accountId}`);
+      this.contexts.push(context);
+      return Promise.resolve(this.obligations);
+    },
   };
   readonly wallet = {
     ownBalanceOf: (context: CallContext) => {
@@ -95,12 +123,32 @@ class Facades {
       this.contexts.push(context);
       return Promise.resolve(this.balance);
     },
+    adminBalanceOf: (context: CallContext, accountId: Id<'Account'>) => {
+      this.calls.push(`wallet.admin:${accountId}`);
+      this.contexts.push(context);
+      return Promise.resolve(this.balance);
+    },
   };
   readonly identity = {
     endOtherCustomerSessions: (context: CallContext) => {
       this.calls.push('identity.end-sessions');
       this.contexts.push(context);
       return Promise.resolve(this.endSessions);
+    },
+    customerAccountOf: (context: CallContext, accountId: Id<'Account'>) => {
+      this.calls.push(`identity.account-of:${accountId}`);
+      this.contexts.push(context);
+      return Promise.resolve(this.accountOf(accountId));
+    },
+    endCustomerSessionsForAdmin: (
+      context: CallContext,
+      accountId: Id<'Account'>,
+      requestId: Id<'AccountDeletionRequest'>,
+    ) => {
+      this.calls.push(`identity.admin-end:${accountId}`);
+      this.adminEndFor.push(requestId);
+      this.contexts.push(context);
+      return Promise.resolve(this.adminEnd);
     },
     customerAccountExists: (_context: CallContext, accountId: Id<'Account'>) => {
       this.calls.push(`identity.exists:${accountId}`);
@@ -158,6 +206,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
   let audit: RecordingAudit;
   let outbox: RecordingOutbox;
   let units: FakeUnitOfWork;
+  let stepUp: RecordingStepUp;
 
   const buyer = (accountId = BUYER, target = market) =>
     testCallContext(
@@ -223,6 +272,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
     audit = new RecordingAudit();
     outbox = new RecordingOutbox();
     units = new FakeUnitOfWork();
+    stepUp = new RecordingStepUp();
     deps = {
       unitOfWork: units,
       requests,
@@ -237,6 +287,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       ordering: facades.ordering,
       engagement: facades.engagement,
       reviews: facades.reviews,
+      stepUp,
     };
   });
 
@@ -837,6 +888,499 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       expect(rowsOf(BUYER, other)[0]?.status).toBe('pending');
       expect(await run(system(other))).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
       expect(DELETION_BATCH_SIZE).toBeGreaterThan(0);
+    });
+  });
+
+  describe('admin manual deletion (package 5c)', () => {
+    const TICKET = 'SUP-1042';
+    const WHY = 'Buyer asked by phone, identity checked';
+    const PROOF_AT = Temporal.Instant.from('2026-10-26T09:58:00Z');
+    const adminAsking = (
+      context: CallContext = adminContext(),
+      extra: Record<string, unknown> = {},
+    ) =>
+      new AdminRequestAccountDeletion(gate, deps).execute(context, {
+        accountId: BUYER,
+        ticketRef: TICKET,
+        reason: WHY,
+        confirm: true,
+        ...extra,
+      });
+    const adminCancelling = (requestId: string, reason: unknown = 'Buyer changed their mind') =>
+      new AdminCancelAccountDeletion(gate, deps).execute(adminContext(), { requestId, reason });
+    const pendingList = (
+      input: Record<string, unknown> = {},
+      context: CallContext = adminContext(),
+    ) => new AdminListAccountDeletions(gate, deps).execute(context, input);
+    const actingAs = () =>
+      ({
+        ...adminContext(),
+        actor: { ...adminContext().actor, actingAs: { adminAccountId: ADMIN } },
+      }) as unknown as CallContext;
+
+    it('works while the Market has deletion off, with the default 30 days, and records who asked', async () => {
+      const made = await adminAsking();
+      const scheduledFor = T0.add({ hours: 30 * 24 });
+      expect(made).toEqual(
+        ok({
+          requestId: rowsOf()[0]!.id,
+          status: 'pending',
+          requestedAt: T0,
+          scheduledFor,
+          waitingPeriodDays: 30,
+        }),
+      );
+      expect(rowsOf()[0]).toMatchObject({
+        status: 'pending',
+        requestedBy: 'admin',
+        adminOrigin: { adminAccountId: ADMIN, ticketRef: TICKET, reason: WHY },
+      });
+      expect(stepUp.asked).toEqual(['customers.buyer-account.delete']);
+    });
+
+    it('uses the waiting period of the setting in force, per Market', async () => {
+      turnOn(14);
+      turnOn(60, other);
+      const mine = await adminAsking();
+      expect(mine.ok && mine.value.waitingPeriodDays).toBe(14);
+      expect(mine.ok && mine.value.scheduledFor).toEqual(T0.add({ hours: 14 * 24 }));
+    });
+
+    it('asks the owning modules as the admin, then ends the buyer sessions with the request id', async () => {
+      const context = adminContext();
+      const made = await adminAsking(context);
+      expect(facades.calls).toEqual([
+        `identity.account-of:${BUYER}`,
+        `ordering.admin:${BUYER}`,
+        `wallet.admin:${BUYER}`,
+        `identity.admin-end:${BUYER}`,
+      ]);
+      expect(facades.contexts.every((c) => c === context)).toBe(true);
+      expect(facades.adminEndFor).toEqual([made.ok ? made.value.requestId : null]);
+    });
+
+    it('writes an audit row with the proof and an event with ids only: no ticket, no reason, no admin', async () => {
+      const made = await adminAsking();
+      const row = rowsOf()[0]!;
+      const scheduledFor = T0.add({ hours: 30 * 24 });
+      expect(made.ok).toBe(true);
+      expect(audit.entries).toEqual([
+        AccountDeletionRequestedByAdmin.entry(row.id, {
+          after: {
+            accountId: BUYER,
+            waitingPeriodDays: 30,
+            scheduledFor,
+            stepUpSessionId: SESSION,
+            stepUpVerifiedAt: PROOF_AT,
+          },
+        }),
+      ]);
+      expect(outbox.events).toHaveLength(1);
+      expect(outbox.events[0]).toMatchObject({
+        type: 'customers.account-deletion-requested-by-admin.v1',
+        aggregateId: row.id,
+        aggregateVersion: 1,
+        payload: { waitingPeriodDays: 30, scheduledFor },
+      });
+      const written = JSON.stringify([audit.entries, outbox.events]);
+      for (const text of [TICKET, WHY, ADMIN]) expect(written).not.toContain(text);
+      expect(units.units.some((u) => u.options.isolation === 'serializable')).toBe(true);
+    });
+
+    it('keeps the request after identity cannot end the sessions, retries once and warns with ids only', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        facades.adminEnd = err({ code: 'access.denied' });
+        const made = await adminAsking();
+        expect(made.ok).toBe(true);
+        expect(rowsOf()).toHaveLength(1);
+        expect(facades.adminEndFor).toHaveLength(2);
+        expect(warn).toHaveBeenCalledTimes(1);
+        const logged = warn.mock.calls[0]![0] as Record<string, unknown>;
+        expect(logged).toMatchObject({
+          msg: 'customers.admin-request-account-deletion.sessions-not-ended',
+          sessions: 'access.denied',
+          requestId: rowsOf()[0]!.id,
+          accountId: BUYER,
+          marketId: market.marketId,
+        });
+        for (const text of [TICKET, WHY]) expect(JSON.stringify(logged)).not.toContain(text);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('does not retry or warn when the sessions end the first time', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect((await adminAsking()).ok).toBe(true);
+        expect(facades.adminEndFor).toHaveLength(1);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('refuses an admin session that carries a seller', async () => {
+      // Unreachable through the actor's minting (a seller id means the seller population): the
+      // check is defence in depth, so the context is forged here.
+      const sellerAdmin = {
+        ...adminContext(),
+        actor: { ...adminContext().actor, sellerId: id<'Seller'>(0x5e) },
+      } as unknown as CallContext;
+      expect(await adminAsking(sellerAdmin)).toEqual(err({ code: 'access.denied' }));
+      expect(rowsOf()).toEqual([]);
+      expect(stepUp.asked).toEqual([]);
+    });
+
+    it('redacts the admin text when the request completes, keeping the ticket', async () => {
+      await adminAsking();
+      clock.set(T0.add({ hours: 30 * 24 }));
+      await run();
+      expect(rowsOf()[0]).toMatchObject({
+        status: 'completed',
+        redactedAt: clock.now(),
+        adminOrigin: { adminAccountId: ADMIN, ticketRef: TICKET, reason: null },
+      });
+    });
+
+    it('is for a platform admin only: not a buyer, a seller, the system or an acting-as session', async () => {
+      expect(await adminAsking(buyer())).toEqual(err({ code: 'access.denied' }));
+      expect(await adminAsking(system())).toEqual(err({ code: 'access.denied' }));
+      expect(await adminAsking(actingAs())).toEqual(err({ code: 'access.denied' }));
+      expect(facades.calls).toEqual([]);
+      expect(stepUp.asked).toEqual([]);
+      expect(rowsOf()).toEqual([]);
+    });
+
+    it('rejects a bad body before anything is asked or spent', async () => {
+      const cases: [Record<string, unknown>, { path: string; code: string }][] = [
+        [{ ticketRef: undefined }, { path: 'ticketRef', code: 'type' }],
+        [{ ticketRef: '   ' }, { path: 'ticketRef', code: 'range' }],
+        [{ ticketRef: 'SUP 1042' }, { path: 'ticketRef', code: 'format' }],
+        [{ ticketRef: 'A'.repeat(65) }, { path: 'ticketRef', code: 'format' }],
+        [{ reason: undefined }, { path: 'reason', code: 'type' }],
+        [{ reason: '  ' }, { path: 'reason', code: 'range' }],
+        [{ reason: 'two\nlines' }, { path: 'reason', code: 'format' }],
+        [{ reason: 'x'.repeat(501) }, { path: 'reason', code: 'range' }],
+        [{ confirm: false }, { path: 'confirm', code: 'type' }],
+        [{ confirm: 'true' }, { path: 'confirm', code: 'type' }],
+      ];
+      for (const [extra, field] of cases) {
+        expect(await adminAsking(adminContext(), extra)).toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [field] },
+        });
+      }
+      expect(facades.calls).toEqual([]);
+      expect(stepUp.asked).toEqual([]);
+    });
+
+    it('answers not found alike for a malformed id, an unknown account and another population or Market', async () => {
+      const notFound = err({ code: 'customers.buyer-account-not-found' });
+      expect(await adminAsking(adminContext(), { accountId: 'nope' })).toEqual(notFound);
+      expect(await adminAsking(adminContext(), { accountId: id<'Account'>(0xee) })).toEqual(
+        notFound,
+      );
+      // Another Market's account: identity answers per the context's Market, so it is unknown here.
+      facades.knownBuyers.clear();
+      expect(await adminAsking()).toEqual(notFound);
+      expect(stepUp.asked).toEqual([]);
+      expect(rowsOf()).toEqual([]);
+    });
+
+    it('fails closed when identity cannot answer', async () => {
+      facades.accountOfFails = true;
+      expect(await adminAsking()).toEqual(err({ code: 'customers.unavailable' }));
+      expect(stepUp.asked).toEqual([]);
+    });
+
+    it('refuses with the typed blockers, spending no proof and writing nothing', async () => {
+      facades.obligations = ok({ openOrders: 2, pendingRefunds: 1 });
+      facades.balance = ok({ available: money(0n), held: money(5n) });
+      expect(await adminAsking()).toEqual(
+        err({
+          code: 'customers.account-deletion-blocked',
+          blockers: [
+            { code: 'open-orders', count: 2 },
+            { code: 'pending-refunds', count: 1 },
+            { code: 'wallet-balance' },
+          ],
+        }),
+      );
+      expect(stepUp.asked).toEqual([]);
+      expect(rowsOf()).toEqual([]);
+      expect(outbox.events).toEqual([]);
+    });
+
+    it('fails closed when a blocker cannot be read', async () => {
+      facades.balance = err({ code: 'wallet.unavailable' });
+      expect(await adminAsking()).toEqual(err({ code: 'customers.unavailable' }));
+      expect(rowsOf()).toEqual([]);
+    });
+
+    it("keeps one open request per account, the buyer's own included, and spends no proof for the second", async () => {
+      turnOn();
+      await ask();
+      expect(await adminAsking()).toEqual(
+        err({ code: 'customers.account-deletion-already-requested' }),
+      );
+      expect(stepUp.asked).toEqual([]);
+      await cancel();
+      expect((await adminAsking()).ok).toBe(true);
+      expect(await adminAsking()).toEqual(
+        err({ code: 'customers.account-deletion-already-requested' }),
+      );
+    });
+
+    it('passes a step-up refusal through and commits nothing', async () => {
+      stepUp.answer = err({
+        code: 'second-factor.required',
+        actionKey: 'customers.buyer-account.delete',
+      });
+      expect(await adminAsking()).toEqual(
+        err({ code: 'second-factor.required', actionKey: 'customers.buyer-account.delete' }),
+      );
+      stepUp.answer = err({
+        code: 'second-factor.enrolment-required',
+        actionKey: 'customers.buyer-account.delete',
+      });
+      expect(await adminAsking()).toEqual(
+        err({
+          code: 'second-factor.enrolment-required',
+          actionKey: 'customers.buyer-account.delete',
+        }),
+      );
+      expect(rowsOf()).toEqual([]);
+      expect(audit.entries).toEqual([]);
+      expect(outbox.events).toEqual([]);
+    });
+
+    it('is carried out by the executor unchanged, and the buyer sees it as their own pending request', async () => {
+      await adminAsking();
+      expect(await current()).toMatchObject({ ok: true, value: { status: 'pending' } });
+      clock.set(T0.add({ hours: 30 * 24 }));
+      expect(await run()).toEqual(ok({ completed: 1, blocked: 0, failed: 0 }));
+      expect(rowsOf()[0]?.status).toBe('completed');
+      expect(facades.calls).toContain(`identity.erase:${BUYER}`);
+    });
+
+    it('lets the buyer cancel an admin request during the wait', async () => {
+      await adminAsking();
+      expect(await cancel()).toEqual(ok({ code: 'cancelled' }));
+      expect(rowsOf()[0]?.status).toBe('cancelled');
+      expect(rowsOf()[0]?.adminOrigin?.reason).toBeNull();
+    });
+
+    describe('the admin cancel', () => {
+      it('cancels a pending request with audit and event, spending one proof', async () => {
+        await adminAsking();
+        const row = rowsOf()[0]!;
+        audit.entries.length = 0;
+        outbox.events.length = 0;
+        stepUp.asked.length = 0;
+        expect(await adminCancelling(row.id)).toEqual(ok({ code: 'cancelled' }));
+        expect(rowsOf()[0]).toMatchObject({
+          status: 'cancelled',
+          cancelReason: 'admin',
+          cancelledByAdmin: { adminAccountId: ADMIN },
+          redactedAt: T0,
+          // The free text goes with the closing; the ticket stays (Hassan M2).
+          adminOrigin: { adminAccountId: ADMIN, ticketRef: TICKET, reason: null },
+        });
+        expect(stepUp.asked).toEqual(['customers.buyer-account.delete']);
+        expect(audit.entries).toEqual([
+          AccountDeletionCancelledByAdmin.entry(row.id, {
+            after: { accountId: BUYER, stepUpSessionId: SESSION, stepUpVerifiedAt: PROOF_AT },
+          }),
+        ]);
+        expect(outbox.events).toHaveLength(1);
+        expect(outbox.events[0]).toMatchObject({
+          type: 'customers.account-deletion-cancelled-by-admin.v1',
+          aggregateId: row.id,
+          aggregateVersion: 2,
+          payload: {},
+        });
+        expect(JSON.stringify([audit.entries, outbox.events])).not.toContain('changed their mind');
+      });
+
+      it("cancels the buyer's own request too, and a cancelled request is never executed", async () => {
+        turnOn();
+        await ask();
+        expect(await adminCancelling(rowsOf()[0]!.id)).toEqual(ok({ code: 'cancelled' }));
+        clock.set(T0.add({ hours: 30 * 24 }));
+        expect(await run()).toEqual(ok({ completed: 0, blocked: 0, failed: 0 }));
+        expect(facades.calls.some((c) => c.startsWith('identity.erase'))).toBe(false);
+      });
+
+      it('refuses a claimed request with in-progress and spends no proof', async () => {
+        await adminAsking();
+        const row = rowsOf()[0]!;
+        requests.rows.set(row.id, { ...row, status: 'executing', claimedAt: T0 });
+        stepUp.asked.length = 0;
+        expect(await adminCancelling(row.id)).toEqual(
+          err({ code: 'customers.account-deletion-in-progress' }),
+        );
+        expect(stepUp.asked).toEqual([]);
+        expect(rowsOf()[0]?.status).toBe('executing');
+      });
+
+      it('loses a race against the claim with in-progress, never a false 204', async () => {
+        await adminAsking();
+        const row = rowsOf()[0]!;
+        requests.beforeNextTransition = () =>
+          requests.rows.set(row.id, { ...row, status: 'executing', claimedAt: T0 });
+        expect(await adminCancelling(row.id)).toEqual(
+          err({ code: 'customers.account-deletion-in-progress' }),
+        );
+      });
+
+      it("answers not found for an unknown, closed, malformed or another Market's request", async () => {
+        const notFound = err({ code: 'customers.account-deletion-request-not-found' });
+        await adminAsking();
+        const row = rowsOf()[0]!;
+        expect(await adminCancelling('nope')).toEqual(notFound);
+        expect(await adminCancelling(id<'AccountDeletionRequest'>(0xdd))).toEqual(notFound);
+        expect(
+          await new AdminCancelAccountDeletion(gate, deps).execute(
+            testCallContext(
+              other,
+              testAuthenticatedActor(other, {
+                population: 'admin',
+                accountId: ADMIN,
+                sessionId: SESSION,
+                sellerId: null,
+              }),
+              'deletion-admin-other',
+            ),
+            { requestId: row.id, reason: 'x' },
+          ),
+        ).toEqual(notFound);
+        expect(await adminCancelling(row.id)).toEqual(ok({ code: 'cancelled' }));
+        expect(await adminCancelling(row.id)).toEqual(notFound);
+      });
+
+      it('needs a reason and an admin that is not acting as a seller, before any proof', async () => {
+        await adminAsking();
+        stepUp.asked.length = 0;
+        const row = rowsOf()[0]!;
+        for (const reason of [undefined, '', 'a\nb', 'x'.repeat(501)]) {
+          const refused = await new AdminCancelAccountDeletion(gate, deps).execute(adminContext(), {
+            requestId: row.id,
+            reason,
+          });
+          expect(refused.ok).toBe(false);
+        }
+        const asBuyer = await new AdminCancelAccountDeletion(gate, deps).execute(buyer(), {
+          requestId: row.id,
+          reason: 'x',
+        });
+        const asActing = await new AdminCancelAccountDeletion(gate, deps).execute(actingAs(), {
+          requestId: row.id,
+          reason: 'x',
+        });
+        expect([asBuyer, asActing]).toEqual([
+          err({ code: 'access.denied' }),
+          err({ code: 'access.denied' }),
+        ]);
+        expect(stepUp.asked).toEqual([]);
+        expect(rowsOf()[0]?.status).toBe('pending');
+      });
+
+      it('passes a step-up refusal through and leaves the request pending', async () => {
+        await adminAsking();
+        const row = rowsOf()[0]!;
+        stepUp.answer = err({
+          code: 'second-factor.required',
+          actionKey: 'customers.buyer-account.delete',
+        });
+        expect(await adminCancelling(row.id)).toEqual(
+          err({ code: 'second-factor.required', actionKey: 'customers.buyer-account.delete' }),
+        );
+        expect(rowsOf()[0]?.status).toBe('pending');
+      });
+    });
+
+    describe('the pending list', () => {
+      it("lists the Market's pending requests, earliest first, with no personal data", async () => {
+        turnOn();
+        await ask();
+        clock.advance(Temporal.Duration.from({ hours: 1 }));
+        await new AdminRequestAccountDeletion(gate, deps).execute(adminContext(), {
+          accountId: OTHER_BUYER,
+          ticketRef: 'SUP-7',
+          reason: WHY,
+          confirm: true,
+        });
+        await ask(buyer(BUYER, other));
+        const page = await pendingList();
+        expect(page).toEqual(
+          ok({
+            entries: [
+              {
+                requestId: rowsOf(BUYER)[0]!.id,
+                accountId: BUYER,
+                requestedAt: T0,
+                scheduledFor: T0.add({ hours: 30 * 24 }),
+                status: 'pending',
+                requestedBy: 'customer',
+              },
+              {
+                requestId: rowsOf(OTHER_BUYER)[0]!.id,
+                accountId: OTHER_BUYER,
+                requestedAt: T0.add({ hours: 1 }),
+                scheduledFor: T0.add({ hours: 31 * 24 }),
+                status: 'pending',
+                requestedBy: 'admin',
+              },
+            ],
+            nextCursor: null,
+          }),
+        );
+        const text = JSON.stringify(page, (_k, v: unknown) => (typeof v === 'bigint' ? '0' : v));
+        expect(text).not.toContain('SUP-7');
+        expect(text).not.toContain(WHY);
+      });
+
+      it('leaves out cancelled, executing and completed requests', async () => {
+        await adminAsking();
+        await adminCancelling(rowsOf()[0]!.id);
+        expect(await pendingList()).toEqual(ok({ entries: [], nextCursor: null }));
+      });
+
+      it('pages by a keyset cursor', async () => {
+        turnOn();
+        await ask();
+        await new AdminRequestAccountDeletion(gate, deps).execute(adminContext(), {
+          accountId: OTHER_BUYER,
+          ticketRef: 'SUP-7',
+          reason: WHY,
+          confirm: true,
+        });
+        const first = await pendingList({ limit: 1 });
+        expect(first.ok && first.value.entries).toHaveLength(1);
+        const cursor = first.ok ? first.value.nextCursor : null;
+        expect(cursor).not.toBeNull();
+        const second = await pendingList({ limit: 1, cursor });
+        expect(second.ok && second.value.entries.map((e) => e.accountId)).toEqual([
+          first.ok && first.value.entries[0]!.accountId === BUYER ? OTHER_BUYER : BUYER,
+        ]);
+        expect(second.ok && second.value.nextCursor).toBeNull();
+      });
+
+      it('rejects a bad status, limit or cursor, and anyone but an admin', async () => {
+        expect(await pendingList({ status: 'executing' })).toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'status', code: 'format' }] },
+        });
+        for (const limit of [0, 101, -1, 1.5, '5']) {
+          expect((await pendingList({ limit })).ok).toBe(false);
+        }
+        expect((await pendingList({ cursor: 'garbage' })).ok).toBe(false);
+        expect(await pendingList({}, buyer())).toEqual(err({ code: 'access.denied' }));
+        expect(await pendingList({}, system())).toEqual(err({ code: 'access.denied' }));
+        expect(await pendingList({}, actingAs())).toEqual(err({ code: 'access.denied' }));
+      });
     });
   });
 });

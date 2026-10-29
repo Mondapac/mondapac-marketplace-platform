@@ -80,7 +80,7 @@ export function isActingAs(context: CallContext): boolean {
 }
 
 /** identity's refusal of the step-up, as the change answers it; anything else stays closed. */
-function stepUpFailure(refusal: StepUpRefusal): AccountDeletionSettingsFailure {
+export function stepUpFailure(refusal: StepUpRefusal): AccountDeletionSettingsFailure {
   if (
     refusal.code === 'second-factor.required' ||
     refusal.code === 'second-factor.enrolment-required'
@@ -252,4 +252,16 @@ export async function assertAccountDeletionAllowed(
   const { settings: inForce } = await current(settings, market);
   if (!inForce.enabled) return err({ code: 'customers.account-deletion-disabled' });
   return ok({ waitingPeriodDays: inForce.waitingPeriodDays });
+}
+
+/**
+ * The waiting period in force, whether deletion is switched on or not (version 0 is the built-in
+ * 30 days). An admin's request for a buyer (package 5c) uses it without the on/off guard: the
+ * request comes from the buyer through support, so the Market's self-service switch does not apply.
+ */
+export async function waitingPeriodInForce(
+  settings: AccountDeletionSettingsRepository,
+  market: MarketContext,
+): Promise<number> {
+  return (await current(settings, market)).settings.waitingPeriodDays;
 }

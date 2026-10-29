@@ -179,6 +179,11 @@ export const ICON_PATHS = {
       <circle cx="17" cy="17.5" r="1.8" />
     </>
   ),
+  external: (
+    <>
+      <path d="M7 17L17 7M9 7h8v8" />
+    </>
+  ),
   receipt: (
     <>
       <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />

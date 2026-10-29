@@ -75,3 +75,63 @@ export class AccountDeletionRequestBody {
   @ApiProperty({ description: 'The waiting period in force when the request was made.' })
   waitingPeriodDays!: number;
 }
+
+export class AdminRequestAccountDeletionRequest {
+  @ApiProperty({
+    maxLength: 64,
+    description:
+      'The support ticket that asked for the deletion: 1 to 64 characters, letters, digits and ' +
+      '. _ # / -, no spaces.',
+  })
+  ticketRef!: string;
+  @ApiProperty({
+    maxLength: BOUNDS.reasonLength,
+    description:
+      'Why: 1 to 500 characters of one line of plain text, not blank. Do not enter personal data ' +
+      '(no name, email, phone or address of the buyer): put those in the support ticket. Kept on ' +
+      'the request only while it is open; removed when it is closed.',
+  })
+  reason!: string;
+  @ApiProperty({ enum: [true], description: 'Must be true: the admin confirms the request.' })
+  confirm!: true;
+}
+
+export class AdminCancelAccountDeletionRequest {
+  @ApiProperty({
+    maxLength: BOUNDS.reasonLength,
+    description:
+      'Why: 1 to 500 characters of one line of plain text, not blank. Do not enter personal data ' +
+      '(no name, email, phone or address of the buyer). Checked and audited by the admin id only; ' +
+      'the text itself is not stored.',
+  })
+  reason!: string;
+}
+
+export class AdminAccountDeletionRequestMadeBody {
+  @ApiProperty({ description: 'The request id, for the cancel route.' })
+  requestId!: string;
+  @ApiProperty({ enum: ['pending'] })
+  status!: 'pending';
+  @ApiProperty({ description: 'When the request was made (UTC instant).' })
+  requestedAt!: string;
+  @ApiProperty({ description: 'When the account will be erased (UTC instant).' })
+  scheduledFor!: string;
+  @ApiProperty({ description: 'The waiting period in force when the request was made.' })
+  waitingPeriodDays!: number;
+}
+
+export class PendingAccountDeletionRequestBody {
+  @ApiProperty() requestId!: string;
+  @ApiProperty({ description: 'The buyer account id. No name or email.' }) accountId!: string;
+  @ApiProperty() requestedAt!: string;
+  @ApiProperty() scheduledFor!: string;
+  @ApiProperty({ enum: ['pending'] }) status!: 'pending';
+  @ApiProperty({ enum: ['customer', 'admin'] }) requestedBy!: 'customer' | 'admin';
+}
+
+export class PendingAccountDeletionRequestPageBody {
+  @ApiProperty({ type: [PendingAccountDeletionRequestBody] })
+  entries!: PendingAccountDeletionRequestBody[];
+  @ApiProperty({ nullable: true, type: String, description: 'Pass as `cursor` for the next page.' })
+  nextCursor!: string | null;
+}
