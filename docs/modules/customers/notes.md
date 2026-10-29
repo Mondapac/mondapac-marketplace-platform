@@ -273,6 +273,18 @@ admin deletes a buyer's account for them, from a support ticket.
   account id is a customer of the Market without spending it. Only an admin holding the protected
   key gets here; move the proof ahead of the probes if that is thought too much.
 
+## Package 5d: screens (PRs #569 buyer site, #570 admin)
+
+- **#569 buyer site.** Delete account page and the Privacy card entry, driven by `canDeleteAccount`.
+  The Market setting stays **Off** (default); nothing switches it on. It may be turned on only after
+  a buyer OTP, cancel on sign-in and the emails exist (M2), by a new owner decision on the board.
+  The copy promises no email, lock, sign-in cancel or code.
+- **#570 admin.** Settings tab "Account deletion" (On/Off, waiting period, pending count: first page
+  of 100, "100+" when more), pending requests list with cancel, and "Delete this buyer's account" on
+  the customer lookup card. Every write goes through the shared step-up dialog and a reason dialog.
+- **Left out.** "Last changed by/at" (GET returns only `version` and `settings`); blockers show only
+  after the attempt (no preflight route). No SOC emission: events and audit only.
+
 ## Open follow-ups (Hassan, PR #405 review: GO, two low findings)
 
 - Rows under a destroyed account key still count toward the limit and can be promoted to the

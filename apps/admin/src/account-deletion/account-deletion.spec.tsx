@@ -565,6 +565,29 @@ describe('RequestsList', () => {
     expect(screen.getByText('0190a000-0000-7000-8000-000000000501')).toBeTruthy();
   });
 
+  it('starts each cancel dialog with an empty reason and no error', async () => {
+    call.mockResolvedValueOnce(page([entry(1), entry(2)]));
+    mount();
+    await screen.findByText('0190a000-0000-7000-8000-000000000501');
+    const buttons = () => screen.getAllByRole('button', { name: /^Cancel the deletion request/ });
+    fireEvent.click(buttons()[0] as HTMLElement);
+    let dialog = dialogNamed('Cancel this deletion request?');
+    typeReason(dialog, 'first reason');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep request' }));
+    fireEvent.click(buttons()[1] as HTMLElement);
+    dialog = dialogNamed('Cancel this deletion request?');
+    expect(within(dialog).getByLabelText<HTMLTextAreaElement>('Reason').value).toBe('');
+    // A failed call does not carry its reason or error into the next dialog either.
+    typeReason(dialog, 'second reason');
+    call.mockResolvedValueOnce(refused(503, 'access.unavailable'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel request' }));
+    await screen.findByRole('alert');
+    fireEvent.click(buttons()[0] as HTMLElement);
+    dialog = dialogNamed('Cancel this deletion request?');
+    expect(within(dialog).getByLabelText<HTMLTextAreaElement>('Reason').value).toBe('');
+    expect(within(dialog).queryByText(/Enter a reason of 1 to 500/)).toBeNull();
+  });
+
   it('a cancelled code leaves the row and shows nothing', async () => {
     const dialog = await openCancel();
     call.mockResolvedValueOnce(stepUpRequired('customers.buyer-account.delete'));
@@ -651,6 +674,17 @@ describe('BuyerDeletion', () => {
     expect(
       within(dialog).getByText("Don't enter personal data. It is deleted when the request closes."),
     ).toBeTruthy();
+  });
+
+  it('opens empty each time', () => {
+    mount();
+    let dialog = open();
+    fill(dialog, 'SUP-1', 'some reason');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    dialog = open();
+    expect(within(dialog).getByLabelText<HTMLInputElement>('Support ticket').value).toBe('');
+    expect(within(dialog).getByLabelText<HTMLTextAreaElement>('Reason').value).toBe('');
+    expect(within(dialog).getByRole<HTMLInputElement>('checkbox').checked).toBe(false);
   });
 
   it('shows no number when the setting is not readable', () => {

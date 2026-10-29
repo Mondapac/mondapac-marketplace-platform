@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { deletionProblemOf } from './errors.ts';
 import { ReasonDialog } from './reason-dialog.tsx';
@@ -34,6 +34,12 @@ export function CancelDeletionDialog({
   const [reasonError, setReasonError] = useState(false);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
+
+  // A new row, or a close, starts clean: a reason typed for one request is never reused.
+  useEffect(() => {
+    setReason('');
+    setReasonError(false);
+  }, [requestId]);
 
   async function confirm() {
     if (busy.current || requestId === null) return;

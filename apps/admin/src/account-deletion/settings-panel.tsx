@@ -206,6 +206,7 @@ export function AccountDeletionSettingsPanel({
               disabled={!changed}
               loading={saving}
               onClick={() => {
+                setReason('');
                 setReasonError(false);
                 setConfirming(true);
               }}

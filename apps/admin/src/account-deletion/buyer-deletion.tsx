@@ -60,6 +60,9 @@ export function BuyerDeletion({
 
   function openDialog() {
     setNotice(null);
+    setTicket('');
+    setReason('');
+    setUnderstood(false);
     setTicketError(false);
     setReasonError(false);
     setOpen(true);
