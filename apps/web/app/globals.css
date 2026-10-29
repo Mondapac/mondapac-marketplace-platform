@@ -10074,3 +10074,63 @@ button.login {
 :root[data-keyboard='open'] .buybar {
   display: none;
 }
+
+/* Account deletion (Settings entry and /account/delete) */
+.ac-del {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.ac-del .ac-tg {
+  align-items: center;
+}
+.ac-bad {
+  background: var(--sf-error-soft);
+  border: 1px solid var(--sf-error-line);
+  color: var(--sf-error-ink);
+}
+.ac-bad .ico {
+  color: var(--sf-error);
+}
+.ac-bad:focus-visible,
+.ac-note[tabindex='-1']:focus-visible {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.ac-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-inline-start: 20px;
+  list-style: disc;
+}
+.ac-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 700;
+}
+.ac-check input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  accent-color: var(--sf-teal);
+}
+.btn.ac-danger-fill {
+  background: var(--sf-error);
+  color: var(--sf-white);
+}
+.btn.ac-danger-fill:hover {
+  background: var(--sf-error-ink);
+}
+@media (max-width: 699.98px) {
+  .ac-del .ac-acts .btn,
+  .ac-del .ac-tg .btn {
+    width: 100%;
+  }
+  .ac-del .ac-tg {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

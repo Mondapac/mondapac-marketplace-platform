@@ -24,6 +24,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/customer/session',
     // The customer's own address book (customers package 1).
     'customers/me/addresses',
+    // Whether the customer may delete the account, and their open deletion request, if any
+    // (customers package 5a and 5b; screens: account deletion).
+    'customers/me/account-deletion',
+    'customers/me/deletion-requests/current',
   ]),
   POST: new Set([
     'cart/items',
@@ -35,6 +39,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The customer's own password: the current one and the new one.
     'identity/customer/change-password',
     'customers/me/addresses',
+    // The customer asks to delete the account (the request waits, then the job erases it).
+    'customers/me/deletion-requests',
     // The delivery methods and prices of the basket for a saved address (delivery models, pkg 5).
     'orders/delivery-quotes',
   ]),
@@ -46,6 +52,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
 };
 
 /** Paths with one resource id (`:id`, a UUID), by method. */
+/** The routes with a fixed path and no id that only DELETE may reach. */
+const ALLOWED_DELETE: ReadonlySet<string> = new Set([
+  // The customer cancels their own pending deletion request.
+  'customers/me/deletion-requests/current',
+]);
+
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: ['customers/me/addresses/:id/default', 'cart/saved/:id/move-to-cart'],
   PUT: ['cart/items/:id', 'customers/me/addresses/:id'],
@@ -72,6 +84,7 @@ function matches(template: string, path: readonly string[]): boolean {
 
 export function isSessionPathAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  if (method === 'DELETE' && ALLOWED_DELETE.has(path.join('/'))) return true;
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => matches(template, path));
 }
 
