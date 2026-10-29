@@ -29,6 +29,8 @@ type Answer = { status: number; body?: unknown };
 /** The API as the relay shows it: one answer per `METHOD path`, every call recorded. */
 let answers: Record<string, Answer | (() => Answer)>;
 let calls: Call[];
+/** When set, the availability answer waits for it (a test holds the read open). */
+let gate: Promise<void> | null = null;
 const fetchMock = vi.fn((url: string, init?: RequestInit) => {
   const method = init?.method ?? 'GET';
   const path = url.replace(/^\/api\//, '');
@@ -40,7 +42,8 @@ const fetchMock = vi.fn((url: string, init?: RequestInit) => {
   });
   const answer = answers[`${method} ${path}`] ?? { status: 404, body: { code: 'not-found' } };
   const { status, body } = typeof answer === 'function' ? answer() : answer;
-  return Promise.resolve(
+  const hold = gate !== null && path === 'customers/me/account-deletion' ? gate : undefined;
+  return Promise.resolve(hold).then(() =>
     status === 204
       ? new Response(null, { status })
       : new Response(JSON.stringify(body ?? {}), {
@@ -80,6 +83,7 @@ const DATE = /28 November 2026|November 28, 2026/;
 
 beforeEach(() => {
   calls = [];
+  gate = null;
   replace.mockClear();
   forgetCsrfToken();
   fetchMock.mockClear();
@@ -143,12 +147,15 @@ describe('Settings, Privacy card', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('shows skeleton lines while the answers are read', async () => {
+  it('shows a loading line while the answers are read, then the row', async () => {
     answers[`GET ${AVAILABILITY}`] = on();
+    let release: () => void = () => undefined;
+    gate = new Promise<void>((resolve) => (release = resolve));
     settings();
     const card = await privacy();
     expect(card.getByText('Loading')).toBeTruthy();
     expect(card.queryByText(hint)).toBeNull();
+    release();
     await card.findByText(/will be removed after 14 days/);
     expect(card.queryByText('Loading')).toBeNull();
   });
@@ -228,6 +235,7 @@ describe('Settings, Privacy card', () => {
     expect(called('DELETE', CURRENT)[0]?.headers['x-csrf-token']).toBe('csrf-1');
     expect(card.queryByRole('button', { name: 'Cancel deletion' })).toBeNull();
     expect(card.getByRole('link', { name: 'Delete account' })).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(note.closest('p')));
   });
 
   it('a cancel that came too late says it is being deleted and drops the button', async () => {
@@ -277,15 +285,18 @@ describe('/account/delete', () => {
   const press = () => fireEvent.click(screen.getByRole('button', { name: 'Delete my account' }));
 
   it('shows skeleton lines while it reads, then one h1 and the lists', async () => {
+    let release: () => void = () => undefined;
+    gate = new Promise<void>((resolve) => (release = resolve));
     screenOn();
     expect(await screen.findByText('Loading')).toBeTruthy();
+    release();
     expect(await screen.findByRole('heading', { level: 2, name: 'What is removed' })).toBeTruthy();
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([
       'Delete account',
     ]);
     expect(screen.getByText('Your saved items')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'What stays' })).toBeTruthy();
-    expect(screen.getByText(/kept for 5 years/)).toBeTruthy();
+    expect(screen.getByText(/as long as the law requires/)).toBeTruthy();
     expect(screen.getByText(/Former customer/)).toBeTruthy();
     expect(screen.getByText('Other devices are signed out when you confirm.')).toBeTruthy();
     expect(screen.getByText(/deleted in 14 days/)).toBeTruthy();
@@ -420,12 +431,45 @@ describe('/account/delete', () => {
     expect(await screen.findByText('Deletion cancelled. Your account stays open.')).toBeTruthy();
     expect(screen.getAllByRole('link', { name: 'Back to Settings' }).length).toBeGreaterThan(0);
     expect(replace).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toBe(
+        'Deletion cancelled. Your account stays open.',
+      ),
+    );
   });
 
   it('sample mode makes no request and redirects to Settings', async () => {
     show(<AccountDeleteScreen />, false);
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/account/settings'));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('409 answers', () => {
+  it('only the deletion request reads a 409 as a refusal; other routes still fail', async () => {
+    const api = await import('../src/account/customer-api.ts');
+    answers['POST customers/me/addresses'] = refused(409, 'customers.conflict');
+    answers[`POST ${REQUESTS}`] = refused(409, 'customers.account-deletion-blocked');
+    answers['GET identity/customer/session'] = {
+      status: 200,
+      body: { email: 'a@b.c', csrfToken: 'c' },
+    };
+    const address = {
+      firstName: 'A',
+      lastName: 'B',
+      phone: '1',
+      street: 's',
+      line2: null,
+      suburb: 'k',
+      region: 'QLD',
+      postcode: '4000',
+      deliveryNotes: null,
+    };
+    expect((await api.createAddress(address)).kind).toBe('failed');
+    expect(await api.requestDeletion()).toMatchObject({
+      kind: 'invalid',
+      code: 'customers.account-deletion-blocked',
+    });
   });
 });
 

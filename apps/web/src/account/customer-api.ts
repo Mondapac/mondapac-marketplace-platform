@@ -22,7 +22,7 @@ export interface FieldProblem {
 /** How a call ended; every call maps the API's answer to one of these. */
 export type ApiResult<T> =
   | { readonly kind: 'ok'; readonly value: T }
-  /** The API refused the request (400, 403, 404, 409, 422): its error `code`, the fields and details. */
+  /** The API refused the request (400, 403, 404, 422; and 409 on the deletion request): its error `code`, the fields and details. */
   | {
       readonly kind: 'invalid';
       readonly code: string;
@@ -152,7 +152,12 @@ async function callOnce<T>(
         retryAfterSeconds: typeof after === 'number' ? after : undefined,
       };
     }
-    if ([400, 403, 404, 409, 422].includes(response.status)) {
+    // A 409 is a refusal to show only for the deletion request (its blockers and states); every
+    // other route keeps answering `failed` for it, as before.
+    const refusals = path.startsWith('customers/me/deletion-requests')
+      ? [400, 403, 404, 409, 422]
+      : [400, 403, 404, 422];
+    if (refusals.includes(response.status)) {
       const fields = Array.isArray(details.fields)
         ? details.fields.flatMap((f: unknown) =>
             isRecord(f) && typeof f.path === 'string' && typeof f.code === 'string'

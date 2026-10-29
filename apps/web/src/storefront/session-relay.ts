@@ -49,15 +49,13 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/customer/profile/display-name',
     'identity/customer/profile/appearance',
   ]),
+  DELETE: new Set([
+    // The customer cancels their own pending deletion request.
+    'customers/me/deletion-requests/current',
+  ]),
 };
 
 /** Paths with one resource id (`:id`, a UUID), by method. */
-/** The routes with a fixed path and no id that only DELETE may reach. */
-const ALLOWED_DELETE: ReadonlySet<string> = new Set([
-  // The customer cancels their own pending deletion request.
-  'customers/me/deletion-requests/current',
-]);
-
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: ['customers/me/addresses/:id/default', 'cart/saved/:id/move-to-cart'],
   PUT: ['cart/items/:id', 'customers/me/addresses/:id'],
@@ -84,7 +82,6 @@ function matches(template: string, path: readonly string[]): boolean {
 
 export function isSessionPathAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
-  if (method === 'DELETE' && ALLOWED_DELETE.has(path.join('/'))) return true;
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => matches(template, path));
 }
 

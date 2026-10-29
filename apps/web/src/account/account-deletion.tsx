@@ -3,7 +3,7 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type Ref } from 'react';
 import { intlLocale } from '../i18n/locale.ts';
 import { Icon } from '../icons/icon.tsx';
 import { AccountFrame } from './account-area.tsx';
@@ -169,10 +169,10 @@ export function PendingNotice({
 }
 
 /** The cancelled notice (a status, so it is read out). */
-export function CancelledNotice() {
+export function CancelledNotice({ box }: { readonly box?: Ref<HTMLParagraphElement> }) {
   const t = useTranslations('account.delete');
   return (
-    <p className="ac-note" role="status">
+    <p ref={box} className="ac-note" role="status" tabIndex={-1}>
       <Icon name="check" />
       <span>{t('cancelled')}</span>
     </p>
@@ -185,6 +185,11 @@ export function CancelledNotice() {
  */
 export function DeletionEntry({ deletion }: { readonly deletion: Deletion }) {
   const t = useTranslations('account.delete');
+  const cancelledBox = useRef<HTMLDivElement>(null);
+  // After Cancel the button is gone: focus goes to the cancelled notice, so the place is kept.
+  useEffect(() => {
+    if (deletion.cancelled) cancelledBox.current?.focus();
+  }, [deletion.cancelled]);
   const footer = useTranslations('footer');
   const settings = useTranslations('account.settings');
   if (deletion.phase === 'loading')
@@ -198,7 +203,7 @@ export function DeletionEntry({ deletion }: { readonly deletion: Deletion }) {
   if (deletion.canDelete && deletion.days !== null)
     return (
       <div className="ac-del">
-        {deletion.cancelled ? <CancelledNotice /> : null}
+        {deletion.cancelled ? <CancelledNotice box={cancelledBox} /> : null}
         <div className="ac-tg">
           <div>
             <b>{settings('delete-account')}</b>
@@ -212,7 +217,7 @@ export function DeletionEntry({ deletion }: { readonly deletion: Deletion }) {
     );
   return (
     <div className="ac-del">
-      {deletion.cancelled ? <CancelledNotice /> : null}
+      {deletion.cancelled ? <CancelledNotice box={cancelledBox} /> : null}
       <p className="ac-sub">
         {t('support-hint')} <a href={`mailto:${footer('email')}`}>{footer('email')}</a>
       </p>
@@ -235,6 +240,7 @@ export function AccountDeleteScreen() {
   const [problem, setProblem] = useState<Problem>(null);
   const [fresh, setFresh] = useState(false);
   const blocked = useRef<HTMLDivElement>(null);
+  const cancelledScreen = useRef<HTMLParagraphElement>(null);
   const checkId = useId();
 
   const { phase, canDelete, request, cancelled } = deletion;
@@ -244,6 +250,9 @@ export function AccountDeleteScreen() {
   useEffect(() => {
     if (leaves) router.replace('/account/settings');
   }, [leaves, router]);
+  useEffect(() => {
+    if (cancelled) cancelledScreen.current?.focus();
+  }, [cancelled]);
   useEffect(() => {
     if (blockers !== null) blocked.current?.focus();
   }, [blockers]);
@@ -272,7 +281,7 @@ export function AccountDeleteScreen() {
         <section className="ac-card" aria-labelledby="delete-state">
           <h2 id="delete-state">{t('state-title')}</h2>
           {cancelled ? (
-            <CancelledNotice />
+            <CancelledNotice box={cancelledScreen} />
           ) : (
             <PendingNotice deletion={deletion} focusOnShow={fresh} />
           )}
