@@ -49,7 +49,6 @@ export function PayoutsList({
   const [announce, setAnnounce] = useState('');
   const [target, setTarget] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [now] = useState(() => Date.now());
   const latest = useRef(0);
   const noticeRef = useRef<HTMLDivElement>(null);
 
@@ -186,7 +185,6 @@ export function PayoutsList({
         <PayoutsTable
           rows={rows}
           zone={zone}
-          now={now}
           canApprove={canApprove}
           busy={target !== null}
           onApprove={(row) => {

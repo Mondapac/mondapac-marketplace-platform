@@ -238,6 +238,13 @@ describe('money on hold', () => {
     expect(screen.getByText('Your store')).toBeTruthy();
   });
 
+  it('shows the generic "On hold" for a reason it does not know, never the raw code', () => {
+    mount(initial({ holds: [held({ reason: 'brand-new-reason', availableFrom: null })] }));
+    const table = screen.getByRole('table', { name: 'Money on hold' });
+    expect(within(table).queryByText('brand-new-reason')).toBeNull();
+    expect(within(table).getByText('On hold')).toBeTruthy();
+  });
+
   it('has an empty state, and a retry that reads the holds again', async () => {
     mount(initial({ holds: [] }));
     expect(screen.getByText('No money on hold')).toBeTruthy();
@@ -360,6 +367,15 @@ describe('payout history', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
     vi.unstubAllGlobals();
+  });
+});
+
+describe('payout history zone', () => {
+  it('shows the slot in the store zone even when the next payout could not be read', () => {
+    mount(initial({ next: null }));
+    // 23:00 UTC on 26 Oct is 10:00 on 27 Oct in Melbourne (AEDT), not 11 pm UTC.
+    const table = screen.getByRole('table', { name: 'Payout history' });
+    expect(within(table).getByText(/27 Oct.*10:00.*AEDT/)).toBeTruthy();
   });
 });
 

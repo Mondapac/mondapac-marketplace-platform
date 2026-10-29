@@ -11,7 +11,7 @@ import { StepUpProvider } from '../step-up/step-up.tsx';
 import { ApproveDialog } from './approve-dialog.tsx';
 import { PayoutDetailView } from './payout-detail.tsx';
 import { PayoutsList } from './payouts-list.tsx';
-import { bankWaitUntil, type PayoutDetail, type PayoutRow } from './types.ts';
+import { type PayoutDetail, type PayoutRow } from './types.ts';
 
 const call = vi.mocked(callApi);
 const ZONE = 'Australia/Brisbane';
@@ -86,18 +86,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
-});
-
-describe('bankWaitUntil', () => {
-  it('is the end of a waiting period that has not passed, else null', () => {
-    expect(bankWaitUntil({ coolingOffUntil: '2026-10-30T00:00:00.000Z' }, NOW)).toBe(
-      '2026-10-30T00:00:00.000Z',
-    );
-    expect(bankWaitUntil({ coolingOffUntil: '2026-10-28T00:00:00.000Z' }, NOW)).toBeNull();
-    expect(bankWaitUntil({ coolingOffUntil: null }, NOW)).toBeNull();
-    expect(bankWaitUntil({}, NOW)).toBeNull();
-    expect(bankWaitUntil({ coolingOffUntil: 'soon' }, NOW)).toBeNull();
-  });
 });
 
 describe('payouts list', () => {
@@ -184,18 +172,6 @@ describe('payouts list', () => {
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
   });
 
-  it('shows a reason badge and no button for a payout in the bank waiting period', async () => {
-    call.mockResolvedValueOnce(
-      page([row({ coolingOffUntil: '2026-10-30T02:00:00.000Z' }), row({ payoutId: OTHER })]),
-    );
-    list();
-    await screen.findByRole('table');
-    expect(screen.getByText(/Bank change, waiting until/)).toBeTruthy();
-    // Only the second row has a button; no disabled button stands in for the reason.
-    expect(screen.getAllByRole('button', { name: /Review and approve/ })).toHaveLength(1);
-    expect(document.querySelectorAll('button:disabled')).toHaveLength(0);
-  });
-
   it('has no approve button without the permission, nor on a tab that is not Awaiting', async () => {
     call.mockResolvedValueOnce(page([row()]));
     list('awaiting-approval', false);
@@ -274,6 +250,53 @@ describe('approve dialog', () => {
     expect(dialog.hasAttribute('open')).toBe(false);
   });
 
+  it('formats and echoes a payout of another currency with no minor units (JPY)', async () => {
+    const jpy = (amountMinor: string) => ({ amountMinor, currency: 'JPY' });
+    call.mockResolvedValueOnce(page([row({ transfer: jpy('31000') })]));
+    list();
+    await screen.findByRole('table');
+    call.mockResolvedValueOnce(
+      ok(
+        detail({
+          transfer: jpy('31000'),
+          gross: jpy('33000'),
+          netted: jpy('2000'),
+          limits: {
+            perTransfer: jpy('500000'),
+            todayTotal: jpy('1500000'),
+            dailyAlertLevel: jpy('2000000'),
+            overDailyAlertLevel: false,
+            transferAboveLimit: false,
+          },
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Review and approve/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve payout' });
+    await within(dialog).findByText('Transfer');
+    // 31000 minor units of JPY are 31,000 yen, not 310.00.
+    const button = within(dialog).getByRole('button', { name: /^Approve .*31,000$/ });
+    expect(button.textContent).not.toContain('310.00');
+    call.mockResolvedValueOnce(
+      ok({
+        payoutId: PAYOUT,
+        state: 'approved',
+        transfer: jpy('31000'),
+        approvedBy: ME,
+        approvedAt: '2026-10-29T00:01:00.000Z',
+      }),
+    );
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        `commission-payouts/admin/payouts/${PAYOUT}/approve`,
+        { amountMinor: '31000' },
+        'csrf-1',
+      ),
+    );
+  });
+
   it('asks for the code in the shared step-up dialog and stays as it was when it is cancelled', async () => {
     const dialog = await open();
     call.mockResolvedValueOnce(
@@ -317,12 +340,6 @@ describe('approve dialog', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
     expect(await within(dialog).findByText(/may be acting as a seller/)).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: 'Approve $310.00' })).toBeTruthy();
-  });
-
-  it('has no approve button in the bank waiting period and says why', async () => {
-    const dialog = await open(detail({ coolingOffUntil: '2026-10-30T02:00:00.000Z' }));
-    expect(within(dialog).getByText(/Bank change, waiting until/)).toBeTruthy();
-    expect(within(dialog).queryByRole('button', { name: /^Approve/ })).toBeNull();
   });
 
   it('has no approve button when the account is not ready, or the transfer is above the limit', async () => {
@@ -407,12 +424,8 @@ describe('payout detail', () => {
     expect(screen.queryByRole('button', { name: /^Approve/ })).toBeNull();
   });
 
-  it('has no approve button without the permission, and none in the bank waiting period', () => {
+  it('has no approve button without the permission', () => {
     mount(detail(), false);
-    expect(screen.queryByRole('button', { name: /^Approve/ })).toBeNull();
-    cleanup();
-    mount(detail({ coolingOffUntil: '2026-10-30T02:00:00.000Z' }));
-    expect(screen.getByText(/Bank change, waiting until/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Approve/ })).toBeNull();
   });
 

@@ -204,7 +204,8 @@ export default async function SellerReviewPage({
           </div>
         )}
         {terms === null && holds === null ? null : (
-          <div className="grid gap-6 lg:grid-cols-2">
+          // Stacked, not side by side: the holds table needs the full width to stay unscrolled.
+          <div className="flex flex-col gap-6">
             {terms === null ? null : (
               <PayoutTermsCard
                 initial={terms}

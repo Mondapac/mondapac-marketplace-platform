@@ -368,6 +368,80 @@ describe('payout holds card', () => {
     expect(screen.getByText(/Released .*Review complete/)).toBeTruthy();
   });
 
+  it('returns to the place dialog when the code is cancelled, and to the release dialog likewise', async () => {
+    mount([hold()]);
+    fireEvent.click(screen.getByRole('button', { name: 'Place a hold' }));
+    const place = screen.getByRole('dialog', { name: 'Place a payout hold' });
+    fireEvent.change(within(place).getByLabelText('Reason'), { target: { value: 'bank-change' } });
+    call.mockResolvedValueOnce(
+      refuse(403, 'second-factor.required', { actionKey: 'commission-payouts.payout-hold.place' }),
+    );
+    fireEvent.click(within(place).getByRole('button', { name: 'Place hold' }));
+    expect(
+      await screen.findByText(/place a payout hold/, { selector: 'p, div, span' }),
+    ).toBeTruthy();
+    const stepUp = screen
+      .getAllByRole('dialog')
+      .find((d) => d !== place && d.hasAttribute('open') && d.textContent?.includes('Cancel'))!;
+    fireEvent.click(within(stepUp).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(place.hasAttribute('open')).toBe(true));
+    expect(within(place).getByLabelText<HTMLSelectElement>('Reason').value).toBe('bank-change');
+    fireEvent.click(within(place).getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Release' }));
+    const release = screen.getByRole('dialog', { name: 'Release hold' });
+    fireEvent.change(within(release).getByLabelText('Reason for releasing'), {
+      target: { value: 'resolved' },
+    });
+    call.mockResolvedValueOnce(
+      refuse(403, 'second-factor.required', {
+        actionKey: 'commission-payouts.payout-hold.release',
+      }),
+    );
+    fireEvent.click(within(release).getByRole('button', { name: 'Release hold' }));
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('dialog').some((d) => d !== release && d.hasAttribute('open')),
+      ).toBe(true),
+    );
+    const stepUp2 = screen
+      .getAllByRole('dialog')
+      .find((d) => d !== release && d !== place && d.hasAttribute('open'))!;
+    fireEvent.click(within(stepUp2).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(release.hasAttribute('open')).toBe(true));
+    expect(within(release).getByLabelText<HTMLSelectElement>('Reason for releasing').value).toBe(
+      'resolved',
+    );
+  });
+
+  it("says the order is not the seller's, and that the action is denied", async () => {
+    mount([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Place a hold' }));
+    const dialog = screen.getByRole('dialog', { name: 'Place a payout hold' });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), {
+      target: { value: 'admin-review' },
+    });
+    fireEvent.click(within(dialog).getByLabelText('One seller order'));
+    fireEvent.change(within(dialog).getByLabelText('Seller order ID'), {
+      target: { value: ORDER },
+    });
+    call.mockResolvedValueOnce(refuse(404, 'commission-payouts.seller-order-not-found'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Place hold' }));
+    expect(await screen.findByText("That order is not one of this seller's orders.")).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Place a hold' }));
+    const again = screen.getByRole('dialog', { name: 'Place a payout hold' });
+    fireEvent.change(within(again).getByLabelText('Reason'), { target: { value: 'admin-review' } });
+    call.mockResolvedValueOnce(refuse(403, 'access.denied'));
+    fireEvent.click(within(again).getByRole('button', { name: 'Place hold' }));
+    expect(await screen.findByText(/may be acting as a seller/)).toBeTruthy();
+  });
+
+  it('shows a generic label for a hold reason it does not know, never the raw code', () => {
+    mount([hold({ reason: 'new-reason-from-api', origin: 'system' })]);
+    expect(screen.queryByText('new-reason-from-api')).toBeNull();
+    expect(screen.getByText('On hold')).toBeTruthy();
+  });
+
   it('says a hold was already released and reads the list again', async () => {
     mount([hold()]);
     fireEvent.click(screen.getByRole('button', { name: 'Release' }));

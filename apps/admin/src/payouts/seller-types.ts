@@ -12,6 +12,8 @@ export const APPROVAL_MODES = ['AUTO', 'MANUAL'] as const;
 export type ApprovalMode = (typeof APPROVAL_MODES)[number];
 /** Why an admin changes a seller's terms: a closed list, no free text. */
 export const TERMS_REASONS = ['seller-request', 'risk-review', 'correction', 'policy'] as const;
+// The API's own bounds (MIN_HOLD_DAYS and MAX_HOLD_DAYS in the payout-terms domain). The answers
+// do not expose them; the server re-checks every value, so this is only the form's early check.
 export const HOLD_DAYS_MIN = 7;
 export const HOLD_DAYS_MAX = 60;
 

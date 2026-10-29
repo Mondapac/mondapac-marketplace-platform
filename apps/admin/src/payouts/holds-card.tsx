@@ -83,7 +83,7 @@ export function PayoutHoldsCard({
   const reasonLabel = (code: string) =>
     (HOLD_REASONS as readonly string[]).includes(code)
       ? t(`reason.${code}` as 'reason.dispute')
-      : code;
+      : t('reason.unknown');
 
   async function reread() {
     const result = await callApi<{ holds: PayoutHold[] }>(
@@ -322,6 +322,7 @@ export function PayoutHoldsCard({
           ) : null}
         </div>
       </Dialog>
+      {/* No autoFocus: the Reason select is the first control, so the browser focuses it. */}
       <Dialog
         open={releasing !== null}
         title={t('release-title')}

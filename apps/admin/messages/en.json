@@ -2964,7 +2964,6 @@
       "first-payout": "First payout",
       "terms": "Seller's terms"
     },
-    "bank-wait": "Bank change, waiting until {until}",
     "review": "Review and approve",
     "approve-for": "payout for {name}",
     "approve-action": "Approve {amount}",
@@ -3054,8 +3053,6 @@
       "today": "Sent today",
       "today-value": "{total} of {level} alert level",
       "zone-note": "Times are shown in {zone}.",
-      "bank-wait": "Bank change, waiting until {until}",
-      "bank-wait-body": "The seller changed the bank account recently. This payout can be approved once the waiting period ends.",
       "not-ready": "The seller's payout account is not ready, so this payout cannot be sent. It cannot be approved now.",
       "above-limit": "This transfer is above the limit of {limit} per transfer, so it would not be sent. It cannot be approved.",
       "over-level": "Today's total is above the daily alert level. You can still approve; the platform will be alerted.",
@@ -3064,7 +3061,6 @@
       "close": "Close",
       "done": "Payout approved. The transfer is sent shortly.",
       "done-stale": "Payout approved. The page could not read it again; reload to see its state.",
-      "over-level-detail": "Today's total is above the daily alert level.",
       "error": {
         "amount-changed": "The amount changed. Close and review again.",
         "not-awaiting": "This payout is no longer waiting for approval. Close and review again.",
@@ -3157,7 +3153,7 @@
           "validation": "The terms were refused. Check the values and try again.",
           "throttled": "Too many attempts. Wait a moment and try again.",
           "session": "Your session expired. Reload the page and try again.",
-          "denied": "You cannot change payout terms.",
+          "denied": "You cannot change payout terms. Your account may lack permission, or you may be acting as a seller.",
           "unavailable": "The terms could not be saved. Try again.",
           "unknown": "The terms could not be saved. Try again."
         }
@@ -3179,6 +3175,7 @@
         },
         "reason": {
           "seller-suspended": "Seller suspended",
+          "unknown": "On hold",
           "refund-pending": "Refund in progress",
           "dispute": "Payment disputed",
           "admin-review": "Admin review",
@@ -3232,7 +3229,7 @@
           "validation": "The request was refused. Check the values and try again.",
           "throttled": "Too many attempts. Wait a moment and try again.",
           "session": "Your session expired. Reload the page and try again.",
-          "denied": "You cannot do this.",
+          "denied": "You cannot do this. Your account may lack permission, or you may be acting as a seller.",
           "unavailable": "The change could not be saved. Try again.",
           "unknown": "The change could not be saved. Try again."
         }

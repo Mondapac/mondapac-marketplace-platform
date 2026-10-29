@@ -55,11 +55,6 @@ export interface PayoutRow {
   readonly outcomeCode: string | null;
   readonly createdAt: string;
   readonly stateChangedAt: string;
-  /**
-   * The end of the waiting period after a bank-account change. The API does not send it yet
-   * (docs/modules/commission-payouts/notes.md, open item 2); a row without it shows no waiting.
-   */
-  readonly coolingOffUntil?: string | null;
 }
 
 export interface PayoutPage {
@@ -93,15 +88,4 @@ export interface Approved {
   readonly transfer: PayoutMoney;
   readonly approvedBy: string;
   readonly approvedAt: string;
-}
-
-/** The end of a bank-change waiting period that has not passed yet, or null. */
-export function bankWaitUntil(
-  row: { readonly coolingOffUntil?: string | null },
-  now: number,
-): string | null {
-  const until = row.coolingOffUntil;
-  if (until === undefined || until === null) return null;
-  const ms = Date.parse(until);
-  return Number.isNaN(ms) || ms <= now ? null : until;
 }

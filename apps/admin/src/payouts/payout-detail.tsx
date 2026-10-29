@@ -17,7 +17,7 @@ import { shortId } from '../shared/short-id.ts';
 import { formatMinor } from '../wallet/money.ts';
 import { ApproveDialog } from './approve-dialog.tsx';
 import { StateBadge } from './state-badge.tsx';
-import { bankWaitUntil, type PayoutDetail, type PayoutMoney } from './types.ts';
+import { type PayoutDetail, type PayoutMoney } from './types.ts';
 
 const OUTCOMES = [
   'payout-unwound',
@@ -54,7 +54,6 @@ export function PayoutDetailView({
   const [detail, setDetail] = useState(initial);
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<'approved' | 'stale' | null>(null);
-  const [now] = useState(() => Date.now());
   const noticeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,7 +64,6 @@ export function PayoutDetailView({
   const when = (iso: string) => shortInstantInZone(iso, locale, zone);
   const name = detail.storeName ?? t('unnamed', { id: shortId(detail.sellerId) });
   const waiting = detail.state === 'awaiting-approval';
-  const wait = waiting ? bankWaitUntil(detail, now) : null;
 
   async function refresh(): Promise<boolean> {
     const result = await callApi<PayoutDetail>(
@@ -160,16 +158,13 @@ export function PayoutDetailView({
           </Banner>
         </div>
       )}
-      {wait !== null ? (
-        <Banner tone="attention">{t('bank-wait', { until: when(wait) })}</Banner>
-      ) : null}
       {limits?.overDailyAlertLevel === true && waiting ? (
         <Banner tone="attention">{t('approve.over-level')}</Banner>
       ) : null}
       <Card title={t('summary.title')}>
         <DataList missing="-" rows={summary} />
         <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
-        {waiting && canApprove && wait === null ? (
+        {waiting && canApprove ? (
           <div>
             <Button
               onClick={() => {

@@ -264,7 +264,7 @@ export function PayoutSections({
           ) : (
             <HistoryTable
               payouts={history.value.payouts}
-              zone={initial.next?.zone ?? null}
+              zone={initial.next?.zone ?? zone ?? null}
               locale={locale}
               money={money}
             />

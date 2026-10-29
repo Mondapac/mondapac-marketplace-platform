@@ -218,8 +218,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'commission-payouts/admin/payouts': {
-    status:
-      /^(pending|awaiting-approval|approved|instructing|instructed|paid|failed|not-sent|voided|settled-by-netting)$/,
+    status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,

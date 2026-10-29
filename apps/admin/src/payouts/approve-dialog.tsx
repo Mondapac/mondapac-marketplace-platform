@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, DataList, Dialog, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, DataList, Dialog, LoadError, SkeletonRows } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -8,7 +8,7 @@ import { shortInstantInZone } from '../shared/format.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { formatMinor } from '../wallet/money.ts';
 import { approveProblemOf, STALE_PROBLEMS } from './errors.ts';
-import { bankWaitUntil, type Approved, type PayoutDetail } from './types.ts';
+import { type Approved, type PayoutDetail } from './types.ts';
 
 type Load = { readonly kind: 'loading' } | { readonly kind: 'failed' } | { readonly kind: 'ok' };
 
@@ -17,8 +17,8 @@ type Load = { readonly kind: 'loading' } | { readonly kind: 'failed' } | { reado
  * admin approves what is on screen: the primary button carries the exact transfer amount and the
  * same amount is echoed to the server, which refuses a different one. No code is asked for here:
  * the guarded call opens the shared step-up dialog, and a cancelled code leaves this one as it
- * was. Focus starts on Cancel. When the payout cannot be approved (bank-change waiting period,
- * account not ready, no longer waiting) the reason is shown and there is no approve button.
+ * was. Focus starts on Cancel. When the payout cannot be approved (account not ready,
+ * above the limit, no longer waiting) the reason is shown and there is no approve button.
  */
 export function ApproveDialog({
   payoutId,
@@ -79,13 +79,11 @@ export function ApproveDialog({
     formatMinor(value.amountMinor, value.currency, locale);
   const when = (iso: string) => shortInstantInZone(iso, locale, zone);
 
-  const waitUntil = detail === null ? null : bankWaitUntil(detail, Date.now());
   const waiting = detail !== null && detail.state === 'awaiting-approval';
   const notReady = detail?.accountReadiness === 'not-ready';
   const aboveLimit = detail?.limits?.transferAboveLimit === true;
   const stopped = problem !== null && STALE_PROBLEMS.includes(problem);
-  const canApprove =
-    detail !== null && waiting && waitUntil === null && !notReady && !aboveLimit && !stopped;
+  const canApprove = detail !== null && waiting && !notReady && !aboveLimit && !stopped;
 
   async function approve() {
     if (detail === null || busy.current || !canApprove) return;
@@ -187,14 +185,6 @@ export function ApproveDialog({
           {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
           {!waiting && problem === null ? (
             <Banner tone="attention">{t('error.not-awaiting')}</Banner>
-          ) : null}
-          {waiting && waitUntil !== null ? (
-            <Banner tone="attention">
-              <p className="flex flex-wrap items-center gap-2">
-                <Badge tone="attention">{t('bank-wait', { until: when(waitUntil) })}</Badge>
-                <span>{t('bank-wait-body')}</span>
-              </p>
-            </Banner>
           ) : null}
           {waiting && notReady ? <Banner tone="attention">{t('not-ready')}</Banner> : null}
           {waiting && aboveLimit && detail.limits !== null ? (
