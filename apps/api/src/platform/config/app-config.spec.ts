@@ -163,7 +163,7 @@ describe('loadAppConfig', () => {
       expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).uberDirect.clientSecrets).toEqual({});
     });
 
-    it('refuses a short secret and an unhosted Market without echoing the value', () => {
+    it('refuses a short or truncated secret and an unhosted Market without echoing the value', () => {
       expect(() =>
         loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_CLIENT_SECRET: 'AU=too-short' }),
       ).toThrow('UBER_DIRECT_CLIENT_SECRET');
@@ -197,10 +197,19 @@ describe('loadAppConfig', () => {
       expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).doordashDrive.signingSecrets).toEqual({});
     });
 
-    it('refuses a short secret and an unhosted Market without echoing the value', () => {
+    it('refuses a short or truncated secret and an unhosted Market without echoing the value', () => {
       expect(() =>
         loadAppConfig({ HOSTED_MARKETS: 'AU', DOORDASH_SIGNING_SECRET: 'AU=too-short' }),
       ).toThrow('DOORDASH_SIGNING_SECRET');
+      // A truncated secret decodes leniently to another key: refused, without echoing it.
+      const truncated = SECRET.slice(0, 33);
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', DOORDASH_SIGNING_SECRET: `AU=${truncated}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('DOORDASH_SIGNING_SECRET');
+        expect((error as Error).message).not.toContain(truncated);
+      }
       try {
         loadAppConfig({ HOSTED_MARKETS: 'AU', DOORDASH_SIGNING_SECRET: `NZ=${SECRET}` });
         throw new Error('should have thrown');

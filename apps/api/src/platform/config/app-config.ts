@@ -210,6 +210,17 @@ const envSchema = z.object({
       new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
       'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -, base64url)',
     )
+    // The secret is the HMAC key once base64url-decoded, and decoding is lenient: a truncated or
+    // mis-pasted value would give a different key and a 401 on every call. Each must re-encode
+    // to exactly itself.
+    .refine(
+      (value) =>
+        value.split(',').every((pair) => {
+          const secret = pair.slice(pair.indexOf('=') + 1);
+          return Buffer.from(secret, 'base64url').toString('base64url') === secret;
+        }),
+      'each secret must be canonical base64url (it looks truncated or mis-pasted)',
+    )
     .optional(),
   // Phase 6 package 5d, the external fleet Australia Post: its API key, API password and account
   // number, each as MARKET=value pairs separated by commas (each Market at most once and only
