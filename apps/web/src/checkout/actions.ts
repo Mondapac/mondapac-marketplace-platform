@@ -1,9 +1,9 @@
 'use server';
 
-import { checkDeliveryArea, quoteDelivery, takePayment } from '../storefront/source.ts';
+import { checkDeliveryArea, sampleDeliveryOptionsFor, takePayment } from '../storefront/source.ts';
 import type {
   DeliveryAreaAnswer,
-  DeliveryQuote,
+  DeliveryOptionsAnswer,
   Money,
   PayAnswer,
   PayRequest,
@@ -53,18 +53,17 @@ function quoteAddress(address: unknown): QuoteAddress | null {
 }
 
 /**
- * Each seller's delivery quote for the chosen address. A malformed request answers nothing and a
- * failure answers `failed`; the page shows a seller without an answer as failed (Try again).
+ * The sample delivery options of the sellers, while the buyer's session is not live (with the API
+ * configured the browser asks `orders/delivery-quotes` through the session relay instead). A
+ * malformed request or a failure answers `failed` (the page offers Try again).
  */
-export async function deliveryQuotesFor(
-  raw: unknown,
-): Promise<Readonly<Record<string, DeliveryQuote>>> {
+export async function deliveryOptionsFor(raw: unknown): Promise<DeliveryOptionsAnswer> {
   const request = quoteRequest(raw);
-  if (request === null) return {};
+  if (request === null) return { kind: 'failed' };
   try {
-    return await quoteDelivery(request.address, request.sellerIds);
+    return await sampleDeliveryOptionsFor(request.address, request.sellerIds);
   } catch {
-    return Object.fromEntries(request.sellerIds.map((id) => [id, { kind: 'failed' }]));
+    return { kind: 'failed' };
   }
 }
 
@@ -74,6 +73,7 @@ const MAX_QUANTITY = 99;
 const TOKEN = /^ctoken_[A-Za-z0-9_]{1,200}$/u;
 const CODE = /^[A-Za-z0-9-]{1,32}$/u;
 const CURRENCY = /^[A-Z]{3}$/u;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u;
 
 function money(raw: unknown): Money | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -132,13 +132,23 @@ function payRequest(raw: unknown): PayRequest | null {
   for (const id of sellerIds) {
     const choice = (r.delivery as Record<string, unknown>)[id];
     if (typeof choice !== 'object' || choice === null) return null;
-    const { speed, fee } = choice as { speed?: unknown; fee?: unknown };
-    if (speed === 'scheduled') delivery[id] = { speed };
-    else if (speed === 'express') {
-      const paid = money(fee);
-      if (paid === null || paid.currency !== total.currency) return null;
-      delivery[id] = { speed, fee: paid };
-    } else return null;
+    const { method: how, quoteId, window, total: seen } = choice as Record<string, unknown>;
+    if (how !== 'pickup' && how !== 'instant' && how !== 'same_day' && how !== 'scheduled')
+      return null;
+    const paid = money(seen);
+    if (paid === null || paid.currency !== total.currency) return null;
+    if (how === 'pickup') {
+      if (quoteId !== null) return null;
+    } else if (typeof quoteId !== 'string' || !ID.test(quoteId)) return null;
+    let when: { readonly start: string; readonly end: string } | null = null;
+    if (how === 'scheduled') {
+      if (typeof window !== 'object' || window === null) return null;
+      const { start, end } = window as { start?: unknown; end?: unknown };
+      if (typeof start !== 'string' || typeof end !== 'string') return null;
+      if (!INSTANT.test(start) || !INSTANT.test(end)) return null;
+      when = { start, end };
+    } else if (window !== null) return null;
+    delivery[id] = { method: how, quoteId, window: when, total: paid };
   }
   return {
     method,

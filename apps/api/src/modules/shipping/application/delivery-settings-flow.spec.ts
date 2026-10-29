@@ -139,10 +139,8 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
     };
     deps = {
       unitOfWork: new FakeUnitOfWork(),
-      fees: undefined as never,
       policy: new ConfigShippingPolicy(markets, areas),
       sellers,
-      stores: undefined as never,
       audit,
       clock,
       ids: undefined as never,
@@ -152,6 +150,8 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
       selection: undefined as never,
       deliverySettings: store,
       carrierPolicy: undefined as never,
+      quotes: undefined as never,
+      ledger: undefined as never,
       pickups,
       webhookSignature: undefined as never,
       securityEvents: undefined as never,

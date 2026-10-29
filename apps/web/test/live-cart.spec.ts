@@ -44,7 +44,6 @@ describe.each([
     sellerName: 'Halal Corner',
     subtotal: money('2500'),
     minimumOrder: { state: 'none', minimum: null },
-    deliveryFee: money('750'),
     lines,
     ...extra,
   });
@@ -67,8 +66,6 @@ describe.each([
     expect(cart?.source.sellers[SELLER]).toEqual({
       id: SELLER,
       name: 'Halal Corner',
-      deliveryWindow: '',
-      deliveryFee: { amount: 750, currency },
     });
     expect(cart?.lineIds).toEqual({ [key]: LINE });
     expect(cart?.unavailable).toEqual([]);
@@ -102,7 +99,7 @@ describe.each([
     expect(cart?.source.sellers[SELLER]?.minimumOrder).toEqual({ amount: 4000, currency });
   });
 
-  it('sets aside lines that cannot be bought, and a seller without a delivery fee', () => {
+  it('sets aside lines that cannot be bought, and a group without a seller id', () => {
     const cart = liveCartOf(
       {
         groups: [
@@ -117,8 +114,7 @@ describe.each([
             }),
           ]),
           group([line({ offerId: OFFER_B, variantId: OFFER, lineId: OFFER })], {
-            sellerId: PRODUCT,
-            deliveryFee: null,
+            sellerId: 'not-a-seller',
           }),
         ],
       },

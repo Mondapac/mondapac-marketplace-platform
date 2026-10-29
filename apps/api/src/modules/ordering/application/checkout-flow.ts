@@ -11,7 +11,7 @@ import type {
 import type { CartCheckoutFacade } from '../../cart';
 import type { CommissionPayoutsFacade } from '../../commission-payouts';
 import type { CustomersCheckoutFacade } from '../../customers';
-import type { ShippingFacade } from '../../shipping';
+import type { QuotedDelivery, ShippingFacade } from '../../shipping';
 import type { TaxFacade } from '../../tax';
 import type {
   InsufficientReason,
@@ -30,6 +30,7 @@ import {
 import {
   addShipping,
   cancelOrder,
+  type ChargedDeliveryQuote,
   parseSellerNotes,
   planOrder,
   type OrderLine,
@@ -111,11 +112,18 @@ export type StartCheckoutFailure =
         readonly minimum: ReturnType<typeof money> | null;
       }[];
     }
-  /** A seller of the cart has no flat shipping fee yet: nothing can be charged for delivery. */
+  /**
+   * The delivery price changed since the buyer saw it (its quote stopped holding and the fleets
+   * now ask another price): nothing was reserved or charged; the buyer confirms the new price.
+   */
   | {
-      readonly code: 'ordering.shipping-unavailable';
-      /** For the admin alert in the log only; never sent to the customer. */
-      readonly sellerIds: readonly Id<'Seller'>[];
+      readonly code: 'ordering.delivery-quote-changed';
+      readonly quotes: readonly {
+        readonly sellerId: Id<'Seller'>;
+        readonly quoteId: string;
+        readonly total: Money;
+        readonly validUntil: string;
+      }[];
     }
   | {
       readonly code: 'ordering.stock-insufficient';
@@ -136,6 +144,18 @@ export interface CheckoutStarted {
   readonly payBy: Temporal.Instant;
   readonly total: ReturnType<typeof money>;
 }
+
+const chargedQuoteOf = (quote: QuotedDelivery | undefined): ChargedDeliveryQuote | null =>
+  quote === undefined
+    ? null
+    : {
+        quoteId: quote.quoteId,
+        fleet: quote.fleet,
+        quoteAmount: quote.quote.amount,
+        marginAmount: quote.margin.amount,
+        quotedAt: quote.quotedAt,
+        expiresAt: quote.validUntil,
+      };
 
 /** A lock timeout on reserve costs the holder's rate budget, so retry once at most. */
 const RESERVE_ATTEMPTS = 2;
@@ -162,7 +182,7 @@ export interface StartCheckoutInput {
   readonly addressId: unknown;
   readonly sellerNotes?: unknown;
   /**
-   * The buyer's delivery method per seller: `{ [sellerId]: { method, windowStart?, windowEnd? } }`.
+   * The buyer's delivery method per seller: `{ [sellerId]: { method, windowStart?, windowEnd?, quoteId? } }`.
    * A seller without an entry gets {@link DEFAULT_DELIVERY_METHOD} until the basket asks.
    */
   readonly deliveryMethods?: unknown;
@@ -173,7 +193,7 @@ export interface StartCheckoutInput {
  * there, before anything is reserved: no order is ever placed without an address in the
  * delivery area.
  */
-async function readShipTo(
+export async function readShipTo(
   deps: OrderingDependencies,
   context: CallContext,
   addressId: unknown,
@@ -287,36 +307,81 @@ export async function startCheckout(
       return err({ code: 'ordering.pickup-unavailable', methodSellerIds: without });
     }
   }
-  // The live quote of the real-time carrier where it carries the seller order, else the flat fee
-  // (SHP-02/03), for the sellers that deliver; a pickup is asked for no quote and no flat fee, and
-  // costs nothing. Only the postcode of the address is given for a quote.
-  const delivering = planned.plan.sellers
-    .map((seller) => seller.sellerId)
-    .filter((sellerId) => choiceOf(sellerId).method !== 'pickup');
-  const quotes =
-    delivering.length === 0
-      ? ok({ fees: new Map<Id<'Seller'>, Money>(), quoted: new Set<Id<'Seller'>>() })
-      : await deps.shipping.shippingFees(context, delivering, {
-          postcode: address.value.postcode,
-        });
-  if (!quotes.ok) {
-    return err(
-      quotes.error.code === 'access.denied'
-        ? { code: 'access.denied' }
-        : { code: 'ordering.check-unavailable' },
-    );
-  }
-  const fees = {
-    fees: new Map([
-      ...quotes.value.fees,
-      ...pickupSellers.map((sellerId) => [sellerId, money(0n, planned.plan.currency)] as const),
-    ]),
-    quoted: quotes.value.quoted,
+  // The delivery price of each seller order is the fleet's live quote plus the Market's margin,
+  // asked and stored by shipping (never a price the client sends), for the sellers that deliver;
+  // a pickup is free. Only the postcode, suburb and region of the saved address go to a fleet.
+  const dropoff = {
+    postcode: address.value.postcode,
+    locality: address.value.suburb,
+    region: address.value.region,
   };
-  const priced = addShipping(planned.plan, fees.fees);
+  const charges = new Map<Id<'Seller'>, QuotedDelivery>();
+  const changed: {
+    sellerId: Id<'Seller'>;
+    quoteId: string;
+    total: Money;
+    validUntil: string;
+  }[] = [];
+  const noFleet: Id<'Seller'>[] = [];
+  const unknownQuote: string[] = [];
+  for (const seller of planned.plan.sellers) {
+    const choice = choiceOf(seller.sellerId);
+    if (choice.method === 'pickup') continue;
+    const charged = await deps.shipping.chargeDelivery(context, {
+      seller: {
+        sellerId: seller.sellerId,
+        itemCount: seller.lines.reduce((count, line) => count + line.quantity, 0),
+        declaredValueMinor: Number(seller.subtotal),
+      },
+      method: choice.method,
+      quoteId: choice.quoteId ?? null,
+      dropoff,
+    });
+    if (charged.ok) {
+      charges.set(seller.sellerId, charged.value);
+      continue;
+    }
+    switch (charged.error.code) {
+      case 'access.denied':
+        return err({ code: 'access.denied' });
+      case 'shipping.quote-changed':
+        changed.push({
+          sellerId: seller.sellerId,
+          quoteId: charged.error.quote.quoteId,
+          total: charged.error.quote.total,
+          validUntil: charged.error.quote.validUntil.toString(),
+        });
+        break;
+      case 'shipping.quote-unavailable':
+        noFleet.push(seller.sellerId);
+        break;
+      case 'shipping.quote-not-found':
+        unknownQuote.push(`deliveryMethods.${seller.sellerId}.quoteId`);
+        break;
+      default:
+        return err({ code: 'ordering.check-unavailable' });
+    }
+  }
+  if (unknownQuote.length > 0) {
+    return err({
+      code: 'validation.failed',
+      fields: unknownQuote.map((path) => ({ path, code: 'unknown' })),
+    });
+  }
+  if (noFleet.length > 0) {
+    return err({ code: 'ordering.delivery-method-unavailable', methodSellerIds: noFleet });
+  }
+  if (changed.length > 0) return err({ code: 'ordering.delivery-quote-changed', quotes: changed });
+  const fees = new Map<Id<'Seller'>, Money>(
+    planned.plan.sellers.map((seller) => [
+      seller.sellerId,
+      charges.get(seller.sellerId)?.total ?? money(0n, planned.plan.currency),
+    ]),
+  );
+  const priced = addShipping(planned.plan, fees);
   if (!priced.ok) {
-    // The customer cannot fix this; an admin must set the seller's fee (the use case logs it).
-    return err({ code: 'ordering.shipping-unavailable', sellerIds: priced.sellerIds });
+    // A quote in another currency than the cart's: shipping and the cart disagree on the Market.
+    return err({ code: 'ordering.check-unavailable' });
   }
   const plan = priced.plan;
   // A note to a seller that is no longer in the cart is dropped: the cart may have changed since
@@ -363,16 +428,10 @@ export async function startCheckout(
   if (planLines.some((line) => !categories.has(line.offerId))) {
     return err({ code: 'ordering.check-unavailable' });
   }
-  // The shipping fee of each seller is taxed in the same answer, after the product lines, at the
-  // strategy's default rate (no category). A flat fee takes the price basis of that seller's goods
-  // (inclusive only when every line is), a working assumption until the tax agent confirms (brief
-  // s40, Q1). A carrier quote is a price with tax included (Drive's `total`), so it is inclusive.
-  const shippingInclusive = new Map(
-    plan.sellers.map((seller) => [
-      seller.sellerId,
-      fees.quoted.has(seller.sellerId) || seller.lines.every((line) => line.taxInclusive),
-    ]),
-  );
+  // The shipping price of each seller is taxed in the same answer, after the product lines, at
+  // the strategy's default rate (no category). A fleet quote is a price with tax included (and
+  // so is the margin on it), so the delivery is always inclusive: its tax is shown, not added.
+  const shippingInclusive = new Map(plan.sellers.map((seller) => [seller.sellerId, true]));
   const taxed = await deps.tax.calculateTax(context, [
     ...planLines.map((line) => ({
       amount: line.unitPrice.amount * BigInt(line.quantity),
@@ -528,6 +587,7 @@ export async function startCheckout(
       deliveryWindow: choiceOf(seller.sellerId).window,
       readyAt: null,
       deliveryAttention: null,
+      deliveryQuote: chargedQuoteOf(charges.get(seller.sellerId)),
     })),
     lines,
   };

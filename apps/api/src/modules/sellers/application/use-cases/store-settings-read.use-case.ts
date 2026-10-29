@@ -55,7 +55,6 @@ export class StoreSettingsRead extends UseCase<
             minimumOrder: settings.minimumOrder,
             currency: rule.currency,
             maximumAmount: rule.max,
-            delivery: settings.delivery,
           });
         },
         { readOnly: true },

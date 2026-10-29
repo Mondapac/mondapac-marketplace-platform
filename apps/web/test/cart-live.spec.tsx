@@ -80,7 +80,6 @@ const cartBody = (...lines: object[]) => ({
             sellerName: 'Halal Corner',
             subtotal: aud('0'),
             minimumOrder: { state: 'none', minimum: null },
-            deliveryFee: aud('750'),
             lines,
           },
         ],

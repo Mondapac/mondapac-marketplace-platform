@@ -1,6 +1,7 @@
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { PricedDelivery } from '../domain/delivery-margin';
+import type { QuotedDelivery, SellerDeliveryQuotes } from '../domain/delivery-quote';
 import type { ChoiceRefusal, SellerDeliveryAvailability } from '../domain/delivery-settings';
 
 export type ShippingFailure =
@@ -39,6 +40,17 @@ export interface CarrierDeliveryRequest {
     readonly locality?: string;
     readonly region?: string | null;
     readonly notes: string | null;
+  };
+  /**
+   * The fleet the buyer was quoted and charged for and its price (the seller order's frozen
+   * quote), when there is one. The router tries that fleet first; when it books another, the
+   * platform absorbs the extra cost (up to the Market's cap, else an admin is alerted) and the
+   * buyer is never charged more.
+   */
+  readonly charged?: {
+    readonly fleet: string;
+    /** The fleet's price in minor units of the Market currency (not the margin). */
+    readonly quoteMinor: number;
   };
   /**
    * What is carried, for the fleets' limits (items, value, weight, temperature, classes).
@@ -91,51 +103,111 @@ export type CarrierDeliveryFailure =
   | { readonly code: 'shipping.carrier-unavailable' }
   | { readonly code: 'shipping.carrier-delivery-not-found' };
 
-/** The customer's drop-off as a quote takes it: the postcode of the chosen address only. */
+/**
+ * Where the buyer's order goes, as a quote takes it: the postcode of a saved address, and its
+ * suburb and region (never a name, a street or free text typed for the occasion).
+ */
 export interface QuoteDropoff {
   readonly postcode: string;
+  readonly locality: string | null;
+  readonly region: string | null;
 }
 
-/**
- * The fee per seller at checkout, and the sellers whose fee is the carrier's quote: a quote is a
- * tax-inclusive price, whatever the basis of the seller's goods.
- */
-export interface CheckoutShippingFees {
-  readonly fees: FlatFeeMap;
-  readonly quoted: ReadonlySet<Id<'Seller'>>;
+/** One seller order a quote is asked for: its parcel is the Market's default size with these. */
+export interface QuoteSeller {
+  readonly sellerId: Id<'Seller'>;
+  readonly itemCount: number;
+  /** The seller order's goods total in minor units of the Market currency, for fleet limits. */
+  readonly declaredValueMinor: number;
 }
 
-/** The flat fee of each requested seller that has one; a seller without a fee is absent. */
-export type FlatFeeMap = ReadonlyMap<Id<'Seller'>, Money>;
+export type QuoteFailure =
+  | ShippingFailure
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { path: string; code: string }[];
+    };
+
+/** What `chargeDelivery` can refuse besides the usual failures. */
+export type ChargeFailure =
+  | ShippingFailure
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { path: string; code: string }[];
+    }
+  /** The quote id is unknown, or it is another buyer's, seller's, method's or address's. */
+  | { readonly code: 'shipping.quote-not-found' }
+  /** No fleet can carry the order, or none gave a price now. */
+  | { readonly code: 'shipping.quote-unavailable' }
+  /** The quote the buyer saw had expired and the price is now `quote`: the buyer confirms it. */
+  | { readonly code: 'shipping.quote-changed'; readonly quote: QuotedDelivery };
+
+/** What `recordFleetFee` can refuse. */
+export type FleetFeeFailure =
+  | AccessDenied
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { path: string; code: string }[];
+    }
+  /** The fleet holds no booking of this seller order (yet): report again later. */
+  | { readonly code: 'shipping.carrier-delivery-not-found' }
+  | { readonly code: 'shipping.unavailable' };
 
 /**
  * What `ordering` calls at checkout and `cart` calls on a read. Each method takes the caller's `CallContext` unchanged.
  */
 export interface ShippingFacade {
   /**
-   * The flat shipping fee per seller (one fee per seller order, an explicit zero is a fee). At
-   * most 100 distinct ids. A seller with no fee set is missing from the map; ordering then
-   * refuses that seller's lines (fail closed).
+   * For each asked seller of the signed-in buyer's checkout (at most 10): the delivery methods open
+   * now with the reason for each that is not, and the price of every delivering method that is
+   * open: the fleet the router picks, its quote, the Market's margin and what the buyer pays, in
+   * the Market currency and stored, so checkout charges it and never a price the client sends. A
+   * method no fleet can carry is `no-fleet`; one whose fleets gave no usable price now is
+   * `failed`. A quote that holds (10 minutes, never past the fleet's expiry) is reused for the
+   * same buyer, seller, method and address. Rule `own-resources`; only the postcodes and places of
+   * validated or saved addresses go to a fleet (SHP-02/03). Delivery models, package 5.
    */
-  flatFees(
+  quoteDeliveries(
     context: CallContext,
-    sellerIds: readonly Id<'Seller'>[],
-  ): Promise<Result<FlatFeeMap, ShippingFailure>>;
+    request: { readonly sellers: readonly QuoteSeller[]; readonly dropoff: QuoteDropoff },
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, SellerDeliveryQuotes>, QuoteFailure>>;
 
   /**
-   * The shipping fee per seller that checkout charges (SHP-02/03): the real-time carrier's live
-   * quote for a seller order it will carry (the Market's carrier on, the seller's approved pickup
-   * postcode and the drop-off in its areas), else the flat fee. A failed, slow or foreign-currency
-   * quote, or one outside the Market's `quoteBounds`, falls back to the flat fee; a seller with
-   * neither is absent (ordering refuses it). Only postcodes go to the carrier. Rule
-   * `own-resources`, for checkout under the customer's context. At most 100 distinct ids, and at
-   * most 10 quotes per call (the rest keep the flat fee).
+   * The delivery price checkout charges for one seller order. With the `quoteId` the buyer saw,
+   * that stored quote while it holds; once it stopped holding, fleets are asked again and, when
+   * the price is not the one the buyer saw, `shipping.quote-changed` carries the new quote and
+   * nothing is charged. Without a `quoteId` the quote that holds is charged, or a new one is asked.
+   * Rule `own-resources`, under the customer's context.
    */
-  shippingFees(
+  chargeDelivery(
     context: CallContext,
-    sellerIds: readonly Id<'Seller'>[],
-    dropoff: QuoteDropoff,
-  ): Promise<Result<CheckoutShippingFees, ShippingFailure>>;
+    request: {
+      readonly seller: QuoteSeller;
+      readonly method: string;
+      readonly quoteId: string | null;
+      readonly dropoff: QuoteDropoff;
+    },
+  ): Promise<Result<QuotedDelivery, ChargeFailure>>;
+
+  /**
+   * Records a fee a fleet charged the PLATFORM for a delivery (cancel, waiting, return) in the
+   * fleet-fee ledger, once by the fleet's own id of the fee (`externalRef`): a repeat answers
+   * `duplicate`. This is the hook the fleet adapters call when their webhook or invoice reports a
+   * fee. The buyer is never charged these. `amount` is a string of minor units in the Market
+   * currency, above zero; `occurredAt` an ISO instant. The seller order must have a booking with
+   * that fleet. Rule `system`.
+   */
+  recordFleetFee(
+    context: CallContext,
+    report: {
+      readonly fleet: string;
+      readonly sellerOrderId: string;
+      readonly reason: 'cancel' | 'waiting' | 'return' | 'other';
+      readonly amount: string;
+      readonly externalRef: string;
+      readonly occurredAt: string;
+    },
+  ): Promise<Result<'recorded' | 'duplicate', FleetFeeFailure>>;
 
   /**
    * The asked sellers (at most 100 distinct ids) that have an approved pickup address: those whose

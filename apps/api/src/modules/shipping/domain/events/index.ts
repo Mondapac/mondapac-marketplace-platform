@@ -18,5 +18,24 @@ export const CarrierDeliveryProgressed = defineEvent({
   },
 });
 
+/**
+ * A booking went to another fleet than the one the buyer was charged for, and the platform's extra
+ * cost passed the Market's cap or could not be worked out (delivery models, package 5). An admin
+ * looks: `notifications` shows it as an admin notice. Ids only, no amount: the figures are in
+ * `shipping.delivery_fallbacks`.
+ */
+export const DeliveryFallbackOverCap = defineEvent({
+  type: 'shipping.delivery-fallback-over-cap.v1',
+  aggregateType: 'seller-order',
+  payload: {
+    orderId: eventField.id(),
+    sellerOrderId: eventField.id(),
+    sellerId: eventField.id(),
+  },
+});
+
 /** Every event type shipping publishes, registered with the event catalogue at boot. */
-export const SHIPPING_EVENTS: readonly EventDefinition[] = [CarrierDeliveryProgressed];
+export const SHIPPING_EVENTS: readonly EventDefinition[] = [
+  CarrierDeliveryProgressed,
+  DeliveryFallbackOverCap,
+];
