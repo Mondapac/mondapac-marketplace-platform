@@ -1,0 +1,32 @@
+// A GitHub Codespace that runs the whole platform for a test-mode demo: Node 24.20 (ADR-0021),
+// pnpm from packageManager, Docker for docker-compose.yml's PostgreSQL, Redis and Mailpit.
+// scripts/demo-codespace.sh starts everything and prints the addresses; it runs on every start.
+{
+  "name": "Mondapac demo",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "24.20.0", "pnpmVersion": "none" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": "corepack enable && corepack install",
+  "postStartCommand": "mkdir -p .local && nohup bash scripts/demo-codespace.sh seed > .local/demo-start.log 2>&1 &",
+  "forwardPorts": [3000, 3001, 3002, 3003, 8025],
+  "portsAttributes": {
+    "3000": { "label": "API", "onAutoForward": "silent" },
+    "3001": { "label": "Seller panel", "onAutoForward": "silent" },
+    "3002": { "label": "Admin panel", "onAutoForward": "silent" },
+    "3003": { "label": "Buyer site", "onAutoForward": "silent" },
+    "8025": { "label": "Mail (Mailpit)", "onAutoForward": "silent" }
+  },
+  "secrets": {
+    "SK_TEST": { "description": "Stripe test-mode secret key (sk_test_). Never a live key." },
+    "PK_TEST": { "description": "Stripe test-mode publishable key (pk_test_)." },
+    "WHSEC_TEST": {
+      "description": "Signing secret of the Stripe platform webhook endpoint (test mode)."
+    },
+    "WHSEC_CONNECT_TEST": {
+      "description": "Signing secret of the Stripe Connect webhook endpoint (test mode)."
+    }
+  }
+}
