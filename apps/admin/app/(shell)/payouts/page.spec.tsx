@@ -124,15 +124,28 @@ describe('payouts list page', () => {
 
   it("shows today's total against the alert level, read from the newest payout", async () => {
     render(await PayoutsPageRoute(search()));
-    expect(screen.getByText('$15,000.00')).toBeTruthy();
-    expect(screen.getByText('$20,000.00')).toBeTruthy();
-    expect(screen.getByText("Today's total is below the alert level.")).toBeTruthy();
+    expect(
+      screen.getByText('Transfers sent today: $15,000.00 of $20,000.00 alert level.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Above the alert level')).toBeNull();
   });
 
-  it('shows no totals card when there is no payout yet, and tabs without counts when unreadable', async () => {
+  it('flags a total above the alert level', async () => {
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes('/payouts/')
+          ? { kind: 'ok', body: { limits: { ...limits, overDailyAlertLevel: true } } }
+          : { kind: 'ok', body: { payouts: [{ payoutId: ID }], nextCursor: null } },
+      ),
+    );
+    render(await PayoutsPageRoute(search()));
+    expect(screen.getByText('Above the alert level')).toBeTruthy();
+  });
+
+  it('shows no totals line when there is no payout yet, and tabs without counts when unreadable', async () => {
     mocks.get.mockResolvedValue({ kind: 'unavailable' });
     render(await PayoutsPageRoute(search()));
-    expect(screen.queryByText('Sent today')).toBeNull();
+    expect(screen.queryByText(/Transfers sent today/)).toBeNull();
     expect(screen.getByRole('link', { name: 'Awaiting approval' })).toBeTruthy();
   });
 

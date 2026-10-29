@@ -2922,11 +2922,8 @@
       "not-sent": "No payouts were stopped before sending"
     },
     "today": {
-      "title": "Sent today",
-      "total": "Transfers sent today",
-      "level": "Daily alert level",
-      "under": "Today's total is below the alert level.",
-      "over": "Today's total is above the alert level. The platform has been alerted."
+      "line": "Transfers sent today: {total} of {level} alert level.",
+      "over": "Above the alert level"
     },
     "footnote": "Times are shown in {zone}. Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
     "zone-note": "Times are shown in {zone}.",

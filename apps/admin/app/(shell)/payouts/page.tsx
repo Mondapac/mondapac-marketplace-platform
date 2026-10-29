@@ -1,4 +1,4 @@
-import { Card, DataList, LoadError, Tabs } from '@mondapac/ui';
+import { Badge, LoadError, Tabs } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { PayoutsList } from '../../../src/payouts/payouts-list.tsx';
 import {
@@ -100,32 +100,19 @@ export default async function PayoutsPage({
           <p className="text-sm">{t('step-up.wait-note')}</p>
         </div>
         {limits === null ? null : (
-          <Card title={t('payouts.today.title')}>
-            <DataList
-              missing="-"
-              rows={[
-                {
-                  label: t('payouts.today.total'),
-                  value: formatMinor(
-                    limits.todayTotal.amountMinor,
-                    limits.todayTotal.currency,
-                    locale,
-                  ),
-                },
-                {
-                  label: t('payouts.today.level'),
-                  value: formatMinor(
-                    limits.dailyAlertLevel.amountMinor,
-                    limits.dailyAlertLevel.currency,
-                    locale,
-                  ),
-                },
-              ]}
-            />
-            <p className="text-sm text-fg-muted">
-              {t(limits.overDailyAlertLevel ? 'payouts.today.over' : 'payouts.today.under')}
-            </p>
-          </Card>
+          <p className="text-sm text-fg-muted">
+            {t('payouts.today.line', {
+              total: formatMinor(limits.todayTotal.amountMinor, limits.todayTotal.currency, locale),
+              level: formatMinor(
+                limits.dailyAlertLevel.amountMinor,
+                limits.dailyAlertLevel.currency,
+                locale,
+              ),
+            })}{' '}
+            {limits.overDailyAlertLevel ? (
+              <Badge tone="attention">{t('payouts.today.over')}</Badge>
+            ) : null}
+          </p>
         )}
         <Tabs
           label={t('payouts.tabs')}

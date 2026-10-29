@@ -1,12 +1,13 @@
 import { Badge, Button, CARD_TABLE } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { shortInstantInZone } from '../shared/format.ts';
+import { shortDateInZone, shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { formatMinor } from '../wallet/money.ts';
 import { StateBadge } from './state-badge.tsx';
 import { bankWaitUntil, type PayoutRow } from './types.ts';
 
-const COLUMNS = ['payout', 'seller', 'amount', 'state', 'why', 'slot', 'actions'] as const;
+// The state badge is the corner cell: second in the row, as in the card layout.
+const COLUMNS = ['payout', 'state', 'seller', 'amount', 'why', 'slot', 'actions'] as const;
 
 /**
  * One page of payouts: a table from 1024 px, labelled cards below. A payout that waits for an
@@ -95,7 +96,7 @@ export function PayoutsTable({
                 <td className={`${CARD_TABLE.labelled} max-lg:!block`} data-label="">
                   {row.state !== 'awaiting-approval' || !canApprove ? null : wait !== null ? (
                     <Badge tone="attention">
-                      {t('bank-wait', { until: shortInstantInZone(wait, locale, zone) })}
+                      {t('bank-wait', { until: shortDateInZone(wait, locale, zone) })}
                     </Badge>
                   ) : (
                     <Button disabled={busy} onClick={() => onApprove(row)}>
