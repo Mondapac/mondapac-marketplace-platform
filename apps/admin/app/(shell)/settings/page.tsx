@@ -1,6 +1,7 @@
 import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { SETTINGS_HREF, SETTINGS_VIEW_PERMISSION } from '../../../src/account-deletion/types.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
@@ -34,8 +35,9 @@ export default async function SettingsPage() {
     </AdminShell>
   );
   if (!permissionKeys.includes(SUPPORT_VIEW_PERMISSION)) {
-    // An admin who may see only the assistant tab lands on it.
+    // An admin who may not see this tab lands on the first one they may see.
     if (permissionKeys.includes(ASSISTANT_VIEW_PERMISSION)) redirect('/settings/assistant');
+    if (permissionKeys.includes(SETTINGS_VIEW_PERMISSION)) redirect(SETTINGS_HREF);
     return shell(
       <>
         <p className="text-fg-muted">{t('settings.no-access')}</p>

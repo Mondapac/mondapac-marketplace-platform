@@ -43,6 +43,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'commission-payouts/admin/disputes',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
+    // The buyer account deletion setting, read again after a conflict, and the pending deletion
+    // requests (customers; query: `cursor`, `limit`).
+    'customers/admin/account-deletion-settings',
+    'customers/admin/deletion-requests',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -70,6 +74,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/settings',
     // The delivery settings of the Market (shipping): the whole set, with `expectedVersion`.
     'shipping/admin/delivery-settings',
+    // The buyer account deletion setting (customers), behind a fresh two-step code.
+    'customers/admin/account-deletion-settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -138,6 +144,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'wallet/admin/credit-requests/:id/reject',
     // Who bears a lost chargeback, per seller order (commission-payouts), behind a two-step code.
     'commission-payouts/admin/disputes/:id/seller-orders/:id/decision',
+    // Delete a buyer's account for them, from a support ticket (customers), behind a two-step code.
+    'customers/admin/buyers/:id/deletion-requests',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -151,7 +159,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
   ],
-  DELETE: ['identity/admin/roles/:id', 'commission-payouts/admin/sellers/:id/commission-rate'],
+  DELETE: [
+    'identity/admin/roles/:id',
+    'commission-payouts/admin/sellers/:id/commission-rate',
+    // Cancel a pending buyer deletion request (customers), behind a two-step code.
+    'customers/admin/deletion-requests/:id',
+  ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
     'commission-payouts/admin/sellers/:id/commission-rate',
@@ -178,6 +191,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
+  'customers/admin/deletion-requests': ['cursor', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -191,6 +205,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     filter: /^(needs-response|decision-needed|under-review|won|closed)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the opening, a dot and the dispute id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'customers/admin/deletion-requests': {
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },

@@ -1459,7 +1459,8 @@
     "tabs": {
       "label": "Settings sections",
       "general": "General",
-      "assistant": "Smart assistant"
+      "assistant": "Smart assistant",
+      "account-deletion": "Account deletion"
     },
     "assistant": {
       "title": "Smart assistant settings",
@@ -2089,6 +2090,144 @@
     "wallet-issue": "Issue credit",
     "wallet-view": "View wallet"
   },
+  "account-deletion": {
+    "cancel": "Cancel",
+    "retry": "Try again",
+    "reload": "Reload",
+    "reason": {
+      "label": "Reason",
+      "help-history": "Plain text, one line, up to 500 characters. Kept in the change history.",
+      "help-not-stored": "Not saved. Don't enter personal data.",
+      "help-deleted": "Don't enter personal data. It is deleted when the request closes."
+    },
+    "settings": {
+      "card": "Account deletion",
+      "no-access": "You don't have access to the account deletion setting.",
+      "load-failed": "Couldn't load this setting.",
+      "read-only": "You can view this setting but not change it.",
+      "enabled": {
+        "legend": "Allow buyers to delete their account",
+        "off": "Off",
+        "on": "On",
+        "help": "When on, buyers see Delete account under Account > Settings and can request deletion. When off, the option is hidden and deletion requests are refused. Requests already waiting continue."
+      },
+      "days": {
+        "label": "Waiting period before deletion",
+        "help": "How long a request waits before the account is erased. The buyer can cancel during this time.",
+        "option": "{days, plural, one {# day} other {# days}}"
+      },
+      "save": "Save changes",
+      "saved": "Saved. Buyers see the change within a minute.",
+      "pending": {
+        "title": "Pending requests",
+        "none": "No accounts are waiting to be deleted.",
+        "some": "{count, plural, one {# account is} other {# accounts are}} waiting to be deleted.",
+        "more": "{count} accounts are waiting to be deleted.",
+        "unavailable": "The number of waiting requests isn't available right now.",
+        "view": "View list"
+      },
+      "confirm": {
+        "on": {
+          "title": "Turn on account deletion for all buyers?",
+          "body": "Buyers will be able to delete their account after a {days}-day wait. You will be asked for a two-step code.",
+          "action": "Turn on"
+        },
+        "off": {
+          "title": "Turn off account deletion?",
+          "body": "The option is hidden for buyers. {count, plural, one {# pending request continues} other {# pending requests continue}} and the buyer can still cancel them. Support can still delete an account from the buyer's profile.",
+          "body-more": "The option is hidden for buyers. 100 or more pending requests continue and the buyer can still cancel them. Support can still delete an account from the buyer's profile.",
+          "body-unknown": "The option is hidden for buyers. Pending requests continue and the buyer can still cancel them. Support can still delete an account from the buyer's profile.",
+          "action": "Turn off"
+        },
+        "days": {
+          "title": "Change the waiting period to {days} days?",
+          "body": "Applies to new requests only.",
+          "action": "Save"
+        }
+      }
+    },
+    "requests": {
+      "title": "Pending deletion requests",
+      "back": "Account deletion",
+      "no-access": "You don't have access to the deletion requests.",
+      "caption": "Accounts waiting to be deleted, earliest first",
+      "loading": "Loading the requests",
+      "load-failed": "Couldn't load the list.",
+      "load-more": "Load more",
+      "loaded-more": "{count} more requests loaded",
+      "more-failed": "Couldn't load more requests. Try again.",
+      "col": {
+        "account": "Account",
+        "requested-by": "Requested by",
+        "requested": "Requested",
+        "deletes-on": "Deletes on",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "by": {
+        "customer": "Buyer",
+        "admin": "Admin"
+      },
+      "status": {
+        "waiting": "Waiting",
+        "in-progress": "In progress"
+      },
+      "empty": {
+        "title": "No pending requests",
+        "body": "Accounts waiting to be deleted appear here."
+      },
+      "cancel": "Cancel request",
+      "cancel-aria": "Cancel the deletion request of account {account}",
+      "cancelled": "Deletion request cancelled. The account is kept."
+    },
+    "cancel-request": {
+      "title": "Cancel this deletion request?",
+      "body": "The account is kept. The buyer is not told (email is not available yet).",
+      "keep": "Keep request",
+      "confirm": "Cancel request"
+    },
+    "buyer": {
+      "action": "Delete this buyer's account",
+      "dialog": {
+        "title": "Delete this buyer's account?",
+        "date": "The account will be deleted about {days} days after you confirm (the exact date is shown after).",
+        "date-unknown": "The account will be deleted after the waiting period set in Settings (the exact date is shown after).",
+        "confirm": "Delete account"
+      },
+      "ticket": {
+        "label": "Support ticket",
+        "help": "Link the buyer's request. Example: SUP-1042.",
+        "error": "Enter a ticket reference such as SUP-1042."
+      },
+      "understand": "I understand this can't be undone after {days} days.",
+      "understand-unknown": "I understand this can't be undone after the waiting period.",
+      "requested": "Deletion requested. The account will be deleted on {date}. The buyer's sessions have ended.",
+      "cancelled": "Deletion request cancelled. The account is kept.",
+      "pending-badge": "Deletion pending",
+      "blocked-title": "Can't delete yet:",
+      "blocker": {
+        "open-orders": "{count, plural, one {# open order} other {# open orders}}",
+        "pending-refunds": "{count, plural, one {# refund waiting} other {# refunds waiting}}",
+        "wallet-balance": "The wallet balance isn't zero"
+      },
+      "open-pending": "Open Settings > Account deletion > Pending requests"
+    },
+    "error": {
+      "invalid": "Enter a reason of 1 to 500 characters, without < or >.",
+      "conflict": "Another admin changed this setting. Reload to see the current value.",
+      "denied": "You don't have permission to change this.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "buyer-not-found": "This buyer account was not found.",
+      "already-requested": "A deletion request is already open for this account. Find it in Settings > Account deletion > Pending requests.",
+      "in-progress": "This account is already being deleted. It can't be cancelled.",
+      "request-not-found": "This request is no longer pending.",
+      "blocked": "This account can't be deleted yet.",
+      "check-failed": "Couldn't check this account. Try again.",
+      "unavailable": "The service is not available right now. Try again in a few minutes.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
   "route": {
     "loading": "Loading the page",
     "error": {
@@ -2431,6 +2570,14 @@
         "credit": {
           "issue": "issue store credit",
           "approve": "decide a credit request"
+        }
+      },
+      "customers": {
+        "account-deletion-settings": {
+          "change": "change the account deletion setting"
+        },
+        "buyer-account": {
+          "delete": "delete a buyer's account or cancel a deletion request"
         }
       },
       "fallback": "do this",

@@ -132,7 +132,11 @@ export const adminNav: NavConfig = {
       labelKey: 'nav.settings',
       href: '/settings',
       group: 'platform',
-      anyOf: ['notifications.support-contact.view', 'assistant.settings.view'],
+      anyOf: [
+        'notifications.support-contact.view',
+        'assistant.settings.view',
+        'customers.account-deletion-settings.view',
+      ],
     },
   ],
 };

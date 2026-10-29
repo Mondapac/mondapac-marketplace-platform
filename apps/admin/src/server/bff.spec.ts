@@ -1018,6 +1018,11 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `wallet/admin/customers/${id}`],
     ['POST', `wallet/admin/credit-requests/${id}/approve`],
     ['POST', `wallet/admin/credit-requests/${id}/reject`],
+    ['GET', 'customers/admin/account-deletion-settings'],
+    ['PUT', 'customers/admin/account-deletion-settings'],
+    ['GET', 'customers/admin/deletion-requests'],
+    ['POST', `customers/admin/buyers/${id}/deletion-requests`],
+    ['DELETE', `customers/admin/deletion-requests/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1041,6 +1046,12 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `wallet/admin/credit-requests/${id}/delete`],
     ['GET', `wallet/admin/customers/${id}/extra`],
     ['GET', 'wallet/me'],
+    ['DELETE', 'customers/admin/account-deletion-settings'],
+    ['POST', 'customers/admin/account-deletion-settings'],
+    ['POST', 'customers/admin/deletion-requests'],
+    ['GET', `customers/admin/deletion-requests/${id}`],
+    ['POST', 'customers/admin/buyers/not-a-uuid/deletion-requests'],
+    ['DELETE', 'customers/admin/deletion-requests/not-a-uuid'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1049,6 +1060,25 @@ describe('relay of the wallet and step-up routes', () => {
     );
     expect(response.status).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes only limit and a well-formed cursor of the deletion request list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `customers/admin/deletion-requests?limit=50&cursor=1792000000000.${id}&status=executing&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests?cursor=1792000000000.${id}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      'customers/admin/deletion-requests?cursor=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/customers/admin/deletion-requests',
+    );
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {
