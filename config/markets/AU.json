@@ -440,6 +440,7 @@
     "manufacturerBasisEnabled": false
   },
   "shipping": {
+    "fleetFallbackAbsorbCapMinor": 1000,
     "realTimeCarrier": {
       "carrier": "mondapac-drive",
       "displayName": "Mondapac Drive",

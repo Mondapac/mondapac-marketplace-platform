@@ -2,7 +2,6 @@ import { Logger } from '@nestjs/common';
 import type { CallContext, Clock, Money } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import type { DeliveryTerms, DeliveryTermsRefusal } from '../../domain/delivery-terms';
 import type { MinimumOrderRefusal, MinimumOrderRule } from '../../domain/minimum-order';
 import type {
   AccessUnavailable,
@@ -16,7 +15,7 @@ import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { StoreProfileRepository } from '../ports/store-profile.repository';
 
-// What the two store-settings use cases share (sellers design 18; slice 20): their view, their
+// What the store-settings use cases share (sellers design 18; slice 20): their view, their
 // failures and dependencies, and two small helpers. Both are seller-scope use cases under
 // `sellers.store-settings.edit`, for approved sellers only; the seller is always
 // `ActorContext.sellerId`, never an id from the request.
@@ -31,8 +30,6 @@ export interface StoreSettingsView {
   readonly currency: string;
   /** The largest amount, in minor units of that currency. */
   readonly maximumAmount: bigint;
-  /** As stored; null is "no delivery terms set". */
-  readonly delivery: DeliveryTerms | null;
 }
 
 export type StoreSettingsFailure =
@@ -42,13 +39,6 @@ export type MinimumOrderSaveFailure =
   | StoreSettingsFailure
   | DraftValidationFailed
   | MinimumOrderRefusal
-  | RequestThrottled
-  | DraftConflict;
-
-export type DeliverySaveFailure =
-  | StoreSettingsFailure
-  | DraftValidationFailed
-  | DeliveryTermsRefusal
   | RequestThrottled
   | DraftConflict;
 

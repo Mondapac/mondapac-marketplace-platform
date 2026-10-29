@@ -15,6 +15,7 @@ import { useMemo, type MouseEvent, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
 import {
   CERTIFICATE_SUBMITTED,
+  DELIVERY_FALLBACK_OVER_CAP,
   PRICE_HOLD_OPENED,
   PRODUCT_REVISION_SUBMITTED,
   RINGING_KINDS,
@@ -34,6 +35,7 @@ const LOOK: Readonly<
   [PRODUCT_REVISION_SUBMITTED]: { icon: 'package', tone: 'info', category: 'products' },
   [SELLER_FILE_SUBMITTED]: { icon: 'store', tone: 'neutral', category: 'sellers' },
   [PRICE_HOLD_OPENED]: { icon: 'tag', tone: 'attention', category: 'prices' },
+  [DELIVERY_FALLBACK_OVER_CAP]: { icon: 'map-pin', tone: 'attention', category: 'delivery' },
 };
 const UNKNOWN_LOOK = { icon: 'bell', tone: 'neutral', category: 'other' } as const;
 
@@ -46,6 +48,7 @@ function hrefOf(notice: AdminNotice): string | null {
     return `/sellers/${notice.params.sellerId}`;
   }
   if (notice.kind === PRICE_HOLD_OPENED) return '/price-holds';
+  if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/delivery-settings';
   return null;
 }
 
@@ -102,6 +105,8 @@ export function AdminNotifications({ csrfToken }: { readonly csrfToken: string }
           strong,
           direction: notice.params.direction ?? 'other',
         });
+      case DELIVERY_FALLBACK_OVER_CAP:
+        return t.rich('kind.delivery-fallback-over-cap', { strong });
       default:
         return t('kind.other');
     }

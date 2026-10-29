@@ -34,7 +34,7 @@ describe('parseDeliveryChoices', () => {
   it.each(['pickup', 'instant', 'same_day'])('takes %s with no window', (method) => {
     expect(parse({ method })).toEqual({
       ok: true,
-      choices: new Map([[SELLER, { method, window: null }]]),
+      choices: new Map([[SELLER, { method, window: null, quoteId: null }]]),
     });
   });
 
@@ -101,6 +101,7 @@ const sellerOrder = (patch: Partial<SellerOrder> = {}): SellerOrder => ({
   deliveryWindow: null,
   readyAt: null,
   deliveryAttention: null,
+  deliveryQuote: null,
   ...patch,
 });
 

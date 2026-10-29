@@ -2,24 +2,6 @@
 // is named Shipping<Name> and mapped to its table with @@map. The CHECKs and the grants are
 // hand-written in the migration. Money is minor units (BigInt) plus a currency.
 
-/// The flat shipping fee of a seller: one fee per seller order, set by an admin. A seller with no
-/// row cannot be bought from. Zero is a valid fee (free shipping). Rows are never deleted.
-model ShippingSellerFlatFee {
-  marketId  String   @map("market_id") @db.VarChar(8)
-  sellerId  String   @map("seller_id") @db.Uuid
-  tenantId  String   @map("tenant_id")
-  /// Minor units of `currency`, 0 to 100000 (CHECK).
-  amount    BigInt
-  currency  String   @db.VarChar(3)
-  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
-  /// The admin account that last set it (a plain id, no foreign key).
-  updatedBy String   @map("updated_by") @db.Uuid
-
-  @@id([marketId, sellerId])
-  @@map("seller_flat_fees")
-  @@schema("shipping")
-}
-
 /// A seller order handed to the Market's real-time carrier (SHP-02/03, the `real_time_delivery`
 /// FulfillmentStrategy), stored once the carrier confirmed it. No personal data: the carrier holds
 /// the two stops. `progress` only moves forward; the CHECKs are hand-written in the migration.
@@ -216,5 +198,96 @@ model ShippingSellerDeliveryMethods {
 
   @@id([marketId, sellerId])
   @@map("seller_delivery_methods")
+  @@schema("shipping")
+}
+
+/// A delivery price quoted to a buyer at checkout (delivery models, package 5): the fleet the
+/// router chose, the fleet's quote, the platform's margin and what the buyer pays, for one seller,
+/// one delivery method and one saved drop-off (its postcode). The checkout charges a stored quote,
+/// never a price sent by the client; a quote is reused while it is fresh (10 minutes, and never past
+/// the fleet's own expiry) and asked again after. Insert-only; a buyer's expired quotes are removed
+/// when the buyer asks for new ones. No personal data: the postcode of an address and plain ids.
+model ShippingDeliveryQuote {
+  id              String    @id @db.Uuid
+  marketId        String    @map("market_id") @db.VarChar(8)
+  tenantId        String    @map("tenant_id")
+  /// The customer account the quote was made for (a plain id, no foreign key).
+  accountId       String    @map("account_id") @db.Uuid
+  sellerId        String    @map("seller_id") @db.Uuid
+  /// instant | same_day | scheduled (CHECK); a pickup is free and has no quote.
+  method          String
+  dropoffPostcode String    @map("dropoff_postcode") @db.VarChar(16)
+  /// The fleet that quoted (mondapac_drive | uber_direct | zoom2u | auspost | fake_test, CHECK).
+  fleet           String
+  /// Minor units of `currency`: the fleet's price, the platform's margin, and what the buyer pays
+  /// (`total` = `quote_amount` + `margin_amount`, CHECK).
+  quoteAmount     BigInt    @map("quote_amount")
+  marginAmount    BigInt    @map("margin_amount")
+  totalAmount     BigInt    @map("total_amount")
+  currency        String    @db.VarChar(3)
+  etaMinutes      Int?      @map("eta_minutes")
+  quotedAt        DateTime  @map("quoted_at") @db.Timestamptz(6)
+  /// The fleet's own expiry when it gave one, else null.
+  fleetExpiresAt  DateTime? @map("fleet_expires_at") @db.Timestamptz(6)
+  /// When the quote stops being charged: 10 minutes after `quoted_at`, or the fleet's expiry if
+  /// that is earlier.
+  validUntil      DateTime  @map("valid_until") @db.Timestamptz(6)
+
+  @@unique([marketId, id])
+  @@index([marketId, accountId, sellerId, method, quotedAt])
+  @@map("delivery_quotes")
+  @@schema("shipping")
+}
+
+/// A fee a fleet charged the platform for a delivery (cancel, waiting, return), as the fleet
+/// reported it (delivery models, package 5). The buyer is never charged these; the ledger only
+/// records what the platform paid. Insert-only; `external_ref` is the fleet's own id of the fee (or
+/// a stable key the adapter derives), so a repeated report records once.
+model ShippingFleetFee {
+  id            String   @id @db.Uuid
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  fleet         String
+  /// Plain ids of the seller order and its order (no foreign key across schemas).
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  /// cancel | waiting | return | other (CHECK).
+  reason        String
+  /// Minor units of `currency`, above zero (CHECK).
+  amount        BigInt
+  currency      String   @db.VarChar(3)
+  externalRef   String   @map("external_ref")
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@unique([marketId, fleet, externalRef])
+  @@index([marketId, sellerOrderId])
+  @@map("fleet_fees")
+  @@schema("shipping")
+}
+
+/// A booking the router gave to another fleet than the one quoted and charged: what the buyer was
+/// charged for the fleet, what the booked fleet costs, and how much of the difference the platform
+/// absorbs (up to the Market's cap). A difference above the cap is flagged for an admin
+/// (`over_cap`). One row per seller order; the buyer is never charged more after payment.
+model ShippingDeliveryFallback {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  chargedFleet  String   @map("charged_fleet")
+  bookedFleet   String   @map("booked_fleet")
+  /// Minor units of `currency`. `difference` = booked price - charged fleet quote, never below
+  /// zero: the platform absorbs it, because the buyer has paid and the delivery goes ahead. Both
+  /// are null (and `over_cap` is set) when the booked fleet's price could not be read. `over_cap`
+  /// says the difference passed `cap_minor`, the Market's cap at the time, so an admin looks.
+  chargedQuote  BigInt   @map("charged_quote")
+  bookedPrice   BigInt?  @map("booked_price")
+  difference    BigInt?
+  capMinor      Int      @map("cap_minor")
+  overCap       Boolean  @map("over_cap")
+  currency      String   @db.VarChar(3)
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerOrderId])
+  @@map("delivery_fallbacks")
   @@schema("shipping")
 }

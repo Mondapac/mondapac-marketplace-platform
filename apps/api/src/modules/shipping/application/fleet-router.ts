@@ -21,6 +21,7 @@ import type {
   CarrierFailure,
   CarrierGateway,
   CarrierQuote,
+  CarrierQuoteRequest,
   CarrierQuoteStop,
   CarrierStop,
 } from './ports/carrier-gateway';
@@ -94,22 +95,20 @@ const warnUnauthorized = (context: CallContext, fleet: FleetCode, call: string):
   });
 };
 
-async function quotesOf(
+/**
+ * Asks each of the fleets for its price of the trip, all at once; a fleet that does not answer is
+ * absent from the answer (the caller treats it as no quote). The calls run outside every unit.
+ */
+export async function quoteFleets(
   deps: ShippingDependencies,
   context: CallContext,
   fleets: readonly { gateway: CarrierGateway; capabilities: FleetCapabilities }[],
-  request: CarrierBookingRequest,
+  request: CarrierQuoteRequest,
 ): Promise<ReadonlyMap<FleetCode, CarrierQuote>> {
   const taken = new Map<FleetCode, CarrierQuote>();
   await Promise.all(
     fleets.map(async ({ gateway }) => {
-      const quote = await gateway.quote(context.market, {
-        pickup: quoteStopOf(request.pickup),
-        dropoff: quoteStopOf(request.dropoff),
-        parcel: request.parcel,
-        method: request.method,
-        mode: request.mode,
-      });
+      const quote = await gateway.quote(context.market, request);
       if (quote.ok) taken.set(gateway.fleet, quote.value);
       else if (quote.error.code === 'carrier.unauthorized') {
         warnUnauthorized(context, gateway.fleet, 'quote');
@@ -118,6 +117,15 @@ async function quotesOf(
   );
   return taken;
 }
+
+/** The quote a booking request stands for: the same trip, with the postcodes and places only. */
+export const quoteRequestOf = (request: CarrierBookingRequest): CarrierQuoteRequest => ({
+  pickup: quoteStopOf(request.pickup),
+  dropoff: quoteStopOf(request.dropoff),
+  parcel: request.parcel,
+  method: request.method,
+  mode: request.mode,
+});
 
 /**
  * Picks the fleet for a seller order and books it. The fleets are called outside every unit (the
@@ -132,10 +140,17 @@ export async function routeBooking(
     readonly method: CarrierMethod;
     readonly need: FleetNeed;
     readonly request: CarrierBookingRequest;
+    /**
+     * The fleet the buyer was quoted and charged for, when there is one: it is tried first when it
+     * can still carry the order, whatever the model ranks first now, so a booking goes to another
+     * fleet (a fallback) only when the charged one is off, cannot carry it or says no.
+     */
+    readonly charged?: FleetCode | null;
   },
 ): Promise<RoutedBooking | { readonly kind: 'store-unavailable' }> {
   const { market } = context;
   const { sellerOrderId, method, need, request } = input;
+  const charged = input.charged ?? null;
   const state = await deps.unitOfWork.run(
     market,
     async () =>
@@ -177,7 +192,7 @@ export async function routeBooking(
     reliability: reliability.get(gateway.fleet) ?? DEFAULT_RELIABILITY,
   }));
   if (candidates.length > 1 && needsQuotes(active)) {
-    const quotes = await quotesOf(deps, context, capable, request);
+    const quotes = await quoteFleets(deps, context, capable, quoteRequestOf(request));
     candidates = candidates.map((c) => ({
       ...c,
       quote: quotes.has(c.fleet)
@@ -189,6 +204,9 @@ export async function routeBooking(
     }));
   }
   let order = rankFleets(active, candidates);
+  if (charged !== null && capable.some((c) => c.gateway.fleet === charged)) {
+    order = [charged, ...order.filter((fleet) => fleet !== charged)];
+  }
   if (first !== null) order = [first, ...order.filter((fleet) => fleet !== first)];
   if (first !== null && !order.includes(first)) {
     // The fleet that was asked can no longer take the order: it may still hold the booking.

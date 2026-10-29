@@ -79,7 +79,6 @@ describe('product detail mapping', () => {
     expect(detail.offers[0].variantId).toBe('01990000-0000-7000-8000-000000002001');
     expect(detail.offers[1]?.lowStock).toBeUndefined();
     expect(detail.offers[1]?.minimumOrder).toBe('No minimum order');
-    expect(detail.offers[0].deliveryWindow).toBeUndefined();
     expect(detail.offers[0].certifications).toEqual([]);
     expect(detail.photos).toEqual([]);
     expect(detail.specifications).toEqual([]);
