@@ -84,6 +84,9 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
 - One live payout per seller (partial unique index). One unfreed item per seller order.
 - An APPROVED payout is planned again before it is instructed and voided when a hold, a lower
   seller order, a failed check or a different transfer amount (receivable grew) is found.
+- Reconcile and the transfer-changed consumer settle a payout only on a transfer of its own amount
+  and currency; any other record under the key raises PayoutAlert `transfer-unmatched` and changes
+  nothing.
 - `idempotency.key-reused` is not a definite refusal: the payout stays INSTRUCTING and a PayoutAlert
   is raised.
 - Dispute holds and decisions take the affected sellers' cursor locks first (sellerId order).
@@ -113,3 +116,6 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
     per payout, right before the send. Needs sign-off from Ali.
 13. The run evaluates at most 500 sellers per tick; `listByState(..., 100)` reads oldest first, so a
     backlog above 100 delays newer payouts (liveness, not money).
+14. `payout_state_history` is not built: a payout's transitions are kept only as its current state,
+    `state_changed_at` and the timing columns.
+15. The events `payout-instructed.v1` and `payout-status-changed.v1` (design 6.3) are not published.
