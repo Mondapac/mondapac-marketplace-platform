@@ -17,16 +17,19 @@ import { DELIVERY_SETTINGS_REPOSITORY } from './application/ports/delivery-setti
 import { FLEET_SELECTION_REPOSITORY } from './application/ports/fleet-selection.repository';
 import { CARRIER_POLICY } from './application/ports/carrier-policy';
 import { CARRIER_WEBHOOK_SIGNATURE } from './application/ports/carrier-webhook-signature';
+import { DELIVERY_QUOTE_REPOSITORY } from './application/ports/delivery-quote.repository';
+import { FLEET_LEDGER_REPOSITORY } from './application/ports/fleet-ledger.repository';
 import { UBER_WEBHOOK_SIGNATURE } from './application/ports/fleet-webhook-signature';
-import { FLAT_FEE_REPOSITORY } from './application/ports/flat-fee.repository';
 import { PICKUP_DIRECTORY } from './application/ports/pickup-directory';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
-import { STORE_DIRECTORY } from './application/ports/store-directory';
 import { SHIPPING_POLICY } from './application/ports/shipping-policy';
 import type { ShippingDependencies } from './application/shipping-dependencies';
 import { DeliveryAvailability } from './application/use-cases/delivery-availability.use-case';
 import { DeliveryChoice } from './application/use-cases/delivery-choice.use-case';
+import { ChargeDelivery } from './application/use-cases/charge-delivery.use-case';
 import { PriceDelivery } from './application/use-cases/price-delivery.use-case';
+import { QuoteDeliveries } from './application/use-cases/quote-deliveries.use-case';
+import { RecordFleetFee } from './application/use-cases/record-fleet-fee.use-case';
 import { SetDeliverySettings } from './application/use-cases/set-delivery-settings.use-case';
 import { SetSellerDeliveryMethods } from './application/use-cases/set-seller-delivery-methods.use-case';
 import { ViewDeliverySettings } from './application/use-cases/view-delivery-settings.use-case';
@@ -41,41 +44,28 @@ import { CancelCarrierDelivery } from './application/use-cases/cancel-carrier-de
 import { CarrierTrackingLinks } from './application/use-cases/carrier-tracking-links.use-case';
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
-import { FlatFees } from './application/use-cases/flat-fees.use-case';
 import { PickupAvailability } from './application/use-cases/pickup-availability.use-case';
-import { ShippingFees } from './application/use-cases/shipping-fees.use-case';
 import { PollFleetStatus } from './application/use-cases/poll-fleet-status.use-case';
 import { ReceiveUberWebhook } from './application/use-cases/receive-uber-webhook.use-case';
 import { ReceiveCarrierWebhook } from './application/use-cases/receive-carrier-webhook.use-case';
-import { SetFlatFee } from './application/use-cases/set-flat-fee.use-case';
-import { ViewFlatFee } from './application/use-cases/view-flat-fee.use-case';
-import { ViewOwnFlatFee } from './application/use-cases/view-own-flat-fee.use-case';
-import { ViewStoreFlatFee } from './application/use-cases/view-store-flat-fee.use-case';
 import { SHIPPING_FACADE, SHIPPING_PERMISSIONS } from './contracts';
 import { SHIPPING_AUDIT_ACTIONS } from './domain/audit';
 import { SHIPPING_EVENTS } from './domain/events';
 import { shippingProviders } from './infrastructure/shipping-providers';
-import {
-  AdminFlatFeeController,
-  SellerFlatFeeController,
-} from './presentation/flat-fee.controller';
 import { pollFleetStatusJob } from './presentation/jobs/poll-fleet-status.job';
 import { UberWebhookController } from './presentation/uber-webhook.controller';
 import { CarrierWebhookController } from './presentation/carrier-webhook.controller';
 import { DeliverySettingsController } from './presentation/delivery-settings.controller';
 import { FleetSelectionController } from './presentation/fleet-selection.controller';
 import { DeliveryAreaController } from './presentation/delivery-area.controller';
-import { StoreFlatFeeController } from './presentation/store-flat-fee.controller';
 import { ShippingFacadeImplementation } from './presentation/shipping.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ShippingDependencies) => U;
 
 const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
-  ['fees', FLAT_FEE_REPOSITORY],
   ['policy', SHIPPING_POLICY],
   ['sellers', SELLER_DIRECTORY],
-  ['stores', STORE_DIRECTORY],
   ['audit', AUDIT_WRITER],
   ['clock', CLOCK],
   ['ids', ID_GENERATOR],
@@ -85,6 +75,8 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['selection', FLEET_SELECTION_REPOSITORY],
   ['deliverySettings', DELIVERY_SETTINGS_REPOSITORY],
   ['carrierPolicy', CARRIER_POLICY],
+  ['quotes', DELIVERY_QUOTE_REPOSITORY],
+  ['ledger', FLEET_LEDGER_REPOSITORY],
   ['pickups', PICKUP_DIRECTORY],
   ['webhookSignature', CARRIER_WEBHOOK_SIGNATURE],
   ['uberWebhookSignature', UBER_WEBHOOK_SIGNATURE],
@@ -107,32 +99,24 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
 }
 
 /**
- * Shipping (Phase 5 package 4, SHP-01, speed mode). The flat shipping fee of each seller: an
- * admin sets it, the seller sees it, and `ordering` reads it through `SHIPPING_FACADE` at
- * checkout (a seller without a fee cannot be bought from) and `cart` reads it for the cart page.
- * The delivery area check answers whether the Market delivers to a postcode (ServiceArea config).
- * SHP-02/03, the `real_time_delivery` FulfillmentStrategy: once an order is paid, ordering hands
- * each seller order to `bookCarrierDelivery`, which books it with the Market's real-time carrier
- * (Mondapac Drive) when the carrier is on and both ends are in its areas. Drive's signed status
- * webhooks move the booking on and publish `shipping.carrier-delivery-progressed.v1`, from which
- * ordering records the shipment and the delivery. Live carrier rates at checkout come next.
- * Delivery models, package 3: the fleet router. Each seller order is booked with the fleet the
- * router picks from the fleets that are on for the Market and can carry it, ranked by the model
- * an admin made active for the Market and the buyer's method (`FleetSelectionController`).
- * Delivery models, package 4: the delivery settings. An admin switches the delivery methods on or
- * off for the Market, sets the same-day cut-off, the scheduled days and window and the margin on a
- * fleet's quote, and gives each seller the methods it supports (`DeliverySettingsController`).
- * Shipping owns them because they decide how an order is carried and what the carrying costs;
- * ordering reads what a seller offers through the facade, and the sellers module is asked only
- * for a seller's operating zone and pickup address.
+ * Shipping. The delivery area check answers whether the Market delivers to a postcode (ServiceArea
+ * config). SHP-02/03, the `real_time_delivery` FulfillmentStrategy: ordering hands each paid seller
+ * order to `bookCarrierDelivery`, which books it with the fleet the router picks. Delivery models,
+ * package 3: the fleet router, ranked by the model an admin made active for the Market and the
+ * buyer's method (`FleetSelectionController`). Package 4: the delivery settings an admin sets for
+ * the Market and for each seller (`DeliverySettingsController`). Package 5: the buyer pays the
+ * fleet's live quote plus the Market's margin (`quoteDeliveries`, `chargeDelivery`), a booking that
+ * replaces the charged fleet is absorbed up to the Market's cap, and the fees fleets charge the
+ * platform are recorded in a ledger (`recordFleetFee`). The seller sets no delivery fee or window:
+ * the seller flat fee was removed with this package. Drive's signed status webhooks move a booking
+ * on and publish `shipping.carrier-delivery-progressed.v1`, from which ordering records the
+ * shipment and the delivery. Ordering reads what a seller offers and what a delivery costs through
+ * the facade; the sellers module is asked only for a seller's operating zone and pickup address.
  */
 @Module({
   imports: [SellersModule],
   controllers: [
-    AdminFlatFeeController,
-    SellerFlatFeeController,
     DeliveryAreaController,
-    StoreFlatFeeController,
     CarrierWebhookController,
     UberWebhookController,
     FleetSelectionController,
@@ -150,11 +134,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       pollFleetStatusJob(poll),
     ]),
     ...[
-      SetFlatFee,
-      ViewFlatFee,
-      ViewOwnFlatFee,
-      FlatFees,
-      ShippingFees,
       DeliveryArea,
       PickupAvailability,
       BookCarrierDelivery,
@@ -164,7 +143,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReceiveCarrierWebhook,
       ReceiveUberWebhook,
       PollFleetStatus,
-      ViewStoreFlatFee,
       ViewFleetSelection,
       CreateFleetSelectionModel,
       UpdateFleetSelectionModel,
@@ -177,12 +155,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       DeliveryAvailability,
       DeliveryChoice,
       PriceDelivery,
+      QuoteDeliveries,
+      ChargeDelivery,
+      RecordFleetFee,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: SHIPPING_FACADE,
       inject: [
-        FlatFees,
-        ShippingFees,
         DeliveryArea,
         PickupAvailability,
         BookCarrierDelivery,
@@ -192,10 +171,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         DeliveryAvailability,
         DeliveryChoice,
         PriceDelivery,
+        QuoteDeliveries,
+        ChargeDelivery,
+        RecordFleetFee,
       ],
       useFactory: (
-        fees: FlatFees,
-        shippingFees: ShippingFees,
         area: DeliveryArea,
         pickup: PickupAvailability,
         book: BookCarrierDelivery,
@@ -205,10 +185,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         availability: DeliveryAvailability,
         choice: DeliveryChoice,
         price: PriceDelivery,
+        quote: QuoteDeliveries,
+        charge: ChargeDelivery,
+        fee: RecordFleetFee,
       ) =>
         new ShippingFacadeImplementation({
-          fees,
-          shippingFees,
           area,
           pickup,
           book,
@@ -218,6 +199,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           availability,
           choice,
           price,
+          quote,
+          charge,
+          fee,
         }),
     },
   ],

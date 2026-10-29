@@ -1,10 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
-import { sellerIdsOf, type FlatFeesFailure } from '../flat-fee-flow';
+import { sellerIdsOf, type SellerIdsFailure } from '../seller-ids';
 import type { ShippingDependencies } from '../shipping-dependencies';
 
-export type PickupAvailabilityFailure = FlatFeesFailure | { readonly code: 'shipping.unavailable' };
+export type PickupAvailabilityFailure =
+  SellerIdsFailure | { readonly code: 'shipping.unavailable' };
 
 /**
  * `shipping.pickup-availability` (delivery models, package 2, owner decision): in-person pickup
@@ -13,7 +14,7 @@ export type PickupAvailabilityFailure = FlatFeesFailure | { readonly code: 'ship
  * business file, read as its pickup postcode (a clear column, no audit row). A seller without an
  * approved file, of another Market or without a postcode is absent. A failed read is
  * `shipping.unavailable`, never "no pickup" (fail closed on the caller's side). Rule
- * `own-resources`, as `shipping-fees`: checkout asks under the signed-in customer's context. Not
+ * `own-resources`, as `delivery-quote`: checkout asks under the signed-in customer's context. Not
  * exposed over HTTP.
  */
 export class PickupAvailability extends UseCase<

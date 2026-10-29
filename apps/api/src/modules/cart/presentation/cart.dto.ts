@@ -153,16 +153,6 @@ export class SellerGroupView {
   @ApiProperty({ type: MinimumOrderStateView })
   minimumOrder!: MinimumOrderStateView;
 
-  @ApiProperty({
-    type: MoneyView,
-    nullable: true,
-    description:
-      "The seller's flat delivery fee, charged once per seller order (an explicit zero is free " +
-      'delivery). Null when the group has no buyable line, the seller has no fee yet (checkout ' +
-      'then refuses with ordering.shipping-unavailable) or shipping could not be asked.',
-  })
-  deliveryFee!: MoneyView | null;
-
   @ApiProperty({ type: [CartLineView] })
   lines!: CartLineView[];
 }

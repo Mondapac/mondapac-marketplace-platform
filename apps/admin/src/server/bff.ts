@@ -38,6 +38,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
     'wallet/admin/settings',
     'wallet/admin/credit-requests',
+    // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
+    // `limit`); one case is read by the page server and again after a decision.
+    'commission-payouts/admin/disputes',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
   ]),
@@ -133,13 +136,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Approve or reject another admin's credit request (wallet), behind a two-step code.
     'wallet/admin/credit-requests/:id/approve',
     'wallet/admin/credit-requests/:id/reject',
+    // Who bears a lost chargeback, per seller order (commission-payouts), behind a two-step code.
+    'commission-payouts/admin/disputes/:id/seller-orders/:id/decision',
   ],
   PUT: [
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
-    // The seller's flat delivery fee and the delivery methods the seller supports (shipping), set
-    // from the seller review page.
-    'shipping/admin/sellers/:id/flat-fee',
+    // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',
@@ -157,6 +160,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id/copy',
     // One customer's wallet and the caller's credit caps (wallet), for the issue screen.
     'wallet/admin/customers/:id',
+    // One dispute case, read again after a decision (commission-payouts).
+    'commission-payouts/admin/disputes/:id',
     // The delivery methods of a seller (shipping), read again after a conflict.
     'shipping/admin/sellers/:id/delivery-methods',
   ],
@@ -172,6 +177,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
+  'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -179,6 +185,12 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'wallet/admin/credit-requests': {
     status: /^(pending|decided|granted)$/,
     limit: /^[0-9]{1,3}$/,
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/disputes': {
+    filter: /^(needs-response|decision-needed|under-review|won|closed)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the opening, a dot and the dispute id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },

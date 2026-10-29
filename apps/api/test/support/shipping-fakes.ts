@@ -1,5 +1,5 @@
-import type { Id, MarketContext, Money, Temporal } from '@mondapac/shared-kernel';
-import { err, ok } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Money } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { CarrierBookingRepository } from '../../src/modules/shipping/application/ports/carrier-booking.repository';
 import type {
@@ -8,6 +8,18 @@ import type {
   CarrierQuoteRequest,
   CarrierStop,
 } from '../../src/modules/shipping/application/ports/carrier-gateway';
+import type { DeliveryQuoteRepository } from '../../src/modules/shipping/application/ports/delivery-quote.repository';
+import type {
+  DeliveryFallbackRecord,
+  FleetFeeRecord,
+  FleetLedgerRepository,
+} from '../../src/modules/shipping/application/ports/fleet-ledger.repository';
+import {
+  isFresh,
+  matchesScope,
+  type DeliveryQuote,
+  type QuoteScope,
+} from '../../src/modules/shipping/domain/delivery-quote';
 import type { DeliverySettingsRepository } from '../../src/modules/shipping/application/ports/delivery-settings.repository';
 import type { DeliveryMethod } from '../../src/modules/shipping/domain/delivery-methods';
 import {
@@ -287,5 +299,58 @@ export class ScriptedFleet implements CarrierGateway {
   status() {
     this.calls.push('status');
     return Promise.resolve(err({ code: 'carrier.unavailable' } as const));
+  }
+}
+
+/** The delivery quotes of a test, in memory: the same lookups as the real repository. */
+export class MemoryDeliveryQuotes implements DeliveryQuoteRepository {
+  readonly rows = new Map<string, DeliveryQuote>();
+  insert(m: MarketContext, quote: DeliveryQuote) {
+    this.rows.set(`${m.marketId}|${quote.id}`, quote);
+    return Promise.resolve();
+  }
+  findById(m: MarketContext, id: Id<'DeliveryQuote'>) {
+    return Promise.resolve(this.rows.get(`${m.marketId}|${id}`) ?? null);
+  }
+  findFresh(m: MarketContext, scope: QuoteScope, now: Temporal.Instant) {
+    const found = [...this.rows.entries()]
+      .filter(([key, quote]) => key.startsWith(`${m.marketId}|`) && matchesScope(quote, scope))
+      .map(([, quote]) => quote)
+      .filter((quote) => isFresh(quote, now))
+      .sort((a, b) => Temporal.Instant.compare(b.quotedAt, a.quotedAt));
+    return Promise.resolve(found[0] ?? null);
+  }
+  deleteExpired(m: MarketContext, accountId: Id<'Account'>, before: Temporal.Instant) {
+    for (const [key, quote] of [...this.rows]) {
+      if (
+        key.startsWith(`${m.marketId}|`) &&
+        quote.accountId === accountId &&
+        Temporal.Instant.compare(quote.validUntil, before) < 0
+      ) {
+        this.rows.delete(key);
+      }
+    }
+    return Promise.resolve();
+  }
+}
+
+/** The fleet-fee ledger and the fallback records of a test, in memory. */
+export class MemoryFleetLedger implements FleetLedgerRepository {
+  readonly fees: FleetFeeRecord[] = [];
+  readonly fallbacks = new Map<string, DeliveryFallbackRecord>();
+  recordFee(m: MarketContext, fee: FleetFeeRecord) {
+    const duplicate = this.fees.some(
+      (row) => row.fleet === fee.fleet && row.externalRef === fee.externalRef,
+    );
+    if (duplicate) return Promise.resolve('duplicate' as const);
+    this.fees.push(fee);
+    void m;
+    return Promise.resolve('recorded' as const);
+  }
+  recordFallback(m: MarketContext, fallback: DeliveryFallbackRecord) {
+    const key = `${m.marketId}|${fallback.sellerOrderId}`;
+    if (this.fallbacks.has(key)) return Promise.resolve('exists' as const);
+    this.fallbacks.set(key, fallback);
+    return Promise.resolve('recorded' as const);
   }
 }

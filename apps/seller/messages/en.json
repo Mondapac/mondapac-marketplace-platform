@@ -38,7 +38,6 @@
     "stock": "Stock locations",
     "payout": "Payout account",
     "store-profile": "Store profile",
-    "delivery": "Delivery",
     "security": "Security",
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
@@ -1176,7 +1175,6 @@
       "title": "Order not found",
       "body": "This order does not exist, or it belongs to another store."
     },
-    "fee": "Delivery fee on every order: {fee}. The platform sets it for your store; the customer pays it with the order.",
     "more": "Show more orders",
     "optional": "optional",
     "ref": "#{id}",
@@ -1310,8 +1308,8 @@
       "refund-sale": "Refund of sale",
       "refund-shipping": "Refund of shipping",
       "refund-commission": "Commission returned",
-      "dispute-debit": "Dispute debit",
-      "dispute-reinstate": "Dispute reinstated"
+      "dispute-debit": "Dispute: amount recovered",
+      "dispute-reinstate": "Dispute: amount returned"
     },
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",
@@ -1384,40 +1382,6 @@
   },
   "load": {
     "retry": "Try again"
-  },
-  "delivery": {
-    "title": "Delivery",
-    "intro": "Tell buyers when your orders arrive. This shows on your store page. Times are your own local time.",
-    "none": "You have not set your delivery times yet. Your store page shows no delivery line until you do.",
-    "card-title": "Delivery times",
-    "day": "Orders placed before the cut-off arrive",
-    "day-same-day": "The same day",
-    "day-next-day": "The next day",
-    "window": "Delivery window",
-    "from": "Window opens",
-    "to": "Window closes",
-    "cutoff": "Order cut-off",
-    "cutoff-help-same-day": "Orders placed before this time arrive the same day. It must be before the window closes.",
-    "cutoff-help-next-day": "Orders placed before this time arrive the next day, in the window above.",
-    "zone-note": "These are clock times in your shop's time zone. Buyers see them as written, without a time zone.",
-    "save": "Save delivery times",
-    "clear": "Remove delivery times",
-    "saved-saved": "Delivery times saved. They show on your store page now.",
-    "saved-cleared": "Delivery times removed. Your store page shows no delivery line.",
-    "reload": "Reload",
-    "validation": {
-      "summary": "Check the times below and try again.",
-      "day": "Choose same day or next day.",
-      "window": "The window must close after it opens.",
-      "cutoff": "Choose a cut-off time on the half hour.",
-      "cutoff-same-day": "For same-day delivery the cut-off must be before the window closes."
-    },
-    "error": {
-      "stale": "Your delivery times changed somewhere else. Reload to see the latest, then try again.",
-      "denied": "You don't have permission to change delivery times.",
-      "throttled": "Too many changes in a short time. Wait a moment and try again.",
-      "unavailable": "We couldn't save or load your delivery times. Try again."
-    }
   },
   "security": {
     "title": "Security",
@@ -1914,6 +1878,16 @@
         "unavailable": "The store profile is unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
+    }
+  },
+  "disputes": {
+    "badge": "Payment disputed",
+    "held": "Held until the dispute is closed.",
+    "closed-recovered": "Dispute closed. {amount} was taken from your earnings.",
+    "card": {
+      "title": "Disputed orders",
+      "order": "Order {id}",
+      "since": "Since {when}"
     }
   }
 }

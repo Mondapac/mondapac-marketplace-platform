@@ -29,13 +29,15 @@ export interface DialogProps {
   readonly children: ReactNode;
   /** The buttons, in reading order; the last is the primary one. */
   readonly actions: ReactNode;
+  /** A short line under the buttons (why one is disabled); tie it to the button with aria-describedby. */
+  readonly actionsNote?: ReactNode;
 }
 
 /**
  * A modal dialog on the native `<dialog>` element: the browser traps focus, makes the rest of
  * the page inert and closes on Escape. Focus returns to the opener when it closes.
  */
-export function Dialog({ open, title, onClose, children, actions }: DialogProps) {
+export function Dialog({ open, title, onClose, children, actions, actionsNote }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useModal(ref, open);
@@ -72,6 +74,9 @@ export function Dialog({ open, title, onClose, children, actions }: DialogProps)
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
             {actions}
           </div>
+          {actionsNote === undefined || actionsNote === null ? null : (
+            <div className="mt-2 text-sm text-fg-muted sm:text-end">{actionsNote}</div>
+          )}
         </>
       ) : null}
     </dialog>

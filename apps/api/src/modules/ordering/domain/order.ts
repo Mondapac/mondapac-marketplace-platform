@@ -67,6 +67,21 @@ export type Fulfilment = 'to-ship' | 'shipped' | 'delivered';
  * excludes tax (added on top of the goods). The seller records the shipment (carrier
  * and an optional tracking reference) and then the delivery, each once and in that order.
  */
+/**
+ * The delivery quote charged for a seller order, frozen at placement (delivery models, package
+ * 5): shipping's quote id, the fleet quoted, the fleet's price, the platform's margin and the
+ * instants it was asked and stopped holding. `shipping` is the buyer's price: price + margin. A
+ * pickup, and an order placed before quotes were kept, have none.
+ */
+export interface ChargedDeliveryQuote {
+  readonly quoteId: string;
+  readonly fleet: string;
+  readonly quoteAmount: bigint;
+  readonly marginAmount: bigint;
+  readonly quotedAt: Temporal.Instant;
+  readonly expiresAt: Temporal.Instant;
+}
+
 export interface SellerOrder {
   readonly id: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
@@ -99,6 +114,8 @@ export interface SellerOrder {
    * The seller is never asked to deliver instead.
    */
   readonly deliveryAttention: DeliveryAttention | null;
+  /** The quote the buyer was charged for delivery; null for a pickup and for older orders. */
+  readonly deliveryQuote: ChargedDeliveryQuote | null;
 }
 
 /**

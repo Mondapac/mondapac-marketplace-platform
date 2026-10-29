@@ -51,6 +51,7 @@ export function OrderDetails({
   readonly showTaxInvoice?: boolean;
 }) {
   const t = useTranslations('account');
+  const tc = useTranslations('checkout');
   const locale = useLocale();
   const day = useDay();
   const { orders, cancelOrder, renewPickupCode } = useAccount();
@@ -105,7 +106,7 @@ export function OrderDetails({
               ? t('order.cancelled-part')
               : part.deliveredOn
                 ? t('order.delivered-on', { date: day(part.deliveredOn, false) })
-                : part.deliveryWindow}
+                : tc('method-label', { method: part.deliveryMethod })}
           </small>
           {part.status === 'cancelled' ? null : <Progress status={part.status} />}
           {!TRACKABLE.has(part.status) || safeTrackingHref(part.trackingUrl) === null ? null : (

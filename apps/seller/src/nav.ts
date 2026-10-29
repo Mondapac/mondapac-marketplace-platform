@@ -1,4 +1,3 @@
-import { STORE_SETTINGS_EDIT_PERMISSION } from './delivery/types.ts';
 import { PAYOUT_VIEW_PERMISSION } from './payout/types.ts';
 import { STOCK_VIEW_PERMISSION } from './stock/types.ts';
 import { STORE_PROFILE_VIEW_PERMISSION } from './store-profile/types.ts';
@@ -56,14 +55,6 @@ export const sellerNav: NavConfig = {
       href: '/store-profile',
       group: 'store',
       anyOf: [STORE_PROFILE_VIEW_PERMISSION],
-    },
-    {
-      id: 's_delivery',
-      icon: 'clock',
-      labelKey: 'nav.delivery',
-      href: '/delivery',
-      group: 'store',
-      anyOf: [STORE_SETTINGS_EDIT_PERMISSION],
     },
     {
       id: 's_earnings',

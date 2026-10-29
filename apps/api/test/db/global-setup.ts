@@ -76,6 +76,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'PAYOUT_HOLDS');
   await createCopy(name, 'DISPUTES');
   await createCopy(name, 'SELLERS_LIST');
+  await createCopy(name, 'ORDERING_ORDERS');
 }
 
 /**
@@ -140,6 +141,10 @@ export default async function globalSetup(): Promise<void> {
  * - `sellers_list`: sellers-list.db-spec.ts compares the tab counts of a whole Market before and
  *   after making its own seller files, so no other file makes or submits a seller file in that
  *   Market between the two reads.
+ * - `ordering_orders`: ordering-order-repository.db-spec.ts compares the order counts of whole
+ *   Markets (its own and the other fixture) before and after inserting its own orders, and other
+ *   files (pickup codes, paid outbox, offer pairs, storefront reads) insert and confirm orders in
+ *   both Markets in parallel, so no other file's order lives there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -171,7 +176,8 @@ async function createCopy(
     | 'ORDERING_REFUNDS'
     | 'PAYOUT_HOLDS'
     | 'DISPUTES'
-    | 'SELLERS_LIST',
+    | 'SELLERS_LIST'
+    | 'ORDERING_ORDERS',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

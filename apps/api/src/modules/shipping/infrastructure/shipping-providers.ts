@@ -31,12 +31,15 @@ import {
   type FleetSelectionRepository,
 } from '../application/ports/fleet-selection.repository';
 import {
-  FLAT_FEE_REPOSITORY,
-  type FlatFeeRepository,
-} from '../application/ports/flat-fee.repository';
+  DELIVERY_QUOTE_REPOSITORY,
+  type DeliveryQuoteRepository,
+} from '../application/ports/delivery-quote.repository';
+import {
+  FLEET_LEDGER_REPOSITORY,
+  type FleetLedgerRepository,
+} from '../application/ports/fleet-ledger.repository';
 import { PICKUP_DIRECTORY, type PickupDirectory } from '../application/ports/pickup-directory';
 import { SELLER_DIRECTORY, type SellerDirectory } from '../application/ports/seller-directory';
-import { STORE_DIRECTORY, type StoreDirectory } from '../application/ports/store-directory';
 import { SHIPPING_POLICY, type ShippingPolicy } from '../application/ports/shipping-policy';
 import { CircuitBreaker } from './circuit-breaker';
 import { ConfigCarrierPolicy } from './config-carrier-policy';
@@ -56,10 +59,10 @@ import { MondapacDriveCarrier } from './mondapac-drive-carrier';
 import { PrismaCarrierBookingRepository } from './prisma-carrier-booking.repository';
 import { PrismaDeliverySettingsRepository } from './prisma-delivery-settings.repository';
 import { PrismaFleetSelectionRepository } from './prisma-fleet-selection.repository';
-import { PrismaFlatFeeRepository } from './prisma-flat-fee.repository';
+import { PrismaDeliveryQuoteRepository } from './prisma-delivery-quote.repository';
+import { PrismaFleetLedgerRepository } from './prisma-fleet-ledger.repository';
 import { SellersPickupDirectory } from './sellers-pickup-directory';
 import { SellersSellerDirectory } from './sellers-seller-directory';
-import { SellersStoreDirectory } from './sellers-store-directory';
 import { UberDirectCarrier } from './uber-direct-carrier';
 import { UberDirectHttpClient } from './uber-direct-http-client';
 import { Zoom2uCarrier } from './zoom2u-carrier';
@@ -68,9 +71,16 @@ import { Zoom2uHttpClient } from './zoom2u-http-client';
 /** Binds the ports of shipping. Only this layer may reach `PrismaService`. */
 export const shippingProviders: readonly FactoryProvider[] = [
   {
-    provide: FLAT_FEE_REPOSITORY,
+    provide: DELIVERY_QUOTE_REPOSITORY,
     inject: [PrismaService],
-    useFactory: (prisma: PrismaService): FlatFeeRepository => new PrismaFlatFeeRepository(prisma),
+    useFactory: (prisma: PrismaService): DeliveryQuoteRepository =>
+      new PrismaDeliveryQuoteRepository(prisma),
+  },
+  {
+    provide: FLEET_LEDGER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): FleetLedgerRepository =>
+      new PrismaFleetLedgerRepository(prisma),
   },
   {
     provide: SHIPPING_POLICY,
@@ -82,11 +92,6 @@ export const shippingProviders: readonly FactoryProvider[] = [
     provide: SELLER_DIRECTORY,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerDirectory => new SellersSellerDirectory(sellers),
-  },
-  {
-    provide: STORE_DIRECTORY,
-    inject: [SELLERS_FACADE],
-    useFactory: (sellers: SellersFacade): StoreDirectory => new SellersStoreDirectory(sellers),
   },
   {
     provide: CARRIER_BOOKING_REPOSITORY,

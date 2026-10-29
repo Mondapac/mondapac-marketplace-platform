@@ -1326,6 +1326,13 @@ const fleetSchema = z
 
 const shippingSchema = z.strictObject({
   /**
+   * The most the platform absorbs, in minor units of the Market currency, when the router books a
+   * different fleet than the one the buyer was quoted and charged, and that fleet costs more
+   * (delivery models, package 5). The buyer is never charged more after payment; a difference above
+   * this cap is recorded for an admin. Absent: 0, so every difference alerts. AU: 1000 (A$10.00).
+   */
+  fleetFallbackAbsorbCapMinor: z.number().int().min(0).max(1_000_000_000).optional(),
+  /**
    * The fleets of the Market, by fleet code. When absent, the legacy `realTimeCarrier` below
    * declares Mondapac Drive alone (every method, its service areas, its parcel temperature).
    */
@@ -1365,7 +1372,7 @@ const shippingSchema = z.strictObject({
       }),
       /**
        * The range a live quote must fall in, in minor units of the Market's currency, to be
-       * charged at checkout (Hassan, SHP-02/03): outside it the seller's flat fee is charged.
+       * charged at checkout (Hassan, SHP-02/03): a fleet quote outside it is never charged, and that fleet is not offered.
        */
       quoteBounds: z.strictObject({
         minMinor: z.number().int().min(1).max(1_000_000_000),
@@ -1685,6 +1692,61 @@ const marketSchema = z
         defaultAuthorDisplay: z.string().trim().min(1).max(80),
         healthTerms: z.array(z.string().trim().min(2).max(64)).max(500),
         selfApprovalWithStepUp: z.boolean(),
+      })
+      .optional(),
+    /**
+     * Promotions settings (promotions package T1), owned by `promotions`. All values are Market
+     * config, never constants; amounts are minor units of the Market's currency. Without this
+     * section promotions are unavailable (fail closed). `lineDiscountCapBps`: the most of one
+     * line's price that all discounts together may take (AU 80 %). `sellerMaxDiscountBps`: the
+     * most a seller may give on one promotion (AU 70 %). `platformBudgetStepUpMinor`: a platform
+     * budget above this needs a fresh two-step code (AU A$2,000). `freeShippingThresholdMinor`:
+     * the Market default of the free-shipping threshold, used for a delivery zone that has no
+     * threshold of its own (AU A$50). `newSellerDays` and `priorApprovalDiscountBps`: a seller
+     * active fewer days than this, or a discount above this share, needs approval before the
+     * promotion goes live (AU 30 days, 50 %). `wasPrice`: a struck-through earlier price is
+     * allowed only if the product sold at that price on at least `minDaysAtPrice` of the last
+     * `windowDays` days (AU 28 of 90). `maxActivePromotionsPerSeller`: the most promotions one seller
+     * may have active or waiting for approval at once (AU 50), which also bounds what a quote reads. `gstRulingConfirmed`: false until the tax adviser has
+     * ruled on platform-funded discounts; until then a platform-funded or co-funded promotion can
+     * be created and applied in test mode only. `firstOrder`: the first-order discount an admin
+     * has not yet edited (the stored settings win): switch, `kind` (PERCENT uses `percentBps`,
+     * FIXED uses `amountMinor`), optional `capMinor`, `minSpendMinor` and `monthlyBudgetMinor`.
+     * Whether promotions are on is not config: an admin sets it at runtime
+     * (`promotions.market_settings`), off by default.
+     */
+    promotions: z
+      .strictObject({
+        lineDiscountCapBps: z.number().int().min(1).max(10000),
+        sellerMaxDiscountBps: z.number().int().min(1).max(10000),
+        platformBudgetStepUpMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        freeShippingThresholdMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+        newSellerDays: z.number().int().min(0).max(365),
+        priorApprovalDiscountBps: z.number().int().min(1).max(10000),
+        wasPrice: z.strictObject({
+          windowDays: z.number().int().min(1).max(365),
+          minDaysAtPrice: z.number().int().min(1).max(365),
+        }),
+        gstRulingConfirmed: z.boolean(),
+        maxActivePromotionsPerSeller: z.number().int().min(1).max(10000),
+        firstOrder: z
+          .strictObject({
+            enabled: z.boolean(),
+            kind: z.enum(['PERCENT', 'FIXED']),
+            percentBps: z.number().int().min(1).max(10000).optional(),
+            amountMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+            capMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+            minSpendMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+            monthlyBudgetMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+          })
+          .refine(
+            (value) =>
+              value.kind === 'PERCENT'
+                ? value.percentBps !== undefined && value.amountMinor === undefined
+                : value.amountMinor !== undefined && value.percentBps === undefined,
+            'PERCENT needs percentBps only; FIXED needs amountMinor only',
+          )
+          .optional(),
       })
       .optional(),
     /**

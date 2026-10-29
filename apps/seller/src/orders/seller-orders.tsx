@@ -1,32 +1,19 @@
 'use client';
 
 import { Banner, Button, EmptyState, Tabs } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatMinor } from '../price/money.ts';
 import { OrdersTable } from './orders-table.tsx';
-import {
-  FULFILMENT_FILTERS,
-  type FulfilmentFilter,
-  type OwnFee,
-  type SellerOrderPage,
-} from './types.ts';
+import { FULFILMENT_FILTERS, type FulfilmentFilter, type SellerOrderPage } from './types.ts';
 
 /**
  * The seller's paid orders: a fulfilment filter, the list (each order opens on its own page,
  * where it is shipped and delivered) and "Show more" by cursor. The API has no status
  * parameter, so the filter works on the orders loaded so far.
  */
-export function SellerOrders({
-  initial,
-  fee,
-}: {
-  readonly initial: SellerOrderPage;
-  readonly fee: OwnFee | null;
-}) {
+export function SellerOrders({ initial }: { readonly initial: SellerOrderPage }) {
   const t = useTranslations('orders');
-  const locale = useLocale();
   const [orders, setOrders] = useState(initial.sellerOrders);
   const [cursor, setCursor] = useState(initial.nextCursor);
   const [filter, setFilter] = useState<FulfilmentFilter>('all');
@@ -56,11 +43,6 @@ export function SellerOrders({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      {fee === null ? null : (
-        <Banner tone="info">
-          {t('fee', { fee: formatMinor(fee.amount, fee.currency, locale) })}
-        </Banner>
-      )}
       {orders.length === 0 ? (
         <EmptyState icon="clipboard" title={t('empty-state.title')} body={t('empty-state.body')} />
       ) : (

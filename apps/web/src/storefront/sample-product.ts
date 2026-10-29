@@ -74,7 +74,6 @@ function featuredOffer(product: ProductCard): ProductOffer {
     ...(product.wasPrice ? { wasPrice: product.wasPrice } : {}),
     certifications: product.certifications,
     ...(product.lowStock === undefined ? {} : { lowStock: product.lowStock }),
-    deliveryWindow: summary.deliveryWindow,
     minimumOrder: summary.minimumOrder,
   };
 }
@@ -106,7 +105,6 @@ const EXTRA: Readonly<Record<string, Extra>> = {
         seller: profileOf('mt-gravatt', []),
         price: money(2190),
         certifications: [],
-        deliveryWindow: 'Tomorrow 12pm-4pm',
         minimumOrder: 'A$30 minimum order',
       },
       {
@@ -114,7 +112,6 @@ const EXTRA: Readonly<Record<string, Extra>> = {
         seller: LOGAN_ROAD,
         price: money(2450),
         certifications: [],
-        deliveryWindow: 'Tomorrow 12pm-4pm',
         minimumOrder: 'No minimum order',
       },
     ],

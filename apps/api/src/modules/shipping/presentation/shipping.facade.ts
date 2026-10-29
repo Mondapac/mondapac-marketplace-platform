@@ -7,20 +7,20 @@ import type { DeliveryAvailability } from '../application/use-cases/delivery-ava
 import type { DeliveryChoice } from '../application/use-cases/delivery-choice.use-case';
 import type { PriceDelivery } from '../application/use-cases/price-delivery.use-case';
 import type { DeliveryArea } from '../application/use-cases/delivery-area.use-case';
-import type { FlatFees } from '../application/use-cases/flat-fees.use-case';
 import type { PickupAvailability } from '../application/use-cases/pickup-availability.use-case';
-import type { ShippingFees } from '../application/use-cases/shipping-fees.use-case';
+import type { ChargeDelivery } from '../application/use-cases/charge-delivery.use-case';
+import type { QuoteDeliveries } from '../application/use-cases/quote-deliveries.use-case';
+import type { RecordFleetFee } from '../application/use-cases/record-fleet-fee.use-case';
 import type {
   CarrierDeliveryRequest,
   QuoteDropoff,
+  QuoteSeller,
   ShippingFacade,
   ShippingFailure,
 } from '../contracts';
 
 /** The use cases behind the facade. */
 export interface ShippingFacadeUseCases {
-  readonly fees: FlatFees;
-  readonly shippingFees: ShippingFees;
   readonly area: DeliveryArea;
   readonly pickup: PickupAvailability;
   readonly book: BookCarrierDelivery;
@@ -30,6 +30,9 @@ export interface ShippingFacadeUseCases {
   readonly availability: DeliveryAvailability;
   readonly choice: DeliveryChoice;
   readonly price: PriceDelivery;
+  readonly quote: QuoteDeliveries;
+  readonly charge: ChargeDelivery;
+  readonly fee: RecordFleetFee;
 }
 
 /** The facade's failure set: a refusal, a bad input, or "unavailable" for any other cause. */
@@ -50,12 +53,27 @@ function failuresOf<T>(result: Result<T, { readonly code: string }>): Result<T, 
 export class ShippingFacadeImplementation implements ShippingFacade {
   constructor(private readonly useCases: ShippingFacadeUseCases) {}
 
-  flatFees(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
-    return this.useCases.fees.execute(context, { sellerIds });
+  quoteDeliveries(
+    context: CallContext,
+    request: { readonly sellers: readonly QuoteSeller[]; readonly dropoff: QuoteDropoff },
+  ) {
+    return this.useCases.quote.execute(context, {
+      sellers: request?.sellers,
+      dropoff: request?.dropoff,
+    });
   }
 
-  shippingFees(context: CallContext, sellerIds: readonly Id<'Seller'>[], dropoff: QuoteDropoff) {
-    return this.useCases.shippingFees.execute(context, { sellerIds, dropoff });
+  chargeDelivery(context: CallContext, request: Parameters<ShippingFacade['chargeDelivery']>[1]) {
+    return this.useCases.charge.execute(context, {
+      seller: request?.seller,
+      method: request?.method,
+      quoteId: request?.quoteId,
+      dropoff: request?.dropoff,
+    });
+  }
+
+  recordFleetFee(context: CallContext, report: Parameters<ShippingFacade['recordFleetFee']>[1]) {
+    return this.useCases.fee.execute(context, report);
   }
 
   async pickupAvailability(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {

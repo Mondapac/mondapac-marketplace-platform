@@ -41,6 +41,7 @@ export { ImageSlot, type ImageSlotProps, type ImageSlotShape } from './form/imag
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
+export { RadioGroup, type RadioGroupProps, type RadioOption } from './form/radio-group.tsx';
 export { ActionRow, type ActionRowProps } from './form/action-row.tsx';
 export { FieldAction, type FieldActionProps } from './form/field-action.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';

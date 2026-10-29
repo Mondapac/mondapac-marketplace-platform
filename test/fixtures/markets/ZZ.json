@@ -61,6 +61,17 @@
       "repeatedWordShareBps": 7500
     }
   },
+  "promotions": {
+    "lineDiscountCapBps": 6000,
+    "sellerMaxDiscountBps": 5000,
+    "platformBudgetStepUpMinor": 300000,
+    "freeShippingThresholdMinor": 7000,
+    "newSellerDays": 14,
+    "priorApprovalDiscountBps": 4000,
+    "wasPrice": { "windowDays": 60, "minDaysAtPrice": 20 },
+    "gstRulingConfirmed": true,
+    "maxActivePromotionsPerSeller": 20
+  },
   "tax": {
     "defaultRateBps": 1500,
     "refundCredit": { "enabled": false },
@@ -329,6 +340,7 @@
     "manufacturerBasisEnabled": true
   },
   "shipping": {
+    "fleetFallbackAbsorbCapMinor": 500,
     "fleets": {
       "fake_test": {
         "displayName": "Test Fleet",

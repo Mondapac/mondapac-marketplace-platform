@@ -125,10 +125,8 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     });
     deps = {
       unitOfWork: new FakeUnitOfWork(),
-      fees: undefined as never,
       policy: undefined as never,
       sellers: undefined as never,
-      stores: undefined as never,
       audit,
       clock,
       ids: new SequenceIdGenerator(clock),
@@ -138,6 +136,8 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       selection,
       deliverySettings: undefined as never,
       carrierPolicy: new ConfigCarrierPolicy(markets, areas, { apiKeys: {}, webhookSecrets: {} }),
+      quotes: undefined as never,
+      ledger: undefined as never,
       pickups: undefined as never,
       webhookSignature: undefined as never,
       uberWebhookSignature: undefined as never,

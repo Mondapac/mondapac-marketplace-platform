@@ -7,7 +7,6 @@ import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { INVENTORY_FACADE, type InventoryFacade } from '../../inventory';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
-import { SHIPPING_FACADE, type ShippingFacade } from '../../shipping';
 import { CART_POLICY, type CartPolicy } from '../application/ports/cart-policy';
 import { CART_REPOSITORY, type CartRepository } from '../application/ports/cart.repository';
 import { GUEST_TOKENS, type GuestTokens } from '../application/ports/guest-tokens';
@@ -55,23 +54,14 @@ export const cartProviders: readonly FactoryProvider[] = [
   },
   {
     provide: LINE_FACTS_SOURCE,
-    inject: [
-      CATALOG_FACADE,
-      SELLERS_FACADE,
-      PRICING_FACADE,
-      INVENTORY_FACADE,
-      SHIPPING_FACADE,
-      MarketRegistry,
-    ],
+    inject: [CATALOG_FACADE, SELLERS_FACADE, PRICING_FACADE, INVENTORY_FACADE, MarketRegistry],
     useFactory: (
       catalog: CatalogFacade,
       sellers: SellersFacade,
       pricing: PricingFacade,
       inventory: InventoryFacade,
-      shipping: ShippingFacade,
       markets: MarketRegistry,
-    ): LineFactsSource =>
-      new FacadeLineFacts(catalog, sellers, pricing, inventory, shipping, markets),
+    ): LineFactsSource => new FacadeLineFacts(catalog, sellers, pricing, inventory, markets),
   },
   {
     provide: RATE_COUNTER_REPOSITORY,

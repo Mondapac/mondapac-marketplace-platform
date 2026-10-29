@@ -61,6 +61,7 @@ import { SellerMarkOrderReady } from './application/use-cases/seller-mark-order-
 import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-carrier-delivery.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
+import { DeliveryQuotes } from './application/use-cases/delivery-quotes.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
 import { ViewOrderDocument } from './application/use-cases/view-order-document.use-case';
@@ -140,8 +141,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Ordering (docs/design/domain/ordering.md, simplified for speed mode; Phase 5 package 1): the
  * customer's cart becomes an order with its seller split and a hosted Stripe Checkout page. The
  * stock is reserved before the page opens and committed before the money is captured; the
- * payment webhook (package 2) reaches the order through `ORDERING_FACADE` only. Package 4: each
- * seller's flat delivery fee (from `shipping`) is part of the total, and the seller records the
+ * payment webhook (package 2) reaches the order through `ORDERING_FACADE` only. Delivery models,
+ * package 5: the delivery price of each seller order is the courier's live quote plus the Market
+ * margin (from `shipping`), stored and bound to the order, and Package 4: the seller records the
  * shipment and the delivery of a paid order; a worker job tells inventory about each shipment.
  * Package 5: the commission rate (from `commission-payouts`) is frozen on each order line at
  * checkout, and a worker job writes each paid seller order into the seller ledger. Tax: the tax
@@ -198,6 +200,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...orderingProviders,
     ...[
       StartCheckout,
+      DeliveryQuotes,
       ViewOrder,
       ViewOrderDocument,
       ListOrders,

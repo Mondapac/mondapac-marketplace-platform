@@ -108,15 +108,26 @@ export function SummaryTotals({
         <div>
           <dt>{t('summary-delivery', { count: view.groups.length })}</dt>
           <dd className="num">
-            {deliveryLoading ? <i className="sk" aria-hidden="true" /> : money(view.delivery)}
+            {deliveryLoading ? (
+              <i className="sk" aria-hidden="true" />
+            ) : view.deliveryPending ? (
+              t('delivery-at-checkout')
+            ) : (
+              money(view.delivery)
+            )}
           </dd>
         </div>
         <div className="tot">
-          <dt>{t('total')}</dt>
+          <dt>
+            {view.deliveryPending && !deliveryLoading ? t('total-before-delivery') : t('total')}
+          </dt>
           <dd className="num">{money(view.total)}</dd>
         </div>
+        <div className="gst">
+          <dt>{t('gst-included')}</dt>
+          <dd className="num">{money(view.includedTax)}</dd>
+        </div>
       </dl>
-      <small>{t('includes-tax', { amount: money(view.includedTax) })}</small>
     </>
   );
 }

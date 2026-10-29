@@ -80,6 +80,24 @@
       "repeatedWordShareBps": 6000
     }
   },
+  "promotions": {
+    "lineDiscountCapBps": 8000,
+    "sellerMaxDiscountBps": 7000,
+    "platformBudgetStepUpMinor": 200000,
+    "freeShippingThresholdMinor": 5000,
+    "newSellerDays": 30,
+    "priorApprovalDiscountBps": 5000,
+    "wasPrice": { "windowDays": 90, "minDaysAtPrice": 28 },
+    "gstRulingConfirmed": false,
+    "maxActivePromotionsPerSeller": 50,
+    "firstOrder": {
+      "enabled": true,
+      "kind": "FIXED",
+      "amountMinor": 800,
+      "minSpendMinor": 3000,
+      "monthlyBudgetMinor": 100000
+    }
+  },
   "tax": {
     "defaultRateBps": 1000,
     "refundCredit": { "enabled": false },
@@ -422,6 +440,7 @@
     "manufacturerBasisEnabled": false
   },
   "shipping": {
+    "fleetFallbackAbsorbCapMinor": 1000,
     "realTimeCarrier": {
       "carrier": "mondapac-drive",
       "displayName": "Mondapac Drive",
