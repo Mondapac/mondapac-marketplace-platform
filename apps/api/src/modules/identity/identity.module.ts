@@ -157,6 +157,7 @@ import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
+import { AdminEndCustomerSessions } from './application/use-cases/admin-end-customer-sessions.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './application/use-cases/end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
@@ -1002,6 +1003,13 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    useCaseProvider(AdminEndCustomerSessions, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      audit: true,
+      clock: true,
+    }),
     useCaseProvider(CustomerAccountExists, {
       unitOfWork: true,
       accounts: true,
@@ -1720,6 +1728,7 @@ function useCaseProvider<D, U>(
         TeamMemberLabels,
         EndOtherCustomerSessions,
         EndAllCustomerSessions,
+        AdminEndCustomerSessions,
         CustomerAccountExists,
         EraseCustomerAccount,
       ],
@@ -1737,6 +1746,7 @@ function useCaseProvider<D, U>(
         teamMemberLabels: TeamMemberLabels,
         endOtherCustomerSessions: EndOtherCustomerSessions,
         endAllCustomerSessions: EndAllCustomerSessions,
+        adminEndCustomerSessions: AdminEndCustomerSessions,
         customerAccountExists: CustomerAccountExists,
         eraseCustomerAccount: EraseCustomerAccount,
       ) =>
@@ -1754,6 +1764,7 @@ function useCaseProvider<D, U>(
           teamMemberLabels,
           endOtherCustomerSessions,
           endAllCustomerSessions,
+          adminEndCustomerSessions,
           customerAccountExists,
           eraseCustomerAccount,
         }),

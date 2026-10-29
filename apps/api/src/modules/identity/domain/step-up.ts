@@ -8,6 +8,7 @@ import type { Temporal } from '@mondapac/shared-kernel';
 export const STEP_UP_ACTION_KEYS = [
   'catalog.offer.delete',
   'customers.account-deletion-settings.change',
+  'customers.buyer-account.delete',
   'identity.second-factor.manage',
   'identity.team.change-role',
   'identity.team.invite-remove',

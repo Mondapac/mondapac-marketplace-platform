@@ -21,6 +21,7 @@ import { ConfigWalletPolicy } from '../infrastructure/config-wallet-policy';
 import { WalletFacadeImplementation } from '../presentation/wallet.facade';
 import { viewMyWallet } from './customer-flow';
 import { setStatus } from './settings-flow';
+import { AdminBalanceOf } from './use-cases/admin-balance-of.use-case';
 import { BalanceOf } from './use-cases/balance-of.use-case';
 import { OwnBalanceOf } from './use-cases/own-balance-of.use-case';
 import { CaptureHold } from './use-cases/capture-hold.use-case';
@@ -832,6 +833,23 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
     });
   });
 
+  it('the admin balance read answers a platform admin only, not an acting-as session', async () => {
+    await open();
+    const read = new AdminBalanceOf(gate, deps);
+    expect(await read.execute(adminCtx(), { customerAccountId: CUSTOMER })).toMatchObject({
+      ok: true,
+    });
+    const actingAs = {
+      ...adminCtx(),
+      actor: { ...adminCtx().actor, actingAs: { adminAccountId: CUSTOMER } },
+    } as unknown as CallContext;
+    for (const context of [actingAs, system]) {
+      expect(await read.execute(context, { customerAccountId: CUSTOMER })).toMatchObject({
+        ok: false,
+      });
+    }
+  });
+
   it('the facade passes the caller context unchanged to the use cases', async () => {
     await open();
     const facade = new WalletFacadeImplementation(
@@ -841,6 +859,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       new ReleaseHold(gate, deps),
       new BalanceOf(gate, deps),
       new OwnBalanceOf(gate, deps),
+      new AdminBalanceOf(gate, deps),
     );
     const granted = await facade.grantCredit(system, {
       customerAccountId: CUSTOMER,

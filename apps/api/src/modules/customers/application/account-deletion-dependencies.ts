@@ -1,4 +1,5 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
@@ -38,4 +39,9 @@ export interface AccountDeletionDependencies {
   readonly engagement: EngagementPeer;
   /** Detaches the author from the account's reviews and ratings (they stay as "Former customer"). */
   readonly reviews: ReviewsPeer;
+  /**
+   * Spends the admin step-up proof of an admin request or cancel once, inside the unit that saves it
+   * (package 5c; identity implements it, the same consumer the setting change uses).
+   */
+  readonly stepUp: StepUpProofConsumer;
 }
