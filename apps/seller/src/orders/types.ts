@@ -4,7 +4,6 @@ export const ORDER_VIEW_PERMISSION = 'ordering.seller-order.view';
 export const ORDER_READY_PERMISSION = 'ordering.seller-order.mark-ready';
 export const ORDER_CONFIRM_PICKUP_PERMISSION = 'ordering.seller-order.confirm-pickup';
 export const ORDER_DELIVER_PERMISSION = 'ordering.seller-order.mark-delivered';
-export const OWN_FEE_PERMISSION = 'shipping.own-fee.view';
 
 export interface Money {
   /** Minor units as a decimal string. */
@@ -69,8 +68,3 @@ export interface SellerOrderPage {
 
 export const FULFILMENT_FILTERS = ['all', 'to-ship', 'shipped', 'delivered'] as const;
 export type FulfilmentFilter = (typeof FULFILMENT_FILTERS)[number];
-
-/** The seller's own flat delivery fee, set by the platform. */
-export interface OwnFee extends Money {
-  readonly sellerId: string;
-}

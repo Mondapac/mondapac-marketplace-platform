@@ -1595,26 +1595,6 @@
       "version-defaults": "Built-in defaults, never saved"
     }
   },
-  "shipping": {
-    "title": "Delivery fee",
-    "intro": "One flat fee per order from this seller. The customer pays it at checkout, on top of the items. A change applies to orders placed after it.",
-    "not-set": "No fee is set yet. Customers cannot check out with this seller until you set one. Use 0 for free delivery.",
-    "current": "Current fee",
-    "field": "Fee per order ({currency})",
-    "field-help": "Between 0 and {max}.",
-    "invalid": "Enter an amount between 0 and {max}, with no more decimals than the currency uses.",
-    "save": "Save fee",
-    "saved": "Fee saved. It applies to orders placed from now on.",
-    "error": {
-      "not-found": "We could not find this seller.",
-      "invalid": "That amount was refused. Check it and try again.",
-      "throttled": "Too many attempts. Wait a moment and try again.",
-      "csrf": "Your session needs a refresh. Reload the page and try again.",
-      "denied": "Your role cannot set delivery fees.",
-      "unavailable": "Delivery fees are not available right now. Try again shortly.",
-      "unknown": "Something went wrong. Try again."
-    }
-  },
   "fleets": {
     "title": "Delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
@@ -2252,6 +2232,7 @@
       "seller-application-submitted": "A <strong>new seller application</strong> is waiting for review",
       "seller-identity-changed": "A seller changed their <strong>business details</strong>",
       "price-hold-opened": "{direction, select, up {A <strong>price increase</strong> is held for approval} down {A <strong>price drop</strong> is held for approval} other {A <strong>price change</strong> is held for approval}}",
+      "delivery-fallback-over-cap": "A <strong>different fleet</strong> was booked and its price went over the absorb cap",
       "other": "Something is waiting for your review"
     },
     "category": {
@@ -2259,6 +2240,7 @@
       "products": "Products",
       "sellers": "Sellers",
       "prices": "Prices",
+      "delivery": "Delivery",
       "other": "Reviews"
     },
     "empty": {

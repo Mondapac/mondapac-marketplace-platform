@@ -154,6 +154,7 @@ describe.each(TEST_MARKETS)(
           deliveryWindow: null,
           readyAt: null,
           deliveryAttention: null,
+          deliveryQuote: null,
         })),
         lines: sellerOrderIds.map((sellerOrderId) => ({
           id: ids.next<'OrderLine'>(),

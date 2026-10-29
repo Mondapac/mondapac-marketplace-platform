@@ -340,6 +340,7 @@
     "manufacturerBasisEnabled": true
   },
   "shipping": {
+    "fleetFallbackAbsorbCapMinor": 500,
     "fleets": {
       "fake_test": {
         "displayName": "Test Fleet",

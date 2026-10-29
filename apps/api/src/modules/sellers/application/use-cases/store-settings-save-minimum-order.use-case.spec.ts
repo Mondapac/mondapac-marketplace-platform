@@ -127,7 +127,6 @@ describe.each(MARKETS)('sellers store settings in $code (design 18)', (fixture) 
         minimumOrder: null,
         currency,
         maximumAmount: BigInt(max),
-        delivery: null,
       },
     });
   });
@@ -148,7 +147,6 @@ describe.each(MARKETS)('sellers store settings in $code (design 18)', (fixture) 
         minimumOrder: money(2500n, currency),
         currency,
         maximumAmount: BigInt(max),
-        delivery: null,
       },
     });
     expect(t.profiles.at(market(code), sellerId)).toMatchObject({

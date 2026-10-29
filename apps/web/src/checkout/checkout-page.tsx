@@ -30,8 +30,8 @@ import {
 import {
   DeliverySection,
   deliveryChoices,
-  quotesReady,
-  useDeliveryQuotes,
+  deliveryStatus,
+  useDeliveryOptions,
 } from './delivery-section.tsx';
 import { payOrder } from './actions.ts';
 import { firstFieldToFix, revealField } from './focus-error.ts';
@@ -58,6 +58,8 @@ export { inServiceArea } from './address-section.tsx';
 
 export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const t = useTranslations('checkout');
+  const methodName = (method: string | undefined) =>
+    t('method-label', { method: method ?? 'other' });
   const router = useRouter();
   const reason = useId();
   const {
@@ -90,12 +92,20 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     : freshReady
       ? { kind: 'new', postcode: newPostcode(fresh) }
       : null;
-  const { quotes, retry, replace } = useDeliveryQuotes(
+  const { states, retry, replace } = useDeliveryOptions(
     customer ? quoteAddress : null,
     sellerIds,
     online,
+    source.areaCheck === 'api',
   );
-  const choices = deliveryChoices(sellerIds, deliveryWish, quotes);
+  const [now] = useState(() => new Date());
+  const choices = deliveryChoices(
+    sellerIds,
+    deliveryWish,
+    states,
+    now,
+    viewCart(cart, cartSource)?.total.currency ?? 'AUD',
+  );
   const view = viewCart(cart, cartSource, discount, choices);
   const [method, setMethod] = useState<PaymentMethod>('card');
   const [cardName, setCardName] = useState('');
@@ -137,7 +147,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const addressLine = saved
     ? `${recipientName(saved)}: ${savedLine(saved, source.serviceArea.regionCode)}`
     : newAddressLine(fresh, source.serviceArea, t('new-address-summary'));
-  const ready = quotesReady(quotes);
+  const ready = deliveryStatus(sellerIds, states, choices);
   const block: PayBlock = !online
     ? 'offline'
     : !saved && !freshReady
@@ -146,11 +156,13 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         ? 'loading'
         : ready === 'problem'
           ? 'delivery'
-          : notice?.kind === 'stock-changed'
-            ? 'stock'
-            : stripeKey !== null && stripeCard.state !== 'ready'
-              ? 'card'
-              : null;
+          : ready === 'choose'
+            ? 'choose'
+            : notice?.kind === 'stock-changed'
+              ? 'stock'
+              : stripeKey !== null && stripeCard.state !== 'ready'
+                ? 'card'
+                : null;
 
   /** What Pay found: the order is placed, Stripe's page opens, or the page says what changed. */
   const settle = (answer: PayAnswer) => {
@@ -183,11 +195,12 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     }
     setPaying(false);
     if (answer.kind === 'price-changed') {
-      replace(answer.quotes);
+      replace(answer.options);
       setNotice({
         kind: 'price-changed',
         changes: answer.changes.map((c) => ({
           seller: cartSource.sellers[c.sellerId]?.name ?? c.sellerId,
+          method: methodName(choices[c.sellerId]?.method),
           was: c.was,
           now: c.now,
         })),
@@ -238,7 +251,12 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         confirmationToken: token,
         address: quoteAddress,
         lines: Object.fromEntries(Object.entries(cart).map(([id, line]) => [id, line.quantity])),
-        delivery: choices,
+        delivery: Object.fromEntries(
+          Object.entries(choices).map(([id, c]) => [
+            id,
+            { method: c.method, quoteId: c.quoteId, window: c.window, total: c.total },
+          ]),
+        ),
         discountCode: discount?.code ?? null,
         total: view.total,
       };
@@ -254,15 +272,11 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
           : null
         : block === 'delivery'
           ? document.querySelector<HTMLElement>('.dcard .dwarn2 button, .dcard .dwarn2 a')
-          : null;
+          : block === 'choose'
+            ? document.querySelector<HTMLElement>('.dcard input[type=radio]:not(:disabled)')
+            : null;
     if (target) revealField(target);
   };
-  const toAddress = () => {
-    const section = document.getElementById('checkout-address');
-    section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    section?.querySelector('h2')?.focus({ preventScroll: true });
-  };
-
   const title = (
     <div className="ctitle">
       <h1>{t('title')}</h1>
@@ -308,13 +322,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
               onFresh={setFresh}
               areaState={areaState}
             />
-            <DeliverySection
-              view={view}
-              quotes={quotes}
-              onRetry={retry}
-              onChangeAddress={toAddress}
-              addressLine={addressLine.replace(/^[^:]*: /, '')}
-            />
+            <DeliverySection view={view} states={states} onRetry={retry} />
           </div>
           <PaymentSection
             view={view}

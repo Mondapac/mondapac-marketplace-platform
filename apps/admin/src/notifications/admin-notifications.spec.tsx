@@ -47,6 +47,10 @@ const LISTED: readonly AdminNotice[] = [
     kind: 'admin.price-hold-opened',
     params: { recordId: OLD, offerId: NEW, direction: 'down' },
   }),
+  notice('0190a000-0000-7000-8000-000000000010', {
+    kind: 'admin.delivery-fallback-over-cap',
+    params: { sellerId: SELLER, sellerOrderId: OLD },
+  }),
 ];
 
 let counts: { unread: number; newest: AdminNotice | null }[] = [];
@@ -173,7 +177,7 @@ describe('AdminNotifications sound', () => {
 });
 
 describe('AdminNotifications drawer', () => {
-  it('shows all four kinds, linking only those with an admin page', async () => {
+  it('shows all five kinds, linking only those with an admin page', async () => {
     counts = [{ unread: 3, newest: notice(NEW) }];
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 3 unread' }));
@@ -187,6 +191,8 @@ describe('AdminNotifications drawer', () => {
     expect(seller.getAttribute('href')).toBe(`/sellers/${SELLER}`);
     const price = screen.getByRole('link', { name: /A price drop is held for approval/ });
     expect(price.getAttribute('href')).toBe('/price-holds');
+    const delivery = screen.getByRole('link', { name: /A different fleet was booked/ });
+    expect(delivery.getAttribute('href')).toBe('/delivery-settings');
   });
 
   it('marks a notice without a page read in place, and opens a linked one after marking it', async () => {
@@ -244,6 +250,7 @@ describe('admin notice bell', () => {
     expect(showsNoticeBell(['certification.seller-certificate.review'])).toBe(true);
     expect(showsNoticeBell(['catalog.product.approve', 'identity.role.manage'])).toBe(true);
     expect(showsNoticeBell(['sellers.seller-file.review'])).toBe(true);
+    expect(showsNoticeBell(['shipping.delivery-settings.view'])).toBe(true);
     expect(showsNoticeBell(['identity.role.manage'])).toBe(false);
     expect(showsNoticeBell([])).toBe(false);
   });
