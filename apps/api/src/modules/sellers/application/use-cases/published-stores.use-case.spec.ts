@@ -11,7 +11,6 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import type { DeliveryTerms } from '../../domain/delivery-terms';
 import type { ApprovedStoreFacts } from '../../domain/published-store';
 import type { AccessState } from '../../domain/seller-status';
 import { MarketConfigMinimumOrderPolicy } from '../../infrastructure/market-config-minimum-order-policy';
@@ -65,7 +64,6 @@ describe.each([
   let stores: ApprovedStoreFacts[];
   let facts: Map<string, ApprovedSellingFacts>;
   let states: Map<string, AccessState>;
-  let deliveries: Map<string, DeliveryTerms>;
   let minimums: Map<string, Money | null>;
   let failStores: boolean;
   let identityCalls: number;
@@ -84,7 +82,7 @@ describe.each([
     slug: string,
     name: string,
     firstApprovedAt: string,
-    options: { state?: AccessState; minimum?: Money | null; delivery?: DeliveryTerms } = {},
+    options: { state?: AccessState; minimum?: Money | null } = {},
   ): Id<'Seller'> => {
     const sellerId = ids.next<'Seller'>();
     stores.push({
@@ -98,7 +96,6 @@ describe.each([
     facts.set(sellerId, { hasIdentifier: true, operatingTimezone: zone, openClaimConflict: false });
     states.set(sellerId, options.state ?? 'approved');
     if (options.minimum !== undefined) minimums.set(sellerId, options.minimum);
-    if (options.delivery !== undefined) deliveries.set(sellerId, options.delivery);
     return sellerId;
   };
 
@@ -107,7 +104,6 @@ describe.each([
     facts = new Map();
     states = new Map();
     minimums = new Map();
-    deliveries = new Map();
     failStores = false;
     identityCalls = 0;
     identityDown = false;
@@ -154,15 +150,6 @@ describe.each([
             sellerIds.flatMap((id) =>
               minimums.has(id) ? [[id, minimums.get(id) ?? null] as const] : [],
             ),
-          ),
-        ),
-      approvedDeliveryTerms: (_market: MarketContext, sellerIds: readonly Id<'Seller'>[]) =>
-        Promise.resolve(
-          new Map(
-            sellerIds.flatMap((id) => {
-              const terms = deliveries.get(id);
-              return terms === undefined ? [] : [[id, terms] as const];
-            }),
           ),
         ),
     } as unknown as StoreProfileRepository;
@@ -346,28 +333,6 @@ describe.each([
         banner: null,
       }),
     );
-  });
-
-  it('shows the delivery terms a store has set, and leaves the field out of a store that has none', async () => {
-    const terms: DeliveryTerms = {
-      day: 'same-day',
-      fromMinute: 540,
-      toMinute: 720,
-      cutoffMinute: 480,
-    };
-    addStore('with-terms', 'With', '2026-01-10T00:00:00Z', { delivery: terms });
-    addStore('without-terms', 'Without', '2026-01-11T00:00:00Z');
-
-    expect(await read.execute(anonymous(), { slug: 'with-terms' })).toMatchObject(
-      ok({ slug: 'with-terms', delivery: terms }),
-    );
-    const bare = await read.execute(anonymous(), { slug: 'without-terms' });
-    expect(bare.ok && 'delivery' in bare.value).toBe(false);
-    const listed = await page();
-    expect(listed.items.map((store) => [store.slug, store.delivery])).toEqual([
-      ['with-terms', terms],
-      ['without-terms', undefined],
-    ]);
   });
 
   it.each([

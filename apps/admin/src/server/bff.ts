@@ -151,9 +151,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PUT: [
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
-    // The seller's flat delivery fee and the delivery methods the seller supports (shipping), set
-    // from the seller review page.
-    'shipping/admin/sellers/:id/flat-fee',
+    // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',

@@ -81,12 +81,7 @@ describe('seller page header', () => {
       within(chips)
         .getAllByRole('listitem')
         .map((li) => li.textContent),
-    ).toEqual([
-      'Halal certificate checked',
-      'Tomorrow 8am-12pm',
-      'A$40.00 minimum order',
-      'Delivery A$7.50',
-    ]);
+    ).toEqual(['Halal certificate checked', 'A$40.00 minimum order']);
   });
 
   it('keeps the performance rings off by default', async () => {

@@ -61,6 +61,7 @@ const body = (extra: object = {}) => ({
       storeName: 'Halal Corner',
       fulfilment: 'shipped',
       deliveredAt: null,
+      deliveryMethod: 'instant',
       shipping: aud('750'),
       lines: [
         {

@@ -5,6 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import {
   ADMIN_NOTICES_PER_MARKET,
+  ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
@@ -44,6 +45,11 @@ export type AdminReviewItem =
   | {
       readonly kind: typeof ADMIN_SELLER_REINSTATED_HOLD_REMAINS;
       readonly sellerId: string;
+    }
+  | {
+      readonly kind: typeof ADMIN_DELIVERY_FALLBACK_OVER_CAP;
+      readonly sellerOrderId: string;
+      readonly sellerId: string;
     };
 
 export interface RecordAdminReviewNoticeInput {
@@ -75,6 +81,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
       return { recordId: item.recordId, offerId: item.offerId, direction: item.direction };
     case ADMIN_SELLER_REINSTATED_HOLD_REMAINS:
       return { sellerId: item.sellerId };
+    case ADMIN_DELIVERY_FALLBACK_OVER_CAP:
+      return { sellerOrderId: item.sellerOrderId, sellerId: item.sellerId };
   }
 }
 
@@ -83,7 +91,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
  * queue of the Market, so one admin notice is written, shown to each admin who holds the kind's
  * permission when they read. From the subscriptions on `certification.seller-certification-
  * submitted.v1`, `catalog.product-revision-submitted.v1`, `sellers.business-file-submitted.v1` and
- * `pricing.price-hold-opened.v1` and `commission-payouts.seller-reinstated-hold-remains.v1`. A product revision makes a notice only while it is still
+ * `pricing.price-hold-opened.v1`, `commission-payouts.seller-reinstated-hold-remains.v1` and
+ * `shipping.delivery-fallback-over-cap.v1`. A product revision makes a notice only while it is still
  * pending (a seller revision may publish at once, and a platform one is the admins' own); this is
  * read through catalog before the unit. Written in the inbox unit, so a repeated delivery adds
  * nothing; the Market's oldest admin notices of the same kind beyond the cap leave in the same

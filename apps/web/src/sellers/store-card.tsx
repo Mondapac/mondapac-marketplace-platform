@@ -77,24 +77,12 @@ export function StoreCard({
         ))}
       </ul>
       <ul className="slc-d">
-        {store.deliveryWindow === undefined ? null : (
-          <li>
-            <Icon name="clock" />
-            {store.deliveryWindow}
-          </li>
-        )}
         {store.minimumUnknown ? null : (
           <li>
             <Icon name="bag" />
             {store.minimumOrder
               ? t('minimum', { amount: formatMoney(store.minimumOrder, locale) })
               : t('no-minimum')}
-          </li>
-        )}
-        {store.deliveryFee === undefined ? null : (
-          <li className="num">
-            <Icon name="truck" />
-            {t('delivery-fee', { fee: formatMoney(store.deliveryFee, locale) })}
           </li>
         )}
       </ul>

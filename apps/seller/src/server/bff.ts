@@ -48,8 +48,6 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/address',
     'sellers/my-file/slug',
     'sellers/my-file/identifier',
-    // The delivery day, window and order cut-off (package e).
-    'sellers/store-settings/delivery',
     'inventory/seller/sources-order',
     // The About text, the logo and the banner of the store (slice 12 part 2).
     'sellers/store-profile/about',

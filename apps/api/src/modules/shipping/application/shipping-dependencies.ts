@@ -9,19 +9,17 @@ import type { CarrierWebhookSignature } from './ports/carrier-webhook-signature'
 import type { DeliverySettingsRepository } from './ports/delivery-settings.repository';
 import type { FleetRegistry } from './ports/fleet-registry';
 import type { FleetSelectionRepository } from './ports/fleet-selection.repository';
-import type { FlatFeeRepository } from './ports/flat-fee.repository';
+import type { DeliveryQuoteRepository } from './ports/delivery-quote.repository';
+import type { FleetLedgerRepository } from './ports/fleet-ledger.repository';
 import type { PickupDirectory } from './ports/pickup-directory';
 import type { SellerDirectory } from './ports/seller-directory';
 import type { ShippingPolicy } from './ports/shipping-policy';
-import type { StoreDirectory } from './ports/store-directory';
 
 /** What every shipping use case may need; one object built from the same ports. */
 export interface ShippingDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly fees: FlatFeeRepository;
   readonly policy: ShippingPolicy;
   readonly sellers: SellerDirectory;
-  readonly stores: StoreDirectory;
   readonly audit: AuditWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
@@ -31,6 +29,10 @@ export interface ShippingDependencies {
   readonly selection: FleetSelectionRepository;
   readonly deliverySettings: DeliverySettingsRepository;
   readonly carrierPolicy: CarrierPolicy;
+  /** The delivery quotes shown to buyers and charged at checkout. */
+  readonly quotes: DeliveryQuoteRepository;
+  /** The fees fleets charge the platform and the bookings that replaced the charged fleet. */
+  readonly ledger: FleetLedgerRepository;
   readonly pickups: PickupDirectory;
   readonly webhookSignature: CarrierWebhookSignature;
   readonly securityEvents: SecurityEvents;

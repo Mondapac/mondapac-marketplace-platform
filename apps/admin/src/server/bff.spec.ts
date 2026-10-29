@@ -497,11 +497,9 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', password)).status).toBe(404);
   });
 
-  it('relays the flat delivery fee write for a seller UUID on PUT only', async () => {
-    expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(200);
-    expect((await call('PUT', 'shipping/admin/sellers/nope/flat-fee')).status).toBe(404);
-    expect((await call('POST', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
-    expect((await call('DELETE', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
+  it('no longer relays the retired flat delivery fee route', async () => {
+    expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
+    expect((await call('PUT', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(200);
   });
 
   it('relays the fleet-selection routes on their exact paths and methods only', async () => {

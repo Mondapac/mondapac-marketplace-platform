@@ -67,6 +67,12 @@ interface OrderRow {
     readonly deliveryWindowEnd: Date | null;
     readonly readyAt: Date | null;
     readonly deliveryAttention: string | null;
+    readonly deliveryQuoteId: string | null;
+    readonly deliveryQuoteFleet: string | null;
+    readonly deliveryQuoteAmount: bigint | null;
+    readonly deliveryMarginAmount: bigint | null;
+    readonly deliveryQuotedAt: Date | null;
+    readonly deliveryQuoteExpiresAt: Date | null;
   }[];
   readonly lines: readonly {
     readonly id: string;
@@ -114,6 +120,22 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
       : { start: toInstant(s.deliveryWindowStart), end: toInstant(s.deliveryWindowEnd) },
   readyAt: optionalInstant(s.readyAt),
   deliveryAttention: s.deliveryAttention as DeliveryAttention | null,
+  deliveryQuote:
+    s.deliveryQuoteId === null ||
+    s.deliveryQuoteFleet === null ||
+    s.deliveryQuoteAmount === null ||
+    s.deliveryMarginAmount === null ||
+    s.deliveryQuotedAt === null ||
+    s.deliveryQuoteExpiresAt === null
+      ? null
+      : {
+          quoteId: s.deliveryQuoteId,
+          fleet: s.deliveryQuoteFleet,
+          quoteAmount: s.deliveryQuoteAmount,
+          marginAmount: s.deliveryMarginAmount,
+          quotedAt: toInstant(s.deliveryQuotedAt),
+          expiresAt: toInstant(s.deliveryQuoteExpiresAt),
+        },
 });
 
 const toLine = (l: LineRow, currency: string): OrderLine => ({
@@ -227,6 +249,12 @@ export class PrismaOrderRepository implements OrderRepository {
         deliveryMethod: s.deliveryMethod,
         deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
         deliveryWindowEnd: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.end),
+        deliveryQuoteId: s.deliveryQuote?.quoteId ?? null,
+        deliveryQuoteFleet: s.deliveryQuote?.fleet ?? null,
+        deliveryQuoteAmount: s.deliveryQuote?.quoteAmount ?? null,
+        deliveryMarginAmount: s.deliveryQuote?.marginAmount ?? null,
+        deliveryQuotedAt: s.deliveryQuote === null ? null : toDate(s.deliveryQuote.quotedAt),
+        deliveryQuoteExpiresAt: s.deliveryQuote === null ? null : toDate(s.deliveryQuote.expiresAt),
       })),
     });
     await tx.orderingOrderLine.createMany({

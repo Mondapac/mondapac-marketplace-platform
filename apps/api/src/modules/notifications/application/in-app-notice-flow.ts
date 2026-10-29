@@ -20,9 +20,11 @@ import {
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
 } from '../../commission-payouts';
 import { PRICING_PRICE_HOLD_DECIDE, PRICING_PRICE_VIEW } from '../../pricing';
+import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../shipping';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
   ADMIN_NOTICE_KINDS,
+  ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -159,6 +161,11 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
   [ADMIN_SELLER_REINSTATED_HOLD_REMAINS]: {
     name: 'notifications.see-admin-reinstated-hold-notices',
     rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE.key] },
+  },
+  // The admin who works the delivery settings follows up a booking the platform paid more for.
+  [ADMIN_DELIVERY_FALLBACK_OVER_CAP]: {
+    name: 'notifications.see-admin-delivery-fallback-notices',
+    rule: { kind: 'permissions', allOf: [SHIPPING_DELIVERY_SETTINGS_VIEW.key] },
   },
 };
 

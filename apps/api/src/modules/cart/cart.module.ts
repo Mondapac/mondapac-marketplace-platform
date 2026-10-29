@@ -8,7 +8,6 @@ import { CatalogModule } from '../catalog';
 import { InventoryModule } from '../inventory';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
-import { ShippingModule } from '../shipping';
 import { CART_POLICY } from './application/ports/cart-policy';
 import { CART_REPOSITORY } from './application/ports/cart.repository';
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
@@ -78,7 +77,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * with checkout.
  */
 @Module({
-  imports: [CatalogModule, SellersModule, PricingModule, InventoryModule, ShippingModule],
+  imports: [CatalogModule, SellersModule, PricingModule, InventoryModule],
   controllers: [CartController],
   providers: [
     ...cartProviders,

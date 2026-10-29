@@ -417,7 +417,7 @@ describe('relay allowlist for the store settings', () => {
       ...(method === 'GET' ? {} : { body: '{}' }),
     });
 
-  it('relays the settings read (GET) and the delivery write (PUT) on their exact paths', async () => {
+  it('relays the settings read (GET) on its exact path, and no longer the delivery write', async () => {
     const upstream = upstreamOk();
     const read = await relay(
       config,
@@ -431,7 +431,7 @@ describe('relay allowlist for the store settings', () => {
       ['sellers', 'store-settings', 'delivery'],
       upstream,
     );
-    expect([read.status, write.status]).toEqual([200, 200]);
+    expect([read.status, write.status]).toEqual([200, 404]);
   });
 
   it('refuses every other method and shape near them', async () => {

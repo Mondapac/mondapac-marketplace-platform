@@ -109,7 +109,6 @@ const LEAD_KEYS = [
   'payments.connected-account.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
-  'shipping.flat-fee.view',
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',

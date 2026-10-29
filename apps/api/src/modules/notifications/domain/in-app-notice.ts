@@ -137,6 +137,12 @@ export const ADMIN_SELLER_FILE_SUBMITTED = 'admin.seller-file-submitted';
 export const ADMIN_PRICE_HOLD_OPENED = 'admin.price-hold-opened';
 /** A seller was reinstated but a hold on its payouts remains (package 6d). */
 export const ADMIN_SELLER_REINSTATED_HOLD_REMAINS = 'admin.seller-reinstated-hold-remains';
+/**
+ * A seller order was booked with another courier than the one the buyer was charged for and the
+ * platform's extra cost passed the Market's cap, or could not be worked out (delivery models,
+ * package 5). The notice holds ids only; the figures are in `shipping.delivery_fallbacks`.
+ */
+export const ADMIN_DELIVERY_FALLBACK_OVER_CAP = 'admin.delivery-fallback-over-cap';
 
 export const CERTIFICATE_SUBMISSIONS = ['initial', 'resubmission', 'renewal'] as const;
 export const SELLER_FILE_KINDS = ['onboarding', 'identity-change'] as const;
@@ -158,6 +164,11 @@ export interface SellerFileSubmittedParams {
   readonly fileKind: (typeof SELLER_FILE_KINDS)[number];
 }
 
+export interface DeliveryFallbackOverCapParams {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+}
+
 export interface PriceHoldOpenedParams {
   readonly recordId: Id<'PriceRecord'>;
   readonly offerId: Id<'Offer'>;
@@ -170,13 +181,15 @@ export type AdminNoticeKind =
   | typeof ADMIN_PRODUCT_REVISION_SUBMITTED
   | typeof ADMIN_SELLER_FILE_SUBMITTED
   | typeof ADMIN_PRICE_HOLD_OPENED
-  | typeof ADMIN_SELLER_REINSTATED_HOLD_REMAINS;
+  | typeof ADMIN_SELLER_REINSTATED_HOLD_REMAINS
+  | typeof ADMIN_DELIVERY_FALLBACK_OVER_CAP;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_FILE_SUBMITTED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
+  ADMIN_DELIVERY_FALLBACK_OVER_CAP,
 ];
 
 /**
@@ -191,7 +204,8 @@ export type NoticeParams =
   | SellerCertificateSubmittedParams
   | ProductRevisionSubmittedParams
   | SellerFileSubmittedParams
-  | PriceHoldOpenedParams;
+  | PriceHoldOpenedParams
+  | DeliveryFallbackOverCapParams;
 
 interface ParamShape {
   readonly ids: readonly string[];
@@ -258,6 +272,7 @@ const PARAM_SHAPES: Readonly<
     ids: ['recordId', 'offerId'],
     enums: { direction: HOLD_DIRECTIONS },
   },
+  [ADMIN_DELIVERY_FALLBACK_OVER_CAP]: { ids: ['sellerOrderId', 'sellerId'], enums: {} },
 };
 
 /**
