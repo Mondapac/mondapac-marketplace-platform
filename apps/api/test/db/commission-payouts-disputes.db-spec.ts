@@ -56,6 +56,10 @@ const CHECK = '23514';
 const NO_PRIVILEGE = '42501';
 const RESTRICT = '23001';
 const UNIQUE = '23505';
+// Generated ids are random hex, so a leak pattern such as /2000/ can match inside one by chance.
+const ANY_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+/** `value` as JSON with every UUID replaced, for leak checks that must not match inside an id. */
+const withoutIds = (value: unknown) => JSON.stringify(value).replace(ANY_UUID, '<id>');
 const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFn';
 
 describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) => {
@@ -707,7 +711,7 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
       expect(await noticesOf(sellerId)).toMatchObject([
         { kind: 'seller.order-disputed', params: { sellerOrderId, orderId } },
       ]);
-      expect(JSON.stringify(await noticesOf(sellerId))).not.toMatch(/fraud|dp_|2000/);
+      expect(withoutIds(await noticesOf(sellerId))).not.toMatch(/fraud|dp_|2000/);
 
       // The inquiry escalates: the same hold, no second notice.
       publish(disputeId, orderId, { fundsWithdrawn: true, fundsWithdrawnAt: T0 });

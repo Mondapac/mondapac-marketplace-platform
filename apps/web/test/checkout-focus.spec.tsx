@@ -19,28 +19,41 @@ import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type { CartSource, CheckoutSource } from '../src/storefront/types.ts';
 
 let path = '/checkout';
-const { deliveryAreaFor, deliveryQuotesFor, payOrder } = vi.hoisted(() => ({
+const { deliveryAreaFor, deliveryOptionsFor, payOrder } = vi.hoisted(() => ({
   deliveryAreaFor: vi.fn(),
-  deliveryQuotesFor: vi.fn(),
+  deliveryOptionsFor: vi.fn(),
   payOrder: vi.fn(),
 }));
-vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor, deliveryQuotesFor, payOrder }));
+vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor, deliveryOptionsFor, payOrder }));
 vi.mock('next/navigation', () => ({
   usePathname: () => path,
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
+/** The sample delivery options of the sellers asked, priced in the given currency. */
+async function optionsIn(currency: string, sellerIds: readonly string[]) {
+  const { sampleDeliveryOptions } = await import('../src/storefront/sample-delivery-options.ts');
+  const sellers = JSON.parse(
+    JSON.stringify(sampleDeliveryOptions(sellerIds)).replaceAll('"AUD"', JSON.stringify(currency)),
+  ) as unknown;
+  return { kind: 'ok', sellers };
+}
+
+/** Picks Instant (12.90 each in the sample) for every seller that offers it. */
+async function pickInstant() {
+  for (const radio of await screen.findAllByRole('radio', { name: /^Instant/ }))
+    if (radio.getAttribute('aria-disabled') !== 'true') fireEvent.click(radio);
+}
+
 const scrolled = vi.fn();
 beforeEach(() => {
   path = '/checkout';
   deliveryAreaFor.mockReset();
   payOrder.mockReset();
-  deliveryQuotesFor.mockReset();
-  deliveryQuotesFor.mockImplementation((request: { sellerIds: string[] }) =>
-    Promise.resolve(
-      Object.fromEntries(request.sellerIds.map((id) => [id, { kind: 'quote', express: null }])),
-    ),
+  deliveryOptionsFor.mockReset();
+  deliveryOptionsFor.mockImplementation((request: { sellerIds: string[] }) =>
+    optionsIn('AUD', request.sellerIds),
   );
   Element.prototype.scrollIntoView = scrolled;
   scrolled.mockReset();
@@ -75,10 +88,8 @@ const AU_CART: Cart = {
 const nzd = (amount: number) => ({ amount, currency: 'NZD' });
 const NZ_CART_SOURCE: CartSource = {
   items: { jam: { name: 'Feijoa jam', sellerId: 's', category: 'pantry', price: nzd(900) } },
-  sellers: {
-    s: { id: 's', name: 'Auckland Pantry', deliveryWindow: 'Today', deliveryFee: nzd(400) },
-  },
-  tax: { share: { numerator: 3, denominator: 23 }, includesDelivery: true },
+  sellers: { s: { id: 's', name: 'Auckland Pantry' } },
+  tax: { share: { numerator: 3, denominator: 23 } },
   sampleDiscounts: {},
 };
 const NZ_CART: Cart = { jam: { quantity: 2, unitPrice: nzd(900), limit: 12 } };
@@ -196,15 +207,20 @@ describe('sticky Pay bar', () => {
     const { container } = renderCheckout(SAMPLE_CHECKOUT, SAMPLE_CART_SOURCE, AU_CART);
     const bar = container.querySelector<HTMLElement>('.paybar')!;
     const pay = within(bar).getByRole('button', { name: /^Pay / });
-    expect(pay.textContent).toBe('Pay A$67.90');
+    await pickInstant();
+    expect(pay.textContent).toBe('Pay A$81.20');
     await waitFor(() => expect(pay.getAttribute('aria-disabled')).toBeNull());
   });
 
   it('shows the total in another currency for a synthetic NZD market', async () => {
+    deliveryOptionsFor.mockImplementation((request: { sellerIds: string[] }) =>
+      optionsIn('NZD', request.sellerIds),
+    );
     const { container } = renderCheckout(NZ_CHECKOUT, NZ_CART_SOURCE, NZ_CART);
     const bar = container.querySelector<HTMLElement>('.paybar')!;
+    await pickInstant();
     await waitFor(() => expect(within(bar).getByRole('button').textContent).toMatch(/^Pay NZ\$/));
-    expect(within(bar).getByRole('button').textContent).toBe('Pay NZ$22.00');
+    expect(within(bar).getByRole('button').textContent).toBe('Pay NZ$30.90');
     expect(bar.textContent).not.toContain('A$');
   });
 
@@ -213,6 +229,7 @@ describe('sticky Pay bar', () => {
     const { container } = renderCheckout(SAMPLE_CHECKOUT, SAMPLE_CART_SOURCE, AU_CART);
     const bar = container.querySelector<HTMLElement>('.paybar')!;
     const pay = within(bar).getByRole('button');
+    await pickInstant();
     await waitFor(() => expect(pay.getAttribute('aria-disabled')).toBeNull());
     fireEvent.click(pay);
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1));
@@ -225,7 +242,8 @@ describe('order summary disclosure', () => {
     const toggle = container.querySelector<HTMLButtonElement>('.cmob-btn')!;
     expect(toggle.textContent).toContain('Order summary');
     expect(toggle.textContent).toContain('2 items');
-    expect(toggle.textContent).toContain('A$67.90');
+    // No delivery is chosen yet, so the total is the items alone.
+    expect(toggle.textContent).toContain('A$55.40');
     const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!;
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(panel.hasAttribute('hidden')).toBe(true);

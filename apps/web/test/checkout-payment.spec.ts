@@ -4,6 +4,11 @@ import { parseCardSetup } from '../src/storefront/config.ts';
 
 const aud = (amount: number) => ({ amount, currency: 'AUD' });
 
+/** A seller's delivery as the browser sends it. */
+function choice(method: string, quoteId: string | null, total: number, window: unknown = null) {
+  return { method, quoteId, window, total: aud(total) };
+}
+
 /** A Pay request for the sample cart, changed by `over`. */
 function request(over: Record<string, unknown> = {}) {
   return {
@@ -11,9 +16,12 @@ function request(over: Record<string, unknown> = {}) {
     confirmationToken: null,
     address: { kind: 'saved', id: 'home' },
     lines: { brisket: 1, sourdough: 1 },
-    delivery: { kedron: { speed: 'express', fee: aud(1290) }, paddington: { speed: 'scheduled' } },
+    delivery: {
+      kedron: choice('instant', 'sample-kedron-instant', 1290),
+      paddington: choice('pickup', null, 0),
+    },
     discountCode: null,
-    total: aud(7330),
+    total: aud(5540 + 1290),
     ...over,
   };
 }
@@ -27,21 +35,24 @@ describe('Pay (server action, sample ordering)', () => {
     });
   });
 
-  it('says what changed before charging: an Express price, then stock', async () => {
-    expect(
-      await payOrder(request({ delivery: { kedron: { speed: 'express', fee: aud(990) } } })),
-    ).toEqual({
+  it('says what changed before charging: a delivery price, then stock', async () => {
+    const answer = await payOrder(
+      request({
+        delivery: { kedron: choice('instant', 'sample-kedron-instant', 990) },
+      }),
+    );
+    expect(answer).toMatchObject({
       kind: 'price-changed',
       changes: [{ sellerId: 'kedron', was: aud(990), now: aud(1290) }],
-      quotes: { kedron: { kind: 'quote', express: aud(1290) } },
     });
-    // Paddington takes no Express order now: its Scheduled fee applies.
+    // A method that is off at the seller cannot be paid for.
     expect(
-      await payOrder(request({ delivery: { paddington: { speed: 'express', fee: aud(900) } } })),
-    ).toMatchObject({
-      kind: 'price-changed',
-      changes: [{ sellerId: 'paddington', was: aud(900), now: aud(500) }],
-    });
+      await payOrder(
+        request({
+          delivery: { paddington: choice('same_day', 'sample-paddington-same_day', 990) },
+        }),
+      ),
+    ).toEqual({ kind: 'failed' });
   });
 
   it('answers failed for a Stripe token until ordering takes card payments', async () => {
@@ -63,18 +74,26 @@ describe('Pay (server action, sample ordering)', () => {
       request({ lines: { brisket: 100 } }),
       request({ lines: ['brisket'] }),
       request({ lines: { nothing: 1 } }),
-      request({ delivery: { kedron: { speed: 'drone' } } }),
-      request({ delivery: { kedron: { speed: 'express' } } }),
+      request({ delivery: { kedron: choice('drone', 'q1', 1290) } }),
+      request({ delivery: { kedron: choice('instant', null, 1290) } }),
+      request({ delivery: { kedron: choice('instant', 'a b', 1290) } }),
+      request({ delivery: { kedron: choice('pickup', 'q1', 0) } }),
+      request({ delivery: { kedron: choice('instant', 'q1', 1290, { start: 'x', end: 'y' }) } }),
+      request({ delivery: { kedron: choice('scheduled', 'q1', 790) } }),
+      request({ delivery: { kedron: choice('scheduled', 'q1', 790, { start: 'x', end: 'y' }) } }),
       request({
-        delivery: { kedron: { speed: 'express', fee: { amount: 1290, currency: 'NZD' } } },
+        delivery: {
+          kedron: { ...choice('instant', 'q1', 1290), total: { amount: 1290, currency: 'NZD' } },
+        },
       }),
+      request({ delivery: { kedron: { method: 'instant', quoteId: 'q1', window: null } } }),
       request({ total: { amount: -1, currency: 'AUD' } }),
       request({ total: { amount: 1, currency: 'aud' } }),
       request({ discountCode: '<b>' }),
       request({ lines: JSON.parse('{"__proto__": 1}') as unknown }),
       request({ lines: { constructor: 1 } }),
-      request({ delivery: JSON.parse('{"__proto__": {"speed": "scheduled"}}') as unknown }),
-      request({ delivery: { toString: { speed: 'scheduled' } } }),
+      request({ delivery: JSON.parse('{"__proto__": {"method": "pickup"}}') as unknown }),
+      request({ delivery: { toString: choice('pickup', null, 0) } }),
     ])
       expect(await payOrder(raw)).toEqual({ kind: 'failed' });
   });

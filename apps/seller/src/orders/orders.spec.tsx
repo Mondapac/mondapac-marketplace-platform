@@ -14,7 +14,7 @@ import { callApi } from '../api/client.ts';
 import { orderProblemOf } from './errors.ts';
 import { OrderDetail } from './order-detail.tsx';
 import { SellerOrders } from './seller-orders.tsx';
-import type { OrderLineView, OwnFee, SellerOrderPage, SellerOrderView } from './types.ts';
+import type { OrderLineView, SellerOrderPage, SellerOrderView } from './types.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -60,10 +60,7 @@ const page = (orders: SellerOrderView[], nextCursor: string | null = null): Sell
   sellerOrders: orders,
   nextCursor,
 });
-const fee: OwnFee = { sellerId: 's', amount: '500', currency: 'AUD' };
-
-const mountList = (initial = page([order()]), flatFee: OwnFee | null = fee) =>
-  render(wrap(<SellerOrders initial={initial} fee={flatFee} />));
+const mountList = (initial = page([order()])) => render(wrap(<SellerOrders initial={initial} />));
 
 const mountDetail = (
   initial = order(),
@@ -93,7 +90,7 @@ const shippedOrder = (over: Partial<SellerOrderView> = {}) =>
   });
 
 describe('SellerOrders list', () => {
-  it('shows reference, status, paid date, item count and total, and the fee notice', () => {
+  it('shows reference, status, paid date, item count and total', () => {
     mountList();
     expect(screen.getByRole('link', { name: /000000A1/ }).getAttribute('href')).toBe(
       '/orders/0190a000-0000-7000-8000-0000000000a1',
@@ -102,14 +99,14 @@ describe('SellerOrders list', () => {
     expect(screen.getByText('$35.00')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.getByText(/14 Oct.*10:00 am/)).toBeTruthy();
-    expect(screen.getByText(/Delivery fee on every order: \$5\.00/)).toBeTruthy();
+    expect(screen.queryByText(/Delivery fee on every order/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Mark ready' })).toBeNull();
   });
 
   it('shows the paid time in the seller zone', () => {
     render(
       <NextIntlClientProvider locale="en-AU" timeZone="Australia/Brisbane" messages={messages}>
-        <SellerOrders initial={page([order()])} fee={fee} />
+        <SellerOrders initial={page([order()])} />
       </NextIntlClientProvider>,
     );
     expect(screen.getByText(/14 Oct.*8:00 pm AEST/)).toBeTruthy();

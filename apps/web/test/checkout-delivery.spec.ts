@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { suggestPlaces } from '../src/checkout/address-search.ts';
-import { deliveryQuotesFor } from '../src/checkout/actions.ts';
-import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
+import { deliveryOptionsFor } from '../src/checkout/actions.ts';
+import { SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
 
 const places = SAMPLE_CHECKOUT.places;
 const lines = (found: ReturnType<typeof suggestPlaces>) =>
@@ -41,25 +41,45 @@ describe('address search suggestions (sample places)', () => {
   });
 });
 
-describe('delivery quotes (server action, sample courier)', () => {
-  it('gives an Express price to the sellers that take Express orders now', async () => {
-    const quotes = await deliveryQuotesFor({
+describe('delivery options (server action, sample stand-in)', () => {
+  it('gives each seller its four methods, with the state its sample is built to show', async () => {
+    const answer = await deliveryOptionsFor({
       address: { kind: 'saved', id: 'home' },
-      sellerIds: ['kedron', 'paddington', 'mt-gravatt'],
+      sellerIds: ['kedron', 'paddington', 'sunnybank', 'inala', 'logan-road'],
     });
-    expect(quotes).toEqual({
-      kedron: { kind: 'quote', express: { amount: 1290, currency: 'AUD' } },
-      paddington: { kind: 'quote', express: null },
-      'mt-gravatt': { kind: 'quote', express: null },
+    if (answer.kind !== 'ok') throw new Error('expected options');
+    const state = (id: string) =>
+      Object.fromEntries(
+        answer.sellers[id]!.methods.map((m) => [m.method, m.reason ?? m.price?.state]),
+      );
+    expect(state('kedron')).toEqual({
+      pickup: 'free',
+      instant: 'quoted',
+      same_day: 'quoted',
+      scheduled: 'quoted',
     });
-    expect(SAMPLE_CART_SOURCE.sellers.paddington!.express).toMatchObject({
-      kind: 'closed',
-      timeZone: 'Australia/Brisbane',
-    });
-    expect(SAMPLE_CART_SOURCE.sellers['mt-gravatt']!.express).toEqual({ kind: 'not-offered' });
+    expect(state('paddington')).toMatchObject({ same_day: 'past-cut-off' });
+    expect(state('sunnybank')).toMatchObject({ instant: 'seller-unsupported' });
+    expect(state('inala')).toMatchObject({ pickup: 'no-pickup-address' });
+    expect(state('logan-road')).toMatchObject({ instant: 'failed', scheduled: 'no-fleet' });
+    expect(answer.sellers.inala!.pickupPostcode).toBeNull();
   });
 
-  it('answers nothing for a request that is not one', async () => {
+  it('quotes GST inside the total, apart from it', async () => {
+    const answer = await deliveryOptionsFor({
+      address: { kind: 'saved', id: 'home' },
+      sellerIds: ['kedron'],
+    });
+    if (answer.kind !== 'ok') throw new Error('expected options');
+    const instant = answer.sellers.kedron!.methods.find((m) => m.method === 'instant')!;
+    expect(instant.price).toMatchObject({
+      state: 'quoted',
+      total: { amount: 1290, currency: 'AUD' },
+      tax: { amount: 117, currency: 'AUD' },
+    });
+  });
+
+  it('answers failed for a request that is not one', async () => {
     for (const raw of [
       null,
       'kedron',
@@ -73,12 +93,12 @@ describe('delivery quotes (server action, sample courier)', () => {
       { address: { kind: 'saved', id: 'home' }, sellerIds: ['kedron', 'kedron'] },
       { address: { kind: 'other', id: 'home' }, sellerIds: ['kedron'] },
     ])
-      expect(await deliveryQuotesFor(raw)).toEqual({});
+      expect(await deliveryOptionsFor(raw)).toEqual({ kind: 'failed' });
     expect(
-      await deliveryQuotesFor({
+      await deliveryOptionsFor({
         address: { kind: 'new', postcode: ' 4031 ' },
         sellerIds: ['inala'],
       }),
-    ).toEqual({ inala: { kind: 'quote', express: { amount: 1190, currency: 'AUD' } } });
+    ).toMatchObject({ kind: 'ok' });
   });
 });

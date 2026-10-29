@@ -16,10 +16,6 @@ import { SellerViewOrder } from '../src/modules/ordering/application/use-cases/s
 import { sellerOrderDocument } from '../src/modules/ordering/domain/order-document';
 import type { SellerOrderDetailView } from '../src/modules/ordering/domain/order-views';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
-import { SetFlatFee } from '../src/modules/shipping/application/use-cases/set-flat-fee.use-case';
-import { ViewFlatFee } from '../src/modules/shipping/application/use-cases/view-flat-fee.use-case';
-import { ViewStoreFlatFee } from '../src/modules/shipping/application/use-cases/view-store-flat-fee.use-case';
-import { ViewOwnFlatFee } from '../src/modules/shipping/application/use-cases/view-own-flat-fee.use-case';
 import { SHIPPING_STATUS } from '../src/modules/shipping/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
@@ -95,8 +91,6 @@ it('maps every refusal code of the shipping and seller order routes to its exact
   expect(SHIPPING_STATUS).toEqual({
     'validation.failed': 400,
     'shipping.seller-not-found': 404,
-    'shipping.fee-not-set': 404,
-    'shipping.store-fee-not-found': 404,
     'shipping.fleet-model-not-found': 404,
     'shipping.fleet-model-name-taken': 409,
     'shipping.fleet-model-conflict': 409,
@@ -105,10 +99,10 @@ it('maps every refusal code of the shipping and seller order routes to its exact
   });
   expect(ORDERING_STATUS['ordering.seller-order-not-found']).toBe(404);
   expect(ORDERING_STATUS['ordering.fulfilment-conflict']).toBe(409);
-  expect(ORDERING_STATUS['ordering.shipping-unavailable']).toBe(503);
+  expect(ORDERING_STATUS['ordering.delivery-quote-changed']).toBe(409);
 });
 
-describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s', (code) => {
+describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
   const currency = code === 'AU' ? 'AUD' : 'JPY';
   let app: NestExpressApplication | undefined;
   let clock: FixedClock;
@@ -143,15 +137,7 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
           .overrideProvider(SellerConfirmPickup)
           .useValue(stub('confirm-pickup'))
           .overrideProvider(SellerDeliverOrder)
-          .useValue(stub('deliver'))
-          .overrideProvider(SetFlatFee)
-          .useValue(stub('set-fee'))
-          .overrideProvider(ViewStoreFlatFee)
-          .useValue(stub('store-fee'))
-          .overrideProvider(ViewFlatFee)
-          .useValue(stub('view-fee'))
-          .overrideProvider(ViewOwnFlatFee)
-          .useValue(stub('own-fee')),
+          .useValue(stub('deliver')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'ship-seed-0001'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -230,7 +216,6 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
     };
   }
   const seller = () => sessionOf('seller', 1);
-  const admin = () => sessionOf('admin', 2);
 
   const call = (
     method: 'get' | 'post' | 'put',
@@ -245,7 +230,6 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
     return payload === undefined ? req : req.send(payload as object);
   };
   const ORDERS = '/ordering/seller/orders';
-  const FEE = `/shipping/admin/sellers/${SELLER}/flat-fee`;
 
   beforeEach(() => {
     fakes.reset();
@@ -582,114 +566,6 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
       expect(outside.body).toEqual({ delivers: false });
       expect(bad.status).toBe(400);
       expect(bad.body).toMatchObject({ code: 'validation.failed' });
-    });
-  });
-
-  describe('store flat fee (public)', () => {
-    it("answers a store's fee to a visitor with no session, as money strings, no-store", async () => {
-      await boot();
-      next = ok(money(995n, currency));
-
-      const response = await http()
-        .get('/shipping/stores/kedron-halal/flat-fee')
-        .set({ 'x-market-id': code, cookie: `__Host-session-customer-${code}=whatever` });
-
-      expect(response.status).toBe(200);
-      expect(response.headers['cache-control']).toBe('no-store');
-      expect(response.headers['set-cookie']).toBeUndefined();
-      expect(response.body).toEqual({ amount: '995', currency });
-      expect(calls).toEqual([{ name: 'store-fee', input: { slug: 'kedron-halal' } }]);
-    });
-
-    it('maps not found and unavailable, and refuses a request with no Market', async () => {
-      await boot();
-      next = err({ code: 'shipping.store-fee-not-found' });
-      const missing = await http()
-        .get('/shipping/stores/nobody/flat-fee')
-        .set({ 'x-market-id': code });
-      next = err({ code: 'shipping.unavailable' });
-      const down = await http()
-        .get('/shipping/stores/kedron-halal/flat-fee')
-        .set({ 'x-market-id': code });
-      const noMarket = await http().get('/shipping/stores/kedron-halal/flat-fee');
-
-      expect(missing.status).toBe(404);
-      expect(missing.body).toEqual({ statusCode: 404, code: 'shipping.store-fee-not-found' });
-      expect(down.status).toBe(503);
-      expect(down.body).toEqual({ statusCode: 503, code: 'shipping.unavailable' });
-      expect(noMarket.status).toBeGreaterThanOrEqual(400);
-      expect(calls).toHaveLength(2);
-    });
-  });
-
-  describe('flat shipping fee', () => {
-    it('lets an admin read and set a seller’s fee, passing the amount to the use case', async () => {
-      await boot();
-      const session = admin();
-      next = ok({ sellerId: SELLER, fee: money(995n, currency) });
-
-      const read = await call('get', 'admin', FEE, session);
-      expect(read.status).toBe(200);
-      expect(read.headers['cache-control']).toBe('no-store');
-      expect(read.body).toEqual({ sellerId: SELLER, amount: '995', currency });
-
-      const set = await call('put', 'admin', FEE, session, { amount: 995 });
-      expect(set.status).toBe(200);
-      expect(set.body).toEqual({ sellerId: SELLER, amount: '995', currency });
-      expect(calls).toEqual([
-        { name: 'view-fee', input: { sellerId: SELLER } },
-        { name: 'set-fee', input: { sellerId: SELLER, amount: 995 } },
-      ]);
-    });
-
-    it('refuses a set without CSRF, with a stray field and not as JSON', async () => {
-      await boot();
-      const session = admin();
-
-      expect(
-        (await call('put', 'admin', FEE, { cookie: session.cookie }, { amount: 1 })).status,
-      ).toBe(403);
-      const extra = await call('put', 'admin', FEE, session, { amount: 1, currency: 'USD' });
-      expect(extra.status).toBe(400);
-      expect(extra.body).toMatchObject({
-        details: { fields: [{ path: 'currency', code: 'unknown-field' }] },
-      });
-      const text = await http()
-        .put(FEE)
-        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
-        .set('content-type', 'text/plain')
-        .send('x');
-      expect(text.status).toBe(415);
-      expect(calls).toEqual([]);
-    });
-
-    it('maps invalid, unknown seller, no fee yet, unavailable and denied', async () => {
-      await boot();
-      const session = admin();
-      const put = () => call('put', 'admin', FEE, session, { amount: 1 });
-
-      next = err({ code: 'validation.failed', fields: [{ path: 'amount', code: 'range' }] });
-      expect((await put()).status).toBe(400);
-      next = err({ code: 'shipping.seller-not-found' });
-      expect((await put()).status).toBe(404);
-      next = err({ code: 'shipping.unavailable' });
-      expect((await put()).status).toBe(503);
-      next = err({ code: 'access.denied' });
-      expect((await put()).status).toBe(403);
-      next = err({ code: 'shipping.fee-not-set' });
-      const unset = await call('get', 'admin', FEE, session);
-      expect(unset.status).toBe(404);
-      expect(unset.body).toEqual({ statusCode: 404, code: 'shipping.fee-not-set' });
-    });
-
-    it('lets a seller read its own fee', async () => {
-      await boot();
-      next = ok({ sellerId: SELLER, fee: money(0n, currency) });
-
-      const own = await call('get', 'seller', '/shipping/seller/flat-fee', seller());
-      expect(own.status).toBe(200);
-      expect(own.body).toEqual({ sellerId: SELLER, amount: '0', currency });
-      expect(calls).toEqual([{ name: 'own-fee', input: {} }]);
     });
   });
 });

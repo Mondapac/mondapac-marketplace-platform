@@ -1,5 +1,5 @@
 import 'server-only';
-import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT, SAMPLE_TERMS } from './sample-cart.ts';
+import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import type {
   AccountOrder,
   AccountSource,
@@ -14,6 +14,17 @@ import type {
 // (handoffs/account.md); only this file goes when the pages are wired. Every value is a sample.
 
 const money = (amount: number): Money => ({ amount, currency: 'AUD' });
+
+/** What each sample seller's part paid for delivery, GST included (sample values). */
+const SAMPLE_DELIVERY_PAID: Readonly<Record<string, number>> = {
+  kedron: 750,
+  paddington: 500,
+  sunnybank: 600,
+  inala: 500,
+  moorooka: 550,
+  'mt-gravatt': 600,
+  'logan-road': 650,
+};
 
 function line(offerId: string, quantity: number): OrderLine {
   const item = SAMPLE_CART_SOURCE.items[offerId];
@@ -40,8 +51,8 @@ function part(
     sellerId,
     sellerName: seller.name,
     status,
-    deliveryWindow: seller.deliveryWindow,
-    deliveryFee: money(SAMPLE_TERMS[sellerId]?.fee ?? 500),
+    deliveryMethod: 'scheduled',
+    deliveryFee: money(SAMPLE_DELIVERY_PAID[sellerId] ?? 500),
     lines,
     ...extra,
   };

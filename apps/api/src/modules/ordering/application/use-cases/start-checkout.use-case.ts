@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { err } from '@mondapac/shared-kernel';
 import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -26,8 +25,6 @@ export class StartCheckout extends UseCase<
     whenSellerNotApproved: 'deny',
   };
 
-  readonly #logger = new Logger('StartCheckout');
-
   constructor(
     gate: UseCaseGate,
     private readonly deps: OrderingDependencies,
@@ -38,16 +35,6 @@ export class StartCheckout extends UseCase<
   protected async handle(context: CallContext, input: StartCheckoutInput) {
     const accountId = customerAccountId(context);
     if (accountId === null) return err({ code: 'access.denied' } as const);
-    const result = await startCheckout(this.deps, context, accountId, input);
-    if (!result.ok && result.error.code === 'ordering.shipping-unavailable') {
-      // A seller has no flat shipping fee: an admin must set one before anything can be sold.
-      this.#logger.warn({
-        msg: 'ordering.shipping-fee-missing',
-        marketId: context.market.marketId,
-        correlationId: context.correlationId,
-        sellerIds: result.error.sellerIds,
-      });
-    }
-    return result;
+    return startCheckout(this.deps, context, accountId, input);
   }
 }

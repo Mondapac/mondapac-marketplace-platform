@@ -35,11 +35,10 @@ export function unitOf(key: string): SellUnit | null {
 
 /**
  * The included-tax preview the live cart shows. A PLACEHOLDER, as in the sample: the cart read
- * gives no tax figure yet, and tax on delivery fees is not settled (tax adviser, 19 Oct 2026).
+ * gives no tax figure yet. Delivery is priced at checkout, so the cart shows items only.
  */
 export const LIVE_TAX_PREVIEW: IncludedTaxPreview = {
   share: { numerator: 1, denominator: 11 },
-  includesDelivery: true,
 };
 
 /** A cart line the buyer cannot buy now: its name when known, and its line id for Remove. */
@@ -152,9 +151,8 @@ function itemOf(
 
 /**
  * The cart of a `GET /cart` body. A seller group is shown with its store name, its minimum order
- * (only when the API says the minimum applies) and its flat delivery fee; a group without a fee
- * cannot be checked out, so its lines are set aside as not available, as are lines that are not
- * buyable or have no name. Null for a body that is not a cart.
+ * (only when the API says the minimum applies); delivery is priced at checkout. Lines that are
+ * not buyable or have no name are set aside as not available. Null for a body that is not a cart.
  */
 export function liveCartOf(body: unknown, photo: PhotoUrl | null): LiveCart | null {
   if (!isRecord(body) || !Array.isArray(body.groups)) return null;
@@ -166,7 +164,6 @@ export function liveCartOf(body: unknown, photo: PhotoUrl | null): LiveCart | nu
   for (const group of body.groups) {
     if (!isRecord(group) || !Array.isArray(group.lines)) continue;
     const sellerId = id(group.sellerId);
-    const fee = moneyOf(group.deliveryFee);
     const minimumOrder =
       isRecord(group.minimumOrder) &&
       (group.minimumOrder.state === 'met' || group.minimumOrder.state === 'below-minimum')
@@ -182,11 +179,8 @@ export function liveCartOf(body: unknown, photo: PhotoUrl | null): LiveCart | nu
       if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1) continue;
       const key = unitKey({ offerId, variantId });
       lineIds[key] = lineId;
-      const item =
-        sellerId === null || fee === null
-          ? null
-          : itemOf(line, sellerId, text(group.sellerName), photo);
-      if (item === null || sellerId === null || fee === null) {
+      const item = sellerId === null ? null : itemOf(line, sellerId, text(group.sellerName), photo);
+      if (item === null || sellerId === null) {
         unavailable.push({ key, lineId, name: displayOf(line.display, null)?.name ?? null });
         continue;
       }
@@ -194,9 +188,6 @@ export function liveCartOf(body: unknown, photo: PhotoUrl | null): LiveCart | nu
       sellers[sellerId] ??= {
         id: sellerId,
         name: text(group.sellerName) ?? '',
-        // No delivery promise in the backend yet: the window is left out where it would show.
-        deliveryWindow: '',
-        deliveryFee: fee,
         ...(minimumOrder === null ? {} : { minimumOrder }),
       };
       cart[key] = { quantity, unitPrice: item.price, limit: lineLimit(item.lowStock) };

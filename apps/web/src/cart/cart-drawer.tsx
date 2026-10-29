@@ -87,12 +87,6 @@ export function CartDrawer() {
                       <SellerLogo logo={seller.logo} />
                       <div>
                         <b id={`drawer-${seller.id}`}>{seller.name}</b>
-                        {seller.deliveryWindow ? (
-                          <small>
-                            <Icon name="truck" />
-                            {seller.deliveryWindow}
-                          </small>
-                        ) : null}
                       </div>
                     </div>
                     {group.shortfall.amount > 0 && seller.minimumOrder ? (
@@ -119,7 +113,11 @@ export function CartDrawer() {
                     </ul>
                     <div className="dsh">
                       <span>{t('delivery')}</span>
-                      <b className="num">{formatMoney(seller.deliveryFee, locale)}</b>
+                      <b className="num">
+                        {group.delivery
+                          ? formatMoney(group.delivery.total, locale)
+                          : t('delivery-at-checkout')}
+                      </b>
                     </div>
                   </section>
                 );

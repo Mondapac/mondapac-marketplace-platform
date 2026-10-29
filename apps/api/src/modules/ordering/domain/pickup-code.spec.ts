@@ -104,6 +104,7 @@ describe('markCollected', () => {
     deliveryWindow: null,
     readyAt: NOW,
     deliveryAttention: null,
+    deliveryQuote: null,
   };
 
   it('delivers a ready pickup order in one step, with no carrier', () => {
