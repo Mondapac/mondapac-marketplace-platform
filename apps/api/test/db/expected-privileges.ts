@@ -887,7 +887,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // writes `shipping.carrier-delivery-progressed.v1` and ordering records each one it handled.
     'shipping.carrier_bookings': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['carrier_status', 'progress', 'updated_at', 'version'],
+      columnUpdate: [
+        'carrier_status',
+        'pod_recorded_at',
+        'polled_at',
+        'progress',
+        'updated_at',
+        'version',
+      ],
     },
     'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Delivery models, package 3 (the fleet router): selection models are created and edited,

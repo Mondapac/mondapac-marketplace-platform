@@ -596,6 +596,11 @@
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },
+  {
+    "name": "shipping.carrier-tracking-links",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "shipping.charge-delivery", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.delivery-availability", "rule": "anonymous" },
@@ -605,6 +610,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "shipping.poll-fleet-status", "rule": "system" },
   {
     "name": "shipping.price-delivery",
     "rule": "own-resources",
@@ -612,6 +618,7 @@
   },
   { "name": "shipping.quote-deliveries", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
+  { "name": "shipping.receive-uber-webhook", "rule": "anonymous" },
   { "name": "shipping.record-fleet-fee", "rule": "system" },
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },

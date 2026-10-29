@@ -63,6 +63,7 @@ const SHIPMENT: ShipmentNotice = {
   sellerOrderId: id<'SellerOrder'>(0x21),
   carrier: 'Australia Post',
   trackingRef: 'AP123456789',
+  trackingUrl: null,
 };
 
 describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => {
@@ -370,6 +371,35 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
       expect(mail.text).toContain('Carrier: Australia Post');
       expect(mail.text).toContain('Tracking number: AP123456789');
       expect(mail.text).toContain(`${page}/${ORDER}`);
+    });
+
+    it('adds the fleet tracking link only when it is a plain https URL', async () => {
+      shipment = Promise.resolve(ok({ ...SHIPMENT, trackingUrl: 'https://track.example.com/d/1' }));
+      await shipped();
+      expect(sent[0]!.text).toContain('Track your delivery: https://track.example.com/d/1');
+
+      for (const bad of [
+        'http://track.example.com/d/1',
+        'javascript:alert(1)',
+        'https://u:p@track.example.com/',
+        '/relative',
+      ]) {
+        sent.length = 0;
+        shipment = Promise.resolve(ok({ ...SHIPMENT, trackingUrl: bad }));
+        await shipped();
+        expect(sent[0]!.text).not.toContain('Track your delivery');
+        expect(sent[0]!.text.split('\n').filter((l) => l.startsWith('Bcc:'))).toEqual([]);
+      }
+    });
+
+    it('keeps a link with a line break in it on one line', async () => {
+      shipment = Promise.resolve(
+        ok({ ...SHIPMENT, trackingUrl: 'https://track.example.com/\r\nBcc: a@evil.example' }),
+      );
+      await shipped();
+      const lines = sent[0]!.text.split('\n');
+      expect(lines.filter((l) => l.startsWith('Bcc:'))).toEqual([]);
+      expect(lines.filter((l) => l.startsWith('Track your delivery: https://'))).toHaveLength(1);
     });
 
     it('leaves out the tracking line when the seller gave none, and flattens text to one line', async () => {

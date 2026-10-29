@@ -17,6 +17,10 @@ import {
   CARRIER_WEBHOOK_SIGNATURE,
   type CarrierWebhookSignature,
 } from '../application/ports/carrier-webhook-signature';
+import {
+  UBER_WEBHOOK_SIGNATURE,
+  type FleetWebhookSignature,
+} from '../application/ports/fleet-webhook-signature';
 import { FLEET_REGISTRY, type FleetRegistry } from '../application/ports/fleet-registry';
 import {
   DELIVERY_SETTINGS_REPOSITORY,
@@ -49,6 +53,7 @@ import { DriveHttpClient } from './drive-http-client';
 import { FakeTestCarrier } from './fake-test-carrier';
 import { capabilitiesOf } from './fleet-config';
 import { StaticFleetRegistry } from './fleet-registry';
+import { UberWebhookSignature } from './uber-webhook-signature';
 import { DriveWebhookSignature } from './drive-webhook-signature';
 import { MondapacDriveCarrier } from './mondapac-drive-carrier';
 import { PrismaCarrierBookingRepository } from './prisma-carrier-booking.repository';
@@ -177,6 +182,12 @@ export const shippingProviders: readonly FactoryProvider[] = [
     inject: [APP_CONFIG, CLOCK],
     useFactory: (config: AppConfig, clock: Clock): CarrierWebhookSignature =>
       new DriveWebhookSignature(config.mondapacDrive.webhookSecrets, clock),
+  },
+  {
+    provide: UBER_WEBHOOK_SIGNATURE,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): FleetWebhookSignature =>
+      new UberWebhookSignature(config.uberDirect.webhookSecrets),
   },
   {
     provide: PICKUP_DIRECTORY,

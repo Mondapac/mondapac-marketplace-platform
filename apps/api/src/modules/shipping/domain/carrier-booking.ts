@@ -35,6 +35,15 @@ export interface CarrierBooking {
   readonly carrierStatus: string;
   /** Raised by each change; the version of the event that announces it. */
   readonly version: number;
+  /** The fleet's tracking link for the buyer: https only ({@link safeTrackingUrl}), else null. */
+  readonly trackingUrl: string | null;
+  /**
+   * When the fleet reported that a proof of delivery exists. Only the instant is kept: never the
+   * photo, the signature image or the recipient's name (personal data stays with the fleet).
+   */
+  readonly podRecordedAt: Temporal.Instant | null;
+  /** When the status poll last asked the fleet; null if never. Not a business change. */
+  readonly polledAt: Temporal.Instant | null;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
 }
@@ -47,6 +56,24 @@ const RANK: Readonly<Record<CarrierProgress, number>> = {
   exception: 2,
   cancelled: 2,
 };
+
+/**
+ * A tracking link as it may be stored and shown: a plain `https` URL, no credentials, at most 500
+ * characters, re-serialised. Anything else (another scheme, `javascript:`, a relative path) is
+ * null. Adapters check their own host allow-list first; this is the scheme check every reader
+ * repeats.
+ */
+export function safeTrackingUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 500) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return null;
+    const text = url.toString();
+    return text.length <= 500 && !/\s/u.test(text) ? text : null;
+  } catch {
+    return null;
+  }
+}
 
 export const isFinalProgress = (progress: CarrierProgress): boolean => RANK[progress] === 2;
 
@@ -82,7 +109,12 @@ export function progressOfFleetStatus(status: FleetDeliveryStatus): CarrierProgr
  */
 export function advanceBooking(
   booking: CarrierBooking,
-  report: { readonly progress: CarrierProgress; readonly carrierStatus: string },
+  report: {
+    readonly progress: CarrierProgress;
+    readonly carrierStatus: string;
+    /** The fleet says a proof of delivery exists (the flag only, never its content). */
+    readonly proofOfDelivery?: boolean;
+  },
   now: Temporal.Instant,
 ): CarrierBooking | null {
   const from = booking.progress;
@@ -95,6 +127,8 @@ export function advanceBooking(
     ...booking,
     progress: to,
     carrierStatus: report.carrierStatus,
+    podRecordedAt:
+      booking.podRecordedAt ?? (to === 'delivered' && report.proofOfDelivery === true ? now : null),
     version: booking.version + 1,
     updatedAt: now,
   };
@@ -109,6 +143,7 @@ export function newBooking(input: {
   readonly fleet: FleetCode;
   readonly carrierReference: string;
   readonly carrierStatus: string;
+  readonly trackingUrl?: string | null;
   readonly now: Temporal.Instant;
 }): CarrierBooking {
   return {
@@ -121,6 +156,9 @@ export function newBooking(input: {
     progress: 'booked',
     carrierStatus: input.carrierStatus,
     version: 1,
+    trackingUrl: safeTrackingUrl(input.trackingUrl),
+    podRecordedAt: null,
+    polledAt: null,
     createdAt: input.now,
     updatedAt: input.now,
   };
