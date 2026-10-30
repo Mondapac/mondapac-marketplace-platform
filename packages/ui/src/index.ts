@@ -17,6 +17,7 @@ export {
   sidebarCollapsed,
   navTrail,
   navSections,
+  splitNavPlacement,
   navOpenGroups,
   NAV_OPEN_COOKIE,
   visibleNavItems,

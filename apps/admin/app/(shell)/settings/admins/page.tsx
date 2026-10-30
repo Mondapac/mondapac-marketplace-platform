@@ -1,13 +1,12 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, NoAccess } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { AdminShell } from '../../../src/server/admin-shell.tsx';
-import { serverGet } from '../../../src/server/server-fetch.ts';
-import { requireSession } from '../../../src/server/session.ts';
-import { InviteAdminButton } from '../../../src/team/invite-admin-button.tsx';
-import { TeamTable } from '../../../src/team/team-table.tsx';
-import { TeamTabs, tabLabels } from '../../../src/team/team-tabs.tsx';
-import type { PlatformRole, TeamPage } from '../../../src/team/types.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
+import { requireSession } from '../../../../src/server/session.ts';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
+import { InviteAdminButton } from '../../../../src/team/invite-admin-button.tsx';
+import { TeamTable } from '../../../../src/team/team-table.tsx';
+import type { PlatformRole, TeamPage } from '../../../../src/team/types.ts';
 
 const VIEW_PERMISSION = 'identity.admin-account.view';
 const ROLES_PERMISSION = 'identity.platform-role.view';
@@ -17,7 +16,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function generateMetadata() {
   const t = await getTranslations();
-  return { title: t('identity.members.title.admin') };
+  return { title: t('settings.hub.link.admins') };
 }
 
 export default async function TeamPageRoute({
@@ -32,24 +31,19 @@ export default async function TeamPageRoute({
   }
   if (!gate.session.permissionKeys.includes(VIEW_PERMISSION)) {
     return (
-      <AdminShell
-        session={gate.session}
-        activeId="home"
-        title={t('identity.members.no-access.title')}
-      >
-        <h1 className="mb-2 text-2xl font-semibold">{t('identity.members.no-access.title')}</h1>
-        <p className="text-fg-muted">{t('identity.members.no-access.body')}</p>
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/">
-            {t('identity.members.no-access.action')}
-          </a>
-        </p>
-      </AdminShell>
+      <SettingsShell session={gate.session} linkId="admins" title={t('settings.hub.link.admins')}>
+        <NoAccess
+          title={t('identity.members.no-access.title')}
+          body={t('identity.members.no-access.body')}
+          backHref="/settings"
+          backLabel={t('settings.sub.back')}
+        />
+      </SettingsShell>
     );
   }
   const { after: rawAfter } = await searchParams;
   const after = typeof rawAfter === 'string' && UUID.test(rawAfter) ? rawAfter : null;
-  const title = t('identity.members.title.admin');
+  const title = t('settings.hub.link.admins');
   // Each action shows only to an actor who holds its key; the server checks every command again.
   const keys = new Set(gate.session.permissionKeys);
   const canAssign = keys.has(ASSIGN_PERMISSION);
@@ -67,16 +61,15 @@ export default async function TeamPageRoute({
   // Without the role list the role actions are left out, not shown broken.
   const roles = rolesResult?.kind === 'ok' ? rolesResult.body.items : undefined;
   return (
-    <AdminShell session={gate.session} activeId="team" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <TeamTabs active="admins" labels={keys.has(ROLES_PERMISSION) ? tabLabels(t) : null} />
+    <SettingsShell session={gate.session} linkId="admins" title={title}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        {result.kind === 'ok' && canInvite && roles !== undefined ? (
+          <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
+        ) : null}
+      </div>
       {result.kind === 'ok' ? (
         <>
-          {canInvite && roles !== undefined ? (
-            <div className="mb-4 flex justify-end">
-              <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
-            </div>
-          ) : null}
           <TeamTable
             page={result.body}
             after={after}
@@ -87,7 +80,7 @@ export default async function TeamPageRoute({
             <p className="mt-4">
               <a
                 className="font-medium text-link underline"
-                href={`/team?after=${result.body.next}`}
+                href={`/settings/admins?after=${result.body.next}`}
               >
                 {t('identity.members.next-page')}
               </a>
@@ -97,6 +90,6 @@ export default async function TeamPageRoute({
       ) : (
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       )}
-    </AdminShell>
+    </SettingsShell>
   );
 }

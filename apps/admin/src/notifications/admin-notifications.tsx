@@ -48,7 +48,7 @@ function hrefOf(notice: AdminNotice): string | null {
     return `/sellers/${notice.params.sellerId}`;
   }
   if (notice.kind === PRICE_HOLD_OPENED) return '/price-holds';
-  if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/delivery-settings';
+  if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/settings/delivery';
   return null;
 }
 

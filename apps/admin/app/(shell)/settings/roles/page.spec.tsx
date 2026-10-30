@@ -3,8 +3,8 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../messages/en.json';
-import type { AdminSession } from '../../../src/server/session.ts';
+import messages from '../../../../messages/en.json';
+import type { AdminSession } from '../../../../src/server/session.ts';
 import RolesPageRoute from './page.tsx';
 import RolePageRoute from './[roleId]/page.tsx';
 
@@ -24,10 +24,10 @@ vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
 }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
-vi.mock('../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
-vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
-vi.mock('../../../src/roles/member-counts.ts', () => ({ memberCounts: mocks.counts }));
-vi.mock('../../../src/roles/roles-table.tsx', () => ({
+vi.mock('../../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
+vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
+vi.mock('../../../../src/roles/member-counts.ts', () => ({ memberCounts: mocks.counts }));
+vi.mock('../../../../src/roles/roles-table.tsx', () => ({
   RolesTable: ({
     roles,
     members,
@@ -42,16 +42,16 @@ vi.mock('../../../src/roles/roles-table.tsx', () => ({
     </ul>
   ),
 }));
-vi.mock('../../../src/roles/role-view.tsx', () => ({
+vi.mock('../../../../src/roles/role-view.tsx', () => ({
   RoleView: ({ role }: { readonly role: { readonly roleId: string } }) => (
     <h1>view {role.roleId}</h1>
   ),
 }));
-vi.mock('../../../src/roles/roles-page-gate.tsx', () => ({
+vi.mock('../../../../src/roles/roles-page-gate.tsx', () => ({
   RolesNoAccess: () => <p>No access</p>,
 }));
-vi.mock('../../../src/server/admin-shell.tsx', () => ({
-  AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
+vi.mock('../../../../src/server/settings-shell.tsx', () => ({
+  SettingsShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
 }));
 
 const VIEW = 'identity.platform-role.view';

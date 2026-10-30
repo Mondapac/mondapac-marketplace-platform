@@ -168,7 +168,7 @@ describe('CreditForm summary', () => {
       true,
     );
     expect(screen.getByRole('link', { name: 'Open the wallet switch' }).getAttribute('href')).toBe(
-      '/wallet',
+      '/settings/wallet',
     );
   });
 
@@ -511,7 +511,7 @@ describe('CreditForm: unusual data from the server', () => {
     mount();
     expect(
       (await screen.findByRole('link', { name: 'Open the wallet switch' })).getAttribute('href'),
-    ).toBe('/wallet');
+    ).toBe('/settings/wallet');
   });
 
   it('does not offer the form for a currency it does not know', async () => {

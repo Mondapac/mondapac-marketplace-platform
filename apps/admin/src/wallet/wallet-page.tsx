@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { AdminShell } from '../server/admin-shell.tsx';
 import { requireSession, type AdminSession } from '../server/session.ts';
+import { SettingsShell } from '../server/settings-shell.tsx';
 
 /**
  * The frame of a wallet page: session gate, shell, title and the intro lines, and the no-access
@@ -15,9 +16,13 @@ export async function WalletPage({
   intro,
   anyOf,
   stepUpNote,
+  settingsLinkId,
   body,
 }: {
+  /** The menu item the page belongs to (ignored when the page is a settings page). */
   readonly activeId: string;
+  /** Set for a page under Settings (the wallet switch): it then uses the settings shell. */
+  readonly settingsLinkId?: string;
   readonly title: string;
   readonly intro: string;
   readonly anyOf: readonly string[];
@@ -32,8 +37,18 @@ export async function WalletPage({
   }
   const keys = new Set(gate.session.permissionKeys);
   const allowed = anyOf.some((key) => keys.has(key));
-  return (
-    <AdminShell session={gate.session} activeId={activeId} title={title}>
+  const shell = (children: ReactNode) =>
+    settingsLinkId === undefined ? (
+      <AdminShell session={gate.session} activeId={activeId} title={title}>
+        {children}
+      </AdminShell>
+    ) : (
+      <SettingsShell session={gate.session} linkId={settingsLinkId} title={title}>
+        {children}
+      </SettingsShell>
+    );
+  return shell(
+    <>
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
       {allowed ? (
         <div className="flex flex-col gap-4">
@@ -53,6 +68,6 @@ export async function WalletPage({
           </p>
         </>
       )}
-    </AdminShell>
+    </>,
   );
 }

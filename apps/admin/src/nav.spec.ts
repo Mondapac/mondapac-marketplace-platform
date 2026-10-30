@@ -18,9 +18,9 @@ describe('admin nav: Content', () => {
 });
 
 describe('admin nav: Wallet', () => {
-  it('lists the switch for wallet.settings.view and the credit pages for wallet.credit.view', () => {
-    expect(ids(['wallet.settings.view'])).toEqual(['home', 'wallet-settings']);
+  it('lists the credit pages for wallet.credit.view; the switch is a settings page', () => {
     expect(ids(['wallet.credit.view'])).toEqual(['home', 'wallet-credits', 'wallet-requests']);
+    expect(ids(['wallet.settings.view'])).toEqual(['home', 'settings']);
   });
 
   it('is hidden without the keys, and the manage keys alone show nothing', () => {
@@ -30,13 +30,86 @@ describe('admin nav: Wallet', () => {
     );
   });
 
-  it('puts the three items in Money with their routes and icons', () => {
+  it('puts the two credit items in Money with their routes and icons', () => {
     const wallet = adminNav.items.filter((item) => item.id.startsWith('wallet-'));
     expect(wallet.map((item) => [item.id, item.href, item.icon, item.group])).toEqual([
-      ['wallet-settings', '/wallet', 'wallet', 'money'],
       ['wallet-credits', '/wallet/credits', 'receipt', 'money'],
       ['wallet-requests', '/wallet/credit-requests', 'inbox', 'money'],
     ]);
+  });
+});
+
+describe('admin nav: daily work only', () => {
+  it('keeps exactly the work items in the menu, in this order', () => {
+    expect(
+      adminNav.items.filter((item) => item.placement !== 'footer').map((item) => item.id),
+    ).toEqual([
+      'home',
+      'offer-reviews',
+      'price-holds',
+      'content',
+      'sellers',
+      'orders',
+      'customers',
+      'payout-accounts',
+      'disputes',
+      'wallet-credits',
+      'wallet-requests',
+    ]);
+  });
+
+  it('holds no rarely-changed settings page, and no empty Platform group', () => {
+    const all = new Set(adminNav.items.map((item) => item.id));
+    for (const gone of ['delivery-settings', 'fleet-selection', 'wallet-settings', 'team']) {
+      expect(all.has(gone), gone).toBe(false);
+    }
+    expect((adminNav.groups ?? []).map((group) => group.id)).not.toContain('platform');
+    expect(adminNav.items.every((item) => item.group !== 'platform')).toBe(true);
+  });
+});
+
+describe('admin nav: Settings', () => {
+  const settings = adminNav.items.find((item) => item.id === 'settings');
+
+  it('is one item pinned to the sidebar footer, with the sliders icon, to the hub', () => {
+    expect(adminNav.items.filter((item) => item.placement === 'footer')).toHaveLength(1);
+    expect(settings).toMatchObject({
+      href: '/settings',
+      icon: 'sliders',
+      labelKey: 'nav.settings',
+      placement: 'footer',
+    });
+    expect(settings?.group).toBeUndefined();
+  });
+
+  it('shows with the view key of any one settings page', () => {
+    for (const key of [
+      'notifications.support-contact.view',
+      'assistant.settings.view',
+      'shipping.delivery-settings.view',
+      'shipping.fleet-selection.view',
+      'wallet.settings.view',
+      'identity.admin-account.view',
+      'identity.platform-role.view',
+    ]) {
+      expect(ids([key]), key).toContain('settings');
+    }
+  });
+
+  it('is hidden without a view key; manage keys and other pages alone do not show it', () => {
+    expect(ids([])).not.toContain('settings');
+    expect(
+      ids([
+        'notifications.support-contact.manage',
+        'shipping.delivery-settings.manage',
+        'storefront.slide.read',
+        'ordering.order.view',
+      ]),
+    ).not.toContain('settings');
+  });
+
+  it('is the last visible item', () => {
+    expect(ids(['ordering.order.view', 'wallet.settings.view']).at(-1)).toBe('settings');
   });
 });
 

@@ -1,16 +1,16 @@
 import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { FleetSelectionPanel } from '../../../src/fleet-selection/fleet-selection-panel.tsx';
+import { FleetSelectionPanel } from '../../../../src/fleet-selection/fleet-selection-panel.tsx';
 import {
   FLEET_MANAGE_PERMISSION,
   FLEET_SELECTION_PATH,
   FLEET_VIEW_PERMISSION,
   type Selection,
-} from '../../../src/fleet-selection/types.ts';
-import { AdminShell } from '../../../src/server/admin-shell.tsx';
-import { serverGet } from '../../../src/server/server-fetch.ts';
-import { requireSession } from '../../../src/server/session.ts';
+} from '../../../../src/fleet-selection/types.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
+import { requireSession } from '../../../../src/server/session.ts';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -26,11 +26,11 @@ export default async function FleetSelectionPage() {
   const title = t('fleets.title');
   const { permissionKeys, csrfToken } = gate.session;
   const shell = (body: React.ReactNode) => (
-    <AdminShell session={gate.session} activeId="fleet-selection" title={title}>
+    <SettingsShell session={gate.session} linkId="fleets" title={title}>
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
       <p className="mb-6 max-w-prose text-fg-muted">{t('fleets.intro')}</p>
       {body}
-    </AdminShell>
+    </SettingsShell>
   );
   if (!permissionKeys.includes(FLEET_VIEW_PERMISSION)) {
     return shell(

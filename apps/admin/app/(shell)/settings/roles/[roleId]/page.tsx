@@ -1,13 +1,13 @@
 import { LoadError } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { RoleEditor } from '../../../../src/roles/role-editor.tsx';
-import { RoleView } from '../../../../src/roles/role-view.tsx';
-import { RolesNoAccess } from '../../../../src/roles/roles-page-gate.tsx';
-import type { RoleCatalogue } from '../../../../src/roles/types.ts';
-import { AdminShell } from '../../../../src/server/admin-shell.tsx';
-import { serverGet } from '../../../../src/server/server-fetch.ts';
-import { requireSession } from '../../../../src/server/session.ts';
+import { RoleEditor } from '../../../../../src/roles/role-editor.tsx';
+import { RoleView } from '../../../../../src/roles/role-view.tsx';
+import { RolesNoAccess } from '../../../../../src/roles/roles-page-gate.tsx';
+import type { RoleCatalogue } from '../../../../../src/roles/types.ts';
+import { serverGet } from '../../../../../src/server/server-fetch.ts';
+import { requireSession } from '../../../../../src/server/session.ts';
+import { SettingsShell } from '../../../../../src/server/settings-shell.tsx';
 
 const VIEW_PERMISSION = 'identity.platform-role.view';
 const EDIT_PERMISSION = 'identity.platform-role.edit';
@@ -37,10 +37,10 @@ export default async function RolePageRoute({
   const title = t('identity.members.title.admin');
   if (result.kind !== 'ok') {
     return (
-      <AdminShell session={gate.session} activeId="team" title={title}>
+      <SettingsShell session={gate.session} linkId="roles" title={title} nested>
         <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
-      </AdminShell>
+      </SettingsShell>
     );
   }
   // Another Market's or an unknown id looks the same: not found (ux B5).
@@ -49,7 +49,7 @@ export default async function RolePageRoute({
   const keys = gate.session.permissionKeys;
   if (role.kind === 'custom' && role.actions.edit.allowed && keys.includes(EDIT_PERMISSION)) {
     return (
-      <AdminShell session={gate.session} activeId="team" title={title}>
+      <SettingsShell session={gate.session} linkId="roles" title={title} nested>
         <RoleEditor
           // A new version remounts the form, so a refresh after a save shows the saved state.
           key={role.version}
@@ -59,16 +59,16 @@ export default async function RolePageRoute({
           initialName={role.name ?? ''}
           initialKeys={role.permissionKeys}
         />
-      </AdminShell>
+      </SettingsShell>
     );
   }
   return (
-    <AdminShell session={gate.session} activeId="team" title={title}>
+    <SettingsShell session={gate.session} linkId="roles" title={title} nested>
       <RoleView
         role={role}
         catalogue={result.body}
         canDuplicate={keys.includes(CREATE_PERMISSION)}
       />
-    </AdminShell>
+    </SettingsShell>
   );
 }

@@ -139,7 +139,7 @@ export function RoleEditor({
       } else {
         // The page of the new role shows the outcome.
         toast.flash('success', t('editor.saved'));
-        router.push(`/roles/${result.body.roleId}`);
+        router.push(`/settings/roles/${result.body.roleId}`);
       }
     });
   }
@@ -158,14 +158,14 @@ export function RoleEditor({
         fail(result.failure);
         return;
       }
-      router.push('/roles');
+      router.push('/settings/roles');
     });
   }
 
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-5">
       <div className="flex flex-col items-start gap-2">
-        <BackLink href="/roles" label={t('back')} />
+        <BackLink href="/settings/roles" label={t('back')} />
         <h1 className="break-words text-2xl font-semibold">
           {editing ? t('editor.title-edit') : t('editor.title-create')}
         </h1>
