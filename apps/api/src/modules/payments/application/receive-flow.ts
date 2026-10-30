@@ -202,6 +202,9 @@ export async function receiveStripeEvent(
       ) {
         return err({ code: 'validation.failed' });
       }
+    } else if (event.type === 'balance_settings.updated') {
+      // The account's payout settings; nothing of them is read from the payload.
+      if (object.object !== 'balance_settings') return err({ code: 'validation.failed' });
     } else if (object.object !== 'capability' || object.account !== account) {
       return err({ code: 'validation.failed' });
     }
