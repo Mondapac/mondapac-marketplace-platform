@@ -1276,6 +1276,7 @@ figma.ui.onmessage = async function (msg) {
     else if (msg.type === 'density') await densitySelection(msg.density);
     else if (msg.type === 'upgrade') await upgradeModes();
     else if (msg.type === 'audit') await auditFile();
+    else if (msg.type === 'proposal') await buildProposal(msg.key);
     else if (msg.type === 'export') await exportTokens(msg.version || SPEC.version);
     else if (msg.type === 'close') figma.closePlugin();
   } catch (e) {
