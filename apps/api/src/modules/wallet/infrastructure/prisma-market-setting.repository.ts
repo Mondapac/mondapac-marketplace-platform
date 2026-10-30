@@ -17,11 +17,13 @@ const toRecord = (row: {
   readonly reasonCode: string | null;
   readonly updatedAt: Date;
   readonly updatedByAccountId: string;
+  readonly version: number;
 }): MarketSettingRecord => ({
   status: row.status as WalletStatus,
   reason: row.reasonCode as WalletStatusReason | null,
   updatedAt: Temporal.Instant.fromEpochMilliseconds(row.updatedAt.getTime()),
   updatedBy: row.updatedByAccountId as Id<'Account'>,
+  version: row.version,
 });
 
 /** {@link MarketSettingRepository} on `wallet.market_settings`, scoped by `marketId`. */
@@ -70,6 +72,8 @@ export class PrismaMarketSettingRepository implements MarketSettingRepository {
       reasonCode: record.reason,
       updatedAt: toDate(record.updatedAt),
       updatedByAccountId: record.updatedBy,
+      // The caller holds the row lock (findForUpdate) and passes the next version.
+      version: record.version,
     };
     const updated = await tx.walletMarketSetting.updateMany({
       where: { marketId: market.marketId },

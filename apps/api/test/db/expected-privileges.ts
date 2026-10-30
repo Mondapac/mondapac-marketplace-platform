@@ -541,7 +541,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'wallet.market_settings': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
+      columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id', 'version'],
     },
     // Admin credit (package 2a): a request is written once and decided once; a day row is
     // written once and then only locked. Neither is ever deleted (a trigger refuses it).

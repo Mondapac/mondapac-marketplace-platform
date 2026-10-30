@@ -104,7 +104,11 @@ A hold is born `held` (insert trigger) and its lots are written in the transacti
 it. It leaves `held` only with a capture or release journal of that very hold (`journals.hold_id`)
 written in the same transaction, and a wallet's legs on the Market's `holds` account must equal its
 held holds at commit. The admin status change sets a 3 s lock timeout and answers `wallet.busy`
-(409) instead of queueing the Market's wallet writes behind it. Still open: schedule `reconcile()`
+(409) instead of queueing the Market's wallet writes behind it. The switch carries a `version`
+(settings S4; 0 for no row, +1 per real change, under the row lock): `PUT` sends `expectedVersion`
+and a stale one answers `wallet.settings-conflict` (409). The check runs in the use case's unit before
+the two-step proof is consumed, so a stale save keeps the admin's proof; the route guard only reads
+the proof. Still open: schedule `reconcile()`
 nightly with alerting before the facade gets a caller, after its rewrite (see "Database design").
 
 Idempotency keys starting with `sys:` are the worker's; a facade caller may not send them. A

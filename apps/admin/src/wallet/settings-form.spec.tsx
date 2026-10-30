@@ -17,6 +17,7 @@ const settings = (over: Partial<WalletSettings> = {}): WalletSettings => ({
   status: 'off',
   reason: null,
   updatedAt: null,
+  version: 0,
   ...over,
 });
 const ok = (body: unknown) => ({ ok: true as const, status: 200, body });
@@ -135,7 +136,7 @@ describe('SettingsForm', () => {
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',
-      { status: 'paused', reasonCode: 'maintenance' },
+      { status: 'paused', reasonCode: 'maintenance', expectedVersion: 0 },
       'csrf',
     );
     expect(screen.getByText('Reason: Maintenance')).toBeTruthy();
@@ -180,7 +181,7 @@ describe('SettingsForm', () => {
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',
-      { status: 'active' },
+      { status: 'active', expectedVersion: 0 },
       'csrf',
     );
   });
@@ -205,6 +206,66 @@ describe('SettingsForm', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(text);
     // The state shown stays the one the server last told us.
     expect(screen.getByText('Changed 1 Oct 2026, 12:00 am UTC')).toBeTruthy();
+  });
+
+  it('sends the version it loaded, and on a conflict shows the banner, the current state and keeps the chosen one', async () => {
+    call.mockResolvedValueOnce(
+      ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z', version: 3 })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    choose('paused');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'maintenance' } });
+    review();
+    await confirmDialog('Pause the wallet?');
+    call.mockResolvedValueOnce(refused(409, 'wallet.settings-conflict'));
+    // The reload after the conflict: another admin froze the wallet meanwhile.
+    call.mockResolvedValueOnce(
+      ok(
+        settings({
+          status: 'frozen',
+          reason: 'legal-hold',
+          updatedAt: '2026-10-02T00:00:00.000Z',
+          version: 4,
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
+    expect(
+      await screen.findByText('The wallet state changed while you were on this page'),
+    ).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      'PUT',
+      'wallet/admin/settings',
+      { status: 'paused', reasonCode: 'maintenance', expectedVersion: 3 },
+      'csrf',
+    );
+    expect(await screen.findByText('Reason: Legal hold')).toBeTruthy();
+    expect(screen.getByLabelText<HTMLSelectElement>('New state').value).toBe('paused');
+    expect(screen.getByLabelText<HTMLSelectElement>('Reason').value).toBe('maintenance');
+    // The next save carries the new version and clears the banner.
+    review();
+    await confirmDialog('Pause the wallet?');
+    call.mockResolvedValueOnce(
+      ok(
+        settings({
+          status: 'paused',
+          reason: 'maintenance',
+          updatedAt: '2026-10-03T00:00:00.000Z',
+          version: 5,
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
+    await expectToast('Wallet is now paused.');
+    expect(call).toHaveBeenLastCalledWith(
+      'PUT',
+      'wallet/admin/settings',
+      { status: 'paused', reasonCode: 'maintenance', expectedVersion: 4 },
+      'csrf',
+    );
+    expect(screen.queryByText('The wallet state changed while you were on this page')).toBeNull();
   });
 
   it('puts a validation answer on the reason field', async () => {
@@ -241,7 +302,7 @@ describe('SettingsForm', () => {
 
 describe('SettingsForm: unusual data from the server', () => {
   it('treats a wallet state it does not know as a load error', async () => {
-    call.mockResolvedValue(ok({ status: 'short', reason: null, updatedAt: null }));
+    call.mockResolvedValue(ok({ status: 'short', reason: null, updatedAt: null, version: 0 }));
     mount();
     expect(await screen.findByRole('alert')).toBeTruthy();
   });
