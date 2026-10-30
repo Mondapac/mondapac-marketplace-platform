@@ -482,13 +482,13 @@ PROPOSALS['panel-settings'] = { title: PS, rows: function () {
 
 // ---- Admin · Catalog · Categories (owner 30 Oct 22:08Z; plan decided 22:37Z, design/categories/categories-management-plan-fa.html
 // section 13): the platform category tree of one Market. Four levels (department, group, category, subcategory), one parent each;
-// products sit on the lowest level; a new category starts Hidden; Hidden is reversible, Archive is final; Move, Merge, Archive and
+// products sit on level 3 or 4, never on a department or group (decision 3, changed 22:47Z); a new category starts Hidden; Hidden is reversible, Archive is final; Move, Merge, Archive and
 // Move products only through a dialog that shows what will change and asks for a reason (no drag). Tree two thirds, details one third.
 const PC = 'Proposal · Admin · Catalog · Categories';
 function pcTag(n) { n.setPluginData('proposal', 'admin-categories'); return n; }
 // [depth, name, live products, open: true | false | null (leaf), flags]
 const PC_TREE = [
-  [0, 'Pantry', '412', true], [1, 'Rice and grains', '138', true], [2, 'Rice', '96', true],
+  [0, 'Pantry', '412', true], [1, 'Rice and grains', '138', true], [2, 'Rice', '96', true, { direct: '9' }],
   [3, 'Basmati rice', '41', null, { selected: true }], [3, 'Jasmine rice', '0', null, { hidden: true }], [3, 'Brown rice', '14', null],
   [2, 'Quinoa and couscous', '42', false], [1, 'Spices and seasonings', '87', false], [1, 'Oils and ghee', '64', false], [1, 'Dates and dried fruit', '123', false],
   [0, 'Meat and poultry', '205', false], [0, 'Bakery', '58', false], [0, 'Dairy and eggs', '96', false], [0, 'Ramadan specials', '31', false, { notInMenu: true }],
@@ -500,7 +500,7 @@ function pcTreeRow(r, sel, match) {
   const chev = r[3] === null ? frame({ name: 'leaf', w: 16, h: 16 }) : icon(r[3] ? 'chevron-down' : 'chevron-right', 'icon/muted', 16);
   const name = text(r[1], on || match === r[1] ? 'Body/Strong' : 'Body/Default', 'text/primary');
   return frame({ name: 'node · ' + r[1], dir: 'H', gap: 'space/2', align: 'center', pad: [9, 16, 9, 16 + r[0] * 24], fill: on ? 'bg/selected' : null, stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [
-    chev, name, f.hidden ? bdg('Neutral', 'Icon', 'Hidden', 'eye-off') : null, f.isNew ? bdg('Info', 'None', 'New') : null, f.notInMenu ? bdg('Neutral', 'None', 'Not in menu') : null, pcSp(), text(r[2], 'Body/Small', 'text/muted', { name: 'count' })]);
+    chev, name, f.hidden ? bdg('Neutral', 'Icon', 'Hidden', 'eye-off') : null, f.isNew ? bdg('Info', 'None', 'New') : null, f.notInMenu ? bdg('Neutral', 'None', 'Not in menu') : null, pcSp(), f.direct ? text(f.direct + ' direct', 'Caption/Default', 'text/muted', { name: 'direct' }) : null, text(r[2], 'Body/Small', 'text/muted', { name: 'count' })]);
 }
 function pcTree(o) {
   o = o || {};
@@ -570,7 +570,7 @@ function pcProducts() {
   const tile = function (l, v) { return frame({ name: 'tile · ' + l, dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(l, 'Caption/Default', 'text/muted'), text(v, 'Heading/H2')]); };
   const rows = [['Basmati rice 5 kg', '12 sellers'], ['Aged basmati rice 10 kg', '7 sellers'], ['Organic basmati rice 1 kg', '3 sellers'], ['Brown basmati rice 2 kg', '2 sellers']];
   return [frame({ name: 'tiles', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [tile('Live products', '41'), tile('Offers', '63'), tile('Sellers', '12')]),
-    text('Main category for 38 of them. A product has one main category and at most 3 in all.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
+    text('Main category for 38 of them. A product has one main category and at most 3 in all, each on level 3 or 4.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
     card('products', rows.map(function (r) { return frame({ name: 'product · ' + r[0], dir: 'H', gap: 'space/2', align: 'center', pad: [10, 12, 10, 12], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text(r[0], 'Body/Default', 'text/primary', { sizeH: 'FILL' }), text(r[1], 'Caption/Default', 'text/muted')]); })),
     frame({ name: 'links', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [ppLink('Open all 41 in Products', 'external-link', 'open-products'), pcSp(), btn('Move products…', 'Secondary', 'Sm')])];
 }
@@ -633,9 +633,9 @@ function pcDialogsA() {
 function pcDialogsB() {
   const archive = pcDialog('Archive category', 'Archive Jasmine rice?', 'It leaves the menu, filters and search. Its address sends visitors to Rice. Archive is final: to pause a category, hide it instead.', [
     pcImpact([['Live products', '0'], ['Products with only this category', '0'], ['Subcategories', 'None']]), pcReason()], 'Archive category', { destructive: true, focusCancel: true });
-  const moveP = pcDialog('Move products', 'Move products out of Rice', 'Products sit on the lowest level. Rice now has subcategories, so its 9 products need a new home.', [
+  const moveP = pcDialog('Move products', 'Move products out of Rice', 'Products can sit on a category or a subcategory, never on a department or group. Choose where the 9 products directly on Rice go.', [
     pcField('Products', inst('Select', { State: 'Filled', Value: 'All 9 products directly on Rice' }, { name: 'which', sizeH: 'FILL' })),
-    pcPicker([[3, 'Basmati rice'], [3, 'Jasmine rice', null, 'Hidden'], [3, 'Brown rice']], 'Basmati rice'),
+    pcPicker([[1, 'Rice and grains', null, 'Group: no products'], [2, 'Rice', null, 'Current'], [3, 'Basmati rice'], [3, 'Jasmine rice', null, 'Hidden'], [3, 'Brown rice']], 'Basmati rice'),
     pcImpact([['Products that change category', '9'], ['Their main category changes', '7'], ['Sellers emailed', '5'], ['Published now, each one logged', 'Yes']]), pcReason()], 'Move 9 products', { w: 560 });
   const tile = function (l, v, tone) { return frame({ name: 'tile · ' + l, dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(l, 'Caption/Default', 'text/muted'), text(v, 'Heading/H2', tone || 'text/primary')]); };
   const imp = pcDialog('Import preview', 'Check categories-oct.xlsx', 'Nothing has changed yet. Rows are matched by URL name; merge and archive are done on the page only.', [
@@ -658,19 +658,19 @@ function pcStates() {
     text('Fields', 'Caption/Strong', 'text/muted'), field('slug', 'This URL name is already used by Basmati rice.'), field('claim', 'Category names can’t include certification words like "halal".'),
     text('Inside Move, Merge, Archive and Move products', 'Caption/Strong', 'text/muted'), b('loop', 'Critical', 'A category can’t go inside itself.', 'Choose a parent outside Rice.'), b('depth', 'Critical', 'Categories can be at most 4 levels deep.', 'Rice has subcategories, so it can go up to level 2.'),
     b('cert-rules', 'Critical', 'Certificate rules for Halal use this category, so it can’t be moved yet.', 'Move or remove those rules first.', 'Open certificate rules'), b('cert-down', 'Critical', 'We couldn’t check the certificate rules, so nothing was changed.', 'Try again.', 'Try again'),
-    b('too-big', 'Critical', 'This change affects more than 50,000 badges.', 'Move its subcategories one at a time.'), b('no-home', 'Critical', '9 live products would be left without a category.', 'Choose a replacement.'), b('on-parent', 'Attention', '9 products sit directly on this category.', 'Move them to a subcategory.', 'Move products…'),
+    b('too-big', 'Critical', 'This change affects more than 50,000 badges.', 'Move its subcategories one at a time.'), b('no-home', 'Critical', '9 live products would be left without a category.', 'Choose a replacement.'), b('level', 'Critical', 'Choose a category or subcategory.', 'Products can’t go on a department or group.'),
     b('counting', 'Info', 'Still counting', 'At least 2,400 products. You can go on: the count finishes in the background.')]);
   tag(scr); return pcTag(scr);
 }
 PROPOSALS['admin-categories'] = { title: PC, rows: function () {
   const searchRows = [[0, 'Pantry', '412', true], [1, 'Rice and grains', '138', true], [2, 'Rice', '96', true], [3, 'Basmati rice', '41', null, { selected: true }], [3, 'Jasmine rice', '0', null, { hidden: true }], [3, 'Brown rice', '14', null], [1, 'Dates and dried fruit', '123', true], [2, 'Rice paper and noodles', '8', null]];
   const newRows = PC_TREE.slice(0, 6).concat([[3, 'Sella rice', '0', null, { hidden: true, isNew: true }]], PC_TREE.slice(6));
-  const parentRows = PC_TREE.map(function (r) { return r[1] === 'Rice' ? [2, 'Rice', '96', true, { selected: true }] : (r[1] === 'Basmati rice' ? [3, 'Basmati rice', '41', null] : r); });
+  const parentRows = PC_TREE.map(function (r) { return r[1] === 'Rice' ? [2, 'Rice', '96', true, { selected: true, direct: '9' }] : (r[1] === 'Basmati rice' ? [3, 'Basmati rice', '41', null] : r); });
   const ready = inst('InfoBanner', { Tone: 'Attention', Title: 'Hidden until you show it', Body: 'Buyers don’t see Sella rice yet. Add an image and a meta description, then select Show.', 'Show action': false }, { name: 'new-hidden', sizeH: 'FILL' });
   return [[pcScreen('Default, Details'), pcScreen('SEO', { panel: { tab: 'SEO', body: pcSeo() } }), pcScreen('Filters', { panel: { tab: 'Filters', body: pcFilters() } })],
     [pcScreen('Products', { panel: { tab: 'Products', body: pcProducts() } }), pcScreen('History', { panel: { tab: 'History', body: pcHistory() } }), pcScreen('Search', { tree: { rows: searchRows, query: 'rice', match: 'Rice', note: '6 categories match "rice". Their parents are shown in grey context.', foot: 'Matches stay in the tree so their place is clear.' } })],
     [pcScreen('New category, Hidden', { tree: { rows: newRows, selected: 'Sella rice' }, panel: { name: 'Sella rice', slug: 'sella-rice', hidden: true, leafFull: true, products: '0 live · 0 offers', desc: '', noImage: true, keywords: 'sella, parboiled', banner: ready } }),
-      pcScreen('Parent with products', { tree: { rows: parentRows, selected: 'Rice' }, panel: { name: 'Rice', slug: 'rice', path: 'Pantry › Rice and grains', products: '96 live (9 directly on Rice)', banner: inst('InfoBanner', { Tone: 'Attention', Title: '9 products sit directly on this category', Body: 'Products go on the lowest level. Move them to a subcategory.', 'Show action': true, Action: 'Move products…' }, { name: 'on-parent', sizeH: 'FILL' }) } }),
+      pcScreen('Category with subcategories', { tree: { rows: parentRows, selected: 'Rice' }, panel: { name: 'Rice', slug: 'rice', path: 'Pantry › Rice and grains', products: '96 live · 9 directly on Rice', banner: inst('InfoBanner', { Tone: 'Info', Title: '9 products sit directly on Rice', Body: 'Buyers find them under "Other Rice" in the filter. In the product form, sellers see the subcategories first and Rice as "General".', 'Show action': true, Action: 'Move products…' }, { name: 'direct-products', sizeH: 'FILL' }) } }),
       pcScreen('View only', { viewOnly: true, banner: inst('InfoBanner', { Tone: 'Info', Title: 'View only', Body: 'Your role can’t change categories. A Platform Administrator can give you access.', 'Show action': false }, { name: 'view-only', sizeH: 'FILL' }), panel: { viewOnly: true } })],
     [pcDialogsA(), pcDialogsB(), pcStates()]];
 } };
