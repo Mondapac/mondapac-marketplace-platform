@@ -1096,6 +1096,9 @@
   },
   "stock": {
     "title": "Stock locations",
+    "section": "Your locations",
+    "view-only": "You can see your stock locations but not change them. Ask the store owner for access.",
+    "conflict-title": "Your locations changed",
     "intro": "Where you keep stock, in the order we use it to fill orders. You can have up to {max} locations.",
     "optional": "optional",
     "default": "Default",
@@ -1467,6 +1470,7 @@
     },
     "status": {
       "title": "Status",
+      "account": "Account status",
       "not-connected": "Not connected",
       "not-started": "Not started",
       "pending": "Pending",
@@ -1805,6 +1809,7 @@
       "unavailable": "The store profile is unavailable right now. Try again later."
     },
     "about": {
+      "conflict-title": "A newer version was saved first",
       "title": "About your store",
       "help": "Plain text, up to {max} characters. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
       "field": "About your store ({language})",
@@ -1899,6 +1904,23 @@
   "settings": {
     "title": "Settings",
     "back-home": "Back to Dashboard",
+    "errors": {
+      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+    },
+    "bar": {
+      "region": "Unsaved changes",
+      "summary": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+      "errors": "{count, plural, one {# needs fixing} other {# need fixing}}",
+      "discard": "Discard",
+      "save": "Save changes",
+      "saving": "Saving…"
+    },
+    "leave": {
+      "title": "Leave without saving?",
+      "message": "You have changes that are not saved. If you leave this page, they are lost.",
+      "stay": "Stay on page",
+      "leave": "Leave page"
+    },
     "hub": {
       "description": "Set up how your store works. Changes here apply to your whole store.",
       "view-only": "View only",

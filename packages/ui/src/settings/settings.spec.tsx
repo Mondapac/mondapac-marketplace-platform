@@ -5,7 +5,13 @@ import { SettingsErrorSummary } from './error-summary.tsx';
 import { Button } from '../form/button.tsx';
 import { NoAccess } from './no-access.tsx';
 import { SaveBar } from './save-bar.tsx';
-import { SettingCheckbox, SettingInput, SettingRow, SettingSelect } from './setting-row.tsx';
+import {
+  SettingCheckbox,
+  SettingInput,
+  SettingRow,
+  SettingSelect,
+  SettingTextArea,
+} from './setting-row.tsx';
 import { SettingsPage } from './settings-page.tsx';
 import { SettingsSection } from './settings-section.tsx';
 import { leavesPage, type ClickInfo } from './unsaved-changes-guard.tsx';
@@ -96,6 +102,41 @@ describe('SettingRow', () => {
 
   it('refuses a control outside a row', () => {
     expect(() => html(<SettingInput />)).toThrow(/inside a SettingRow/);
+  });
+});
+
+describe('SettingTextArea', () => {
+  it('is named by the row, tied to its help, error and counter, and marked when changed', () => {
+    const out = html(
+      <SettingRow label="About" help="Plain text." error="Too long." changed>
+        <SettingTextArea name="about" counter="11 of 10 characters" />
+      </SettingRow>,
+    );
+    const id = /<label id="[^"]+" for="([^"]+)"/.exec(out)?.[1];
+    expect(id).toBeDefined();
+    expect(out).toContain(`<textarea id="${id}"`);
+    expect(out).toContain(`aria-describedby="${id}-help ${id}-error ${id}-counter"`);
+    expect(out).toContain('aria-invalid="true"');
+    expect(out).toContain(`<div id="${id}-counter"`);
+    expect(out).toContain('>11 of 10 characters</div>');
+  });
+
+  it('is disabled with its row', () => {
+    const out = html(
+      <SettingRow label="About" disabled>
+        <SettingTextArea name="about" />
+      </SettingRow>,
+    );
+    expect(out).toMatch(/<textarea[^>]* disabled/);
+  });
+
+  it('marks a changed value with the attention ring', () => {
+    const out = html(
+      <SettingRow label="About" changed>
+        <SettingTextArea name="about" />
+      </SettingRow>,
+    );
+    expect(out).toContain('ring-attention-border');
   });
 });
 

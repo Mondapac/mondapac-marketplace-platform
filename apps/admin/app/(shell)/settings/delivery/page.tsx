@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, NoAccess, SettingsPage } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { DeliverySettingsPanel } from '../../../../src/delivery-settings/delivery-settings-panel.tsx';
@@ -27,28 +27,33 @@ export default async function DeliverySettingsPage() {
   const { permissionKeys, csrfToken } = gate.session;
   const shell = (body: React.ReactNode) => (
     <SettingsShell session={gate.session} linkId="delivery" title={title}>
-      <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
-      <p className="mb-6 max-w-prose text-fg-muted">{t('deliverySettings.intro')}</p>
       {body}
     </SettingsShell>
   );
   if (!permissionKeys.includes(DELIVERY_VIEW_PERMISSION)) {
     return shell(
-      <>
-        <p className="text-fg-muted">{t('deliverySettings.no-access')}</p>
-        <p className="mt-4">
-          <a className="inline-flex min-h-12 items-center font-medium text-link underline" href="/">
-            {t('deliverySettings.back-home')}
-          </a>
-        </p>
-      </>,
+      <NoAccess
+        title={t('settings.no-access-title')}
+        body={t('settings.no-access-needs', {
+          page: title,
+          permission: t('deliverySettings.permission-view'),
+        })}
+        backHref="/"
+        backLabel={t('settings.back-home')}
+      />,
     );
   }
   const read = await serverGet<DeliverySettings>(DELIVERY_SETTINGS_PATH);
   if (read.kind === 'signed-out') redirect('/session-ended');
   if (read.kind !== 'ok') {
     return shell(
-      <LoadError message={t('deliverySettings.unavailable')} retryLabel={t('load.retry')} />,
+      <SettingsPage title={title}>
+        <LoadError
+          message={t('deliverySettings.unavailable')}
+          retryLabel={t('load.retry')}
+          className="flex flex-col items-start gap-3"
+        />
+      </SettingsPage>,
     );
   }
   return shell(

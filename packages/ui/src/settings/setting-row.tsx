@@ -7,6 +7,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react';
 import type { SelectOption } from '../form/select.tsx';
 
@@ -167,6 +168,45 @@ export function SettingInput({ prefix, className, ...rest }: SettingInputProps) 
           .join(' ')}
         {...rest}
       />
+    </div>
+  );
+}
+
+export interface SettingTextAreaProps extends Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  'id' | 'aria-describedby' | 'aria-invalid' | 'disabled'
+> {
+  /** A line under the control that counts characters ("120 of 2000"); part of its description. */
+  readonly counter?: ReactNode;
+}
+
+/** A multi-line text control for a `SettingRow`, with an optional character counter. */
+export function SettingTextArea({ counter, rows = 6, className, ...rest }: SettingTextAreaProps) {
+  const field = useSettingField();
+  const counterId = `${field.id}-counter`;
+  const describedBy = [field.describedBy, counter ? counterId : null].filter(Boolean).join(' ');
+  return (
+    <div className="flex flex-col gap-1.5">
+      <textarea
+        id={field.id}
+        rows={rows}
+        aria-invalid={field.invalid ? true : undefined}
+        aria-describedby={describedBy || undefined}
+        disabled={field.disabled}
+        className={[
+          'w-full rounded-md border bg-surface px-3 py-2 text-fg disabled:bg-subtle disabled:text-fg-muted',
+          edge(field),
+          className ?? '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        {...rest}
+      />
+      {counter ? (
+        <div id={counterId} className="text-sm text-fg-muted">
+          {counter}
+        </div>
+      ) : null}
     </div>
   );
 }

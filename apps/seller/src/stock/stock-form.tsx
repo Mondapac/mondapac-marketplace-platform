@@ -1,6 +1,14 @@
 'use client';
 
-import { Banner, Button, Card, Select, TextField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  SettingInput,
+  SettingRow,
+  SettingSelect,
+  SettingsErrorSummary,
+  SettingsSection,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
 import type { StockProblem } from './errors.ts';
@@ -20,11 +28,20 @@ export function addressOf(values: Readonly<Record<string, string>>): Record<stri
   return kept.length === 0 ? null : Object.fromEntries(kept);
 }
 
+const NAME_ROW = 'setting-stock-name';
+const ZONE_ROW = 'setting-stock-zone';
+const addressRow = (key: string) => `setting-stock-address-${key}`;
+
+/**
+ * The editor of one stock location. It is an entry of a list, not a page setting, so it keeps its
+ * own Save and Cancel; its fields are template rows, and a refused save lists them in a summary.
+ */
 export function StockForm({
   source,
   options,
   pending,
   problem,
+  failedWrites,
   onSubmit,
   onCancel,
 }: {
@@ -33,6 +50,8 @@ export function StockForm({
   readonly options: StockFormOptions;
   readonly pending: boolean;
   readonly problem: StockProblem | null;
+  /** Rises with each refused write: the summary takes focus again. */
+  readonly failedWrites: number;
   readonly onSubmit: (input: SourceInput) => void;
   readonly onCancel: () => void;
 }) {
@@ -56,61 +75,93 @@ export function StockForm({
     onSubmit({ name, address: addressOf(address), timeZone: zone === '' ? null : zone });
   }
 
+  const labelOf = (field: { readonly key: string; readonly labelKey: string }) =>
+    t.has(field.labelKey) ? t(field.labelKey) : field.key;
+  const invalid = [
+    fieldError('name') === undefined ? null : { id: NAME_ROW, label: t('stock.form.name') },
+    ...options.fields.map((field) =>
+      fieldError(`address.${field.key}`) === undefined
+        ? null
+        : { id: addressRow(field.key), label: labelOf(field) },
+    ),
+    fieldError('timeZone') === undefined ? null : { id: ZONE_ROW, label: t('stock.form.zone') },
+  ].filter((item) => item !== null);
+
   return (
-    <Card title={source === null ? t('stock.form.add-title') : t('stock.form.edit-title')}>
-      <form className="flex max-w-(--mp-size-form-max) flex-col gap-4" onSubmit={submit} noValidate>
-        {problem === null ? null : (
-          <Banner tone="critical">{t(problem.form.key, problem.form.values)}</Banner>
+    <form onSubmit={submit} noValidate>
+      <SettingsSection
+        title={source === null ? t('stock.form.add-title') : t('stock.form.edit-title')}
+      >
+        {problem === null && invalid.length === 0 ? null : (
+          <div className="flex flex-col gap-3 border-b border-line-row px-5 py-4">
+            {invalid.length === 0 ? null : (
+              <SettingsErrorSummary
+                title={t('settings.errors.title', { count: invalid.length })}
+                items={invalid}
+                focusSignal={failedWrites}
+              />
+            )}
+            {problem === null ? null : (
+              <Banner tone="critical">{t(problem.form.key, problem.form.values)}</Banner>
+            )}
+          </div>
         )}
-        <TextField
-          name="name"
-          label={t('stock.form.name')}
-          value={name}
-          maxLength={80}
-          error={fieldError('name')}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <fieldset className="flex flex-col gap-4">
-          <legend className="mb-1 text-sm font-medium text-fg">{t('stock.form.address')}</legend>
-          <p className="text-sm text-fg-muted">{t('stock.form.address-help')}</p>
+        <SettingRow id={NAME_ROW} label={t('stock.form.name')} error={fieldError('name')}>
+          <SettingInput
+            name="name"
+            value={name}
+            maxLength={80}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </SettingRow>
+        <fieldset>
+          <legend className="px-5 pt-4 text-sm font-medium text-fg">
+            {t('stock.form.address')}
+          </legend>
+          <p className="px-5 pt-1 text-sm text-fg-muted">{t('stock.form.address-help')}</p>
           {options.fields.map((field) => {
-            const label = t.has(field.labelKey) ? t(field.labelKey) : field.key;
             const common = {
-              name: `address.${field.key}`,
-              label,
-              value: address[field.key] ?? '',
+              id: addressRow(field.key),
+              label: labelOf(field),
               error: fieldError(`address.${field.key}`),
             };
             return field.key === options.regionField ? (
-              <Select
-                key={field.key}
-                {...common}
-                placeholder={t('stock.form.choose-region')}
-                options={options.regions.map((value) => ({ value, label: value }))}
-                onChange={(event) => setAddress({ ...address, [field.key]: event.target.value })}
-              />
+              <SettingRow key={field.key} {...common}>
+                <SettingSelect
+                  name={`address.${field.key}`}
+                  value={address[field.key] ?? ''}
+                  placeholder={t('stock.form.choose-region')}
+                  options={options.regions.map((value) => ({ value, label: value }))}
+                  onChange={(event) => setAddress({ ...address, [field.key]: event.target.value })}
+                />
+              </SettingRow>
             ) : (
-              <TextField
-                key={field.key}
-                {...common}
-                maxLength={field.maxLength}
-                optionalLabel={t('stock.optional')}
-                onChange={(event) => setAddress({ ...address, [field.key]: event.target.value })}
-              />
+              <SettingRow key={field.key} {...common} optionalLabel={t('stock.optional')}>
+                <SettingInput
+                  name={`address.${field.key}`}
+                  value={address[field.key] ?? ''}
+                  maxLength={field.maxLength}
+                  onChange={(event) => setAddress({ ...address, [field.key]: event.target.value })}
+                />
+              </SettingRow>
             );
           })}
         </fieldset>
-        <Select
-          name="timeZone"
+        <SettingRow
+          id={ZONE_ROW}
           label={t('stock.form.zone')}
           help={t('stock.form.zone-help')}
-          value={zone}
           error={fieldError('timeZone')}
-          placeholder={t('stock.form.zone-own')}
-          options={options.zones.map((value) => ({ value, label: value }))}
-          onChange={(event) => setZone(event.target.value)}
-        />
-        <div className="flex gap-3">
+        >
+          <SettingSelect
+            name="timeZone"
+            value={zone}
+            placeholder={t('stock.form.zone-own')}
+            options={options.zones.map((value) => ({ value, label: value }))}
+            onChange={(event) => setZone(event.target.value)}
+          />
+        </SettingRow>
+        <div className="flex gap-3 px-5 py-4">
           <Button type="submit" loading={pending}>
             {t('stock.form.save')}
           </Button>
@@ -118,7 +169,7 @@ export function StockForm({
             {t('stock.form.cancel')}
           </Button>
         </div>
-      </form>
-    </Card>
+      </SettingsSection>
+    </form>
   );
 }

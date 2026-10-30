@@ -84,12 +84,27 @@ describe('SettingsForm', () => {
     expect(await screen.findByText('Never changed')).toBeTruthy();
   });
 
-  it('leaves the change card out for a view-only admin', async () => {
+  it('shows a view-only admin the danger zone disabled, with the reason and no button', async () => {
     call.mockResolvedValue(ok(settings()));
     mount(false);
     await screen.findByText('Never changed');
-    expect(screen.queryByLabelText('New state')).toBeNull();
+    expect(screen.getByText(/^View only\./)).toBeTruthy();
+    expect(screen.getByLabelText<HTMLSelectElement>('New state').disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Review change' })).toBeNull();
+  });
+
+  it('puts the change in a danger zone at the end, with its own button, not a save bar', async () => {
+    call.mockResolvedValue(ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00Z' })));
+    mount();
+    await screen.findByText(/Changed/);
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
+    expect(headings).toEqual(['Current state', 'What each state means', 'Danger zone']);
+    const zone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section')!;
+    expect(zone.getAttribute('data-variant')).toBe('danger');
+    expect(zone.contains(screen.getByLabelText('New state'))).toBe(true);
+    expect(zone.contains(screen.getByRole('button', { name: 'Review change' }))).toBe(true);
+    choose('paused');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('keeps Review off until the state differs and a required reason is chosen', async () => {

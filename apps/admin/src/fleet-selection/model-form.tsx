@@ -1,6 +1,15 @@
 'use client';
 
-import { ActionRow, Banner, Button, Card, CheckboxRow, Select, TextField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  CheckboxRow,
+  SettingInput,
+  SettingRow,
+  SettingSelect,
+  SettingsSection,
+  TextField,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import {
@@ -144,35 +153,40 @@ export function ModelFormCard({
 
   return (
     <div ref={root} tabIndex={-1} className="scroll-mt-4 outline-none">
-      <Card title={title}>
-        <form ref={formRef} className="flex flex-col gap-4" onSubmit={submit} noValidate>
+      <form ref={formRef} onSubmit={submit} noValidate>
+        <SettingsSection title={title}>
           {activeNote === null ? null : (
-            <Banner tone="attention">
-              {t(`${P}.models.active-note`, { methods: activeNote })}
-            </Banner>
+            <div className="px-5 py-4">
+              <Banner tone="attention">
+                {t(`${P}.models.active-note`, { methods: activeNote })}
+              </Banner>
+            </div>
           )}
-          <TextField
-            name="name"
+          <SettingRow
             label={t(`${P}.model.name`)}
             help={t(`${P}.model.name-help`)}
-            autoComplete="off"
-            value={form.name}
             error={invalid.includes('name') ? t(`${P}.invalid.name`) : undefined}
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-          />
-          <Select
-            name="kind"
-            label={t(`${P}.model.kind`)}
-            help={t(`${P}.kind-help.${form.kind}`)}
-            options={KINDS.map((kind) => ({ value: kind, label: t(`${P}.kind.${kind}`) }))}
-            value={form.kind}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, kind: event.target.value as Kind }))
-            }
-          />
+          >
+            <SettingInput
+              name="name"
+              autoComplete="off"
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            />
+          </SettingRow>
+          <SettingRow label={t(`${P}.model.kind`)} help={t(`${P}.kind-help.${form.kind}`)}>
+            <SettingSelect
+              name="kind"
+              options={KINDS.map((kind) => ({ value: kind, label: t(`${P}.kind.${kind}`) }))}
+              value={form.kind}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, kind: event.target.value as Kind }))
+              }
+            />
+          </SettingRow>
           {form.kind === 'weighted' ? (
             <fieldset
-              className="flex flex-col gap-3"
+              className="flex flex-col gap-3 border-b border-line-row px-5 py-4"
               aria-describedby={invalid.includes('weights') ? weightsErrorId : undefined}
             >
               <legend className="text-sm font-medium text-fg">{t(`${P}.weight.title`)}</legend>
@@ -192,7 +206,7 @@ export function ModelFormCard({
           ) : null}
           {form.kind === 'fixed_priority' ? (
             <fieldset
-              className="flex flex-col gap-3"
+              className="flex flex-col gap-3 border-b border-line-row px-5 py-4"
               aria-describedby={orderInvalid ? orderErrorId : undefined}
             >
               <legend className="text-sm font-medium text-fg">{t(`${P}.order.title`)}</legend>
@@ -275,20 +289,21 @@ export function ModelFormCard({
             </fieldset>
           ) : null}
           {problem === null ? null : (
-            <p role="alert" className="text-sm text-critical-fg">
+            <p role="alert" className="px-5 pt-4 text-sm text-critical-fg">
               {t(`${P}.error.${problem}`)}
             </p>
           )}
-          <ActionRow>
+          {/* An editor of one list entry: it keeps its own Save and Cancel, not the page's bar. */}
+          <div className="flex flex-wrap gap-3 px-5 py-4">
             <Button type="submit" loading={pending}>
               {t(`${P}.model.save`)}
             </Button>
             <Button variant="secondary" onClick={onCancel}>
               {t(`${P}.model.cancel`)}
             </Button>
-          </ActionRow>
-        </form>
-      </Card>
+          </div>
+        </SettingsSection>
+      </form>
     </div>
   );
 }

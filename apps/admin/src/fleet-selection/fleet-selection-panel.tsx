@@ -1,9 +1,23 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, EmptyState, Select, toast } from '@mondapac/ui';
+import {
+  Badge,
+  Banner,
+  Button,
+  Dialog,
+  EmptyState,
+  SaveBar,
+  SettingRow,
+  SettingSelect,
+  SettingsConflictBanner,
+  SettingsPage,
+  SettingsSection,
+  toast,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
+import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { fleetProblemOf } from './errors.ts';
 import { FleetsCard } from './fleets-card.tsx';
 import { EMPTY_FORM, formOf } from './form.ts';
@@ -38,6 +52,7 @@ export function FleetSelectionPanel({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const chrome = useSettingsChrome();
   const [selection, setSelection] = useState(initial);
   const [choice, setChoice] = useState<Record<Method, string>>(() => choiceOf(initial));
   const [editing, setEditing] = useState<Editing>(null);
@@ -87,10 +102,16 @@ export function FleetSelectionPanel({
       selection.models.find((model) => model.id === id)?.name ?? t(`${P}.active.default`);
     return [{ method, from: label(selection.active[method]), to: label(wanted) }];
   });
+  const changedMethod = (method: Method) => changes.some((change) => change.method === method);
 
   function askActive(event: FormEvent) {
     event.preventDefault();
     if (changes.length > 0) setConfirm({ kind: 'active' });
+  }
+
+  function discard() {
+    setChoice(choiceOf(selection));
+    setProblem(null);
   }
 
   async function saveActive() {
@@ -171,71 +192,87 @@ export function FleetSelectionPanel({
   const methodsOf = (model: Model) =>
     METHODS.filter((method) => selection.active[method] === model.id);
 
-  return (
-    <div className="flex flex-col gap-6">
-      {canManage ? null : <Banner tone="info">{t(`${P}.viewer-only`)}</Banner>}
-      {notice === null ? null : (
-        <div ref={noticeRef} tabIndex={-1} className="outline-none">
-          <Banner tone="attention">{t(`${P}.notice.${notice}`)}</Banner>
-        </div>
-      )}
+  const banners = [
+    canManage ? null : (
+      <Banner key="viewer-only" tone="info">
+        {t(`${P}.viewer-only`)}
+      </Banner>
+    ),
+    notice === null ? null : (
+      <div key="conflict" ref={noticeRef} tabIndex={-1} className="outline-none">
+        <SettingsConflictBanner
+          title={t(`${P}.conflict.title`)}
+          body={t(`${P}.notice.${notice}`)}
+        />
+      </div>
+    ),
+    problem === null ? null : (
+      <Banner key="problem" tone="critical">
+        {t(`${P}.error.${problem}`)}
+      </Banner>
+    ),
+  ].filter((node) => node !== null);
 
-      <Card title={t(`${P}.active.title`)}>
-        <p className="text-sm text-fg-muted">
-          {t(`${P}.active.intro`, {
+  return (
+    <SettingsPage
+      title={t(`${P}.title`)}
+      description={t(`${P}.intro`)}
+      banner={
+        banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
+      }
+      dirty={canManage && changes.length > 0}
+      leave={chrome.leave}
+    >
+      {/* The one form of the page with a save bar; each model and each fleet score has its own. */}
+      <form className="flex flex-col gap-4" onSubmit={askActive} noValidate>
+        <SettingsSection
+          title={t(`${P}.active.title`)}
+          description={t(`${P}.active.intro`, {
             order: selection.defaultOrder.map(nameOf).join(', '),
           })}
-        </p>
-        {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
+        >
+          {METHODS.map((method) => (
+            <SettingRow
+              key={method}
+              label={t(`${P}.method.${method}`)}
+              changed={changedMethod(method)}
+              disabled={!canManage}
+            >
+              <SettingSelect
+                name={`active-${method}`}
+                options={options}
+                value={choice[method]}
+                onChange={(event) =>
+                  setChoice((current) => ({ ...current, [method]: event.target.value }))
+                }
+              />
+            </SettingRow>
+          ))}
+        </SettingsSection>
         {canManage ? (
-          <form className="flex flex-col gap-4" onSubmit={askActive} noValidate>
-            <div className="grid gap-4 md:grid-cols-3">
-              {METHODS.map((method) => (
-                <Select
-                  key={method}
-                  name={`active-${method}`}
-                  label={t(`${P}.method.${method}`)}
-                  options={options}
-                  value={choice[method]}
-                  onChange={(event) =>
-                    setChoice((current) => ({ ...current, [method]: event.target.value }))
-                  }
-                />
-              ))}
-            </div>
-            <div>
-              <Button type="submit" loading={pending === 'active'}>
-                {t(`${P}.active.save`)}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <dl className="grid gap-3 md:grid-cols-3">
-            {METHODS.map((method) => (
-              <div key={method}>
-                <dt className="text-sm text-fg-muted">{t(`${P}.method.${method}`)}</dt>
-                <dd className="font-medium">
-                  {selection.models.find((model) => model.id === selection.active[method])?.name ??
-                    t(`${P}.active.default`)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </Card>
+          <SaveBar
+            {...chrome.saveBar({
+              count: changes.length,
+              saving: pending === 'active',
+              onDiscard: discard,
+            })}
+          />
+        ) : null}
+      </form>
 
-      <Card title={t(`${P}.models.title`)}>
-        <p className="text-sm text-fg-muted">{t(`${P}.models.intro`)}</p>
+      <SettingsSection title={t(`${P}.models.title`)} description={t(`${P}.models.intro`)}>
         {selection.models.length === 0 ? (
-          <EmptyState icon="package" size="compact" title={t(`${P}.models.empty`)} />
+          <div className="px-5 py-4">
+            <EmptyState icon="package" size="compact" title={t(`${P}.models.empty`)} />
+          </div>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col">
             {selection.models.map((model) => {
               const activeFor = methodsOf(model);
               return (
                 <li
                   key={model.id}
-                  className="flex flex-col gap-2 rounded-md border border-line p-4"
+                  className="flex flex-col gap-2 border-b border-line-row px-5 py-4 last:border-b-0"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3
@@ -280,7 +317,7 @@ export function FleetSelectionPanel({
           </ul>
         )}
         {canManage && editing === null ? (
-          <div>
+          <div className="border-t border-line-row px-5 py-4 first:border-t-0">
             <Button
               ref={addButton}
               onClick={() => {
@@ -293,7 +330,7 @@ export function FleetSelectionPanel({
             </Button>
           </div>
         ) : null}
-      </Card>
+      </SettingsSection>
 
       {editing === null ? null : (
         <ModelFormCard
@@ -371,7 +408,7 @@ export function FleetSelectionPanel({
         csrfToken={csrfToken}
         onSelection={adopt}
       />
-    </div>
+    </SettingsPage>
   );
 }
 

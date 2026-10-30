@@ -522,6 +522,8 @@
       "editor": {
         "title-create": "New custom role",
         "title-edit": "Edit role",
+        "section-name": "Name",
+        "conflict-title": "This role changed while you were editing",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -1427,6 +1429,16 @@
   },
   "settings": {
     "title": "Settings",
+    "danger": {
+      "title": "Danger zone"
+    },
+    "admins": {
+      "description": "The people who can sign in to this admin panel, and the invitations that have not been accepted yet.",
+      "section": "Admin accounts"
+    },
+    "roles": {
+      "description": "A role is a set of permissions. Give each admin the role that matches their work."
+    },
     "no-access": "You don't have access to settings.",
     "no-access-title": "You don't have access to this page",
     "no-access-needs": "{page} needs the \"{permission}\" permission. Ask an admin who manages roles to add it.",
@@ -1636,6 +1648,10 @@
   },
   "fleets": {
     "title": "Delivery fleets",
+    "permission-view": "Delivery fleets: view",
+    "conflict": {
+      "title": "This page changed while you were editing"
+    },
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
     "back-home": "Back to the dashboard",
@@ -2303,6 +2319,14 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
+    "permission-view": "Delivery settings: view",
+    "state": {
+      "on": "On",
+      "off": "Off"
+    },
+    "conflict": {
+      "title": "These settings changed while you were editing"
+    },
     "intro": "Choose which delivery methods the whole Market offers, when same-day orders close, how far ahead buyers can schedule, and what the platform adds on top of the fleet quote. Which methods each seller supports is set on the seller page.",
     "no-access": "Your role cannot see delivery settings.",
     "back-home": "Back to the dashboard",
@@ -2538,6 +2562,13 @@
     "settings": {
       "title": "Customer wallet",
       "intro": "Controls store credit for every customer in this Market.",
+      "permission-view": "Customer wallet: view",
+      "view-only": "View only. You can see the state of the wallet but not change it. Ask an admin who manages roles to add the wallet change permission.",
+      "state": "State",
+      "last-change": "Last change",
+      "danger": {
+        "description": "Changing the state affects every customer in this Market. Each change asks you to confirm it, then for a code from your authenticator app."
+      },
       "current": "Current state",
       "never-changed": "Never changed",
       "changed": "Changed {when}",

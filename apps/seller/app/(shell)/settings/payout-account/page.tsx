@@ -36,7 +36,6 @@ export default async function PayoutAccountPage({
   const { stripe } = await searchParams;
   return (
     <SettingsShell session={page.session} linkId="payout-account" title={t('payout.title')}>
-      <h1 className="mb-6 text-2xl font-semibold">{t('payout.title')}</h1>
       <PayoutAccountView
         initial={page.account}
         csrfToken={page.session.csrfToken}

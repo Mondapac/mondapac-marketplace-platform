@@ -151,10 +151,26 @@ describe('the fleet selection page', () => {
   it('is read-only without the manage permission', () => {
     mount(selection(), false);
 
-    expect(screen.queryByRole('button', { name: 'Save active models' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('Instant').disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'New model' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Save score' })).toBeNull();
     expect(screen.getAllByText('Reliability (0 to 100):')).toHaveLength(4);
+  });
+
+  it('marks a changed method, counts it in the save bar and discards it', () => {
+    mount(selection());
+
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('1 unsaved change');
+    expect(screen.getByLabelText('Instant').className).toContain('ring-attention-border');
+    expect(screen.getByLabelText('Scheduled').className).not.toContain('ring-attention-border');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('Instant').value).toBe('');
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('saves only the methods whose model changed', async () => {
@@ -164,7 +180,7 @@ describe('the fleet selection page', () => {
     mount(selection());
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     confirmDialog();
 
     await expectToast('Active models saved. They apply to the next booking.');
@@ -184,7 +200,7 @@ describe('the fleet selection page', () => {
     mount(active);
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     confirmDialog();
 
     await waitFor(() => expect(call).toHaveBeenCalled());
@@ -283,6 +299,7 @@ describe('the fleet selection page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
     await waitFor(() => expect(screen.getByText(/Someone saved this model first/)).toBeTruthy());
+    expect(screen.getByText('This page changed while you were editing')).toBeTruthy();
     expect(call.mock.calls[0]).toEqual([
       'PUT',
       `shipping/admin/fleet-selection/models/${MODEL}`,
@@ -339,7 +356,7 @@ describe('the fleet selection page', () => {
     mount(selection());
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     confirmDialog();
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
@@ -352,7 +369,7 @@ describe('the review changes', () => {
     mount(selection({ active: { instant: MODEL3, same_day: null, scheduled: null } }));
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(
       screen.getByText(

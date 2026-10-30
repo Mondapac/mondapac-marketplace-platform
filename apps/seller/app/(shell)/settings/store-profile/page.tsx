@@ -33,7 +33,6 @@ export default async function StoreProfilePage() {
   }
   return (
     <SettingsShell session={page.session} linkId="store-profile" title={t('store-profile.title')}>
-      <h1 className="mb-6 text-2xl font-semibold">{t('store-profile.title')}</h1>
       <StoreProfile
         initial={page.view}
         csrfToken={page.session.csrfToken}

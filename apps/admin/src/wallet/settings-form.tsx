@@ -1,15 +1,16 @@
 'use client';
 
 import {
-  ActionRow,
   Badge,
   Banner,
   Button,
-  Card,
   DataList,
   Dialog,
   LoadError,
-  Select,
+  SettingRow,
+  SettingSelect,
+  SettingsPage,
+  SettingsSection,
   SkeletonRows,
   toast,
   type BadgeTone,
@@ -48,6 +49,7 @@ export function SettingsForm({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('wallet');
+  const root = useTranslations();
   const locale = useLocale();
   const guarded = useGuardedCall();
   const [settings, setSettings] = useState<WalletSettings | null>(null);
@@ -75,17 +77,27 @@ export function SettingsForm({
     void load();
   }, [load]);
 
+  const title = t('settings.title');
+  const intro = t('settings.intro');
   if (loadFailed) {
     return (
-      <LoadError
-        className="flex flex-col items-start gap-3"
-        message={t('load-failed')}
-        retryLabel={t('retry')}
-        onRetry={() => void load()}
-      />
+      <SettingsPage title={title} description={intro}>
+        <LoadError
+          className="flex flex-col items-start gap-3"
+          message={t('load-failed')}
+          retryLabel={t('retry')}
+          onRetry={() => void load()}
+        />
+      </SettingsPage>
     );
   }
-  if (settings === null) return <SkeletonRows label={t('loading')} rows={3} />;
+  if (settings === null) {
+    return (
+      <SettingsPage title={title} description={intro}>
+        <SkeletonRows label={t('loading')} rows={3} />
+      </SettingsPage>
+    );
+  }
 
   const current = settings.status;
   const chosen: WalletState = state === '' ? current : state;
@@ -148,69 +160,111 @@ export function SettingsForm({
       value === current ? `${t(`state.${value}`)} ${t('current-marker')}` : t(`state.${value}`),
   }));
 
+  const banners = [
+    canManage ? null : (
+      <Banner key="view-only" tone="info">
+        {t('settings.view-only')}
+      </Banner>
+    ),
+    problem === null ? null : (
+      <Banner key="problem" tone="critical">
+        {t(`error.${problem}`)}
+      </Banner>
+    ),
+  ].filter((node) => node !== null);
+
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
-      {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
-      <Card title={t('settings.current')}>
-        <div className="flex flex-wrap items-center gap-3">
-          <Badge tone={TONE[current]}>{t(`state.${current}`)}</Badge>
-          <span>{t(`meaning.short.${current}`)}</span>
-        </div>
-        <p className="text-sm text-fg-muted">
-          {settings.updatedAt === null
-            ? t('settings.never-changed')
-            : t('settings.changed', { when: formatInstant(settings.updatedAt, locale) })}
-        </p>
-        {(current === 'paused' || current === 'frozen') && reasonLabel(settings.reason) !== null ? (
-          <p className="text-sm text-fg-muted">
-            {t('settings.reason-line', { reason: reasonLabel(settings.reason) ?? '' })}
+    <SettingsPage
+      title={title}
+      description={intro}
+      banner={
+        banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
+      }
+    >
+      <SettingsSection title={t('settings.current')}>
+        <SettingRow label={t('settings.state')} plain>
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge tone={TONE[current]}>{t(`state.${current}`)}</Badge>
+            <span>{t(`meaning.short.${current}`)}</span>
+          </div>
+        </SettingRow>
+        <SettingRow label={t('settings.last-change')} plain>
+          <p className="text-fg-muted">
+            {settings.updatedAt === null
+              ? t('settings.never-changed')
+              : t('settings.changed', { when: formatInstant(settings.updatedAt, locale) })}
           </p>
-        ) : null}
-      </Card>
-      {canManage ? (
-        <Card title={t('settings.change')}>
-          <Select
-            label={t('settings.new-state')}
+          {(current === 'paused' || current === 'frozen') &&
+          reasonLabel(settings.reason) !== null ? (
+            <p className="mt-1 text-fg-muted">
+              {t('settings.reason-line', { reason: reasonLabel(settings.reason) ?? '' })}
+            </p>
+          ) : null}
+        </SettingRow>
+      </SettingsSection>
+      <SettingsSection title={t('settings.meanings')}>
+        <div className="px-5 py-4">
+          <DataList
+            missing=""
+            rows={WALLET_STATES.map((value) => ({
+              label: t(`state.${value}`),
+              value: t(`meaning.${value}`),
+            }))}
+          />
+        </div>
+      </SettingsSection>
+      {/* Changing the state is an action of its own, with a confirmation and a code: it is not
+          saved with the page, so it sits in the danger zone with its own button. */}
+      <SettingsSection
+        variant="danger"
+        title={root('settings.danger.title')}
+        description={t('settings.danger.description')}
+      >
+        <SettingRow
+          label={t('settings.new-state')}
+          help={t(`meaning.${chosen}`)}
+          disabled={!canManage}
+        >
+          <SettingSelect
             name="status"
             value={chosen}
             options={stateOptions}
-            help={t(`meaning.${chosen}`)}
             onChange={(event) => {
               setState(event.target.value as WalletState);
               setReason('');
               setReasonError(false);
             }}
           />
-          {needsReason ? (
-            <Select
-              label={t('settings.reason')}
+        </SettingRow>
+        {needsReason ? (
+          <SettingRow
+            label={t('settings.reason')}
+            disabled={!canManage}
+            error={reasonError ? t('error.validation-settings') : undefined}
+          >
+            <SettingSelect
               name="reasonCode"
               placeholder={t('settings.reason-placeholder')}
               value={reason}
               options={STATUS_REASONS.map((code) => ({ value: code, label: t(`reason.${code}`) }))}
-              error={reasonError ? t('error.validation-settings') : undefined}
               onChange={(event) => {
                 setReason(event.target.value);
                 setReasonError(false);
               }}
             />
-          ) : null}
-          <ActionRow>
-            <Button disabled={unchanged || incomplete} loading={pending} onClick={review}>
-              {t('settings.review')}
-            </Button>
-          </ActionRow>
-        </Card>
-      ) : null}
-      <Card title={t('settings.meanings')}>
-        <DataList
-          missing=""
-          rows={WALLET_STATES.map((value) => ({
-            label: t(`state.${value}`),
-            value: t(`meaning.${value}`),
-          }))}
-        />
-      </Card>
+          </SettingRow>
+        ) : null}
+        {canManage ? (
+          <div className="flex flex-col gap-2 px-5 py-4">
+            <div>
+              <Button disabled={unchanged || incomplete} loading={pending} onClick={review}>
+                {t('settings.review')}
+              </Button>
+            </div>
+            <p className="text-sm text-fg-muted">{root('step-up.wait-note')}</p>
+          </div>
+        ) : null}
+      </SettingsSection>
       <Dialog
         open={confirming}
         title={confirmKey === null ? '' : t(`settings.confirm.${confirmKey}.title`)}
@@ -244,6 +298,6 @@ export function SettingsForm({
           </p>
         ) : null}
       </Dialog>
-    </div>
+    </SettingsPage>
   );
 }

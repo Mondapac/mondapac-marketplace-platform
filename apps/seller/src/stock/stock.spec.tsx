@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -79,6 +79,15 @@ describe('StockLocations', () => {
   it('hides every action without the edit permission', () => {
     mount(view(), false);
     expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText(/You can see your stock locations but not change them/)).toBeTruthy();
+  });
+
+  it('is a list in a section of the template, with no save bar', () => {
+    mount();
+    expect(screen.getByRole('heading', { level: 1, name: 'Stock locations' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Your locations' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'Garage' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('adds a location with the version the screen read and shows the new list', async () => {
@@ -156,6 +165,14 @@ describe('StockLocations', () => {
     expect(await screen.findByText('Check the fields marked below.')).toBeTruthy();
     expect(screen.getByText('This value is too short or too long.')).toBeTruthy();
     expect(screen.getByLabelText('Name')).toBeTruthy();
+    // The summary at the top of the form links to the field.
+    const summary = screen
+      .getAllByRole('alert')
+      .find((node) => node.textContent?.includes('needs fixing before you can save'))!;
+    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    fireEvent.click(within(summary).getByRole('link', { name: 'Name' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Name'));
+    expect(screen.getByLabelText('Name').getAttribute('aria-invalid')).toBe('true');
   });
 
   it('tells the seller to reload after a stale write', async () => {
@@ -163,6 +180,7 @@ describe('StockLocations', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Move Garage up' }));
     expect(await screen.findByRole('button', { name: 'Reload the page' })).toBeTruthy();
+    expect(screen.getByText('Your locations changed')).toBeTruthy();
   });
 });
 
