@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from '@mondapac/ui';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
@@ -22,6 +23,9 @@ const contact = (email: string | null, version = 0): SupportContact => ({ email,
 const mount = (initial: SupportContact, canManage = true) =>
   render(wrap(<SupportEmailCard initial={initial} canManage={canManage} csrfToken="csrf" />));
 
+const type = (value: string) =>
+  fireEvent.change(screen.getByLabelText('Support email address'), { target: { value } });
+
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
@@ -34,16 +38,34 @@ describe('SupportEmailCard', () => {
   it('shows the current address, and no form without the manage permission', () => {
     mount(contact('help@example.com'), false);
     expect(screen.getByText('help@example.com')).toBeTruthy();
+    expect(screen.getByText(/you need the "Support email: manage" permission/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByLabelText('Support email address')).toBeNull();
+  });
+
+  it('shows the save bar only for a changed address, and Discard restores it', () => {
+    mount(contact('help@example.com'));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    type('care@example.com');
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    expect(screen.getByLabelText('Support email address').className).toContain(
+      'border-attention-solid',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.getByLabelText<HTMLInputElement>('Support email address').value).toBe(
+      'help@example.com',
+    );
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('saves a trimmed address and shows the answer', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: contact('care@example.com', 1) });
+    const success = vi.spyOn(toast, 'success').mockReturnValue('toast');
     mount(contact('help@example.com'));
     fireEvent.change(screen.getByLabelText('Support email address'), {
       target: { value: '  care@example.com ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save address' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -51,8 +73,9 @@ describe('SupportEmailCard', () => {
       { email: 'care@example.com', expectedVersion: 0 },
       'csrf',
     );
-    expect(await screen.findByText('Address saved.')).toBeTruthy();
+    await waitFor(() => expect(success).toHaveBeenCalledWith('Address saved.'));
     expect(screen.getByText('care@example.com')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('refuses a bad address before calling the API', () => {
@@ -67,11 +90,14 @@ describe('SupportEmailCard', () => {
       'su\u0070p\u043ert@x.com',
       'a?b=1@x.com',
     ]) {
-      fireEvent.change(screen.getByLabelText('Support email address'), {
-        target: { value: bad },
-      });
-      fireEvent.click(screen.getByRole('button', { name: 'Save address' }));
+      type(bad);
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
       expect(screen.getByText('Enter one valid email address.')).toBeTruthy();
+      // The error is counted, and Save waits until the field is edited.
+      expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+        true,
+      );
     }
     expect(call).not.toHaveBeenCalled();
   });
@@ -79,11 +105,13 @@ describe('SupportEmailCard', () => {
   it('shows a refusal and a conflict in words', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 403, code: 'access.denied' } });
     mount(contact('help@example.com'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save address' }));
+    type('care@example.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('Your role cannot change the support email.')).toBeTruthy();
 
     call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'notifications.conflict' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save address' }));
+    type('care2@example.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText(/Someone else changed the address first/)).toBeTruthy();
   });
 });

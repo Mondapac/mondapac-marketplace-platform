@@ -3,17 +3,19 @@
 import {
   Badge,
   Banner,
-  Button,
-  Card,
-  CheckboxRow,
   DataList,
-  FormActionBar,
-  Select,
-  TextField,
+  SaveBar,
+  SettingCheckbox,
+  SettingInput,
+  SettingRow,
+  SettingSelect,
+  SettingsPage,
+  SettingsSection,
+  toast,
   type DataListRow,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import {
   BOUNDS,
@@ -39,7 +41,13 @@ import {
 
 const P = 'settings.assistant';
 
-type Notice = 'saved' | 'reloaded' | null;
+type Notice = 'reloaded' | null;
+
+/** Form keys whose API field has another name. */
+const FIELD_OF: Partial<Record<keyof AssistantForm, FieldKey>> = {
+  dailySpendCap: 'dailySpendCapUsdCents',
+  monthlySpendCap: 'monthlySpendCapUsdCents',
+};
 
 /** The model the server configures for a tier, or null. */
 function modelOf(answer: AssistantSettingsAnswer, tier: string): string | null {
@@ -69,8 +77,18 @@ export function AssistantSettingsPanel({
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
 
-  const set = <K extends keyof AssistantForm>(key: K, value: AssistantForm[K]) =>
+  const baseline = formOf(answer.settings);
+  const changedKeys = (Object.keys(baseline) as (keyof AssistantForm)[]).filter(
+    (key) =>
+      form[key] !== baseline[key] && (key !== 'audiencePercent' || form.audience === 'percent'),
+  );
+  const changed = (key: keyof AssistantForm) => changedKeys.includes(key);
+  const set = <K extends keyof AssistantForm>(key: K, value: AssistantForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+    // Editing a field takes its error away; the next save checks it again.
+    const field = FIELD_OF[key] ?? key;
+    setInvalid((current) => current.filter((name) => name !== field));
+  };
   const errorOf = (key: FieldKey) => (invalid.includes(key) ? t(`${P}.invalid.${key}`) : undefined);
 
   function adopt(next: AssistantSettingsAnswer) {
@@ -78,8 +96,7 @@ export function AssistantSettingsPanel({
     setForm(formOf(next.settings));
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit() {
     if (busy.current) return;
     setNotice(null);
     setProblem(null);
@@ -100,7 +117,7 @@ export function AssistantSettingsPanel({
     );
     if (result.ok) {
       adopt(result.body);
-      setNotice('saved');
+      toast.success(t(`${P}.saved`));
     } else if (result.failure.status === 401) {
       window.location.assign('/session-ended');
     } else if (result.failure.code === 'assistant.conflict') {
@@ -120,6 +137,13 @@ export function AssistantSettingsPanel({
     setPending(false);
   }
 
+  function discard() {
+    setForm(baseline);
+    setInvalid([]);
+    setProblem(null);
+    setNotice(null);
+  }
+
   const options = <T extends string>(
     values: readonly T[],
     group: string,
@@ -137,16 +161,39 @@ export function AssistantSettingsPanel({
     });
 
   const status = <StatusCard answer={answer} />;
+  const shownProblem = problem === 'fix' && invalid.length === 0 ? null : problem;
+  const lastChanged = {
+    text:
+      answer.version === 0
+        ? t(`${P}.version-defaults`)
+        : t(`${P}.version`, { version: answer.version }),
+  };
+  const banner = (
+    <>
+      {canManage ? null : <Banner tone="info">{t(`${P}.read-only`)}</Banner>}
+      {notice === 'reloaded' ? <Banner tone="attention">{t(`${P}.reloaded`)}</Banner> : null}
+      {shownProblem === null ? null : (
+        <Banner tone="critical">{t(`${P}.error.${shownProblem}`)}</Banner>
+      )}
+    </>
+  );
+  const frame = {
+    title: t(`${P}.title`),
+    description: t(`${P}.intro`),
+    lastChanged,
+    banner: <div className="flex flex-col gap-3">{banner}</div>,
+  };
 
   if (!canManage) {
     return (
-      <div className="flex flex-col gap-6">
+      <SettingsPage {...frame}>
         {status}
-        <Card title={t(`${P}.summary.title`)}>
-          <Banner tone="info">{t(`${P}.read-only`)}</Banner>
-          <DataList rows={summaryRows(answer.settings, t)} missing={t(`${P}.welcome.default`)} />
-        </Card>
-      </div>
+        <SettingsSection title={t(`${P}.summary.title`)}>
+          <div className="px-5 py-4">
+            <DataList rows={summaryRows(answer.settings, t)} missing={t(`${P}.welcome.default`)} />
+          </div>
+        </SettingsSection>
+      </SettingsPage>
     );
   }
 
@@ -160,54 +207,95 @@ export function AssistantSettingsPanel({
     .join(' · ');
 
   return (
-    <div className="flex flex-col gap-6">
+    <SettingsPage
+      {...frame}
+      onSubmit={() => void submit()}
+      dirty={changedKeys.length > 0}
+      leave={{
+        title: t('settings.leave.title'),
+        message: t('settings.leave.message'),
+        stay: t('settings.leave.stay'),
+        leave: t('settings.leave.leave'),
+      }}
+      saveBar={
+        <SaveBar
+          count={changedKeys.length}
+          summary={t('settings.bar.summary', { count: changedKeys.length })}
+          errorCount={invalid.length}
+          errorsSummary={t('settings.bar.errors', { count: invalid.length })}
+          saving={pending}
+          labels={{
+            region: t('settings.bar.region'),
+            discard: t('settings.bar.discard'),
+            save: t('settings.bar.save'),
+            saving: t('settings.bar.saving'),
+          }}
+          onDiscard={discard}
+        />
+      }
+    >
       {status}
-      <form className="flex flex-col gap-6" onSubmit={(e) => void submit(e)} noValidate>
-        <Card title={t(`${P}.section.rollout`)}>
-          <CheckboxRow
+      <SettingsSection title={t(`${P}.section.rollout`)}>
+        <SettingRow
+          label={t(`${P}.enabled.label`)}
+          help={t(`${P}.enabled.help`)}
+          changed={changed('enabled')}
+        >
+          <SettingCheckbox
             name="enabled"
-            label={t(`${P}.enabled.label`)}
-            help={t(`${P}.enabled.help`)}
+            text={form.enabled ? t(`${P}.status.on`) : t(`${P}.status.off`)}
             checked={form.enabled}
             onChange={(event) => set('enabled', event.target.checked)}
           />
-          <Select
+        </SettingRow>
+        <SettingRow
+          label={t(`${P}.audience.label`)}
+          help={t(`${P}.audience.help`)}
+          changed={changed('audience')}
+        >
+          <SettingSelect
             name="audience"
-            label={t(`${P}.audience.label`)}
-            help={t(`${P}.audience.help`)}
             options={options(AUDIENCES, 'audience')}
             value={form.audience}
             onChange={(event) => set('audience', event.target.value as AssistantForm['audience'])}
           />
-          {form.audience === 'percent' ? (
-            <TextField
+        </SettingRow>
+        {form.audience === 'percent' ? (
+          <SettingRow
+            label={t(`${P}.audience-percent.label`)}
+            help={t(`${P}.audience-percent.help`, BOUNDS.audiencePercent)}
+            changed={changed('audiencePercent')}
+            error={errorOf('audiencePercent')}
+          >
+            <SettingInput
               name="audiencePercent"
-              label={t(`${P}.audience-percent.label`)}
-              help={t(`${P}.audience-percent.help`, BOUNDS.audiencePercent)}
               inputMode="numeric"
               autoComplete="off"
-              className="sm:max-w-40"
+              className="md:max-w-40"
               value={form.audiencePercent}
-              error={errorOf('audiencePercent')}
               onChange={(event) => set('audiencePercent', event.target.value)}
             />
-          ) : null}
-        </Card>
+          </SettingRow>
+        ) : null}
+      </SettingsSection>
 
-        <Card title={t(`${P}.section.answers`)}>
-          <Select
+      <SettingsSection title={t(`${P}.section.answers`)}>
+        <SettingRow
+          label={t(`${P}.scope.label`)}
+          help={t(`${P}.scope.help`)}
+          changed={changed('scope')}
+          error={errorOf('scope')}
+        >
+          <SettingSelect
             name="scope"
-            label={t(`${P}.scope.label`)}
-            help={t(`${P}.scope.help`)}
             options={options(SCOPES, 'scope', answer.unavailableOptions.scope)}
             value={form.scope}
-            error={errorOf('scope')}
             onChange={(event) => set('scope', event.target.value as AssistantForm['scope'])}
           />
-          <Select
+        </SettingRow>
+        <SettingRow label={t(`${P}.model.label`)} help={tierHelp} changed={changed('modelTier')}>
+          <SettingSelect
             name="modelTier"
-            label={t(`${P}.model.label`)}
-            help={tierHelp}
             options={options(
               MODEL_TIERS,
               'model',
@@ -217,134 +305,142 @@ export function AssistantSettingsPanel({
             value={form.modelTier}
             onChange={(event) => set('modelTier', event.target.value as AssistantForm['modelTier'])}
           />
-          <Select
+        </SettingRow>
+        <SettingRow label={t(`${P}.language.label`)} changed={changed('replyLanguage')}>
+          <SettingSelect
             name="replyLanguage"
-            label={t(`${P}.language.label`)}
             options={options(REPLY_LANGUAGES, 'language')}
             value={form.replyLanguage}
             onChange={(event) =>
               set('replyLanguage', event.target.value as AssistantForm['replyLanguage'])
             }
           />
-          <TextField
+        </SettingRow>
+        <SettingRow
+          label={t(`${P}.welcome.label`)}
+          optionalLabel={t(`${P}.optional`)}
+          help={t(`${P}.welcome.help`, { max: BOUNDS.welcomeTextLength })}
+          changed={changed('welcomeText')}
+          error={errorOf('welcomeText')}
+        >
+          <SettingInput
             name="welcomeText"
-            label={t(`${P}.welcome.label`)}
-            optionalLabel={t(`${P}.optional`)}
-            help={t(`${P}.welcome.help`, { max: BOUNDS.welcomeTextLength })}
             autoComplete="off"
             maxLength={BOUNDS.welcomeTextLength * 2}
             value={form.welcomeText}
-            error={errorOf('welcomeText')}
             onChange={(event) => set('welcomeText', event.target.value)}
           />
-        </Card>
+        </SettingRow>
+      </SettingsSection>
 
-        <Card title={t(`${P}.section.users`)}>
-          <Select
+      <SettingsSection title={t(`${P}.section.users`)}>
+        <SettingRow label={t(`${P}.users.label`)} changed={changed('users')}>
+          <SettingSelect
             name="users"
-            label={t(`${P}.users.label`)}
             options={options(USER_GROUPS, 'users')}
             value={form.users}
             onChange={(event) => set('users', event.target.value as AssistantForm['users'])}
           />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
-              name="guestMessageLimit"
-              label={t(`${P}.guest-limit.label`)}
-              help={t(`${P}.limit-help`, BOUNDS.guestMessageLimit)}
-              inputMode="numeric"
-              autoComplete="off"
-              value={form.guestMessageLimit}
-              error={errorOf('guestMessageLimit')}
-              onChange={(event) => set('guestMessageLimit', event.target.value)}
-            />
-            <TextField
-              name="customerMessageLimit"
-              label={t(`${P}.customer-limit.label`)}
-              help={t(`${P}.limit-help`, BOUNDS.customerMessageLimit)}
-              inputMode="numeric"
-              autoComplete="off"
-              value={form.customerMessageLimit}
-              error={errorOf('customerMessageLimit')}
-              onChange={(event) => set('customerMessageLimit', event.target.value)}
-            />
-          </div>
-        </Card>
+        </SettingRow>
+        <SettingRow
+          label={t(`${P}.guest-limit.label`)}
+          help={t(`${P}.limit-help`, BOUNDS.guestMessageLimit)}
+          changed={changed('guestMessageLimit')}
+          error={errorOf('guestMessageLimit')}
+        >
+          <SettingInput
+            name="guestMessageLimit"
+            inputMode="numeric"
+            autoComplete="off"
+            value={form.guestMessageLimit}
+            onChange={(event) => set('guestMessageLimit', event.target.value)}
+          />
+        </SettingRow>
+        <SettingRow
+          label={t(`${P}.customer-limit.label`)}
+          help={t(`${P}.limit-help`, BOUNDS.customerMessageLimit)}
+          changed={changed('customerMessageLimit')}
+          error={errorOf('customerMessageLimit')}
+        >
+          <SettingInput
+            name="customerMessageLimit"
+            inputMode="numeric"
+            autoComplete="off"
+            value={form.customerMessageLimit}
+            onChange={(event) => set('customerMessageLimit', event.target.value)}
+          />
+        </SettingRow>
+      </SettingsSection>
 
-        <Card title={t(`${P}.section.spend`)}>
-          <p className="text-sm text-fg-muted">{t(`${P}.spend.intro`)}</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
-              name="dailySpendCap"
-              label={t(`${P}.spend.daily`)}
-              help={t(`${P}.spend.daily-help`, {
-                min: BOUNDS.dailySpendCapUsdCents.min / 100,
-                max: BOUNDS.dailySpendCapUsdCents.max / 100,
-              })}
-              prefix="US$"
-              inputMode="decimal"
-              autoComplete="off"
-              value={form.dailySpendCap}
-              error={errorOf('dailySpendCapUsdCents')}
-              onChange={(event) => set('dailySpendCap', event.target.value)}
-            />
-            <TextField
-              name="monthlySpendCap"
-              label={t(`${P}.spend.monthly`)}
-              help={t(`${P}.spend.monthly-help`, {
-                min: BOUNDS.monthlySpendCapUsdCents.min / 100,
-                max: BOUNDS.monthlySpendCapUsdCents.max / 100,
-              })}
-              prefix="US$"
-              inputMode="decimal"
-              autoComplete="off"
-              value={form.monthlySpendCap}
-              error={errorOf('monthlySpendCapUsdCents')}
-              onChange={(event) => set('monthlySpendCap', event.target.value)}
-            />
-          </div>
-        </Card>
+      <SettingsSection title={t(`${P}.section.spend`)} description={t(`${P}.spend.intro`)}>
+        <SettingRow
+          label={t(`${P}.spend.daily`)}
+          help={t(`${P}.spend.daily-help`, {
+            min: BOUNDS.dailySpendCapUsdCents.min / 100,
+            max: BOUNDS.dailySpendCapUsdCents.max / 100,
+          })}
+          changed={changed('dailySpendCap')}
+          error={errorOf('dailySpendCapUsdCents')}
+        >
+          <SettingInput
+            name="dailySpendCap"
+            prefix="US$"
+            inputMode="decimal"
+            autoComplete="off"
+            value={form.dailySpendCap}
+            onChange={(event) => set('dailySpendCap', event.target.value)}
+          />
+        </SettingRow>
+        <SettingRow
+          label={t(`${P}.spend.monthly`)}
+          help={t(`${P}.spend.monthly-help`, {
+            min: BOUNDS.monthlySpendCapUsdCents.min / 100,
+            max: BOUNDS.monthlySpendCapUsdCents.max / 100,
+          })}
+          changed={changed('monthlySpendCap')}
+          error={errorOf('monthlySpendCapUsdCents')}
+        >
+          <SettingInput
+            name="monthlySpendCap"
+            prefix="US$"
+            inputMode="decimal"
+            autoComplete="off"
+            value={form.monthlySpendCap}
+            onChange={(event) => set('monthlySpendCap', event.target.value)}
+          />
+        </SettingRow>
+      </SettingsSection>
 
-        <Card title={t(`${P}.section.data`)}>
-          <Select
+      <SettingsSection title={t(`${P}.section.data`)}>
+        <SettingRow
+          label={t(`${P}.retention.label`)}
+          help={t(`${P}.retention.help`)}
+          changed={changed('retention')}
+        >
+          <SettingSelect
             name="retention"
-            label={t(`${P}.retention.label`)}
-            help={t(`${P}.retention.help`)}
             options={options(RETENTIONS, 'retention')}
             value={form.retention}
             onChange={(event) => set('retention', event.target.value as AssistantForm['retention'])}
           />
-          <Select
+        </SettingRow>
+        <SettingRow
+          label={t(`${P}.support.label`)}
+          help={t(`${P}.support.help`)}
+          changed={changed('supportHandoff')}
+          error={errorOf('supportHandoff')}
+        >
+          <SettingSelect
             name="supportHandoff"
-            label={t(`${P}.support.label`)}
-            help={t(`${P}.support.help`)}
             options={options(SUPPORT_HANDOFFS, 'support', answer.unavailableOptions.supportHandoff)}
             value={form.supportHandoff}
-            error={errorOf('supportHandoff')}
             onChange={(event) =>
               set('supportHandoff', event.target.value as AssistantForm['supportHandoff'])
             }
           />
-        </Card>
-
-        <div className="flex flex-col gap-3">
-          {notice === 'saved' ? <Banner tone="success">{t(`${P}.saved`)}</Banner> : null}
-          {notice === 'reloaded' ? <Banner tone="attention">{t(`${P}.reloaded`)}</Banner> : null}
-          {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
-          <FormActionBar
-            status={
-              answer.version === 0
-                ? t(`${P}.version-defaults`)
-                : t(`${P}.version`, { version: answer.version })
-            }
-          >
-            <Button type="submit" loading={pending}>
-              {t(`${P}.save`)}
-            </Button>
-          </FormActionBar>
-        </div>
-      </form>
-    </div>
+        </SettingRow>
+      </SettingsSection>
+    </SettingsPage>
   );
 }
 
@@ -381,12 +477,14 @@ function StatusCard({ answer }: { readonly answer: AssistantSettingsAnswer }) {
     { label: t(`${P}.status.last-auto-off`), value: muted(t(`${P}.status.not-measured`)) },
   ];
   return (
-    <Card title={t(`${P}.status.title`)}>
-      {answer.settings.enabled && !configured(answer) ? (
-        <Banner tone="attention">{t(`${P}.status.not-configured`)}</Banner>
-      ) : null}
-      <DataList rows={rows} missing={t(`${P}.status.not-measured`)} />
-    </Card>
+    <SettingsSection title={t(`${P}.status.title`)}>
+      <div className="flex flex-col gap-4 px-5 py-4">
+        {answer.settings.enabled && !configured(answer) ? (
+          <Banner tone="attention">{t(`${P}.status.not-configured`)}</Banner>
+        ) : null}
+        <DataList rows={rows} missing={t(`${P}.status.not-measured`)} />
+      </div>
+    </SettingsSection>
   );
 }
 

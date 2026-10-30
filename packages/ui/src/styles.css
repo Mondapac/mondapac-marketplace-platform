@@ -36,6 +36,8 @@
   --color-success-fg: var(--mp-color-status-success-fg);
   --color-attention-bg: var(--mp-color-status-attention-bg);
   --color-attention-fg: var(--mp-color-status-attention-fg);
+  --color-attention-solid: var(--mp-color-status-attention-solid);
+  --color-attention-border: var(--mp-color-status-attention-border);
   --color-critical-bg: var(--mp-color-status-critical-bg);
   --color-critical-fg: var(--mp-color-status-critical-fg);
   --color-info-bg: var(--mp-color-status-info-bg);
