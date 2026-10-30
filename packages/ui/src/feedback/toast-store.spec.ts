@@ -240,6 +240,44 @@ describe('toast promise', () => {
   });
 });
 
+describe('toast exit', () => {
+  it('keeps a closed toast for its exit animation, then removes it', () => {
+    store.setExitMs(160);
+    store.show('error', 'a', { id: 'a' });
+    store.show('error', 'b', { id: 'b' });
+    store.show('error', 'c', { id: 'c' });
+    store.show('error', 'd', { id: 'd' });
+    store.dismiss('a');
+    expect(store.getSnapshot().visible[0]).toMatchObject({ id: 'a', exiting: true });
+    expect(ids()).toEqual(['a', 'b', 'c']);
+    vi.advanceTimersByTime(159);
+    expect(ids()).toEqual(['a', 'b', 'c']);
+    vi.advanceTimersByTime(1);
+    expect(ids()).toEqual(['b', 'c', 'd']);
+  });
+
+  it('stops the timer of a closing toast and lets a replacement bring it back', () => {
+    store.setExitMs(160);
+    store.show('success', 'one', { id: 'a' });
+    store.dismiss('a');
+    store.show('success', 'two', { id: 'a' });
+    expect(store.getSnapshot().visible[0]).toMatchObject({ text: 'two', exiting: false });
+    vi.advanceTimersByTime(4999);
+    expect(ids()).toEqual(['a']);
+    vi.advanceTimersByTime(1);
+    expect(store.getSnapshot().visible[0]?.exiting).toBe(true);
+    vi.advanceTimersByTime(160);
+    expect(ids()).toEqual([]);
+  });
+
+  it('removes at once when the exit time is zero', () => {
+    store.setExitMs(0);
+    store.show('error', 'a', { id: 'a' });
+    store.dismiss('a');
+    expect(ids()).toEqual([]);
+  });
+});
+
 describe('toast subscription', () => {
   it('notifies listeners with a new snapshot on each change, and stops after unsubscribe', () => {
     const listener = vi.fn();

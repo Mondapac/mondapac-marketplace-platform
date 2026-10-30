@@ -9,6 +9,7 @@ const view = (over: Partial<ToastView> & Pick<ToastView, 'type'>): ToastView => 
   text: `A ${over.type} message`,
   duration: 5000,
   paused: false,
+  exiting: false,
   revision: 0,
   ...over,
 });
@@ -18,11 +19,11 @@ const stack = (items: ToastView[], aboveBottomBar = false) =>
   );
 
 describe('ToastStack', () => {
-  it('is a polite region named by its label, even when empty', () => {
+  it('is a named region, even when empty, and is not a live region itself', () => {
     const html = stack([]);
     expect(html).toContain('role="region"');
     expect(html).toContain('aria-label="Action notifications"');
-    expect(html).toContain('aria-live="polite"');
+    expect(html).not.toContain('aria-live="polite"');
   });
 
   it('gives an error role alert and the other types role status', () => {
@@ -33,8 +34,34 @@ describe('ToastStack', () => {
       view({ type: 'loading', duration: Infinity }),
       view({ type: 'error', duration: Infinity }),
     ]);
-    expect(html.match(/role="status"/g)).toHaveLength(4);
+    // The loading card has no role and is switched off, so only its result is announced.
+    expect(html.match(/role="status"/g)).toHaveLength(3);
     expect(html.match(/role="alert"/g)).toHaveLength(1);
+    expect(html.match(/aria-live="off"/g)).toHaveLength(1);
+    expect(html.match(/aria-live=/g)).toHaveLength(1);
+  });
+
+  it('shows a still icon for the loading card under reduced motion', () => {
+    const html = stack([view({ type: 'loading', duration: Infinity })]);
+    expect(html).toContain('motion-reduce:hidden');
+    expect(html).toContain('motion-reduce:flex');
+  });
+
+  it('marks a closing toast so it can play its exit animation', () => {
+    expect(stack([view({ type: 'success', exiting: true })])).toContain('data-exiting=""');
+    expect(stack([view({ type: 'success' })])).not.toContain('data-exiting=""');
+  });
+
+  it('sizes the close button and phone action targets from the control token', () => {
+    const html = stack([
+      view({
+        type: 'error',
+        duration: Infinity,
+        action: { label: 'Try again', onClick: () => undefined },
+      }),
+    ]);
+    expect(html).toContain('size-(--mp-size-control-sm)');
+    expect(html).toContain('max-md:min-h-(--mp-size-control-sm)');
   });
 
   it('puts a labelled close button on every toast and never makes the toast itself focusable', () => {

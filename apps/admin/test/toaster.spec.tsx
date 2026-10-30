@@ -11,10 +11,10 @@ afterEach(() => {
 });
 
 describe('Toaster', () => {
-  it('keeps an empty polite region ready, named by its label', () => {
+  it('keeps an empty named region ready, named by its label', () => {
     render(<Toaster labels={labels} />);
     const region = screen.getByRole('region', { name: 'Action notifications' });
-    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.hasAttribute('aria-live')).toBe(false);
     expect(region.children).toHaveLength(0);
   });
 
@@ -122,5 +122,39 @@ describe('Toaster', () => {
     act(() => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
+  });
+
+  it('plays a short exit before removing a closed toast, and none under reduced motion', () => {
+    vi.useFakeTimers();
+    const media = (reduce: boolean) =>
+      vi.fn(() => ({
+        matches: reduce,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }));
+    try {
+      window.matchMedia = media(false) as unknown as typeof window.matchMedia;
+      render(<Toaster labels={labels} />);
+      act(() => {
+        toast.error('Failed', { id: 'a' });
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Close notification' }));
+      expect(screen.getByRole('alert').hasAttribute('data-exiting')).toBe(true);
+      act(() => {
+        vi.advanceTimersByTime(160);
+      });
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      cleanup();
+      window.matchMedia = media(true) as unknown as typeof window.matchMedia;
+      render(<Toaster labels={labels} />);
+      act(() => {
+        toast.error('Failed', { id: 'b' });
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Close notification' }));
+      expect(screen.queryByRole('alert')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

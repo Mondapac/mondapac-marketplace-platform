@@ -126,6 +126,12 @@ body {
     transform: none;
   }
 }
+@keyframes mp-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
 @keyframes mp-toast-shrink {
   from {
     transform: scaleX(1);

@@ -34,6 +34,8 @@ export interface ToastView {
   readonly duration: number;
   /** True while the timer is held (pointer, focus or a hidden tab). */
   readonly paused: boolean;
+  /** True while the toast plays its exit animation, just before it is removed. */
+  readonly exiting: boolean;
   /** Counts the replacements of this id, so the progress bar restarts with the timer. */
   readonly revision: number;
 }
@@ -55,6 +57,8 @@ export interface ToastPromiseMessages<T> {
 export type ToastHold = 'pointer' | 'focus';
 
 export const MAX_VISIBLE_TOASTS = 3;
+/** The exit animation (the `motion-duration-base` token, 160 ms). */
+export const TOAST_EXIT_MS = 160;
 
 const DURATION: Record<ToastType, number> = {
   success: 5000,
@@ -73,7 +77,9 @@ export function toastDuration(type: ToastType, options: ToastOptions = {}): numb
 }
 
 interface Entry {
-  view: Omit<ToastView, 'paused'>;
+  view: Omit<ToastView, 'paused' | 'exiting'>;
+  exiting: boolean;
+  exitTimer: ReturnType<typeof setTimeout> | undefined;
   holds: Set<ToastHold>;
   /** Milliseconds left when the timer is not running. */
   remaining: number;
@@ -90,6 +96,9 @@ const EMPTY: ToastSnapshot = { visible: [], queued: 0 };
 export function createToastStore() {
   let entries: Entry[] = [];
   let hidden = false;
+  // How long a closed toast stays for its exit animation. Zero removes it at once; the Toaster
+  // sets it, and keeps it zero under reduced motion.
+  let exitMs = 0;
   let counter = 0;
   let snapshot: ToastSnapshot = EMPTY;
   const listeners = new Set<() => void>();
@@ -101,6 +110,7 @@ export function createToastStore() {
         index < MAX_VISIBLE_TOASTS &&
         Number.isFinite(entry.view.duration) &&
         entry.holds.size === 0 &&
+        !entry.exiting &&
         !hidden;
       if (run && entry.startedAt === null) {
         entry.startedAt = now;
@@ -116,6 +126,7 @@ export function createToastStore() {
       visible: entries.slice(0, MAX_VISIBLE_TOASTS).map((entry) => ({
         ...entry.view,
         paused: entry.holds.size > 0 || hidden,
+        exiting: entry.exiting,
       })),
       queued: Math.max(0, entries.length - MAX_VISIBLE_TOASTS),
     };
@@ -126,7 +137,7 @@ export function createToastStore() {
     const id = options.id ?? `toast-${++counter}`;
     const duration = toastDuration(type, options);
     const existing = entries.find((entry) => entry.view.id === id);
-    const view: Omit<ToastView, 'paused'> = {
+    const view: Entry['view'] = {
       id,
       type,
       text,
@@ -139,6 +150,8 @@ export function createToastStore() {
     if (existing === undefined) {
       entries.push({
         view,
+        exiting: false,
+        exitTimer: undefined,
         holds: new Set(),
         remaining: duration,
         startedAt: null,
@@ -146,6 +159,8 @@ export function createToastStore() {
       });
     } else {
       clearTimeout(existing.timer);
+      clearTimeout(existing.exitTimer);
+      existing.exiting = false;
       existing.view = view;
       existing.remaining = duration;
       existing.startedAt = null;
@@ -154,11 +169,29 @@ export function createToastStore() {
     return id;
   }
 
+  function remove(gone: Entry[]) {
+    gone.forEach((entry) => {
+      clearTimeout(entry.timer);
+      clearTimeout(entry.exitTimer);
+    });
+    entries = entries.filter((entry) => !gone.includes(entry));
+    sync();
+  }
+
   function dismiss(id?: string) {
     const gone = entries.filter((entry) => id === undefined || entry.view.id === id);
     if (gone.length === 0) return;
-    gone.forEach((entry) => clearTimeout(entry.timer));
-    entries = entries.filter((entry) => !gone.includes(entry));
+    if (exitMs <= 0) {
+      remove(gone);
+      return;
+    }
+    const leaving = gone.filter((entry) => !entry.exiting);
+    if (leaving.length === 0) return;
+    leaving.forEach((entry) => {
+      clearTimeout(entry.timer);
+      entry.exiting = true;
+      entry.exitTimer = setTimeout(() => remove([entry]), exitMs);
+    });
     sync();
   }
 
@@ -206,6 +239,9 @@ export function createToastStore() {
     hold: (id: string, hold: ToastHold) => setHold(id, hold, true),
     release: (id: string, hold: ToastHold) => setHold(id, hold, false),
     setHidden,
+    setExitMs: (ms: number) => {
+      exitMs = ms;
+    },
     promise,
     subscribe: (listener: () => void) => {
       listeners.add(listener);

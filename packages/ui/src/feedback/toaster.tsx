@@ -2,7 +2,13 @@
 
 import { useEffect, type KeyboardEvent } from 'react';
 import { Icon, type IconName } from '../icon/icon.tsx';
-import { toastStore, useToasts, type ToastType, type ToastView } from './toast-store.ts';
+import {
+  TOAST_EXIT_MS,
+  toastStore,
+  useToasts,
+  type ToastType,
+  type ToastView,
+} from './toast-store.ts';
 
 export interface ToasterProps {
   readonly labels: {
@@ -43,6 +49,16 @@ export function Toaster({ labels, aboveBottomBar = false }: ToasterProps) {
     return () => document.removeEventListener('visibilitychange', sync);
   }, []);
 
+  useEffect(() => {
+    // A closed toast leaves with a short exit animation, none under reduced motion.
+    if (typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => toastStore.setExitMs(query.matches ? 0 : TOAST_EXIT_MS);
+    apply();
+    query.addEventListener('change', apply);
+    return () => query.removeEventListener('change', apply);
+  }, []);
+
   return <ToastStack items={visible} labels={labels} aboveBottomBar={aboveBottomBar} />;
 }
 
@@ -56,7 +72,6 @@ export function ToastStack({
     <div
       role="region"
       aria-label={labels.region}
-      aria-live="polite"
       className={`pointer-events-none fixed inset-x-3 z-30 flex flex-col gap-2 md:inset-x-auto md:end-4 md:w-[min(var(--mp-size-dialog-sm),calc(100%-2rem))] ${aboveBottomBar ? 'bottom-[calc(var(--mp-size-bottom-bar)+0.75rem+env(safe-area-inset-bottom))] md:bottom-4' : 'bottom-4'}`}
     >
       {items.map((item) => (
@@ -82,10 +97,18 @@ function ToastCard({
     if (event.key === 'Escape') toastStore.dismiss(id);
   }
 
+  // One pattern: the region only names the landmark; each toast announces itself (an error at
+  // once, the others politely). The loading card stays silent: only its result is announced.
+  const announce =
+    type === 'loading'
+      ? ({ 'aria-live': 'off' } as const)
+      : ({ role: type === 'error' ? 'alert' : 'status' } as const);
+
   return (
     <div
-      role={type === 'error' ? 'alert' : 'status'}
+      {...announce}
       data-toast={type}
+      data-exiting={item.exiting ? '' : undefined}
       onPointerEnter={() => toastStore.hold(id, 'pointer')}
       onPointerLeave={() => toastStore.release(id, 'pointer')}
       onFocus={() => toastStore.hold(id, 'focus')}
@@ -93,42 +116,58 @@ function ToastCard({
         if (!event.currentTarget.contains(event.relatedTarget)) toastStore.release(id, 'focus');
       }}
       onKeyDown={onKeyDown}
-      className="pointer-events-auto relative grid animate-[mp-toast-in_220ms_ease-out] grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 overflow-hidden rounded-lg border border-line bg-surface p-3 pb-3.5 text-sm text-fg shadow-(--mp-shadow-elevation-floating) [--mp-toast-from:24px] motion-reduce:animate-none rtl:[--mp-toast-from:-24px]"
+      className="pointer-events-auto relative grid animate-[mp-toast-in_var(--mp-motion-duration-slow)_var(--mp-motion-easing)] grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-(--mp-space-2-5) overflow-hidden rounded-lg border border-line-control bg-surface p-3 pb-3.5 text-sm text-fg shadow-(--mp-shadow-elevation-floating) [--mp-toast-from:24px] data-exiting:animate-[mp-toast-out_var(--mp-motion-duration-base)_ease-in_forwards] motion-reduce:animate-none motion-reduce:data-exiting:animate-none rtl:[--mp-toast-from:-24px]"
     >
       {tone === null ? (
-        <span
-          aria-hidden="true"
-          className="size-6 animate-spin rounded-full border-2 border-line border-t-link motion-reduce:animate-none"
-        />
+        <>
+          <span
+            aria-hidden="true"
+            className="size-(--mp-size-badge) animate-spin rounded-full border-2 border-line border-t-link motion-reduce:hidden"
+          />
+          {/* Under reduced motion a still icon stands in for the spinning ring. */}
+          <span
+            aria-hidden="true"
+            className="hidden size-(--mp-size-badge) items-center justify-center rounded-full bg-info-bg text-info-fg motion-reduce:flex"
+          >
+            <Icon name="clock" className="size-4" />
+          </span>
+        </>
       ) : (
-        <span className={`flex size-6 items-center justify-center rounded-full ${tone.badge}`}>
+        <span
+          className={`flex size-(--mp-size-badge) items-center justify-center rounded-full ${tone.badge}`}
+        >
           <Icon name={tone.icon} className="size-4" />
         </span>
       )}
-      <div className="min-w-0 break-words">
+      {/* The text starts level with the badge: half the badge's excess over one 20 px line. */}
+      <div className="min-w-0 break-words pt-[calc((var(--mp-size-badge)-1.25rem)/2)]">
         <p className="font-semibold">{headline}</p>
         {body === null ? null : <p className="text-xs text-fg-secondary">{body}</p>}
         {item.description === undefined ? null : (
           <p className="text-xs text-fg-secondary">{item.description}</p>
         )}
         {item.action === undefined ? null : (
-          <button
-            type="button"
-            onClick={() => {
-              item.action?.onClick();
-              toastStore.dismiss(id);
-            }}
-            className="mt-1.5 text-xs font-semibold text-link underline"
-          >
-            {item.action.label}
-          </button>
+          <div className="mt-1.5">
+            {/* A phone touch target, with a negative margin so the card keeps its height. */}
+            <button
+              type="button"
+              onClick={() => {
+                item.action?.onClick();
+                toastStore.dismiss(id);
+              }}
+              className="inline-flex items-center text-xs font-semibold text-link underline max-md:-my-[calc((var(--mp-size-control-sm)-1rem)/2)] max-md:min-h-(--mp-size-control-sm)"
+            >
+              {item.action.label}
+            </button>
+          </div>
         )}
       </div>
+      {/* Centred on the badge line; the negative margins give back the height the target adds. */}
       <button
         type="button"
         aria-label={closeLabel}
         onClick={() => toastStore.dismiss(id)}
-        className="flex size-8 items-center justify-center rounded-md text-fg-muted hover:bg-muted hover:text-fg"
+        className="-my-[calc((var(--mp-size-control-sm)-var(--mp-size-badge))/2)] -me-1 flex size-(--mp-size-control-sm) items-center justify-center rounded-md text-fg-muted hover:bg-muted hover:text-fg"
       >
         <Icon name="x" />
       </button>
