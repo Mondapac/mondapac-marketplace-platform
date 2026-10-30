@@ -20,12 +20,14 @@ import { callApi } from '../api/client.ts';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { fleetProblemOf } from './errors.ts';
 import { FleetsCard } from './fleets-card.tsx';
-import { EMPTY_FORM, formOf } from './form.ts';
+import { EMPTY_FORM, formOf, scoreOf } from './form.ts';
 import { ModelFormCard } from './model-form.tsx';
 import {
+  FLEET_CODES,
   FLEET_SELECTION_PATH,
   METHODS,
   type FleetCode,
+  type FleetRow,
   type Method,
   type Model,
   type Rule,
@@ -36,7 +38,7 @@ const P = 'fleets';
 const DEFAULT_OPTION = '';
 
 type Confirm =
-  | { readonly kind: 'active' }
+  | { readonly kind: 'page' }
   | { readonly kind: 'edit'; readonly body: { name: string; rule: Rule } }
   | null;
 
@@ -59,7 +61,11 @@ export function FleetSelectionPanel({
   const [problem, setProblem] = useState<string | null>(null);
   const [formProblem, setFormProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<'reloaded' | null>(null);
-  const [pending, setPending] = useState<'active' | 'model' | null>(null);
+  const [scores, setScores] = useState<Record<FleetCode, string>>(() => scoresOf(initial));
+  const [invalidScores, setInvalidScores] = useState<readonly FleetCode[]>([]);
+  const [conflict, setConflict] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const [pending, setPending] = useState<'page' | 'model' | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -84,9 +90,19 @@ export function FleetSelectionPanel({
   const nameOf = (fleet: FleetCode) =>
     selection.fleets.find((row) => row.fleet === fleet)?.displayName ?? fleet;
 
+  /** The page as saved: the draft is replaced by it. */
   function adopt(next: Selection) {
     setSelection(next);
     setChoice(choiceOf(next));
+    setScores(scoresOf(next));
+    setInvalidScores([]);
+    setConflict(false);
+    setComparing(false);
+  }
+
+  /** The page as stored now, the admin's draft kept (a model was saved, or someone saved first). */
+  function refresh(next: Selection) {
+    setSelection(next);
   }
 
   const ended = (status: number) => {
@@ -104,41 +120,93 @@ export function FleetSelectionPanel({
   });
   const changedMethod = (method: Method) => changes.some((change) => change.method === method);
 
-  function askActive(event: FormEvent) {
+  /** The fleets whose score the admin changed. */
+  const changedFleets = selection.fleets.filter(
+    (row) => scores[row.fleet].trim() !== scoreText(row),
+  );
+  const count = changes.length + changedFleets.length;
+
+  /** What differs between the page as stored now and the admin's draft, as plain text. */
+  const differences = [
+    ...changes.map((change) => ({
+      key: change.method,
+      label: t(`${P}.method.${change.method}`),
+      saved: change.from,
+      yours: change.to,
+    })),
+    ...changedFleets.map((row) => ({
+      key: row.fleet,
+      label: t(`${P}.compare.score`, { fleet: row.displayName }),
+      saved: scoreText(row) === '' ? t(`${P}.compare.unset`) : scoreText(row),
+      yours: scores[row.fleet].trim() === '' ? t(`${P}.compare.unset`) : scores[row.fleet].trim(),
+    })),
+  ];
+
+  function askSave(event: FormEvent) {
     event.preventDefault();
-    if (changes.length > 0) setConfirm({ kind: 'active' });
+    if (busy.current || count === 0) return;
+    // A blank score is only fine for a fleet that has none; a score cannot be taken back.
+    const bad = selection.fleets
+      .filter((row) => {
+        const text = scores[row.fleet].trim();
+        return text === '' ? row.reliability !== null : scoreOf(text) === null;
+      })
+      .map((row) => row.fleet);
+    setInvalidScores(bad);
+    if (bad.length > 0) return;
+    if (changes.length > 0) setConfirm({ kind: 'page' });
+    else void savePage();
   }
 
   function discard() {
     setChoice(choiceOf(selection));
+    setScores(scoresOf(selection));
+    setInvalidScores([]);
     setProblem(null);
+    setConflict(false);
+    setComparing(false);
   }
 
-  async function saveActive() {
+  async function savePage() {
     if (busy.current) return;
     busy.current = true;
-    setPending('active');
+    setPending('page');
     setNotice(null);
     setProblem(null);
-    let latest: Selection | null = null;
-    for (const method of METHODS) {
-      const wanted = choice[method] === DEFAULT_OPTION ? null : choice[method];
-      if (wanted === selection.active[method]) continue;
-      const result = await callApi<Selection>(
-        'PUT',
-        `${FLEET_SELECTION_PATH}/active/${method}`,
-        { modelId: wanted },
-        csrfToken,
-      );
-      if (!result.ok) {
-        if (!ended(result.failure.status)) setProblem(fleetProblemOf(result.failure));
-        break;
+    const result = await callApi<Selection>(
+      'PUT',
+      FLEET_SELECTION_PATH,
+      {
+        expectedVersion: selection.version,
+        active: Object.fromEntries(
+          METHODS.map((method) => [
+            method,
+            choice[method] === DEFAULT_OPTION ? null : choice[method],
+          ]),
+        ),
+        reliability: Object.fromEntries(
+          FLEET_CODES.map((fleet) => [fleet, scoreOf(scores[fleet])]),
+        ),
+      },
+      csrfToken,
+    );
+    if (result.ok) {
+      adopt(result.body);
+      toast.success(t(`${P}.notice.saved`));
+    } else if (!ended(result.failure.status)) {
+      if (result.failure.code === 'shipping.fleet-selection-conflict') {
+        // Someone saved first: the draft is kept; the page now measures it against what is stored.
+        const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
+        if (fresh.ok) {
+          refresh(fresh.body);
+          setConflict(true);
+          setComparing(false);
+        } else {
+          setProblem('page-conflict');
+        }
+      } else {
+        setProblem(fleetProblemOf(result.failure));
       }
-      latest = result.body;
-    }
-    if (latest !== null) {
-      adopt(latest);
-      toast.success(t(`${P}.notice.activated`));
     }
     busy.current = false;
     setPending(null);
@@ -160,7 +228,7 @@ export function FleetSelectionPanel({
         );
     if (result.ok) {
       const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
-      if (fresh.ok) adopt(fresh.body);
+      if (fresh.ok) refresh(fresh.body);
       setEditing(null);
       focusNext.current = creating ? { kind: 'add' } : { kind: 'model', id: editing.model.id };
       toast.success(t(`${P}.notice.${creating ? 'created' : 'edited'}`));
@@ -171,7 +239,7 @@ export function FleetSelectionPanel({
         // Someone saved first: show what is stored now, so the admin decides again on that.
         const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
         if (fresh.ok) {
-          adopt(fresh.body);
+          refresh(fresh.body);
           setEditing(null);
           setNotice('reloaded');
           setFormProblem(null);
@@ -198,10 +266,36 @@ export function FleetSelectionPanel({
         {t(`${P}.viewer-only`)}
       </Banner>
     ),
-    notice === null ? null : (
-      <div key="conflict" ref={noticeRef} tabIndex={-1} className="outline-none">
+    conflict ? (
+      <div key="conflict" className="flex flex-col gap-3">
         <SettingsConflictBanner
           title={t(`${P}.conflict.title`)}
+          body={t(`${P}.conflict.body`, { count })}
+          compareLabel={t(`${P}.conflict.${comparing ? 'hide' : 'compare'}`)}
+          onCompare={() => setComparing((open) => !open)}
+        />
+        {comparing ? (
+          <ul className="flex flex-col gap-1 rounded-md border border-line p-4 text-sm">
+            {differences.length === 0 ? (
+              <li>{t(`${P}.conflict.same`)}</li>
+            ) : (
+              differences.map((row) => (
+                <li key={row.key}>
+                  {t(`${P}.conflict.line`, {
+                    field: row.label,
+                    saved: row.saved,
+                    yours: row.yours,
+                  })}
+                </li>
+              ))
+            )}
+          </ul>
+        ) : null}
+      </div>
+    ) : notice === null ? null : (
+      <div key="conflict" ref={noticeRef} tabIndex={-1} className="outline-none">
+        <SettingsConflictBanner
+          title={t(`${P}.conflict.model-title`)}
           body={t(`${P}.notice.${notice}`)}
         />
       </div>
@@ -220,11 +314,11 @@ export function FleetSelectionPanel({
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
-      dirty={canManage && (changes.length > 0 || editing !== null)}
+      dirty={canManage && (count > 0 || editing !== null)}
       leave={chrome.leave}
     >
-      {/* The one form of the page with a save bar; each model and each fleet score has its own. */}
-      <form className="flex flex-col gap-4" onSubmit={askActive} noValidate>
+      {/* The one form of the page with a save bar: methods and scores save together (batch). */}
+      <form className="flex flex-col gap-4" onSubmit={askSave} noValidate>
         <SettingsSection
           title={t(`${P}.active.title`)}
           description={t(`${P}.active.intro`, {
@@ -249,11 +343,22 @@ export function FleetSelectionPanel({
             </SettingRow>
           ))}
         </SettingsSection>
+        <FleetsCard
+          fleets={selection.fleets}
+          canManage={canManage}
+          texts={scores}
+          invalid={invalidScores}
+          onText={(fleet, value) => {
+            setScores((current) => ({ ...current, [fleet]: value }));
+            setInvalidScores((current) => current.filter((name) => name !== fleet));
+          }}
+        />
         {canManage ? (
           <SaveBar
             {...chrome.saveBar({
-              count: changes.length,
-              saving: pending === 'active',
+              count,
+              errorCount: invalidScores.length,
+              saving: pending === 'page',
               onDiscard: discard,
             })}
           />
@@ -369,7 +474,7 @@ export function FleetSelectionPanel({
               onClick={() => {
                 const taken = confirm;
                 setConfirm(null);
-                if (taken?.kind === 'active') void saveActive();
+                if (taken?.kind === 'page') void savePage();
                 else if (taken?.kind === 'edit') void saveModel(taken.body);
               }}
             >
@@ -401,15 +506,21 @@ export function FleetSelectionPanel({
           </ul>
         )}
       </Dialog>
-
-      <FleetsCard
-        fleets={selection.fleets}
-        canManage={canManage}
-        csrfToken={csrfToken}
-        onSelection={adopt}
-      />
     </SettingsPage>
   );
+}
+
+/** The text a fleet's score field starts with: its saved score, or nothing while none is set. */
+const scoreText = (row: FleetRow): string =>
+  row.reliability === null ? '' : String(row.reliability);
+
+function scoresOf(selection: Selection): Record<FleetCode, string> {
+  return Object.fromEntries(
+    FLEET_CODES.map((fleet) => {
+      const row = selection.fleets.find((candidate) => candidate.fleet === fleet);
+      return [fleet, row === undefined ? '' : scoreText(row)];
+    }),
+  ) as Record<FleetCode, string>;
 }
 
 function choiceOf(selection: Selection): Record<Method, string> {

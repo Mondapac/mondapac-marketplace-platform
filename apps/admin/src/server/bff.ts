@@ -53,17 +53,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/profile/preferences',
     // The Market's buyer assistant settings (assistant): every field with `expectedVersion`.
     'assistant/admin/settings',
-    // Fleet selection (shipping): the active model per delivery method and the reliability score
-    // of each fleet. Each path is spelled out, so no other fleet or method name reaches the API.
-    'shipping/admin/fleet-selection/fleets/mondapac_drive/reliability',
-    'shipping/admin/fleet-selection/fleets/uber_direct/reliability',
-    'shipping/admin/fleet-selection/fleets/zoom2u/reliability',
-    'shipping/admin/fleet-selection/fleets/doordash_drive/reliability',
-    'shipping/admin/fleet-selection/fleets/auspost/reliability',
-    'shipping/admin/fleet-selection/fleets/fake_test/reliability',
-    'shipping/admin/fleet-selection/active/instant',
-    'shipping/admin/fleet-selection/active/same_day',
-    'shipping/admin/fleet-selection/active/scheduled',
+    // Fleet selection (shipping): the whole page in one batch (the active model per delivery
+    // method and the reliability per fleet), with `expectedVersion`.
+    'shipping/admin/fleet-selection',
     // The order of the live slides of one position (storefront). A fixed path, so `order` is never
     // read as a slide id: the slide route below takes a UUID only.
     'storefront/admin/slides/order',

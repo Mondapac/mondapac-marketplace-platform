@@ -30,9 +30,8 @@ import {
 import { SHIPPING_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigCarrierPolicy } from '../infrastructure/config-carrier-policy';
 import type { ShippingDependencies } from './shipping-dependencies';
-import { ActivateFleetSelectionModel } from './use-cases/activate-fleet-selection-model.use-case';
 import { CreateFleetSelectionModel } from './use-cases/create-fleet-selection-model.use-case';
-import { SetFleetReliability } from './use-cases/set-fleet-reliability.use-case';
+import { SetFleetSelection } from './use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from './use-cases/update-fleet-selection-model.use-case';
 import { ViewFleetSelection } from './use-cases/view-fleet-selection.use-case';
 
@@ -70,8 +69,7 @@ describe('the access declarations', () => {
     for (const useCase of [
       CreateFleetSelectionModel,
       UpdateFleetSelectionModel,
-      ActivateFleetSelectionModel,
-      SetFleetReliability,
+      SetFleetSelection,
     ]) {
       expect(useCase.access.rule).toEqual({
         kind: 'permissions',
@@ -154,10 +152,18 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       rule,
       expectedVersion,
     });
-  const activate = (method: unknown, modelId: unknown) =>
-    new ActivateFleetSelectionModel(gate, deps).execute(admin, { method, modelId });
-  const reliability = (fleet: unknown, score: unknown) =>
-    new SetFleetReliability(gate, deps).execute(admin, { fleet, score });
+  const NONE = { instant: null, same_day: null, scheduled: null };
+  const save = (
+    expectedVersion: unknown,
+    active: unknown = NONE,
+    reliabilityScores: unknown = {},
+    context: CallContext = admin,
+  ) =>
+    new SetFleetSelection(gate, deps).execute(context, {
+      expectedVersion,
+      active,
+      reliability: reliabilityScores,
+    });
   const view = (context: CallContext = admin) =>
     new ViewFleetSelection(gate, deps).execute(context, {});
   const created = async (name: string, rule: unknown = { kind: 'cheapest' }) => {
@@ -310,47 +316,140 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     ]);
   });
 
-  it('picks the active model per method, audits each pick, and puts the default back with null', async () => {
+  it('saves the page in one batch: the active model per method and the scores, audited per change, version raised', async () => {
     const model = await created('Cheapest wins');
-    const picked = await activate('instant', model.id);
-    expect(picked).toMatchObject({
+    const first = await save(
+      0,
+      { instant: model.id, same_day: null, scheduled: model.id },
+      { uber_direct: 80, zoom2u: null },
+    );
+    expect(first).toMatchObject({
       ok: true,
-      value: { active: { instant: model.id, same_day: null, scheduled: null } },
+      value: {
+        version: 1,
+        active: { instant: model.id, same_day: null, scheduled: model.id },
+      },
     });
-    await activate('scheduled', model.id);
-    const cleared = await activate('instant', null);
-    expect(cleared).toMatchObject({
+    const second = await save(
+      1,
+      { instant: null, same_day: null, scheduled: model.id },
+      { uber_direct: 90 },
+    );
+    expect(second).toMatchObject({
       ok: true,
-      value: { active: { instant: null, same_day: null, scheduled: model.id } },
+      value: { version: 2, active: { instant: null, same_day: null, scheduled: model.id } },
     });
     expect(audit.entries.slice(1).map((e) => [e.action, e.targetId, e.before, e.after])).toEqual([
       ['shipping.fleet-model.activated', 'instant', { modelId: null }, { modelId: model.id }],
       ['shipping.fleet-model.activated', 'scheduled', { modelId: null }, { modelId: model.id }],
+      ['shipping.fleet-reliability.set', 'uber-direct', { score: null }, { score: 80 }],
       ['shipping.fleet-model.activated', 'instant', { modelId: model.id }, { modelId: null }],
+      ['shipping.fleet-reliability.set', 'uber-direct', { score: 80 }, { score: 90 }],
     ]);
+    const shown = await view();
+    expect(shown.ok && shown.value.version).toBe(2);
+    expect(
+      shown.ok && shown.value.fleets.map((f) => [f.fleet, f.reliability, f.effectiveReliability]),
+    ).toContainEqual(['uber_direct', 90, 90]);
   });
 
-  it('refuses a method it does not know, a model that does not exist, and a bad id', async () => {
-    expect(await activate('pickup', null)).toEqual(
-      err({ code: 'validation.failed', fields: [{ path: 'method', code: 'value' }] }),
+  it('shows version 0 before the first save', async () => {
+    const shown = await view();
+    expect(shown).toMatchObject({ ok: true, value: { version: 0 } });
+  });
+
+  it('refuses a stale page with the conflict code and writes and audits nothing', async () => {
+    const model = await created('Cheapest wins');
+    const entries = audit.entries.length;
+    await save(0, { ...NONE, instant: model.id });
+    expect(await save(0, { ...NONE, scheduled: model.id }, { zoom2u: 70 })).toEqual(
+      err({ code: 'shipping.fleet-selection-conflict' }),
     );
-    expect(await activate('instant', id<'FleetSelectionModel'>(0x999))).toEqual(
-      err({ code: 'shipping.fleet-model-not-found' }),
+    expect(await save(5)).toEqual(err({ code: 'shipping.fleet-selection-conflict' }));
+    expect(audit.entries.length).toBe(entries + 1);
+    expect((await selection.assignments(market)).get('scheduled')).toBeUndefined();
+    expect((await selection.reliabilities(market)).size).toBe(0);
+    expect(await selection.selectionVersion(market)).toBe(1);
+  });
+
+  it('keeps the page version of each Market apart', async () => {
+    await save(0);
+    expect(await selection.selectionVersion(market)).toBe(1);
+    expect(await selection.selectionVersion(other)).toBe(0);
+  });
+
+  it('writes and audits only what changed', async () => {
+    const model = await created('Cheapest wins');
+    await save(0, { ...NONE, instant: model.id }, { zoom2u: 70 });
+    const entries = audit.entries.length;
+    expect(await save(1, { ...NONE, instant: model.id }, { zoom2u: 70 })).toMatchObject({
+      ok: true,
+      value: { version: 2 },
+    });
+    expect(audit.entries.length).toBe(entries);
+  });
+
+  it('refuses a model that does not exist or belongs to another Market, before any write', async () => {
+    const foreign = await new CreateFleetSelectionModel(gate, deps).execute(
+      testCallContext(
+        other,
+        testAuthenticatedActor(other, {
+          population: 'admin',
+          accountId: ADMIN,
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'fleet-other-abcd',
+      ),
+      { name: 'Foreign', rule: { kind: 'cheapest' } },
     );
-    expect(await activate('instant', 'nope')).toEqual(
-      err({ code: 'validation.failed', fields: [{ path: 'modelId', code: 'format' }] }),
+    if (!foreign.ok) throw new Error('create failed');
+    for (const modelId of [id<'FleetSelectionModel'>(0x999), foreign.value.id]) {
+      expect(await save(0, { ...NONE, same_day: modelId }, { zoom2u: 70 })).toEqual(
+        err({ code: 'shipping.fleet-model-not-found' }),
+      );
+    }
+    expect(await selection.selectionVersion(market)).toBe(0);
+    expect((await selection.reliabilities(market)).size).toBe(0);
+  });
+
+  it('refuses a bad page with every field named', async () => {
+    expect(
+      await save(
+        -1,
+        { instant: 'nope', same_day: undefined, pickup: null, scheduled: null },
+        { fedex: 1, zoom2u: 101, auspost: 50.5 },
+      ),
+    ).toEqual(
+      err({
+        code: 'validation.failed',
+        fields: [
+          { path: 'expectedVersion', code: 'range' },
+          { path: 'active.pickup', code: 'unknown-field' },
+          { path: 'active.instant', code: 'format' },
+          { path: 'active.same_day', code: 'required' },
+          { path: 'reliability.fedex', code: 'unknown-field' },
+          { path: 'reliability.zoom2u', code: 'range' },
+          { path: 'reliability.auspost', code: 'range' },
+        ],
+      }),
     );
-    expect(await activate('instant', undefined)).toMatchObject({ ok: false });
+    expect(await save('1')).toMatchObject({ ok: false });
+    expect(await save(0, null, [])).toEqual(
+      err({
+        code: 'validation.failed',
+        fields: [
+          { path: 'active', code: 'format' },
+          { path: 'reliability', code: 'format' },
+        ],
+      }),
+    );
+    expect(await selection.selectionVersion(market)).toBe(0);
     expect(audit.entries).toEqual([]);
   });
 
-  it('sets the reliability of a fleet, audits old and new, and shows it with the fleets of the Market', async () => {
-    expect(await reliability('uber_direct', 80)).toMatchObject({ ok: true });
-    await reliability('uber_direct', 90);
-    expect(audit.entries.map((e) => [e.action, e.targetId, e.before, e.after])).toEqual([
-      ['shipping.fleet-reliability.set', 'uber-direct', { score: null }, { score: 80 }],
-      ['shipping.fleet-reliability.set', 'uber-direct', { score: 80 }, { score: 90 }],
-    ]);
+  it('shows the scores with the fleets of the Market', async () => {
+    await save(0, NONE, { uber_direct: 90 });
     const shown = await view();
     expect(
       shown.ok &&
@@ -374,28 +473,16 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     ]);
   });
 
-  it('refuses a score out of range and a fleet it does not know', async () => {
-    expect(await reliability('fedex', 101)).toEqual(
-      err({
-        code: 'validation.failed',
-        fields: [
-          { path: 'fleet', code: 'value' },
-          { path: 'score', code: 'range' },
-        ],
-      }),
-    );
-    expect(await reliability('zoom2u', 50.5)).toMatchObject({ ok: false });
-    expect(audit.entries).toEqual([]);
-  });
-
   it('answers only to an admin: a seller, a customer, an anonymous caller and the system are refused', async () => {
     const anonymous = testCallContext(market, 'anonymous', 'fleet-anon-abcd');
     const system = testCallContext(market, 'system', 'fleet-system-abcd');
     for (const context of [actor('seller'), actor('customer'), anonymous, system]) {
       expect((await create('X', { kind: 'cheapest' }, context)).ok).toBe(false);
       expect((await view(context)).ok).toBe(false);
+      expect((await save(0, NONE, {}, context)).ok).toBe(false);
     }
     expect(selection.models.size).toBe(0);
+    expect(await selection.selectionVersion(market)).toBe(0);
     expect(audit.entries).toEqual([]);
   });
 

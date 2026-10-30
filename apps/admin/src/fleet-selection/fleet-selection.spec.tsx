@@ -25,6 +25,7 @@ const wrap = (node: ReactNode) => (
 const MODEL = '01990000-0000-7000-8000-000000000001';
 const MODEL3 = '01990000-0000-7000-8000-000000000003';
 const selection = (patch: Partial<Selection> = {}): Selection => ({
+  version: 3,
   models: [
     { id: MODEL, name: 'Cheapest first', rule: { kind: 'cheapest' }, version: 1 },
     {
@@ -154,7 +155,7 @@ describe('the fleet selection page', () => {
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.getByLabelText<HTMLSelectElement>('Instant').disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'New model' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Save score' })).toBeNull();
+    expect(screen.queryByLabelText('Reliability (0 to 100)')).toBeNull();
     expect(screen.getAllByText('Reliability (0 to 100):')).toHaveLength(4);
   });
 
@@ -173,22 +174,38 @@ describe('the fleet selection page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('saves only the methods whose model changed', async () => {
+  const PATH = 'shipping/admin/fleet-selection';
+  const NO_SCORES = {
+    mondapac_drive: 90,
+    uber_direct: null,
+    zoom2u: null,
+    doordash_drive: null,
+    auspost: null,
+    fake_test: null,
+  };
+
+  it('saves the page in one request with the version read, after the admin confirms', async () => {
     call.mockResolvedValue(
-      ok(selection({ active: { instant: MODEL, same_day: null, scheduled: null } })),
+      ok(selection({ version: 4, active: { instant: MODEL, same_day: null, scheduled: null } })),
     );
     mount(selection());
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(call).not.toHaveBeenCalled();
     confirmDialog();
 
-    await expectToast('Active models saved. They apply to the next booking.');
+    await expectToast('Fleet settings saved. They apply to the next booking.');
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
-      'shipping/admin/fleet-selection/active/instant',
-      { modelId: MODEL },
+      PATH,
+      {
+        expectedVersion: 3,
+        active: { instant: MODEL, same_day: null, scheduled: null },
+        reliability: NO_SCORES,
+      },
       'csrf',
     );
     expect(screen.getByText('Active for: Instant')).toBeTruthy();
@@ -204,12 +221,108 @@ describe('the fleet selection page', () => {
     confirmDialog();
 
     await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(call.mock.calls[0]?.[2]).toMatchObject({
+      active: { instant: null, same_day: null, scheduled: null },
+    });
+  });
+
+  it('saves a changed score and a changed model together, in one request', async () => {
+    call.mockResolvedValue(ok(selection()));
+    mount(selection());
+    const zoom = screen.getByRole('heading', { name: 'Zoom2u' }).closest('li')!;
+
+    fireEvent.change(screen.getByLabelText('Same day'), { target: { value: MODEL3 } });
+    fireEvent.change(within(zoom).getByLabelText('Reliability (0 to 100)'), {
+      target: { value: '65' },
+    });
+    expect(screen.getByText('2 unsaved changes')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    confirmDialog();
+
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[2]).toEqual({
+      expectedVersion: 3,
+      active: { instant: null, same_day: MODEL3, scheduled: null },
+      reliability: { ...NO_SCORES, zoom2u: 65 },
+    });
+  });
+
+  it('saves a score alone without a confirmation, and refuses a bad score', async () => {
+    call.mockResolvedValue(ok(selection()));
+    mount(selection());
+    const drive = screen.getByRole('heading', { name: 'Mondapac Drive' }).closest('li')!;
+
+    fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
+      target: { value: '120' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(within(drive).getByText('Enter a whole number from 0 to 100.')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+
+    fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
+      target: { value: '75' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await expectToast('Fleet settings saved. They apply to the next booking.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
-      'shipping/admin/fleet-selection/active/instant',
-      { modelId: null },
+      PATH,
+      {
+        expectedVersion: 3,
+        active: { instant: null, same_day: null, scheduled: null },
+        reliability: { ...NO_SCORES, mondapac_drive: 75 },
+      },
       'csrf',
     );
+  });
+
+  it('keeps the draft on a stale save, tells the admin, and compares with what is saved now', async () => {
+    call
+      .mockResolvedValueOnce(refused(409, 'shipping.fleet-selection-conflict'))
+      .mockResolvedValueOnce(
+        ok(
+          selection({
+            version: 4,
+            active: { instant: MODEL3, same_day: null, scheduled: null },
+          }),
+        ),
+      );
+    mount(selection());
+
+    fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    confirmDialog();
+
+    await waitFor(() =>
+      expect(screen.getByText('Someone else saved the fleet settings first')).toBeTruthy(),
+    );
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', PATH);
+    // The draft is still there, measured against what is stored now.
+    expect(screen.getByLabelText<HTMLSelectElement>('Instant').value).toBe(MODEL);
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    expect(screen.getByText(/Your 1 change is kept/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(
+      screen.getByText('Instant: saved now Own fleet first, yours Cheapest first'),
+    ).toBeTruthy();
+
+    // The next save carries the version just read.
+    call.mockResolvedValueOnce(ok(selection({ version: 5 })));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    confirmDialog();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call.mock.calls[2]?.[2]).toMatchObject({ expectedVersion: 4 });
+  });
+
+  it('discards the draft back to what is saved', () => {
+    mount(selection());
+
+    fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+
+    expect(screen.getByLabelText<HTMLSelectElement>('Instant').value).toBe('');
+    expect(screen.queryByText('1 unsaved change')).toBeNull();
   });
 
   it('creates a weighted model, then reads the page again', async () => {
@@ -320,32 +433,6 @@ describe('the fleet selection page', () => {
 
     await waitFor(() =>
       expect(screen.getByText('Another model already has this name.')).toBeTruthy(),
-    );
-  });
-
-  it('saves a reliability score for one fleet and refuses a bad one', async () => {
-    call.mockResolvedValue(ok(selection()));
-    mount(selection());
-    const drive = screen.getByRole('heading', { name: 'Mondapac Drive' }).closest('li')!;
-
-    fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
-      target: { value: '120' },
-    });
-    fireEvent.click(within(drive).getByRole('button', { name: 'Save score' }));
-    expect(within(drive).getByText('Enter a whole number from 0 to 100.')).toBeTruthy();
-    expect(call).not.toHaveBeenCalled();
-
-    fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
-      target: { value: '75' },
-    });
-    fireEvent.click(within(drive).getByRole('button', { name: 'Save score' }));
-
-    await expectToast('Score saved.');
-    expect(call).toHaveBeenCalledWith(
-      'PUT',
-      'shipping/admin/fleet-selection/fleets/mondapac_drive/reliability',
-      { score: 75 },
-      'csrf',
     );
   });
 

@@ -1,12 +1,8 @@
 'use client';
 
-import { Badge, Banner, Button, SettingsSection, TextField, toast } from '@mondapac/ui';
+import { Badge, SettingsSection, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
-import { callApi } from '../api/client.ts';
-import { fleetProblemOf } from './errors.ts';
-import { scoreOf } from './form.ts';
-import { FLEET_SELECTION_PATH, type FleetRow, type Selection } from './types.ts';
+import type { FleetCode, FleetRow } from './types.ts';
 
 const P = 'fleets';
 
@@ -14,51 +10,17 @@ const P = 'fleets';
 function FleetItem({
   row,
   canManage,
-  csrfToken,
-  onSelection,
+  text,
+  invalid,
+  onText,
 }: {
   readonly row: FleetRow;
   readonly canManage: boolean;
-  readonly csrfToken: string;
-  readonly onSelection: (next: Selection) => void;
+  readonly text: string;
+  readonly invalid: boolean;
+  readonly onText: (value: string) => void;
 }) {
   const t = useTranslations();
-  const [text, setText] = useState(row.reliability === null ? '' : String(row.reliability));
-  const [invalid, setInvalid] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const busy = useRef(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (busy.current) return;
-    setProblem(null);
-    const score = scoreOf(text);
-    if (score === null) {
-      setInvalid(true);
-      return;
-    }
-    setInvalid(false);
-    busy.current = true;
-    setPending(true);
-    const result = await callApi<Selection>(
-      'PUT',
-      `${FLEET_SELECTION_PATH}/fleets/${row.fleet}/reliability`,
-      { score },
-      csrfToken,
-    );
-    busy.current = false;
-    setPending(false);
-    if (result.ok) {
-      onSelection(result.body);
-      toast.success(t(`${P}.reliability.saved`));
-    } else if (result.failure.status === 401) {
-      window.location.assign('/session-ended');
-    } else {
-      setProblem(fleetProblemOf(result.failure));
-    }
-  }
-
   return (
     <li className="flex flex-col gap-3 border-b border-line-row px-5 py-4 last:border-b-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -74,30 +36,24 @@ function FleetItem({
             })
           : t(`${P}.fleet.no-methods`)}
       </p>
-      {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
       {canManage ? (
-        <form className="flex flex-col gap-2" onSubmit={(e) => void submit(e)} noValidate>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <TextField
-              name={`reliability-${row.fleet}`}
-              label={t(`${P}.reliability.label`)}
-              inputMode="numeric"
-              autoComplete="off"
-              className="sm:max-w-40"
-              value={text}
-              error={invalid ? t(`${P}.invalid.score`) : undefined}
-              onChange={(event) => setText(event.target.value)}
-            />
-            <Button type="submit" variant="secondary" loading={pending}>
-              {t(`${P}.reliability.save`)}
-            </Button>
-          </div>
-          <p className="text-sm text-fg-muted">
-            {row.reliability === null
-              ? t(`${P}.reliability.unset`, { score: row.effectiveReliability })
-              : t(`${P}.reliability.help`)}
-          </p>
-        </form>
+        <div className="flex flex-col gap-2">
+          <TextField
+            name={`reliability-${row.fleet}`}
+            label={t(`${P}.reliability.label`)}
+            help={
+              row.reliability === null
+                ? t(`${P}.reliability.unset`, { score: row.effectiveReliability })
+                : t(`${P}.reliability.help`)
+            }
+            inputMode="numeric"
+            autoComplete="off"
+            className="sm:max-w-40"
+            value={text}
+            error={invalid ? t(`${P}.invalid.score`) : undefined}
+            onChange={(event) => onText(event.target.value)}
+          />
+        </div>
       ) : (
         <p className="text-sm">
           <span className="text-fg-muted">{t(`${P}.reliability.label`)}: </span>
@@ -108,16 +64,19 @@ function FleetItem({
   );
 }
 
+/** The reliability score of every fleet; its texts are part of the page draft (one save bar). */
 export function FleetsCard({
   fleets,
   canManage,
-  csrfToken,
-  onSelection,
+  texts,
+  invalid,
+  onText,
 }: {
   readonly fleets: readonly FleetRow[];
   readonly canManage: boolean;
-  readonly csrfToken: string;
-  readonly onSelection: (next: Selection) => void;
+  readonly texts: Readonly<Record<FleetCode, string>>;
+  readonly invalid: readonly FleetCode[];
+  readonly onText: (fleet: FleetCode, value: string) => void;
 }) {
   const t = useTranslations();
   return (
@@ -128,8 +87,9 @@ export function FleetsCard({
             key={row.fleet}
             row={row}
             canManage={canManage}
-            csrfToken={csrfToken}
-            onSelection={onSelection}
+            text={texts[row.fleet]}
+            invalid={invalid.includes(row.fleet)}
+            onText={(value) => onText(row.fleet, value)}
           />
         ))}
       </ul>

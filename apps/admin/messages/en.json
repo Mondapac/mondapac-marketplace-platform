@@ -1660,18 +1660,15 @@
   "fleets": {
     "title": "Delivery fleets",
     "permission-view": "Delivery fleets: view",
-    "conflict": {
-      "title": "This page changed while you were editing"
-    },
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
     "back-home": "Back to the dashboard",
     "unavailable": "Delivery fleets could not be loaded. Try again.",
     "notice": {
-      "activated": "Active models saved. They apply to the next booking.",
       "created": "Model created.",
       "edited": "Model saved. If it is active, it applies to the next booking.",
-      "reloaded": "Someone saved this model first. The page now shows what is stored. Make your change again."
+      "reloaded": "Someone saved this model first. The page now shows what is stored. Make your change again.",
+      "saved": "Fleet settings saved. They apply to the next booking."
     },
     "method": {
       "instant": "Instant",
@@ -1696,8 +1693,7 @@
     "active": {
       "title": "Active model per delivery method",
       "intro": "Each delivery method uses one model. With none chosen, the built-in order applies: {order}.",
-      "default": "Built-in order",
-      "save": "Save active models"
+      "default": "Built-in order"
     },
     "models": {
       "title": "Models",
@@ -1756,9 +1752,7 @@
     "reliability": {
       "label": "Reliability (0 to 100)",
       "help": "Used by weighted models.",
-      "unset": "Not set. The router uses {score}.",
-      "save": "Save score",
-      "saved": "Score saved."
+      "unset": "Not set. The router uses {score}."
     },
     "invalid": {
       "name": "Enter a name of 1 to 60 characters.",
@@ -1777,7 +1771,8 @@
       "csrf": "Your session needs a refresh. Reload the page and try again.",
       "denied": "Your role cannot change delivery fleets.",
       "unavailable": "Delivery fleets are not available right now. Try again shortly.",
-      "unknown": "Something went wrong. Try again."
+      "unknown": "Something went wrong. Try again.",
+      "page-conflict": "Someone saved the fleet settings first, and the page could not be reloaded. Reload the page and try again."
     },
     "viewer-only": "You can view but not change delivery fleets.",
     "confirm": {
@@ -1787,6 +1782,19 @@
       "edit-body": "{name} is active for {methods}. Saving applies the new rule to every new order of that method.",
       "go": "Confirm",
       "cancel": "Go back"
+    },
+    "conflict": {
+      "title": "Someone else saved the fleet settings first",
+      "model-title": "This page changed while you were editing",
+      "body": "{count, plural, one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Compare",
+      "hide": "Hide comparison",
+      "same": "Your draft now matches what is saved.",
+      "line": "{field}: saved now {saved}, yours {yours}"
+    },
+    "compare": {
+      "score": "{fleet} reliability",
+      "unset": "not set"
     }
   },
   "commission": {

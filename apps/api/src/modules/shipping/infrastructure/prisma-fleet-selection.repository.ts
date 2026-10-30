@@ -46,7 +46,8 @@ const ruleJson = (rule: SelectionRule) => JSON.parse(JSON.stringify(rule)) as ob
 
 /**
  * {@link FleetSelectionRepository} on `shipping.fleet_selection_models`,
- * `shipping.fleet_selection_assignments` and `shipping.fleet_reliability`, scoped by `marketId` in
+ * `shipping.fleet_selection_assignments`, `shipping.fleet_reliability` and
+ * `shipping.fleet_selection_settings`, scoped by `marketId` in
  * every `where`.
  */
 export class PrismaFleetSelectionRepository implements FleetSelectionRepository {
@@ -163,6 +164,44 @@ export class PrismaFleetSelectionRepository implements FleetSelectionRepository 
     });
     if (assignment?.model == null) return null;
     return toModel(assignment.model)?.rule ?? null;
+  }
+
+  async selectionVersion(market: MarketContext) {
+    const row = await this.prisma
+      .tx(market)
+      .shippingFleetSelectionSettings.findFirst({ where: { marketId: market.marketId } });
+    return row?.version ?? 0;
+  }
+
+  async bumpSelectionVersion(
+    market: MarketContext,
+    expectedVersion: number,
+    by: ActorId,
+    at: Temporal.Instant,
+  ) {
+    const tx = this.prisma.tx(market);
+    const version = expectedVersion + 1;
+    if (expectedVersion === 0) {
+      // The first save: a second one racing it inserts nothing and is a conflict.
+      const created = await tx.shippingFleetSelectionSettings.createMany({
+        data: [
+          {
+            marketId: market.marketId,
+            tenantId: market.tenantId,
+            version,
+            updatedAt: toDate(at),
+            updatedBy: by,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      return created.count === 1 ? ('bumped' as const) : ('conflict' as const);
+    }
+    const updated = await tx.shippingFleetSelectionSettings.updateMany({
+      where: { marketId: market.marketId, version: expectedVersion },
+      data: { version, updatedAt: toDate(at), updatedBy: by },
+    });
+    return updated.count === 1 ? ('bumped' as const) : ('conflict' as const);
   }
 
   async reliabilities(market: MarketContext) {

@@ -574,10 +574,10 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `${base}/models`)).status).toBe(200);
     expect((await call('PUT', `${base}/models/${ID}`)).status).toBe(200);
     expect((await call('PUT', `${base}/models/nope`)).status).toBe(404);
-    expect((await call('PUT', `${base}/active/same_day`)).status).toBe(200);
-    expect((await call('PUT', `${base}/active/weekly`)).status).toBe(404);
-    expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(200);
-    expect((await call('PUT', `${base}/fleets/other/reliability`)).status).toBe(404);
+    // The page is saved in one batch; the per-method and per-fleet routes are gone.
+    expect((await call('PUT', base)).status).toBe(200);
+    expect((await call('PUT', `${base}/active/same_day`)).status).toBe(404);
+    expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(404);
     expect((await call('DELETE', `${base}/models/${ID}`)).status).toBe(404);
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
   });
