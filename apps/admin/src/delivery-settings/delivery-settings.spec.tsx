@@ -76,6 +76,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
+
 describe('the margin example', () => {
   it('turns A$12.34 into A$13.60 with 10 percent and a 5c round-up', () => {
     expect(priceOf(EXAMPLE_QUOTE_MINOR, { kind: 'percent', basisPoints: 1000 }, 5)).toEqual({
@@ -350,10 +358,11 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('shows what is stored after someone saved first', async () => {
+  it('keeps the draft after someone saved first, compares, and sends the new version next', async () => {
     call
       .mockResolvedValueOnce(refused(409, 'shipping.delivery-settings-conflict'))
-      .mockResolvedValueOnce(ok(settings({ scheduledDaysAhead: 4, version: 5 })));
+      .mockResolvedValueOnce(ok(settings({ scheduledDaysAhead: 4, version: 5 })))
+      .mockResolvedValueOnce(ok(settings({ scheduledDaysAhead: 9, version: 6 })));
     mount(settings({ version: 4 }));
 
     fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
@@ -361,11 +370,26 @@ describe('the delivery settings page', () => {
     pressInDialog('Confirm and save');
 
     await waitFor(() =>
-      expect(screen.getByText(/Someone saved these settings first/)).toBeTruthy(),
+      expect(screen.getByText('Someone else saved these settings first')).toBeTruthy(),
     );
-    expect(screen.getByText('These settings changed while you were editing')).toBeTruthy();
     expect(call).toHaveBeenNthCalledWith(2, 'GET', 'shipping/admin/delivery-settings');
-    expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('4');
+    // The draft stays; the compare list names what is saved now.
+    expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('9');
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(compared('Days ahead')).toMatchObject({ saved: '4', yours: '9' });
+
+    // The confirm-impact dialog still comes before the next save, which names version 5.
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      'shipping/admin/delivery-settings',
+      expect.objectContaining({ expectedVersion: 5, scheduledDaysAhead: 9 }),
+      'csrf',
+    );
   });
 
   it('says what went wrong when the API refuses', async () => {

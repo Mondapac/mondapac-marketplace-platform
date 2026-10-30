@@ -21,6 +21,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/admin/orders',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
+    // The Market's support email, read again after another admin saved first.
+    'notifications/admin/support-contact',
     // The topbar bell (in-app notifications package 3): the list (query: `show`, `before`) and
     // the unread count with the newest unread notice.
     'notifications/admin/notices',

@@ -6,7 +6,6 @@ import {
   Banner,
   Button,
   DataList,
-  SettingsConflictBanner,
   SettingsPage,
   SettingsSection,
   toast,
@@ -41,6 +40,8 @@ export function StockLocations({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<StockProblem | null>(null);
   const [failedWrites, setFailedWrites] = useState(0);
+  // Counts the conflicts of this page; the open editor lists what differs from the saved location.
+  const [conflictId, setConflictId] = useState<number | null>(null);
   const busy = useRef(false);
 
   /** One write at a time; the answer is the new list, which replaces the screen's copy. */
@@ -49,19 +50,32 @@ export function StockLocations({
     busy.current = true;
     setPending(true);
     setProblem(null);
+    setConflictId(null);
     const result = await callApi<SourcesView>(method, path, body, csrfToken);
-    busy.current = false;
-    setPending(false);
     if (result.ok) {
+      busy.current = false;
+      setPending(false);
       setView(result.body);
       toast.success(t('stock.saved'));
       return true;
     }
     if (result.failure.status === 401) window.location.assign('/session-ended');
-    else {
+    else if (result.failure.code === 'conflict.stale') {
+      // Someone saved first: take the list as it is saved now (so the next write carries its
+      // version) and keep the editor's draft; the editor shows the saved location next to it.
+      const fresh = await callApi<SourcesView>('GET', 'inventory/seller/sources');
+      if (fresh.ok) {
+        setView(fresh.body);
+        setConflictId((n) => (n ?? 0) + 1);
+      } else {
+        setProblem(problemOf(result.failure));
+      }
+    } else {
       setProblem(problemOf(result.failure));
       setFailedWrites((n) => n + 1);
     }
+    busy.current = false;
+    setPending(false);
     return false;
   }
 
@@ -87,13 +101,13 @@ export function StockLocations({
 
   function open(next: Mode) {
     setProblem(null);
+    setConflictId(null);
     setMode(next);
   }
 
   const editing =
     mode?.kind === 'edit' ? (view.sources.find((source) => source.id === mode.id) ?? null) : null;
   const full = view.sources.length >= view.max;
-  const stale = problem?.form.key === 'stock.error.stale';
 
   const banners = [
     canEdit ? null : (
@@ -101,20 +115,16 @@ export function StockLocations({
         {t('stock.view-only')}
       </Banner>
     ),
+    // A conflict while no editor is open (a move): the list is already up to date.
+    mode === null && conflictId !== null ? (
+      <Banner key="list-changed" tone="attention">
+        {t('stock.error.list-changed')}
+      </Banner>
+    ) : null,
     mode === null && problem !== null ? (
-      stale ? (
-        <SettingsConflictBanner
-          key="conflict"
-          title={t('stock.conflict-title')}
-          body={t(problem.form.key, problem.form.values)}
-          compareLabel={t('stock.reload')}
-          onCompare={() => window.location.reload()}
-        />
-      ) : (
-        <Banner key="problem" tone="critical">
-          {t(problem.form.key, problem.form.values)}
-        </Banner>
-      )
+      <Banner key="problem" tone="critical">
+        {t(problem.form.key, problem.form.values)}
+      </Banner>
     ) : null,
   ].filter((node) => node !== null);
 
@@ -162,6 +172,7 @@ export function StockLocations({
           pending={pending}
           problem={problem}
           failedWrites={failedWrites}
+          conflictId={conflictId}
           onSubmit={(input) => void submit(input)}
           onCancel={() => open(null)}
         />

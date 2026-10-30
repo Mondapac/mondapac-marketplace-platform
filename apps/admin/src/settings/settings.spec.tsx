@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +25,14 @@ const mount = (initial: SupportContact, canManage = true) =>
 
 const type = (value: string) =>
   fireEvent.change(screen.getByLabelText('Support email address'), { target: { value } });
+
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
@@ -114,11 +122,75 @@ describe('SupportEmailCard', () => {
     type('care@example.com');
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('Your role cannot change the support email.')).toBeTruthy();
+  });
 
-    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'notifications.conflict' } });
+  it('keeps the typed address after a conflict, compares, and sends the new version next', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { status: 409, code: 'notifications.conflict' },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: contact('<b>ops</b>@example.com', 3) })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: contact('care2@example.com', 4) });
+    mount(contact('help@example.com', 2));
+    type('care@example.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByText('Someone else saved these settings first')).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(
+      1,
+      'PUT',
+      'notifications/admin/support-contact',
+      { email: 'care@example.com', expectedVersion: 2 },
+      'csrf',
+    );
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'notifications/admin/support-contact');
+    // The draft is kept; the current saved address is shown.
+    expect(screen.getByLabelText<HTMLInputElement>('Support email address').value).toBe(
+      'care@example.com',
+    );
+    expect(screen.getByText('<b>ops</b>@example.com')).toBeTruthy();
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    const row = compared('Support email address');
+    expect(row.saved).toBe('<b>ops</b>@example.com');
+    expect(row.yours).toBe('care@example.com');
+    // Text, never markup.
+    expect(row.item.querySelector('b')).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Hide comparison' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy();
+
     type('care2@example.com');
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      'notifications/admin/support-contact',
+      { email: 'care2@example.com', expectedVersion: 3 },
+      'csrf',
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Someone else saved these settings first')).toBeNull(),
+    );
+  });
+
+  it('falls back to the reload message when the re-read fails too', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { status: 409, code: 'notifications.conflict' },
+      })
+      .mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'x' } });
+    mount(contact('help@example.com'));
+    type('care@example.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText(/Someone else changed the address first/)).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('Support email address').value).toBe(
+      'care@example.com',
+    );
   });
 });
 

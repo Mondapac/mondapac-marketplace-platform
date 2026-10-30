@@ -13,11 +13,15 @@ import {
   SettingsPage,
   SettingsSection,
   toast,
+  useSettingsForm,
   type DataListRow,
+  type FieldChange,
+  type SaveResult,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { SettingsConflictView } from './conflict-view.tsx';
 import {
   BOUNDS,
   assistantProblemOf,
@@ -42,8 +46,6 @@ import {
 
 const P = 'settings.assistant';
 
-type Notice = 'reloaded' | null;
-
 const rowId = (key: FieldKey) => `setting-assistant-${key}`;
 
 /** The label of each field that can be refused, for the error summary. */
@@ -63,6 +65,84 @@ const FIELD_OF: Partial<Record<keyof AssistantForm, FieldKey>> = {
   dailySpendCap: 'dailySpendCapUsdCents',
   monthlySpendCap: 'monthlySpendCapUsdCents',
 };
+
+type Translate = ReturnType<typeof useTranslations>;
+
+/** The label of each form field, for the Compare list. */
+const CHANGE_LABEL: Record<keyof AssistantForm, string> = {
+  enabled: 'enabled.label',
+  audience: 'audience.label',
+  audiencePercent: 'audience-percent.label',
+  scope: 'scope.label',
+  modelTier: 'model.label',
+  users: 'users.label',
+  guestMessageLimit: 'guest-limit.label',
+  customerMessageLimit: 'customer-limit.label',
+  retention: 'retention.label',
+  replyLanguage: 'language.label',
+  dailySpendCap: 'spend.daily',
+  monthlySpendCap: 'spend.monthly',
+  supportHandoff: 'support.label',
+  welcomeText: 'welcome.label',
+};
+/** Fields whose value is one of a fixed set, with the message group naming each choice. */
+const CHOICE_GROUP: Partial<Record<keyof AssistantForm, string>> = {
+  audience: 'audience',
+  scope: 'scope',
+  modelTier: 'model',
+  users: 'users',
+  retention: 'retention',
+  replyLanguage: 'language',
+  supportHandoff: 'support',
+};
+
+/** One value of the form as text for the Compare list. Free text stays text. */
+function shownValue(key: keyof AssistantForm, form: AssistantForm, t: Translate): string {
+  const value = form[key];
+  if (typeof value === 'boolean') return t(`${P}.status.${value ? 'on' : 'off'}`);
+  const group = CHOICE_GROUP[key];
+  if (group !== undefined) return t(`${P}.${group}.${value}`);
+  if (key === 'audiencePercent') {
+    return value.trim() === ''
+      ? t('settings.conflict.unset')
+      : t(`${P}.audience.percent-of`, { percent: value.trim() });
+  }
+  if (key === 'dailySpendCap' || key === 'monthlySpendCap') {
+    const dollars = Number(value);
+    return value.trim() !== '' && Number.isFinite(dollars)
+      ? t(`${P}.spend.amount`, { amount: dollars })
+      : value;
+  }
+  if (key === 'welcomeText') return value.trim() === '' ? t(`${P}.welcome.default`) : value.trim();
+  return value;
+}
+
+/** The fields where the draft differs from what is saved, worded for the Compare list. */
+function changesOf(
+  saved: AssistantSettingsAnswer,
+  draft: AssistantForm,
+  t: Translate,
+): readonly FieldChange[] {
+  const baseline = formOf(saved.settings);
+  return (Object.keys(baseline) as (keyof AssistantForm)[])
+    .filter(
+      (key) =>
+        draft[key] !== baseline[key] && (key !== 'audiencePercent' || draft.audience === 'percent'),
+    )
+    .map((key) => ({
+      key,
+      label: t(`${P}.${CHANGE_LABEL[key]}`),
+      saved: shownValue(key, baseline, t),
+      yours: shownValue(key, draft, t),
+    }));
+}
+
+const toDraft = (answer: AssistantSettingsAnswer) => formOf(answer.settings);
+const versionOf = (answer: AssistantSettingsAnswer) => answer.version;
+async function reload(): Promise<AssistantSettingsAnswer | null> {
+  const fresh = await callApi<AssistantSettingsAnswer>('GET', ASSISTANT_SETTINGS_PATH);
+  return fresh.ok ? fresh.body : null;
+}
 
 /** The model the server configures for a tier, or null. */
 function modelOf(answer: AssistantSettingsAnswer, tier: string): string | null {
@@ -84,37 +164,29 @@ export function AssistantSettingsPanel({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
-  const [answer, setAnswer] = useState(initial);
-  const [form, setForm] = useState<AssistantForm>(() => formOf(initial.settings));
   const [invalid, setInvalid] = useState<readonly FieldKey[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
-  const [notice, setNotice] = useState<Notice>(null);
-  const [pending, setPending] = useState(false);
   const [failedSaves, setFailedSaves] = useState(0);
-  const busy = useRef(false);
-
-  const baseline = formOf(answer.settings);
-  const changedKeys = (Object.keys(baseline) as (keyof AssistantForm)[]).filter(
-    (key) =>
-      form[key] !== baseline[key] && (key !== 'audiencePercent' || form.audience === 'percent'),
-  );
+  const settings = useSettingsForm<AssistantSettingsAnswer, AssistantForm>({
+    initial,
+    toDraft,
+    versionOf,
+    reload,
+    changes: (saved, draft) => changesOf(saved, draft, t),
+  });
+  const answer = settings.saved;
+  const form = settings.draft;
+  const changedKeys = settings.changes.map((change) => change.key);
   const changed = (key: keyof AssistantForm) => changedKeys.includes(key);
   const set = <K extends keyof AssistantForm>(key: K, value: AssistantForm[K]) => {
-    setForm((current) => ({ ...current, [key]: value }));
+    settings.setDraft((current) => ({ ...current, [key]: value }));
     // Editing a field takes its error away; the next save checks it again.
     const field = FIELD_OF[key] ?? key;
     setInvalid((current) => current.filter((name) => name !== field));
   };
   const errorOf = (key: FieldKey) => (invalid.includes(key) ? t(`${P}.invalid.${key}`) : undefined);
 
-  function adopt(next: AssistantSettingsAnswer) {
-    setAnswer(next);
-    setForm(formOf(next.settings));
-  }
-
   async function submit() {
-    if (busy.current) return;
-    setNotice(null);
     setProblem(null);
     const check = settingsOf(form, answer.unavailableOptions);
     if (!check.ok) {
@@ -124,43 +196,37 @@ export function AssistantSettingsPanel({
       return;
     }
     setInvalid([]);
-    busy.current = true;
-    setPending(true);
-    const result = await callApi<AssistantSettingsAnswer>(
-      'PUT',
-      ASSISTANT_SETTINGS_PATH,
-      { expectedVersion: answer.version, settings: check.settings },
-      csrfToken,
+    const result = await settings.run(
+      async (expectedVersion): Promise<SaveResult<AssistantSettingsAnswer>> => {
+        const reply = await callApi<AssistantSettingsAnswer>(
+          'PUT',
+          ASSISTANT_SETTINGS_PATH,
+          { expectedVersion, settings: check.settings },
+          csrfToken,
+        );
+        if (reply.ok) return { status: 'saved', saved: reply.body };
+        if (reply.failure.status === 401) {
+          window.location.assign('/session-ended');
+        } else if (reply.failure.code === 'assistant.conflict') {
+          return { status: 'conflict' };
+        } else {
+          const refused = refusedFields(reply.failure);
+          setInvalid(refused);
+          if (refused.length > 0) setFailedSaves((n) => n + 1);
+          setProblem(assistantProblemOf(reply.failure));
+        }
+        return { status: 'failed' };
+      },
     );
-    if (result.ok) {
-      adopt(result.body);
-      toast.success(t(`${P}.saved`));
-    } else if (result.failure.status === 401) {
-      window.location.assign('/session-ended');
-    } else if (result.failure.code === 'assistant.conflict') {
-      // Someone saved first: show what is in force now, so the admin decides again on that.
-      const fresh = await callApi<AssistantSettingsAnswer>('GET', ASSISTANT_SETTINGS_PATH);
-      if (fresh.ok) {
-        adopt(fresh.body);
-        setNotice('reloaded');
-      } else {
-        setProblem('conflict');
-      }
-    } else {
-      const refused = refusedFields(result.failure);
-      setInvalid(refused);
-      if (refused.length > 0) setFailedSaves((n) => n + 1);
-      setProblem(assistantProblemOf(result.failure));
-    }
-    busy.current = false;
-    setPending(false);
+    if (result.status === 'saved') toast.success(t(`${P}.saved`));
+    // The re-read failed too: the plain "reload the page" message is all that is left.
+    else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
 
   function discard() {
-    setForm(baseline);
+    settings.discard();
     setInvalid([]);
     setProblem(null);
-    setNotice(null);
   }
 
   const options = <T extends string>(
@@ -202,11 +268,13 @@ export function AssistantSettingsPanel({
         focusSignal={failedSaves}
       />
     ),
-    notice === 'reloaded' ? (
-      <Banner key="reloaded" tone="attention">
-        {t(`${P}.reloaded`)}
-      </Banner>
-    ) : null,
+    settings.theirs === null ? null : (
+      <SettingsConflictView
+        key="conflict"
+        conflictId={settings.conflictId}
+        changes={settings.changes}
+      />
+    ),
     shownProblem === null ? null : (
       <Banner key="problem" tone="critical">
         {t(`${P}.error.${shownProblem}`)}
@@ -261,7 +329,7 @@ export function AssistantSettingsPanel({
           summary={t('settings.bar.summary', { count: changedKeys.length })}
           errorCount={invalid.length}
           errorsSummary={t('settings.bar.errors', { count: invalid.length })}
-          saving={pending}
+          saving={settings.saving}
           labels={{
             region: t('settings.bar.region'),
             discard: t('settings.bar.discard'),

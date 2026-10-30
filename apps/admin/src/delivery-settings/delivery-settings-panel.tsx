@@ -9,15 +9,18 @@ import {
   SettingInput,
   SettingRow,
   SettingSelect,
-  SettingsConflictBanner,
   SettingsErrorSummary,
   SettingsPage,
   SettingsSection,
   toast,
+  useSettingsForm,
+  type FieldChange,
+  type SaveResult,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { SettingsConflictView } from '../settings/conflict-view.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { deliveryProblemOf } from './errors.ts';
 import {
@@ -52,6 +55,93 @@ const ROW: Readonly<Record<FormField, string>> = {
   marginValue: 'setting-delivery-margin-value',
 };
 type Body = Extract<Checked, { ok: true }>['body'];
+type Translate = ReturnType<typeof useTranslations>;
+
+const toDraft = (settings: DeliverySettings) => formOf(settings);
+const versionOf = (settings: DeliverySettings) => settings.version;
+async function reload(): Promise<DeliverySettings | null> {
+  const fresh = await callApi<DeliverySettings>('GET', DELIVERY_SETTINGS_PATH);
+  return fresh.ok ? fresh.body : null;
+}
+
+/** The fields where the draft differs from what is saved, worded for the Compare list. */
+function changesOf(
+  saved: DeliverySettings,
+  draft: SettingsForm,
+  t: Translate,
+  locale: string,
+): readonly FieldChange[] {
+  const base = formOf(saved);
+  const { currency } = saved;
+  const money = (minor: number) => moneyOf(minor, currency, locale);
+  const out: FieldChange[] = [];
+  const add = (key: string, label: string, was: string, now: string) =>
+    out.push({ key, label, saved: was, yours: now });
+  const onOff = (on: boolean) => t(`${P}.state.${on ? 'on' : 'off'}`);
+  for (const method of METHODS) {
+    if (draft.enabled[method] !== base.enabled[method]) {
+      add(
+        `method-${method}`,
+        t(`${P}.method.${method}`),
+        onOff(base.enabled[method]),
+        onOff(draft.enabled[method]),
+      );
+    }
+  }
+  if (draft.cutoff !== base.cutoff) {
+    add('cutoff', t(`${P}.cutoff.field`), base.cutoff, draft.cutoff);
+  }
+  if (draft.daysAhead !== base.daysAhead) {
+    add('daysAhead', t(`${P}.scheduled.days`), base.daysAhead, draft.daysAhead);
+  }
+  if (draft.windowMinutes !== base.windowMinutes) {
+    add(
+      'windowMinutes',
+      t(`${P}.scheduled.window`),
+      t(`${P}.duration`, { minutes: base.windowMinutes }),
+      t(`${P}.duration`, { minutes: draft.windowMinutes }),
+    );
+  }
+  if (draft.marginKind !== base.marginKind) {
+    add(
+      'marginKind',
+      t(`${P}.margin.kind`),
+      t(`${P}.margin.kinds.${base.marginKind}`),
+      t(`${P}.margin.kinds.${draft.marginKind}`),
+    );
+  }
+  if (draft.marginKind !== 'none' && draft.marginValue !== base.marginValue) {
+    const label =
+      draft.marginKind === 'percent'
+        ? t(`${P}.margin.percent`)
+        : t(`${P}.margin.fixed`, { currency });
+    const worded = (kind: MarginKind, value: string) =>
+      kind === 'none'
+        ? t(`${P}.margin.kinds.none`)
+        : kind === 'percent'
+          ? `${value}%`
+          : `${value} ${currency}`;
+    add(
+      'marginValue',
+      label,
+      worded(base.marginKind, base.marginValue),
+      worded(draft.marginKind, draft.marginValue),
+    );
+  }
+  if (draft.roundingStep !== base.roundingStep) {
+    const step = (text: string) =>
+      Number(text) === 1
+        ? t(`${P}.margin.round-none`)
+        : t(`${P}.margin.round-up`, { step: money(Number(text)) });
+    add(
+      'roundingStep',
+      t(`${P}.margin.rounding`),
+      step(base.roundingStep),
+      step(draft.roundingStep),
+    );
+  }
+  return out;
+}
 
 export function DeliverySettingsPanel({
   initial,
@@ -65,56 +155,52 @@ export function DeliverySettingsPanel({
   const t = useTranslations();
   const locale = useLocale();
   const chrome = useSettingsChrome();
-  const [settings, setSettings] = useState(initial);
-  const [form, setForm] = useState<SettingsForm>(() => formOf(initial));
   const [invalid, setInvalid] = useState<readonly FormField[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
-  const [notice, setNotice] = useState<'reloaded' | null>(null);
-  const [pending, setPending] = useState(false);
   const [failedSaves, setFailedSaves] = useState(0);
   const [confirm, setConfirm] = useState<Body | null>(null);
-  const busy = useRef(false);
+  const state = useSettingsForm<DeliverySettings, SettingsForm>({
+    initial,
+    toDraft,
+    versionOf,
+    reload,
+    changes: (saved, draft) => changesOf(saved, draft, t, locale),
+  });
+  const settings = state.saved;
+  const form = state.draft;
   const { currency } = settings;
   const money = (minor: number) => moneyOf(minor, currency, locale);
   const readOnly = !canManage;
 
-  const baseline = formOf(settings);
-  const methodChanged = (method: Method) => form.enabled[method] !== baseline.enabled[method];
+  const changedKeys = new Set(state.changes.map((change) => change.key));
+  const methodChanged = (method: Method) => changedKeys.has(`method-${method}`);
   const changed = {
-    cutoff: form.cutoff !== baseline.cutoff,
-    daysAhead: form.daysAhead !== baseline.daysAhead,
-    windowMinutes: form.windowMinutes !== baseline.windowMinutes,
-    marginKind: form.marginKind !== baseline.marginKind,
-    marginValue: form.marginKind !== 'none' && form.marginValue !== baseline.marginValue,
-    roundingStep: form.roundingStep !== baseline.roundingStep,
+    cutoff: changedKeys.has('cutoff'),
+    daysAhead: changedKeys.has('daysAhead'),
+    windowMinutes: changedKeys.has('windowMinutes'),
+    marginKind: changedKeys.has('marginKind'),
+    marginValue: changedKeys.has('marginValue'),
+    roundingStep: changedKeys.has('roundingStep'),
   };
-  const count =
-    METHODS.filter(methodChanged).length + Object.values(changed).filter(Boolean).length;
+  const count = state.count;
   const dirty = canManage && count > 0;
 
   const edit = (patch: Partial<SettingsForm>, field?: FormField) => {
-    setForm((current) => ({ ...current, ...patch }));
+    state.setDraft((current) => ({ ...current, ...patch }));
     // Editing a field takes its error away; the next save checks it again.
     if (field !== undefined) setInvalid((current) => current.filter((name) => name !== field));
   };
   const errorOf = (field: FormField) =>
     invalid.includes(field) ? t(`${P}.invalid.${field}`) : undefined;
 
-  function adopt(next: DeliverySettings) {
-    setSettings(next);
-    setForm(formOf(next));
-  }
-
   function discard() {
-    setForm(formOf(settings));
+    state.discard();
     setInvalid([]);
     setProblem(null);
-    setNotice(null);
   }
 
   function submit() {
-    if (busy.current || readOnly) return;
-    setNotice(null);
+    if (readOnly) return;
     setProblem(null);
     const checked = checkForm(form, currency);
     if (!checked.ok) {
@@ -129,32 +215,28 @@ export function DeliverySettingsPanel({
   }
 
   async function save(body: Body) {
-    busy.current = true;
-    setPending(true);
-    const result = await callApi<DeliverySettings>(
-      'PUT',
-      DELIVERY_SETTINGS_PATH,
-      { ...body, expectedVersion: settings.version },
-      csrfToken,
+    const result = await state.run(
+      async (expectedVersion): Promise<SaveResult<DeliverySettings>> => {
+        const reply = await callApi<DeliverySettings>(
+          'PUT',
+          DELIVERY_SETTINGS_PATH,
+          { ...body, expectedVersion },
+          csrfToken,
+        );
+        if (reply.ok) return { status: 'saved', saved: reply.body };
+        if (reply.failure.status === 401) {
+          window.location.assign('/session-ended');
+          return { status: 'failed' };
+        }
+        const key = deliveryProblemOf(reply.failure);
+        if (key === 'conflict') return { status: 'conflict' };
+        setProblem(key);
+        return { status: 'failed' };
+      },
     );
-    if (result.ok) {
-      adopt(result.body);
-      toast.success(t(`${P}.notice.saved`));
-    } else if (result.failure.status === 401) {
-      window.location.assign('/session-ended');
-    } else {
-      const key = deliveryProblemOf(result.failure);
-      if (key === 'conflict') {
-        // Someone saved first: show what is stored now, so the admin decides again on that.
-        const fresh = await callApi<DeliverySettings>('GET', DELIVERY_SETTINGS_PATH);
-        if (fresh.ok) {
-          adopt(fresh.body);
-          setNotice('reloaded');
-        } else setProblem(key);
-      } else setProblem(key);
-    }
-    busy.current = false;
-    setPending(false);
+    if (result.status === 'saved') toast.success(t(`${P}.notice.saved`));
+    // The re-read failed too: the plain "reload the page" message is all that is left.
+    else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
 
   const show = { method: (m: Method) => t(`${P}.method.${m}`), money };
@@ -185,12 +267,8 @@ export function DeliverySettingsPanel({
         focusSignal={failedSaves}
       />
     ),
-    notice === null ? null : (
-      <SettingsConflictBanner
-        key="conflict"
-        title={t(`${P}.conflict.title`)}
-        body={t(`${P}.notice.${notice}`)}
-      />
+    state.theirs === null ? null : (
+      <SettingsConflictView key="conflict" conflictId={state.conflictId} changes={state.changes} />
     ),
     problem === null ? null : (
       <Banner key="problem" tone="critical">
@@ -220,7 +298,7 @@ export function DeliverySettingsPanel({
             {...chrome.saveBar({
               count,
               errorCount: invalid.length,
-              saving: pending,
+              saving: state.saving,
               onDiscard: discard,
             })}
           />

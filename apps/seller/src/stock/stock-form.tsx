@@ -8,9 +8,11 @@ import {
   SettingSelect,
   SettingsErrorSummary,
   SettingsSection,
+  type FieldChange,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
+import { SettingsConflictView } from '../settings/conflict-view.tsx';
 import type { StockProblem } from './errors.ts';
 import type { SourceView, StockFormOptions } from './types.ts';
 
@@ -42,6 +44,7 @@ export function StockForm({
   pending,
   problem,
   failedWrites,
+  conflictId,
   onSubmit,
   onCancel,
 }: {
@@ -52,6 +55,8 @@ export function StockForm({
   readonly problem: StockProblem | null;
   /** Rises with each refused write: the summary takes focus again. */
   readonly failedWrites: number;
+  /** Set when someone saved first: `source` is then the location as saved now, and the draft stays. */
+  readonly conflictId: number | null;
   readonly onSubmit: (input: SourceInput) => void;
   readonly onCancel: () => void;
 }) {
@@ -87,12 +92,35 @@ export function StockForm({
     fieldError('timeZone') === undefined ? null : { id: ZONE_ROW, label: t('stock.form.zone') },
   ].filter((item) => item !== null);
 
+  // What differs between the location as saved now and the draft in the boxes.
+  const unset = t('settings.conflict.unset');
+  const changes: FieldChange[] = [];
+  if (conflictId !== null && source !== null) {
+    const add = (key: string, label: string, saved: string, yours: string) => {
+      if (saved !== yours) {
+        changes.push({ key, label, saved: saved || unset, yours: yours || unset });
+      }
+    };
+    add('name', t('stock.form.name'), source.name, name.trim());
+    for (const field of options.fields) {
+      add(
+        `address.${field.key}`,
+        labelOf(field),
+        source.address?.[field.key] ?? '',
+        (address[field.key] ?? '').trim(),
+      );
+    }
+    const own = t('stock.form.zone-own');
+    add('timeZone', t('stock.form.zone'), source.timeZone ?? own, zone === '' ? own : zone);
+  }
+  const hasNotice = problem !== null || invalid.length > 0 || conflictId !== null;
+
   return (
     <form onSubmit={submit} noValidate>
       <SettingsSection
         title={source === null ? t('stock.form.add-title') : t('stock.form.edit-title')}
       >
-        {problem === null && invalid.length === 0 ? null : (
+        {hasNotice ? (
           <div className="flex flex-col gap-3 border-b border-line-row px-5 py-4">
             {invalid.length === 0 ? null : (
               <SettingsErrorSummary
@@ -101,11 +129,16 @@ export function StockForm({
                 focusSignal={failedWrites}
               />
             )}
+            {conflictId === null ? null : source === null ? (
+              <Banner tone="attention">{t('stock.error.list-changed')}</Banner>
+            ) : (
+              <SettingsConflictView conflictId={conflictId} changes={changes} />
+            )}
             {problem === null ? null : (
               <Banner tone="critical">{t(problem.form.key, problem.form.values)}</Banner>
             )}
           </div>
-        )}
+        ) : null}
         <SettingRow id={NAME_ROW} label={t('stock.form.name')} error={fieldError('name')}>
           <SettingInput
             name="name"

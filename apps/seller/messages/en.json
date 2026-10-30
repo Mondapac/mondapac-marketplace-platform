@@ -1153,7 +1153,6 @@
     "title": "Stock locations",
     "section": "Your locations",
     "view-only": "You can see your stock locations but not change them. Ask the store owner for access.",
-    "conflict-title": "Your locations changed",
     "intro": "Where you keep stock, in the order we use it to fill orders. You can have up to {max} locations.",
     "optional": "optional",
     "default": "Default",
@@ -1167,7 +1166,6 @@
     "move-up": "Move {name} up",
     "move-down": "Move {name} down",
     "saved": "Saved.",
-    "reload": "Reload the page",
     "form": {
       "add-title": "Add a location",
       "edit-title": "Edit location",
@@ -1193,6 +1191,7 @@
     "error": {
       "limit": "You have reached the limit of {max} locations.",
       "stale": "Another change was saved first. Reload the page to see it, then try again.",
+      "list-changed": "Another change was saved first. The list is up to date now; check it before you continue.",
       "throttled": "Too many requests. Wait a moment and try again.",
       "unavailable": "Stock locations are unavailable right now. Try again later.",
       "not-ready": "Your stock is not ready yet. Try again in a moment.",
@@ -1864,7 +1863,6 @@
       "unavailable": "The store profile is unavailable right now. Try again later."
     },
     "about": {
-      "conflict-title": "A newer version was saved first",
       "title": "About your store",
       "help": "Plain text, up to {max} characters. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
       "field": "About your store ({language})",
@@ -1872,10 +1870,8 @@
       "save": "Save",
       "saving": "Saving…",
       "saved": "Saved. Buyers can see it now.",
-      "loading": "Loading the latest version",
-      "load-latest": "Show the latest version",
       "error": {
-        "stale": "Someone else saved a newer version first. Your changes are still in the box; show the latest version to compare, then save again.",
+        "stale": "Someone else saved a newer version first. Your changes are still in the box. Reload the page to see the latest version, then save again.",
         "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
         "denied": "You do not have access to change the store profile.",
         "csrf": "Your session needs refreshing. Reload the page and try again.",
@@ -1975,6 +1971,18 @@
       "message": "You have changes that are not saved. If you leave this page, they are lost.",
       "stay": "Stay on page",
       "leave": "Leave page"
+    },
+    "conflict": {
+      "title": "Someone else saved these settings first",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
+      "compare": "Compare",
+      "hide": "Hide comparison",
+      "heading": "What changed",
+      "list-label": "Changes compared",
+      "saved-label": "Saved now:",
+      "yours-label": "Yours:",
+      "same": "Your draft now matches what is saved.",
+      "unset": "empty"
     },
     "hub": {
       "description": "Set up how your store works. Changes here apply to your whole store.",
