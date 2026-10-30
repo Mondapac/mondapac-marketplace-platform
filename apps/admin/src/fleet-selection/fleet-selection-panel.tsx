@@ -48,6 +48,18 @@ export function FleetSelectionPanel({
   const [confirm, setConfirm] = useState<Confirm>(null);
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
+  // Where focus goes after a saved model: its row heading, or "New model" after a create. The
+  // form and its buttons are gone by then, and the toast never takes focus.
+  const focusNext = useRef<{ kind: 'add' } | { kind: 'model'; id: string } | null>(null);
+  const headings = useRef(new Map<string, HTMLHeadingElement>());
+  const addButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const target = focusNext.current;
+    if (target === null) return;
+    focusNext.current = null;
+    (target.kind === 'add' ? addButton.current : headings.current.get(target.id))?.focus();
+  });
 
   // A reloaded page moves focus to its note, so a keyboard or screen reader user lands on it.
   useEffect(() => {
@@ -129,6 +141,7 @@ export function FleetSelectionPanel({
       const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
       if (fresh.ok) adopt(fresh.body);
       setEditing(null);
+      focusNext.current = creating ? { kind: 'add' } : { kind: 'model', id: editing.model.id };
       toast.success(t(`${P}.notice.${creating ? 'created' : 'edited'}`));
     } else if (!ended(result.failure.status)) {
       const key = fleetProblemOf(result.failure);
@@ -225,7 +238,16 @@ export function FleetSelectionPanel({
                   className="flex flex-col gap-2 rounded-md border border-line p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-base font-medium">{model.name}</h3>
+                    <h3
+                      ref={(element) => {
+                        if (element === null) headings.current.delete(model.id);
+                        else headings.current.set(model.id, element);
+                      }}
+                      tabIndex={-1}
+                      className="text-base font-medium outline-none"
+                    >
+                      {model.name}
+                    </h3>
                     <Badge tone="info">{t(`${P}.kind.${model.rule.kind}`)}</Badge>
                   </div>
                   <p className="text-sm text-fg-muted">{summaryOf(model.rule, nameOf, t)}</p>
@@ -260,6 +282,7 @@ export function FleetSelectionPanel({
         {canManage && editing === null ? (
           <div>
             <Button
+              ref={addButton}
               onClick={() => {
                 setFormProblem(null);
                 setNotice(null);

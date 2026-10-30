@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   TOAST_FLASH_KEY,
+  TOAST_FLASH_MAX_AGE_MS,
   consumeFlash,
   createToastStore,
   flashToast,
@@ -59,6 +60,22 @@ describe('flash toast', () => {
     });
   });
 
+  it('drops a flash older than ten seconds', () => {
+    vi.useFakeTimers();
+    try {
+      const store = createToastStore();
+      flashToast('success', 'Old');
+      vi.advanceTimersByTime(TOAST_FLASH_MAX_AGE_MS + 1);
+      expect(consumeFlash(store)).toBeNull();
+      expect(store.getSnapshot().visible).toEqual([]);
+      flashToast('success', 'Fresh');
+      vi.advanceTimersByTime(TOAST_FLASH_MAX_AGE_MS - 1);
+      expect(consumeFlash(store)).toBe('flash');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('lets the last flash win', () => {
     const store = createToastStore();
     flashToast('success', 'First');
@@ -69,12 +86,12 @@ describe('flash toast', () => {
 
   it.each([
     'not json',
-    '{"type":"loading","text":"x"}',
-    '{"type":"success"}',
-    '{"type":"success","text":""}',
+    '{"type":"loading","text":"x","at":1}',
+    '{"type":"success","at":1}',
+    '{"type":"success","text":"","at":1}',
   ])('drops and clears a flash that is not valid: %s', (raw) => {
     const store = createToastStore();
-    storage.setItem(TOAST_FLASH_KEY, raw);
+    storage.setItem(TOAST_FLASH_KEY, raw.replace('"at":1', `"at":${Date.now()}`));
     expect(consumeFlash(store)).toBeNull();
     expect(store.getSnapshot().visible).toEqual([]);
     expect(storage.getItem(TOAST_FLASH_KEY)).toBeNull();

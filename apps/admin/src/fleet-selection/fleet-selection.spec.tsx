@@ -207,6 +207,10 @@ describe('the fleet selection page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
     await expectToast('Model created.');
+    // The form is gone: focus goes back to the button that opened it.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New model' })),
+    );
     expect(call).toHaveBeenNthCalledWith(
       1,
       'POST',
@@ -218,6 +222,18 @@ describe('the fleet selection page', () => {
       'csrf',
     );
     expect(call).toHaveBeenNthCalledWith(2, 'GET', 'shipping/admin/fleet-selection');
+  });
+
+  it('puts focus on the edited model after it is saved', async () => {
+    call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Cheapest first' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
+    await expectToast(/^Model saved\./);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Cheapest first' })),
+    );
   });
 
   it('flags a bad form without calling the API', () => {

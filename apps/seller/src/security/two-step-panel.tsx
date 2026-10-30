@@ -123,7 +123,7 @@ export function TwoStepPanel({
     const body = await call<unknown>('second-factor/remove', { code: clean(value) });
     if (body) {
       go({ kind: 'idle' });
-      toast.success(t('remove.done'));
+      toast.warning(t('remove.done'));
       router.refresh();
     }
   }

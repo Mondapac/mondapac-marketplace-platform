@@ -121,7 +121,7 @@ describe('TwoStepPanel', () => {
       { code: '654321' },
       'csrf-1',
     );
-    await expectToast(/Two-step verification is off/);
+    await expectToast(/Two-step verification is off/, 'warning');
   });
 
   it('shows new backup codes once and returns to the status after them', async () => {

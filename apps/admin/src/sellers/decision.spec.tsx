@@ -12,7 +12,7 @@ import { callApi } from '../api/client.ts';
 import { decisionProblemOf } from './decision-errors.ts';
 import { DecisionPanel } from './decision-panel.tsx';
 import type { ReviewRegister } from './review-types.ts';
-import { expectToast } from '../../test/toast-spy.ts';
+import { expectNoToast, expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-0000000000a1';
@@ -74,7 +74,10 @@ describe('DecisionPanel', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, approve' }));
-    await expectToast(/being settled/, 'info');
+    // A receipt with an instruction stays in the page; no toast repeats it.
+    expect(await screen.findByText(/being settled/)).toBeTruthy();
+    expectNoToast();
+    expectNoToast('info');
   });
 
   it('turns Approve off while the register blocks it, and explains why', () => {

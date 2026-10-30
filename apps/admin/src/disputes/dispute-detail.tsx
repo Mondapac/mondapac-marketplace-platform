@@ -73,6 +73,7 @@ export function DisputeDetailView({
   const [notice, setNotice] = useState<'stale' | null>(null);
   const [now] = useState(() => Date.now());
   const noticeRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (notice !== null) noticeRef.current?.focus();
@@ -169,7 +170,11 @@ export function DisputeDetailView({
     <div className="flex flex-col gap-4">
       <BackLink href="/disputes" label={t('title')} />
       <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <h1 className="min-w-0 break-words text-2xl font-semibold">
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="min-w-0 break-words text-2xl font-semibold outline-none"
+        >
           {t('detail.title', { id: shortId(detail.orderId) })}
         </h1>
         <Badge tone={BUCKET_TONE[detail.bucket] ?? 'neutral'}>
@@ -277,8 +282,11 @@ export function DisputeDetailView({
           setTarget(null);
           // The decision is saved either way; a page that could not reload keeps its banner.
           void refresh().then((ok) => {
-            if (ok) toast.success(t('decision.saved'));
-            else setNotice('stale');
+            if (ok) {
+              toast.success(t('decision.saved'));
+              // The decision buttons are gone; the toast takes no focus, so the page heading does.
+              headingRef.current?.focus();
+            } else setNotice('stale');
           });
         }}
         onStale={() => void refresh()}

@@ -74,6 +74,18 @@ export function RequestsQueue({
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
+  // After a decision its buttons are gone and the toast takes no focus: focus goes to the decided
+  // row, or to the list when the row left it (the Pending tab shows only waiting requests).
+  const decidedId = useRef<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+
+  useEffect(() => {
+    const id = decidedId.current;
+    if (id === null) return;
+    decidedId.current = null;
+    (rowRefs.current.get(id) ?? listRef.current)?.focus();
+  });
 
   const fetchPage = useCallback(
     async (cursor: string | null) => {
@@ -149,6 +161,7 @@ export function RequestsQueue({
     setPending(false);
     if (result.ok) {
       replace(result.body);
+      decidedId.current = row.id;
       setReason('');
       toast.success(
         kind === 'approve'
@@ -188,7 +201,7 @@ export function RequestsQueue({
   const label = (group: string, code: string | null) => wordFor(t, group, code);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={listRef} tabIndex={-1} className="flex flex-col gap-4 outline-none">
       {notice === null ? null : (
         <div ref={noticeRef} tabIndex={-1}>
           <Banner tone="critical">{notice}</Banner>
@@ -224,7 +237,15 @@ export function RequestsQueue({
                 const hintId = `own-${row.id}`;
                 const expanded = open.has(row.id);
                 const lines = [
-                  <tr key={row.id} className={CARD_TABLE.row}>
+                  <tr
+                    key={row.id}
+                    ref={(element) => {
+                      if (element === null) rowRefs.current.delete(row.id);
+                      else rowRefs.current.set(row.id, element);
+                    }}
+                    tabIndex={-1}
+                    className={`${CARD_TABLE.row} outline-none`}
+                  >
                     <td className={`${CARD_TABLE.cell} min-w-0`}>
                       <a
                         className="font-semibold text-link underline"

@@ -1,6 +1,6 @@
 'use client';
 
-import { ActionRow, Banner, Button, Card, Dialog, toast } from '@mondapac/ui';
+import { ActionRow, Banner, Button, Card, Dialog } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -41,7 +41,7 @@ export function OwnerSecondFactorCard({
   const t = useTranslations('sellers.owner-reset');
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
-  // Once a link is sent the button offers to send another.
+  // The receipt stays while the link is out; the button then offers to send another.
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [wait, setWait] = useCountdown();
@@ -63,7 +63,6 @@ export function OwnerSecondFactorCard({
     setConfirming(false);
     if (result.ok) {
       setSent(true);
-      toast.success(t('sent.body'), { title: t('sent.title') });
       return;
     }
     if (result.failure.status === 401) {
@@ -82,6 +81,11 @@ export function OwnerSecondFactorCard({
   return (
     <Card title={t('title')}>
       <p className="text-fg-secondary">{t('intro')}</p>
+      {sent ? (
+        <Banner tone="success" title={t('sent.title')}>
+          {t('sent.body')}
+        </Banner>
+      ) : null}
       {problem === null ? null : problem === 'throttled' ? (
         <Banner tone="attention">
           {wait > 0 ? t('error.throttled-wait', { seconds: wait }) : t('error.throttled')}

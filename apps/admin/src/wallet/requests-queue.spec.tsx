@@ -217,6 +217,24 @@ describe('RequestsQueue approve', () => {
     );
     expect(screen.queryByText('$900.00')).toBeNull();
     expect(screen.getByText('$25.00')).toBeTruthy();
+    // The row left the Pending tab, so focus goes to the list instead of being lost.
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement;
+      expect(active.tabIndex).toBe(-1);
+      expect(active.contains(screen.getByRole('table'))).toBe(true);
+    });
+  });
+
+  it('puts focus on the decided row when it stays in the list', async () => {
+    call.mockResolvedValueOnce(list([entry('01')]));
+    mount('decided');
+    await screen.findByText('$900.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve this credit?' });
+    call.mockResolvedValueOnce(ok(entry('01', { status: 'approved' })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    await expectToast('Credit approved. $900.00 was added.');
+    await waitFor(() => expect(document.activeElement).toBe(row('$900.00')));
   });
 
   it('keeps the row when the code dialog is cancelled', async () => {

@@ -52,7 +52,9 @@ export function SessionsCard({
     setPending(false);
     if (result.ok) {
       setAsking(false);
-      toast.success(t('signed-out-others', { count: result.body.revokedSessions }));
+      const text = t('signed-out-others', { count: result.body.revokedSessions });
+      if (result.body.revokedSessions > 0) toast.success(text);
+      else toast.info(text);
       router.refresh();
       return;
     }

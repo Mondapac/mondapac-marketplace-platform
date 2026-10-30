@@ -44,6 +44,7 @@ export function DecisionPanel({
   const [reason, setReason] = useState('');
   const [outcome, setOutcome] = useState('');
   const [pending, setPending] = useState(false);
+  const [settling, setSettling] = useState(false);
   const [problem, setProblem] = useState<DecisionProblem | null>(null);
   const busy = useRef(false);
 
@@ -60,14 +61,15 @@ export function DecisionPanel({
     busy.current = true;
     setPending(true);
     setProblem(null);
+    setSettling(false);
     const result = await callApi<unknown>(method, path, body, csrfToken);
     busy.current = false;
     setPending(false);
     if (result.ok) {
       const notice = done(result.status);
       const text = t(`sellers.decision.notice.${notice}`);
-      // A rejection that is still being settled is news, not a finished result.
-      if (notice === 'settling') toast.info(text);
+      // A rejection that is still being settled says so until the page is read again.
+      if (notice === 'settling') setSettling(true);
       else toast.success(text);
       setStep('idle');
       setReason('');
@@ -103,6 +105,7 @@ export function DecisionPanel({
   return (
     <Card title={t('sellers.decision.title')}>
       {decisionInProgress ? <Banner tone="info">{t('sellers.decision.in-progress')}</Banner> : null}
+      {settling ? <Banner tone="info">{t('sellers.decision.notice.settling')}</Banner> : null}
       {problem === null ? null : (
         <Banner tone="critical">
           {t(problem.key)}
@@ -221,6 +224,7 @@ export function DecisionPanel({
                 disabled={locked || register.blocksApproval}
                 onClick={() => {
                   setProblem(null);
+                  setSettling(false);
                   setStep('confirm-approve');
                 }}
               >
@@ -231,6 +235,7 @@ export function DecisionPanel({
                 disabled={locked}
                 onClick={() => {
                   setProblem(null);
+                  setSettling(false);
                   setStep('reject');
                 }}
               >

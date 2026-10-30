@@ -500,6 +500,10 @@ describe('decision dialog', () => {
       ),
     );
     await expectToast('Decision saved.');
+    // The decision buttons are gone and the toast takes no focus: the page heading does.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 })),
+    );
     expect(screen.getByRole('dialog', { hidden: true }).hasAttribute('open')).toBe(false);
   });
 

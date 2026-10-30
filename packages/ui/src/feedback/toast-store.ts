@@ -275,6 +275,8 @@ export const toast = {
 
 /** The one sessionStorage key a flash toast waits under. */
 export const TOAST_FLASH_KEY = 'mp-toast-flash';
+/** A flash older than this was left by a navigation that never landed: it is dropped. */
+export const TOAST_FLASH_MAX_AGE_MS = 10_000;
 
 type FlashType = Exclude<ToastType, 'loading'>;
 const FLASH_TYPES: readonly string[] = ['success', 'error', 'warning', 'info'];
@@ -289,7 +291,12 @@ function flashStorage(): Storage | null {
 
 /**
  * Keep the outcome of an action that navigates away, to show on the page it lands on. One flash
- * waits at a time (the last wins). Without sessionStorage nothing is kept.
+ * waits at a time (the last wins) and is dropped after ten seconds. Without sessionStorage
+ * nothing is kept.
+ *
+ * It is read when the Toaster mounts, so it relies on every page rendering its own AppShell (the
+ * panels do). A layout that kept one Toaster across pages would not show it; this package does
+ * not depend on the router, so there is no pathname guard.
  */
 export function flashToast(
   type: FlashType,
@@ -297,7 +304,10 @@ export function flashToast(
   options: Pick<ToastOptions, 'title' | 'description'> = {},
 ) {
   try {
-    flashStorage()?.setItem(TOAST_FLASH_KEY, JSON.stringify({ type, text, ...options }));
+    flashStorage()?.setItem(
+      TOAST_FLASH_KEY,
+      JSON.stringify({ type, text, ...options, at: Date.now() }),
+    );
   } catch {
     // Storage blocked or full: the outcome is lost, the action itself has happened.
   }
@@ -316,7 +326,10 @@ export function consumeFlash(store: ToastStore = toastStore): string | null {
       text?: unknown;
       title?: unknown;
       description?: unknown;
+      at?: unknown;
     };
+    // No stamp, or an old one: a navigation that never landed left it behind.
+    if (typeof value.at !== 'number' || Date.now() - value.at > TOAST_FLASH_MAX_AGE_MS) return null;
     if (typeof value.type !== 'string' || !FLASH_TYPES.includes(value.type)) return null;
     if (typeof value.text !== 'string' || value.text === '') return null;
     return store.show(value.type as FlashType, value.text, {
