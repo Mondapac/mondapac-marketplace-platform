@@ -152,6 +152,7 @@ export function SupportEmailCard({
         {canManage ? (
           <SettingRow
             id={EMAIL_ROW}
+            settingId="support-email"
             label={t('settings.support.field')}
             help={t('settings.support.field-help')}
             changed={dirty}

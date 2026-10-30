@@ -21,6 +21,7 @@ export {
   navOpenGroups,
   NAV_OPEN_COOKIE,
   visibleNavItems,
+  permits,
   type NavConfig,
   type NavGroup,
   type NavSection,
@@ -149,3 +150,29 @@ export {
   type ToastPromiseMessages,
   type ToastType,
 } from './feedback/toast-store.ts';
+export {
+  buildPaletteEntries,
+  matchPage,
+  searchPalette,
+  settingHash,
+  type PaletteActionSpec,
+  type PaletteEntry,
+  type PaletteKind,
+  type PaletteSettingSpec,
+  type PaletteSettingsPage,
+  type PaletteSources,
+} from './palette/palette-index.ts';
+export {
+  PanelTools,
+  PageTitle,
+  PaletteSearchButton,
+  PinButton,
+  ShortcutsButton,
+  PinnedSection,
+  RecentPages,
+  type GoShortcut,
+  type PanelToolsLabels,
+  type PanelToolsProps,
+} from './palette/panel-tools.tsx';
+export { PIN_LIMIT, RECENT_LIMIT } from './palette/panel-prefs.ts';
+export { panelToolsLabels } from './palette/palette-labels.ts';

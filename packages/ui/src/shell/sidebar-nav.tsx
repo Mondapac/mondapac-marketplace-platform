@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon, type IconName } from '../icon/icon.tsx';
+import { PinnedSection } from '../palette/panel-tools.tsx';
 import { NAV_OPEN_COOKIE, navOpenGroups } from './nav.ts';
 
 export interface SidebarLink {
@@ -164,6 +165,8 @@ export function SidebarNav({
             {allOpen ? collapseAll : expandAll}
           </button>
         ) : null}
+        {/* The account's pinned pages (empty, and so absent, outside a PanelTools). */}
+        <PinnedSection />
         {entries.map((entry) => {
           if (entry.kind === 'item') {
             return (

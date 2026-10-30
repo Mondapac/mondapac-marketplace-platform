@@ -8,6 +8,61 @@
     "region": "Action notifications",
     "close": "Close notification"
   },
+  "palette": {
+    "search": "Search",
+    "title": "Search",
+    "placeholder": "Search pages, settings and actions",
+    "close": "Close search",
+    "results": "Search results",
+    "recent": "Recent",
+    "recent-heading": "Recent",
+    "pinned": "Pinned",
+    "kind": {
+      "page": "Pages",
+      "setting": "Settings",
+      "action": "Actions"
+    },
+    "empty": "No results for “{query}”",
+    "count-one": "1 result",
+    "count-many": "{count} results",
+    "hint-move": "to move",
+    "hint-open": "to open",
+    "hint-close": "to close",
+    "group": {
+      "account": "Account"
+    },
+    "pin": {
+      "pin": "Pin {page}",
+      "limit": "You can pin up to 5 pages. Unpin one first."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "close": "Close",
+      "open-search": "Search",
+      "show-list": "Show keyboard shortcuts",
+      "then": "then",
+      "go-settings": "Go to Settings",
+      "go-orders": "Go to Orders",
+      "single-key": "Single-key shortcuts",
+      "single-key-hint": "Turn off if they clash with your assistive technology.",
+      "pin-hint": "Pin or unpin a page: use the star in the top bar."
+    },
+    "action": {
+      "add-product": "Add product",
+      "invite-member": "Invite team member"
+    },
+    "setting": {
+      "store-name": "Store name",
+      "store-logo": "Store logo",
+      "store-banner": "Store banner",
+      "stock-locations": "Stock locations",
+      "stock-locations-words": "warehouse, pickup address, where stock is kept",
+      "payout-bank": "Payout bank account",
+      "payout-bank-words": "bank, BSB, payments, get paid",
+      "team-members": "Team members"
+    },
+    "empty-hint": "Check the spelling or try a shorter word."
+  },
   "theme": {
     "menu": "Theme",
     "system": "System",

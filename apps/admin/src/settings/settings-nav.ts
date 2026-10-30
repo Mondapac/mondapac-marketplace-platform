@@ -1,4 +1,4 @@
-import type { IconName } from '@mondapac/ui';
+import type { IconName, PaletteSettingSpec } from '@mondapac/ui';
 import {
   DELIVERY_MANAGE_PERMISSION,
   DELIVERY_VIEW_PERMISSION,
@@ -157,3 +157,58 @@ export function settingsLink(
   }
   return undefined;
 }
+
+/**
+ * The settings registry (command palette, package S5): one entry per findable setting, on a page
+ * of the map above. An entry opens its page at `#setting-<id>`, and the page's `SettingRow` with
+ * the same `settingId` scrolls to it, takes focus and is highlighted. An entry shows only when its
+ * page does. A page that has not tagged the row yet still opens; only the highlight is missing.
+ * Labels and search words live in the app's messages under `palette.setting`.
+ */
+export const settingEntries: readonly PaletteSettingSpec[] = [
+  {
+    id: 'support-email',
+    pageId: 'support',
+    labelKey: 'palette.setting.support-email',
+    keywordsKey: 'palette.setting.support-email-words',
+  },
+  {
+    id: 'assistant-enabled',
+    pageId: 'assistant',
+    labelKey: 'palette.setting.assistant-enabled',
+    keywordsKey: 'palette.setting.assistant-enabled-words',
+  },
+  {
+    id: 'assistant-audience',
+    pageId: 'assistant',
+    labelKey: 'palette.setting.assistant-audience',
+    keywordsKey: 'palette.setting.assistant-audience-words',
+  },
+  {
+    id: 'assistant-model',
+    pageId: 'assistant',
+    labelKey: 'palette.setting.assistant-model',
+    keywordsKey: 'palette.setting.assistant-model-words',
+  },
+  {
+    id: 'assistant-welcome',
+    pageId: 'assistant',
+    labelKey: 'palette.setting.assistant-welcome',
+    keywordsKey: 'palette.setting.assistant-welcome-words',
+  },
+  { id: 'delivery-methods', pageId: 'delivery', labelKey: 'palette.setting.delivery-methods' },
+  { id: 'delivery-cutoff', pageId: 'delivery', labelKey: 'palette.setting.delivery-cutoff' },
+  {
+    id: 'delivery-margin',
+    pageId: 'delivery',
+    labelKey: 'palette.setting.delivery-margin',
+    keywordsKey: 'palette.setting.delivery-margin-words',
+  },
+  {
+    id: 'wallet-state',
+    pageId: 'wallet',
+    labelKey: 'palette.setting.wallet-state',
+    keywordsKey: 'palette.setting.wallet-state-words',
+  },
+  { id: 'two-step', pageId: 'account-security', labelKey: 'palette.setting.two-step' },
+];
