@@ -38,7 +38,8 @@ const TONE: Record<
 /**
  * The one stack of action notifications, mounted once in the panel shell. It sits at the bottom,
  * on the inline-end corner (full width on phones), never takes focus, and keeps a toast while the
- * pointer or focus is on it. Logical properties only, so it mirrors in a right-to-left page.
+ * pointer or focus is on it. While a settings `SaveBar` shows it sets `--mp-savebar-offset`, and
+ * the stack rises above the bar. Logical properties only, so it mirrors in a right-to-left page.
  */
 export function Toaster({ labels, aboveBottomBar = false }: ToasterProps) {
   const { visible } = useToasts();
@@ -78,7 +79,7 @@ export function ToastStack({
     <div
       role="region"
       aria-label={labels.region}
-      className={`pointer-events-none fixed inset-x-3 z-30 flex flex-col gap-2 md:inset-x-auto md:end-4 md:w-[min(var(--mp-size-dialog-sm),calc(100%-2rem))] ${aboveBottomBar ? 'bottom-[calc(var(--mp-size-bottom-bar)+0.75rem+env(safe-area-inset-bottom))] md:bottom-4' : 'bottom-4'}`}
+      className={`pointer-events-none fixed inset-x-3 z-30 flex flex-col gap-2 md:inset-x-auto md:end-4 md:w-[min(var(--mp-size-dialog-sm),calc(100%-2rem))] ${aboveBottomBar ? 'bottom-[max(calc(var(--mp-size-bottom-bar)+0.75rem+env(safe-area-inset-bottom)),calc(var(--mp-savebar-offset,0px)+0.75rem))] md:bottom-[max(1rem,calc(var(--mp-savebar-offset,0px)+1rem))]' : 'bottom-[max(1rem,calc(var(--mp-savebar-offset,0px)+1rem))]'}`}
     >
       {items.map((item) => (
         <ToastCard key={item.id} item={item} closeLabel={labels.close} />

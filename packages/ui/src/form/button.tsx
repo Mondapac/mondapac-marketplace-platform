@@ -13,7 +13,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary:
-    'bg-accent text-on-accent hover:bg-accent-hover disabled:bg-accent-disabled disabled:cursor-not-allowed',
+    'bg-accent text-on-accent enabled:hover:bg-accent-hover disabled:bg-muted disabled:text-fg-muted disabled:cursor-not-allowed',
   secondary:
     'border border-line-control bg-surface text-fg hover:bg-muted disabled:text-fg-muted disabled:cursor-not-allowed',
   destructive:

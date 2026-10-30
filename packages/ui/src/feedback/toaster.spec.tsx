@@ -100,6 +100,11 @@ describe('ToastStack', () => {
     expect(plain).toContain('inset-x-3');
     expect(plain).not.toMatch(/\b(?:md:)?(?:left|right)-/);
     expect(plain).not.toContain('--mp-size-bottom-bar');
+    // Both placements read the save bar's offset and leave no stray character in the class.
+    for (const html of [plain, stack([], true)]) {
+      expect(html).toContain('var(--mp-savebar-offset,0px)');
+      expect(html).not.toMatch(/class="[^"]*\}[ "]/);
+    }
     expect(stack([], true)).toContain('--mp-size-bottom-bar');
   });
 });

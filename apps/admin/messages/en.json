@@ -1438,10 +1438,33 @@
   "settings": {
     "title": "Settings",
     "no-access": "You don't have access to settings.",
+    "no-access-title": "You don't have access to this page",
+    "no-access-needs": "{page} needs the \"{permission}\" permission. Ask an admin who manages roles to add it.",
     "back-home": "Back to dashboard",
     "unavailable": "Settings could not be loaded. Try again later.",
+    "errors": {
+      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+    },
+    "bar": {
+      "region": "Unsaved changes",
+      "summary": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+      "errors": "{count, plural, one {# needs fixing} other {# need fixing}}",
+      "discard": "Discard",
+      "save": "Save changes",
+      "saving": "Saving…"
+    },
+    "leave": {
+      "title": "Leave without saving?",
+      "message": "You have changes that are not saved. If you leave this page, they are lost.",
+      "stay": "Stay on page",
+      "leave": "Leave page"
+    },
     "support": {
       "title": "Support email",
+      "section": "Contact address",
+      "none": "Not set",
+      "permission-view": "Support email: view",
+      "read-only": "You can view the support email. To change it you need the \"Support email: manage\" permission.",
       "intro": "The address customers and sellers are told to write to when they need help. A change applies from now on.",
       "not-set": "No support email is set yet.",
       "current": "Current address",
@@ -1467,6 +1490,8 @@
     },
     "assistant": {
       "title": "Smart assistant settings",
+      "permission-view": "Smart assistant: view",
+      "intro": "Whether the shopping assistant is on, who sees it, what it answers and what it may spend.",
       "no-access": "You don't have access to the smart assistant settings.",
       "unavailable": "The smart assistant settings could not be loaded. Try again later.",
       "read-only": "Only the Platform Administrator can change these settings.",

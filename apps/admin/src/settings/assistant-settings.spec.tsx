@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from '@mondapac/ui';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
@@ -11,7 +12,6 @@ import { callApi } from '../api/client.ts';
 import { centsOf, dollarsOf, formOf, refusedFields, settingsOf } from './assistant-form.ts';
 import { AssistantSettingsPanel } from './assistant-settings-panel.tsx';
 import type { AssistantSettings, AssistantSettingsAnswer } from './assistant-types.ts';
-import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -55,7 +55,10 @@ const answer = (
 
 const mount = (initial: AssistantSettingsAnswer, canManage = true) =>
   render(wrap(<AssistantSettingsPanel initial={initial} canManage={canManage} csrfToken="csrf" />));
-const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+/** A change that is valid, so the save bar shows. */
+const touch = (value = '21') =>
+  fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value } });
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
@@ -70,7 +73,10 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('20');
     expect(screen.getByLabelText<HTMLInputElement>('Daily cap').value).toBe('10');
     expect(screen.getByLabelText<HTMLInputElement>('Monthly cap').value).toBe('200');
-    expect(screen.getByText('Off')).toBeTruthy();
+    // The status card and the switch row both say Off.
+    expect(screen.getAllByText('Off')).toHaveLength(2);
+    // Nothing changed: no save bar.
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('shows the key only as set or not set, and offers unavailable options disabled', () => {
@@ -137,10 +143,12 @@ describe('AssistantSettingsPanel', () => {
       body: answer({ enabled: true, audience: 'percent', audiencePercent: 10 }, { version: 1 }),
     });
     mount(answer());
+    const success = vi.spyOn(toast, 'success').mockReturnValue('toast');
     fireEvent.click(screen.getByLabelText('Assistant switched on'));
     fireEvent.change(screen.getByLabelText('Show to'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Share of visitors (%)'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '12.5' } });
+    expect(screen.getByText('4 unsaved changes')).toBeTruthy();
     save();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
@@ -158,8 +166,12 @@ describe('AssistantSettingsPanel', () => {
       },
       'csrf',
     );
-    await expectToast(/Settings saved/);
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith(expect.stringMatching(/Settings saved/)),
+    );
     expect(screen.getByText('Saved version 1')).toBeTruthy();
+    // Saved: the fields are the saved values again, so the bar is gone.
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('names bad fields before calling the API', () => {
@@ -172,6 +184,32 @@ describe('AssistantSettingsPanel', () => {
       screen.getByText(/no more than the monthly cap/, { selector: 'p[id$="-error"]' }),
     ).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
+    // The bar counts the errors and Save waits until they are fixed.
+    expect(screen.getByText(/2 need fixing/)).toBeTruthy();
+    const summary = screen.getByRole('alert');
+    expect(summary.textContent).toContain('2 settings need fixing before you can save');
+    expect(document.activeElement).toBe(summary);
+    fireEvent.click(screen.getByRole('link', { name: 'Messages per guest' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Messages per guest'));
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
+    fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '30' } });
+    expect(screen.queryByText('Enter a whole number from 5 to 60.')).toBeNull();
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+  });
+
+  it('marks changed fields, counts them and discards them', () => {
+    mount(answer());
+    const field = screen.getByLabelText<HTMLInputElement>('Messages per guest');
+    expect(field.className).not.toContain('border-attention-solid');
+    touch();
+    expect(field.className).toContain('border-attention-solid');
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(field.value).toBe('20');
+    expect(field.className).not.toContain('border-attention-solid');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('re-reads the settings after a conflict and says so', async () => {
@@ -183,6 +221,7 @@ describe('AssistantSettingsPanel', () => {
         body: answer({ guestMessageLimit: 30 }, { version: 4 }),
       });
     mount(answer());
+    touch();
     save();
     expect(
       await screen.findByText(/Another admin saved changes first. The page now shows/),
@@ -202,6 +241,7 @@ describe('AssistantSettingsPanel', () => {
       },
     });
     mount(answer());
+    touch();
     save();
     expect(await screen.findByText(/without < or >/)).toBeTruthy();
     expect(
@@ -212,6 +252,7 @@ describe('AssistantSettingsPanel', () => {
   it('shows a refusal in words', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 403, code: 'access.denied' } });
     mount(answer());
+    touch();
     save();
     expect(
       await screen.findByText('Your role cannot change the smart assistant settings.'),
