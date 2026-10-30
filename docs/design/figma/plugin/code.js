@@ -6716,7 +6716,7 @@ function pcField(label, control, help) { return frame({ name: 'field · ' + labe
 function pcValue(label, value, extra) { return frame({ name: 'value · ' + label, dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [text(label, 'Body/Small', 'text/muted', { w: 96 }), value, pcSp(), extra || null]); }
 function pcIn(v, st) { return inst('Input', { Type: 'Text', State: st || 'Filled', Value: v, 'Leading icon': false }, { name: 'input', sizeH: 'FILL' }); }
 function pcTa(v, st) { return st && st !== 'Filled' ? psTextarea(v, st) : inst('Textarea', { State: 'Filled', Value: v }, { name: 'textarea', sizeH: 'FILL' }); }
-const PC_TABS = ['Details', 'SEO', 'Filters', 'Products', 'History'];
+const PC_TABS = ['Details', 'SEO', 'Attributes', 'Products', 'History'];
 // The details column: the selected category's name, path and status, its tabs, the tab body and the actions.
 function pcPanel(o) {
   o = o || {};
@@ -6792,10 +6792,12 @@ function pcFilterRow(name, kind, first, last) {
     inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: first ? 'Disabled' : 'Default', Icon: { icon: 'arrow-up' } }, { name: 'up' }), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: last ? 'Disabled' : 'Default', Icon: { icon: 'arrow-down' } }, { name: 'down' }), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]);
 }
 function pcFilters() {
-  const list = [['Brand', 'Choice list'], ['Pack size', 'Choice list'], ['Grain length', 'Choice list'], ['Country of origin', 'Choice list']];
-  return [pcField('Suggested attribute family', inst('Select', { State: 'Filled', Value: 'Packaged food' }, { name: 'family', sizeH: 'FILL' }), 'New products in this category start with this family and its required attributes. A product keeps its family after it is created.'),
+  const list = [['Brand', 'Brand · choices'], ['Pack size', 'Single choice · choices'], ['Grain length', 'Single choice · choices'], ['Net weight', 'Number with unit · range'], ['Contains nuts', 'Yes / No · switch']];
+  return [text('Attribute links', 'Body/Strong'),
+    pcField('Feature set', inst('Select', { State: 'Filled', Value: 'Rice and grains' }, { name: 'family', sizeH: 'FILL' }), 'What sellers fill in for products here. If you change it, products follow on their next change; shared values are kept.'),
     inst('InfoBanner', { Tone: 'Info', Title: 'Inherited from Rice', Body: 'This category uses the filters of Rice. Change them here to give it its own.', 'Show action': true, Action: 'Use own filters' }, { name: 'inherited', sizeH: 'FILL' }),
     text('Filters buyers see, in this order', 'Caption/Strong', 'text/muted'),
+    text('Only choice, brand, number and Yes / No attributes can be filters. Filtered pages are noindex.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }),
     card('filters', list.map(function (f, i) { return pcFilterRow(f[0], f[1], i === 0, i === list.length - 1); })),
     btn('Add filter', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })];
 }
@@ -6912,12 +6914,266 @@ PROPOSALS['admin-categories'] = { title: PC, rows: function () {
   const L = [[pcScreen('Language · Persian', { panel: { body: pcDetails({ lang: 'fa' }) } }),
     pcScreen('Language · Persian name missing', { panel: { body: pcDetails({ lang: 'fa', missing: ['fa', 'ar'], errLang: 'fa', text: { name: '' }, nameError: 'Add the Persian name. Persian is live for customers.', unsaved: '1 needs fixing' }) } }),
     pcScreen('Language · Missing Arabic filter', { tree: { rows: missRows, langFilter: 'Missing: Arabic (12)', note: '12 categories have no Arabic name. Arabic is a draft, so buyers aren’t affected yet.', foot: 'Parents without the filter match are shown for context.' }, panel: { body: pcDetails({ lang: 'ar' }) } })]];
-  return L.concat([[pcScreen('Default, Details'), pcScreen('SEO', { panel: { tab: 'SEO', body: pcSeo() } }), pcScreen('Filters', { panel: { tab: 'Filters', body: pcFilters() } })],
+  return L.concat([[pcScreen('Default, Details'), pcScreen('SEO', { panel: { tab: 'SEO', body: pcSeo() } }), pcScreen('Attribute links', { panel: { tab: 'Attributes', body: pcFilters() } })],
     [pcScreen('Products', { panel: { tab: 'Products', body: pcProducts() } }), pcScreen('History', { panel: { tab: 'History', body: pcHistory() } }), pcScreen('Search', { tree: { rows: searchRows, query: 'rice', match: 'Rice', note: '6 categories match "rice". Their parents are shown in grey context.', foot: 'Matches stay in the tree so their place is clear.' } })],
     [pcScreen('New category, Hidden', { tree: { rows: newRows, selected: 'Sella rice' }, panel: { name: 'Sella rice', slug: 'sella-rice', hidden: true, leafFull: true, products: '0 live · 0 offers', desc: '', noImage: true, keywords: 'sella, parboiled', banner: ready } }),
       pcScreen('Category with subcategories', { tree: { rows: parentRows, selected: 'Rice' }, panel: { name: 'Rice', slug: 'rice', path: 'Pantry › Rice and grains', products: '96 live · 9 directly on Rice', banner: inst('InfoBanner', { Tone: 'Info', Title: '9 products sit directly on Rice', Body: 'Buyers find them under "Other Rice" in the filter. In the product form, sellers see the subcategories first and Rice as "General".', 'Show action': true, Action: 'Move products…' }, { name: 'direct-products', sizeH: 'FILL' }) } }),
       pcScreen('View only', { viewOnly: true, banner: inst('InfoBanner', { Tone: 'Info', Title: 'View only', Body: 'Your role can’t change categories. A Platform Administrator can give you access.', 'Show action': false }, { name: 'view-only', sizeH: 'FILL' }), panel: { viewOnly: true } })],
     [pcDialogsA(), pcDialogsB(), pcStates()]]);
+} };
+
+// ── Admin · Catalog · Attributes (attributes management plan v2, sections 16 and 17; decisions 1 to 12 of 30 Oct 2026)
+const PA = 'Proposal · Admin · Catalog · Attributes';
+function paTag(n) { n.setPluginData('proposal', 'admin-attributes'); return n; }
+function paRadio(on, label, desc, kids) {
+  const dot = frame({ name: 'radio', dir: 'H', w: 18, h: 18, align: 'center', justify: 'center', radius: 'radius/pill', stroke: on ? 'action/primary' : 'border/input', fill: 'bg/surface' }, on ? [frame({ name: 'dot', w: 8, h: 8, radius: 'radius/pill', fill: 'action/primary' })] : []);
+  return frame({ name: 'option · ' + label, dir: 'H', gap: 'space/3', align: 'start', pad: 'space/3', stroke: on ? 'action/primary' : 'border/default', fill: on ? 'bg/selected' : null, radius: 'radius/control', sizeH: 'FILL' }, [dot,
+    frame({ name: 'text', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [text(label, 'Body/Strong'), desc ? text(desc, 'Body/Small', 'text/muted', { sizeH: 'FILL' }) : null].concat(kids || []))]);
+}
+function paSave(o) {
+  o = o || {};
+  return frame({ name: 'save', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [o.note ? text(o.note, 'Body/Small', o.err ? 'status/critical/fg' : 'text/muted') : null, pcSp(), btn('Discard', 'Secondary', 'Sm', { State: o.note ? 'Default' : 'Disabled' }), btn(o.primary || 'Save changes', 'Primary', 'Sm', { State: o.primaryOn ? 'Default' : 'Disabled' })]);
+}
+function paLock(label, value, link) { return pcValue(label, frame({ name: 'locked', dir: 'H', gap: 'space/1-5', align: 'center' }, [text(value, 'Body/Default', 'text/primary'), icon('lock', 'icon/muted', 14)]), link || null); }
+function paCheck(label, desc, on, st) { return inst('CheckboxRow', { Value: on ? 'Checked' : 'Unchecked', State: st || 'Default', Label: label, Description: desc }, { name: label, sizeH: 'FILL' }); }
+// The list: [name, code, type, products, feature sets, languages, badges]
+const PA_ROWS = [
+  ['Net weight', 'net-weight', 'Number with unit', '1,204', '6', 'All', ['Material']], ['Country of origin', 'country-of-origin', 'Single choice', '1,180', '6', 'All', []],
+  ['Pack size', 'pack-size', 'Single choice', '412', '3', 'Missing ar', ['Variant']], ['Grain length', 'grain-length', 'Single choice', '138', '1', 'Missing ar', []],
+  ['Ingredients', 'ingredients', 'Long text', '1,022', '5', 'All', ['Material']], ['Storage', 'storage', 'Long text', '96', '2', 'Missing ar', []],
+  ['Contains nuts', 'contains-nuts', 'Yes / No', '640', '4', 'All', ['Material']], ['Pieces per pack', 'pieces-per-pack', 'Number', '58', '2', 'Missing ar', []],
+  ['Diet', 'diet', 'Multiple choice', '311', '4', 'Missing ar', []], ['Flavour', 'flavour', 'Single choice', '0', '0', 'Missing fa, ar', ['Draft']],
+  ['Variety', 'variety', 'Text', '204', '2', 'All', ['Archived']],
+];
+function paBadge(b) { return b === 'Material' ? bdg('Attention', 'Icon', 'Material', 'shield-check') : (b === 'Variant' ? bdg('Info', 'None', 'Variant') : (b === 'Draft' ? bdg('Neutral', 'Dot', 'Draft') : bdg('Neutral', 'None', 'Archived'))); }
+function paList(o) {
+  o = o || {};
+  const rows = (o.rows || PA_ROWS).filter(function (r) { return o.showArchived || r[6].indexOf('Archived') < 0; });
+  const tools = frame({ name: 'list tools', dir: 'H', gap: 'space/2', align: 'center', pad: [12, 16, 12, 16], wrap: true, rowGap: 'space/2', sizeH: 'FILL' }, [
+    inst('Input', { Type: 'Text', State: o.query ? 'Filled' : 'Default', Value: o.query || 'Search name or code', 'Leading icon': true }, { name: 'search', w: 220 }),
+    inst('Select', { State: 'Filled', Value: 'Type: ' + (o.type || 'All') }, { name: 'type', w: 130 }), inst('Select', { State: 'Filled', Value: 'Status: ' + (o.status || 'Active, draft') }, { name: 'status', w: 170 }),
+    inst('Select', { State: 'Filled', Value: o.lang || 'Language: All' }, { name: 'language', w: 160 })]);
+  const head = headerRow([['Attribute', 'fill'], ['Type', 140], ['Products', 90], ['Languages', 110]]);
+  const kids = [tools, head].concat(rows.map(function (r) {
+    const on = r[0] === (o.selected || 'Net weight');
+    const name = frame({ name: 'name', dir: 'V', sizeH: 'FILL' }, [frame({ name: 'name-row', dir: 'H', gap: 'space/1-5', align: 'center' }, [text(r[0], on ? 'Body/Strong' : 'Body/Default')].concat(r[6].map(paBadge))), text(r[1], 'Caption/Default', 'text/muted')]);
+    const lang = r[5] === 'All' ? text('All', 'Body/Small', 'text/muted') : bdg('Attention', 'None', r[5]);
+    return row([[name, 'fill'], [text(r[2], 'Body/Small'), 140], [text(r[3], 'Body/Small', 'text/muted'), 90], [lang, 110]], on, false, 56);
+  }));
+  kids.push(frame({ name: 'list foot', dir: 'H', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [text(o.foot || '24 attributes · 1 archived hidden · Languages counts English, فارسی and العربية', 'Caption/Default', 'text/muted')]));
+  return card('Attribute list', kids);
+}
+const PA_SUBTABS = ['Details', 'Values', 'Used in', 'History'];
+function paPanel(o) {
+  o = o || {};
+  const dis = o.viewOnly ? 'Disabled' : 'Default';
+  const badges = (o.badges || ['Material']).map(paBadge);
+  const status = o.draft ? bdg('Neutral', 'Dot', 'Draft') : bdg('Success', 'Dot', 'Active');
+  const head = frame({ name: 'panel head', dir: 'V', gap: 'space/1', pad: [20, 20, 0, 20], sizeH: 'FILL' }, [
+    frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text(o.name || 'Net weight', 'Heading/H2'), status].concat(badges, [pcSp(), o.draft ? btn('Publish', 'Primary', 'Sm', { State: o.canPublish ? 'Default' : 'Disabled' }) : null])),
+    text((o.code || 'net-weight') + ' · ' + (o.type || 'Number with unit'), 'Body/Small', 'text/muted'),
+    frame({ name: 'tabs-wrap', dir: 'V', pad: ['space/3', 0, 0, 0], sizeH: 'FILL' }, [tabsBar(PA_SUBTABS.map(function (t) { return [t, null, t === (o.tab || 'Details')]; }))])]);
+  const body = frame({ name: 'panel body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, (o.banner ? [o.banner] : []).concat(o.body || paDetails(o)));
+  const acts = frame({ name: 'panel actions', dir: 'H', gap: 'space/2', align: 'center', pad: [12, 20, 16, 20], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, o.draft ? [pcSp(), btn('Discard draft', 'Ghost', 'Sm', { State: dis })] : [
+    btn('Merge…', 'Secondary', 'Sm', { State: o.locked ? 'Disabled' : dis }), btn('Convert type…', 'Secondary', 'Sm', { State: o.locked ? 'Disabled' : dis }), pcSp(), btn('Archive…', 'Ghost', 'Sm', { State: o.locked ? 'Disabled' : dis })]);
+  return card('Attribute details', [head, body, acts], { w: 540, sizeH: null });
+}
+function paLangBlock(o, fields) {
+  const lang = o.lang || 'en', L = PC_LANGS.filter(function (l) { return l[0] === lang; })[0];
+  return frame({ name: 'language text', dir: 'V', gap: 'space/4', pad: 'space/4', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
+    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangTabs(lang, o.missing || ['ar'], o.errLang), text(L[2] + ' · ' + L[3] + (lang !== 'en' ? ' · right to left' : ''), 'Caption/Default', 'text/muted')])].concat(fields));
+}
+function paDetails(o) {
+  const dis = o.viewOnly ? 'Disabled' : null, cd = o.viewOnly ? 'Disabled' : 'Default';
+  const lang = o.lang || 'en';
+  const tx = { en: ['Net weight', 'Weight of the food without packaging.'], fa: ['وزن خالص', 'وزن خوراکی بدون بسته‌بندی.'], ar: ['', ''] }[lang];
+  const name = lang === 'en' ? pcIn(tx[0], dis) : pcRtl(tx[0], dis, { ph: 'Name in Arabic' });
+  const help = lang === 'en' ? pcIn(tx[1], dis) : pcRtl(tx[1], dis, { ph: 'Help text in Arabic' });
+  return [paLangBlock(o, [pcField('Name', name, '1 to 120 characters. Sellers and buyers see it.'), pcField('Help text', help, 'One sentence under the field in the seller form.'),
+      lang === 'en' ? pcField('Unit labels', frame({ name: 'unit labels', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [pcIn('g', dis), pcIn('kg', dis)])) : pcField('Unit labels', frame({ name: 'unit labels', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [pcRtl(lang === 'fa' ? 'گرم' : '', dis, { ph: 'g' }), pcRtl(lang === 'fa' ? 'کیلوگرم' : '', dis, { ph: 'kg' })]))]),
+    text('Settings', 'Caption/Strong', 'text/muted'),
+    paLock('Code', 'net-weight'), paLock('Type', 'Number with unit', ppLink('Convert type…', null, 'convert')), paLock('Measures', 'Mass, stored in grams'),
+    frame({ name: 'unit row', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [pcField('Units sellers can use', inst('Select', { State: o.viewOnly ? 'Disabled' : 'Filled', Value: 'g, kg' }, { name: 'units', sizeH: 'FILL' })), pcField('Shown in', inst('Select', { State: o.viewOnly ? 'Disabled' : 'Filled', Value: 'g' }, { name: 'default unit', w: 110 }))]),
+    frame({ name: 'limits', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [pcField('Smallest', pcIn('1 g', dis)), pcField('Largest', pcIn('50 kg', dis)), pcField('Decimals', pcIn('0', dis))]),
+    text('Where it shows', 'Caption/Strong', 'text/muted'),
+    paCheck('Can be a filter', 'A range filter. Each category chooses whether to show it.', true, cd), paCheck('Show on the product page', 'In the Specifications table.', true, cd), paCheck('Searchable', 'Buyers can find products by this value.', false, cd),
+    paCheck('Material', 'Buyers rely on it. Changes recheck certificates. Turning it off needs a second admin.', true, cd),
+    pcField('Internal note', pcTa('Unit price is worked out from this value in pricing.', dis), 'Admins only.'),
+    paSave(o.save)];
+}
+function paValues() {
+  const vals = [['250 g', '۲۵۰ گرم', '', '96', '250 g'], ['500 g', '۵۰۰ گرم', '', '141', '500 g'], ['1 kg', '۱ کیلوگرم', '١ كغ', '122', '1,000 g'], ['5 kg', '۵ کیلوگرم', '', '41', '5,000 g'], ['10 kg', '۱۰ کیلوگرم', '', '12', '10,000 g', 'Inactive'], ['1000 g', '۱۰۰۰ گرم', '', '0', '1,000 g', 'Merged into 1 kg']];
+  const head = headerRow([['Value · English', 'fill'], ['فارسی', 100], ['العربية', 90], ['Products', 80], ['', 44]]);
+  const rows = vals.map(function (v) {
+    const st = v[5];
+    const name = frame({ name: 'value', dir: 'V', sizeH: 'FILL' }, [frame({ name: 'name-row', dir: 'H', gap: 'space/1-5', align: 'center' }, [text(v[0], 'Body/Default', st ? 'text/muted' : 'text/primary'), st ? bdg('Neutral', 'None', st) : null]), text('Net weight ' + v[4], 'Caption/Default', 'text/muted')]);
+    const ar = v[2] ? text(v[2], 'Body/Small', 'text/primary', { align: 'right', sizeH: 'FILL' }) : text('Missing', 'Caption/Default', 'status/attention/fg');
+    return row([[name, 'fill'], [text(v[1], 'Body/Small', 'text/primary', { align: 'right', sizeH: 'FILL' }), 100], [ar, 90], [text(v[3], 'Body/Small', 'text/muted'), 80], [rowAction(), 44, { justify: 'center' }]], false, false, 56);
+  });
+  return [frame({ name: 'values tools', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Order: Manual (drag rows)' }, { name: 'order', w: 220 }), pcSp(), btn('Merge values…', 'Secondary', 'Sm'), btn('Add value', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })]),
+    card('values', [head].concat(rows)),
+    text('Type each language in its own column. Values in use can’t be deleted, only made inactive: products keep them and stay in the filter. A merged value counts under its target.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }),
+    inst('InfoBanner', { Tone: 'Info', Title: 'Variant attribute', Body: '412 live sizes use Pack size. It can’t be archived, merged or converted. A product can have 2 variant attributes at most.', 'Show action': false }, { name: 'variant', sizeH: 'FILL' })];
+}
+function paUsedIn() {
+  const line = function (a, b, c) { return frame({ name: 'used · ' + a, dir: 'H', gap: 'space/2', align: 'center', pad: [10, 12, 10, 12], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text(a, 'Body/Default', 'text/primary', { sizeH: 'FILL' }), b ? bdg(b === 'Required' ? 'Info' : 'Neutral', 'None', b) : null, c ? text(c, 'Caption/Default', 'text/muted') : null]); };
+  const tile = function (l, v) { return frame({ name: 'tile · ' + l, dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(l, 'Caption/Default', 'text/muted'), text(v, 'Heading/H2')]); };
+  return [frame({ name: 'tiles', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [tile('Live products', '1,204'), tile('Drafts', '37'), tile('Feature sets', '6'), tile('Filters', '9')]),
+    text('Feature sets', 'Caption/Strong', 'text/muted'), card('sets', [line('Core (every feature set)', 'Required', 'Core group')]),
+    text('Categories that show it as a filter', 'Caption/Strong', 'text/muted'), card('filters', [line('Rice', null, 'Filter 3 of 5'), line('Basmati rice', null, 'Inherited from Rice'), line('Flour', null, 'Filter 2 of 4'), line('Ghee', null, 'Filter 1 of 3')]),
+    ppLink('Open the 1,204 products in Products', 'external-link', 'open-products')];
+}
+function paScreen(state, o) {
+  o = o || {};
+  const view = o.viewOnly;
+  const head = pageTitle('Attributes', 'What sellers fill in for each kind of product in the Australia market', [btn('Import', 'Secondary', 'Md', { State: view ? 'Disabled' : 'Default', 'Leading icon': true, Icon: { icon: 'file' } }), btn('Export', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'download' } }), primaryHeaderButton(o.cta || 'Add attribute', view ? 'Disabled' : 'Default')]);
+  const tabs = tabsBar([['Attributes', '24', (o.tab || 'Attributes') === 'Attributes'], ['Feature sets', '6', o.tab === 'Feature sets'], ['Brands', '312', o.tab === 'Brands'], ['Waiting for you', '3', o.tab === 'Waiting for you']]);
+  const layout = o.full ? o.full : frame({ name: 'Attributes layout', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [o.left || paList(o.list), o.right || paPanel(o.panel)]);
+  const kids = [head, tabs].concat(o.banner ? [o.banner] : [], [layout]);
+  const scr = screen(PA + ' · ' + state, 'Admin', 'nav-catalogue', o.crumb || 'Catalog / Attributes', kids, { minH: PANEL_MIN_H, gap: 'space/4' });
+  return paTag(scr);
+}
+// Feature sets: the list of sets and the editor of one set (groups, Required / Recommended / Optional, order).
+function paSetRow(name, type, req, o) {
+  o = o || {};
+  return frame({ name: 'set attr · ' + name, dir: 'H', gap: 'space/2', align: 'center', pad: [8, 12, 8, 12], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [
+    o.locked ? icon('lock', 'icon/muted', 14) : icon('menu', 'icon/muted', 14),
+    frame({ name: 'label', dir: 'V', sizeH: 'FILL' }, [frame({ name: 'name-row', dir: 'H', gap: 'space/1-5', align: 'center' }, [text(name, 'Body/Default'), o.variant ? bdg('Info', 'None', 'Variant') : null]), text(type, 'Caption/Default', 'text/muted')]),
+    o.locked ? text(req, 'Body/Small', 'text/muted') : inst('Select', { State: 'Filled', Value: req }, { name: 'requirement', w: 150 }),
+    o.locked ? null : inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]);
+}
+function paSetGroup(title, sub, rows, locked) {
+  return card('group · ' + title, [frame({ name: 'group head', dir: 'H', gap: 'space/2', align: 'center', pad: [10, 12, 10, 12], fill: 'bg/subtle', sizeH: 'FILL' }, [text(title, 'Body/Strong'), sub ? text(sub, 'Caption/Default', 'text/muted') : null, pcSp(), locked ? null : ppLink('Add attribute', 'plus', 'add-to-group')])].concat(rows));
+}
+function paFeatureSets() {
+  const sets = [['Rice and grains', '3 categories', '138'], ['Packaged food', '14 categories', '820'], ['Fresh meat', '6 categories', '205'], ['Dairy and eggs', '5 categories', '96'], ['Bakery', '4 categories', '58'], ['Spices', '0 categories', '0']];
+  const head = headerRow([['Feature set', 'fill'], ['Products', 90]]);
+  const list = card('Feature set list', [head].concat(sets.map(function (x, i) { return row([[twoLine(x[0], x[1], i === 0 ? 'Body/Strong' : 'Body/Default'), 'fill'], [text(x[2], 'Body/Small', 'text/muted'), 90]], i === 0, false, 56); }), [
+    frame({ name: 'list foot', dir: 'H', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [btn('Add feature set', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })])]), { w: 360, sizeH: null });
+  const editor = card('Feature set editor', [frame({ name: 'editor body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
+    frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('Rice and grains', 'Heading/H2'), bdg('Success', 'Dot', 'Active'), pcSp(), btn('Seller form preview', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye' } })]),
+    text('Used by Basmati rice, Jasmine rice and Brown rice · 138 products', 'Body/Small', 'text/muted'),
+    frame({ name: 'names', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [pcField('Name · English', pcIn('Rice and grains')), pcField('Name · فارسی', pcRtl('برنج و غلات')), pcField('Name · العربية', pcRtl('', null, { ph: 'Missing' }))]),
+    inst('InfoBanner', { Tone: 'Attention', Title: '14 live products are missing required details', Body: 'Grain length became required on 29 Oct. They stay on sale; sellers must fill it in before their next change is accepted.', 'Show action': true, Action: 'View report' }, { name: 'missing', sizeH: 'FILL' }),
+    paSetGroup('Core', 'Shared by every feature set. Edit it once in Settings.', [paSetRow('Brand', 'Brand', 'Required', { locked: true }), paSetRow('Country of origin', 'Single choice', 'Required', { locked: true }), paSetRow('Net weight', 'Number with unit', 'Required', { locked: true })], true),
+    paSetGroup('Rice details', null, [paSetRow('Pack size', 'Single choice', 'Required', { variant: true }), paSetRow('Grain length', 'Single choice', 'Required'), paSetRow('Variety', 'Text', 'Recommended'), paSetRow('Cooking time', 'Number with unit', 'Optional')]),
+    paSetGroup('Storage', null, [paSetRow('Storage', 'Long text', 'Optional')]),
+    frame({ name: 'set links', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [btn('Add group', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } }), text('Recommended counts toward the completeness score but doesn’t block a submit.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]),
+    paSave({ note: '1 unsaved change', primaryOn: true })])]);
+  return frame({ name: 'Feature sets layout', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [list, editor]);
+}
+function paBrands() {
+  const brands = [['Tilda', 'tilda', 'تیلدا, تيلدا', 'United Kingdom', '41', 'Active'], ['Tilda Rice', 'tilda-rice', '', '—', '3', 'Possible duplicate'], ['Al Wazir', 'al-wazir', 'الوزير', 'Lebanon', '18', 'Active'], ['Kuraby Fresh', 'kuraby-fresh', '', 'Australia', '64', 'Active'], ['Sunrice', 'sunrice', '', 'Australia', '29', 'Active'], ['Golden Grain', 'golden-grain', '', '—', '0', 'Draft']];
+  const head = headerRow([['Brand', 'fill'], ['Aliases', 130], ['Products', 90], ['Status', 150]]);
+  const list = card('Brand list', [frame({ name: 'list tools', dir: 'H', gap: 'space/2', align: 'center', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [inst('Input', { Type: 'Text', State: 'Default', Value: 'Search brands and aliases', 'Leading icon': true }, { name: 'search', sizeH: 'FILL' }), inst('Select', { State: 'Filled', Value: 'Status: All' }, { name: 'status', w: 150 })]), head].concat(brands.map(function (b, i) {
+    const st = b[5] === 'Active' ? bdg('Success', 'Dot', 'Active') : (b[5] === 'Draft' ? bdg('Neutral', 'Dot', 'Draft') : bdg('Attention', 'None', 'Possible duplicate'));
+    return row([[twoLine(b[0], b[1], i === 0 ? 'Body/Strong' : 'Body/Default'), 'fill'], [text(b[2] || '—', 'Body/Small', 'text/muted', { truncate: true, w: 110 }), 130], [text(b[4], 'Body/Small', 'text/muted'), 90], [st, 150]], i === 0, false, 56);
+  })));
+  const alias = function (lang, v, rtl) { return frame({ name: 'alias · ' + lang, dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text(lang, 'Body/Small', 'text/muted', { w: 72 }), rtl ? pcRtl(v) : pcIn(v), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]); };
+  const panel = card('Brand details', [frame({ name: 'brand body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
+    frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [rect({ name: 'logo', w: 40, h: 40, fill: 'bg/muted', radius: 'radius/control' }), text('Tilda', 'Heading/H2'), bdg('Success', 'Dot', 'Active'), pcSp(), btn('Hide', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye-off' } })]),
+    inst('InfoBanner', { Tone: 'Attention', Title: '"Tilda Rice" looks like the same brand', Body: '3 products. Merging makes "Tilda Rice" an alias of Tilda and moves its products.', 'Show action': true, Action: 'Merge…' }, { name: 'duplicate', sizeH: 'FILL' }),
+    pcField('Name', pcIn('Tilda'), 'Brand names aren’t translated. Add aliases so buyers find it in their language.'), paLock('URL name', '/brands/tilda'), pcField('Country of origin', inst('Select', { State: 'Filled', Value: 'United Kingdom' }, { name: 'country', sizeH: 'FILL' })),
+    text('Aliases for search', 'Caption/Strong', 'text/muted'), alias('فارسی', 'تیلدا', true), alias('العربية', 'تيلدا', true), alias('English', 'Tilda basmati'), ppLink('Add alias', 'plus', 'add-alias'),
+    pcField('Summary', pcTa('Basmati rice brand founded in 1970, milling in Essex.')), pcValue('Products', text('41 live', 'Body/Default'), ppLink('Open in Products', 'external-link')),
+    paSave()])], { w: 480, sizeH: null });
+  return frame({ name: 'Brands layout', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [list, panel]);
+}
+function paWaiting() {
+  const items = [['Value suggestion', 'Flavour: "Saffron"', 'Kuraby Fresh · Saffron basmati rice 1 kg', '2 h ago', true], ['Brand suggestion', 'Brand: "Golden Grain"', 'Logan Halal Grocer · Golden Grain jasmine 5 kg', '5 h ago'], ['Material change', 'Turn off Material for Storage', 'Requested by Omar H. · needs a second admin', '1 day ago']];
+  const list = card('Waiting list', [frame({ name: 'list tools', dir: 'H', gap: 'space/2', align: 'center', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Kind: All' }, { name: 'kind', w: 170 }), pcSp(), text('Oldest first', 'Body/Small', 'text/muted')])].concat(items.map(function (it) {
+    return frame({ name: 'request · ' + it[1], dir: 'V', gap: 'space/1', pad: [12, 16, 12, 16], fill: it[4] ? 'bg/row-selected' : null, stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [
+      frame({ name: 'kind', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [bdg(it[0] === 'Material change' ? 'Attention' : 'Info', 'None', it[0]), pcSp(), text(it[3], 'Caption/Default', 'text/muted')]),
+      text(it[1], 'Body/Strong'), text(it[2], 'Body/Small', 'text/muted', { sizeH: 'FILL' })]);
+  })));
+  const decide = card('Decision', [frame({ name: 'decision body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
+    text('Flavour: "Saffron"', 'Heading/H2'), text('Suggested by Kuraby Fresh for Saffron basmati rice 1 kg. The product can be submitted meanwhile; Flavour stays empty until you decide.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
+    paRadio(true, 'Add as a new value', 'Sellers can choose it right away.', [frame({ name: 'names', dir: 'V', gap: 'space/2', pad: ['space/2', 0, 0, 0], sizeH: 'FILL' }, [pcField('English', pcIn('Saffron')), pcField('فارسی · required', pcRtl('زعفرانی')), pcField('العربية · optional', pcRtl('', null, { ph: 'Missing' }))])]),
+    paRadio(false, 'Use an existing value', 'The seller gets an email with the value you chose.'),
+    paRadio(false, 'Reject', 'Tell the seller why. They can suggest again.'),
+    frame({ name: 'footer', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Add value', 'Primary', 'Sm')])])], { w: 480, sizeH: null });
+  return frame({ name: 'Waiting layout', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [list, decide]);
+}
+function paMissingReport() {
+  const head = headerRow([['Product', 'fill'], ['Seller', 180], ['Missing', 180], ['Live since', 120]]);
+  const rows = [['Basmati rice 5 kg', 'Kuraby Fresh', 'Grain length'], ['Aged basmati rice 10 kg', 'Logan Halal Grocer', 'Grain length'], ['Brown basmati rice 2 kg', 'Kuraby Fresh', 'Grain length'], ['Jasmine rice 5 kg', 'Sunnybank Pantry', 'Grain length, Pack size']].map(function (r) { return row([[text(r[0], 'Body/Default'), 'fill'], [text(r[1], 'Body/Small'), 180], [bdg('Attention', 'None', r[2]), 180], [text('12 Oct 2026', 'Body/Small', 'text/muted'), 120]], false, false, 52); });
+  const kids = [pageTitle('Products missing required details', '14 live products in the Australia market · they stay on sale', [btn('Export', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'download' } }), btn('Email sellers', 'Primary', 'Md', { 'Leading icon': true, Icon: { icon: 'mail' } })]),
+    frame({ name: 'filters', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Feature set: Rice and grains' }, { name: 'set', w: 260 }), inst('Select', { State: 'Filled', Value: 'Category: All' }, { name: 'category', w: 200 }), inst('Select', { State: 'Filled', Value: 'Attribute: All' }, { name: 'attribute', w: 200 })]),
+    inst('InfoBanner', { Tone: 'Info', Title: 'Sellers fill these in on their next change', Body: 'A submit without them is refused. Email sellers sends each seller one summary of their products.', 'Show action': false }, { name: 'how', sizeH: 'FILL' }),
+    card('report', [head].concat(rows, [inst('Pagination', { Range: '1–4 of 14 products' }, { name: 'Pagination', sizeH: 'FILL' })]))];
+  return paTag(screen(PA + ' · Missing required details report', 'Admin', 'nav-catalogue', 'Catalog / Attributes / Missing required details', kids, { minH: PANEL_MIN_H, gap: 'space/4' }));
+}
+// Dialogs
+function paTypeCard(name, ex, on, isNew) {
+  return frame({ name: 'type · ' + name, dir: 'V', gap: 'space/1', pad: 'space/3', w: 196, stroke: on ? 'action/primary' : 'border/default', fill: on ? 'bg/selected' : 'bg/surface', radius: 'radius/control' }, [
+    frame({ name: 'type head', dir: 'H', gap: 'space/1-5', align: 'center', sizeH: 'FILL' }, [text(name, 'Body/Strong'), isNew ? bdg('Info', 'None', 'New') : null]), text(ex, 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]);
+}
+function paDialogsA() {
+  const types = [['Text', 'Variety: Sella'], ['Long text', 'Storage instructions'], ['Number with unit', 'Net weight: 500 g', true, true], ['Number', 'Pieces per pack: 12'], ['Yes / No', 'Contains nuts: Yes'], ['Date', 'Harvest date'], ['Single choice', 'Country of origin: India'], ['Multiple choice', 'Diet: Vegetarian, Vegan'], ['Brand', 'From the Brands list']];
+  const add1 = pcDialog('Add attribute · 1', 'Add attribute', 'Step 1 of 2 · Choose the type. It can’t be changed later, only converted on a few paths.', [
+    frame({ name: 'types', dir: 'H', wrap: true, gap: 'space/2', rowGap: 'space/2', sizeH: 'FILL' }, types.map(function (t) { return paTypeCard(t[0], t[1], t[2], t[3]); }))], 'Next', { w: 660 });
+  const add2 = pcDialog('Add attribute · 2', 'Add attribute: Number with unit', 'Step 2 of 2 · It starts as a Draft. Sellers don’t see it until you publish.', [
+    pcField('Name · English', pcIn('Cooking time')), pcField('Code', pcIn('cooking-time'), 'Lowercase letters and hyphens. Can’t be changed later.'),
+    pcField('Measures', inst('Select', { State: 'Filled', Value: 'Time' }, { name: 'dimension', sizeH: 'FILL' }), 'Mass, volume, length, count or time. The Market’s unit list.'),
+    frame({ name: 'units', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [pcField('Units sellers can use', inst('Select', { State: 'Filled', Value: 'min, h' }, { name: 'units', sizeH: 'FILL' })), pcField('Shown in', inst('Select', { State: 'Filled', Value: 'min' }, { name: 'default', w: 110 }))]),
+    text('Persian and Arabic names are added on the Details tab before you publish.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })], 'Create draft', { w: 560 });
+  const mergeV = pcDialog('Merge values', 'Merge values of Pack size', 'Products keep their saved value; the shop, filters and search count it under the target. The next change a seller makes saves the target.', [
+    pcField('Merge', inst('Select', { State: 'Filled', Value: '1000 g' }, { name: 'from', sizeH: 'FILL' })), pcField('Into', inst('Select', { State: 'Filled', Value: '1 kg' }, { name: 'into', sizeH: 'FILL' })),
+    pcImpact([['Live products with 1000 g', '18'], ['Live sizes (variants) that show it', '18'], ['Filter options merged', '1']]), pcReason()], 'Merge values', { w: 560 });
+  const archive = pcDialog('Archive attribute', 'Archive Storage?', 'It leaves the seller form, filters and product pages. Old product revisions keep their values. Archive is final.', [
+    pcImpact([['Feature sets that use it', '0'], ['Live products with a value', '96'], ['Material', 'No']]), pcReason()], 'Archive attribute', { destructive: true, focusCancel: true });
+  return paTag(pcScene(PA + ' · Dialogs · Add, Merge, Archive', [add1, add2, mergeV, archive]));
+}
+function paStep(steps, active) {
+  return frame({ name: 'steps', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, steps.map(function (s, i) {
+    return frame({ name: 'step · ' + s, dir: 'H', gap: 'space/1-5', align: 'center', pad: [6, 10, 6, 10], fill: i === active ? 'bg/selected' : null, radius: 'radius/pill' }, [text(String(i + 1), 'Caption/Strong', i <= active ? 'text/link' : 'text/muted'), text(s, i === active ? 'Body/Strong' : 'Body/Small', i <= active ? 'text/primary' : 'text/muted')]);
+  }));
+}
+function paDialogsB() {
+  const steps = ['Target type', 'Map values', 'Check impact'];
+  const c1 = pcDialog('Convert · 1', 'Convert Variety to another type', 'A new attribute replaces the old one. Allowed from Text: Single choice or Brand.', [paStep(steps, 0),
+    paRadio(true, 'Single choice', 'Each different text becomes a value, or maps to one.'), paRadio(false, 'Brand', 'Each text maps to a brand in the Brands list.'),
+    text('Other types aren’t allowed from Text. Create a new attribute instead.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })], 'Next', { w: 560 });
+  const map = [['Sella', '61', 'Sella (new value)'], ['sella', '12', 'Sella'], ['Parboiled', '18', 'Sella'], ['1121', '40', '1121 (new value)'], ['extra long', '3', 'Not mapped']];
+  const c2 = pcDialog('Convert · 2', 'Map the 37 different texts', 'Values left unmapped become empty and are listed in the report.', [paStep(steps, 1),
+    card('mapping', [headerRow([['Text now', 'fill'], ['Products', 90], ['Becomes', 200]])].concat(map.map(function (m) { return row([[text('"' + m[0] + '"', 'Body/Default'), 'fill'], [text(m[1], 'Body/Small', 'text/muted'), 90], [inst('Select', { State: 'Filled', Value: m[2] }, { name: 'target', w: 180 }), 200]], false, m[2] === 'Not mapped', 52); }))),
+    text('Showing 5 of 37 · 3 products will lose their value', 'Caption/Default', 'status/attention/fg')], 'Next', { w: 620 });
+  const c3 = pcDialog('Convert · 3', 'Check the impact', 'Live products keep selling. The shop shows the mapped value right away; sellers confirm it on their next change.', [paStep(steps, 2),
+    pcImpact([['Live products converted', '201'], ['Left empty (not mapped)', '3', true], ['Feature sets switched to the new attribute', '2'], ['Search rebuilt in the background', 'Yes']]), pcReason()], 'Convert', { w: 560 });
+  const imp = pcDialog('Import attributes', 'Check attributes-oct.xlsx', 'Step 2 of 3 · Nothing has changed yet. Rows match by code. Each language has its own columns: name[en-AU], name[fa-AU], name[ar-AU].', [
+    frame({ name: 'tiles', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [['New', '4'], ['Renamed', '9'], ['Unchanged', '211'], ['Errors', '1']].map(function (t) { return frame({ name: 'tile · ' + t[0], dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(t[0], 'Caption/Default', 'text/muted'), text(t[1], 'Heading/H2', t[0] === 'Errors' ? 'status/critical/fg' : 'text/primary')]); })),
+    inst('InfoBanner', { Tone: 'Critical', Title: 'Row 12: add the Persian name', Body: 'Persian is live for customers, so name[fa-AU] is required. An empty Arabic cell is fine: Arabic is a draft.', 'Show action': false }, { name: 'error', sizeH: 'FILL' }),
+    inst('CheckboxRow', { Value: 'Checked', State: 'Default', Label: 'Skip the row with an error', Description: 'Type, code and Localizable never change from a file. Merge, Convert and Archive are on the page only.' }, { name: 'skip', sizeH: 'FILL' })], 'Import 13 changes', { w: 620 });
+  return paTag(pcScene(PA + ' · Dialogs · Convert, Import', [c1, c2, c3, imp]));
+}
+function paStates() {
+  const empty = inst('EmptyState', { Size: 'Card', Title: 'No attributes yet', Body: 'Add one or import a file.', Icon: { icon: 'sliders' } }, { name: 'empty', sizeH: 'FILL' });
+  setNested(empty, 'action', prop('Button', 'Label', 'Add attribute'));
+  const nomatch = inst('EmptyState', { Size: 'Card', Title: 'No attributes match', Body: 'Clear the filters to see all.', Icon: { icon: 'search' } }, { name: 'no-match', sizeH: 'FILL' });
+  const queue = inst('EmptyState', { Size: 'Card', Title: 'No changes are waiting for you', Body: 'Seller suggestions and material requests show here.', Icon: { icon: 'inbox' } }, { name: 'queue-empty', sizeH: 'FILL' });
+  const b = function (n, tone, t, body, act) { return inst('InfoBanner', Object.assign({ Tone: tone, Title: t, Body: body, 'Show action': !!act }, act ? { Action: act } : {}), { name: n, sizeH: 'FILL' }); };
+  const field = function (n, v, msg, rtl) { return frame({ name: n, dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [rtl ? pcRtl(v, 'Error') : pcIn(v, 'Error'), text(msg, 'Body/Small', 'status/critical/fg', { sizeH: 'FILL' })]); };
+  const scr = frame({ name: PA + ' · States and messages', dir: 'V', w: 900, pad: 40, gap: 'space/4', fill: 'bg/page' }, [text('Attributes: states and messages', 'Heading/H1'),
+    para('Plan section 17. Copy is a draft for Jafar (product designer) and Reza (UI/UX). Page messages are banners above the layout; field rules sit under the field; structural rules sit inside the dialog and turn its primary button off.', 820),
+    text('Empty', 'Caption/Strong', 'text/muted'), empty, nomatch, queue,
+    b('set-empty', 'Info', 'This feature set has no attributes.', 'Sellers only see the core details.'), b('cat-no-set', 'Info', 'No feature set.', 'Products here use the core details only.'),
+    text('Page', 'Caption/Strong', 'text/muted'), b('load-error', 'Critical', 'We couldn’t load attributes.', 'Try again.', 'Try again'), b('stale', 'Attention', 'This attribute changed since you opened it.', 'Reload. Your unsaved changes are kept.', 'Reload'), b('view-only', 'Info', 'View only', 'You can view attributes. Ask a Platform Administrator to change them.'),
+    text('Fields', 'Caption/Strong', 'text/muted'), field('code', 'net-weight', 'Another attribute already uses this code.'), field('claim', 'Halal certified', 'This name uses a word that needs a certificate: halal. Choose another word.'),
+    field('lang', '', 'Missing in فارسی. Required before فارسی can be published.', true), b('claim-down', 'Critical', 'We can’t check this text right now.', 'Try again in a minute.'),
+    text('Publish and values', 'Caption/Strong', 'text/muted'), b('no-values', 'Critical', 'Add at least one value before you publish.', 'Single and multiple choice attributes need values.'), b('in-use', 'Critical', 'Values in use can’t be deleted.', 'Deactivate it instead.', 'Deactivate'), b('inactive', 'Attention', 'This value is no longer offered. Choose another.', 'What a seller sees on their next change.'),
+    text('Inside Merge, Convert and Archive', 'Caption/Strong', 'text/muted'), b('archive-sets', 'Critical', 'Remove this attribute from 3 feature sets first.', 'Open Used in to see them.', 'Open Used in'), b('variant', 'Critical', '412 live sizes use this attribute.', 'It can’t be archived, merged or converted.'),
+    b('convert-path', 'Critical', 'Multiple choice can’t become Single choice.', 'Create a new attribute instead.'), b('material-two', 'Attention', 'A second admin must approve this', 'Turning off Material waits up to 72 hours in Waiting for you.'), b('counting', 'Info', 'Still counting', 'At least 2,400 products. You can go on: the count finishes in the background.')]);
+  tag(scr); return paTag(scr);
+}
+PROPOSALS['admin-attributes'] = { title: PA, rows: function () {
+  const packRows = PA_ROWS.slice();
+  const draftBanner = inst('InfoBanner', { Tone: 'Attention', Title: 'Draft: sellers don’t see Flavour', Body: 'Add at least one value before you publish. Missing in فارسی. Required before فارسی can be published.', 'Show action': false }, { name: 'draft', sizeH: 'FILL' });
+  return [[paScreen('Default, Details'), paScreen('Details · Persian', { panel: { lang: 'fa', body: paDetails({ lang: 'fa', save: { note: '2 unsaved changes', primaryOn: true } }) } }), paScreen('Values', { list: { selected: 'Pack size', rows: packRows }, panel: { name: 'Pack size', code: 'pack-size', type: 'Single choice', badges: ['Variant'], tab: 'Values', locked: true, body: paValues() } })],
+    [paScreen('Used in', { panel: { tab: 'Used in', body: paUsedIn() } }), paScreen('Draft attribute', { list: { selected: 'Flavour' }, panel: { name: 'Flavour', code: 'flavour', type: 'Single choice', badges: [], draft: true, tab: 'Values', banner: draftBanner, body: [inst('EmptyState', { Size: 'Card', Title: 'No values yet', Body: 'Add at least one value before you publish.', Icon: { icon: 'plus' } }, { name: 'no-values', sizeH: 'FILL' }), btn('Add value', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })] } }),
+      paScreen('Missing Persian filter', { list: { lang: 'Missing: فارسی (1)', rows: PA_ROWS.filter(function (r) { return r[5].indexOf('fa') >= 0; }), selected: 'Flavour', foot: '1 attribute has no Persian name. Persian can’t be published while any is missing.' }, panel: { name: 'Flavour', code: 'flavour', type: 'Single choice', badges: [], draft: true, body: paDetails({ lang: 'fa', missing: ['fa', 'ar'], errLang: 'fa' }) } })],
+    [paScreen('Feature sets', { tab: 'Feature sets', cta: 'Add feature set', full: paFeatureSets() }), paScreen('Brands', { tab: 'Brands', cta: 'Add brand', full: paBrands() }), paScreen('Waiting for you', { tab: 'Waiting for you', full: paWaiting() })],
+    [paMissingReport(), paScreen('View only', { viewOnly: true, banner: inst('InfoBanner', { Tone: 'Info', Title: 'View only', Body: 'You can view attributes. Ask a Platform Administrator to change them.', 'Show action': false }, { name: 'view-only', sizeH: 'FILL' }), panel: { viewOnly: true } }), paStates()],
+    [paDialogsA(), paDialogsB()]];
 } };
 
 async function buildProposal(key) {
