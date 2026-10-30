@@ -8,6 +8,7 @@ import {
   Card,
   Dialog,
   TextField,
+  toast,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
@@ -64,7 +65,6 @@ export function PayoutAccountView({
   const [problem, setProblem] = useState<PayoutProblem | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkFailed, setCheckFailed] = useState(false);
-  const [checked, setChecked] = useState(false);
   const busy = useRef(false);
   const throttle = useThrottle();
 
@@ -131,12 +131,11 @@ export function PayoutAccountView({
   async function check() {
     setChecking(true);
     setCheckFailed(false);
-    setChecked(false);
     const result = await callApi<PayoutAccount>('GET', 'payments/seller/payout-account');
     setChecking(false);
     if (result.ok) {
       setAccount(result.body);
-      setChecked(true);
+      toast.success(t('checked'));
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setCheckFailed(true);
   }
@@ -220,11 +219,6 @@ export function PayoutAccountView({
               </a>
             </Banner>
           )
-        ) : null}
-        {checked ? (
-          <p role="status" className="text-sm text-fg-muted">
-            {t('checked')}
-          </p>
         ) : null}
         {checkFailed ? <Banner tone="critical">{t('error.check')}</Banner> : null}
       </Card>

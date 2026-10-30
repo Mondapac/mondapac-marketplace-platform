@@ -1,6 +1,6 @@
 'use client';
 
-import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList } from '@mondapac/ui';
+import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList, toast } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -42,7 +42,6 @@ export function OrderDetail({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [justMarked, setJustMarked] = useState(false);
-  const [justCollected, setJustCollected] = useState(false);
   const busy = useRef(false);
   const hintId = useId();
   const doneRef = useRef<HTMLDivElement>(null);
@@ -289,17 +288,14 @@ export function OrderDetail({
                   status={order.pickup}
                   onCollected={(collected) => {
                     setOrder(collected);
-                    setJustCollected(true);
+                    toast.success(
+                      t('pickup.collected', {
+                        when: shortInstant(collected.deliveredAt ?? collected.paidAt, locale, zone),
+                      }),
+                    );
                   }}
                   onStatus={(pickup) => setOrder((current) => ({ ...current, pickup }))}
                 />
-              ) : null}
-              {justCollected && order.fulfilment === 'delivered' ? (
-                <p role="status" className="text-sm text-fg">
-                  {t('pickup.collected', {
-                    when: shortInstant(order.deliveredAt ?? order.paidAt, locale, zone),
-                  })}
-                </p>
               ) : null}
               {order.fulfilment === 'shipped' && canDeliver ? (
                 <>

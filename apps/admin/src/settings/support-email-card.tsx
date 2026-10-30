@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -26,14 +26,12 @@ export function SupportEmailCard({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
-  const [saved, setSaved] = useState(false);
   const busy = useRef(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current) return;
     const email = text.trim().toLowerCase();
-    setSaved(false);
     setProblem(null);
     if (email.length > MAX_LENGTH || !SHAPE.test(email)) {
       setInvalid(true);
@@ -53,7 +51,7 @@ export function SupportEmailCard({
     if (result.ok) {
       setContact(result.body);
       setText(result.body.email ?? '');
-      setSaved(true);
+      toast.success(t('settings.support.saved'));
       return;
     }
     if (result.failure.status === 401) window.location.assign('/session-ended');
@@ -72,7 +70,6 @@ export function SupportEmailCard({
             <strong>{contact.email}</strong>
           </p>
         )}
-        {saved ? <Banner tone="success">{t('settings.support.saved')}</Banner> : null}
         {problem === null ? null : (
           <Banner tone="critical">{t(`settings.support.error.${problem}`)}</Banner>
         )}

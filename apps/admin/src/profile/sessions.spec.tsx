@@ -13,6 +13,7 @@ import { createTranslator } from 'next-intl';
 import { callApi } from '../api/client.ts';
 import { deviceLabel } from './device-label.ts';
 import { SessionsCard, type SessionRow } from './sessions-card.tsx';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -105,7 +106,7 @@ describe('SessionsCard', () => {
       {},
       'csrf',
     );
-    expect(screen.getByText('Signed out of 1 other device.')).toBeTruthy();
+    await expectToast('Signed out of 1 other device.');
   });
 
   it('keeps the dialog open with the reason when it fails', async () => {

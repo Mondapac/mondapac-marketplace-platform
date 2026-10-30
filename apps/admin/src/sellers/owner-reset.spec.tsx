@@ -8,6 +8,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { OwnerSecondFactorCard, ownerResetProblemOf } from './owner-second-factor-card.tsx';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-0000000000a1';
@@ -51,8 +52,8 @@ describe('OwnerSecondFactorCard', () => {
       {},
       'csrf',
     );
-    expect(await screen.findByText('Link sent to the store owner')).toBeTruthy();
-    expect(screen.getByText(/Nothing changes until the owner confirms/)).toBeTruthy();
+    await expectToast('Link sent to the store owner');
+    await expectToast(/Nothing changes until the owner confirms/);
     expect(screen.getByRole('button', { name: 'Send a new link' })).toBeTruthy();
   });
 

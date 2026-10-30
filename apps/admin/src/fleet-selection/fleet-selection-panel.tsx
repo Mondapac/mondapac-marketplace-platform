@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, EmptyState, Select } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, Dialog, EmptyState, Select, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -43,15 +43,13 @@ export function FleetSelectionPanel({
   const [editing, setEditing] = useState<Editing>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [formProblem, setFormProblem] = useState<string | null>(null);
-  const [notice, setNotice] = useState<'activated' | 'created' | 'edited' | 'reloaded' | null>(
-    null,
-  );
+  const [notice, setNotice] = useState<'reloaded' | null>(null);
   const [pending, setPending] = useState<'active' | 'model' | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
 
-  // A saved change moves focus to its confirmation, so a keyboard or screen reader user lands on it.
+  // A reloaded page moves focus to its note, so a keyboard or screen reader user lands on it.
   useEffect(() => {
     if (notice !== null) noticeRef.current?.focus();
   }, [notice]);
@@ -107,7 +105,7 @@ export function FleetSelectionPanel({
     }
     if (latest !== null) {
       adopt(latest);
-      setNotice('activated');
+      toast.success(t(`${P}.notice.activated`));
     }
     busy.current = false;
     setPending(null);
@@ -131,7 +129,7 @@ export function FleetSelectionPanel({
       const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
       if (fresh.ok) adopt(fresh.body);
       setEditing(null);
-      setNotice(creating ? 'created' : 'edited');
+      toast.success(t(`${P}.notice.${creating ? 'created' : 'edited'}`));
     } else if (!ended(result.failure.status)) {
       const key = fleetProblemOf(result.failure);
       setFormProblem(key);
@@ -165,7 +163,7 @@ export function FleetSelectionPanel({
       {canManage ? null : <Banner tone="info">{t(`${P}.viewer-only`)}</Banner>}
       {notice === null ? null : (
         <div ref={noticeRef} tabIndex={-1} className="outline-none">
-          <Banner tone="success">{t(`${P}.notice.${notice}`)}</Banner>
+          <Banner tone="attention">{t(`${P}.notice.${notice}`)}</Banner>
         </div>
       )}
 

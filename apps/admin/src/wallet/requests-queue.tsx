@@ -10,6 +10,7 @@ import {
   LoadError,
   Select,
   SkeletonRows,
+  toast,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -39,7 +40,6 @@ const STATUS_TONE: Readonly<Record<CreditStatus, BadgeTone>> = {
 };
 
 type Step = { readonly kind: 'approve' | 'reject'; readonly row: AdminCredit } | null;
-type Notice = { readonly tone: 'success' | 'critical'; readonly text: string };
 
 /**
  * The credit requests of the Market for one tab. Approve and reject go through the step-up dialog;
@@ -70,7 +70,7 @@ export function RequestsQueue({
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState(false);
   const [pending, setPending] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -150,15 +150,11 @@ export function RequestsQueue({
     if (result.ok) {
       replace(result.body);
       setReason('');
-      setNotice({
-        tone: 'success',
-        text:
-          kind === 'approve'
-            ? t('queue.notice.approved', {
-                amount: formatMinor(row.amount, row.currency, locale),
-              })
-            : t('queue.notice.rejected'),
-      });
+      toast.success(
+        kind === 'approve'
+          ? t('queue.notice.approved', { amount: formatMinor(row.amount, row.currency, locale) })
+          : t('queue.notice.rejected'),
+      );
       return;
     }
     if (isStepUpCancelled(result)) return;
@@ -172,7 +168,7 @@ export function RequestsQueue({
     // decided or vanished one leaves the list. The banner says why in both cases.
     if (key === 'request-expired') replace({ ...row, status: 'expired' });
     else if (key === 'request-decided' || key === 'request-not-found') drop(row.id);
-    setNotice({ tone: 'critical', text: t(`error.${key}`) });
+    setNotice(t(`error.${key}`));
   }
 
   if (loadFailed) {
@@ -195,7 +191,7 @@ export function RequestsQueue({
     <div className="flex flex-col gap-4">
       {notice === null ? null : (
         <div ref={noticeRef} tabIndex={-1}>
-          <Banner tone={notice.tone}>{notice.text}</Banner>
+          <Banner tone="critical">{notice}</Banner>
         </div>
       )}
       {visible.length === 0 ? (

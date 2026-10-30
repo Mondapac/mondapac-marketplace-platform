@@ -1,6 +1,6 @@
 'use client';
 
-import { ActionRow, Banner, Button, Card, Select, TextField } from '@mondapac/ui';
+import { ActionRow, Banner, Button, Card, Select, TextField, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -13,7 +13,7 @@ const OUTCOMES = ['active', 'not-found', 'cancelled'] as const;
 const REASON_MAX = 2000;
 
 type Step = 'idle' | 'confirm-approve' | 'reject';
-type Notice = 'approved' | 'rejected' | 'settling' | 'checked' | null;
+type Notice = 'approved' | 'rejected' | 'settling' | 'checked';
 
 /**
  * Approve, reject and the manual register check of a pending seller application. The buttons act
@@ -45,7 +45,6 @@ export function DecisionPanel({
   const [outcome, setOutcome] = useState('');
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<DecisionProblem | null>(null);
-  const [notice, setNotice] = useState<Notice>(null);
   const busy = useRef(false);
 
   const locked = pending || decisionInProgress;
@@ -61,12 +60,15 @@ export function DecisionPanel({
     busy.current = true;
     setPending(true);
     setProblem(null);
-    setNotice(null);
     const result = await callApi<unknown>(method, path, body, csrfToken);
     busy.current = false;
     setPending(false);
     if (result.ok) {
-      setNotice(done(result.status));
+      const notice = done(result.status);
+      const text = t(`sellers.decision.notice.${notice}`);
+      // A rejection that is still being settled is news, not a finished result.
+      if (notice === 'settling') toast.info(text);
+      else toast.success(text);
       setStep('idle');
       setReason('');
       router.refresh();
@@ -101,11 +103,6 @@ export function DecisionPanel({
   return (
     <Card title={t('sellers.decision.title')}>
       {decisionInProgress ? <Banner tone="info">{t('sellers.decision.in-progress')}</Banner> : null}
-      {notice === null ? null : (
-        <Banner tone={notice === 'settling' ? 'info' : 'success'}>
-          {t(`sellers.decision.notice.${notice}`)}
-        </Banner>
-      )}
       {problem === null ? null : (
         <Banner tone="critical">
           {t(problem.key)}
@@ -224,7 +221,6 @@ export function DecisionPanel({
                 disabled={locked || register.blocksApproval}
                 onClick={() => {
                   setProblem(null);
-                  setNotice(null);
                   setStep('confirm-approve');
                 }}
               >
@@ -235,7 +231,6 @@ export function DecisionPanel({
                 disabled={locked}
                 onClick={() => {
                   setProblem(null);
-                  setNotice(null);
                   setStep('reject');
                 }}
               >

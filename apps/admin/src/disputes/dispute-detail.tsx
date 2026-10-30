@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   DataList,
+  toast,
   type BadgeTone,
   type DataListRow,
 } from '@mondapac/ui';
@@ -69,7 +70,7 @@ export function DisputeDetailView({
   const locale = useLocale();
   const [detail, setDetail] = useState(initial);
   const [target, setTarget] = useState<DecisionTarget | null>(null);
-  const [notice, setNotice] = useState<'saved' | 'stale' | null>(null);
+  const [notice, setNotice] = useState<'stale' | null>(null);
   const [now] = useState(() => Date.now());
   const noticeRef = useRef<HTMLDivElement>(null);
 
@@ -185,9 +186,7 @@ export function DisputeDetailView({
       ) : null}
       {notice === null ? null : (
         <div ref={noticeRef} tabIndex={-1}>
-          <Banner tone={notice === 'saved' ? 'success' : 'attention'}>
-            {t(notice === 'saved' ? 'decision.saved' : 'decision.saved-stale')}
-          </Banner>
+          <Banner tone="attention">{t('decision.saved-stale')}</Banner>
         </div>
       )}
       <Card title={t('summary.title')}>
@@ -276,7 +275,11 @@ export function DisputeDetailView({
         onClose={() => setTarget(null)}
         onSaved={() => {
           setTarget(null);
-          void refresh().then((ok) => setNotice(ok ? 'saved' : 'stale'));
+          // The decision is saved either way; a page that could not reload keeps its banner.
+          void refresh().then((ok) => {
+            if (ok) toast.success(t('decision.saved'));
+            else setNotice('stale');
+          });
         }}
         onStale={() => void refresh()}
       />

@@ -10,6 +10,7 @@ import { callApi } from '../api/client.ts';
 import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import { SettingsForm } from './settings-form.tsx';
 import type { WalletSettings } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const settings = (over: Partial<WalletSettings> = {}): WalletSettings => ({
@@ -130,7 +131,7 @@ describe('SettingsForm', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
-    expect(await screen.findByText('Wallet is now paused.')).toBeTruthy();
+    await expectToast('Wallet is now paused.');
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',
@@ -175,7 +176,7 @@ describe('SettingsForm', () => {
       ok(settings({ status: 'active', updatedAt: '2026-10-27T01:00:00.000Z' })),
     );
     review();
-    expect(await screen.findByText('Wallet is now active.')).toBeTruthy();
+    await expectToast('Wallet is now active.');
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',

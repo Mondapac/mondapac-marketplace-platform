@@ -10,6 +10,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { TwoStepPanel } from './two-step-panel.tsx';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const panel = (active: boolean) => (
@@ -120,7 +121,7 @@ describe('TwoStepPanel', () => {
       { code: '654321' },
       'csrf-1',
     );
-    expect(screen.getByText(/Two-step verification is off/)).toBeTruthy();
+    await expectToast(/Two-step verification is off/);
   });
 
   it('shows new backup codes once and returns to the status after them', async () => {
