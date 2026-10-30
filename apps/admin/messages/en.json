@@ -108,6 +108,7 @@
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
     "group": {
+      "catalogue": "Catalogue",
       "reviews": "Reviews",
       "content": "Content",
       "sellers": "Sellers",
@@ -116,7 +117,8 @@
     },
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
-    "disputes": "Disputes"
+    "disputes": "Disputes",
+    "products": "Products"
   },
   "home": {
     "title": "Dashboard",
@@ -1987,6 +1989,135 @@
         "unavailable": "The decision could not be sent. Try again later.",
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
+      }
+    },
+    "products": {
+      "title": "Products",
+      "no-access": "You don't have access to products.",
+      "back-home": "Back to dashboard",
+      "tabs": "Product views",
+      "tab": {
+        "active": "Active",
+        "all": "All",
+        "inactive": "Inactive"
+      },
+      "search": {
+        "label": "Search products",
+        "placeholder": "Search by name or product code"
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter products",
+        "match-all": "Match all conditions",
+        "field": "Field",
+        "field-placeholder": "Field",
+        "is": "is",
+        "value": "Value",
+        "value-placeholder": "Value",
+        "remove": "Remove condition",
+        "add": "Add condition",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "name": {
+          "status": "Status",
+          "scope": "Scope",
+          "categoryId": "Category"
+        }
+      },
+      "sort": {
+        "button": "Sort",
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "name": "Name",
+          "updated": "Last changed",
+          "created": "Created"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "columns": {
+        "button": "Columns",
+        "title": "Columns",
+        "help": "Choose what the table shows. Saved for you only, in this browser.",
+        "always": "Always shown",
+        "fixed": {
+          "image": "Image",
+          "title": "Title",
+          "status": "Status",
+          "category": "Category"
+        },
+        "optional": {
+          "code": "Product code",
+          "offers": "Offers",
+          "updated": "Last changed",
+          "type": "Product type",
+          "scope": "Scope",
+          "seller": "Seller",
+          "created": "Created"
+        },
+        "up": "Move {column} up",
+        "down": "Move {column} down",
+        "reset": "Reset to default",
+        "save": "Save"
+      },
+      "col": {
+        "product": "Product",
+        "category": "Category",
+        "status": "Status",
+        "code": "Product code",
+        "offers": "Offers",
+        "updated": "Last changed",
+        "type": "Product type",
+        "scope": "Scope",
+        "seller": "Seller",
+        "created": "Created"
+      },
+      "status": {
+        "published": "Active",
+        "unpublished": "Unpublished",
+        "withdrawn": "Withdrawn",
+        "retired": "Retired",
+        "matched": "Matched"
+      },
+      "scope": {
+        "PLATFORM": "Platform",
+        "SELLER": "Seller"
+      },
+      "seller-platform": "Platform",
+      "seller-unknown": "Unnamed seller",
+      "unnamed": "Unnamed product",
+      "no-category": "No category",
+      "chip": "{field} is {value}",
+      "chip-remove": "Remove filter {filter}",
+      "clear-all": "Clear all",
+      "match": "{count, plural, one {# product matches} other {# products match}}",
+      "range": "{from}–{to} of {total} products",
+      "previous": "Previous",
+      "next": "Next",
+      "loading": "Loading products",
+      "error": {
+        "denied": "You don't have access to products.",
+        "too-broad": "Too many products to sort by name. Narrow the search or sort by date.",
+        "unavailable": "Products could not be loaded. Try again."
+      },
+      "empty": {
+        "none": "No products yet",
+        "none-help": "Products appear here when sellers submit them or the platform adds them.",
+        "no-match": "No products match",
+        "no-match-help": "Try another search or remove a filter.",
+        "view": {
+          "active": "No active products",
+          "all": "No products",
+          "inactive": "No inactive products"
+        }
       }
     }
   },

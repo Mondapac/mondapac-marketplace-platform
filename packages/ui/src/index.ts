@@ -37,6 +37,8 @@ export {
   type LinkButtonProps,
 } from './form/button.tsx';
 export { TextField, type TextFieldProps } from './form/text-field.tsx';
+export { IconButton, type IconButtonProps } from './form/icon-button.tsx';
+export { SearchField, type SearchFieldProps } from './form/search-field.tsx';
 export { TextAreaField, type TextAreaFieldProps } from './form/text-area-field.tsx';
 export { FileButton, type FileButtonProps } from './form/file-button.tsx';
 export { ImageSlot, type ImageSlotProps, type ImageSlotShape } from './form/image-slot.tsx';
@@ -123,6 +125,8 @@ export {
 } from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
+export { Popover, type PopoverProps } from './overlay/popover.tsx';
+export { FilterChip, type FilterChipProps } from './form/filter-chip.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
 export { ThemeMenu, applyThemeChoice, type ThemeMenuProps } from './theme/theme-menu.tsx';
 export {
@@ -189,5 +193,13 @@ export {
   type PanelToolsLabels,
   type PanelToolsProps,
 } from './palette/panel-tools.tsx';
-export { PIN_LIMIT, RECENT_LIMIT } from './palette/panel-prefs.ts';
+export {
+  PIN_LIMIT,
+  RECENT_LIMIT,
+  browserStorage,
+  prefsKey,
+  readIds,
+  writeIds,
+  type PrefsStore,
+} from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';
