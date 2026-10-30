@@ -73,7 +73,7 @@ export function ToastStack({
     <div
       role="region"
       aria-label={labels.region}
-      className={`pointer-events-none fixed inset-x-3 z-30 flex flex-col gap-2 md:inset-x-auto md:end-4 md:w-[min(var(--mp-size-dialog-sm),calc(100%-2rem))] ${aboveBottomBar ? 'bottom-[calc(var(--mp-size-bottom-bar)+0.75rem+env(safe-area-inset-bottom)+var(--mp-savebar-offset,0px))] md:bottom-[calc(1rem+var(--mp-savebar-offset,0px))]' : 'bottom-[calc(1rem+var(--mp-savebar-offset,0px))]'}`}
+      className={`pointer-events-none fixed inset-x-3 z-30 flex flex-col gap-2 md:inset-x-auto md:end-4 md:w-[min(var(--mp-size-dialog-sm),calc(100%-2rem))] ${aboveBottomBar ? 'bottom-[max(calc(var(--mp-size-bottom-bar)+0.75rem+env(safe-area-inset-bottom)),calc(var(--mp-savebar-offset,0px)+0.75rem))] md:bottom-[max(1rem,calc(var(--mp-savebar-offset,0px)+1rem))]' : 'bottom-[max(1rem,calc(var(--mp-savebar-offset,0px)+1rem))]'}`}
     >
       {items.map((item) => (
         <ToastCard key={item.id} item={item} closeLabel={labels.close} />

@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { SettingsConflictBanner } from './conflict-banner.tsx';
+import { SettingsErrorSummary } from './error-summary.tsx';
+import { Button } from '../form/button.tsx';
 import { NoAccess } from './no-access.tsx';
 import { SaveBar } from './save-bar.tsx';
 import { SettingCheckbox, SettingInput, SettingRow, SettingSelect } from './setting-row.tsx';
@@ -265,5 +267,45 @@ describe('leavesPage', () => {
     expect(leavesPage(click({ modified: true }), here)).toBe(false);
     expect(leavesPage(click({ button: 1 }), here)).toBe(false);
     expect(leavesPage(click({ href: 'http://[bad' }), here)).toBe(false);
+  });
+});
+
+describe('SettingsErrorSummary', () => {
+  it('is a critical alert that links each invalid field', () => {
+    const out = html(
+      <SettingsErrorSummary
+        title="2 settings need fixing before you can save"
+        items={[
+          { id: 'cutoff', label: 'Cut-off time' },
+          { id: 'free', label: 'Free delivery from' },
+        ]}
+      />,
+    );
+    expect(out).toContain('role="alert"');
+    expect(out).toContain('tabindex="-1"');
+    expect(out).toContain('2 settings need fixing before you can save');
+    expect(out).toContain('<a href="#cutoff"');
+    expect(out).toContain('>Free delivery from</a>');
+    expect(out).toContain('text-critical-fg');
+  });
+
+  it('renders nothing without fields', () => {
+    expect(html(<SettingsErrorSummary title="x" items={[]} />)).toBe('');
+  });
+});
+
+describe('Button disabled state', () => {
+  it('keeps every disabled label in a readable muted text colour, with no opacity fade', () => {
+    for (const variant of ['primary', 'secondary', 'destructive', 'link'] as const) {
+      const out = html(
+        <Button variant={variant} disabled>
+          Save
+        </Button>,
+      );
+      expect(out).toContain('disabled:text-fg-muted');
+      expect(out).not.toContain('opacity');
+      expect(out).not.toContain('accent-disabled');
+    }
+    expect(html(<Button disabled>Save</Button>)).toContain('disabled:bg-muted');
   });
 });

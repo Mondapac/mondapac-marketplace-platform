@@ -95,6 +95,12 @@ describe('SupportEmailCard', () => {
       expect(screen.getByText('Enter one valid email address.')).toBeTruthy();
       // The error is counted, and Save waits until the field is edited.
       expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+      // The summary at the top names the field, takes focus, and its link goes to the field.
+      const summary = screen.getByRole('alert');
+      expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+      expect(document.activeElement).toBe(summary);
+      fireEvent.click(screen.getByRole('link', { name: 'Support email address' }));
+      expect(document.activeElement).toBe(screen.getByLabelText('Support email address'));
       expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
         true,
       );

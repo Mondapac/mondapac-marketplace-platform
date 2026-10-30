@@ -5,6 +5,7 @@ import {
   SaveBar,
   SettingInput,
   SettingRow,
+  SettingsErrorSummary,
   SettingsPage,
   SettingsSection,
   toast,
@@ -18,6 +19,7 @@ import type { SupportContact } from './types.ts';
 /** The same rule the API checks: lower-case printable ASCII, one "@", a dotted domain. */
 const SHAPE = /^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 const MAX_LENGTH = 254;
+const EMAIL_ROW = 'setting-support-email';
 
 export function SupportEmailCard({
   initial,
@@ -34,6 +36,7 @@ export function SupportEmailCard({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
+  const [failedSaves, setFailedSaves] = useState(0);
   const busy = useRef(false);
 
   const dirty = canManage && text !== (contact.email ?? '');
@@ -52,6 +55,7 @@ export function SupportEmailCard({
     setProblem(null);
     if (email.length > MAX_LENGTH || !SHAPE.test(email)) {
       setInvalid(true);
+      setFailedSaves((n) => n + 1);
       return;
     }
     setInvalid(false);
@@ -75,23 +79,39 @@ export function SupportEmailCard({
     else setProblem(supportProblemOf(result.failure));
   }
 
-  const banner = (
-    <>
-      {canManage ? null : <Banner tone="info">{t('settings.support.read-only')}</Banner>}
-      {contact.email === null ? (
-        <Banner tone="attention">{t('settings.support.not-set')}</Banner>
-      ) : null}
-      {problem === null ? null : (
-        <Banner tone="critical">{t(`settings.support.error.${problem}`)}</Banner>
-      )}
-    </>
-  );
+  const banners = [
+    canManage ? null : (
+      <Banner key="read-only" tone="info">
+        {t('settings.support.read-only')}
+      </Banner>
+    ),
+    invalid ? (
+      <SettingsErrorSummary
+        key="invalid"
+        title={t('settings.errors.title', { count: 1 })}
+        items={[{ id: EMAIL_ROW, label: t('settings.support.field') }]}
+        focusSignal={failedSaves}
+      />
+    ) : null,
+    contact.email === null ? (
+      <Banner key="not-set" tone="attention">
+        {t('settings.support.not-set')}
+      </Banner>
+    ) : null,
+    problem === null ? null : (
+      <Banner key="problem" tone="critical">
+        {t(`settings.support.error.${problem}`)}
+      </Banner>
+    ),
+  ].filter((node) => node !== null);
+  const banner =
+    banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>;
 
   return (
     <SettingsPage
       title={t('settings.support.title')}
       description={t('settings.support.intro')}
-      banner={<div className="flex flex-col gap-3">{banner}</div>}
+      banner={banner}
       onSubmit={canManage ? () => void submit() : undefined}
       dirty={dirty}
       leave={{
@@ -131,6 +151,7 @@ export function SupportEmailCard({
         )}
         {canManage ? (
           <SettingRow
+            id={EMAIL_ROW}
             label={t('settings.support.field')}
             help={t('settings.support.field-help')}
             changed={dirty}

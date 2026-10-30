@@ -1,4 +1,4 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError, NoAccess, SettingsPage } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -49,11 +49,13 @@ export default async function AssistantSettingsPage() {
   if (read.kind === 'signed-out') redirect('/session-ended');
   if (read.kind !== 'ok') {
     return shell(
-      <LoadError
-        title={t('settings.assistant.title')}
-        message={t('settings.assistant.unavailable')}
-        retryLabel={t('load.retry')}
-      />,
+      <SettingsPage title={t('settings.assistant.title')}>
+        <LoadError
+          message={t('settings.assistant.unavailable')}
+          retryLabel={t('load.retry')}
+          className="flex flex-col items-start gap-3"
+        />
+      </SettingsPage>,
     );
   }
   return shell(

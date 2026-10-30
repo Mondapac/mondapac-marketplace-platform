@@ -219,7 +219,7 @@ export interface SettingCheckboxProps extends Omit<
 export function SettingCheckbox({ text, className, ...rest }: SettingCheckboxProps) {
   const field = useSettingField();
   return (
-    <span className="inline-flex min-h-(--mp-size-control) items-center gap-2">
+    <span className="inline-flex items-center gap-2">
       <input
         id={field.id}
         type="checkbox"

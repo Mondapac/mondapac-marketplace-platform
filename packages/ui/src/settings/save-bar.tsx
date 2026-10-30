@@ -5,8 +5,6 @@ import { Button } from '../form/button.tsx';
 
 /** The CSS variable the bar sets on the document while it shows; the Toaster reads it. */
 export const SAVE_BAR_OFFSET_VAR = '--mp-savebar-offset';
-/** The bar's gap to the bottom of the screen (Tailwind bottom-3). */
-const BAR_GAP_PX = 12;
 
 export interface SaveBarProps {
   /** How many fields differ from the saved values; the bar shows from 1. */
@@ -33,8 +31,9 @@ export interface SaveBarProps {
 /**
  * The one save bar of a settings page: sticky at the bottom of the content, with the count of
  * unsaved changes, Discard and Save changes. Save is a submit button, so the bar belongs inside
- * the page's form. While it shows it sets `--mp-savebar-offset` on the document, so toasts stack
- * above it instead of covering Save.
+ * the page's form. While it shows it keeps `--mp-savebar-offset` on the document (the distance from the
+ * screen bottom to the bar's top, 0 when the bar is below the fold), so toasts stack above it
+ * instead of covering Save.
  */
 export function SaveBar({
   count,
@@ -53,13 +52,23 @@ export function SaveBar({
     const bar = ref.current;
     if (!visible || bar === null) return;
     const root = document.documentElement;
-    const apply = () =>
-      root.style.setProperty(SAVE_BAR_OFFSET_VAR, `${bar.offsetHeight + BAR_GAP_PX}px`);
+    // How far the bar's top edge is above the bottom of the screen: the bar is sticky, so on a
+    // long page it sits at the bottom, but on a short page it sits in the flow, higher up. Below
+    // the fold it is 0 and toasts keep their own place.
+    const apply = () => {
+      const above = root.clientHeight - bar.getBoundingClientRect().top;
+      root.style.setProperty(SAVE_BAR_OFFSET_VAR, `${Math.max(0, Math.round(above))}px`);
+    };
     apply();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(apply) : null;
     observer?.observe(bar);
+    observer?.observe(root);
+    window.addEventListener('scroll', apply, { passive: true });
+    window.addEventListener('resize', apply, { passive: true });
     return () => {
       observer?.disconnect();
+      window.removeEventListener('scroll', apply);
+      window.removeEventListener('resize', apply);
       root.style.removeProperty(SAVE_BAR_OFFSET_VAR);
     };
   }, [visible]);

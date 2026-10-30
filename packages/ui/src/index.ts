@@ -70,6 +70,11 @@ export {
   type ClickInfo,
   type LeaveLabels,
 } from './settings/unsaved-changes-guard.tsx';
+export {
+  SettingsErrorSummary,
+  type SettingsErrorItem,
+  type SettingsErrorSummaryProps,
+} from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
 export {
   SettingsConflictBanner,

@@ -83,6 +83,19 @@ describe('settings page guard', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('x');
   });
 
+  it('focuses Stay, the safe choice, when the dialog opens, and names it by its title', () => {
+    render(<Page />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
+    act(
+      () =>
+        void screen
+          .getByText('Orders')
+          .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+    );
+    expect(screen.getByRole('dialog', { name: 'Leave without saving?' })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Stay' }));
+  });
+
   it('follows the link after Leave, once', () => {
     render(<Page />);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
@@ -143,6 +156,29 @@ describe('save bar and toasts', () => {
     expect(root.style.getPropertyValue(SAVE_BAR_OFFSET_VAR)).toMatch(/^\d+px$/);
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(root.style.getPropertyValue(SAVE_BAR_OFFSET_VAR)).toBe('');
+  });
+
+  it('measures the offset from the real position of the bar, and follows scroll', () => {
+    let top = 700; // short page: the bar sits in the flow, 100px above the bottom of a 800px screen
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(800);
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(() => ({ top }) as DOMRect);
+    try {
+      render(<Page />);
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
+      const read = () => document.documentElement.style.getPropertyValue(SAVE_BAR_OFFSET_VAR);
+      expect(read()).toBe('100px');
+      top = 740; // sticky at the bottom: 60px
+      act(() => void window.dispatchEvent(new Event('scroll')));
+      expect(read()).toBe('60px');
+      top = 900; // below the fold: toasts keep their own place
+      act(() => void window.dispatchEvent(new Event('scroll')));
+      expect(read()).toBe('0px');
+    } finally {
+      rect.mockRestore();
+      vi.restoreAllMocks();
+    }
   });
 
   it('reads the offset in the toaster, and clears it when the page unmounts', () => {

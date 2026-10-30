@@ -53,6 +53,8 @@ export function useUnsavedChangesGuard(
   // browser does not ask a second time when the page unloads.
   const bypass = useRef(false);
   const confirmed = useRef(false);
+  // Stay is the safe choice, so it takes focus (Leave is first in the reading order).
+  const stay = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!dirty) return;
@@ -105,12 +107,15 @@ export function useUnsavedChangesGuard(
       open={target !== null}
       title={labels.title}
       onClose={() => setTarget(null)}
+      initialFocus={stay}
       actions={
         <>
           <Button variant="destructive" onClick={leave}>
             {labels.leave}
           </Button>
-          <Button onClick={() => setTarget(null)}>{labels.stay}</Button>
+          <Button ref={stay} onClick={() => setTarget(null)}>
+            {labels.stay}
+          </Button>
         </>
       }
     >

@@ -186,6 +186,11 @@ describe('AssistantSettingsPanel', () => {
     expect(call).not.toHaveBeenCalled();
     // The bar counts the errors and Save waits until they are fixed.
     expect(screen.getByText(/2 need fixing/)).toBeTruthy();
+    const summary = screen.getByRole('alert');
+    expect(summary.textContent).toContain('2 settings need fixing before you can save');
+    expect(document.activeElement).toBe(summary);
+    fireEvent.click(screen.getByRole('link', { name: 'Messages per guest' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Messages per guest'));
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
       true,
     );

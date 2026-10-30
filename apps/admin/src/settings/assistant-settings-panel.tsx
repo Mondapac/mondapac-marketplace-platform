@@ -9,6 +9,7 @@ import {
   SettingInput,
   SettingRow,
   SettingSelect,
+  SettingsErrorSummary,
   SettingsPage,
   SettingsSection,
   toast,
@@ -43,6 +44,20 @@ const P = 'settings.assistant';
 
 type Notice = 'reloaded' | null;
 
+const rowId = (key: FieldKey) => `setting-assistant-${key}`;
+
+/** The label of each field that can be refused, for the error summary. */
+const FIELD_LABEL: Record<FieldKey, string> = {
+  audiencePercent: 'audience-percent.label',
+  scope: 'scope.label',
+  guestMessageLimit: 'guest-limit.label',
+  customerMessageLimit: 'customer-limit.label',
+  dailySpendCapUsdCents: 'spend.daily',
+  monthlySpendCapUsdCents: 'spend.monthly',
+  supportHandoff: 'support.label',
+  welcomeText: 'welcome.label',
+};
+
 /** Form keys whose API field has another name. */
 const FIELD_OF: Partial<Record<keyof AssistantForm, FieldKey>> = {
   dailySpendCap: 'dailySpendCapUsdCents',
@@ -75,6 +90,7 @@ export function AssistantSettingsPanel({
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [pending, setPending] = useState(false);
+  const [failedSaves, setFailedSaves] = useState(0);
   const busy = useRef(false);
 
   const baseline = formOf(answer.settings);
@@ -104,6 +120,7 @@ export function AssistantSettingsPanel({
     if (!check.ok) {
       setInvalid(check.invalid);
       setProblem('fix');
+      setFailedSaves((n) => n + 1);
       return;
     }
     setInvalid([]);
@@ -130,7 +147,9 @@ export function AssistantSettingsPanel({
         setProblem('conflict');
       }
     } else {
-      setInvalid(refusedFields(result.failure));
+      const refused = refusedFields(result.failure);
+      setInvalid(refused);
+      if (refused.length > 0) setFailedSaves((n) => n + 1);
       setProblem(assistantProblemOf(result.failure));
     }
     busy.current = false;
@@ -161,27 +180,46 @@ export function AssistantSettingsPanel({
     });
 
   const status = <StatusCard answer={answer} />;
-  const shownProblem = problem === 'fix' && invalid.length === 0 ? null : problem;
+  // The error summary names the fields, so the generic "fix" line is left out.
+  const shownProblem = problem === 'fix' ? null : problem;
   const lastChanged = {
     text:
       answer.version === 0
         ? t(`${P}.version-defaults`)
         : t(`${P}.version`, { version: answer.version }),
   };
-  const banner = (
-    <>
-      {canManage ? null : <Banner tone="info">{t(`${P}.read-only`)}</Banner>}
-      {notice === 'reloaded' ? <Banner tone="attention">{t(`${P}.reloaded`)}</Banner> : null}
-      {shownProblem === null ? null : (
-        <Banner tone="critical">{t(`${P}.error.${shownProblem}`)}</Banner>
-      )}
-    </>
-  );
+  const banners = [
+    canManage ? null : (
+      <Banner key="read-only" tone="info">
+        {t(`${P}.read-only`)}
+      </Banner>
+    ),
+    invalid.length === 0 ? null : (
+      <SettingsErrorSummary
+        key="invalid"
+        title={t('settings.errors.title', { count: invalid.length })}
+        items={invalid.map((key) => ({ id: rowId(key), label: t(`${P}.${FIELD_LABEL[key]}`) }))}
+        focusSignal={failedSaves}
+      />
+    ),
+    notice === 'reloaded' ? (
+      <Banner key="reloaded" tone="attention">
+        {t(`${P}.reloaded`)}
+      </Banner>
+    ) : null,
+    shownProblem === null ? null : (
+      <Banner key="problem" tone="critical">
+        {t(`${P}.error.${shownProblem}`)}
+      </Banner>
+    ),
+  ].filter((node) => node !== null);
+  const banner =
+    banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>;
   const frame = {
     title: t(`${P}.title`),
     description: t(`${P}.intro`),
     lastChanged,
-    banner: <div className="flex flex-col gap-3">{banner}</div>,
+    banner,
   };
 
   if (!canManage) {
@@ -262,6 +300,7 @@ export function AssistantSettingsPanel({
         </SettingRow>
         {form.audience === 'percent' ? (
           <SettingRow
+            id={rowId('audiencePercent')}
             label={t(`${P}.audience-percent.label`)}
             help={t(`${P}.audience-percent.help`, BOUNDS.audiencePercent)}
             changed={changed('audiencePercent')}
@@ -281,6 +320,7 @@ export function AssistantSettingsPanel({
 
       <SettingsSection title={t(`${P}.section.answers`)}>
         <SettingRow
+          id={rowId('scope')}
           label={t(`${P}.scope.label`)}
           help={t(`${P}.scope.help`)}
           changed={changed('scope')}
@@ -317,6 +357,7 @@ export function AssistantSettingsPanel({
           />
         </SettingRow>
         <SettingRow
+          id={rowId('welcomeText')}
           label={t(`${P}.welcome.label`)}
           optionalLabel={t(`${P}.optional`)}
           help={t(`${P}.welcome.help`, { max: BOUNDS.welcomeTextLength })}
@@ -343,6 +384,7 @@ export function AssistantSettingsPanel({
           />
         </SettingRow>
         <SettingRow
+          id={rowId('guestMessageLimit')}
           label={t(`${P}.guest-limit.label`)}
           help={t(`${P}.limit-help`, BOUNDS.guestMessageLimit)}
           changed={changed('guestMessageLimit')}
@@ -357,6 +399,7 @@ export function AssistantSettingsPanel({
           />
         </SettingRow>
         <SettingRow
+          id={rowId('customerMessageLimit')}
           label={t(`${P}.customer-limit.label`)}
           help={t(`${P}.limit-help`, BOUNDS.customerMessageLimit)}
           changed={changed('customerMessageLimit')}
@@ -374,6 +417,7 @@ export function AssistantSettingsPanel({
 
       <SettingsSection title={t(`${P}.section.spend`)} description={t(`${P}.spend.intro`)}>
         <SettingRow
+          id={rowId('dailySpendCapUsdCents')}
           label={t(`${P}.spend.daily`)}
           help={t(`${P}.spend.daily-help`, {
             min: BOUNDS.dailySpendCapUsdCents.min / 100,
@@ -392,6 +436,7 @@ export function AssistantSettingsPanel({
           />
         </SettingRow>
         <SettingRow
+          id={rowId('monthlySpendCapUsdCents')}
           label={t(`${P}.spend.monthly`)}
           help={t(`${P}.spend.monthly-help`, {
             min: BOUNDS.monthlySpendCapUsdCents.min / 100,
@@ -425,6 +470,7 @@ export function AssistantSettingsPanel({
           />
         </SettingRow>
         <SettingRow
+          id={rowId('supportHandoff')}
           label={t(`${P}.support.label`)}
           help={t(`${P}.support.help`)}
           changed={changed('supportHandoff')}
