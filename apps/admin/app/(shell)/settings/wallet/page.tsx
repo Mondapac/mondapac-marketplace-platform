@@ -17,6 +17,7 @@ export default async function WalletSwitchPage() {
       title={t('wallet.settings.title')}
       intro={t('wallet.settings.intro')}
       anyOf={[SETTINGS_VIEW]}
+      permissionLabel={t('wallet.settings.permission-view')}
       stepUpNote
       body={(session, keys) => (
         <SettingsForm canManage={keys.has(SETTINGS_MANAGE)} csrfToken={session.csrfToken} />

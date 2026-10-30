@@ -76,29 +76,27 @@ function FleetItem({
       </p>
       {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
       {canManage ? (
-        <form
-          className="flex flex-col gap-3 sm:flex-row sm:items-end"
-          onSubmit={(e) => void submit(e)}
-          noValidate
-        >
-          <TextField
-            name={`reliability-${row.fleet}`}
-            label={t(`${P}.reliability.label`)}
-            help={
-              row.reliability === null
-                ? t(`${P}.reliability.unset`, { score: row.effectiveReliability })
-                : t(`${P}.reliability.help`)
-            }
-            inputMode="numeric"
-            autoComplete="off"
-            className="sm:max-w-40"
-            value={text}
-            error={invalid ? t(`${P}.invalid.score`) : undefined}
-            onChange={(event) => setText(event.target.value)}
-          />
-          <Button type="submit" variant="secondary" loading={pending}>
-            {t(`${P}.reliability.save`)}
-          </Button>
+        <form className="flex flex-col gap-2" onSubmit={(e) => void submit(e)} noValidate>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <TextField
+              name={`reliability-${row.fleet}`}
+              label={t(`${P}.reliability.label`)}
+              inputMode="numeric"
+              autoComplete="off"
+              className="sm:max-w-40"
+              value={text}
+              error={invalid ? t(`${P}.invalid.score`) : undefined}
+              onChange={(event) => setText(event.target.value)}
+            />
+            <Button type="submit" variant="secondary" loading={pending}>
+              {t(`${P}.reliability.save`)}
+            </Button>
+          </div>
+          <p className="text-sm text-fg-muted">
+            {row.reliability === null
+              ? t(`${P}.reliability.unset`, { score: row.effectiveReliability })
+              : t(`${P}.reliability.help`)}
+          </p>
         </form>
       ) : (
         <p className="text-sm">

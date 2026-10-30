@@ -75,8 +75,6 @@ export function RoleEditor({
   const nameChanged = name !== initialName;
   const count =
     (nameChanged ? 1 : 0) + catalogue.keys.filter((entry) => keyChanged(entry.key)).length;
-  // A new role is unsaved by definition, so its bar always shows; an edit shows it from a change.
-  const shownCount = editing ? count : Math.max(count, 1);
 
   function discard() {
     setName(initialName);
@@ -106,6 +104,8 @@ export function RoleEditor({
   }
 
   function toggle(key: string, on: boolean) {
+    // A new edit after a save is unsaved again: the leave guard covers it.
+    setDone(false);
     setSelected((previous) => {
       const next = new Set(previous);
       if (on) next.add(key);
@@ -230,7 +230,8 @@ export function RoleEditor({
         saveBar={
           <SaveBar
             {...chrome.saveBar({
-              count: shownCount,
+              count,
+              showEmpty: !editing,
               errorCount: nameError === null ? 0 : 1,
               saving: pending,
               onDiscard: discard,
@@ -252,6 +253,7 @@ export function RoleEditor({
               value={name}
               onChange={(event) => {
                 setName(event.target.value);
+                setDone(false);
                 setNameError(null);
               }}
             />

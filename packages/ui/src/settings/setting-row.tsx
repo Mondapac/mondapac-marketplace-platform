@@ -266,7 +266,7 @@ export function SettingCheckbox({ text, className, ...rest }: SettingCheckboxPro
         aria-describedby={field.describedBy}
         disabled={field.disabled}
         className={[
-          'size-5 rounded-sm accent-accent',
+          'size-5 rounded-sm accent-accent disabled:cursor-not-allowed disabled:outline-1 disabled:outline-line-control',
           field.changed ? 'outline-2 outline-offset-2 outline-attention-solid' : '',
           className ?? '',
         ]

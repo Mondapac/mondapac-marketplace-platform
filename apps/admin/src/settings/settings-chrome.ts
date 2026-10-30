@@ -14,6 +14,8 @@ export function useSettingsChrome(): {
     readonly onDiscard: () => void;
     /** Replaces "Save changes", for a page whose one action has another name ("Create role"). */
     readonly saveLabel?: string;
+    /** A new record is unsaved by definition: the bar shows at count 0 with "nothing entered yet". */
+    readonly showEmpty?: boolean;
   }) => SaveBarProps;
 } {
   const t = useTranslations();
@@ -24,9 +26,10 @@ export function useSettingsChrome(): {
       stay: t('settings.leave.stay'),
       leave: t('settings.leave.leave'),
     },
-    saveBar: ({ count, errorCount = 0, saving, onDiscard, saveLabel }) => ({
+    saveBar: ({ count, errorCount = 0, saving, onDiscard, saveLabel, showEmpty = false }) => ({
       count,
       summary: t('settings.bar.summary', { count }),
+      emptySummary: showEmpty ? t('settings.bar.new') : undefined,
       errorCount,
       errorsSummary: t('settings.bar.errors', { count: errorCount }),
       saving,

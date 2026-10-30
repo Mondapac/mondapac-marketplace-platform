@@ -222,7 +222,12 @@ export function SettingsForm({
       >
         <SettingRow
           label={t('settings.new-state')}
-          help={t(`meaning.${chosen}`)}
+          help={
+            canManage && unchanged
+              ? `${t(`meaning.${chosen}`)} ${t('settings.choose-first')}`
+              : t(`meaning.${chosen}`)
+          }
+          changed={!unchanged}
           disabled={!canManage}
         >
           <SettingSelect

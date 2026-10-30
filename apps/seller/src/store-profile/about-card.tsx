@@ -238,6 +238,7 @@ function AboutSection({
             >
               <SettingTextArea
                 lang={locale}
+                dir="auto"
                 value={text}
                 rows={8}
                 onChange={(event) => onChange(locale, event.target.value)}

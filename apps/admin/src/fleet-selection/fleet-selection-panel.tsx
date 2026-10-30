@@ -220,7 +220,7 @@ export function FleetSelectionPanel({
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
-      dirty={canManage && changes.length > 0}
+      dirty={canManage && (changes.length > 0 || editing !== null)}
       leave={chrome.leave}
     >
       {/* The one form of the page with a save bar; each model and each fleet score has its own. */}

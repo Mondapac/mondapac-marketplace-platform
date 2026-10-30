@@ -15,6 +15,7 @@ export async function WalletPage({
   title,
   intro,
   anyOf,
+  permissionLabel,
   stepUpNote,
   settingsLinkId,
   body,
@@ -26,6 +27,8 @@ export async function WalletPage({
   readonly title: string;
   readonly intro: string;
   readonly anyOf: readonly string[];
+  /** The permission named in the no-access block of a settings page (what the caller needs). */
+  readonly permissionLabel?: string;
   /** Show the "wait for a new code" help line (the page has a button that asks for a code). */
   readonly stepUpNote: boolean;
   readonly body: (session: AdminSession, keys: ReadonlySet<string>) => ReactNode;
@@ -57,7 +60,7 @@ export async function WalletPage({
           title={t('settings.no-access-title')}
           body={t('settings.no-access-needs', {
             page: title,
-            permission: t('wallet.settings.permission-view'),
+            permission: permissionLabel ?? anyOf.join(', '),
           })}
           backHref="/"
           backLabel={t('settings.back-home')}

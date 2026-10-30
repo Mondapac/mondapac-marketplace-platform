@@ -1451,6 +1451,7 @@
       "region": "Unsaved changes",
       "summary": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
       "errors": "{count, plural, one {# needs fixing} other {# need fixing}}",
+      "new": "New role · nothing entered yet",
       "discard": "Discard",
       "save": "Save changes",
       "saving": "Saving…"
@@ -2575,6 +2576,7 @@
       "reason-line": "Reason: {reason}",
       "change": "Change state",
       "new-state": "New state",
+      "choose-first": "Choose a new state first to review a change.",
       "reason": "Reason",
       "reason-placeholder": "Choose a reason",
       "review": "Review change",

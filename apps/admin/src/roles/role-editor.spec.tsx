@@ -122,6 +122,27 @@ describe('role editor', () => {
     expect(router.refresh).toHaveBeenCalled();
   });
 
+  it('guards leaving again when something is edited after a save', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'role.updated', roleId: ID },
+    });
+    mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    const leaves = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    fireEvent.click(screen.getByLabelText('Invite'));
+    expect(leaves()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await expectToast(/Saved\./);
+    expect(leaves()).toBe(false);
+    fireEvent.click(screen.getByLabelText('View'));
+    expect(leaves()).toBe(true);
+  });
+
   it('puts a taken name on the name field', async () => {
     call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'role.name-taken' } });
     mount({ initialName: 'Ops' });
@@ -187,7 +208,8 @@ describe('role editor', () => {
   it('shows a new role with its bar from the start, named Create role', () => {
     mount({ initialName: '' });
     const bar = screen.getByRole('region', { name: 'Unsaved changes' });
-    expect(bar.textContent).toContain('1 unsaved change');
+    expect(bar.textContent).toContain('New role · nothing entered yet');
+    expect(bar.textContent).not.toContain('unsaved change');
     expect(screen.getByRole('button', { name: 'Create role' })).toBeTruthy();
   });
 
