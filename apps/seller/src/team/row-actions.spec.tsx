@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { visibleNavItems } from '@mondapac/ui';
+import { toast, Toaster, visibleNavItems } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -13,7 +13,6 @@ import { callApi } from '../api/client.ts';
 import { sellerNav } from '../nav.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
 import { InviteMemberButton } from './invite-member-button.tsx';
-import { NoticeProvider } from './notice.tsx';
 import { RowActions, type RowTarget } from './row-actions.tsx';
 import type { SellerRole } from './types.ts';
 
@@ -59,7 +58,8 @@ function wrap(node: React.ReactNode) {
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <StepUpProvider>
-        <NoticeProvider>{node}</NoticeProvider>
+        {node}
+        <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
       </StepUpProvider>
     </NextIntlClientProvider>,
   );
@@ -74,7 +74,10 @@ beforeEach(() => {
     this.removeAttribute('open');
   };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+});
 
 const member = (hints?: Partial<Extract<RowTarget, { kind: 'account' }>['hints']>): RowTarget => ({
   kind: 'account',

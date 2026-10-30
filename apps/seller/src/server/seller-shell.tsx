@@ -66,6 +66,7 @@ export async function SellerShell({
         main: t('nav.main'),
         collapse: t('nav.collapse'),
         expand: t('nav.expand'),
+        toasts: { region: t('toast.region'), close: t('toast.close') },
       }}
       collapsed={collapsed}
       sidebar={

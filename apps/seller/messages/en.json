@@ -4,6 +4,10 @@
     "market": "MondaPac {marketName}",
     "support": "Need help? Email {supportEmail}."
   },
+  "toast": {
+    "region": "Action notifications",
+    "close": "Close notification"
+  },
   "theme": {
     "menu": "Theme",
     "system": "System",

@@ -114,6 +114,33 @@ body {
   --mp-size-sheet-wide: 480px;
 }
 
+/* Action notifications (toasts): a toast slides in from the inline end and its bar runs down to
+ * the inline start. Plain keyframes, used by name from the Toaster classes. */
+@keyframes mp-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--mp-toast-from, 24px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes mp-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes mp-toast-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 /* Phones use the touch density of the tokens (panels IA 4: targets of 48 px below 760 px). */
 @media (max-width: 47.49rem) {
   :root {

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { toast, Toaster } from '@mondapac/ui';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,7 +10,6 @@ vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
-import { NoticeProvider } from './notice.tsx';
 import { RowActions, type RowTarget } from './row-actions.tsx';
 
 const call = vi.mocked(callApi);
@@ -29,9 +29,8 @@ const account = (over: Partial<Extract<RowTarget, { kind: 'account' }>> = {}): R
 function show(target: RowTarget) {
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <NoticeProvider>
-        <RowActions target={target} csrfToken="csrf-1" />
-      </NoticeProvider>
+      <RowActions target={target} csrfToken="csrf-1" />
+      <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     </NextIntlClientProvider>,
   );
 }
@@ -48,7 +47,10 @@ beforeEach(() => {
     this.removeAttribute('open');
   };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+});
 
 describe('team row actions', () => {
   it('offers reset and deactivate on an active admin, with the csrf token on the command', async () => {

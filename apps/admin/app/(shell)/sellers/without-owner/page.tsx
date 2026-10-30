@@ -4,7 +4,6 @@ import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 import { OrphanedList } from '../../../../src/sellers/orphaned-list.tsx';
 import { ORPHANED_VIEW_PERMISSION } from '../../../../src/sellers/orphaned-types.ts';
-import { NoticeProvider } from '../../../../src/team/notice.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -30,9 +29,7 @@ export default async function SellersWithoutOwnerPage() {
       {allowed ? (
         <>
           <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-          <NoticeProvider>
-            <OrphanedList csrfToken={gate.session.csrfToken} />
-          </NoticeProvider>
+          <OrphanedList csrfToken={gate.session.csrfToken} />
         </>
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-line p-6">

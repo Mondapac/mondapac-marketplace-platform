@@ -6,7 +6,6 @@ import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
 import { SETUP_ROOT } from '../../../src/setup/steps.ts';
 import { InviteMemberButton } from '../../../src/team/invite-member-button.tsx';
-import { NoticeProvider } from '../../../src/team/notice.tsx';
 import { TeamTable } from '../../../src/team/team-table.tsx';
 import {
   ROLE_VIEW_PERMISSION,
@@ -74,20 +73,18 @@ export default async function TeamPageRoute({
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {result.kind === 'ok' ? (
         <>
-          <NoticeProvider>
-            {canInvite && roles !== undefined ? (
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <InviteMemberButton roles={roles} csrfToken={session.csrfToken} />
-              </div>
-            ) : null}
-            <TeamTable
-              page={result.body}
-              after={after}
-              csrfToken={session.csrfToken}
-              roles={canAssign ? roles : undefined}
-              roleList={roles ?? []}
-            />
-          </NoticeProvider>
+          {canInvite && roles !== undefined ? (
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <InviteMemberButton roles={roles} csrfToken={session.csrfToken} />
+            </div>
+          ) : null}
+          <TeamTable
+            page={result.body}
+            after={after}
+            csrfToken={session.csrfToken}
+            roles={canAssign ? roles : undefined}
+            roleList={roles ?? []}
+          />
           {result.body.next === null || !UUID.test(result.body.next) ? null : (
             <p className="mt-4">
               <a
