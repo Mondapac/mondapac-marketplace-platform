@@ -538,6 +538,17 @@
         "delete-confirm": "Delete role",
         "keep": "Keep role"
       },
+      "conflict": {
+        "title": "Someone saved this role first",
+        "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
+        "compare": "Compare",
+        "hide": "Hide comparison",
+        "name": "Saved name: {saved}. Your name: {yours}.",
+        "saved-only": "In the saved role but not in yours: {keys}.",
+        "saved-none": "Every permission in the saved role is in yours.",
+        "yours-only": "In yours but not in the saved role: {keys}.",
+        "yours-none": "Every permission in yours is in the saved role."
+      },
       "reason": {
         "role": {
           "name-taken": "Another custom role already has this name.",

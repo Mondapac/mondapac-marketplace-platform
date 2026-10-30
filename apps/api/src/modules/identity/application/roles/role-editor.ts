@@ -4,6 +4,7 @@ import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shar
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { RoleCreatedAudit, RoleDeletedAudit, RoleUpdatedAudit } from '../../domain/audit';
 import { parseRoleName, Role, normalizeRoleName, type RoleScope } from '../../domain/role';
@@ -59,11 +60,19 @@ export interface CreateRoleInput {
 
 export interface EditRoleInput extends CreateRoleInput {
   readonly roleId: Id<'Role'>;
+  /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
+  readonly expectedVersion: number;
 }
 
 export interface DeleteRoleInput {
   readonly roleId: Id<'Role'>;
+  /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
+  readonly expectedVersion: number;
 }
+
+/** A missing or non-positive-integer version is a validation failure, not a stale write. */
+const isVersion = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
 
 export type RoleEditorFailure =
   | { readonly code: 'access.denied' }
@@ -103,6 +112,9 @@ function subjectOf(context: CallContext, editor: RoleEditorScope): GrantSubject 
 
 const invalidName = (rule: string): Outcome =>
   err({ code: 'validation.failed', fields: [{ path: 'name', code: rule }] });
+
+const invalidVersion = (): Outcome =>
+  err({ code: 'validation.failed', fields: [{ path: 'expectedVersion', code: 'type' }] });
 
 function log(
   logger: Logger,
@@ -211,6 +223,7 @@ export async function editCustomRole(
   if (!name.ok) return finish(invalidName(name.error.rule));
   const keys = parseRoleKeys(input.permissionKeys, editor.scope, deps.permissions);
   if (!keys.ok) return finish(err(keys.error));
+  if (!isVersion(input.expectedVersion)) return finish(invalidVersion());
   const isDeclared = (key: string): boolean => deps.permissions.get(key) !== undefined;
   return finish(
     await deps.unitOfWork.run(
@@ -220,6 +233,10 @@ export async function editCustomRole(
         if (acting === null) return err({ code: 'access.denied' });
         const role = await deps.roles.findById(market, input.roleId);
         if (role === null || !roleIsInActorsReach(role, self)) return err({ code: 'role.unknown' });
+        // After the reach check, so a role outside it stays "not found" whatever the version.
+        if (role.state.version !== input.expectedVersion) {
+          throw new StaleAggregateError('role', role.state.id);
+        }
         // The actor must dominate the role as it stands (R1, R11), then as it will be.
         const editable = roleEditVerdict(acting.actor, role, deps);
         if (!editable.ok) {
@@ -305,6 +322,7 @@ export async function deleteCustomRole(
     return result;
   };
   if (self === null) return finish(err({ code: 'access.denied' }));
+  if (!isVersion(input?.expectedVersion)) return finish(invalidVersion());
   const isDeclared = (key: string): boolean => deps.permissions.get(key) !== undefined;
   return finish(
     await deps.unitOfWork.run(
@@ -314,6 +332,9 @@ export async function deleteCustomRole(
         if (acting === null) return err({ code: 'access.denied' });
         const role = await deps.roles.findById(market, input.roleId);
         if (role === null || !roleIsInActorsReach(role, self)) return err({ code: 'role.unknown' });
+        if (role.state.version !== input.expectedVersion) {
+          throw new StaleAggregateError('role', role.state.id);
+        }
         const held = (await deps.assignments.heldRoles(market, [role.state.id])).has(role.state.id);
         const deletable = roleDeleteVerdict(acting.actor, role, held, deps);
         if (!deletable.ok) {

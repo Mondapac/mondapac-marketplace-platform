@@ -43,8 +43,20 @@ import { CreateSellerRole } from '../application/use-cases/create-seller-role.us
 import { DeleteSellerRole } from '../application/use-cases/delete-seller-role.use-case';
 import { EditSellerRole } from '../application/use-cases/edit-seller-role.use-case';
 import { ApiErrorBody } from './customer-sign-up.dto';
-import { RoleCatalogueView, RoleEditorRequest, RoleWrittenView } from './role-editor.dto';
-import { catalogueView, roleBody, rolePathId, roleRefusal } from './role-editor.http';
+import {
+  RoleCatalogueView,
+  RoleEditorRequest,
+  RoleEditRequest,
+  RoleVersionRequest,
+  RoleWrittenView,
+} from './role-editor.dto';
+import {
+  catalogueView,
+  roleBody,
+  rolePathId,
+  roleRefusal,
+  roleVersionBody,
+} from './role-editor.http';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const ROLE_PARAM = { name: 'roleId', description: 'The role. A UUID v7.' };
@@ -167,7 +179,7 @@ export class SellerRolesController {
   })
   @ApiParam(ROLE_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: RoleEditorRequest })
+  @ApiBody({ type: RoleEditRequest })
   @ApiOkResponse({ type: RoleWrittenView })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -188,7 +200,7 @@ export class SellerRolesController {
     @Body() body: unknown,
   ): Promise<RoleWrittenView> {
     const roleId = rolePathId(rawRoleId);
-    const input = roleBody(request, body);
+    const input = roleBody(request, body, true);
     let outcome: RoleWrittenView | HttpException;
     if (roleId instanceof HttpException) outcome = roleId;
     else if (input instanceof HttpException) outcome = input;
@@ -197,6 +209,7 @@ export class SellerRolesController {
         roleId,
         name: input.name,
         permissionKeys: input.permissionKeys as string[],
+        expectedVersion: input.expectedVersion,
       });
       outcome = result.ok ? result.value : roleRefusal(result.error);
     }
@@ -214,7 +227,10 @@ export class SellerRolesController {
   })
   @ApiParam(ROLE_PARAM)
   @ApiHeader(CSRF)
+  @ApiBody({ type: RoleVersionRequest })
   @ApiOkResponse({ type: RoleWrittenView })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
     type: ApiErrorBody,
@@ -227,13 +243,17 @@ export class SellerRolesController {
   })
   async deleteRole(
     @Call() context: CallContext,
+    @Req() request: Request,
     @Param('roleId') rawRoleId: string,
+    @Body() body: unknown,
   ): Promise<RoleWrittenView> {
     const roleId = rolePathId(rawRoleId);
+    const expectedVersion = roleVersionBody(request, body);
     let outcome: RoleWrittenView | HttpException;
     if (roleId instanceof HttpException) outcome = roleId;
+    else if (expectedVersion instanceof HttpException) outcome = expectedVersion;
     else {
-      const result = await this.deleteSellerRole.execute(context, { roleId });
+      const result = await this.deleteSellerRole.execute(context, { roleId, expectedVersion });
       outcome = result.ok ? result.value : roleRefusal(result.error);
     }
     return this.settle('identity.seller-delete-role', context, outcome);

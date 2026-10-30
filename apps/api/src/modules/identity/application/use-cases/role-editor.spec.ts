@@ -18,6 +18,7 @@ import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
 } from '../../../../../test/support/test-config';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
@@ -537,6 +538,7 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
       const result = await editPlatform.execute(asAdmin(ROOT), {
         roleId: HIGH_ROLE,
+        expectedVersion: 1,
         name: NAME_CANARY,
         permissionKeys: ['identity.seller-access.view', 'identity.admin-account.invite'],
       });
@@ -567,6 +569,7 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
       const result = await editPlatform.execute(asAdmin(ROOT), {
         roleId: HIGH_ROLE,
+        expectedVersion: 1,
         name: role.name!,
         permissionKeys: [...role.permissionKeys],
       });
@@ -582,12 +585,19 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
         const roleId = roleOf('platform', seedCode);
         const before = JSON.stringify(stored(roleId));
         expect(
-          await editPlatform.execute(asAdmin(ROOT), { roleId, name: 'X', permissionKeys: [] }),
+          await editPlatform.execute(asAdmin(ROOT), {
+            roleId,
+            expectedVersion: 1,
+            name: 'X',
+            permissionKeys: [],
+          }),
         ).toEqual({ ok: false, error: { code: 'role.read-only' } });
-        expect(await deletePlatform.execute(asAdmin(ROOT), { roleId })).toEqual({
-          ok: false,
-          error: { code: 'role.read-only' },
-        });
+        expect(await deletePlatform.execute(asAdmin(ROOT), { roleId, expectedVersion: 1 })).toEqual(
+          {
+            ok: false,
+            error: { code: 'role.read-only' },
+          },
+        );
         expect(JSON.stringify(stored(roleId))).toBe(before);
       }
     });
@@ -596,12 +606,19 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       const { editPlatform, deletePlatform } = setUp();
       for (const roleId of [roleIdOf(99), SELLER_CUSTOM, roleIdOf(90)]) {
         expect(
-          await editPlatform.execute(asAdmin(ROOT), { roleId, name: 'X', permissionKeys: [] }),
+          await editPlatform.execute(asAdmin(ROOT), {
+            roleId,
+            expectedVersion: 1,
+            name: 'X',
+            permissionKeys: [],
+          }),
         ).toEqual({ ok: false, error: { code: 'role.unknown' } });
-        expect(await deletePlatform.execute(asAdmin(ROOT), { roleId })).toEqual({
-          ok: false,
-          error: { code: 'role.unknown' },
-        });
+        expect(await deletePlatform.execute(asAdmin(ROOT), { roleId, expectedVersion: 1 })).toEqual(
+          {
+            ok: false,
+            error: { code: 'role.unknown' },
+          },
+        );
       }
     });
 
@@ -609,17 +626,23 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       const { editPlatform, deletePlatform } = setUp();
       const outranks = await editPlatform.execute(asAdmin(LEAD), {
         roleId: HIGH_ROLE,
+        expectedVersion: 1,
         name: 'X',
         permissionKeys: ['identity.seller-access.view'],
       });
-      const del = await deletePlatform.execute(asAdmin(LEAD), { roleId: HIGH_ROLE });
+      const del = await deletePlatform.execute(asAdmin(LEAD), {
+        roleId: HIGH_ROLE,
+        expectedVersion: 1,
+      });
       const protectedKey = await editPlatform.execute(asAdmin(LEAD), {
         roleId: HELD_ROLE,
+        expectedVersion: 1,
         name: 'X',
         permissionKeys: ['identity.platform-role.edit'],
       });
       const heldNoMore = await editPlatform.execute(asAdmin(LEAD), {
         roleId: HELD_ROLE,
+        expectedVersion: 1,
         name: 'Held',
         permissionKeys: ['identity.customer-account.view', 'identity.customer-account.disable'],
       });
@@ -635,11 +658,13 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       const { editPlatform } = setUp();
       const taken = await editPlatform.execute(asAdmin(ROOT), {
         roleId: HIGH_ROLE,
+        expectedVersion: 1,
         name: stored(HELD_ROLE)!.name!.toUpperCase(),
         permissionKeys: [...stored(HIGH_ROLE)!.permissionKeys],
       });
       const recase = await editPlatform.execute(asAdmin(ROOT), {
         roleId: HIGH_ROLE,
+        expectedVersion: 1,
         name: stored(HIGH_ROLE)!.name!.toUpperCase(),
         permissionKeys: [...stored(HIGH_ROLE)!.permissionKeys],
       });
@@ -651,8 +676,14 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
     it('deletes a custom role nobody holds, and refuses one a member holds (role.in-use)', async () => {
       const { deletePlatform } = setUp();
 
-      const held = await deletePlatform.execute(asAdmin(ROOT), { roleId: HELD_ROLE });
-      const free = await deletePlatform.execute(asAdmin(ROOT), { roleId: HIGH_ROLE });
+      const held = await deletePlatform.execute(asAdmin(ROOT), {
+        roleId: HELD_ROLE,
+        expectedVersion: 1,
+      });
+      const free = await deletePlatform.execute(asAdmin(ROOT), {
+        roleId: HIGH_ROLE,
+        expectedVersion: 1,
+      });
 
       expect(held).toEqual({ ok: false, error: { code: 'role.in-use' } });
       expect(stored(HELD_ROLE)).toBeDefined();
@@ -666,6 +697,121 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
         action: 'identity.role.deleted',
         before: { removedKeys: [...HIGH_KEYS].sort() },
       });
+    });
+
+    it('a stale expectedVersion is conflict.stale and writes nothing; the current one wins (happy path)', async () => {
+      const { editPlatform, deletePlatform } = setUp();
+      const keys = ['identity.seller-access.view'];
+
+      const first = await editPlatform.execute(asAdmin(ROOT), {
+        roleId: HIGH_ROLE,
+        expectedVersion: 1,
+        name: 'First save',
+        permissionKeys: keys,
+      });
+      expect(first).toEqual({ ok: true, value: { code: 'role.updated', roleId: HIGH_ROLE } });
+      expect(stored(HIGH_ROLE)!.version).toBe(2);
+      const events = fakes.events.length;
+
+      // The second tab still holds version 1: refused with the error the HTTP filter answers 409.
+      await expect(
+        editPlatform.execute(asAdmin(ROOT), {
+          roleId: HIGH_ROLE,
+          expectedVersion: 1,
+          name: 'Second save',
+          permissionKeys: keys,
+        }),
+      ).rejects.toBeInstanceOf(StaleAggregateError);
+      await expect(
+        deletePlatform.execute(asAdmin(ROOT), { roleId: HIGH_ROLE, expectedVersion: 1 }),
+      ).rejects.toBeInstanceOf(StaleAggregateError);
+      // A version from the future is just as stale.
+      await expect(
+        editPlatform.execute(asAdmin(ROOT), {
+          roleId: HIGH_ROLE,
+          expectedVersion: 3,
+          name: 'Third save',
+          permissionKeys: keys,
+        }),
+      ).rejects.toBeInstanceOf(StaleAggregateError);
+      expect(stored(HIGH_ROLE)).toMatchObject({ name: 'First save', version: 2 });
+      expect(fakes.events).toHaveLength(events);
+
+      expect(
+        await deletePlatform.execute(asAdmin(ROOT), { roleId: HIGH_ROLE, expectedVersion: 2 }),
+      ).toEqual({ ok: true, value: { code: 'role.deleted', roleId: HIGH_ROLE } });
+    });
+
+    it('a missing or invalid expectedVersion is validation.failed on that field and writes nothing', async () => {
+      const { editPlatform, deletePlatform, editSeller, deleteSeller } = setUp();
+      const refused = {
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'expectedVersion', code: 'type' }] },
+      };
+      for (const bad of [undefined, null, 0, -1, 1.5, '1', Number.NaN, Number.MAX_VALUE]) {
+        const expectedVersion = bad as unknown as number;
+        expect(
+          await editPlatform.execute(asAdmin(ROOT), {
+            roleId: HIGH_ROLE,
+            expectedVersion,
+            name: 'X',
+            permissionKeys: [],
+          }),
+        ).toEqual(refused);
+        expect(
+          await deletePlatform.execute(asAdmin(ROOT), { roleId: HIGH_ROLE, expectedVersion }),
+        ).toEqual(refused);
+        expect(
+          await editSeller.execute(asSeller(OWNER), {
+            roleId: SELLER_CUSTOM,
+            expectedVersion,
+            name: 'X',
+            permissionKeys: [],
+          }),
+        ).toEqual(refused);
+        expect(
+          await deleteSeller.execute(asSeller(OWNER), { roleId: SELLER_CUSTOM, expectedVersion }),
+        ).toEqual(refused);
+      }
+      expect(stored(HIGH_ROLE)!.version).toBe(1);
+      expect(stored(SELLER_CUSTOM)!.version).toBe(1);
+      expect(written()).toEqual({ events: 0, audits: 0 });
+    });
+
+    it('a role outside the actor’s reach stays role.unknown whatever version is sent (R9)', async () => {
+      const { editSeller, deleteSeller } = setUp();
+      for (const expectedVersion of [1, 99]) {
+        expect(
+          await editSeller.execute(asSeller(OWNER), {
+            roleId: OTHER_SELLER_CUSTOM,
+            expectedVersion,
+            name: 'X',
+            permissionKeys: [],
+          }),
+        ).toEqual({ ok: false, error: { code: 'role.unknown' } });
+        expect(
+          await deleteSeller.execute(asSeller(OWNER), {
+            roleId: OTHER_SELLER_CUSTOM,
+            expectedVersion,
+          }),
+        ).toEqual({ ok: false, error: { code: 'role.unknown' } });
+      }
+    });
+
+    it('the seller editor is versioned too: stale edit and delete are refused', async () => {
+      const { editSeller, deleteSeller } = setUp();
+      await expect(
+        editSeller.execute(asSeller(OWNER), {
+          roleId: SELLER_CUSTOM,
+          expectedVersion: 2,
+          name: 'Late',
+          permissionKeys: [],
+        }),
+      ).rejects.toBeInstanceOf(StaleAggregateError);
+      await expect(
+        deleteSeller.execute(asSeller(OWNER), { roleId: SELLER_CUSTOM, expectedVersion: 2 }),
+      ).rejects.toBeInstanceOf(StaleAggregateError);
+      expect(stored(SELLER_CUSTOM)).toBeDefined();
     });
 
     it('logs outcome codes with the correlation id and never a name or a key', async () => {
@@ -728,16 +874,24 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       expect(
         await editSeller.execute(asSeller(OWNER), {
           roleId: OTHER_SELLER_CUSTOM,
+          expectedVersion: 1,
           name: 'X',
           permissionKeys: [],
         }),
       ).toEqual({ ok: false, error: { code: 'role.unknown' } });
-      expect(await deleteSeller.execute(asSeller(OWNER), { roleId: OTHER_SELLER_CUSTOM })).toEqual({
+      expect(
+        await deleteSeller.execute(asSeller(OWNER), {
+          roleId: OTHER_SELLER_CUSTOM,
+          expectedVersion: 1,
+        }),
+      ).toEqual({
         ok: false,
         error: { code: 'role.unknown' },
       });
       // A platform role id is not a seller role.
-      expect(await deleteSeller.execute(asSeller(OWNER), { roleId: HIGH_ROLE })).toEqual({
+      expect(
+        await deleteSeller.execute(asSeller(OWNER), { roleId: HIGH_ROLE, expectedVersion: 1 }),
+      ).toEqual({
         ok: false,
         error: { code: 'role.unknown' },
       });
@@ -758,15 +912,20 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
       const edited = await editSeller.execute(asSeller(OWNER), {
         roleId: SELLER_CUSTOM,
+        expectedVersion: 1,
         name: 'Renamed',
         permissionKeys: unprotectedSeller.slice(0, 1),
       });
       const shared = await editSeller.execute(asSeller(OWNER), {
         roleId: roleOf('seller', 'store-manager'),
+        expectedVersion: 1,
         name: 'X',
         permissionKeys: [],
       });
-      const removed = await deleteSeller.execute(asSeller(OWNER), { roleId: SELLER_CUSTOM });
+      const removed = await deleteSeller.execute(asSeller(OWNER), {
+        roleId: SELLER_CUSTOM,
+        expectedVersion: 2,
+      });
 
       expect(edited.ok).toBe(true);
       expect(shared).toEqual({ ok: false, error: { code: 'role.read-only' } });
@@ -904,11 +1063,15 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
           const nameNow = state.name ?? 'Parity';
           const editAnswer = await edit.execute(asAdmin(actor), {
             roleId: row.roleId,
+            expectedVersion: row.version,
             name: nameNow,
             permissionKeys: keysNow,
           });
           const del = setUp().deletePlatform;
-          const deleteAnswer = await del.execute(asAdmin(actor), { roleId: row.roleId });
+          const deleteAnswer = await del.execute(asAdmin(actor), {
+            roleId: row.roleId,
+            expectedVersion: row.version,
+          });
           expect(row.actions.edit).toEqual(verdictOf(editAnswer as never));
           expect(row.actions.delete).toEqual(verdictOf(deleteAnswer as never));
           seen.add(`edit:${row.actions.edit.code}`);
@@ -963,11 +1126,13 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
           const state = stored(row.roleId)!;
           const editAnswer = await setUp().editSeller.execute(asSeller(actor), {
             roleId: row.roleId,
+            expectedVersion: row.version,
             name: state.name ?? 'Parity',
             permissionKeys: state.kind === 'custom' ? [...state.permissionKeys] : [],
           });
           const deleteAnswer = await setUp().deleteSeller.execute(asSeller(actor), {
             roleId: row.roleId,
+            expectedVersion: row.version,
           });
           expect(row.actions.edit).toEqual(verdictOf(editAnswer as never));
           expect(row.actions.delete).toEqual(verdictOf(deleteAnswer as never));

@@ -267,13 +267,41 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         actions: { edit: { allowed: true, code: null }, delete: { allowed: true, code: null } },
       });
 
+      expect(mine).toMatchObject({ version: 1 });
       const edited = await call('put', code, 'admin', `roles/${roleId}`, root, {
         name: 'Renamed',
         permissionKeys: ['identity.platform-role.view'],
+        expectedVersion: 1,
       });
       expect([edited.status, edited.body]).toEqual([200, { code: 'role.updated', roleId }]);
 
-      const removed = await call('delete', code, 'admin', `roles/${roleId}`, root);
+      // The tab that still holds version 1 is stale on both verbs; the read now says 2.
+      const staleEdit = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        name: 'Late',
+        permissionKeys: [],
+        expectedVersion: 1,
+      });
+      expect([staleEdit.status, (staleEdit.body as { code: string }).code]).toEqual([
+        409,
+        'conflict.stale',
+      ]);
+      const staleDelete = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: 1,
+      });
+      expect([staleDelete.status, (staleDelete.body as { code: string }).code]).toEqual([
+        409,
+        'conflict.stale',
+      ]);
+      const reread = await call('get', code, 'admin', 'roles', root);
+      expect(
+        (reread.body as { items: { roleId: string; version: number }[] }).items.find(
+          (item) => item.roleId === roleId,
+        )!.version,
+      ).toBe(2);
+
+      const removed = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: 2,
+      });
       expect([removed.status, removed.body]).toEqual([200, { code: 'role.deleted', roleId }]);
 
       const correlationId = created.headers['x-correlation-id'] as string;
@@ -324,25 +352,73 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         ],
         [
           'seeded role',
-          () => call('put', code, 'admin', `roles/${system}`, root, body),
+          () =>
+            call('put', code, 'admin', `roles/${system}`, root, { ...body, expectedVersion: 1 }),
           409,
           'role.read-only',
         ],
         [
+          'edit without a version',
+          () => call('put', code, 'admin', `roles/${roleId}`, root, body),
+          400,
+          'validation.failed',
+        ],
+        [
+          'edit with a text version',
+          () =>
+            call('put', code, 'admin', `roles/${roleId}`, root, { ...body, expectedVersion: '1' }),
+          400,
+          'validation.failed',
+        ],
+        [
+          'edit with version zero',
+          () =>
+            call('put', code, 'admin', `roles/${roleId}`, root, { ...body, expectedVersion: 0 }),
+          400,
+          'validation.failed',
+        ],
+        [
+          'delete without a body',
+          () => call('delete', code, 'admin', `roles/${roleId}`, root),
+          400,
+          'validation.failed',
+        ],
+        [
+          'delete without a version',
+          () => call('delete', code, 'admin', `roles/${roleId}`, root, {}),
+          400,
+          'validation.failed',
+        ],
+        [
+          'delete with a fractional version',
+          () => call('delete', code, 'admin', `roles/${roleId}`, root, { expectedVersion: 1.5 }),
+          400,
+          'validation.failed',
+        ],
+        [
+          'create may not carry a version',
+          () => call('post', code, 'admin', 'roles', root, { ...body, expectedVersion: 1 }),
+          400,
+          'validation.failed',
+        ],
+        [
           'malformed id',
-          () => call('delete', code, 'admin', 'roles/not-an-id', root),
+          () => call('delete', code, 'admin', 'roles/not-an-id', root, { expectedVersion: 1 }),
           404,
           'role.unknown',
         ],
         [
           'a seller role',
-          () => call('delete', code, 'admin', `roles/${OTHER_ROLE}`, root),
+          () => call('delete', code, 'admin', `roles/${OTHER_ROLE}`, root, { expectedVersion: 1 }),
           404,
           'role.unknown',
         ],
         [
           'viewer lacks the key',
-          () => call('delete', code, 'admin', `roles/${roleId}`, sessionOf(code, VIEWER, 'admin')),
+          () =>
+            call('delete', code, 'admin', `roles/${roleId}`, sessionOf(code, VIEWER, 'admin'), {
+              expectedVersion: 1,
+            }),
           403,
           'access.denied',
         ],
@@ -421,12 +497,31 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       const foreign = await call('put', code, 'seller', `roles/${OTHER_ROLE}`, owner, {
         name: 'X',
         permissionKeys: [],
+        expectedVersion: 1,
       });
       expect([foreign.status, (foreign.body as { code: string }).code]).toEqual([
         404,
         'role.unknown',
       ]);
-      expect((await call('delete', code, 'seller', `roles/${roleId}`, owner)).body).toEqual({
+      const staleSeller = await call('delete', code, 'seller', `roles/${roleId}`, owner, {
+        expectedVersion: 7,
+      });
+      expect([staleSeller.status, (staleSeller.body as { code: string }).code]).toEqual([
+        409,
+        'conflict.stale',
+      ]);
+      const unversioned = await call('put', code, 'seller', `roles/${roleId}`, owner, {
+        name: 'X',
+        permissionKeys: [],
+      });
+      expect([unversioned.status, (unversioned.body as { code: string }).code]).toEqual([
+        400,
+        'validation.failed',
+      ]);
+      expect(
+        (await call('delete', code, 'seller', `roles/${roleId}`, owner, { expectedVersion: 1 }))
+          .body,
+      ).toEqual({
         code: 'role.deleted',
         roleId,
       });
@@ -472,7 +567,9 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         version: 1,
       });
 
-      const inUse = await call('delete', code, 'admin', `roles/${roleId}`, root);
+      const inUse = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: 1,
+      });
       expect([inUse.status, inUse.body]).toEqual([409, { statusCode: 409, code: 'role.in-use' }]);
 
       // A write that loses the version race: the platform filter answers 409 conflict.stale.
@@ -483,6 +580,7 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         const stale = await call('put', code, 'admin', `roles/${roleId}`, root, {
           name: 'Held 2',
           permissionKeys: [],
+          expectedVersion: 1,
         });
         expect(stale.status).toBe(409);
         expect((stale.body as { code: string }).code).toBe('conflict.stale');
