@@ -186,14 +186,13 @@ function ppSaveFilter(canShare) {
     frame({ name: 'field-share', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [text('Who can use it', 'Body/Strong', 'text/primary'), who].concat(canShare ? [text('Everyone: every admin who can see products gets it as a tab.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })] : [])),
     frame({ name: 'footer', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Cancel', 'Secondary', 'Md'), btn('Save filter', 'Primary', 'Md')])]);
 }
-// 8 · Dialogs: save a filter (two roles), import products, deactivate and delete selected.
+// 8 · Dialogs: save a filter (two roles), deactivate and delete selected (Import opens its own page, below).
 function ppDialogs() {
   const save = ppSaveFilter(true);
   const saveOwn = ppSaveFilter(false);
-  const imp = dlg({ name: 'Import products', title: 'Import products', text: 'Upload a CSV or XLSX file with one product per row. Download the template to see the columns. We check every row first and show you what will be added and what has errors before anything is saved.', primary: 'Choose file', secondary: 'Download template' });
   const deact = dlg({ name: 'Deactivate products', title: 'Deactivate 3 products?', text: 'Customers stop seeing them and sellers can’t add new offers to them. Existing orders aren’t affected. You can activate them again at any time.', primary: 'Deactivate', secondary: 'Cancel' });
   const del = dlg({ name: 'Delete products', tone: 'Destructive', title: 'Delete 3 products?', text: 'They are removed from the catalog for customers and sellers, and the 18 offers on them end. Order history keeps them. You can’t undo this.', primary: 'Delete products', secondary: 'Cancel', focusCancel: true });
-  const scr = dialogScene(PP + ' · Dialogs', [save, saveOwn, imp, deact, del]);
+  const scr = dialogScene(PP + ' · Dialogs', [save, saveOwn, deact, del]);
   scr.setPluginData('proposal', 'admin-products');
   return scr;
 }
@@ -209,7 +208,133 @@ function ppStates() {
   tag(scr); scr.setPluginData('proposal', 'admin-products');
   return scr;
 }
-const PROPOSALS = { 'admin-products': { title: PP, rows: function () { return [[ppDefault(), ppSelected(), ppSearchFilter()], [ppFilterOpen(), ppSortOpen(), ppColumnsOpen()], [ppAllColumns(), ppDialogs(), ppStates()]]; } } };
+
+// ---- Admin · Catalog · Products · Import (owner, 30 Oct 20:20Z): a page of its own with three steps. Upload a CSV or XLSX file
+// (templates to download), check the file (counts, errors per row, nothing saved yet), then import after a confirmation, with a
+// progress bar and a final report; Done returns to the product list. Additions to the owner's brief: a column guide, the choice
+// of the status new products start in (Inactive by default), skipping rows with errors only by an explicit tick, a downloadable
+// error report, an import that keeps running if the page is left, and the file problems that stop a check (state board).
+const PI = PP + ' · Import';
+const PI_FILE = 'products-oct-2026.xlsx';
+const PI_COLUMNS = [['Title', true, 'Up to 120 characters'], ['Main category', true, 'A category name as it appears in Catalog > Categories'], ['Product type', true, 'Fresh meat, Bakery, Packaged food…'], ['Description', false, 'Plain text'], ['Brand', false, 'Leave empty for unbranded products'], ['Barcode (GTIN)', false, '8, 12, 13 or 14 digits'], ['Unit size', false, 'For example 500 g or 1 kg'], ['Image URL', false, 'https link to a JPG or PNG']];
+const PI_ERRORS = [['12', 'Main category', 'Fresh Meats', 'No category with this name'], ['47', 'Title', '(empty)', 'Title is required'], ['88', 'Barcode (GTIN)', '93123', 'Not a valid barcode length'], ['104', 'Product type', 'Meat', 'No product type with this name'], ['131', 'Image URL', 'http://img…/a.png', 'Use an https link'], ['206', 'Title', 'Lamb cutlets 500 g', 'Same title and brand as row 31']];
+function piSteps(active) {
+  const steps = ['Upload file', 'Check file', 'Import'];
+  return frame({ name: 'steps', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, steps.map(function (label, i) {
+    const n = i + 1; const done = n < active; const on = n === active;
+    const disc = frame({ name: 'disc', dir: 'H', w: 24, h: 24, align: 'center', justify: 'center', radius: 'radius/pill', fill: on || done ? 'action/primary' : 'bg/surface', stroke: on || done ? null : 'border/default' },
+      [done ? icon('check', 'text/on-accent', 14) : text(String(n), 'Caption/Strong', on ? 'text/on-accent' : 'text/muted')]);
+    return frame({ name: 'step ' + n, dir: 'H', gap: 'space/2', align: 'center' }, [disc, text(label, on ? 'Body/Strong' : 'Body/Default', on || done ? 'text/primary' : 'text/muted'), n < 3 ? rect({ name: 'line', w: 48, h: 1, fill: 'border/default' }) : null]);
+  }));
+}
+function piScreen(state, step, kids, right) {
+  const head = pageTitle('Import products', 'Add many products to the ' + PP_MARKET + ' catalog from one file.', right || [btn('Cancel', 'Ghost', 'Md')]);
+  const back = ppLink('Products', 'chevron-left', 'back');
+  const scr = screen(PI + ' · ' + state, 'Admin', 'nav-catalogue', 'Catalog / Products / Import', [back, head, piSteps(step)].concat(kids), { minH: PANEL_MIN_H, gap: 'space/4' });
+  scr.setPluginData('proposal', 'admin-products');
+  return scr;
+}
+function piSection(name, title, sub, kids, w) {
+  return card(name, [frame({ name: 'body', dir: 'V', gap: 'space/4', pad: 'space/5', sizeH: 'FILL' }, [frame({ name: 'head', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [text(title, 'Heading/H2', 'text/primary', { sizeH: 'FILL' }), sub ? text(sub, 'Body/Small', 'text/muted', { sizeH: 'FILL' }) : null])].concat(kids))], { sizeH: w ? undefined : 'FILL', w: w });
+}
+function piFileRow(meta, action) {
+  return frame({ name: 'file', dir: 'H', gap: 'space/3', align: 'center', pad: 'space/3', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [icon('file-text', 'icon/default', 20), frame({ name: 'file-text', dir: 'V', sizeH: 'FILL' }, [text(PI_FILE, 'Body/Strong'), text(meta, 'Caption/Default', 'text/muted')]), action || null]);
+}
+function piMeter(pct, w) { const m = inst('Meter', { Tone: 'Accent', Value: String(pct) }, { name: 'progress' }); m.resize(w || 640, 8); return m; }
+function piTiles(list) { return frame({ name: 'summary', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, list.map(function (t) { return card(t[0], [frame({ name: 'tile', dir: 'V', gap: 'space/1', pad: 'space/4', sizeH: 'FILL' }, [text(t[0], 'Body/Small Strong', 'text/secondary'), text(t[1], 'Heading/H1', t[2] || 'text/primary'), t[3] ? text(t[3], 'Caption/Default', 'text/muted') : null])]); })); }
+function piBanner(tone, title, body) { return inst('InfoBanner', { Tone: tone, Title: title, Body: body, 'Show action': false }, { name: 'banner', sizeH: 'FILL' }); }
+function piFooter(kids) { return frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', pad: ['space/4', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, kids); }
+function piStartAs() {
+  const seg = inst('SegmentedControl', { 'Segment 1': 'Inactive', 'Segment 2': 'Active' }, { name: 'start-as' }); const t = seg.findOne(function (n) { return n.name === 'segment-3'; }); if (t) t.visible = false;
+  return frame({ name: 'start-as-row', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [frame({ name: 'start-as-text', dir: 'V', sizeH: 'FILL' }, [text('New products start as', 'Body/Strong'), text('Inactive is safer: check them in the list, then activate them in bulk.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]), seg]);
+}
+// I1 · Upload: a drop area and the template with its column guide.
+function piUpload() {
+  const drop = frame({ name: 'drop-area', dir: 'V', gap: 'space/3', align: 'center', justify: 'center', h: 260, sizeH: 'FILL', fill: 'bg/subtle', stroke: 'border/input', dash: [6, 4], radius: 'radius/card' }, [
+    icon('file', 'icon/muted', 32), text('Drag a CSV or XLSX file here', 'Body/Strong'), text('or', 'Body/Small', 'text/muted'), btn('Choose file', 'Secondary', 'Md'), text('One product per row · up to 5,000 rows and 10 MB', 'Caption/Default', 'text/muted')]);
+  const upload = piSection('Upload', 'Upload a file', 'Nothing is saved until you finish the check and confirm the import.', [drop]);
+  const guide = frame({ name: 'columns', dir: 'V', sizeH: 'FILL' }, PI_COLUMNS.map(function (c) {
+    return frame({ name: 'column · ' + c[0], dir: 'H', gap: 'space/2', align: 'center', py: 'space/1-5', stroke: 'border/row', sides: ['bottom'], sizeH: 'FILL' }, [text(c[0], 'Body/Strong', 'text/primary', { w: 130 }), c[1] ? bdg('Neutral', 'None', 'Required') : null, frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), text(c[2], 'Caption/Default', 'text/muted')]);
+  }));
+  const tpl = piSection('Template', 'Template', 'Fill in the template by hand or export from your system with the same columns.', [
+    frame({ name: 'downloads', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [btn('CSV template', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'download' } }), btn('XLSX template', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'download' } })]),
+    guide, text('Certification tags are not imported: they belong to each seller’s offer, not to the product.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })], 520);
+  return piScreen('1 Upload', 1, [frame({ name: 'cols', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [upload, tpl])]);
+}
+// I2 · Checking the file: the progress of the check; it can be stopped.
+function piChecking() {
+  return piScreen('2 Checking', 2, [piSection('Check', 'Checking your file', 'We read every row and compare it with the catalog. Nothing is saved.', [piFileRow('1,240 rows · 2.4 MB', ppLink('Stop and choose another file', null, 'stop')), piMeter(50, 1100), text('Checking row 620 of 1,240…', 'Body/Small', 'text/muted')])]);
+}
+function piErrorTable() {
+  const head = headerRow([['Row', 80], ['Column', 170], ['Value in the file', 'fill'], ['Problem', 320]]);
+  const rows = PI_ERRORS.map(function (e) { return row([[text(e[0], 'Body/Strong'), 80], [text(e[1], 'Body/Default'), 170], [text(e[2], 'Body/Default', 'text/secondary', { sizeH: 'FILL', truncate: true }), 'fill'], [text(e[3], 'Body/Default', 'status/critical/fg'), 320]], false, false, 48); });
+  return card('Rows with errors', [head].concat(rows, [frame({ name: 'more', dir: 'H', pad: 'space/3', sizeH: 'FILL' }, [text('Showing 6 of 30 rows with errors', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), ppLink('Download error report (CSV)', 'download', 'error-report')])]));
+}
+// I3 · Check finished with errors: counts, rows to fix, an explicit choice to skip them, then Import.
+function piResultErrors() {
+  const skip = inst('CheckboxRow', { Value: 'Checked', State: 'Default', Label: 'Skip the 30 rows with errors', Description: 'Import button stays off until this is ticked or the file has no errors.' }, { name: 'skip-errors', sizeH: 'FILL' });
+  return piScreen('3 Check result, errors', 2, [
+    piFileRow('Checked at 8:24 pm · 1,240 rows', ppLink('Upload a corrected file', 'refresh-cw', 'replace')),
+    piTiles([['Rows in the file', '1,240'], ['Ready to import', '1,198', 'status/success/fg'], ['Errors', '30', 'status/critical/fg', 'These rows are not imported'], ['Warnings', '12', 'status/attention/fg', 'Imported; check them later']]),
+    piBanner('Attention', '30 rows have errors', 'Fix them in your file and upload it again, or import the valid rows now and add the rest later.'),
+    piErrorTable(),
+    piSection('Settings', 'Before you import', null, [piStartAs(), skip]),
+    piFooter([btn('Back', 'Secondary', 'Md'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Import 1,198 products', 'Primary', 'Md')])]);
+}
+// I4 · Check finished, all rows ready: a preview of the first rows.
+function piResultOk() {
+  const head = headerRow([['Title', 'fill'], ['Main category', 180], ['Product type', 180], ['Brand', 160]]);
+  const prev = [['Lamb shoulder 1 kg', 'Meat', 'Fresh meat', '—'], ['Chicken drumsticks 1 kg', 'Poultry', 'Fresh meat', '—'], ['Lebanese bread 6 pack', 'Bakery', 'Bakery', 'Sunrise Bakery'], ['Red lentils 2 kg', 'Pantry', 'Packaged food', 'Golden Field'], ['Sumac 100 g', 'Pantry', 'Packaged food', 'Golden Field']];
+  const table = card('Preview', [head].concat(prev.map(function (r) { return row([[text(r[0], 'Body/Strong'), 'fill'], [text(r[1], 'Body/Default'), 180], [text(r[2], 'Body/Default'), 180], [text(r[3], 'Body/Default'), 160]], false, false, 48); }), [frame({ name: 'more', dir: 'H', pad: 'space/3', sizeH: 'FILL' }, [text('First 5 of 1,240 rows', 'Body/Small', 'text/muted')])]));
+  return piScreen('4 Check result, all ready', 2, [
+    piFileRow('Checked at 8:24 pm · 1,240 rows', ppLink('Choose another file', 'refresh-cw', 'replace')),
+    piTiles([['Rows in the file', '1,240'], ['Ready to import', '1,240', 'status/success/fg'], ['Errors', '0'], ['Warnings', '0']]),
+    piBanner('Success', 'All 1,240 rows are ready to import', 'Nothing has been saved yet. Check the settings below, then import.'),
+    table, piSection('Settings', 'Before you import', null, [piStartAs()]),
+    piFooter([btn('Back', 'Secondary', 'Md'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Import 1,240 products', 'Primary', 'Md')])]);
+}
+// I5 · Confirm: what will happen, in numbers.
+function piConfirm() {
+  const d = dlg({ name: 'Confirm import', title: 'Import 1,198 products?', text: 'They are added to the Australia catalog as Inactive products. The 30 rows with errors are skipped. It can take a few minutes, and you can leave this page while it runs.', primary: 'Import products', secondary: 'Cancel' });
+  const scr = dialogScene(PI + ' · 5 Confirm', [d]);
+  scr.setPluginData('proposal', 'admin-products');
+  return scr;
+}
+// I6 · Importing: a progress bar; it keeps running if the admin leaves.
+function piImporting() {
+  return piScreen('6 Importing', 3, [piSection('Progress', 'Importing products', null, [piFileRow('1,198 products to add'), piMeter(50, 1100),
+    frame({ name: 'progress-text', dir: 'H', sizeH: 'FILL' }, [text('599 of 1,198 added', 'Body/Strong', 'text/primary', { sizeH: 'FILL' }), text('About 1 minute left', 'Body/Small', 'text/muted')]),
+    piBanner('Info', 'You can leave this page', 'The import keeps running. You get a notification when it finishes, and the report stays under Import history.')])], [btn('Back to products', 'Secondary', 'Md')]);
+}
+// I7 · Finished: the report, a download of it, and Done back to the list.
+function piDone() {
+  const failed = card('Not imported', [headerRow([['Row', 80], ['Title', 'fill'], ['Reason', 360]])].concat([['301', 'Ghee 400 g', 'A product with this title and brand was added a moment ago by another admin'], ['877', 'Halwa 250 g', 'The main category was deactivated during the import']].map(function (r) { return row([[text(r[0], 'Body/Strong'), 80], [text(r[1], 'Body/Default'), 'fill'], [text(r[2], 'Body/Small', 'text/secondary', { sizeH: 'FILL' }), 360]], false, false, 56); })));
+  return piScreen('7 Finished', 3, [
+    piBanner('Success', 'Import finished: 1,196 products added', 'They are Inactive. Open them in the list to check them, then activate them in bulk.'),
+    piTiles([['Added', '1,196', 'status/success/fg'], ['Skipped at check', '30', null, 'Rows with errors'], ['Not imported', '2', 'status/critical/fg', 'See the list below'], ['Time', '2 min 10 s']]),
+    failed,
+    piFooter([ppLink('Download full report (CSV)', 'download', 'report'), ppLink('View the imported products', 'external-link', 'view-imported'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Done', 'Primary', 'Md')])], [btn('Import another file', 'Secondary', 'Md')]);
+}
+// I8 · Back on the list after Done: a toast and the Inactive tab ready.
+function piBackOnList() {
+  const scr = ppScreen('After import (Done)', [ppHeader(), ppViews('Inactive'), ppToolbar(), ppTable({ showInactive: true, range: '1–25 of 1,332 products' })]);
+  const t = inst('Toast', { Tone: 'Success', Message: '1,196 products imported as Inactive.', 'Show action': true, Action: 'View report' }, { name: 'toast' });
+  setMeta(t, { abs: [1440 - 400 - 24, 900 - 80] }); add(scr, t);
+  return scr;
+}
+// I9 · Problems that stop the check, and an import that stops part way.
+function piStates() {
+  const st = [['Wrong file type', 'Critical', 'This file type can’t be imported', 'Choose a CSV or XLSX file. Other formats, such as PDF or Numbers, are not read.'],
+    ['File too large', 'Critical', 'The file has 7,820 rows', 'Import up to 5,000 rows at a time. Split the file into two and import them one after the other.'],
+    ['Columns don’t match', 'Critical', 'The column Main category is missing', 'Use the template, or rename the column in your file. Columns we don’t know are ignored and listed in the report.'],
+    ['Empty file', 'Attention', 'The file has no product rows', 'Only the header row was found. Add one product per row below it.'],
+    ['Import stopped part way', 'Critical', 'The import stopped after 640 products', 'The 640 products added are kept. Import the remaining 558 rows from the report, with Retry the rest.']];
+  const cells = st.map(function (s) { return frame({ name: s[0], dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [text(s[0], 'Caption/Strong', 'text/muted'), piBanner(s[1], s[2], s[3])]); });
+  const scr = frame({ name: PI + ' · States', dir: 'V', w: 900, pad: 40, gap: 'space/5', fill: 'bg/page' }, [text('Import: problems', 'Heading/H1'), para('Each message shows on the step where it happens, under the file, with what to do next. The check never saves anything, so a problem there leaves the catalog unchanged.', 800)].concat(cells));
+  tag(scr); scr.setPluginData('proposal', 'admin-products');
+  return scr;
+}
+const PROPOSALS = { 'admin-products': { title: PP, rows: function () { return [[ppDefault(), ppSelected(), ppSearchFilter()], [ppFilterOpen(), ppSortOpen(), ppColumnsOpen()], [ppAllColumns(), ppDialogs(), ppStates()], [piUpload(), piChecking(), piResultErrors()], [piResultOk(), piConfirm(), piImporting()], [piDone(), piBackOnList(), piStates()]]; } } };
 
 async function buildProposal(key) {
   STEP = 0; STEPS = 3; S.report = [];
