@@ -23,6 +23,7 @@ export function UserMenu({
   const links: readonly AccountMenuLink[] = [
     { id: 'profile', label: t('profile'), href: '/account/profile', icon: 'user' },
     { id: 'sessions', label: t('sessions'), href: '/account/sessions', icon: 'monitor' },
+    { id: 'security', label: t('security'), href: '/account/security', icon: 'shield-check' },
   ];
 
   async function signOut(): Promise<boolean> {

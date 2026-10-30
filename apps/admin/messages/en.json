@@ -19,6 +19,7 @@
     "pages": "Your account",
     "profile": "My profile",
     "sessions": "Signed-in devices",
+    "security": "Account security",
     "sign-out": "Sign out",
     "signing-out": "Signing out…",
     "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
@@ -2203,7 +2204,8 @@
       "denied": "You don't have permission to do that.",
       "unavailable": "We can't do that right now. Try again in a moment.",
       "network": "You're offline or the connection dropped. Check it and try again.",
-      "unknown": "Something went wrong on our side. Try again."
+      "unknown": "Something went wrong on our side. Try again.",
+      "replace-unavailable": "Nothing is waiting to be confirmed. Start again from your current code."
     }
   },
   "sessions": {
@@ -2458,8 +2460,8 @@
     "wait-note": "Just signed in? Wait for your authenticator app to show a new code before you enter it. The code you used to sign in cannot be used again.",
     "action": {
       "commission-payouts": {
-        "commission-rate": {
-          "edit": "change this seller's commission rate"
+        "dispute": {
+          "attribute": "record a dispute decision"
         }
       },
       "wallet": {
@@ -2471,12 +2473,7 @@
           "approve": "decide a credit request"
         }
       },
-      "fallback": "do this",
-      "commission-payouts": {
-        "dispute": {
-          "attribute": "record a dispute decision"
-        }
-      }
+      "fallback": "do this"
     },
     "label": {
       "code": "6-digit code",
@@ -2904,6 +2901,55 @@
         "not-found": "This case or seller order no longer exists.",
         "unknown": "The decision could not be saved. Try again."
       }
+    }
+  },
+  "security": {
+    "title": "Account security",
+    "description": "How you sign in to the admin panel. This page is only about your own account.",
+    "unavailable": "We couldn't load your account security. Try again.",
+    "two-step": {
+      "title": "Two-step verification",
+      "description": "A code from your authenticator app, asked for each time you sign in.",
+      "status": "Status",
+      "on": "On",
+      "off": "Off",
+      "cannot-turn-off": "Two-step verification cannot be turned off for an admin account.",
+      "off-guidance": "Two-step verification is not set up on this account. Ask an admin with Roles & permissions to send you a reset link."
+    },
+    "replace": {
+      "label": "Authenticator app",
+      "help": "Move your codes to a new phone. Your current app keeps working until the new one is confirmed.",
+      "action": "Replace authenticator",
+      "in-progress": "Replacing your authenticator, finish the steps below.",
+      "verify-title": "Confirm it is you",
+      "verify-body": "Enter the current code from your authenticator app, or a backup code.",
+      "current-code": "Current 6-digit code",
+      "continue": "Continue",
+      "cancel": "Cancel",
+      "secret-title": "Add the new device",
+      "secret-body": "In the authenticator app on your new device, add this account, then enter the 6-digit code it shows.",
+      "qr-label": "QR code for your authenticator app",
+      "scan": "Scan this code with the authenticator app on your new phone.",
+      "cannot-scan": "Can't scan it? Enter this key in the app instead.",
+      "key-label": "Setup key",
+      "copy": "Copy key",
+      "copied": "Copied",
+      "new-code": "6-digit code from the new device",
+      "confirm": "Replace authenticator",
+      "effect": "When you confirm, your other devices are signed out and we email you a notice. You stay signed in here.",
+      "done": "Your authenticator was replaced. Your other devices were signed out."
+    },
+    "lost": {
+      "title": "Lost your phone?",
+      "label": "No access to your authenticator",
+      "help": "You cannot replace it here without a current code or a backup code.",
+      "guidance": "Ask an admin with Roles & permissions to send you a reset link."
+    },
+    "sessions": {
+      "title": "Signed-in devices",
+      "label": "Where you are signed in",
+      "help": "See your open sessions and sign out of the others.",
+      "link": "Open signed-in devices"
     }
   }
 }

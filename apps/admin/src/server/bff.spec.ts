@@ -497,6 +497,20 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', password)).status).toBe(404);
   });
 
+  it('relays the own authenticator replacement (POST) on its two exact paths only', async () => {
+    for (const path of [
+      'identity/admin/second-factor/replacement',
+      'identity/admin/second-factor/replacement/confirm',
+    ]) {
+      expect((await call('POST', path)).status, path).toBe(200);
+      expect((await call('PUT', path)).status, path).toBe(404);
+      expect((await call('DELETE', path)).status, path).toBe(404);
+      expect((await call('POST', `${path}/extra`)).status, path).toBe(404);
+    }
+    // Recovery codes are not part of this page.
+    expect((await call('POST', 'identity/admin/second-factor/recovery-codes')).status).toBe(404);
+  });
+
   it('no longer relays the retired flat delivery fee route', async () => {
     expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
     expect((await call('PUT', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(200);

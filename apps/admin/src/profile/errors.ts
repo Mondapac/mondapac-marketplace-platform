@@ -74,3 +74,17 @@ export function passwordProblemOf(
 export function sessionsProblemOf(failure: ApiFailure): Problem {
   return formProblem(failure);
 }
+
+/** The problem of a refused authenticator replacement (either step). */
+export function replacementProblemOf(failure: ApiFailure): Problem {
+  switch (failure.code) {
+    case 'second-factor.invalid':
+      return { key: 'code-rejected', field: 'code' };
+    case 'validation.failed':
+      return { key: 'code-required', field: 'code' };
+    case 'second-factor.unavailable':
+      return { key: 'replace-unavailable', field: null };
+    default:
+      return formProblem(failure);
+  }
+}

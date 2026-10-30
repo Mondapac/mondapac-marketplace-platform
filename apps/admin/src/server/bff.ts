@@ -83,6 +83,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/reset-password',
     // The signed-in admin's own password; the body carries a code from the app.
     'identity/admin/change-password',
+    // The signed-in admin moves their own authenticator to a new device: a code from the current
+    // app starts it, a code from the new one completes it (the session continues with a new
+    // cookie, which the relay passes on).
+    'identity/admin/second-factor/replacement',
+    'identity/admin/second-factor/replacement/confirm',
     'identity/admin/invitation/enrolment',
     'identity/admin/invitation/accept',
     'identity/admin/roles',
