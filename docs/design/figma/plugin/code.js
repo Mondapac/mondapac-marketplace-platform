@@ -6597,12 +6597,12 @@ function psDelivery(state, o) {
   return psScreen('Admin · Delivery rules · ' + state, 'Admin', 'Settings / Delivery / Delivery rules', [frame({ name: 'Settings layout', dir: 'H', gap: 'space/6', align: 'start', sizeH: 'FILL' }, [psSubNav(PS_ADMIN_GROUPS, 'Delivery rules'), content])], o.overlay);
 }
 // The seller Store profile page in a given state: the same template, sub-navigation, save bar and states as the admin pages.
-// The Error and Disabled variants of Textarea 1.9.0 keep an empty, hug-width value text: stretch it so a set Value wraps at the field width.
+// Textarea 1.9.0 wraps a set Value only in its Filled variant (the Error and Disabled variants keep a hug-width value text),
+// so those two states are drawn with the same tokens as the component.
 function psTextarea(value, state) {
-  const t = inst('Textarea', { State: state || 'Filled', Value: value }, { name: 'textarea', sizeH: 'FILL' });
-  const v = t.findOne(function (x) { return x.name === 'value'; });
-  if (v) { try { v.layoutSizingHorizontal = 'FILL'; v.textAutoResize = 'HEIGHT'; } catch (e) { /* the variant already fills */ } }
-  return t;
+  if (!state || state === 'Filled') return inst('Textarea', { State: 'Filled', Value: value }, { name: 'textarea', sizeH: 'FILL' });
+  const err = state === 'Error';
+  return frame({ name: 'textarea · ' + state, dir: 'V', pad: 'space/2-5', fill: err ? 'bg/surface' : 'bg/muted', stroke: err ? 'status/critical/solid' : 'border/input', radius: 'radius/control', sizeH: 'FILL' }, [text(value, 'Body/Default', err ? 'text/primary' : 'text/muted', { name: 'value', sizeH: 'FILL' })]);
 }
 function psPicture(kind, w, h, dis) {
   return frame({ name: kind, dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [rect({ name: kind + ' preview', w: w, h: h, fill: 'bg/muted', radius: 'radius/control' }), psSp(), btn('Replace', 'Secondary', 'Sm', dis ? { State: 'Disabled' } : {}), btn('Remove', 'Ghost', 'Sm', dis ? { State: 'Disabled' } : {})]);
