@@ -72,7 +72,7 @@ export function SaveBar({
       aria-label={labels.region}
       className={`sticky z-10 flex flex-wrap items-center gap-3 rounded-lg border border-line-control bg-surface px-4 py-3 shadow-(--mp-shadow-elevation-floating) ${aboveBottomBar ? 'bottom-[calc(var(--mp-size-bottom-bar)+0.75rem+env(safe-area-inset-bottom))] md:bottom-3' : 'bottom-3'}`}
     >
-      <p role="status" className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg">
+      <p role="status" className="flex min-w-0 basis-full items-center gap-2 text-sm text-fg sm:flex-1 sm:basis-0">
         <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-attention-solid" />
         <span className="min-w-0 break-words">
           {summary}
@@ -81,7 +81,7 @@ export function SaveBar({
           ) : null}
         </span>
       </p>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="ms-auto flex shrink-0 items-center gap-3">
         <Button variant="secondary" disabled={saving} onClick={onDiscard}>
           {labels.discard}
         </Button>
