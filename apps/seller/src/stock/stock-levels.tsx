@@ -146,7 +146,7 @@ export function StockLevels({
     return (
       <Banner tone="attention">
         <p>{t('stock.levels.no-locations')}</p>
-        <a className="font-medium text-link underline" href="/stock-locations">
+        <a className="font-medium text-link underline" href="/settings/stock-locations">
           {t('stock.title')}
         </a>
       </Banner>

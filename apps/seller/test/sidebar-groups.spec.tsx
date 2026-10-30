@@ -186,40 +186,46 @@ describe('grouped sidebar', () => {
 
 describe('seller menu structure', () => {
   const ALL = sellerNav.items.flatMap((item) => item.anyOf ?? []);
+  const WORK = ['s_home', 's_orders', 's_products', 's_offers', 's_earnings'];
 
-  it('shows the grouped tree of an approved seller and only setup before approval', () => {
+  it('shows daily work in the menu and Settings in the footer, and only setup before approval', () => {
     const ids = (state: 'approved' | 'pending') =>
       sellerNavItems(state, ALL).map((item) => item.id);
-    expect(ids('approved')).toEqual([
-      's_home',
-      's_orders',
-      's_products',
-      's_offers',
-      's_stock',
-      's_store_profile',
-      's_earnings',
-      's_payout',
-      's_team',
-      's_settings',
-    ]);
+    expect(ids('approved')).toEqual([...WORK, 's_settings']);
     expect(ids('pending')).toEqual(['s_setup']);
+    expect(sellerNavItems('pending', ALL).some((item) => item.placement === 'footer')).toBe(false);
   });
 
-  it('shows Stock locations and Payout account only with their view permission', () => {
-    const ids = (keys: string[]) => sellerNavItems('approved', keys).map((item) => item.id);
-    expect(ids([])).not.toContain('s_stock');
-    expect(ids([])).not.toContain('s_payout');
-    expect(ids(['inventory.stock.view'])).toContain('s_stock');
-    expect(ids(['payments.payout-account.view'])).toContain('s_payout');
+  it('moves the set-once pages out of the menu, and personal Security out of the sidebar', () => {
+    const all = sellerNav.items.map((item) => item.id);
+    for (const gone of ['s_stock', 's_store_profile', 's_payout', 's_team', 's_delivery']) {
+      expect(all, gone).not.toContain(gone);
+    }
+    expect(sellerNav.items.some((item) => item.href === '/account/security')).toBe(false);
+    expect(sellerNav.groups?.map((group) => group.id)).toEqual(['orders', 'catalogue', 'money']);
   });
 
-  it('puts Store profile in My store, behind its own permission; sellers have no delivery page', () => {
+  it('pins one Settings item to the footer for any settings view key', () => {
+    const footer = sellerNav.items.filter((item) => item.placement === 'footer');
+    expect(footer.map((item) => [item.id, item.href, item.group])).toEqual([
+      ['s_settings', '/settings', undefined],
+    ]);
     const ids = (keys: string[]) => sellerNavItems('approved', keys).map((item) => item.id);
-    const groups = sellerNav.groups?.map((group) => group.id);
-    expect(groups?.indexOf('store')).toBe((groups?.indexOf('catalogue') ?? -2) + 1);
-    expect(groups?.indexOf('money')).toBe((groups?.indexOf('store') ?? -2) + 1);
-    expect(ids([])).not.toContain('s_store_profile');
-    expect(ids(['sellers.store-profile.view'])).toContain('s_store_profile');
-    expect(ids(['sellers.store-settings.edit'])).not.toContain('s_delivery');
+    for (const key of [
+      'sellers.store-profile.view',
+      'inventory.stock.view',
+      'payments.payout-account.view',
+      'identity.team-member.view',
+    ]) {
+      expect(ids([key]), key).toContain('s_settings');
+    }
+  });
+
+  it('hides Settings without a view key; manage keys and work keys alone do not show it', () => {
+    const ids = (keys: string[]) => sellerNavItems('approved', keys).map((item) => item.id);
+    expect(ids([])).not.toContain('s_settings');
+    expect(
+      ids(['inventory.source.edit', 'catalog.own-product.view', 'ordering.seller-order.view']),
+    ).not.toContain('s_settings');
   });
 });

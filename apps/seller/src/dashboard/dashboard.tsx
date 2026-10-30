@@ -57,11 +57,15 @@ const OPEN_OFFERS = ['changes-needed', 'pending-first-publish'] as const;
 /** Quick actions: each needs the keys of the page it opens (the same as that page checks). */
 const ACTIONS = [
   { id: 'add-product', href: '/products/new', anyOf: ['catalog.own-product.edit'] },
-  { id: 'stock-locations', href: '/stock-locations', anyOf: ['inventory.stock.view'] },
-  { id: 'payout-account', href: '/payout-account', anyOf: ['payments.payout-account.view'] },
+  { id: 'stock-locations', href: '/settings/stock-locations', anyOf: ['inventory.stock.view'] },
+  {
+    id: 'payout-account',
+    href: '/settings/payout-account',
+    anyOf: ['payments.payout-account.view'],
+  },
   {
     id: 'invite-team',
-    href: '/team',
+    href: '/settings/team',
     anyOf: ['identity.team-member.view', 'identity.team-member.invite'],
   },
 ] as const;
@@ -93,7 +97,7 @@ function Notices({ data }: { readonly data: SellerDashboardData }) {
       <Banner key="payout" tone="attention" title={t('notice.payout.title')}>
         <p>
           {t('notice.payout.body')}{' '}
-          <a className="font-medium underline" href="/payout-account">
+          <a className="font-medium underline" href="/settings/payout-account">
             {t('notice.payout.action')}
           </a>
         </p>
@@ -106,7 +110,7 @@ function Notices({ data }: { readonly data: SellerDashboardData }) {
       <Banner key="sources" tone="attention" title={t('notice.sources.title')}>
         <p>
           {t('notice.sources.body')}{' '}
-          <a className="font-medium underline" href="/stock-locations">
+          <a className="font-medium underline" href="/settings/stock-locations">
             {t('notice.sources.action')}
           </a>
         </p>

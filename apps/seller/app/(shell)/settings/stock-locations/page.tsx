@@ -1,9 +1,9 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, NoAccess } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { SellerShell } from '../../../src/server/seller-shell.tsx';
-import { loadStockPage } from '../../../src/server/stock-page.ts';
-import { StockLocations } from '../../../src/stock/stock-locations.tsx';
-import { SOURCE_EDIT_PERMISSION } from '../../../src/stock/types.ts';
+import { loadStockPage } from '../../../../src/server/stock-page.ts';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
+import { StockLocations } from '../../../../src/stock/stock-locations.tsx';
+import { SOURCE_EDIT_PERMISSION } from '../../../../src/stock/types.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -18,15 +18,18 @@ export default async function StockLocationsPage() {
   }
   if (page.kind === 'no-access') {
     return (
-      <SellerShell session={page.session} activeId="s_stock" title={t('stock.title')}>
-        <h1 className="mb-6 text-2xl font-semibold">{t('stock.title')}</h1>
-        <h2 className="mb-2 text-lg font-semibold">{t('catalog.no-access.title')}</h2>
-        <p className="text-fg-muted">{t('catalog.no-access.body')}</p>
-      </SellerShell>
+      <SettingsShell session={page.session} linkId="stock-locations" title={t('stock.title')}>
+        <NoAccess
+          title={t('stock.no-access.title')}
+          body={t('stock.no-access.body')}
+          backHref="/settings"
+          backLabel={t('settings.sub.back')}
+        />
+      </SettingsShell>
     );
   }
   return (
-    <SellerShell session={page.session} activeId="s_stock" title={t('stock.title')}>
+    <SettingsShell session={page.session} linkId="stock-locations" title={t('stock.title')}>
       <h1 className="mb-6 text-2xl font-semibold">{t('stock.title')}</h1>
       <StockLocations
         initial={page.view}
@@ -34,6 +37,6 @@ export default async function StockLocationsPage() {
         csrfToken={page.session.csrfToken}
         canEdit={page.session.permissionKeys.includes(SOURCE_EDIT_PERMISSION)}
       />
-    </SellerShell>
+    </SettingsShell>
   );
 }

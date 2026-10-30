@@ -38,20 +38,14 @@
     "offers": "Offers",
     "orders": "Orders",
     "earnings": "Earnings",
-    "team": "Team",
-    "stock": "Stock locations",
-    "payout": "Payout account",
-    "store-profile": "Store profile",
-    "security": "Security",
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
     "group": {
       "orders": "Orders",
       "catalogue": "Catalogue",
-      "store": "My store",
-      "money": "Money",
-      "team": "Team & settings"
-    }
+      "money": "Money"
+    },
+    "settings": "Settings"
   },
   "home": {
     "title": "Dashboard",
@@ -1170,6 +1164,10 @@
         "not-found": "This offer or location was not found. Reload the page."
       },
       "on-hand": "Units in stock"
+    },
+    "no-access": {
+      "title": "You don't have access to this page",
+      "body": "Ask the account owner to give you permission to view stock locations."
     }
   },
   "orders": {
@@ -1882,6 +1880,10 @@
         "unavailable": "The store profile is unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "no-access": {
+      "title": "You don't have access to this page",
+      "body": "Ask the account owner to give you permission to view the store profile."
     }
   },
   "disputes": {
@@ -1892,6 +1894,31 @@
       "title": "Disputed orders",
       "order": "Order {id}",
       "since": "Since {when}"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "back-home": "Back to dashboard",
+    "hub": {
+      "description": "Set up how your store works. Changes here apply to your whole store.",
+      "view-only": "View only",
+      "no-access-title": "You don't have access to settings",
+      "no-access-body": "Your role doesn't include any settings page. Ask the account owner to add one.",
+      "group": {
+        "store": "Store",
+        "money": "Money",
+        "team": "Team"
+      },
+      "link": {
+        "store-profile": "Store profile",
+        "stock-locations": "Stock locations",
+        "payout-account": "Payout account",
+        "team": "Members"
+      }
+    },
+    "sub": {
+      "label": "Settings pages",
+      "back": "Back to Settings"
     }
   }
 }
