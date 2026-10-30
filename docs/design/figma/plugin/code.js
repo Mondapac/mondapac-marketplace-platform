@@ -6597,7 +6597,13 @@ function psDelivery(state, o) {
   return psScreen('Admin · Delivery rules · ' + state, 'Admin', 'Settings / Delivery / Delivery rules', [frame({ name: 'Settings layout', dir: 'H', gap: 'space/6', align: 'start', sizeH: 'FILL' }, [psSubNav(PS_ADMIN_GROUPS, 'Delivery rules'), content])], o.overlay);
 }
 // The seller Store profile page in a given state: the same template, sub-navigation, save bar and states as the admin pages.
-function psTextarea(value, state) { return inst('Textarea', { State: state || 'Filled', Value: value }, { name: 'textarea', sizeH: 'FILL' }); }
+// The Error and Disabled variants of Textarea 1.9.0 keep an empty, hug-width value text: stretch it so a set Value wraps at the field width.
+function psTextarea(value, state) {
+  const t = inst('Textarea', { State: state || 'Filled', Value: value }, { name: 'textarea', sizeH: 'FILL' });
+  const v = t.findOne(function (x) { return x.name === 'value'; });
+  if (v) { try { v.layoutSizingHorizontal = 'FILL'; v.textAutoResize = 'HEIGHT'; } catch (e) { /* the variant already fills */ } }
+  return t;
+}
 function psPicture(kind, w, h, dis) {
   return frame({ name: kind, dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [rect({ name: kind + ' preview', w: w, h: h, fill: 'bg/muted', radius: 'radius/control' }), psSp(), btn('Replace', 'Secondary', 'Sm', dis ? { State: 'Disabled' } : {}), btn('Remove', 'Ghost', 'Sm', dis ? { State: 'Disabled' } : {})]);
 }
