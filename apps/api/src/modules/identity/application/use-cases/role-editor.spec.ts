@@ -604,21 +604,22 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
     it('answers role.unknown for a missing role, a seller role and another Market’s role (R9)', async () => {
       const { editPlatform, deletePlatform } = setUp();
+      // A wrong version must not tell "exists but stale" from "does not exist": no oracle.
       for (const roleId of [roleIdOf(99), SELLER_CUSTOM, roleIdOf(90)]) {
-        expect(
-          await editPlatform.execute(asAdmin(ROOT), {
-            roleId,
-            expectedVersion: 1,
-            name: 'X',
-            permissionKeys: [],
-          }),
-        ).toEqual({ ok: false, error: { code: 'role.unknown' } });
-        expect(await deletePlatform.execute(asAdmin(ROOT), { roleId, expectedVersion: 1 })).toEqual(
-          {
+        for (const expectedVersion of [1, 99]) {
+          expect(
+            await editPlatform.execute(asAdmin(ROOT), {
+              roleId,
+              expectedVersion,
+              name: 'X',
+              permissionKeys: [],
+            }),
+          ).toEqual({ ok: false, error: { code: 'role.unknown' } });
+          expect(await deletePlatform.execute(asAdmin(ROOT), { roleId, expectedVersion })).toEqual({
             ok: false,
             error: { code: 'role.unknown' },
-          },
-        );
+          });
+        }
       }
     });
 
@@ -712,6 +713,8 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       expect(first).toEqual({ ok: true, value: { code: 'role.updated', roleId: HIGH_ROLE } });
       expect(stored(HIGH_ROLE)!.version).toBe(2);
       const events = fakes.events.length;
+      const afterFirst = written();
+      const spy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       // The second tab still holds version 1: refused with the error the HTTP filter answers 409.
       await expect(
@@ -736,6 +739,15 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       ).rejects.toBeInstanceOf(StaleAggregateError);
       expect(stored(HIGH_ROLE)).toMatchObject({ name: 'First save', version: 2 });
       expect(fakes.events).toHaveLength(events);
+      // Nothing more was written: not an event, not an audit row.
+      expect(written()).toEqual(afterFirst);
+      const lines = spy.mock.calls.map(([entry]) => entry as Record<string, unknown>);
+      spy.mockRestore();
+      expect(lines.filter((l) => l.outcome === 'conflict.stale').map((l) => l.msg)).toEqual([
+        'identity.edit-platform-role',
+        'identity.delete-platform-role',
+        'identity.edit-platform-role',
+      ]);
 
       expect(
         await deletePlatform.execute(asAdmin(ROOT), { roleId: HIGH_ROLE, expectedVersion: 2 }),
