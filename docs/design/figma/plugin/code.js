@@ -6310,7 +6310,7 @@ function ppActionItem(state, label, ic, desc) {
 function ppActionsMenu(n) {
   return ppPopover('Bulk action menu (open)', 300, [
     text(n + ' products selected', 'Caption/Strong', 'text/muted', { name: 'title' }),
-    frame({ name: 'items', dir: 'V', sizeH: 'FILL' }, [ppActionItem('Default', 'Activate', 'check'), ppActionItem('Default', 'Deactivate', 'ban'), ppActionItem('Destructive', 'Delete…', 'trash')]),
+    frame({ name: 'items', dir: 'V', sizeH: 'FILL' }, [ppActionItem('Default', 'Activate', 'check'), ppActionItem('Default', 'Deactivate', 'ban'), ppActionItem('Default', 'Export', 'download', 'CSV or XLSX, with the columns shown'), ppActionItem('Destructive', 'Delete…', 'trash')]),
     frame({ name: 'scope', dir: 'V', gap: 'space/1', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [ppLink('Select all 1,148 products in this filter', null, 'select-all-matching'), ppLink('Clear selection', null, 'clear-selection')])]);
 }
 function ppSelected() {
@@ -6419,16 +6419,17 @@ const PI_FILE = 'products-oct-2026.xlsx';
 const PI_COLUMNS = [['Title', true, 'Up to 120 characters'], ['Main category', true, 'A category name as it appears in Catalog > Categories'], ['Product type', true, 'Fresh meat, Bakery, Packaged food…'], ['Description', false, 'Plain text'], ['Brand', false, 'Leave empty for unbranded products'], ['Barcode (GTIN)', false, '8, 12, 13 or 14 digits'], ['Unit size', false, 'For example 500 g or 1 kg'], ['Image URL', false, 'https link to a JPG or PNG']];
 const PI_ERRORS = [['12', 'Main category', 'Fresh Meats', 'No category with this name'], ['47', 'Title', '(empty)', 'Title is required'], ['88', 'Barcode (GTIN)', '93123', 'Not a valid barcode length'], ['104', 'Product type', 'Meat', 'No product type with this name'], ['131', 'Image URL', 'http://img…/a.png', 'Use an https link'], ['206', 'Title', 'Lamb cutlets 500 g', 'Same title and brand as row 31']];
 function piSteps(active) {
+  // Full width (owner, 30 Oct 20:55Z): each step takes an equal share; the line fills the rest of its share.
   const steps = ['Upload file', 'Check file', 'Import'];
-  return frame({ name: 'steps', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, steps.map(function (label, i) {
+  return card('steps', [frame({ name: 'steps', dir: 'H', gap: 'space/3', align: 'center', pad: 'space/4', sizeH: 'FILL' }, steps.map(function (label, i) {
     const n = i + 1; const done = n < active; const on = n === active;
     const disc = frame({ name: 'disc', dir: 'H', w: 24, h: 24, align: 'center', justify: 'center', radius: 'radius/pill', fill: on || done ? 'action/primary' : 'bg/surface', stroke: on || done ? null : 'border/default' },
       [done ? icon('check', 'text/on-accent', 14) : text(String(n), 'Caption/Strong', on ? 'text/on-accent' : 'text/muted')]);
-    return frame({ name: 'step ' + n, dir: 'H', gap: 'space/2', align: 'center' }, [disc, text(label, on ? 'Body/Strong' : 'Body/Default', on || done ? 'text/primary' : 'text/muted'), n < 3 ? rect({ name: 'line', w: 48, h: 1, fill: 'border/default' }) : null]);
-  }));
+    return frame({ name: 'step ' + n, dir: 'H', gap: 'space/2', align: 'center', sizeH: n < 3 ? 'FILL' : undefined }, [disc, text(label, on ? 'Body/Strong' : 'Body/Default', on || done ? 'text/primary' : 'text/muted'), n < 3 ? rect({ name: 'line', w: 10, h: 2, fill: done ? 'action/primary' : 'border/default', sizeH: 'FILL' }) : null]);
+  }))]);
 }
 function piScreen(state, step, kids, right) {
-  const head = pageTitle('Import products', 'Add many products to the ' + PP_MARKET + ' catalog from one file.', right || [btn('Cancel', 'Ghost', 'Md')]);
+  const head = pageTitle('Import products', 'Add many products to the ' + PP_MARKET + ' catalog from one file.', right || []);
   const back = ppLink('Products', 'chevron-left', 'back');
   const scr = screen(PI + ' · ' + state, 'Admin', 'nav-catalogue', 'Catalog / Products / Import', [back, head, piSteps(step)].concat(kids), { minH: PANEL_MIN_H, gap: 'space/4' });
   scr.setPluginData('proposal', 'admin-products');
@@ -6459,11 +6460,11 @@ function piUpload() {
   const tpl = piSection('Template', 'Template', 'Fill in the template by hand or export from your system with the same columns.', [
     frame({ name: 'downloads', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [btn('CSV template', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'download' } }), btn('XLSX template', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'download' } })]),
     guide, text('Certification tags are not imported: they belong to each seller’s offer, not to the product.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })], 520);
-  return piScreen('1 Upload', 1, [frame({ name: 'cols', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [upload, tpl])]);
+  return piScreen('1 Upload', 1, [frame({ name: 'cols', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [upload, tpl]), piFooter([btn('Cancel', 'Secondary', 'Md'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Check file', 'Primary', 'Md', { State: 'Disabled' })])]);
 }
 // I2 · Checking the file: the progress of the check; it can be stopped.
 function piChecking() {
-  return piScreen('2 Checking', 2, [piSection('Check', 'Checking your file', 'We read every row and compare it with the catalog. Nothing is saved.', [piFileRow('1,240 rows · 2.4 MB', ppLink('Stop and choose another file', null, 'stop')), piMeter(50, 1100), text('Checking row 620 of 1,240…', 'Body/Small', 'text/muted')])]);
+  return piScreen('2 Checking', 2, [piSection('Check', 'Checking your file', 'We read every row and compare it with the catalog. Nothing is saved.', [piFileRow('1,240 rows · 2.4 MB', ppLink('Choose another file', null, 'stop')), piMeter(50, 1100), text('Checking row 620 of 1,240…', 'Body/Small', 'text/muted')]), piFooter([btn('Cancel', 'Secondary', 'Md')])]);
 }
 function piErrorTable() {
   const head = headerRow([['Row', 80], ['Column', 170], ['Value in the file', 'fill'], ['Problem', 320]]);
@@ -6479,7 +6480,7 @@ function piResultErrors() {
     piBanner('Attention', '30 rows have errors', 'Fix them in your file and upload it again, or import the valid rows now and add the rest later.'),
     piErrorTable(),
     piSection('Settings', 'Before you import', null, [piStartAs(), skip]),
-    piFooter([btn('Back', 'Secondary', 'Md'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Import 1,198 products', 'Primary', 'Md')])]);
+    piFooter([btn('Cancel', 'Secondary', 'Md'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Back', 'Secondary', 'Md'), btn('Import 1,198 products', 'Primary', 'Md')])]);
 }
 // I4 · Check finished, all rows ready: a preview of the first rows.
 function piResultOk() {
@@ -6491,7 +6492,7 @@ function piResultOk() {
     piTiles([['Rows in the file', '1,240'], ['Ready to import', '1,240', 'status/success/fg'], ['Errors', '0'], ['Warnings', '0']]),
     piBanner('Success', 'All 1,240 rows are ready to import', 'Nothing has been saved yet. Check the settings below, then import.'),
     table, piSection('Settings', 'Before you import', null, [piStartAs()]),
-    piFooter([btn('Back', 'Secondary', 'Md'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Import 1,240 products', 'Primary', 'Md')])]);
+    piFooter([btn('Cancel', 'Secondary', 'Md'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Back', 'Secondary', 'Md'), btn('Import 1,240 products', 'Primary', 'Md')])]);
 }
 // I5 · Confirm: what will happen, in numbers.
 function piConfirm() {
@@ -6504,7 +6505,7 @@ function piConfirm() {
 function piImporting() {
   return piScreen('6 Importing', 3, [piSection('Progress', 'Importing products', null, [piFileRow('1,198 products to add'), piMeter(50, 1100),
     frame({ name: 'progress-text', dir: 'H', sizeH: 'FILL' }, [text('599 of 1,198 added', 'Body/Strong', 'text/primary', { sizeH: 'FILL' }), text('About 1 minute left', 'Body/Small', 'text/muted')]),
-    piBanner('Info', 'You can leave this page', 'The import keeps running. You get a notification when it finishes, and the report stays under Import history.')])], [btn('Back to products', 'Secondary', 'Md')]);
+    piBanner('Info', 'You can leave this page', 'The import keeps running. You get a notification when it finishes, and the report stays under Import history.')]), piFooter([frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Back to products', 'Secondary', 'Md')])]);
 }
 // I7 · Finished: the report, a download of it, and Done back to the list.
 function piDone() {
@@ -6513,7 +6514,7 @@ function piDone() {
     piBanner('Success', 'Import finished: 1,196 products added', 'They are Inactive. Open them in the list to check them, then activate them in bulk.'),
     piTiles([['Added', '1,196', 'status/success/fg'], ['Skipped at check', '30', null, 'Rows with errors'], ['Not imported', '2', 'status/critical/fg', 'See the list below'], ['Time', '2 min 10 s']]),
     failed,
-    piFooter([ppLink('Download full report (CSV)', 'download', 'report'), ppLink('View the imported products', 'external-link', 'view-imported'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Done', 'Primary', 'Md')])], [btn('Import another file', 'Secondary', 'Md')]);
+    piFooter([ppLink('Download full report (CSV)', 'download', 'report'), ppLink('View the imported products', 'external-link', 'view-imported'), frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Import another file', 'Secondary', 'Md'), btn('Done', 'Primary', 'Md')])]);
 }
 // I8 · Back on the list after Done: a toast and the Inactive tab ready.
 function piBackOnList() {
@@ -6535,6 +6536,114 @@ function piStates() {
   return scr;
 }
 const PROPOSALS = { 'admin-products': { title: PP, rows: function () { return [[ppDefault(), ppSelected(), ppSearchFilter()], [ppFilterOpen(), ppSortOpen(), ppColumnsOpen()], [ppAllColumns(), ppDialogs(), ppStates()], [piUpload(), piChecking(), piResultErrors()], [piResultOk(), piConfirm(), piImporting()], [piDone(), piBackOnList(), piStates()]]; } } };
+
+// ---- Panels · Settings (back-port, owner 30 Oct 20:55Z): the settings UX built in code from the thread on admin and seller
+// panel UX (merged on main up to #580): one Settings item at the foot of the sidebar opens a card hub; every settings page uses
+// one template (sub-navigation, header with the last change, sections of rows, one save bar, banners for view only, a save by
+// someone else first and errors, one no-access block, a leave guard); the Cmd+K search with pinned and recent pages; the toast
+// system. Labels follow apps/*/messages/en.json. Drawn from 1.9.0 components (SettingRow is 1.10.0, so rows are drawn here).
+const PS = 'Proposal · Panels · Settings';
+const PS_ADMIN_GROUPS = [['Marketplace', 'store', [['Support contact'], ['Smart assistant']]], ['Delivery', 'package', [['Delivery rules'], ['Delivery fleets']]], ['Money', 'wallet', [['Customer wallet']]], ['People & access', 'users', [['Admins', 'View only'], ['Roles & permissions', 'View only']]]];
+const PS_SELLER_GROUPS = [['Store', 'store', [['Store profile'], ['Stock locations']]], ['Money', 'wallet', [['Payout account']]], ['Team', 'users', [['Members']]]];
+function psTag(n) { n.setPluginData('proposal', 'panel-settings'); return n; }
+function psScreen(state, ws, crumb, kids, overlay) {
+  const scr = screen(PS + ' · ' + state, ws, 'nav-settings', crumb, kids, { minH: PANEL_MIN_H, gap: 'space/4' });
+  (overlay ? [].concat(overlay) : []).forEach(function (o) { add(scr, o); });
+  return psTag(scr);
+}
+function psSp() { return frame({ name: 'sp', dir: 'H', h: 1, sizeH: 'FILL' }); }
+// Hub: groups as cards, two a row; each link a row with an optional View only badge and a chevron.
+function psHubCard(g) {
+  return card(g[0], [frame({ name: 'head', dir: 'H', gap: 'space/2-5', align: 'center', pad: [20, 20, 12, 20], sizeH: 'FILL' }, [icon(g[1], 'icon/default', 18), text(g[0], 'Heading/H2')])].concat(g[2].map(function (l) {
+    return frame({ name: 'link · ' + l[0], dir: 'H', gap: 'space/3', align: 'center', pad: [12, 20, 12, 20], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text(l[0], 'Body/Default', 'text/primary', { sizeH: 'FILL' }), l[1] ? bdg('Neutral', 'None', l[1]) : null, icon('chevron-right', 'icon/muted', 16)]);
+  })));
+}
+function psHub(ws, groups, desc) {
+  const rows = []; for (let i = 0; i < groups.length; i += 2) rows.push(frame({ name: 'row', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, groups.slice(i, i + 2).map(psHubCard).concat(groups.length % 2 && i + 2 > groups.length ? [frame({ name: 'empty', dir: 'V', h: 1, sizeH: 'FILL' })] : [])));
+  return psScreen(ws + ' · Settings hub', ws, 'Settings', [pageTitle('Settings', desc, [btn('Search', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'search' } })])].concat(rows));
+}
+// The settings sub-navigation: the hub's groups and links, the current page selected.
+function psSubNav(groups, current) {
+  const kids = [];
+  groups.forEach(function (g) {
+    kids.push(text(g[0], 'Caption/Overline', 'text/muted', { name: 'group' }));
+    g[2].forEach(function (l) { const on = l[0] === current; kids.push(frame({ name: 'link · ' + l[0], dir: 'H', align: 'center', pad: [8, 12, 8, 12], radius: 'radius/control', fill: on ? 'bg/selected' : null, sizeH: 'FILL' }, [text(l[0], on ? 'Body/Strong' : 'Body/Default', on ? 'text/primary' : 'text/secondary')])); });
+  });
+  return frame({ name: 'Settings menu', dir: 'V', gap: 'space/1', w: 220 }, kids);
+}
+// One setting row: label and help on the start side, the control on the end side; changed rows carry the attention ring.
+function psRow(label, help, control, o) {
+  o = o || {};
+  const ctl = frame({ name: 'control', dir: 'V', gap: 'space/1', w: 360, pad: o.changed ? 3 : 0, radius: 'radius/control', stroke: o.changed ? 'status/attention/solid' : null, strokeW: 2 }, [control, o.error ? text(o.error, 'Body/Small', 'status/critical/fg', { name: 'error', sizeH: 'FILL' }) : null]);
+  return frame({ name: 'row · ' + label, dir: 'H', gap: 'space/6', align: 'start', pad: [16, 20, 16, 20], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [frame({ name: 'label', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [text(label, 'Body/Strong'), help ? text(help, 'Body/Small', 'text/muted', { sizeH: 'FILL' }) : null]), ctl]);
+}
+function psSection(title, sub, rows) { return card(title, [frame({ name: 'head', dir: 'V', gap: 'space/1', pad: [20, 20, 12, 20], sizeH: 'FILL' }, [text(title, 'Heading/H2'), text(sub, 'Body/Small', 'text/muted', { sizeH: 'FILL' })])].concat(rows)); }
+function psInput(value, state) { return inst('Input', { Type: 'Text', State: state || 'Filled', Value: value, 'Leading icon': false }, { name: 'input', sizeH: 'FILL' }); }
+function psSelect(value, state) { return inst('Select', { State: state || 'Filled', Value: value }, { name: 'select', sizeH: 'FILL' }); }
+function psSaveBar(summary, errors) {
+  return frame({ name: 'Save bar', dir: 'H', gap: 'space/3', align: 'center', pad: [12, 20, 12, 20], fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating', sizeH: 'FILL' }, [
+    text(summary, 'Body/Strong'), errors ? text('· ' + errors, 'Body/Strong', 'status/critical/fg') : null, psSp(), btn('Discard', 'Secondary', 'Md'), btn('Save changes', 'Primary', 'Md', errors ? { State: 'Disabled' } : {})]);
+}
+// The Delivery rules page in a given state.
+function psDelivery(state, o) {
+  o = o || {};
+  const dis = o.viewOnly ? 'Disabled' : null;
+  const rows1 = [psRow('Delivery methods', 'Which methods sellers can offer to customers in this market.', psSelect('Local delivery, Pickup', dis), { changed: o.changed }),
+    psRow('Same-day cut-off', 'Orders placed before this time, in the seller’s time zone, can be delivered the same day.', psInput(o.badCutoff ? '25:00' : '1:00 pm', o.badCutoff ? 'Error' : dis), { error: o.badCutoff ? 'Enter a time between 12:00 am and 11:59 pm, such as 1:00 pm.' : null, changed: o.changed })];
+  const rows2 = [psRow('Delivery fee margin', 'Added to the courier’s quote. Example: a quote of AUD 9.00 shows as AUD 9.90.', psInput('10%', dis)), psRow('Round fees up to', 'The fee the customer sees is rounded up to this step.', psSelect('AUD 0.10', dis))];
+  const head = pageTitle('Delivery rules', 'How delivery works for every seller in the Australia market.', [ppIconButton('star', 'pin')]);
+  const last = text('Last changed by Sara K. · 2 days ago · View history', 'Caption/Default', 'text/muted', { name: 'last-changed' });
+  const content = frame({ name: 'Settings content', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, [frame({ name: 'header', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [head, last])].concat(o.banner ? [o.banner] : [], [psSection('Methods and timing', 'What customers can choose at checkout, and until when.', rows1), psSection('Fees', 'What the platform adds to delivery quotes.', rows2)], o.saveBar ? [o.saveBar] : []));
+  return psScreen('Admin · Delivery rules · ' + state, 'Admin', 'Settings / Delivery / Delivery rules', [frame({ name: 'Settings layout', dir: 'H', gap: 'space/6', align: 'start', sizeH: 'FILL' }, [psSubNav(PS_ADMIN_GROUPS, 'Delivery rules'), content])], o.overlay);
+}
+function psErrorSummary() { return inst('InfoBanner', { Tone: 'Critical', Title: '1 setting needs fixing', Body: 'Same-day cut-off: enter a time between 12:00 am and 11:59 pm.', 'Show action': false }, { name: 'error-summary', sizeH: 'FILL' }); }
+function psConflict() { return inst('InfoBanner', { Tone: 'Attention', Title: 'Sara K. saved these settings 1 minute ago', Body: 'Your 2 changes are kept. Review what changed, then save again.', 'Show action': true, Action: 'Show what changed' }, { name: 'conflict', sizeH: 'FILL' }); }
+function psViewOnly() { return inst('InfoBanner', { Tone: 'Info', Title: 'View only', Body: 'Your role can see these settings but not change them. An admin who manages roles can give you access.', 'Show action': false }, { name: 'view-only', sizeH: 'FILL' }); }
+// Command palette (Cmd+K): pinned and recent before typing; results by kind while typing.
+function psItem(label, desc, ic, on) { return inst('MenuItem', Object.assign({ State: on ? 'Selected' : 'Default', Label: label, 'Leading icon': true, Icon: { icon: ic }, 'Show description': !!desc }, desc ? { Description: desc } : {}), { name: 'item · ' + label, sizeH: 'FILL' }); }
+function psPalette(query) {
+  const groups = query ? [['Settings', [['Delivery fee margin', 'Settings / Delivery / Delivery rules', 'sliders', true], ['Round fees up to', 'Settings / Delivery / Delivery rules', 'sliders']]], ['Pages', [['Delivery rules', 'Settings / Delivery', 'file-text']]]]
+    : [['Pinned', [['Orders', null, 'clipboard', true], ['Delivery rules', 'Settings / Delivery', 'star']]], ['Recent', [['Support contact', 'Settings / Marketplace', 'clock'], ['Roles & permissions', 'Settings / People & access', 'clock'], ['Customer wallet', 'Settings / Money', 'clock']]], ['Actions', [['Invite admin', null, 'plus'], ['Create role', null, 'plus']]]];
+  const kids = [inst('Input', { Type: 'Text', State: query ? 'Filled' : 'Focus', Value: query || 'Search pages, settings and actions', 'Leading icon': true }, { name: 'query', sizeH: 'FILL' })];
+  if (query) kids.push(text('3 results', 'Caption/Default', 'text/muted', { name: 'count' }));
+  groups.forEach(function (g) { kids.push(frame({ name: 'group · ' + g[0], dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [text(g[0], 'Caption/Overline', 'text/muted')].concat(g[1].map(function (i) { return psItem(i[0], i[1], i[2], i[3]); })))); });
+  kids.push(frame({ name: 'hints', dir: 'H', gap: 'space/4', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text('↑ ↓ to move', 'Caption/Default', 'text/muted'), text('Enter to open', 'Caption/Default', 'text/muted'), text('Esc to close', 'Caption/Default', 'text/muted'), psSp(), text('? for shortcuts', 'Caption/Default', 'text/muted')]));
+  return frame({ name: 'Command palette', dir: 'V', w: 640, pad: 'space/4', gap: 'space/3', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' }, kids);
+}
+function psPaletteScene(state, query) {
+  const scr = frame({ name: PS + ' · Search (Cmd+K) · ' + state, w: 1440, h: 900, fill: 'bg/page', clip: true });
+  add(scr, frame({ name: 'scrim', w: 1440, h: 900, fill: 'bg/scrim' }));
+  const pal = psPalette(query); scr.appendChild(pal); pal.x = 400; pal.y = 96;
+  tag(scr); return psTag(scr);
+}
+// Toasts: bottom end corner, at most three, newest lowest, above the save bar when it shows.
+function psToast(tone, msg, action) {
+  const T = { Info: ['info', 'text/link'], Warning: ['alert-triangle', 'status/attention/fg'], Loading: ['refresh-cw', 'icon/muted'] }[tone];
+  if (!T) return inst('Toast', Object.assign({ Tone: tone, Message: msg, 'Show action': !!action }, action ? { Action: action } : {}), { name: 'toast · ' + tone });
+  return frame({ name: 'toast · ' + tone, dir: 'H', gap: 'space/3', align: 'center', w: 400, pad: [12, 12, 12, 16], fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' }, [icon(T[0], T[1], 18), text(msg, 'Body/Default', 'text/primary', { sizeH: 'FILL' }), tone === 'Loading' ? null : inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'close' })]);
+}
+function psToasts() {
+  const list = [['Success', 'Delivery rules saved.', null, '5 s · role="status"'], ['Success', 'Slide archived.', 'Undo', '10 s · Undo reachable with Tab'], ['Info', 'Export is being prepared. You get a notification when it is ready.', null, '6 s'], ['Warning', 'Saved. 2 sellers are above the new maximum fee.', null, '8 s'], ['Critical', 'The invite couldn’t be sent. Check the address and try again.', 'Try again', 'Stays until closed · role="alert"'], ['Loading', 'Saving…', null, 'Until done, then the result']];
+  const cells = list.map(function (t) { return frame({ name: t[0], dir: 'H', gap: 'space/5', align: 'center', sizeH: 'FILL' }, [psToast(t[0], t[1], t[2]), text(t[3], 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]); });
+  const scr = frame({ name: PS + ' · Toasts', dir: 'V', w: 900, pad: 40, gap: 'space/4', fill: 'bg/page' }, [text('Toasts', 'Heading/H1'), para('The result of an action the user just took. Bottom end corner (bottom right in the panels), 16 px from the edges, at most 3, newest lowest; a toast with the same id replaces the last one. The timer pauses on hover, on focus and in a hidden tab. A field error is never only a toast; a lasting state is a banner; an event the user did not cause goes to the bell.', 820)].concat(cells));
+  tag(scr); return psTag(scr);
+}
+// States that end the page: could not load, no access, and the leave guard.
+function psStates() {
+  const noAccess = inst('EmptyState', { Size: 'Card', Title: 'You don’t have access to this page', Body: 'Delivery rules needs the permission "View delivery settings". An admin who manages roles can add it.', Icon: { icon: 'lock' } }, { name: 'no-access', sizeH: 'FILL' });
+  setNested(noAccess, 'action', prop('Button', 'Label', 'Back to Settings'));
+  const load = inst('InfoBanner', { Tone: 'Critical', Title: 'Delivery settings could not be loaded', Body: 'Try again. If it keeps happening, check the status page.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' });
+  const leave = dlg({ name: 'Leave without saving', title: 'Leave without saving?', text: 'You have 2 unsaved changes on Delivery rules. If you leave now, they are lost.', primary: 'Leave', secondary: 'Stay', focusCancel: true });
+  const scr = frame({ name: PS + ' · States', dir: 'V', w: 900, pad: 40, gap: 'space/5', fill: 'bg/page' }, [text('Settings pages: states', 'Heading/H1'), para('One block for every page the role cannot see, one banner for a page that cannot load, and one guard when leaving with unsaved changes. Password, two-step sign-in and dangerous actions keep their own button and confirmation in a Danger zone section at the end of the page.', 820),
+    text('No access', 'Caption/Strong', 'text/muted'), noAccess, text('Could not load', 'Caption/Strong', 'text/muted'), load, text('Leave with unsaved changes', 'Caption/Strong', 'text/muted'), leave]);
+  tag(scr); return psTag(scr);
+}
+PROPOSALS['panel-settings'] = { title: PS, rows: function () {
+  return [[psHub('Admin', PS_ADMIN_GROUPS, 'Set up how the marketplace works. Changes here apply to every seller and customer.'), psHub('Seller', PS_SELLER_GROUPS, 'Set up how your store works. Changes here apply to your whole store.'), psPaletteScene('Pinned and recent')],
+    [psDelivery('Default'), psDelivery('Unsaved changes', { changed: true, saveBar: psSaveBar('2 unsaved changes') }), psDelivery('Needs fixing', { changed: true, badCutoff: true, banner: psErrorSummary(), saveBar: psSaveBar('2 unsaved changes', '1 needs fixing') })],
+    [psDelivery('Someone saved first', { changed: true, banner: psConflict(), saveBar: psSaveBar('2 unsaved changes') }), psDelivery('View only', { viewOnly: true, banner: psViewOnly() }), psPaletteScene('Results', 'fee')],
+    [psDelivery('Saved', { overlay: (function () { const t = psToast('Success', 'Delivery rules saved.'); setMeta(t, { abs: [1440 - 400 - 16, 900 - 76] }); return t; })() }), psToasts(), psStates()]];
+} };
 
 async function buildProposal(key) {
   STEP = 0; STEPS = 3; S.report = [];
