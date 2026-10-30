@@ -518,8 +518,11 @@ describe('relay allowlist for seller decisions', () => {
       vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
     );
 
-  it('relays the support email write on its exact path and method only', async () => {
+  it('relays the support email read and write on their exact path and method only', async () => {
     const path = 'notifications/admin/support-contact';
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
     expect((await call('PUT', path)).status).toBe(200);
     expect((await call('POST', path)).status).toBe(404);
     expect((await call('DELETE', path)).status).toBe(404);

@@ -461,6 +461,15 @@ describe('relay allowlist for stock locations', () => {
     });
   const ID = '0190a000-0000-7000-8000-0000000000a1';
 
+  it('relays the list read (GET) so a page can re-read it after a stale write', async () => {
+    const read = new Request('http://seller.localhost:3001/api/inventory/seller/sources', {
+      headers: sameOrigin,
+    });
+    expect(
+      (await relay(config, read, ['inventory', 'seller', 'sources'], upstreamOk())).status,
+    ).toBe(200);
+  });
+
   it('relays a location edit by UUID and the order, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, put(`inventory/seller/sources/${ID}`), [], upstream)).status).toBe(
