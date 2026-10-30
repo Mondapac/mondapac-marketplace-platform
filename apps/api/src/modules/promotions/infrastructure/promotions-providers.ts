@@ -1,5 +1,7 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { PRICING_FACADE, type PricingFacade } from '../../pricing';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   MARKET_SETTING_REPOSITORY,
@@ -24,6 +26,7 @@ import {
   type ShippingThresholdRepository,
 } from '../application/ports/settings.repository';
 import { ConfigPromotionsPolicy } from './config-promotions-policy';
+import { FacadePriceHistory, FacadeSellerActivity } from './facade-seller-price-reads';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaOptInRepository } from './prisma-opt-in.repository';
 import { PrismaPromotionRepository } from './prisma-promotion.repository';
@@ -32,7 +35,6 @@ import {
   PrismaFirstOrderSettingsRepository,
   PrismaShippingThresholdRepository,
 } from './prisma-settings.repository';
-import { UnknownPriceHistory, UnknownSellerActivity } from './unavailable-adapters';
 
 /** Binds the ports of promotions. Only this layer may reach `PrismaService`. */
 export const promotionsProviders: readonly FactoryProvider[] = [
@@ -78,10 +80,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SELLER_ACTIVITY,
-    useFactory: (): SellerActivity => new UnknownSellerActivity(),
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerActivity => new FacadeSellerActivity(sellers),
   },
   {
     provide: PRICE_HISTORY,
-    useFactory: (): PriceHistory => new UnknownPriceHistory(),
+    inject: [PRICING_FACADE],
+    useFactory: (pricing: PricingFacade): PriceHistory => new FacadePriceHistory(pricing),
   },
 ];

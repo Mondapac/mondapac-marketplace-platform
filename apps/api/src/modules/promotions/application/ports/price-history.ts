@@ -1,17 +1,22 @@
 import type { CallContext, Id, Money } from '@mondapac/shared-kernel';
 
+/** One priced unit: an Offer and one of its Variants (a price belongs to one seller's Offer). */
+export interface PricedUnit {
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+}
+
 /**
- * How many of the last `windowDays` days a product sold at exactly `price`: the fact behind the
- * was-price rule (a struck-through earlier price is shown only if the product sold at it on at
- * least 28 of the last 90 days; the system decides, a seller cannot type it). Null when it is not
- * known. `pricing` publishes no price-history read yet, so the shipped adapter always answers
- * null and the rule answers "not eligible" (fail closed); a later package replaces the adapter
- * with a call of the pricing facade.
+ * How many whole days of the last `windowDays` days a priced unit sold at exactly `price`: the
+ * fact behind the was-price rule (a struck-through earlier price is shown only if the unit sold at
+ * it on at least 28 of the last 90 days; the system decides, a seller cannot type it). Null when
+ * it is not known (no price history, or the read failed); the rule then answers "not eligible"
+ * (fail closed). Bound to `pricing`'s `daysAtPrice`.
  */
 export interface PriceHistory {
   daysSoldAtPrice(
     context: CallContext,
-    productId: Id<'Product'>,
+    unit: PricedUnit,
     price: Money,
     windowDays: number,
   ): Promise<number | null>;
