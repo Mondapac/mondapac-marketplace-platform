@@ -40,10 +40,14 @@ export function SettingsHub({
               <li key={link.id} className="border-b border-line last:border-b-0">
                 <a
                   href={link.href}
-                  className="flex min-h-12 items-center justify-between gap-3 px-5 py-2 text-fg hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                  className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-2 text-fg hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                 >
                   <span className="min-w-0 break-words">{label(link.labelKey)}</span>
-                  {viewOnly ? <Badge tone="neutral">{labels.viewOnly}</Badge> : null}
+                  {viewOnly ? (
+                    <span className="shrink-0">
+                      <Badge tone="neutral">{labels.viewOnly}</Badge>
+                    </span>
+                  ) : null}
                 </a>
               </li>
             ))}

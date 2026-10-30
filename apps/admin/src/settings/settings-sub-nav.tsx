@@ -35,7 +35,7 @@ export function SettingsSubNav({
                 key={link.id}
                 href={link.href}
                 aria-current={active ? 'page' : undefined}
-                className={`flex min-h-10 items-center rounded-md px-3 py-1 text-sm focus-visible:outline-2 focus-visible:outline-focus ${
+                className={`flex min-h-10 items-center rounded-md px-3 py-1 text-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${
                   active
                     ? 'bg-selected font-medium text-link'
                     : 'text-fg-secondary hover:bg-muted hover:text-fg'

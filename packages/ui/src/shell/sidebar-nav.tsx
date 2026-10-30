@@ -223,7 +223,7 @@ export function SidebarNav({
         })}
       </div>
       {footer.length === 0 ? null : (
-        <div className="flex shrink-0 flex-col gap-1 border-t border-line p-3">
+        <div className="flex shrink-0 flex-col gap-1 border-t border-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {footer.map((link) => (
             <NavLink key={link.id} link={link} active={link.id === activeId} stop="link" />
           ))}

@@ -79,7 +79,7 @@ describe('settings navigation', () => {
   const shell = read('src/server/settings-shell.tsx');
 
   it('shows the sub-navigation column from 1180px and the back link only below it', () => {
-    expect(shell).toContain('min-[1180px]:grid-cols-[15rem_minmax(0,1fr)]');
+    expect(shell).toContain('min-[1180px]:grid-cols-[12.5rem_minmax(0,1fr)]');
     expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
     expect(shell).toMatch(/min-\[1180px\]:hidden[^]*<BackLink href="\/settings"/);
   });

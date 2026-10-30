@@ -74,10 +74,11 @@ describe('SettingsShell', () => {
     expect(document.querySelector('main')?.getAttribute('data-active')).toBe('settings');
   });
 
-  it('builds the breadcrumb Settings / Group, then the page (the shell adds the title)', async () => {
+  it('builds the breadcrumb Dashboard / Settings / Group, then the page (the shell adds the title)', async () => {
     await show('fleets', 'Delivery fleets');
     const crumbs = within(screen.getByRole('list', { name: 'trail' })).getAllByRole('listitem');
     expect(crumbs.map((c) => [c.textContent, c.getAttribute('data-href')])).toEqual([
+      ['Dashboard', '/'],
       ['Settings', '/settings'],
       ['Delivery', ''],
     ]);
@@ -87,6 +88,7 @@ describe('SettingsShell', () => {
     await show('roles', 'New role', true);
     const crumbs = within(screen.getByRole('list', { name: 'trail' })).getAllByRole('listitem');
     expect(crumbs.map((c) => [c.textContent, c.getAttribute('data-href')])).toEqual([
+      ['Dashboard', '/'],
       ['Settings', '/settings'],
       ['People & access', ''],
       ['Roles & permissions', '/settings/roles'],

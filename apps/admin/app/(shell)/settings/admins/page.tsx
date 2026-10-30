@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, NoAccess } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
@@ -6,7 +6,6 @@ import { requireSession } from '../../../../src/server/session.ts';
 import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 import { InviteAdminButton } from '../../../../src/team/invite-admin-button.tsx';
 import { TeamTable } from '../../../../src/team/team-table.tsx';
-import { TeamTabs, tabLabels } from '../../../../src/team/team-tabs.tsx';
 import type { PlatformRole, TeamPage } from '../../../../src/team/types.ts';
 
 const VIEW_PERMISSION = 'identity.admin-account.view';
@@ -37,13 +36,12 @@ export default async function TeamPageRoute({
         linkId="admins"
         title={t('identity.members.no-access.title')}
       >
-        <h1 className="mb-2 text-2xl font-semibold">{t('identity.members.no-access.title')}</h1>
-        <p className="text-fg-muted">{t('identity.members.no-access.body')}</p>
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/">
-            {t('identity.members.no-access.action')}
-          </a>
-        </p>
+        <NoAccess
+          title={t('identity.members.no-access.title')}
+          body={t('identity.members.no-access.body')}
+          backHref="/settings"
+          backLabel={t('settings.sub.back')}
+        />
       </SettingsShell>
     );
   }
@@ -69,7 +67,6 @@ export default async function TeamPageRoute({
   return (
     <SettingsShell session={gate.session} linkId="admins" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <TeamTabs active="admins" labels={keys.has(ROLES_PERMISSION) ? tabLabels(t) : null} />
       {result.kind === 'ok' ? (
         <>
           {canInvite && roles !== undefined ? (

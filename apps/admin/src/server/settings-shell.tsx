@@ -29,7 +29,10 @@ export async function SettingsShell({
 }) {
   const t = await getTranslations();
   const found = settingsLink(linkId);
-  const trail: Crumb[] = [{ label: t('nav.settings'), href: '/settings' }];
+  const trail: Crumb[] = [
+    { label: t('nav.home'), href: '/' },
+    { label: t('nav.settings'), href: '/settings' },
+  ];
   if (found !== undefined) {
     trail.push({ label: t(found.group.labelKey) });
     if (nested) trail.push({ label: t(found.link.labelKey), href: found.link.href });
@@ -41,8 +44,8 @@ export async function SettingsShell({
   }));
   return (
     <AdminShell session={session} activeId="settings" title={title} trail={trail}>
-      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[15rem_minmax(0,1fr)] min-[1180px]:items-start">
-        <div className="hidden min-[1180px]:sticky min-[1180px]:top-[calc(var(--mp-size-topbar)+1.5rem)] min-[1180px]:block">
+      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[12.5rem_minmax(0,1fr)] min-[1180px]:items-start">
+        <div className="hidden min-[1180px]:sticky min-[1180px]:top-[calc(var(--mp-size-topbar)+1.5rem)] min-[1180px]:block min-[1180px]:max-h-[calc(100vh-var(--mp-size-topbar)-3rem)] min-[1180px]:overflow-y-auto">
           <SettingsSubNav label={t('settings.sub.label')} groups={groups} activeId={linkId} />
         </div>
         <div className="min-w-0">

@@ -8,7 +8,6 @@ import type { RoleCatalogue } from '../../../../src/roles/types.ts';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
-import { TeamTabs, tabLabels } from '../../../../src/team/team-tabs.tsx';
 
 const VIEW_PERMISSION = 'identity.platform-role.view';
 const TEAM_PERMISSION = 'identity.admin-account.view';
@@ -47,7 +46,6 @@ export default async function RolesPageRoute() {
           </a>
         ) : null}
       </div>
-      <TeamTabs active="roles" labels={tabLabels(t)} />
       {result.kind === 'ok' ? (
         <RolesTable roles={result.body.items} members={members} />
       ) : (
