@@ -18,8 +18,8 @@ vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve((key: string) => key),
 }));
-vi.mock('./seller-shell.tsx', () => ({
-  SellerShell: ({ children, title }: { children: React.ReactNode; title: string }) => (
+vi.mock('./settings-shell.tsx', () => ({
+  SettingsShell: ({ children, title }: { children: React.ReactNode; title: string }) => (
     <main data-title={title}>{children}</main>
   ),
 }));
@@ -27,7 +27,7 @@ vi.mock('../store-profile/store-profile.tsx', () => ({
   StoreProfile: ({ canEdit }: { canEdit: boolean }) => <section data-can-edit={String(canEdit)} />,
 }));
 
-import StoreProfilePage from '../../app/(shell)/store-profile/page.tsx';
+import StoreProfilePage from '../../app/(shell)/settings/store-profile/page.tsx';
 import { loadStoreProfilePage } from './store-profile-page.ts';
 
 const VIEW = { version: 1 };
@@ -117,8 +117,10 @@ describe('the Store profile page', () => {
 
     const html = await render();
 
-    expect(html).toContain('catalog.no-access.title');
-    expect(html).toContain('catalog.no-access.body');
+    expect(html).not.toContain('catalog.no-access');
+    expect(html).toContain('store-profile.no-access.title');
+    expect(html).toContain('store-profile.no-access.body');
+    expect(html).toContain('href="/"');
     expect(html).not.toContain('data-can-edit');
   });
 

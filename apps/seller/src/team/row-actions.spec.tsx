@@ -466,9 +466,10 @@ describe('invite a team member', () => {
 });
 
 describe('team nav', () => {
-  it('shows the entry only with the view key', () => {
+  it('shows Settings (the way to the team) only with the team view key among the settings keys', () => {
     const ids = (keys: string[]) => visibleNavItems(sellerNav, new Set(keys)).map((i) => i.id);
-    expect(ids([])).not.toContain('s_team');
-    expect(ids(['identity.team-member.view'])).toContain('s_team');
+    expect(ids([])).not.toContain('s_settings');
+    expect(ids(['identity.team-member.view'])).toContain('s_settings');
+    expect(ids(['identity.team-member.view'])).not.toContain('s_team');
   });
 });

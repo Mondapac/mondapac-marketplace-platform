@@ -1,9 +1,10 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { PayoutAccountView } from '../../../src/payout/payout-account.tsx';
-import { PAYOUT_MANAGE_PERMISSION } from '../../../src/payout/types.ts';
-import { loadPayoutPage } from '../../../src/server/payout-page.ts';
-import { SellerShell } from '../../../src/server/seller-shell.tsx';
+import { PayoutAccountView } from '../../../../src/payout/payout-account.tsx';
+import { PAYOUT_MANAGE_PERMISSION } from '../../../../src/payout/types.ts';
+import { loadPayoutPage } from '../../../../src/server/payout-page.ts';
+import { SettingsNoAccess } from '../../../../src/settings/settings-no-access.tsx';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -22,16 +23,19 @@ export default async function PayoutAccountPage({
   }
   if (page.kind === 'no-access') {
     return (
-      <SellerShell session={page.session} activeId="s_payout" title={t('payout.title')}>
-        <h1 className="mb-6 text-2xl font-semibold">{t('payout.title')}</h1>
-        <h2 className="mb-2 text-lg font-semibold">{t('payout.no-access.title')}</h2>
-        <p className="text-fg-muted">{t('payout.no-access.body')}</p>
-      </SellerShell>
+      <SettingsShell session={page.session} linkId="payout-account" title={t('payout.title')}>
+        <SettingsNoAccess
+          permissionKeys={page.session.permissionKeys}
+          title={t('payout.no-access.title')}
+          body={t('payout.no-access.body')}
+          labels={{ settings: t('settings.sub.back'), home: t('settings.back-home') }}
+        />
+      </SettingsShell>
     );
   }
   const { stripe } = await searchParams;
   return (
-    <SellerShell session={page.session} activeId="s_payout" title={t('payout.title')}>
+    <SettingsShell session={page.session} linkId="payout-account" title={t('payout.title')}>
       <h1 className="mb-6 text-2xl font-semibold">{t('payout.title')}</h1>
       <PayoutAccountView
         initial={page.account}
@@ -39,6 +43,6 @@ export default async function PayoutAccountPage({
         canManage={page.session.permissionKeys.includes(PAYOUT_MANAGE_PERMISSION)}
         back={stripe === 'return' || stripe === 'refresh' ? stripe : null}
       />
-    </SellerShell>
+    </SettingsShell>
   );
 }

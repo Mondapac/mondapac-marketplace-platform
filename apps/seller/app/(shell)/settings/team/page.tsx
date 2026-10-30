@@ -1,12 +1,13 @@
 import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { SellerShell } from '../../../src/server/seller-shell.tsx';
-import { serverGet } from '../../../src/server/server-fetch.ts';
-import { requireSession } from '../../../src/server/session.ts';
-import { SETUP_ROOT } from '../../../src/setup/steps.ts';
-import { InviteMemberButton } from '../../../src/team/invite-member-button.tsx';
-import { TeamTable } from '../../../src/team/team-table.tsx';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
+import { SettingsNoAccess } from '../../../../src/settings/settings-no-access.tsx';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
+import { requireSession } from '../../../../src/server/session.ts';
+import { SETUP_ROOT } from '../../../../src/setup/steps.ts';
+import { InviteMemberButton } from '../../../../src/team/invite-member-button.tsx';
+import { TeamTable } from '../../../../src/team/team-table.tsx';
 import {
   ROLE_VIEW_PERMISSION,
   TEAM_ASSIGN_PERMISSION,
@@ -14,7 +15,7 @@ import {
   TEAM_VIEW_PERMISSION,
   type SellerRole,
   type TeamPage,
-} from '../../../src/team/types.ts';
+} from '../../../../src/team/types.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -39,15 +40,14 @@ export default async function TeamPageRoute({
   const title = t('identity.team.title');
   if (!session.permissionKeys.includes(TEAM_VIEW_PERMISSION)) {
     return (
-      <SellerShell session={session} activeId="s_home" title={t('identity.team.no-access.title')}>
-        <h1 className="mb-2 text-2xl font-semibold">{t('identity.team.no-access.title')}</h1>
-        <p className="text-fg-muted">{t('identity.team.no-access.body')}</p>
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/">
-            {t('identity.team.no-access.action')}
-          </a>
-        </p>
-      </SellerShell>
+      <SettingsShell session={session} linkId="team" title={title}>
+        <SettingsNoAccess
+          permissionKeys={session.permissionKeys}
+          title={t('identity.team.no-access.title')}
+          body={t('identity.team.no-access.body')}
+          labels={{ settings: t('settings.sub.back'), home: t('settings.back-home') }}
+        />
+      </SettingsShell>
     );
   }
   const { after: rawAfter } = await searchParams;
@@ -69,7 +69,7 @@ export default async function TeamPageRoute({
   // Without the role list the role actions are left out, not shown broken.
   const roles = rolesResult?.kind === 'ok' ? rolesResult.body.items : undefined;
   return (
-    <SellerShell session={session} activeId="s_team" title={title}>
+    <SettingsShell session={session} linkId="team" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {result.kind === 'ok' ? (
         <>
@@ -89,7 +89,7 @@ export default async function TeamPageRoute({
             <p className="mt-4">
               <a
                 className="inline-flex min-h-12 items-center font-medium text-link underline"
-                href={`/team?after=${result.body.next}`}
+                href={`/settings/team?after=${result.body.next}`}
               >
                 {t('identity.team.next-page')}
               </a>
@@ -99,6 +99,6 @@ export default async function TeamPageRoute({
       ) : (
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       )}
-    </SellerShell>
+    </SettingsShell>
   );
 }
