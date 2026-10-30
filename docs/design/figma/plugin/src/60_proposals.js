@@ -396,13 +396,35 @@ function psDelivery(state, o) {
   const content = frame({ name: 'Settings content', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, [frame({ name: 'header', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [head, last])].concat(o.banner ? [o.banner] : [], [psSection('Methods and timing', 'What customers can choose at checkout, and until when.', rows1), psSection('Fees', 'What the platform adds to delivery quotes.', rows2)], o.saveBar ? [o.saveBar] : []));
   return psScreen('Admin · Delivery rules · ' + state, 'Admin', 'Settings / Delivery / Delivery rules', [frame({ name: 'Settings layout', dir: 'H', gap: 'space/6', align: 'start', sizeH: 'FILL' }, [psSubNav(PS_ADMIN_GROUPS, 'Delivery rules'), content])], o.overlay);
 }
+// The seller Store profile page in a given state: the same template, sub-navigation, save bar and states as the admin pages.
+function psTextarea(value, state) { return inst('Textarea', { State: state || 'Filled', Value: value }, { name: 'textarea', sizeH: 'FILL' }); }
+function psPicture(kind, w, h, dis) {
+  return frame({ name: kind, dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [rect({ name: kind + ' preview', w: w, h: h, fill: 'bg/muted', radius: 'radius/control' }), psSp(), btn('Replace', 'Secondary', 'Sm', dis ? { State: 'Disabled' } : {}), btn('Remove', 'Ghost', 'Sm', dis ? { State: 'Disabled' } : {})]);
+}
+const PS_ABOUT = 'Family-run halal butcher in Kuraby since 2009. Grass-fed lamb and beef, cut to order, delivered across Brisbane south.';
+function psStore(state, o) {
+  o = o || {};
+  const dis = o.viewOnly ? 'Disabled' : null;
+  const about = frame({ name: 'about', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [psTextarea(o.badAbout ? PS_ABOUT + ' Certified halal by AFIC.' : PS_ABOUT, o.badAbout ? 'Error' : dis), text((o.badAbout ? 149 : 125) + ' of 600 characters', 'Caption/Default', 'text/muted', { name: 'counter' })]);
+  const rows1 = [psRow('About your store (English)', 'Plain text. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.', about, { changed: o.changed, error: o.badAbout ? 'This text claims a certification. Remove that wording.' : null })];
+  const rows2 = [psRow('Logo', 'Shown next to your store name. A square picture, at least 128 × 128 px.', psPicture('logo', 56, 56, dis), { changed: o.changed }),
+    psRow('Banner', 'A wide picture at the top of your store page, 1200 × 300 px or larger. The edges are cropped on phones.', psPicture('banner', 160, 40, dis))];
+  const head = pageTitle('Store profile', 'What buyers see on your store page. Changes are public as soon as you save them.', [ppIconButton('star', 'pin')]);
+  const last = text('Last changed by Amir R. · 3 days ago · View history', 'Caption/Default', 'text/muted', { name: 'last-changed' });
+  const content = frame({ name: 'Settings content', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, [frame({ name: 'header', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [head, last])].concat(o.banner ? [o.banner] : [], [psSection('About', 'A few words about your store, in each language you sell in.', rows1), psSection('Pictures', 'JPEG, PNG or WebP, under 25 MB.', rows2)], o.saveBar ? [o.saveBar] : []));
+  return psScreen('Seller · Store profile · ' + state, 'Seller', 'Settings / Store / Store profile', [frame({ name: 'Settings layout', dir: 'H', gap: 'space/6', align: 'start', sizeH: 'FILL' }, [psSubNav(PS_SELLER_GROUPS, 'Store profile'), content])], o.overlay);
+}
+function psBanner(name, tone, title, bodyText, action) { return inst('InfoBanner', Object.assign({ Tone: tone, Title: title, Body: bodyText, 'Show action': !!action }, action ? { Action: action } : {}), { name: name, sizeH: 'FILL' }); }
+function psSavedToast(msg) { const t = psToast('Success', msg); setMeta(t, { abs: [1440 - 400 - 16, 900 - 76] }); return t; }
 function psErrorSummary() { return inst('InfoBanner', { Tone: 'Critical', Title: '1 setting needs fixing', Body: 'Same-day cut-off: enter a time between 12:00 am and 11:59 pm.', 'Show action': false }, { name: 'error-summary', sizeH: 'FILL' }); }
 function psConflict() { return inst('InfoBanner', { Tone: 'Attention', Title: 'Sara K. saved these settings 1 minute ago', Body: 'Your 2 changes are kept. Review what changed, then save again.', 'Show action': true, Action: 'Show what changed' }, { name: 'conflict', sizeH: 'FILL' }); }
 function psViewOnly() { return inst('InfoBanner', { Tone: 'Info', Title: 'View only', Body: 'Your role can see these settings but not change them. An admin who manages roles can give you access.', 'Show action': false }, { name: 'view-only', sizeH: 'FILL' }); }
 // Command palette (Cmd+K): pinned and recent before typing; results by kind while typing.
 function psItem(label, desc, ic, on) { return inst('MenuItem', Object.assign({ State: on ? 'Selected' : 'Default', Label: label, 'Leading icon': true, Icon: { icon: ic }, 'Show description': !!desc }, desc ? { Description: desc } : {}), { name: 'item · ' + label, sizeH: 'FILL' }); }
-function psPalette(query) {
-  const groups = query ? [['Settings', [['Delivery fee margin', 'Settings / Delivery / Delivery rules', 'sliders', true], ['Round fees up to', 'Settings / Delivery / Delivery rules', 'sliders']]], ['Pages', [['Delivery rules', 'Settings / Delivery', 'file-text']]]]
+const PS_PALETTE_SELLER = { results: [['Settings', [['Logo', 'Settings / Store / Store profile', 'sliders', true], ['Banner', 'Settings / Store / Store profile', 'sliders']]], ['Pages', [['Store profile', 'Settings / Store', 'file-text']]]],
+  idle: [['Pinned', [['Orders', null, 'clipboard', true], ['Store profile', 'Settings / Store', 'star']]], ['Recent', [['Payout account', 'Settings / Money', 'clock'], ['Members', 'Settings / Team', 'clock'], ['Stock locations', 'Settings / Store', 'clock']]], ['Actions', [['Invite member', null, 'plus'], ['Add stock location', null, 'plus']]]] };
+function psPalette(query, ws) {
+  const groups = ws === 'Seller' ? PS_PALETTE_SELLER[query ? 'results' : 'idle'] : query ? [['Settings', [['Delivery fee margin', 'Settings / Delivery / Delivery rules', 'sliders', true], ['Round fees up to', 'Settings / Delivery / Delivery rules', 'sliders']]], ['Pages', [['Delivery rules', 'Settings / Delivery', 'file-text']]]]
     : [['Pinned', [['Orders', null, 'clipboard', true], ['Delivery rules', 'Settings / Delivery', 'star']]], ['Recent', [['Support contact', 'Settings / Marketplace', 'clock'], ['Roles & permissions', 'Settings / People & access', 'clock'], ['Customer wallet', 'Settings / Money', 'clock']]], ['Actions', [['Invite admin', null, 'plus'], ['Create role', null, 'plus']]]];
   const kids = [inst('Input', { Type: 'Text', State: query ? 'Filled' : 'Focus', Value: query || 'Search pages, settings and actions', 'Leading icon': true }, { name: 'query', sizeH: 'FILL' })];
   if (query) kids.push(text('3 results', 'Caption/Default', 'text/muted', { name: 'count' }));
@@ -410,10 +432,10 @@ function psPalette(query) {
   kids.push(frame({ name: 'hints', dir: 'H', gap: 'space/4', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text('↑ ↓ to move', 'Caption/Default', 'text/muted'), text('Enter to open', 'Caption/Default', 'text/muted'), text('Esc to close', 'Caption/Default', 'text/muted'), psSp(), text('? for shortcuts', 'Caption/Default', 'text/muted')]));
   return frame({ name: 'Command palette', dir: 'V', w: 640, pad: 'space/4', gap: 'space/3', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' }, kids);
 }
-function psPaletteScene(state, query) {
-  const scr = frame({ name: PS + ' · Search (Cmd+K) · ' + state, w: 1440, h: 900, fill: 'bg/page', clip: true });
+function psPaletteScene(state, query, ws) {
+  const scr = frame({ name: PS + ' · ' + (ws || 'Admin') + ' · Search (Cmd+K) · ' + state, w: 1440, h: 900, fill: 'bg/page', clip: true });
   add(scr, frame({ name: 'scrim', w: 1440, h: 900, fill: 'bg/scrim' }));
-  const pal = psPalette(query); scr.appendChild(pal); pal.x = 400; pal.y = 96;
+  const pal = psPalette(query, ws); scr.appendChild(pal); pal.x = 400; pal.y = 96;
   tag(scr); return psTag(scr);
 }
 // Toasts: bottom end corner, at most three, newest lowest, above the save bar when it shows.
@@ -429,20 +451,27 @@ function psToasts() {
   tag(scr); return psTag(scr);
 }
 // States that end the page: could not load, no access, and the leave guard.
-function psStates() {
-  const noAccess = inst('EmptyState', { Size: 'Card', Title: 'You don’t have access to this page', Body: 'Delivery rules needs the permission "View delivery settings". An admin who manages roles can add it.', Icon: { icon: 'lock' } }, { name: 'no-access', sizeH: 'FILL' });
+function psStates(ws) {
+  const seller = ws === 'Seller';
+  const page = seller ? 'Store profile' : 'Delivery rules';
+  const noAccess = inst('EmptyState', { Size: 'Card', Title: 'You don’t have access to this page', Body: seller ? 'Payout account needs the permission "View payouts". The store owner can add it.' : 'Delivery rules needs the permission "View delivery settings". An admin who manages roles can add it.', Icon: { icon: 'lock' } }, { name: 'no-access', sizeH: 'FILL' });
   setNested(noAccess, 'action', prop('Button', 'Label', 'Back to Settings'));
-  const load = inst('InfoBanner', { Tone: 'Critical', Title: 'Delivery settings could not be loaded', Body: 'Try again. If it keeps happening, check the status page.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' });
-  const leave = dlg({ name: 'Leave without saving', title: 'Leave without saving?', text: 'You have 2 unsaved changes on Delivery rules. If you leave now, they are lost.', primary: 'Leave', secondary: 'Stay', focusCancel: true });
-  const scr = frame({ name: PS + ' · States', dir: 'V', w: 900, pad: 40, gap: 'space/5', fill: 'bg/page' }, [text('Settings pages: states', 'Heading/H1'), para('One block for every page the role cannot see, one banner for a page that cannot load, and one guard when leaving with unsaved changes. Password, two-step sign-in and dangerous actions keep their own button and confirmation in a Danger zone section at the end of the page.', 820),
+  const load = inst('InfoBanner', { Tone: 'Critical', Title: (seller ? 'The store profile' : 'Delivery settings') + ' could not be loaded', Body: 'Try again. If it keeps happening, check the status page.', 'Show action': true, Action: 'Try again' }, { name: 'load-error', sizeH: 'FILL' });
+  const leave = dlg({ name: 'Leave without saving', title: 'Leave without saving?', text: 'You have 2 unsaved changes on ' + page + '. If you leave now, they are lost.', primary: 'Leave', secondary: 'Stay', focusCancel: true });
+  const scr = frame({ name: PS + ' · ' + (ws || 'Admin') + ' · States', dir: 'V', w: 900, pad: 40, gap: 'space/5', fill: 'bg/page' }, [text((seller ? 'Seller' : 'Admin') + ' settings pages: states', 'Heading/H1'), para('One block for every page the role cannot see, one banner for a page that cannot load, and one guard when leaving with unsaved changes. Password, two-step sign-in and dangerous actions keep their own button and confirmation in a Danger zone section at the end of the page.', 820),
     text('No access', 'Caption/Strong', 'text/muted'), noAccess, text('Could not load', 'Caption/Strong', 'text/muted'), load, text('Leave with unsaved changes', 'Caption/Strong', 'text/muted'), leave]);
   tag(scr); return psTag(scr);
 }
 PROPOSALS['panel-settings'] = { title: PS, rows: function () {
-  return [[psHub('Admin', PS_ADMIN_GROUPS, 'Set up how the marketplace works. Changes here apply to every seller and customer.'), psHub('Seller', PS_SELLER_GROUPS, 'Set up how your store works. Changes here apply to your whole store.'), psPaletteScene('Pinned and recent')],
+  const admin = 'Set up how the marketplace works. Changes here apply to every seller and customer.', seller = 'Set up how your store works. Changes here apply to your whole store.';
+  return [[psHub('Admin', PS_ADMIN_GROUPS, admin), psHub('Seller', PS_SELLER_GROUPS, seller), psPaletteScene('Pinned and recent', null, 'Admin'), psPaletteScene('Pinned and recent', null, 'Seller')],
+    // Admin: Delivery rules in every state
     [psDelivery('Default'), psDelivery('Unsaved changes', { changed: true, saveBar: psSaveBar('2 unsaved changes') }), psDelivery('Needs fixing', { changed: true, badCutoff: true, banner: psErrorSummary(), saveBar: psSaveBar('2 unsaved changes', '1 needs fixing') })],
-    [psDelivery('Someone saved first', { changed: true, banner: psConflict(), saveBar: psSaveBar('2 unsaved changes') }), psDelivery('View only', { viewOnly: true, banner: psViewOnly() }), psPaletteScene('Results', 'fee')],
-    [psDelivery('Saved', { overlay: (function () { const t = psToast('Success', 'Delivery rules saved.'); setMeta(t, { abs: [1440 - 400 - 16, 900 - 76] }); return t; })() }), psToasts(), psStates()]];
+    [psDelivery('Someone saved first', { changed: true, banner: psConflict(), saveBar: psSaveBar('2 unsaved changes') }), psDelivery('View only', { viewOnly: true, banner: psViewOnly() }), psDelivery('Saved', { overlay: psSavedToast('Delivery rules saved.') })],
+    // Seller: Store profile in the same states
+    [psStore('Default'), psStore('Unsaved changes', { changed: true, saveBar: psSaveBar('2 unsaved changes') }), psStore('Needs fixing', { changed: true, badAbout: true, banner: psBanner('error-summary', 'Critical', '1 setting needs fixing', 'About your store: remove the wording that claims a certification.'), saveBar: psSaveBar('2 unsaved changes', '1 needs fixing') })],
+    [psStore('Someone saved first', { changed: true, banner: psBanner('conflict', 'Attention', 'Amir R. saved the store profile 1 minute ago', 'Your 2 changes are kept. Review what changed, then save again.', 'Show what changed'), saveBar: psSaveBar('2 unsaved changes') }), psStore('View only', { viewOnly: true, banner: psBanner('view-only', 'Info', 'View only', 'You can see the store profile but not change it. The store owner can give you access.') }), psStore('Saved', { overlay: psSavedToast('Store profile saved. Buyers can see it now.') })],
+    [psPaletteScene('Results', 'fee', 'Admin'), psPaletteScene('Results', 'logo', 'Seller'), psToasts(), psStates('Admin'), psStates('Seller')]];
 } };
 
 async function buildProposal(key) {
