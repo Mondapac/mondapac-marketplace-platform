@@ -22,7 +22,7 @@ interface SettingField {
 }
 
 /** How long a row reached from the palette stays highlighted. */
-export const FOUND_MS = 2500;
+export const FOUND_MS = 4000;
 
 const FieldContext = createContext<SettingField | null>(null);
 

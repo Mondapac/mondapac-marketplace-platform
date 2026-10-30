@@ -20,6 +20,7 @@ export function panelToolsLabels(text: (key: string) => string): PanelToolsLabel
         action: text('palette.kind.action'),
       },
       empty: text('palette.empty'),
+      emptyHint: text('palette.empty-hint'),
       countOne: text('palette.count-one'),
       countMany: text('palette.count-many'),
       hintMove: text('palette.hint-move'),
@@ -28,7 +29,6 @@ export function panelToolsLabels(text: (key: string) => string): PanelToolsLabel
     },
     pin: {
       pin: text('palette.pin.pin'),
-      unpin: text('palette.pin.unpin'),
       limit: text('palette.pin.limit'),
     },
     pinned: text('palette.pinned'),
@@ -38,6 +38,9 @@ export function panelToolsLabels(text: (key: string) => string): PanelToolsLabel
       openSearch: text('palette.shortcuts.open-search'),
       showList: text('palette.shortcuts.show-list'),
       then: text('palette.shortcuts.then'),
+      singleKey: text('palette.shortcuts.single-key'),
+      singleKeyHint: text('palette.shortcuts.single-key-hint'),
+      pinHint: text('palette.shortcuts.pin-hint'),
     },
   };
 }

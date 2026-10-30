@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import {
+  PageTitle,
   PaletteSearchButton,
+  ShortcutsButton,
   PanelTools,
   PinButton,
   PinnedSection,
@@ -16,7 +18,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { adminNav } from './nav.ts';
-import { adminDefaultPinIds, adminGoShortcuts, adminPaletteEntries } from './palette.ts';
+import { adminGoShortcuts, adminPaletteEntries } from './palette.ts';
 import { settingEntries, settingsGroups, visibleSettings } from './settings/settings-nav.ts';
 
 const text = (key: string): string =>
@@ -53,9 +55,9 @@ describe('admin palette index', () => {
 
   it('shows a setting and an action only with the permission behind them', () => {
     const labels = (keys: string[]) => adminPaletteEntries(keys, text).map((entry) => entry.label);
-    expect(labels([])).not.toContain('Support email');
+    expect(labels([])).not.toContain('Support email address');
     expect(labels([])).not.toContain('Create role');
-    expect(labels(['notifications.support-contact.view'])).toContain('Support email');
+    expect(labels(['notifications.support-contact.view'])).toContain('Support email address');
     expect(labels(['identity.platform-role.create'])).toContain('Create role');
     expect(labels([])).toContain('Two-step sign-in');
   });
@@ -68,13 +70,6 @@ describe('admin palette index', () => {
       'account-security',
     ]);
     for (const entry of settingEntries) expect(pages.has(entry.pageId), entry.id).toBe(true);
-  });
-
-  it('starts a role with at most three pinned pages that it may open', () => {
-    const pins = (keys: string[]) => adminDefaultPinIds(adminPaletteEntries(keys, text), keys);
-    expect(pins(ALL_KEYS)).toHaveLength(3);
-    expect(pins(['ordering.order.view'])).toEqual(['page:orders']);
-    expect(pins([])).toEqual([]);
   });
 
   it('adds go-to shortcuts only for pages the keys allow', () => {
@@ -99,15 +94,18 @@ describe('PanelTools', () => {
         market="AU"
         accountId={over.accountId ?? 'acc-1'}
         entries={entries}
-        defaultPinIds={adminDefaultPinIds(entries, keys)}
         goShortcuts={adminGoShortcuts(entries, text)}
         labels={panelToolsLabels(text)}
         navigate={navigate}
       >
+        <ShortcutsButton />
         <PaletteSearchButton />
+        <p data-testid="phone-title">
+          <PageTitle fallback="Fallback" />
+        </p>
         <PinButton />
         <PinnedSection />
-        <RecentPages heading="Recently visited" />
+        <RecentPages heading="Recent" />
         <label>
           Notes
           <input />
@@ -182,7 +180,7 @@ describe('PanelTools', () => {
     const options = within(dialog()!).getAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual([
       expect.stringContaining('Support contact'),
-      expect.stringContaining('Support email'),
+      expect.stringContaining('Support email address'),
     ]);
     expect(within(dialog()!).getByRole('status').textContent).toBe('2 results');
     expect(box.getAttribute('aria-activedescendant')).toBe(options[0]!.id);
@@ -233,7 +231,7 @@ describe('PanelTools', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('records the page being viewed as recent, newest first, at most five, per account', () => {
+  it('records the page being viewed as recent, newest first, per account, and keeps it out of what is shown', () => {
     window.localStorage.setItem(
       'mp:admin:AU:acc-1:recent',
       JSON.stringify([
@@ -241,47 +239,70 @@ describe('PanelTools', () => {
         'page:settings/support',
         'page:home',
         'page:customers',
+        'page:disputes',
         'page:x',
       ]),
     );
-    mount({ keys: [...KEYS, 'identity.customer-account.view'] });
+    mount({ keys: [...KEYS, 'identity.customer-account.view', 'commission-payouts.dispute.view'] });
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:recent')!)).toEqual([
       'page:orders',
       'page:sellers',
       'page:settings/support',
       'page:home',
       'page:customers',
+      'page:disputes',
     ]);
-    const hub = screen.getByRole('region', { name: 'Recently visited' });
-    expect(within(hub).getAllByRole('link')).toHaveLength(5);
+    // The page being viewed is not offered again, and the slot is filled by the next page.
+    const hub = screen.getByRole('region', { name: 'Recent' });
+    expect(
+      within(hub)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['All sellers', 'Support contact', 'Dashboard', 'Customers', 'Disputes']);
+    key(document, { key: 'k', ctrlKey: true });
+    const box = within(dialog()!).getByRole('combobox');
+    expect(within(dialog()!).getAllByRole('option')[0]!.textContent).toContain('All sellers');
+    key(box, { key: 'Enter' });
+    expect(navigate).toHaveBeenCalledWith('/sellers');
     cleanup();
     mount({ accountId: 'acc-2' });
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-2:recent')!)).toEqual([
       'page:orders',
     ]);
+    expect(screen.queryByRole('region', { name: 'Recent' })).toBeNull();
   });
 
-  it('pins and unpins the page with the star, keeps the choice in storage and shows it under Pinned', () => {
+  it('pins and unpins the page with a star named after the page, and keeps the choice', () => {
     mount();
-    // Defaults of this role: Orders, All sellers and Settings. The page being viewed is Orders.
-    const side = () => screen.getAllByRole('link').map((link) => link.textContent);
-    expect(side()).toEqual(expect.arrayContaining(['Orders', 'All sellers', 'Settings']));
-    expect(
-      screen.getByRole('button', { name: 'Unpin this page' }).getAttribute('aria-pressed'),
-    ).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Unpin this page' }));
-    expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:pins')!)).toEqual([
-      'page:sellers',
-      'page:settings',
-    ]);
-    const star = screen.getByRole('button', { name: 'Pin this page' });
+    expect(screen.queryByText('Pinned')).toBeNull();
+    const star = screen.getByRole('button', { name: 'Pin Orders' });
     expect(star.getAttribute('aria-pressed')).toBe('false');
+    expect(star.getAttribute('title')).toBe('Pin Orders');
     fireEvent.click(star);
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:pins')!)).toEqual([
-      'page:sellers',
-      'page:settings',
       'page:orders',
     ]);
+    // The name stays the same; only the pressed state changes.
+    const same = screen.getByRole('button', { name: 'Pin Orders' });
+    expect(same.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Pinned')).not.toBeNull();
+    const pinnedLink = screen.getAllByRole('link', { name: 'Orders' })[0]!;
+    expect(pinnedLink.getAttribute('aria-current')).toBeNull();
+    fireEvent.click(same);
+    expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:pins')!)).toEqual([]);
+    expect(screen.getByRole('button', { name: 'Pin Orders' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+  });
+
+  it('names the page in the phone title, and offers no star below a page', () => {
+    mount();
+    expect(screen.getByTestId('phone-title').textContent).toBe('Orders');
+    cleanup();
+    window.history.pushState({}, '', '/orders/42');
+    mount();
+    expect(screen.getByTestId('phone-title').textContent).toBe('Fallback');
+    expect(screen.queryByRole('button', { name: /^Pin / })).toBeNull();
   });
 
   it('refuses a sixth pin with a notice, and unpins to make room', () => {
@@ -302,7 +323,7 @@ describe('PanelTools', () => {
       ]),
     );
     mount({ keys });
-    const star = screen.getByRole('button', { name: 'Pin this page' });
+    const star = screen.getByRole('button', { name: 'Pin Orders' });
     fireEvent.click(star);
     expect(screen.getByText('You can pin up to 5 pages. Unpin one first.')).not.toBeNull();
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:pins')!)).toHaveLength(5);
@@ -315,15 +336,95 @@ describe('PanelTools', () => {
       throw new Error('blocked');
     });
     mount({ keys: ['ordering.order.view', 'sellers.seller.view'] });
-    // Defaults show; unpinning works in memory.
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: 'Unpin this page' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin Orders' }));
     });
-    expect(screen.getByRole('button', { name: 'Pin this page' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Pin Orders' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: 'Pin this page' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin Orders' }));
     });
-    expect(screen.getByRole('button', { name: 'Unpin this page' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Pin Orders' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+  });
+
+  it('turns the single-key shortcuts off from the shortcuts dialog and remembers it, keeping Ctrl+K', () => {
+    mount();
+    const opener = screen.getByRole('button', { name: 'Keyboard shortcuts' });
+    opener.focus();
+    fireEvent.click(opener);
+    const box = within(dialog()!).getByRole('checkbox', { name: /Single-key shortcuts/ });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    expect(dialog()?.textContent).toContain(
+      'Turn off if they clash with your assistive technology.',
+    );
+    expect(dialog()?.textContent).toContain('use the star in the top bar');
+    fireEvent.click(box);
+    expect(window.localStorage.getItem('mp:admin:AU:acc-1:single-key')).toBe('0');
+    fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
+    expect(document.activeElement).toBe(opener);
+    key(document.body, { key: '?', shiftKey: true });
+    key(document.body, { key: 'g' });
+    key(document.body, { key: 'o' });
+    expect(dialog()).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+    key(document, { key: 'k', ctrlKey: true });
+    expect(dialog()).not.toBeNull();
+    cleanup();
+    // The choice survives a reload, and turning it back on restores the keys.
+    mount();
+    key(document.body, { key: '?', shiftKey: true });
+    expect(dialog()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+    fireEvent.click(within(dialog()!).getByRole('checkbox', { name: /Single-key shortcuts/ }));
+    expect(window.localStorage.getItem('mp:admin:AU:acc-1:single-key')).toBe('1');
+    fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
+    key(document.body, { key: 'g' });
+    key(document.body, { key: 'o' });
+    expect(navigate).toHaveBeenCalledWith('/orders');
+  });
+
+  it('opens the shortcuts list from the palette without a shortcut, and returns focus to the opener', () => {
+    mount();
+    const opener = screen.getByRole('button', { name: 'Search' });
+    opener.focus();
+    fireEvent.click(opener);
+    const box = within(dialog()!).getByRole('combobox');
+    fireEvent.change(box, { target: { value: 'keyboard' } });
+    expect(within(dialog()!).getAllByRole('option')[0]!.textContent).toContain(
+      'Keyboard shortcuts',
+    );
+    key(box, { key: 'Enter' });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(dialog()?.getAttribute('aria-labelledby')).not.toBeNull();
+    expect(dialog()?.textContent).toContain('Single-key shortcuts');
+    fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('returns focus to what had it before ? opened the list', () => {
+    mount();
+    const button = screen.getByRole('button', { name: 'Search' });
+    button.focus();
+    key(button, { key: '?', shiftKey: true });
+    expect(dialog()?.textContent).toContain('Keyboard shortcuts');
+    fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('says what to try when nothing matches, and reports an empty list as collapsed', () => {
+    mount();
+    key(document, { key: 'k', ctrlKey: true });
+    const box = within(dialog()!).getByRole('combobox');
+    expect(box.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(box.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.change(box, { target: { value: 'zzzz' } });
+    expect(box.getAttribute('aria-expanded')).toBe('false');
+    expect(box.getAttribute('aria-controls')).toBeNull();
+    expect(within(dialog()!).queryByRole('listbox')).toBeNull();
+    expect(dialog()?.textContent).toContain('Check the spelling or try a shorter word.');
   });
 });
 
@@ -378,7 +479,7 @@ describe('SettingRow highlight', () => {
       row();
       expect(document.querySelector('[data-found]')).not.toBeNull();
       act(() => {
-        vi.advanceTimersByTime(3000);
+        vi.advanceTimersByTime(4100);
       });
       expect(document.querySelector('[data-found]')).toBeNull();
     } finally {

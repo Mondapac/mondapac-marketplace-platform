@@ -1,6 +1,5 @@
 import {
   buildPaletteEntries,
-  defaultPins,
   visibleNavItems,
   type GoShortcut,
   type PaletteActionSpec,
@@ -84,41 +83,6 @@ export function adminPaletteEntries(
     actions: adminActions,
     groupLabelKeys: Object.fromEntries((adminNav.groups ?? []).map((g) => [g.id, g.labelKey])),
   });
-}
-
-// Three pages a role starts with, by the work its permissions point to (the first profile the
-// account qualifies for), then a general tail so a small role still gets three. A user can change
-// them; the choice is theirs from then on.
-const PIN_PROFILES: readonly { readonly when: string; readonly pins: readonly string[] }[] = [
-  {
-    when: 'catalog.product.view',
-    pins: ['page:offer-reviews', 'page:price-holds', 'page:sellers'],
-  },
-  { when: 'ordering.order.view', pins: ['page:orders', 'page:customers', 'page:disputes'] },
-  {
-    when: 'payments.connected-account.view',
-    pins: ['page:payout-accounts', 'page:disputes', 'page:wallet-credits'],
-  },
-];
-const PIN_FALLBACK: readonly string[] = [
-  'page:orders',
-  'page:sellers',
-  'page:settings',
-  'page:content',
-];
-
-/** Which profile's pins lead for a set of permission keys. */
-export function adminPinCandidates(permissionKeys: readonly string[]): readonly string[] {
-  const held = new Set(permissionKeys);
-  const profile = PIN_PROFILES.find((candidate) => held.has(candidate.when));
-  return [...(profile?.pins ?? []), ...PIN_FALLBACK];
-}
-
-export function adminDefaultPinIds(
-  entries: readonly PaletteEntry[],
-  permissionKeys: readonly string[],
-): readonly string[] {
-  return defaultPins(adminPinCandidates(permissionKeys), new Set(entries.map((e) => e.id)));
 }
 
 /** G then S opens Settings, G then O opens Orders; each only when the account may open it. */

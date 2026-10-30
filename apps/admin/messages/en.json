@@ -15,7 +15,7 @@
     "close": "Close search",
     "results": "Search results",
     "recent": "Recent",
-    "recent-heading": "Recently visited",
+    "recent-heading": "Recent",
     "pinned": "Pinned",
     "kind": {
       "page": "Pages",
@@ -32,8 +32,7 @@
       "account": "Account"
     },
     "pin": {
-      "pin": "Pin this page",
-      "unpin": "Unpin this page",
+      "pin": "Pin {page}",
       "limit": "You can pin up to 5 pages. Unpin one first."
     },
     "shortcuts": {
@@ -43,27 +42,35 @@
       "show-list": "Show keyboard shortcuts",
       "then": "then",
       "go-settings": "Go to Settings",
-      "go-orders": "Go to Orders"
+      "go-orders": "Go to Orders",
+      "single-key": "Single-key shortcuts",
+      "single-key-hint": "Turn off if they clash with your assistive technology.",
+      "pin-hint": "Pin or unpin a page: use the star in the top bar."
     },
     "action": {
       "create-role": "Create role",
       "invite-admin": "Invite admin"
     },
     "setting": {
-      "support-email": "Support email",
+      "support-email": "Support email address",
       "support-email-words": "contact, help, customer support, email address",
-      "assistant-enabled": "Smart assistant on or off",
-      "assistant-audience": "Who sees the smart assistant",
-      "assistant-model": "Smart assistant model",
-      "assistant-welcome": "Smart assistant welcome message",
+      "assistant-enabled": "Assistant switched on",
+      "assistant-audience": "Show to",
+      "assistant-model": "Model",
+      "assistant-welcome": "Welcome message",
       "delivery-methods": "Delivery methods",
       "delivery-cutoff": "Same-day cut-off",
       "delivery-margin": "Delivery fee margin",
       "delivery-margin-words": "delivery fee, markup, platform fee, charge",
       "wallet-state": "Wallet state",
       "wallet-state-words": "store credit, pause, freeze, turn off",
-      "two-step": "Two-step sign-in"
-    }
+      "two-step": "Two-step sign-in",
+      "assistant-enabled-words": "smart assistant, on, off, chat",
+      "assistant-audience-words": "smart assistant, who sees, visitors, rollout",
+      "assistant-model-words": "smart assistant, tier",
+      "assistant-welcome-words": "smart assistant, greeting"
+    },
+    "empty-hint": "Check the spelling or try a shorter word."
   },
   "theme": {
     "menu": "Theme",

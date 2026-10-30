@@ -9,7 +9,8 @@ import {
 } from './palette-index.ts';
 import {
   PIN_LIMIT,
-  defaultPins,
+  readFlag,
+  writeFlag,
   prefsKey,
   pushRecent,
   readIds,
@@ -174,24 +175,36 @@ describe('pins and recents', () => {
     expect(recent).toEqual(['c', 'f', 'e', 'd', 'b']);
   });
 
-  it('uses the role defaults until something is saved, and drops pages no longer allowed', () => {
+  it('starts with no pins, and drops pages no longer allowed, repeats and anything past the limit', () => {
     const valid = new Set(['a', 'b', 'c', 'd']);
-    expect(resolvePins(undefined, ['a', 'b', 'x'], valid)).toEqual(['a', 'b']);
-    expect(resolvePins(['d', 'x', 'd', 'c'], ['a'], valid)).toEqual(['d', 'c']);
-    expect(resolvePins([], ['a'], valid)).toEqual([]);
-    expect(resolvePins(['a', 'b', 'c', 'd', 'a'], [], new Set(['a', 'b', 'c', 'd']), 3)).toEqual([
-      'a',
-      'b',
-      'c',
-    ]);
+    expect(resolvePins(undefined, valid)).toEqual([]);
+    expect(resolvePins(['d', 'x', 'd', 'c'], valid)).toEqual(['d', 'c']);
+    expect(resolvePins(['a', 'b', 'c', 'd', 'a'], valid, 3)).toEqual(['a', 'b', 'c']);
   });
 
-  it('drops repeated candidates and picks three default pins from a role candidates that it may open', () => {
-    expect(defaultPins(['x', 'a', 'a', 'b', 'c', 'd'], new Set(['a', 'b', 'c', 'd']))).toEqual([
-      'a',
-      'b',
-      'c',
-    ]);
+  it('keeps an on/off choice, and falls back when storage is missing, throws or holds junk', () => {
+    const data = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => void data.set(key, value),
+    };
+    expect(readFlag(store, 'f', true)).toBe(true);
+    expect(writeFlag(store, 'f', false)).toBe(true);
+    expect(readFlag(store, 'f', true)).toBe(false);
+    data.set('f', 'maybe');
+    expect(readFlag(store, 'f', true)).toBe(true);
+    expect(readFlag(null, 'f', true)).toBe(true);
+    expect(writeFlag(null, 'f', false)).toBe(false);
+    const broken = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('quota');
+      },
+    };
+    expect(readFlag(broken, 'f', true)).toBe(true);
+    expect(writeFlag(broken, 'f', false)).toBe(false);
   });
 
   it('keys the lists by panel, Market and account', () => {
@@ -326,6 +339,30 @@ describe('interpretKey', () => {
       });
       expect(result.action).toEqual({ kind: 'palette' });
     }
+  });
+
+  it('ignores ? and the G-chords when single-key shortcuts are off, but never Ctrl+K', () => {
+    const ctx = (singleKeys: boolean) => ({
+      target: body,
+      modalOpen: false,
+      state: IDLE_CHORD,
+      now: 0,
+      chords,
+      singleKeys,
+    });
+    expect(interpretKey(key('?'), ctx(false)).action).toEqual({ kind: 'none' });
+    expect(interpretKey(key('?'), ctx(true)).action).toEqual({ kind: 'help' });
+    const armed = interpretKey(key('g'), ctx(false));
+    expect(armed.state).toEqual(IDLE_CHORD);
+    expect(interpretKey(key('s'), { ...ctx(false), state: armed.state }).action).toEqual({
+      kind: 'none',
+    });
+    expect(interpretKey(key('k', { ctrlKey: true }), ctx(false)).action).toEqual({
+      kind: 'palette',
+    });
+    expect(interpretKey(key('k', { metaKey: true }), ctx(false)).action).toEqual({
+      kind: 'palette',
+    });
   });
 
   it('ignores chords while a modal is open and with modifier keys held', () => {

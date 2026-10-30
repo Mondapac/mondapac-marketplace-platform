@@ -164,13 +164,15 @@ export {
 } from './palette/palette-index.ts';
 export {
   PanelTools,
+  PageTitle,
   PaletteSearchButton,
   PinButton,
+  ShortcutsButton,
   PinnedSection,
   RecentPages,
   type GoShortcut,
   type PanelToolsLabels,
   type PanelToolsProps,
 } from './palette/panel-tools.tsx';
-export { defaultPins, PIN_LIMIT, RECENT_LIMIT } from './palette/panel-prefs.ts';
+export { PIN_LIMIT, RECENT_LIMIT } from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';

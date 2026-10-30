@@ -1,7 +1,9 @@
 import 'server-only';
 import {
   AppShell,
+  PageTitle,
   PaletteSearchButton,
+  ShortcutsButton,
   PanelTools,
   PinButton,
   NAV_OPEN_COOKIE,
@@ -21,7 +23,7 @@ import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNav, sellerNavItems } from '../nav.ts';
-import { sellerDefaultPinIds, sellerGoShortcuts, sellerPaletteEntries } from '../palette.ts';
+import { sellerGoShortcuts, sellerPaletteEntries } from '../palette.ts';
 import { SellerNotifications } from '../notifications/seller-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
@@ -76,7 +78,6 @@ export async function SellerShell({
       market={marketId}
       accountId={session.accountId}
       entries={entries}
-      defaultPinIds={sellerDefaultPinIds(entries, session.permissionKeys)}
       goShortcuts={sellerGoShortcuts(entries, (key) => t(key))}
       labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
@@ -110,9 +111,11 @@ export async function SellerShell({
             pageTitle={title}
             trail={trail ?? navTrail(items, activeId, title, (key) => t(key), sellerNav.groups)}
             trailLabel={t('nav.breadcrumb')}
+            phoneTitle={<PageTitle fallback={title} />}
             titleAction={<PinButton />}
             actions={
               <>
+                <ShortcutsButton />
                 <PaletteSearchButton />
                 {bell ? <SellerNotifications csrfToken={session.csrfToken} /> : null}
                 <UserMenu

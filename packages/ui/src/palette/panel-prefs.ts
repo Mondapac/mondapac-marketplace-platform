@@ -7,7 +7,7 @@
 export const PIN_LIMIT = 5;
 export const RECENT_LIMIT = 5;
 
-export type PrefsKind = 'pins' | 'recent';
+export type PrefsKind = 'pins' | 'recent' | 'single-key';
 
 /** The storage key of one list of one account in one Market of one panel. */
 export function prefsKey(
@@ -75,27 +75,34 @@ export function pushRecent(
 }
 
 /**
- * The pins to show: the saved ones, or the defaults when nothing is saved. Ids of pages the
- * account can no longer open are dropped, duplicates collapse and the limit holds.
+ * The pins to show: the saved ones. Ids of pages the account can no longer open are dropped,
+ * duplicates collapse and the limit holds. Nobody starts with a pin; the star is how a page gets one.
  */
 export function resolvePins(
   saved: readonly string[] | undefined,
-  defaults: readonly string[],
   validIds: ReadonlySet<string>,
   limit = PIN_LIMIT,
 ): readonly string[] {
-  const source = saved ?? defaults;
-  return [...new Set(source)].filter((id) => validIds.has(id)).slice(0, limit);
+  return [...new Set(saved ?? [])].filter((id) => validIds.has(id)).slice(0, limit);
 }
 
-/**
- * The default pins of a role: the first `count` candidates (in the panel's priority order) that
- * the account may open. A role is its permission set, so the defaults follow from what is visible.
- */
-export function defaultPins(
-  candidates: readonly string[],
-  validIds: ReadonlySet<string>,
-  count = 3,
-): readonly string[] {
-  return [...new Set(candidates)].filter((id) => validIds.has(id)).slice(0, count);
+/** A saved on/off choice; `fallback` when nothing usable is saved or storage is missing. */
+export function readFlag(store: PrefsStore | null, key: string, fallback: boolean): boolean {
+  try {
+    const raw = store?.getItem(key) ?? null;
+    return raw === '1' ? true : raw === '0' ? false : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Saves an on/off choice; false when storage is missing or refuses. */
+export function writeFlag(store: PrefsStore | null, key: string, value: boolean): boolean {
+  try {
+    if (store === null) return false;
+    store.setItem(key, value ? '1' : '0');
+    return true;
+  } catch {
+    return false;
+  }
 }

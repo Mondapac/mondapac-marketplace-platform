@@ -15,7 +15,7 @@
     "close": "Close search",
     "results": "Search results",
     "recent": "Recent",
-    "recent-heading": "Recently visited",
+    "recent-heading": "Recent",
     "pinned": "Pinned",
     "kind": {
       "page": "Pages",
@@ -32,8 +32,7 @@
       "account": "Account"
     },
     "pin": {
-      "pin": "Pin this page",
-      "unpin": "Unpin this page",
+      "pin": "Pin {page}",
       "limit": "You can pin up to 5 pages. Unpin one first."
     },
     "shortcuts": {
@@ -43,7 +42,10 @@
       "show-list": "Show keyboard shortcuts",
       "then": "then",
       "go-settings": "Go to Settings",
-      "go-orders": "Go to Orders"
+      "go-orders": "Go to Orders",
+      "single-key": "Single-key shortcuts",
+      "single-key-hint": "Turn off if they clash with your assistive technology.",
+      "pin-hint": "Pin or unpin a page: use the star in the top bar."
     },
     "action": {
       "add-product": "Add product",
@@ -58,7 +60,8 @@
       "payout-bank": "Payout bank account",
       "payout-bank-words": "bank, BSB, payments, get paid",
       "team-members": "Team members"
-    }
+    },
+    "empty-hint": "Check the spelling or try a shorter word."
   },
   "theme": {
     "menu": "Theme",

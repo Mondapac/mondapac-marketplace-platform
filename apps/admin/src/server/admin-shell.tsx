@@ -1,7 +1,9 @@
 import 'server-only';
 import {
   AppShell,
+  PageTitle,
   PaletteSearchButton,
+  ShortcutsButton,
   PanelTools,
   PinButton,
   NAV_OPEN_COOKIE,
@@ -22,7 +24,7 @@ import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { adminNav } from '../nav.ts';
-import { adminDefaultPinIds, adminGoShortcuts, adminPaletteEntries } from '../palette.ts';
+import { adminGoShortcuts, adminPaletteEntries } from '../palette.ts';
 import { AdminNotifications } from '../notifications/admin-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
@@ -63,7 +65,6 @@ export async function AdminShell({
       market={marketId}
       accountId={session.accountId}
       entries={entries}
-      defaultPinIds={adminDefaultPinIds(entries, session.permissionKeys)}
       goShortcuts={adminGoShortcuts(entries, (key) => t(key))}
       labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
@@ -96,9 +97,11 @@ export async function AdminShell({
               pageTitle={title}
               trail={trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
               trailLabel={t('nav.breadcrumb')}
+              phoneTitle={<PageTitle fallback={title} />}
               titleAction={<PinButton />}
               actions={
                 <>
+                  <ShortcutsButton />
                   <PaletteSearchButton />
                   {bell ? <AdminNotifications csrfToken={session.csrfToken} /> : null}
                   <UserMenu

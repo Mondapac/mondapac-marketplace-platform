@@ -2,7 +2,7 @@ import { visibleNavItems } from '@mondapac/ui';
 import { describe, expect, it } from 'vitest';
 import messages from '../messages/en.json';
 import { sellerNav, sellerNavItems } from './nav.ts';
-import { sellerDefaultPinIds, sellerGoShortcuts, sellerPaletteEntries } from './palette.ts';
+import { sellerGoShortcuts, sellerPaletteEntries } from './palette.ts';
 import { settingEntries, settingsGroups, visibleSettings } from './settings/settings-nav.ts';
 
 const text = (key: string): string =>
@@ -61,11 +61,9 @@ describe('seller palette index', () => {
     for (const entry of settingEntries) expect(pages.has(entry.pageId), entry.id).toBe(true);
   });
 
-  it('starts a role with at most three pinned pages it may open, and go-to shortcuts', () => {
+  it('offers go-to shortcuts only for pages the keys allow', () => {
     const entries = sellerPaletteEntries('approved', ALL_KEYS, text);
-    expect(sellerDefaultPinIds(entries, ALL_KEYS)).toHaveLength(3);
     expect(sellerGoShortcuts(entries, text).map((s) => s.id)).toEqual(['go-settings', 'go-orders']);
-    expect(sellerDefaultPinIds(sellerPaletteEntries('approved', [], text), [])).toEqual([]);
     expect(visibleNavItems(sellerNav, new Set()).length).toBeGreaterThan(0);
   });
 });

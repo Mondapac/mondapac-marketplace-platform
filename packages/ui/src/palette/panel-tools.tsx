@@ -17,14 +17,16 @@ import { Dialog } from '../overlay/dialog.tsx';
 import { CommandPalette, Kbd, type CommandPaletteLabels } from './command-palette.tsx';
 import { matchPage, type PaletteEntry } from './palette-index.ts';
 import {
+  RECENT_LIMIT,
   browserStorage,
   prefsKey,
   pushRecent,
+  readFlag,
   readIds,
   resolvePins,
   togglePin,
+  writeFlag,
   writeIds,
-  RECENT_LIMIT,
 } from './panel-prefs.ts';
 import { IDLE_CHORD, interpretKey, type Chord, type ChordState } from './shortcuts.ts';
 
@@ -38,7 +40,8 @@ export interface PanelToolsLabels {
   /** The top bar's search button. */
   readonly search: string;
   readonly palette: CommandPaletteLabels;
-  readonly pin: { readonly pin: string; readonly unpin: string; readonly limit: string };
+  /** `pin` holds `{page}`; the label stays the same and `aria-pressed` carries the state. */
+  readonly pin: { readonly pin: string; readonly limit: string };
   readonly pinned: string;
   readonly shortcuts: {
     readonly title: string;
@@ -47,6 +50,11 @@ export interface PanelToolsLabels {
     readonly showList: string;
     /** "then", between the two keys of a chord. */
     readonly then: string;
+    /** The switch for the shortcuts made of one bare key, and its hint (WCAG 2.1.4). */
+    readonly singleKey: string;
+    readonly singleKeyHint: string;
+    /** How to pin a page, without a shortcut. */
+    readonly pinHint: string;
   };
 }
 
@@ -58,8 +66,6 @@ export interface PanelToolsProps {
   readonly accountId: string;
   /** Every page, setting and action the account may open (`buildPaletteEntries`). */
   readonly entries: readonly PaletteEntry[];
-  /** Entry ids pinned for an account that has chosen nothing yet (3 per role). */
-  readonly defaultPinIds: readonly string[];
   readonly goShortcuts: readonly GoShortcut[];
   readonly labels: PanelToolsLabels;
   /** Goes to a path; the browser's own navigation unless a caller (a test) replaces it. */
@@ -70,10 +76,14 @@ export interface PanelToolsProps {
 interface PanelToolsValue {
   readonly labels: PanelToolsLabels;
   readonly openPalette: (opener?: HTMLElement | null) => void;
+  readonly openHelp: (opener?: HTMLElement | null) => void;
   readonly pinnedEntries: readonly PaletteEntry[];
+  /** The last pages visited, newest first, without the page being viewed. */
   readonly recentEntries: readonly PaletteEntry[];
   /** The page entry the current path belongs to, once known (after the first paint). */
   readonly currentPage: PaletteEntry | undefined;
+  /** The path is the page itself, not a screen below it (an order inside Orders). */
+  readonly onPageItself: boolean;
   readonly isPinned: (id: string) => boolean;
   readonly toggle: (id: string) => void;
 }
@@ -85,18 +95,21 @@ export function usePanelTools(): PanelToolsValue | null {
   return useContext(PanelToolsContext);
 }
 
+const HELP_ENTRY_ID = 'action:keyboard-shortcuts';
+const pathOf = (href: string): string => href.split('#')[0] ?? href;
+const trimPath = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path);
+
 /**
  * The shell's keyboard and quick-access layer, shared by both panels: the ⌘K palette, the
- * shortcuts dialog, pinned pages and recent pages. Pins and recents are a per-account convenience
- * kept in localStorage (see `panel-prefs.ts`); the first paint always shows the defaults, so the
- * server and client markup agree.
+ * shortcuts dialog, pinned pages and recent pages. Pins, recents and the single-key switch are a
+ * per-account convenience kept in localStorage (see `panel-prefs.ts`); the first paint always
+ * shows the empty state, so the server and client markup agree.
  */
 export function PanelTools({
   panel,
   market,
   accountId,
   entries,
-  defaultPinIds,
   goShortcuts,
   labels,
   navigate = (href) => window.location.assign(href),
@@ -105,35 +118,38 @@ export function PanelTools({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
+  const helpOpener = useRef<HTMLElement | null>(null);
   const chordState = useRef<ChordState>(IDLE_CHORD);
   const pageIds = useMemo(
     () => new Set(entries.filter((entry) => entry.kind === 'page').map((entry) => entry.id)),
     [entries],
   );
-  const [pins, setPins] = useState<readonly string[]>(() =>
-    resolvePins(undefined, defaultPinIds, pageIds),
-  );
+  const [pins, setPins] = useState<readonly string[]>([]);
   const [recent, setRecent] = useState<readonly string[]>([]);
+  const [singleKeys, setSingleKeys] = useState(true);
   const [pathname, setPathname] = useState<string | null>(null);
   const pinsKey = prefsKey(panel, market, accountId, 'pins');
   const recentKey = prefsKey(panel, market, accountId, 'recent');
+  const singleKeyKey = prefsKey(panel, market, accountId, 'single-key');
 
-  // Reads the saved lists after the first paint and records the page being viewed.
+  // Reads the saved choices after the first paint and records the page being viewed.
   useEffect(() => {
     const store = browserStorage();
-    setPins(resolvePins(readIds(store, pinsKey), defaultPinIds, pageIds));
+    setPins(resolvePins(readIds(store, pinsKey), pageIds));
+    setSingleKeys(readFlag(store, singleKeyKey, true));
+    // One more than is shown, so the list still fills when the page being viewed is left out.
     let list: readonly string[] = (readIds(store, recentKey) ?? [])
       .filter((id) => pageIds.has(id))
-      .slice(0, RECENT_LIMIT);
+      .slice(0, RECENT_LIMIT + 1);
     const path = window.location.pathname;
     const here = matchPage(entries, path);
     if (here !== undefined && here.href !== '/') {
-      list = pushRecent(list, here.id);
+      list = pushRecent(list, here.id, RECENT_LIMIT + 1);
       writeIds(store, recentKey, list);
     }
     setRecent(list);
     setPathname(path);
-  }, [pinsKey, recentKey, entries, defaultPinIds, pageIds]);
+  }, [pinsKey, recentKey, singleKeyKey, entries, pageIds]);
 
   const byId = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
   const resolve = useCallback(
@@ -145,6 +161,10 @@ export function PanelTools({
     [byId],
   );
   const currentPage = pathname === null ? undefined : matchPage(entries, pathname);
+  const onPageItself =
+    currentPage !== undefined &&
+    pathname !== null &&
+    pathOf(currentPage.href) === trimPath(pathname);
 
   const openPalette = useCallback((from?: HTMLElement | null) => {
     opener.current =
@@ -161,6 +181,19 @@ export function PanelTools({
     if (back?.isConnected) back.focus();
   }, []);
 
+  const openHelp = useCallback((from?: HTMLElement | null) => {
+    helpOpener.current =
+      from ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setHelpOpen(true);
+  }, []);
+
+  const closeHelp = useCallback(() => {
+    setHelpOpen(false);
+    const back = helpOpener.current;
+    helpOpener.current = null;
+    if (back?.isConnected) back.focus();
+  }, []);
+
   const toggle = useCallback(
     (id: string) => {
       const change = togglePin(pins, id);
@@ -174,12 +207,44 @@ export function PanelTools({
     [pins, pinsKey, labels.pin.limit],
   );
 
+  const changeSingleKeys = useCallback(
+    (value: boolean) => {
+      setSingleKeys(value);
+      chordState.current = IDLE_CHORD;
+      writeFlag(browserStorage(), singleKeyKey, value);
+    },
+    [singleKeyKey],
+  );
+
+  const paletteEntries = useMemo<readonly PaletteEntry[]>(
+    () => [
+      ...entries,
+      {
+        id: HELP_ENTRY_ID,
+        kind: 'action',
+        label: labels.shortcuts.title,
+        keywords: labels.shortcuts.openSearch,
+        href: '#',
+        icon: 'keyboard',
+      },
+    ],
+    [entries, labels.shortcuts.title, labels.shortcuts.openSearch],
+  );
+
   const choose = useCallback(
-    (entry: PaletteEntry) => {
-      if (entry.kind !== 'page') return;
-      const next = pushRecent(recent, entry.id);
-      setRecent(next);
-      writeIds(browserStorage(), recentKey, next);
+    (entry: PaletteEntry): boolean => {
+      if (entry.id === HELP_ENTRY_ID) {
+        // The palette closes and gives focus back to its opener; the list returns it there too.
+        helpOpener.current = opener.current;
+        setHelpOpen(true);
+        return true;
+      }
+      if (entry.kind === 'page') {
+        const next = pushRecent(recent, entry.id, RECENT_LIMIT + 1);
+        setRecent(next);
+        writeIds(browserStorage(), recentKey, next);
+      }
+      return false;
     },
     [recent, recentKey],
   );
@@ -192,6 +257,7 @@ export function PanelTools({
         state: chordState.current,
         now: Date.now(),
         chords: goShortcuts,
+        singleKeys,
       });
       chordState.current = state;
       if (action.kind === 'palette') {
@@ -200,7 +266,7 @@ export function PanelTools({
         else openPalette();
       } else if (action.kind === 'help') {
         event.preventDefault();
-        setHelpOpen(true);
+        openHelp();
       } else if (action.kind === 'chord') {
         const target = goShortcuts.find((shortcut) => shortcut.id === action.chord.id);
         if (target !== undefined) navigate(target.href);
@@ -208,19 +274,39 @@ export function PanelTools({
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [goShortcuts, paletteOpen, openPalette, closePalette, navigate]);
+  }, [goShortcuts, singleKeys, paletteOpen, openPalette, closePalette, openHelp, navigate]);
+
+  const recentEntries = useMemo(
+    () =>
+      resolve(recent)
+        .filter((entry) => entry.id !== currentPage?.id)
+        .slice(0, RECENT_LIMIT),
+    [resolve, recent, currentPage],
+  );
 
   const value = useMemo<PanelToolsValue>(
     () => ({
       labels,
       openPalette,
+      openHelp,
       pinnedEntries: resolve(pins),
-      recentEntries: resolve(recent),
+      recentEntries,
       currentPage,
+      onPageItself,
       isPinned: (id) => pins.includes(id),
       toggle,
     }),
-    [labels, openPalette, resolve, pins, recent, currentPage, toggle],
+    [
+      labels,
+      openPalette,
+      openHelp,
+      resolve,
+      pins,
+      recentEntries,
+      currentPage,
+      onPageItself,
+      toggle,
+    ],
   );
 
   return (
@@ -229,17 +315,19 @@ export function PanelTools({
       <CommandPalette
         open={paletteOpen}
         onClose={closePalette}
-        entries={entries}
-        recent={value.recentEntries}
+        entries={paletteEntries}
+        recent={recentEntries}
         labels={labels.palette}
         onChoose={choose}
         navigate={navigate}
       />
       <ShortcutsDialog
         open={helpOpen}
-        onClose={() => setHelpOpen(false)}
+        onClose={closeHelp}
         goShortcuts={goShortcuts}
         labels={labels.shortcuts}
+        singleKeys={singleKeys}
+        onSingleKeys={changeSingleKeys}
       />
     </PanelToolsContext.Provider>
   );
@@ -259,11 +347,15 @@ function ShortcutsDialog({
   onClose,
   goShortcuts,
   labels,
+  singleKeys,
+  onSingleKeys,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly goShortcuts: readonly GoShortcut[];
   readonly labels: PanelToolsLabels['shortcuts'];
+  readonly singleKeys: boolean;
+  readonly onSingleKeys: (value: boolean) => void;
 }) {
   const modifier = useModifierLabel();
   const rows: readonly { id: string; label: string; keys: readonly string[] }[] = [
@@ -290,7 +382,9 @@ function ShortcutsDialog({
         {rows.map((row) => (
           <div
             key={row.id}
-            className="flex min-h-12 items-center justify-between gap-4 border-b border-line-row last:border-b-0"
+            className={`flex min-h-12 items-center justify-between gap-4 border-b border-line-row last:border-b-0 ${
+              !singleKeys && row.id !== 'palette' ? 'opacity-60' : ''
+            }`}
           >
             <dt className="min-w-0 break-words text-fg">{row.label}</dt>
             <dd className="flex shrink-0 items-center gap-1.5 text-sm text-fg-muted">
@@ -305,6 +399,19 @@ function ShortcutsDialog({
           </div>
         ))}
       </dl>
+      <p className="mt-3 text-sm text-fg-muted">{labels.pinHint}</p>
+      <label className="mt-3 flex min-h-12 cursor-pointer items-start gap-3 border-t border-line-row pt-3">
+        <input
+          type="checkbox"
+          checked={singleKeys}
+          onChange={(event) => onSingleKeys(event.target.checked)}
+          className="mt-0.5 size-5 shrink-0 accent-accent"
+        />
+        <span className="flex flex-col">
+          <span className="text-fg">{labels.singleKey}</span>
+          <span className="text-sm text-fg-muted">{labels.singleKeyHint}</span>
+        </span>
+      </label>
     </Dialog>
   );
 }
@@ -332,17 +439,49 @@ export function PaletteSearchButton() {
   );
 }
 
-/** The star next to a page title: pins the page to the sidebar, or unpins it. Absent on other pages. */
+/** The top bar's keyboard button: opens the shortcuts list without a shortcut. From tablets up. */
+export function ShortcutsButton() {
+  const tools = usePanelTools();
+  if (tools === null) return null;
+  return (
+    <button
+      type="button"
+      aria-label={tools.labels.shortcuts.title}
+      aria-haspopup="dialog"
+      title={tools.labels.shortcuts.title}
+      onClick={(event) => tools.openHelp(event.currentTarget)}
+      className="hidden min-h-11 min-w-11 items-center justify-center rounded-md text-icon hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus md:flex"
+    >
+      <Icon name="keyboard" />
+    </button>
+  );
+}
+
+/**
+ * The phone top bar's title: the name of the page the star pins, so the two agree ("Store
+ * profile", not the section "Settings"). Anywhere else the page's own title stands.
+ */
+export function PageTitle({ fallback }: { readonly fallback: string }) {
+  const tools = usePanelTools();
+  return <>{tools?.onPageItself === true ? tools.currentPage?.label : fallback}</>;
+}
+
+/**
+ * The star next to a page title: pins the page to the sidebar, or unpins it. Its name is "Pin
+ * {page}" at all times and `aria-pressed` carries the state. Absent on screens below a page.
+ */
 export function PinButton() {
   const tools = usePanelTools();
   const page = tools?.currentPage;
-  if (tools === null || page === undefined || page.href === '/') return null;
+  if (tools === null || page === undefined || !tools.onPageItself || page.href === '/') return null;
   const pinned = tools.isPinned(page.id);
+  const name = tools.labels.pin.pin.replace('{page}', page.label);
   return (
     <button
       type="button"
       aria-pressed={pinned}
-      aria-label={pinned ? tools.labels.pin.unpin : tools.labels.pin.pin}
+      aria-label={name}
+      title={name}
       onClick={() => tools.toggle(page.id)}
       className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-focus ${pinned ? 'text-attention-solid' : 'text-icon'}`}
     >
@@ -356,26 +495,19 @@ export function PinnedSection() {
   const tools = usePanelTools();
   if (tools === null || tools.pinnedEntries.length === 0) return null;
   return (
-    <div className="flex flex-col gap-1 pb-1">
+    <div className="mb-2 flex flex-col gap-1 border-b border-line pb-3">
       <p className="px-3 pt-1 text-xs font-semibold uppercase tracking-wide text-fg-muted group-data-[rail=true]/rail:sr-only">
         {tools.labels.pinned}
       </p>
+      {/* No aria-current here: the page's own menu item carries it, once. */}
       {tools.pinnedEntries.map((entry) => (
         <a
           key={entry.id}
           href={entry.href}
           data-nav-stop="link"
-          aria-current={tools.currentPage?.id === entry.id ? 'page' : undefined}
-          className={`flex min-h-(--mp-size-control) w-full items-center gap-(--mp-space-2-5) rounded-md px-3 py-1 group-data-[rail=true]/rail:justify-center ${
-            tools.currentPage?.id === entry.id
-              ? 'bg-selected font-medium text-link'
-              : 'text-fg-secondary hover:bg-muted hover:text-fg'
-          }`}
+          className="flex min-h-(--mp-size-control) w-full items-center gap-(--mp-space-2-5) rounded-md px-3 py-1 text-fg-secondary hover:bg-muted hover:text-fg group-data-[rail=true]/rail:justify-center"
         >
-          <Icon
-            name={entry.icon}
-            className={tools.currentPage?.id === entry.id ? '' : 'text-icon'}
-          />
+          <Icon name={entry.icon} className="text-icon" />
           <span className="min-w-0 flex-1 break-words group-data-[rail=true]/rail:sr-only">
             {entry.label}
           </span>
@@ -385,7 +517,7 @@ export function PinnedSection() {
   );
 }
 
-/** The recent pages as a row of links (the settings hub); nothing until a page has been viewed. */
+/** The recent pages as a row of links (the settings hub); nothing until another page has been viewed. */
 export function RecentPages({ heading }: { readonly heading: string }) {
   const tools = usePanelTools();
   if (tools === null || tools.recentEntries.length === 0) return null;

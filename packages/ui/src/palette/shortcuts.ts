@@ -65,7 +65,8 @@ export type ShortcutAction =
 /**
  * What a key press means. Ctrl+K or Cmd+K opens the palette from anywhere, fields included (the
  * usual place for it). Every other shortcut is ignored while focus is in a field or the page has
- * an open modal, and with Ctrl, Cmd or Alt held.
+ * an open modal, and with Ctrl, Cmd or Alt held. `?` and the G-chords are single bare keys: they
+ * work only while the account keeps single-key shortcuts on, and Ctrl/Cmd+K never depends on it.
  */
 export function interpretKey(
   event: KeyInfo,
@@ -75,6 +76,8 @@ export function interpretKey(
     readonly state: ChordState;
     readonly now: number;
     readonly chords: readonly Chord[];
+    /** False when the account turned the one-bare-key shortcuts off (WCAG 2.1.4). */
+    readonly singleKeys?: boolean;
   },
 ): { readonly action: ShortcutAction; readonly state: ChordState } {
   const none = { action: { kind: 'none' }, state: IDLE_CHORD } as const;
@@ -83,6 +86,7 @@ export function interpretKey(
   }
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return none;
   if (isEditableTarget(context.target) || context.modalOpen) return none;
+  if (context.singleKeys === false) return none;
   if (event.key === '?') return { action: { kind: 'help' }, state: IDLE_CHORD };
   if (event.shiftKey || event.key.length !== 1) return none;
   const next = advanceChord(context.state, event.key, context.now, context.chords);
