@@ -6206,6 +6206,8 @@ figma.ui.onmessage = async function (msg) {
 
 // ---- Admin · Catalog · Products (owner's brief, 30 Oct 2026): the list of every product on the platform with add, import,
 // bulk actions, search, filter icon with saved filters, sort icon, column picker, page size, pagination and the total.
+// Round 2 (owner, 30 Oct 19:47Z): view tabs read Active, All, Inactive; bulk actions move to an Actions icon beside the header
+// buttons (no bulk bar); a full admin saves a filter for themselves or for everyone, a products-only role only for themselves.
 const PP = 'Proposal · Admin · Catalog · Products';
 const PP_MARKET = 'Australia';
 // [title, code, category, thumb, status, sellers, variants, last changed, type]
@@ -6221,7 +6223,7 @@ const PP_ROWS = [
 ];
 const PP_INACTIVE = { 2: true }; // the All products view shows one inactive row
 const PP_SEARCH = 'Search by name, description or category';
-const PP_VIEWS = [['Active products', '1,148'], ['All products', '1,284'], ['Inactive products', '136'], ['Meat, active', '212']];
+const PP_VIEWS = [['Active', '1,148'], ['All', '1,284'], ['Inactive', '136'], ['Meat, active', '212']];
 // Default columns (owner): image, title, status, main category. Optional columns from the column picker, saved per admin.
 const PP_OPTIONAL = [['Product code', true], ['Sellers selling it', true], ['Variants', false], ['Last changed', true], ['Product type', false], ['Scope (platform or seller)', false], ['Created', false], ['Brand', false]];
 
@@ -6273,9 +6275,14 @@ function ppTable(o) {
   kids.push(pag);
   return card('Product list', kids);
 }
+// The Actions icon sits with the header buttons; it acts on the rows selected in the list and shows how many are selected.
+function ppActions(o) {
+  const b = ppIconButton('more-horizontal', 'actions-button', o.open === 'actions' ? 'Focus' : 'Default');
+  return frame({ name: 'actions', dir: 'H', gap: 'space/1', align: 'center' }, [b].concat(o.selected ? [inst('CountBadge', { Tone: 'Info', Count: String(o.selected) }, { name: 'selected-count' })] : []));
+}
 function ppHeader(o) {
   o = o || {};
-  return pageTitle('Products', (o.total || '1,284') + ' products in the ' + PP_MARKET + ' market', [btn('Import', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'file' } }), primaryHeaderButton('Add product')]);
+  return pageTitle('Products', (o.total || '1,284') + ' products in the ' + PP_MARKET + ' market', [ppActions(o), btn('Import', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'file' } }), primaryHeaderButton('Add product')]);
 }
 function ppScreen(state, kids, overlay) {
   const scr = screen(PP + ' · ' + state, 'Admin', 'nav-catalogue', 'Catalog / Products', kids, { minH: PANEL_MIN_H, gap: 'space/4' });
@@ -6293,20 +6300,27 @@ function ppUnder(scr, name, pop, alignRight) {
 }
 
 // 1 · Default: the "Active products" filter, 25 rows a page, the total in the pagination and the subtitle.
-function ppDefault() { return ppScreen('Default', [ppHeader(), ppViews('Active products'), ppToolbar(), ppTable()]); }
-// 2 · Rows selected: the bulk bar with Activate, Deactivate and Delete…
+function ppDefault() { return ppScreen('Default', [ppHeader(), ppViews('Active'), ppToolbar(), ppTable()]); }
+// 2 · Rows selected, Actions open: the menu under the Actions icon acts on the selected rows (owner, round 2: no bulk bar).
+function ppActionItem(state, label, ic, desc) {
+  return inst('MenuItem', Object.assign({ State: state, Label: label, 'Leading icon': true, Icon: { icon: ic }, 'Show description': !!desc }, desc ? { Description: desc } : {}), { name: 'action · ' + label, sizeH: 'FILL' });
+}
+function ppActionsMenu(n) {
+  const none = !n;
+  const why = none ? 'Select products in the list first.' : null;
+  return ppPopover('Actions menu (open)', 300, [
+    text(none ? 'No products selected' : n + ' products selected', 'Caption/Strong', 'text/muted', { name: 'title' }),
+    frame({ name: 'items', dir: 'V', sizeH: 'FILL' }, [ppActionItem(none ? 'Disabled' : 'Default', 'Activate', 'check', why), ppActionItem(none ? 'Disabled' : 'Default', 'Deactivate', 'ban', why), ppActionItem(none ? 'Disabled' : 'Destructive', 'Delete…', 'trash', why)]),
+    none ? null : frame({ name: 'scope', dir: 'V', gap: 'space/1', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [ppLink('Select all 1,148 products in this filter', null, 'select-all-matching'), ppLink('Clear selection', null, 'clear-selection')])]);
+}
 function ppSelected() {
-  const bar = inst('BulkActionBar', {}, { name: 'BulkActionBar' });
-  setNested(bar, 'count-badge', prop('CountBadge', 'Count', '3'));
-  setNested(bar, 'action-1', prop('Button', 'Label', 'Activate'));
-  setNested(bar, 'action-2', prop('Button', 'Label', 'Deactivate'));
-  setNested(bar, 'action-3', prop('Button', 'Label', 'Delete…'));
-  const wrap = frame({ name: 'bulk-wrap', dir: 'V', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [bar, text('Select all 1,148 products in this filter', 'Body/Small Strong', 'text/link', { name: 'select-all-matching' })]);
-  return ppScreen('Rows selected', [ppHeader(), ppViews('Active products'), ppToolbar(), ppTable({ selected: [0, 1, 4] }), wrap]);
+  const scr = ppScreen('Rows selected, Actions open', [ppHeader({ selected: 3, open: 'actions' }), ppViews('Active'), ppToolbar(), ppTable({ selected: [0, 1, 4] })]);
+  ppUnder(scr, 'actions-button', ppActionsMenu(3));
+  return scr;
 }
 // 3 · Search and filter together: the query and two conditions; the count of matches.
 function ppSearchFilter() {
-  return ppScreen('Search with filter', [ppHeader(), ppViews('Active products'), ppToolbar({ query: 'lamb', filters: 2 }), ppChips(['Main category is Meat', 'Sellers selling it is at least 2'], '14 products match'), ppTable({ rows: [PP_ROWS[0]], range: '1–14 of 14 products' })]);
+  return ppScreen('Search with filter', [ppHeader(), ppViews('Active'), ppToolbar({ query: 'lamb', filters: 2 }), ppChips(['Main category is Meat', 'Sellers selling it is at least 2'], '14 products match'), ppTable({ rows: [PP_ROWS[0]], range: '1–14 of 14 products' })]);
 }
 // 4 · Filter panel open: one row per condition (field, operator, value), Add condition, Save as filter, Apply.
 function ppCondition(field, op, value) {
@@ -6322,7 +6336,7 @@ function ppFilterPanel() {
   ]);
 }
 function ppFilterOpen() {
-  const scr = ppScreen('Filter panel open', [ppHeader(), ppViews('Active products'), ppToolbar({ open: 'filter', filters: 2 }), ppChips(['Main category is Meat', 'Status is Active'], '212 products match'), ppTable({ rows: [PP_ROWS[0], PP_ROWS[4]], range: '1–25 of 212 products' })]);
+  const scr = ppScreen('Filter panel open', [ppHeader(), ppViews('Active'), ppToolbar({ open: 'filter', filters: 2 }), ppChips(['Main category is Meat', 'Status is Active'], '212 products match'), ppTable({ rows: [PP_ROWS[0], PP_ROWS[4]], range: '1–25 of 212 products' })]);
   ppUnder(scr, 'filter-button', ppFilterPanel());
   return scr;
 }
@@ -6336,7 +6350,7 @@ function ppSortMenu() {
     frame({ name: 'direction-row', dir: 'V', gap: 'space/2', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text('Order', 'Caption/Strong', 'text/muted'), seg])]);
 }
 function ppSortOpen() {
-  const scr = ppScreen('Sort menu open', [ppHeader(), ppViews('Active products'), ppToolbar({ open: 'sort' }), ppTable({ extra: ['Last changed'], sortedBy: 'Last changed' })]);
+  const scr = ppScreen('Sort menu open', [ppHeader(), ppViews('Active'), ppToolbar({ open: 'sort' }), ppTable({ extra: ['Last changed'], sortedBy: 'Last changed' })]);
   ppUnder(scr, 'sort-button', ppSortMenu());
   return scr;
 }
@@ -6353,20 +6367,33 @@ function ppColumnsPanel() {
     frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [ppLink('Reset to default', 'undo', 'reset'), frame({ name: 'spacer', dir: 'H', h: 1, sizeH: 'FILL' }), btn('Save', 'Primary', 'Md')])]);
 }
 function ppColumnsOpen() {
-  const scr = ppScreen('Column picker open', [ppHeader(), ppViews('Active products'), ppToolbar({ open: 'columns' }), ppTable({ extra: ['Product code', 'Sellers selling it', 'Last changed'] })]);
+  const scr = ppScreen('Column picker open', [ppHeader(), ppViews('Active'), ppToolbar({ open: 'columns' }), ppTable({ extra: ['Product code', 'Sellers selling it', 'Last changed'] })]);
   ppUnder(scr, 'columns-button', ppColumnsPanel());
   return scr;
 }
 // 7 · All products with the extra columns saved: an inactive row shows its badge.
-function ppAllColumns() { return ppScreen('All products with added columns', [ppHeader(), ppViews('All products'), ppToolbar(), ppTable({ extra: ['Product code', 'Sellers selling it', 'Last changed'], showInactive: true, range: '1–25 of 1,284 products' })]); }
+function ppAllColumns() { return ppScreen('All products with added columns', [ppHeader(), ppViews('All'), ppToolbar(), ppTable({ extra: ['Product code', 'Sellers selling it', 'Last changed'], showInactive: true, range: '1–25 of 1,284 products' })]); }
 
-// 8 · Dialogs: save a filter, import products, deactivate and delete selected.
+// Save filter: a full admin chooses Only me or Everyone; a role that can only manage products saves for themselves (owner, round 2).
+function ppSaveFilter(canShare) {
+  const name = inst('Input', { Type: 'Text', State: 'Filled', Value: 'Meat, at least 2 sellers', 'Leading icon': false }, { name: 'name', sizeH: 'FILL' });
+  const who = canShare ? (function () { const seg = inst('SegmentedControl', { 'Segment 1': 'Only me', 'Segment 2': 'Everyone' }, { name: 'shared-with' }); const t = seg.findOne(function (n) { return n.name === 'segment-3'; }); if (t) t.visible = false; return seg; })()
+    : text('Saved for you only. Your role can’t share filters.', 'Body/Small', 'text/muted', { name: 'shared-with', sizeH: 'FILL' });
+  return frame({ name: 'Save filter · ' + (canShare ? 'Admin' : 'Products-only role'), dir: 'V', w: 440, pad: 'space/6', gap: 'space/4', fill: 'bg/surface', radius: 'radius/card', effect: 'Elevation/Floating' }, [
+    text('Save this filter', 'Heading/H2', 'text/primary', { sizeH: 'FILL' }),
+    text('Main category is Meat · Sellers selling it is at least 2', 'Body/Small', 'text/secondary', { sizeH: 'FILL' }),
+    frame({ name: 'field-name', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [text('Name', 'Body/Strong', 'text/primary'), name]),
+    frame({ name: 'field-share', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [text('Who can use it', 'Body/Strong', 'text/primary'), who].concat(canShare ? [text('Everyone: every admin who can see products gets it as a tab.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })] : [])),
+    frame({ name: 'footer', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Cancel', 'Secondary', 'Md'), btn('Save filter', 'Primary', 'Md')])]);
+}
+// 8 · Dialogs: save a filter (two roles), import products, deactivate and delete selected.
 function ppDialogs() {
-  const save = dlg({ name: 'Save filter', title: 'Save this filter', text: 'Name it so you can open it from the filter tabs. Main category is Meat · Sellers selling it is at least 2. Only you see it unless you share it with all admins.', primary: 'Save filter', secondary: 'Cancel' });
+  const save = ppSaveFilter(true);
+  const saveOwn = ppSaveFilter(false);
   const imp = dlg({ name: 'Import products', title: 'Import products', text: 'Upload a CSV or XLSX file with one product per row. Download the template to see the columns. We check every row first and show you what will be added and what has errors before anything is saved.', primary: 'Choose file', secondary: 'Download template' });
   const deact = dlg({ name: 'Deactivate products', title: 'Deactivate 3 products?', text: 'Customers stop seeing them and sellers can’t add new offers to them. Existing orders aren’t affected. You can activate them again at any time.', primary: 'Deactivate', secondary: 'Cancel' });
   const del = dlg({ name: 'Delete products', tone: 'Destructive', title: 'Delete 3 products?', text: 'They are removed from the catalog for customers and sellers, and the 18 offers on them end. Order history keeps them. You can’t undo this.', primary: 'Delete products', secondary: 'Cancel', focusCancel: true });
-  const scr = dialogScene(PP + ' · Dialogs', [save, imp, deact, del]);
+  const scr = dialogScene(PP + ' · Dialogs', [save, saveOwn, imp, deact, del]);
   scr.setPluginData('proposal', 'admin-products');
   return scr;
 }
@@ -6378,6 +6405,7 @@ function ppStates() {
   const nomatch = inst('EmptyState', { Size: 'Card', Title: 'No products match', Body: 'Try another search or remove a filter.', Icon: { icon: 'search' } }, { name: 'no-match', sizeH: 'FILL' });
   setNested(nomatch, 'action', prop('Button', 'Label', 'Clear all'));
   const scr = frame({ name: PP + ' · States', dir: 'V', w: 900, pad: 40, gap: 'space/6', fill: 'bg/page' }, [text('Products: loading and empty states', 'Heading/H1'), para('The page header, filter tabs and toolbar stay visible in every state. Loading shows skeleton rows; a list that cannot load is the Critical banner with "Try again".', 800),
+    text('Actions with no rows selected', 'Caption/Strong', 'text/muted'), ppActionsMenu(0),
     text('Loading', 'Caption/Strong', 'text/muted'), loading, text('No products in the catalog', 'Caption/Strong', 'text/muted'), none, text('Search or filter with no match', 'Caption/Strong', 'text/muted'), nomatch]);
   tag(scr); scr.setPluginData('proposal', 'admin-products');
   return scr;
