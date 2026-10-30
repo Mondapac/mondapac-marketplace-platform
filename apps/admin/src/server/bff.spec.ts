@@ -252,6 +252,56 @@ describe('relay', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  describe('role delete carries its version in the body', () => {
+    const id = '0190a000-0000-7000-8000-000000000001';
+    const path = ['identity', 'admin', 'roles', id];
+    const del = (headers: Record<string, string>, body: string) =>
+      new Request(`http://admin.localhost:3002/api/${path.join('/')}`, {
+        method: 'DELETE',
+        headers,
+        body,
+      });
+
+    it('forwards the JSON body and its content type', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del(sameOrigin, '{"expectedVersion":1}'),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(200);
+      const init = fetchImpl.mock.calls[0]?.[1];
+      expect(init?.method).toBe('DELETE');
+      expect(init?.body).toBe('{"expectedVersion":1}');
+      expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
+    });
+
+    it('refuses a cross-site delete without calling the API', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del({ ...sameOrigin, 'sec-fetch-site': 'cross-site' }, '{"expectedVersion":1}'),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(403);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('refuses a delete body over 16 KB', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del(sameOrigin, 'x'.repeat(16 * 1024 + 1)),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(413);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+  });
+
   it('refuses a body over 16 KB', async () => {
     const fetchImpl = upstreamOk();
     const response = await relay(

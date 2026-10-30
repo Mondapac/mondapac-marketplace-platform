@@ -27,9 +27,16 @@ const MAX_NAME = 80;
 const MAX_KEYS = 40;
 const CONTROL = /[\p{Cc}‎‏‪-‮⁦-⁩]/u;
 
-/** Answers that mean the role changed or went away meanwhile: the page is reloaded. */
-const RELOAD: ReadonlySet<string> = new Set(['conflict.stale', 'role.unknown', 'role.read-only']);
+/** Answers that mean the role went away or became read-only meanwhile: the page is reloaded. */
+const RELOAD: ReadonlySet<string> = new Set(['role.unknown', 'role.read-only']);
 const NAME_ROW = 'setting-role-name';
+
+/** Someone saved the role first: the saved role as it is now, and how the draft differs. */
+interface Conflict {
+  readonly version: number;
+  readonly name: string;
+  readonly keys: readonly string[];
+}
 
 interface Written {
   readonly code: string;
@@ -61,10 +68,13 @@ export function RoleEditor({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set(initialKeys));
   const [nameError, setNameError] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<string | null>(null);
   const [failedSaves, setFailedSaves] = useState(0);
   const [done, setDone] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The version the editor last read; a stale answer moves it to the saved one (draft kept).
+  const [version, setVersion] = useState(role?.version ?? 0);
+  const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [comparing, setComparing] = useState(false);
 
   const editing = role !== undefined;
   const keyInfo = new Map(catalogue.keys.map((entry) => [entry.key, entry]));
@@ -82,6 +92,7 @@ export function RoleEditor({
     setNameError(null);
     setProblem(null);
     setConflict(null);
+    setComparing(false);
   }
 
   function messageFor(code: string): string {
@@ -114,9 +125,33 @@ export function RoleEditor({
     });
   }
 
-  function fail(failure: ApiFailure) {
+  /** Reads the role again after a stale answer; the draft stays as typed. */
+  async function adoptSaved() {
+    if (!editing) return;
+    const fresh = await callApi<RoleCatalogue>('GET', 'identity/admin/roles');
+    if (!fresh.ok) {
+      if (fresh.failure.status === 401) router.replace('/session-ended');
+      else setProblem(messageFor(fresh.failure.code));
+      return;
+    }
+    const saved = fresh.body.items.find((item) => item.roleId === role.roleId);
+    if (saved === undefined || saved.kind !== 'custom' || saved.name === null) {
+      router.refresh();
+      setProblem(messageFor('role.unknown'));
+      return;
+    }
+    setVersion(saved.version);
+    setConflict({ version: saved.version, name: saved.name, keys: saved.permissionKeys });
+    setComparing(false);
+  }
+
+  async function fail(failure: ApiFailure) {
     if (failure.status === 401) {
       router.replace('/session-ended');
+      return;
+    }
+    if (failure.code === 'conflict.stale') {
+      await adoptSaved();
       return;
     }
     if (failure.code === 'validation.failed') {
@@ -130,11 +165,6 @@ export function RoleEditor({
       return;
     }
     if (RELOAD.has(failure.code)) router.refresh();
-    if (failure.code === 'conflict.stale') {
-      // Someone changed the role first: the page reloads with what is stored now.
-      setConflict(messageFor(failure.code));
-      return;
-    }
     setProblem(messageFor(failure.code));
   }
 
@@ -160,10 +190,15 @@ export function RoleEditor({
     await run(async () => {
       const body = { name: trimmed, permissionKeys: [...selected].sort() };
       const result = editing
-        ? await callApi<Written>('PUT', `identity/admin/roles/${role.roleId}`, body, csrfToken)
+        ? await callApi<Written>(
+            'PUT',
+            `identity/admin/roles/${role.roleId}`,
+            { ...body, expectedVersion: version },
+            csrfToken,
+          )
         : await callApi<Written>('POST', 'identity/admin/roles', body, csrfToken);
       if (!result.ok) {
-        fail(result.failure);
+        await fail(result.failure);
         return;
       }
       // Saved: leaving this page is no longer a loss.
@@ -185,17 +220,28 @@ export function RoleEditor({
       const result = await callApi<Written>(
         'DELETE',
         `identity/admin/roles/${role.roleId}`,
-        undefined,
+        { expectedVersion: version },
         csrfToken,
       );
       setConfirmDelete(false);
       if (!result.ok) {
-        fail(result.failure);
+        await fail(result.failure);
         return;
       }
       router.push('/settings/roles');
     });
   }
+
+  function labelOf(key: string): string {
+    return root.has(`permission.${key}.label`)
+      ? root(`permission.${key}.label`)
+      : humanise(key.split('.').slice(2).join(' '));
+  }
+  // Text only (no markup from the saved role's name): what differs between the saved role and the draft.
+  const onlySaved = conflict?.keys.filter((key) => !selected.has(key)) ?? [];
+  const onlyDraft =
+    conflict === null ? [] : [...selected].filter((key) => !conflict.keys.includes(key));
+  const trimmedName = name.trim();
 
   const banners = [
     nameError === null ? null : (
@@ -207,7 +253,31 @@ export function RoleEditor({
       />
     ),
     conflict === null ? null : (
-      <SettingsConflictBanner key="conflict" title={t('editor.conflict-title')} body={conflict} />
+      <div key="conflict" className="flex flex-col gap-3">
+        <SettingsConflictBanner
+          title={t('conflict.title')}
+          body={t('conflict.body')}
+          compareLabel={comparing ? t('conflict.hide') : t('conflict.compare')}
+          onCompare={() => setComparing((open) => !open)}
+        />
+        {comparing ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-4">
+            {conflict.name === trimmedName ? null : (
+              <p>{t('conflict.name', { saved: conflict.name, yours: trimmedName })}</p>
+            )}
+            <p>
+              {onlySaved.length === 0
+                ? t('conflict.saved-none')
+                : t('conflict.saved-only', { keys: onlySaved.map(labelOf).join(', ') })}
+            </p>
+            <p>
+              {onlyDraft.length === 0
+                ? t('conflict.yours-none')
+                : t('conflict.yours-only', { keys: onlyDraft.map(labelOf).join(', ') })}
+            </p>
+          </div>
+        ) : null}
+      </div>
     ),
     problem === null ? null : (
       <Banner key="problem" tone="critical">
@@ -274,9 +344,7 @@ export function RoleEditor({
             {keys.map((key) => {
               const info = keyInfo.get(key);
               const locked = info === undefined || !info.grantable;
-              const label = root.has(`permission.${key}.label`)
-                ? root(`permission.${key}.label`)
-                : humanise(key.split('.').slice(2).join(' '));
+              const label = labelOf(key);
               return (
                 <SettingRow
                   key={key}

@@ -161,7 +161,7 @@ export class AdminWalletController {
       'session for `wallet.settings.change` (`POST /identity/admin/step-up/verify`, valid 5 ' +
       'minutes); without one the answer is 403 second-factor.required with details.actionKey. ' +
       'Refused in an acting-as session. Audited with before and after. Asking for the state the Market is in changes ' +
-      'nothing. Back to off is refused once the Market has any journal (use paused). Balances and ' +
+      'nothing. `expectedVersion` (from the GET) must match the current version, checked before the proof is spent. Back to off is refused once the Market has any journal (use paused). Balances and ' +
       'lots are never removed or zeroed by this call.',
   })
   @ApiHeader(CSRF)
@@ -178,7 +178,9 @@ export class AdminWalletController {
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
   @ApiConflictResponse({
     ...ERROR,
-    description: 'wallet.cannot-turn-off-with-history or wallet.busy',
+    description:
+      'wallet.settings-conflict (stale expectedVersion; the two-step proof is kept), ' +
+      'wallet.cannot-turn-off-with-history or wallet.busy',
   })
   async put(
     @Call() context: CallContext,
@@ -187,10 +189,14 @@ export class AdminWalletController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['status', 'reasonCode']);
+    const invalid = closedBody(request, requestBody, ['status', 'reasonCode', 'expectedVersion']);
     if (invalid !== null) throw invalid;
-    const { status, reasonCode } = requestBody as { status?: unknown; reasonCode?: unknown };
-    const result = await this.set.execute(context, { status, reasonCode });
+    const { status, reasonCode, expectedVersion } = requestBody as {
+      status?: unknown;
+      reasonCode?: unknown;
+      expectedVersion?: unknown;
+    };
+    const result = await this.set.execute(context, { status, reasonCode, expectedVersion });
     logRoute(
       this.#logger,
       'wallet.set-wallet-status-route',

@@ -209,6 +209,8 @@ model WalletMarketSetting {
   reasonCode         String?  @map("reason_code")
   updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
   updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+  /// Set to the next value by every real change under the row lock; a save that expected another one is a conflict (>= 1 CHECK).
+  version            Int      @default(1)
 
   @@id([marketId])
   @@map("market_settings")

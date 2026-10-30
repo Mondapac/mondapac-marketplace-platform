@@ -7,6 +7,7 @@ import type { WalletDependencies } from '../wallet-dependencies';
 interface Input {
   readonly status: unknown;
   readonly reasonCode?: unknown;
+  readonly expectedVersion?: unknown;
 }
 
 /**

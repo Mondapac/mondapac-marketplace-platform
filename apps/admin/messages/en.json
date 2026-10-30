@@ -523,7 +523,6 @@
         "title-create": "New custom role",
         "title-edit": "Edit role",
         "section-name": "Name",
-        "conflict-title": "This role changed while you were editing",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -539,6 +538,17 @@
         "delete-body": "This can't be undone. A role that someone still holds can't be deleted: give those people another role first.",
         "delete-confirm": "Delete role",
         "keep": "Keep role"
+      },
+      "conflict": {
+        "title": "Someone saved this role first",
+        "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
+        "compare": "Compare",
+        "hide": "Hide comparison",
+        "name": "Saved name: {saved}. Your name: {yours}.",
+        "saved-only": "In the saved role but not in yours: {keys}.",
+        "saved-none": "Every permission in the saved role is in yours.",
+        "yours-only": "In yours but not in the saved role: {keys}.",
+        "yours-none": "Every permission in yours is in the saved role."
       },
       "reason": {
         "role": {
@@ -2572,6 +2582,8 @@
       },
       "current": "Current state",
       "never-changed": "Never changed",
+      "conflict-title": "The wallet state changed while you were on this page",
+      "conflict-body": "The state above is now the current one. The state you chose is kept: review it, then save again.",
       "changed": "Changed {when}",
       "reason-line": "Reason: {reason}",
       "change": "Change state",

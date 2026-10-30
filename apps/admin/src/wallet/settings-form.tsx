@@ -9,6 +9,7 @@ import {
   LoadError,
   SettingRow,
   SettingSelect,
+  SettingsConflictBanner,
   SettingsPage,
   SettingsSection,
   SkeletonRows,
@@ -60,6 +61,7 @@ export function SettingsForm({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [reasonError, setReasonError] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const busy = useRef(false);
 
   const load = useCallback(async () => {
@@ -67,8 +69,9 @@ export function SettingsForm({
     const result = await callApi<WalletSettings>('GET', 'wallet/admin/settings');
     if (result.ok) {
       // A state the panel does not know is not shown as a guess.
-      if (WALLET_STATES.includes(result.body.status)) setSettings(result.body);
-      else setLoadFailed(true);
+      if (WALLET_STATES.includes(result.body.status) && Number.isInteger(result.body.version)) {
+        setSettings(result.body);
+      } else setLoadFailed(true);
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setLoadFailed(true);
   }, []);
@@ -100,6 +103,7 @@ export function SettingsForm({
   }
 
   const current = settings.status;
+  const loadedVersion = settings.version;
   const chosen: WalletState = state === '' ? current : state;
   const needsReason = REASON_STATES.includes(chosen);
   const unchanged = chosen === current;
@@ -114,11 +118,14 @@ export function SettingsForm({
     setConfirming(false);
     setProblem(null);
     setReasonError(false);
+    setConflict(false);
     const before = current;
     const result = await guarded<WalletSettings>(
       'PUT',
       'wallet/admin/settings',
-      needsReason ? { status: chosen, reasonCode: reason } : { status: chosen },
+      needsReason
+        ? { status: chosen, reasonCode: reason, expectedVersion: loadedVersion }
+        : { status: chosen, expectedVersion: loadedVersion },
       csrfToken,
     );
     busy.current = false;
@@ -141,6 +148,12 @@ export function SettingsForm({
       window.location.assign('/session-ended');
       return;
     }
+    if (result.failure.code === 'wallet.settings-conflict') {
+      // Someone saved first: show the current state, keep the state and reason the admin chose.
+      setConflict(true);
+      await load();
+      return;
+    }
     const key = walletProblemOf(result.failure, 'settings');
     if (key === 'validation-settings') setReasonError(true);
     else setProblem(key);
@@ -161,6 +174,13 @@ export function SettingsForm({
   }));
 
   const banners = [
+    conflict ? (
+      <SettingsConflictBanner
+        key="conflict"
+        title={t('settings.conflict-title')}
+        body={t('settings.conflict-body')}
+      />
+    ) : null,
     canManage ? null : (
       <Banner key="view-only" tone="info">
         {t('settings.view-only')}
