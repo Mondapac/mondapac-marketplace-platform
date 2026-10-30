@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, TextField } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -26,14 +26,12 @@ function FleetItem({
   const [text, setText] = useState(row.reliability === null ? '' : String(row.reliability));
   const [invalid, setInvalid] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current) return;
-    setSaved(false);
     setProblem(null);
     const score = scoreOf(text);
     if (score === null) {
@@ -53,7 +51,7 @@ function FleetItem({
     setPending(false);
     if (result.ok) {
       onSelection(result.body);
-      setSaved(true);
+      toast.success(t(`${P}.reliability.saved`));
     } else if (result.failure.status === 401) {
       window.location.assign('/session-ended');
     } else {
@@ -76,7 +74,6 @@ function FleetItem({
             })
           : t(`${P}.fleet.no-methods`)}
       </p>
-      {saved ? <Banner tone="success">{t(`${P}.reliability.saved`)}</Banner> : null}
       {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
       {canManage ? (
         <form

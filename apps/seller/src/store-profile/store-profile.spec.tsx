@@ -13,6 +13,7 @@ import { preparePhoto } from '../catalog/photo-prepare.ts';
 import { aboutProblemOf, imageProblemOf } from './errors.ts';
 import { StoreProfile } from './store-profile.tsx';
 import type { StoreProfileView } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const prepare = vi.mocked(preparePhoto);
@@ -64,7 +65,7 @@ describe('StoreProfile About card', () => {
     fireEvent.change(box(), { target: { value: '  Family bakery, since 1990.  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    await screen.findByText('Saved. Buyers can see it now.');
+    await expectToast('Saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'sellers/store-profile/about',
@@ -86,7 +87,7 @@ describe('StoreProfile About card', () => {
     fireEvent.click(saving);
     finish(done(view({ version: 3, about: { 'en-AU': 'New text' } })));
 
-    await screen.findByText('Saved. Buyers can see it now.');
+    await expectToast('Saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledTimes(1);
   });
 
@@ -139,7 +140,7 @@ describe('StoreProfile About card', () => {
     call.mockResolvedValueOnce(done(view({ version: 6, about: { 'en-AU': 'Merged' } })));
     fireEvent.change(box(), { target: { value: 'Merged' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await screen.findByText('Saved. Buyers can see it now.');
+    await expectToast('Saved. Buyers can see it now.');
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'sellers/store-profile/about',
@@ -224,7 +225,7 @@ describe('StoreProfile images', () => {
 
     fireEvent.change(chooseIn(bannerCard()), { target: { files: [file()] } });
 
-    await screen.findByText('Banner saved. Buyers can see it now.');
+    await expectToast('Banner saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'sellers/store-profile/banner',
@@ -252,7 +253,7 @@ describe('StoreProfile images', () => {
     // "Uploading…" is said once, in the status line, not on the button as well.
     expect(within(logoCard()).getAllByText('Uploading…')).toHaveLength(1);
     finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
-    await screen.findByText('Logo saved. Buyers can see it now.');
+    await expectToast('Logo saved. Buyers can see it now.');
     // The picker was disabled while the picture went up: focus comes back to it.
     await waitFor(() => expect(document.activeElement).toBe(chooseIn(logoCard())));
   });
@@ -314,7 +315,7 @@ describe('StoreProfile images', () => {
     expect(call).not.toHaveBeenCalled();
     fireEvent.click(within(logoCard()).getByRole('button', { name: 'Yes, remove' }));
 
-    await screen.findByText('Logo removed.');
+    await expectToast('Logo removed.');
     expect(call).toHaveBeenCalledWith('DELETE', 'sellers/store-profile/logo', undefined, 'csrf');
     expect(screen.getByText('No logo yet.')).toBeTruthy();
   });
@@ -332,7 +333,7 @@ describe('StoreProfile images', () => {
 
     fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
     fireEvent.click(within(logoCard()).getByRole('button', { name: 'Yes, remove' }));
-    await screen.findByText('Logo removed.');
+    await expectToast('Logo removed.');
     expect(document.activeElement).toBe(chooseIn(logoCard()));
     expect(within(logoCard()).getByText('Choose a picture')).toBeTruthy();
   });
@@ -357,7 +358,7 @@ describe('StoreProfile images', () => {
       expect(within(logoCard()).getByRole('img').className).toContain('opacity-50'),
     );
     finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
-    await screen.findByText('Logo saved. Buyers can see it now.');
+    await expectToast('Logo saved. Buyers can see it now.');
     expect(within(logoCard()).getByRole('img').className).not.toContain('opacity-50');
   });
 

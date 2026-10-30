@@ -12,6 +12,7 @@ import { callApi } from '../../api/client.ts';
 import { CATEGORY, ID, detail, version } from './test-data.ts';
 import { SlideEditor } from './slide-editor.tsx';
 import type { SlideDetail } from './slide-types.ts';
+import { expectFlash, expectToast } from '../../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 
@@ -141,6 +142,8 @@ describe('new slide', () => {
     fireEvent.click(screen.getByLabelText('Sponsored by a seller'));
     save();
     await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/content/slides/${ID}`));
+    // The editor of the new slide shows the outcome.
+    expectFlash(/^Saved to draft as version \d+\.$/);
     const [method, path, body, csrf] = call.mock.calls[0]!;
     expect([method, path, csrf]).toEqual(['POST', 'storefront/admin/slides', 'csrf-1']);
     expect(body).toMatchObject({
@@ -316,7 +319,7 @@ describe('existing slide', () => {
     mount({ slide: detail({ draft: version({ versionNo: 3, pinned: true }) }) });
     type('Headline', 'A new headline');
     save();
-    expect(await screen.findByText('Saved to draft as version 4.')).toBeTruthy();
+    await expectToast('Saved to draft as version 4.');
     const [method, path, body, csrf] = call.mock.calls[0]!;
     expect([method, path, csrf]).toEqual(['PUT', `storefront/admin/slides/${ID}`, 'csrf-1']);
     expect(body).toMatchObject({
@@ -329,8 +332,7 @@ describe('existing slide', () => {
     });
     expect('kind' in (body as object)).toBe(false);
     expect(router.push).not.toHaveBeenCalled();
-    // The result is announced politely and the badges show the new draft.
-    expect(screen.getByRole('status').textContent).toBe('Saved to draft as version 4.');
+    // The badges show the new draft; the toast carries the result.
     expect(screen.getByText('Draft v4 · not sent for approval')).toBeTruthy();
   });
 

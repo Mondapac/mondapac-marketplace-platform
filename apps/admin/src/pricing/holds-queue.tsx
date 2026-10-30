@@ -1,6 +1,15 @@
 'use client';
 
-import { Badge, Banner, Button, CARD_TABLE, EmptyState, Select, TextField } from '@mondapac/ui';
+import {
+  Badge,
+  Banner,
+  Button,
+  CARD_TABLE,
+  EmptyState,
+  Select,
+  TextField,
+  toast,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -11,8 +20,6 @@ import { holdProblemOf, type HoldProblem } from './hold-errors.ts';
 import { NOTE_MAX, REJECTION_REASONS, type PriceHoldRow } from './types.ts';
 
 type Step = 'idle' | 'confirm-approve' | 'reject';
-type Notice = { readonly kind: 'approved' | 'rejected'; readonly recordId: string };
-
 /**
  * The queue of held prices, oldest first, with approve and reject per record. The API refuses a
  * decision by the account that submitted the price (`pricing.hold.own-submission`); the screen
@@ -29,14 +36,12 @@ export function HoldsQueue({
 }) {
   const t = useTranslations('pricing.holds');
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
-  const [notice, setNotice] = useState<Notice | null>(null);
   const visible = rows.filter((row) => !gone.has(row.recordId));
 
   const leave = (recordId: string) => setGone((current) => new Set(current).add(recordId));
 
   return (
     <div className="flex flex-col gap-4">
-      {notice === null ? null : <Banner tone="success">{t(`notice.${notice.kind}`)}</Banner>}
       {visible.length === 0 ? (
         <EmptyState icon="clock" title={t('empty')} />
       ) : (
@@ -60,7 +65,7 @@ export function HoldsQueue({
                   canDecide={canDecide}
                   csrfToken={csrfToken}
                   onDecided={(kind) => {
-                    setNotice({ kind, recordId: row.recordId });
+                    toast.success(t(`notice.${kind}`));
                     leave(row.recordId);
                   }}
                   onGone={() => leave(row.recordId)}

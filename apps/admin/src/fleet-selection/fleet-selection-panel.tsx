@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, EmptyState, Select } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, Dialog, EmptyState, Select, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -43,15 +43,25 @@ export function FleetSelectionPanel({
   const [editing, setEditing] = useState<Editing>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [formProblem, setFormProblem] = useState<string | null>(null);
-  const [notice, setNotice] = useState<'activated' | 'created' | 'edited' | 'reloaded' | null>(
-    null,
-  );
+  const [notice, setNotice] = useState<'reloaded' | null>(null);
   const [pending, setPending] = useState<'active' | 'model' | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
+  // Where focus goes after a saved model: its row heading, or "New model" after a create. The
+  // form and its buttons are gone by then, and the toast never takes focus.
+  const focusNext = useRef<{ kind: 'add' } | { kind: 'model'; id: string } | null>(null);
+  const headings = useRef(new Map<string, HTMLHeadingElement>());
+  const addButton = useRef<HTMLButtonElement>(null);
 
-  // A saved change moves focus to its confirmation, so a keyboard or screen reader user lands on it.
+  useEffect(() => {
+    const target = focusNext.current;
+    if (target === null) return;
+    focusNext.current = null;
+    (target.kind === 'add' ? addButton.current : headings.current.get(target.id))?.focus();
+  });
+
+  // A reloaded page moves focus to its note, so a keyboard or screen reader user lands on it.
   useEffect(() => {
     if (notice !== null) noticeRef.current?.focus();
   }, [notice]);
@@ -107,7 +117,7 @@ export function FleetSelectionPanel({
     }
     if (latest !== null) {
       adopt(latest);
-      setNotice('activated');
+      toast.success(t(`${P}.notice.activated`));
     }
     busy.current = false;
     setPending(null);
@@ -131,7 +141,8 @@ export function FleetSelectionPanel({
       const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
       if (fresh.ok) adopt(fresh.body);
       setEditing(null);
-      setNotice(creating ? 'created' : 'edited');
+      focusNext.current = creating ? { kind: 'add' } : { kind: 'model', id: editing.model.id };
+      toast.success(t(`${P}.notice.${creating ? 'created' : 'edited'}`));
     } else if (!ended(result.failure.status)) {
       const key = fleetProblemOf(result.failure);
       setFormProblem(key);
@@ -165,7 +176,7 @@ export function FleetSelectionPanel({
       {canManage ? null : <Banner tone="info">{t(`${P}.viewer-only`)}</Banner>}
       {notice === null ? null : (
         <div ref={noticeRef} tabIndex={-1} className="outline-none">
-          <Banner tone="success">{t(`${P}.notice.${notice}`)}</Banner>
+          <Banner tone="attention">{t(`${P}.notice.${notice}`)}</Banner>
         </div>
       )}
 
@@ -227,7 +238,16 @@ export function FleetSelectionPanel({
                   className="flex flex-col gap-2 rounded-md border border-line p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-base font-medium">{model.name}</h3>
+                    <h3
+                      ref={(element) => {
+                        if (element === null) headings.current.delete(model.id);
+                        else headings.current.set(model.id, element);
+                      }}
+                      tabIndex={-1}
+                      className="text-base font-medium outline-none"
+                    >
+                      {model.name}
+                    </h3>
                     <Badge tone="info">{t(`${P}.kind.${model.rule.kind}`)}</Badge>
                   </div>
                   <p className="text-sm text-fg-muted">{summaryOf(model.rule, nameOf, t)}</p>
@@ -262,6 +282,7 @@ export function FleetSelectionPanel({
         {canManage && editing === null ? (
           <div>
             <Button
+              ref={addButton}
               onClick={() => {
                 setFormProblem(null);
                 setNotice(null);

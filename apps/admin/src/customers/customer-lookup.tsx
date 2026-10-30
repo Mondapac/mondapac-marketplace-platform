@@ -10,6 +10,7 @@ import {
   FieldAction,
   LinkButton,
   TextField,
+  toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
@@ -59,7 +60,6 @@ export function CustomerLookup({
   const [confirming, setConfirming] = useState(false);
   const [changing, setChanging] = useState(false);
   const [changeProblem, setChangeProblem] = useState<Problem | null>(null);
-  const [changed, setChanged] = useState<'disabled' | 'enabled' | null>(null);
   const [wait, setWait] = useCountdown();
   const busy = useRef(false);
 
@@ -68,7 +68,6 @@ export function CustomerLookup({
     if (busy.current || wait > 0) return;
     const address = email.trim();
     setProblem(null);
-    setChanged(null);
     setChangeProblem(null);
     if (address === '' || address.length > EMAIL_MAX || !address.includes('@')) {
       setInvalid(true);
@@ -115,7 +114,7 @@ export function CustomerLookup({
     if (result.ok) {
       const status = action === 'disable' ? 'disabled' : 'active';
       setCustomer({ ...customer, status });
-      setChanged(action === 'disable' ? 'disabled' : 'enabled');
+      toast.success(t(action === 'disable' ? 'changed.disabled' : 'changed.enabled'));
       return;
     }
     const next = problemOf(result.failure);
@@ -159,7 +158,6 @@ export function CustomerLookup({
               setEmail(event.target.value);
               // The card always belongs to the address in the field: a new address clears it.
               setCustomer(null);
-              setChanged(null);
               setChangeProblem(null);
             }}
           />
@@ -186,7 +184,6 @@ export function CustomerLookup({
           <div>
             <Badge tone={active ? 'success' : 'critical'}>{t(`status.${customer.status}`)}</Badge>
           </div>
-          {changed === null ? null : <Banner tone="success">{t(`changed.${changed}`)}</Banner>}
           {changeProblem === null ? null : (
             <Banner tone={changeProblem.key === 'throttled' ? 'attention' : 'critical'}>
               {t(`error.${changeProblem.key}`)}
@@ -214,7 +211,6 @@ export function CustomerLookup({
                 <Button
                   variant={active ? 'destructive' : 'secondary'}
                   onClick={() => {
-                    setChanged(null);
                     setChangeProblem(null);
                     setConfirming(true);
                   }}

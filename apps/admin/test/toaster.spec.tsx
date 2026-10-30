@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Toaster, toast } from '@mondapac/ui';
+import { TOAST_FLASH_KEY, Toaster, toast } from '@mondapac/ui';
 
 const labels = { region: 'Action notifications', close: 'Close notification' };
 
@@ -156,5 +156,18 @@ describe('Toaster', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('shows the flash of the page before it once, on mount', () => {
+    sessionStorage.clear();
+    toast.flash('success', 'Role saved');
+    const first = render(<Toaster labels={labels} />);
+    expect(screen.getByRole('status').textContent).toContain('Role saved');
+    expect(sessionStorage.getItem(TOAST_FLASH_KEY)).toBeNull();
+    first.unmount();
+    act(() => toast.dismiss());
+    // A later page has no flash left to show.
+    render(<Toaster labels={labels} />);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });

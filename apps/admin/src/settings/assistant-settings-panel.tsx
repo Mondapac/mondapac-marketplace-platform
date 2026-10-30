@@ -10,6 +10,7 @@ import {
   FormActionBar,
   Select,
   TextField,
+  toast,
   type DataListRow,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
@@ -39,7 +40,7 @@ import {
 
 const P = 'settings.assistant';
 
-type Notice = 'saved' | 'reloaded' | null;
+type Notice = 'reloaded' | null;
 
 /** The model the server configures for a tier, or null. */
 function modelOf(answer: AssistantSettingsAnswer, tier: string): string | null {
@@ -100,7 +101,7 @@ export function AssistantSettingsPanel({
     );
     if (result.ok) {
       adopt(result.body);
-      setNotice('saved');
+      toast.success(t(`${P}.saved`));
     } else if (result.failure.status === 401) {
       window.location.assign('/session-ended');
     } else if (result.failure.code === 'assistant.conflict') {
@@ -328,7 +329,6 @@ export function AssistantSettingsPanel({
         </Card>
 
         <div className="flex flex-col gap-3">
-          {notice === 'saved' ? <Banner tone="success">{t(`${P}.saved`)}</Banner> : null}
           {notice === 'reloaded' ? <Banner tone="attention">{t(`${P}.reloaded`)}</Banner> : null}
           {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
           <FormActionBar

@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -22,7 +22,6 @@ export function DisplayNameCard({
   const [text, setText] = useState(initial);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [saved, setSaved] = useState<'changed' | 'same' | null>(null);
   const busy = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -35,7 +34,6 @@ export function DisplayNameCard({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current) return;
-    setSaved(null);
     setProblem(null);
     const name = text.trim();
     if (name === '' || [...name].length > MAX_LENGTH) {
@@ -55,7 +53,8 @@ export function DisplayNameCard({
     setPending(false);
     if (result.ok) {
       setText(name);
-      setSaved(result.body.changed ? 'changed' : 'same');
+      if (result.body.changed) toast.success(t('name-saved'));
+      else toast.info(t('name-same'));
       // The details card and the account menu read the name on the server.
       if (result.body.changed) router.refresh();
       return;
@@ -76,9 +75,6 @@ export function DisplayNameCard({
         onSubmit={(event) => void submit(event)}
         noValidate
       >
-        {saved === null ? null : (
-          <Banner tone="success">{t(saved === 'changed' ? 'name-saved' : 'name-same')}</Banner>
-        )}
         {problem === null || problem.field !== null ? null : (
           <Banner tone="critical">{t(`error.${problem.key}`, problem.values)}</Banner>
         )}
@@ -93,7 +89,6 @@ export function DisplayNameCard({
           error={fieldError}
           onChange={(event) => {
             setText(event.target.value);
-            setSaved(null);
           }}
         />
         <div>

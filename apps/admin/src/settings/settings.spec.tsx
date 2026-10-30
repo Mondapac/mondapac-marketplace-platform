@@ -11,6 +11,7 @@ import { callApi } from '../api/client.ts';
 import { supportProblemOf } from './errors.ts';
 import { SupportEmailCard } from './support-email-card.tsx';
 import type { SupportContact } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -51,7 +52,7 @@ describe('SupportEmailCard', () => {
       { email: 'care@example.com', expectedVersion: 0 },
       'csrf',
     );
-    expect(await screen.findByText('Address saved.')).toBeTruthy();
+    await expectToast('Address saved.');
     expect(screen.getByText('care@example.com')).toBeTruthy();
   });
 

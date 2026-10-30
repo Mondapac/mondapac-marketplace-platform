@@ -11,6 +11,7 @@ import { callApi } from '../api/client.ts';
 import { centsOf, dollarsOf, formOf, refusedFields, settingsOf } from './assistant-form.ts';
 import { AssistantSettingsPanel } from './assistant-settings-panel.tsx';
 import type { AssistantSettings, AssistantSettingsAnswer } from './assistant-types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -157,7 +158,7 @@ describe('AssistantSettingsPanel', () => {
       },
       'csrf',
     );
-    expect(await screen.findByText(/Settings saved/)).toBeTruthy();
+    await expectToast(/Settings saved/);
     expect(screen.getByText('Saved version 1')).toBeTruthy();
   });
 

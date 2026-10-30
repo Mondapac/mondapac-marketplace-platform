@@ -12,6 +12,7 @@ import { callApi } from '../../api/client.ts';
 import { CATEGORY, ID, detail, summary, version } from './test-data.ts';
 import { SlidePlacementEditor } from './slide-placement-editor.tsx';
 import type { SlideDetail, SlideSummary } from './slide-types.ts';
+import { expectToast } from '../../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ZONE = 'Australia/Brisbane';
@@ -203,7 +204,7 @@ describe('saving', () => {
         },
       ],
     });
-    expect(await screen.findByText('Saved to draft as version 3.')).toBeTruthy();
+    await expectToast('Saved to draft as version 3.');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Discard' }).disabled).toBe(true);
   });
 

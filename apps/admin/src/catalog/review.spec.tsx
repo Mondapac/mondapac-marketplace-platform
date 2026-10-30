@@ -12,6 +12,7 @@ import { callApi } from '../api/client.ts';
 import { reviewProblemOf } from './review-errors.ts';
 import { ReviewQueue } from './review-queue.tsx';
 import type { ReviewRow } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ID = '0190a000-0000-7000-8000-0000000000c1';
@@ -75,7 +76,7 @@ describe('ReviewQueue', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Offer approved and published.')).toBeTruthy();
+    await expectToast('Offer approved and published.');
     expect(screen.queryByText('Olive oil')).toBeNull();
   });
 
@@ -96,7 +97,7 @@ describe('ReviewQueue', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Offer sent back/)).toBeTruthy();
+    await expectToast(/Offer sent back/);
   });
 
   it('keeps the card on a stale answer and drops it when no longer pending', async () => {
