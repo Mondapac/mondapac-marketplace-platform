@@ -116,10 +116,89 @@ describe('role editor', () => {
       {
         name: 'Night shift',
         permissionKeys: ['identity.admin-account.invite', 'identity.admin-account.view'],
+        expectedVersion: 2,
       },
       'csrf-1',
     );
     expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it('on a stale save keeps the draft, shows the conflict banner, and the next save sends the new version', async () => {
+    const saved: RoleRecord = {
+      ...custom,
+      name: 'Night shift (renamed)',
+      permissionKeys: ['identity.admin-account.view', 'identity.admin-account.invite'],
+      version: 3,
+    };
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { ...catalogue, items: [saved] } })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { code: 'role.updated', roleId: ID },
+      });
+    mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'My draft name' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByText('Someone saved this role first')).toBeTruthy();
+    // The role is read again, the page is not refreshed (that would drop the draft).
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'identity/admin/roles');
+    expect(router.refresh).not.toHaveBeenCalled();
+    expect(screen.getByLabelText<HTMLInputElement>('Role name').value).toBe('My draft name');
+    expect(screen.getByLabelText<HTMLInputElement>('View').checked).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(
+      screen.getByText('Saved name: Night shift (renamed). Your name: My draft name.'),
+    ).toBeTruthy();
+    expect(screen.getByText('In the saved role but not in yours: Invite.')).toBeTruthy();
+    expect(screen.getByText('Every permission in yours is in the saved role.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      `identity/admin/roles/${ID}`,
+      {
+        name: 'My draft name',
+        permissionKeys: ['identity.admin-account.view'],
+        expectedVersion: 3,
+      },
+      'csrf-1',
+    );
+    await waitFor(() => expect(screen.queryByText('Someone saved this role first')).toBeNull());
+  });
+
+  it('on a stale delete closes the dialog, keeps the draft and shows the conflict banner', async () => {
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { ...catalogue, items: [{ ...custom, version: 5 }] },
+      });
+    mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Kept text' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete role' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete role' }).at(-1)!);
+
+    expect(await screen.findByText('Someone saved this role first')).toBeTruthy();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(router.refresh).not.toHaveBeenCalled();
+    expect(screen.getByLabelText<HTMLInputElement>('Role name').value).toBe('Kept text');
+  });
+
+  it('a stale save of a role that is gone refreshes the page instead of showing a banner', async () => {
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { ...catalogue, items: [] } });
+    mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    expect(screen.queryByText('Someone saved this role first')).toBeNull();
   });
 
   it('puts a taken name on the name field', async () => {
@@ -139,7 +218,12 @@ describe('role editor', () => {
         'Someone still has this role. Give them another role, then delete it.',
       ),
     ).toBeTruthy();
-    expect(call).toHaveBeenCalledWith('DELETE', `identity/admin/roles/${ID}`, undefined, 'csrf-1');
+    expect(call).toHaveBeenCalledWith(
+      'DELETE',
+      `identity/admin/roles/${ID}`,
+      { expectedVersion: 2 },
+      'csrf-1',
+    );
     call.mockResolvedValueOnce({
       ok: true,
       status: 200,

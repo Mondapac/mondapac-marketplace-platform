@@ -79,8 +79,20 @@ import {
 } from './admin-team.dto';
 import { fail } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
-import { RoleCatalogueView, RoleEditorRequest, RoleWrittenView } from './role-editor.dto';
-import { catalogueView, roleBody, rolePathId, roleRefusal } from './role-editor.http';
+import {
+  RoleCatalogueView,
+  RoleEditorRequest,
+  RoleEditRequest,
+  RoleVersionRequest,
+  RoleWrittenView,
+} from './role-editor.dto';
+import {
+  catalogueView,
+  roleBody,
+  rolePathId,
+  roleRefusal,
+  roleVersionBody,
+} from './role-editor.http';
 
 /**
  * The HTTP status of each refusal of the admin team routes (identity design 5.2, 8.6 row 1;
@@ -326,7 +338,7 @@ export class AdminTeamController {
   })
   @ApiParam(ROLE_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: RoleEditorRequest })
+  @ApiBody({ type: RoleEditRequest })
   @ApiOkResponse({ type: RoleWrittenView })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -347,7 +359,7 @@ export class AdminTeamController {
     @Body() body: unknown,
   ): Promise<RoleWrittenView> {
     const roleId = rolePathId(rawRoleId);
-    const input = roleBody(request, body);
+    const input = roleBody(request, body, true);
     let outcome: RoleWrittenView | HttpException;
     if (roleId instanceof HttpException) outcome = roleId;
     else if (input instanceof HttpException) outcome = input;
@@ -356,6 +368,7 @@ export class AdminTeamController {
         roleId,
         name: input.name,
         permissionKeys: input.permissionKeys as string[],
+        expectedVersion: input.expectedVersion,
       });
       outcome = result.ok ? result.value : roleRefusal(result.error);
     }
@@ -373,7 +386,10 @@ export class AdminTeamController {
   })
   @ApiParam(ROLE_PARAM)
   @ApiHeader(CSRF)
+  @ApiBody({ type: RoleVersionRequest })
   @ApiOkResponse({ type: RoleWrittenView })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
     type: ApiErrorBody,
@@ -386,13 +402,17 @@ export class AdminTeamController {
   })
   async deleteRole(
     @Call() context: CallContext,
+    @Req() request: Request,
     @Param('roleId') rawRoleId: string,
+    @Body() body: unknown,
   ): Promise<RoleWrittenView> {
     const roleId = rolePathId(rawRoleId);
+    const expectedVersion = roleVersionBody(request, body);
     let outcome: RoleWrittenView | HttpException;
     if (roleId instanceof HttpException) outcome = roleId;
+    else if (expectedVersion instanceof HttpException) outcome = expectedVersion;
     else {
-      const result = await this.deletePlatformRole.execute(context, { roleId });
+      const result = await this.deletePlatformRole.execute(context, { roleId, expectedVersion });
       outcome = result.ok ? result.value : roleRefusal(result.error);
     }
     return this.settle('identity.admin-delete-role', context, outcome);

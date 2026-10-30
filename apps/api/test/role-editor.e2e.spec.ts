@@ -267,13 +267,41 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         actions: { edit: { allowed: true, code: null }, delete: { allowed: true, code: null } },
       });
 
+      expect(mine).toMatchObject({ version: 1 });
       const edited = await call('put', code, 'admin', `roles/${roleId}`, root, {
         name: 'Renamed',
         permissionKeys: ['identity.platform-role.view'],
+        expectedVersion: 1,
       });
       expect([edited.status, edited.body]).toEqual([200, { code: 'role.updated', roleId }]);
 
-      const removed = await call('delete', code, 'admin', `roles/${roleId}`, root);
+      // The tab that still holds version 1 is stale on both verbs; the read now says 2.
+      const staleEdit = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        name: 'Late',
+        permissionKeys: [],
+        expectedVersion: 1,
+      });
+      expect([staleEdit.status, (staleEdit.body as { code: string }).code]).toEqual([
+        409,
+        'conflict.stale',
+      ]);
+      const staleDelete = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: 1,
+      });
+      expect([staleDelete.status, (staleDelete.body as { code: string }).code]).toEqual([
+        409,
+        'conflict.stale',
+      ]);
+      const reread = await call('get', code, 'admin', 'roles', root);
+      expect(
+        (reread.body as { items: { roleId: string; version: number }[] }).items.find(
+          (item) => item.roleId === roleId,
+        )!.version,
+      ).toBe(2);
+
+      const removed = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: 2,
+      });
       expect([removed.status, removed.body]).toEqual([200, { code: 'role.deleted', roleId }]);
 
       const correlationId = created.headers['x-correlation-id'] as string;
@@ -295,6 +323,21 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       const first = await call('post', code, 'admin', 'roles', root, body);
       const roleId = (first.body as { roleId: string }).roleId;
       const system = roleOf(code, 'platform', 'platform-administrator');
+      const otherMarket = TEST_MARKETS.find((m) => m !== code)!;
+      const FOREIGN_MARKET_ROLE = id<'Role'>('01990000-0000-7000-8000-00000000c902');
+      fakes.seedRole({
+        id: FOREIGN_MARKET_ROLE,
+        marketId: otherMarket as AccountState['marketId'],
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Foreign market role',
+        permissionKeys: [],
+        version: 1,
+        createdAt: START,
+      });
 
       const cases: [string, () => request.Test, number, string][] = [
         [
@@ -324,25 +367,114 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         ],
         [
           'seeded role',
-          () => call('put', code, 'admin', `roles/${system}`, root, body),
+          () =>
+            call('put', code, 'admin', `roles/${system}`, root, { ...body, expectedVersion: 1 }),
           409,
           'role.read-only',
         ],
         [
+          'edit without a version',
+          () => call('put', code, 'admin', `roles/${roleId}`, root, body),
+          400,
+          'validation.failed',
+        ],
+        [
+          'edit with a text version',
+          () =>
+            call('put', code, 'admin', `roles/${roleId}`, root, { ...body, expectedVersion: '1' }),
+          400,
+          'validation.failed',
+        ],
+        [
+          'edit with version zero',
+          () =>
+            call('put', code, 'admin', `roles/${roleId}`, root, { ...body, expectedVersion: 0 }),
+          400,
+          'validation.failed',
+        ],
+        [
+          'delete without a body',
+          () => call('delete', code, 'admin', `roles/${roleId}`, root),
+          400,
+          'validation.failed',
+        ],
+        [
+          'delete without a version',
+          () => call('delete', code, 'admin', `roles/${roleId}`, root, {}),
+          400,
+          'validation.failed',
+        ],
+        [
+          'delete with a fractional version',
+          () => call('delete', code, 'admin', `roles/${roleId}`, root, { expectedVersion: 1.5 }),
+          400,
+          'validation.failed',
+        ],
+        [
+          'create may not carry a version',
+          () => call('post', code, 'admin', 'roles', root, { ...body, expectedVersion: 1 }),
+          400,
+          'validation.failed',
+        ],
+        [
           'malformed id',
-          () => call('delete', code, 'admin', 'roles/not-an-id', root),
+          () => call('delete', code, 'admin', 'roles/not-an-id', root, { expectedVersion: 1 }),
           404,
           'role.unknown',
         ],
         [
           'a seller role',
-          () => call('delete', code, 'admin', `roles/${OTHER_ROLE}`, root),
+          () => call('delete', code, 'admin', `roles/${OTHER_ROLE}`, root, { expectedVersion: 1 }),
+          404,
+          'role.unknown',
+        ],
+        [
+          'malformed id, wrong version',
+          () => call('delete', code, 'admin', 'roles/not-an-id', root, { expectedVersion: 99 }),
+          404,
+          'role.unknown',
+        ],
+        [
+          'a seller role, wrong version',
+          () => call('delete', code, 'admin', `roles/${OTHER_ROLE}`, root, { expectedVersion: 99 }),
+          404,
+          'role.unknown',
+        ],
+        [
+          'a seller role edited, wrong version',
+          () =>
+            call('put', code, 'admin', `roles/${OTHER_ROLE}`, root, {
+              ...body,
+              expectedVersion: 99,
+            }),
+          404,
+          'role.unknown',
+        ],
+        [
+          'another Market’s role, wrong version (delete)',
+          () =>
+            call('delete', code, 'admin', `roles/${FOREIGN_MARKET_ROLE}`, root, {
+              expectedVersion: 99,
+            }),
+          404,
+          'role.unknown',
+        ],
+        [
+          'another Market’s role, wrong version (edit)',
+          () =>
+            call('put', code, 'admin', `roles/${FOREIGN_MARKET_ROLE}`, root, {
+              ...body,
+              expectedVersion: 99,
+            }),
           404,
           'role.unknown',
         ],
         [
           'viewer lacks the key',
-          () => call('delete', code, 'admin', `roles/${roleId}`, sessionOf(code, VIEWER, 'admin')),
+          () =>
+            call('delete', code, 'admin', `roles/${roleId}`, sessionOf(code, VIEWER, 'admin'), {
+              expectedVersion: 1,
+            }),
           403,
           'access.denied',
         ],
@@ -361,6 +493,67 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         .type('text/plain')
         .send('{}');
       expect(json.status).toBe(415);
+    });
+
+    it('delete: refuses a malformed version body on both routes, and needs the CSRF token', async () => {
+      await boot({ limit: 5 });
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 'admin');
+      const owner = sessionOf(code, OWNER, 'seller');
+      const made = await call('post', code, 'admin', 'roles', root, {
+        name: 'Doomed',
+        permissionKeys: [],
+      });
+      const adminRole = (made.body as { roleId: string }).roleId;
+      const madeSeller = await call('post', code, 'seller', 'roles', owner, {
+        name: 'Doomed',
+        permissionKeys: [],
+      });
+      const sellerRole = (madeSeller.body as { roleId: string }).roleId;
+
+      for (const [scope, session, roleId] of [
+        ['admin', root, adminRole],
+        ['seller', owner, sellerRole],
+      ] as const) {
+        const path = `roles/${roleId}`;
+        const textPlain = await http()
+          .delete(`/identity/${scope}/${path}`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, scope), ...session })
+          .type('text/plain')
+          .send('{"expectedVersion":1}');
+        expect([scope, 'text', textPlain.status]).toEqual([scope, 'text', 415]);
+        const bodies: [string, unknown][] = [
+          ['array', [{ expectedVersion: 1 }]],
+          ['unknown field', { expectedVersion: 1, extra: true }],
+          ['null', { expectedVersion: null }],
+          ['2^53', { expectedVersion: 2 ** 53 }],
+          ['2^53 + 2', { expectedVersion: 2 ** 53 + 2 }],
+        ];
+        for (const [label, body] of bodies) {
+          const response = await call('delete', code, scope, path, session, body);
+          expect([scope, label, response.status, (response.body as { code: string }).code]).toEqual(
+            [scope, label, 400, 'validation.failed'],
+          );
+        }
+        const noCsrf = await call(
+          'delete',
+          code,
+          scope,
+          path,
+          { cookie: session.cookie },
+          {
+            expectedVersion: 1,
+          },
+        );
+        expect([scope, noCsrf.status, noCsrf.body]).toEqual([
+          scope,
+          403,
+          { statusCode: 403, code: 'request.csrf' },
+        ]);
+      }
+      // None of it deleted anything.
+      expect(fakes.roles.get(adminRole as Id<'Role'>)).toBeDefined();
+      expect(fakes.roles.get(sellerRole as Id<'Role'>)).toBeDefined();
     });
 
     it('platform: needs the CSRF token, the right session population and, for each, no session', async () => {
@@ -421,12 +614,31 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       const foreign = await call('put', code, 'seller', `roles/${OTHER_ROLE}`, owner, {
         name: 'X',
         permissionKeys: [],
+        expectedVersion: 1,
       });
       expect([foreign.status, (foreign.body as { code: string }).code]).toEqual([
         404,
         'role.unknown',
       ]);
-      expect((await call('delete', code, 'seller', `roles/${roleId}`, owner)).body).toEqual({
+      const staleSeller = await call('delete', code, 'seller', `roles/${roleId}`, owner, {
+        expectedVersion: 7,
+      });
+      expect([staleSeller.status, (staleSeller.body as { code: string }).code]).toEqual([
+        409,
+        'conflict.stale',
+      ]);
+      const unversioned = await call('put', code, 'seller', `roles/${roleId}`, owner, {
+        name: 'X',
+        permissionKeys: [],
+      });
+      expect([unversioned.status, (unversioned.body as { code: string }).code]).toEqual([
+        400,
+        'validation.failed',
+      ]);
+      expect(
+        (await call('delete', code, 'seller', `roles/${roleId}`, owner, { expectedVersion: 1 }))
+          .body,
+      ).toEqual({
         code: 'role.deleted',
         roleId,
       });
@@ -472,7 +684,9 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         version: 1,
       });
 
-      const inUse = await call('delete', code, 'admin', `roles/${roleId}`, root);
+      const inUse = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: 1,
+      });
       expect([inUse.status, inUse.body]).toEqual([409, { statusCode: 409, code: 'role.in-use' }]);
 
       // A write that loses the version race: the platform filter answers 409 conflict.stale.
@@ -483,6 +697,7 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         const stale = await call('put', code, 'admin', `roles/${roleId}`, root, {
           name: 'Held 2',
           permissionKeys: [],
+          expectedVersion: 1,
         });
         expect(stale.status).toBe(409);
         expect((stale.body as { code: string }).code).toBe('conflict.stale');
