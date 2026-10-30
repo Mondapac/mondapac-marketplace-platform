@@ -4,6 +4,7 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'validation.failed': 'invalid',
   'shipping.fleet-model-name-taken': 'name-taken',
   'shipping.fleet-model-conflict': 'conflict',
+  'shipping.fleet-selection-conflict': 'page-conflict',
   'shipping.fleet-model-not-found': 'not-found',
   'request.throttled': 'throttled',
   'request.csrf': 'csrf',

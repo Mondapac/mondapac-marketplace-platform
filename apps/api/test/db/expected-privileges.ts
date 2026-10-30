@@ -908,6 +908,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['model_id', 'updated_at', 'updated_by'],
     },
+    // Settings S4: the version of the fleet-selection page, one row per Market, raised on each save.
+    'shipping.fleet_selection_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['updated_at', 'updated_by', 'version'],
+    },
     'shipping.fleet_reliability': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['score', 'updated_at', 'updated_by'],

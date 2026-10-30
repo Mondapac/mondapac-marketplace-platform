@@ -34,9 +34,8 @@ import { SetDeliverySettings } from './application/use-cases/set-delivery-settin
 import { SetSellerDeliveryMethods } from './application/use-cases/set-seller-delivery-methods.use-case';
 import { ViewDeliverySettings } from './application/use-cases/view-delivery-settings.use-case';
 import { ViewSellerDeliveryMethods } from './application/use-cases/view-seller-delivery-methods.use-case';
-import { ActivateFleetSelectionModel } from './application/use-cases/activate-fleet-selection-model.use-case';
 import { CreateFleetSelectionModel } from './application/use-cases/create-fleet-selection-model.use-case';
-import { SetFleetReliability } from './application/use-cases/set-fleet-reliability.use-case';
+import { SetFleetSelection } from './application/use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from './application/use-cases/update-fleet-selection-model.use-case';
 import { ViewFleetSelection } from './application/use-cases/view-fleet-selection.use-case';
 import { BookCarrierDelivery } from './application/use-cases/book-carrier-delivery.use-case';
@@ -146,8 +145,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewFleetSelection,
       CreateFleetSelectionModel,
       UpdateFleetSelectionModel,
-      ActivateFleetSelectionModel,
-      SetFleetReliability,
+      SetFleetSelection,
       ViewDeliverySettings,
       SetDeliverySettings,
       ViewSellerDeliveryMethods,
