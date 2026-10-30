@@ -70,6 +70,11 @@ export class ActiveModelsBody {
 }
 
 export class FleetSelectionBody {
+  @ApiProperty({
+    description:
+      'The version of the page (0 before the first save); send it back as expectedVersion.',
+  })
+  version!: number;
   @ApiProperty({ type: [FleetModelBody] }) models!: FleetModelBody[];
   @ApiProperty({
     type: ActiveModelsBody,
@@ -94,22 +99,24 @@ export class UpdateFleetModelRequest extends FleetModelRequest {
   expectedVersion!: number;
 }
 
-export class ActivateModelRequest {
+export class SaveFleetSelectionRequest {
+  @ApiProperty({ description: 'The page version read; a stale value answers 409.' })
+  expectedVersion!: number;
   @ApiProperty({
-    format: 'uuid',
-    nullable: true,
-    description: 'The model to make active; null puts the built-in default order back.',
+    type: ActiveModelsBody,
+    description:
+      'The active model per delivery method, every method present; null puts the built-in ' +
+      'default order back.',
   })
-  modelId!: string | null;
-}
-
-export class ReliabilityRequest {
+  active!: ActiveModelsBody;
   @ApiProperty({
-    minimum: 0,
-    maximum: 100,
-    description: 'An admin-set score; a computed one comes later.',
+    type: 'object',
+    additionalProperties: { type: 'integer', nullable: true, minimum: 0, maximum: 100 },
+    description:
+      'The admin-set reliability per fleet code (0 to 100); null or an absent fleet leaves ' +
+      'the fleet as it is.',
   })
-  score!: number;
+  reliability!: Record<string, number | null>;
 }
 
 export const modelBody = (model: FleetSelectionModel): FleetModelBody => {
@@ -130,6 +137,7 @@ export const modelBody = (model: FleetSelectionModel): FleetModelBody => {
 };
 
 export const selectionBody = (view: FleetSelectionView): FleetSelectionBody => ({
+  version: view.version,
   models: view.models.map(modelBody),
   active: { ...view.active },
   defaultOrder: [...view.defaultOrder],

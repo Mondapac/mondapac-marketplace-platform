@@ -122,6 +122,16 @@ export class MemorySelection implements FleetSelectionRepository {
   readonly models = new Map<string, FleetSelectionModel & { marketId: string }>();
   readonly active = new Map<string, Id<'FleetSelectionModel'> | null>();
   readonly scores = new Map<string, number>();
+  readonly versions = new Map<string, number>();
+  selectionVersion(m: MarketContext) {
+    return Promise.resolve(this.versions.get(m.marketId) ?? 0);
+  }
+  bumpSelectionVersion(m: MarketContext, expectedVersion: number) {
+    const current = this.versions.get(m.marketId) ?? 0;
+    if (current !== expectedVersion) return Promise.resolve('conflict' as const);
+    this.versions.set(m.marketId, current + 1);
+    return Promise.resolve('bumped' as const);
+  }
   listModels(m: MarketContext) {
     return Promise.resolve([...this.models.values()].filter((x) => x.marketId === m.marketId));
   }

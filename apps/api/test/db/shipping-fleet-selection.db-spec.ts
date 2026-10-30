@@ -146,6 +146,28 @@ describe.each(TEST_MARKETS)('fleet selection repository in market %s (database)'
     expect((await value(other, () => repository.reliabilities(other))).get('zoom2u')).toBe(10);
   });
 
+  it('raises the page version from the expected one, and exactly one of two racing saves wins', async () => {
+    const start = await value(market, () => repository.selectionVersion(market));
+    expect(
+      await value(market, () => repository.bumpSelectionVersion(market, start + 5, admin, T0)),
+    ).toBe('conflict');
+    const race = await Promise.all(
+      [1, 2].map(() =>
+        value(market, () => repository.bumpSelectionVersion(market, start, admin, T0)).catch(
+          () => 'conflict' as const,
+        ),
+      ),
+    );
+    expect(race.filter((answer) => answer === 'bumped')).toHaveLength(1);
+    expect(await value(market, () => repository.selectionVersion(market))).toBe(start + 1);
+    // The version of one Market never moves another's.
+    expect(await value(other, () => repository.selectionVersion(other))).not.toBe(start + 1);
+    expect(
+      await value(market, () => repository.bumpSelectionVersion(market, start + 1, admin, T0)),
+    ).toBe('bumped');
+    expect(await value(market, () => repository.selectionVersion(market))).toBe(start + 2);
+  });
+
   it('refuses what the application never writes', async () => {
     const attempt = (text: string, params: unknown[]) =>
       sql.query(text, params).then(
@@ -170,5 +192,13 @@ describe.each(TEST_MARKETS)('fleet selection repository in market %s (database)'
     ).toBe(CHECK);
     expect(await attempt(`DELETE FROM shipping.fleet_selection_models`, [])).toBe(DENIED);
     expect(await attempt(`DELETE FROM shipping.fleet_reliability`, [])).toBe(DENIED);
+    expect(await attempt(`DELETE FROM shipping.fleet_selection_settings`, [])).toBe(DENIED);
+    expect(
+      await attempt(
+        `INSERT INTO shipping.fleet_selection_settings (market_id, tenant_id, version, updated_by, updated_at)
+         VALUES ($1, $2, 0, $3, now())`,
+        ['ZZ_OTHER', market.tenantId, admin],
+      ),
+    ).toBe(CHECK);
   });
 });

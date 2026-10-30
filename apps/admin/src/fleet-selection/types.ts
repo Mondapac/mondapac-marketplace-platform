@@ -53,6 +53,8 @@ export interface FleetRow {
 }
 
 export interface Selection {
+  /** The page version (0 before the first save); sent back as `expectedVersion`. */
+  readonly version: number;
   readonly models: readonly Model[];
   readonly active: Readonly<Record<Method, string | null>>;
   readonly defaultOrder: readonly FleetCode[];
