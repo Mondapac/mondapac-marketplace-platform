@@ -6705,8 +6705,8 @@ function pcTreeRow(r, sel, match) {
 function pcTree(o) {
   o = o || {};
   const rows = (o.rows || PC_TREE).map(function (r) { return pcTreeRow(r, o.selected, o.match); });
-  const search = inst('Input', { Type: 'Text', State: o.query ? 'Filled' : 'Default', Value: o.query || 'Search categories', 'Leading icon': true }, { name: 'search', w: 300 });
-  const tools = frame({ name: 'tree tools', dir: 'H', gap: 'space/3', align: 'center', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [search, inst('Select', { State: 'Filled', Value: 'Status: ' + (o.status || 'All') }, { name: 'status', w: 180 }), pcSp(), ppLink('Expand all', null, 'expand-all'), ppLink('Collapse all', null, 'collapse-all')]);
+  const search = inst('Input', { Type: 'Text', State: o.query ? 'Filled' : 'Default', Value: o.query || 'Search categories', 'Leading icon': true }, { name: 'search', sizeH: 'FILL' });
+  const tools = frame({ name: 'tree tools', dir: 'H', gap: 'space/3', align: 'center', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [search, inst('Select', { State: 'Filled', Value: 'Status: ' + (o.status || 'All') }, { name: 'status', w: 160 }), ppLink('Expand all', null, 'expand-all'), ppLink('Collapse all', null, 'collapse-all')]);
   const head = frame({ name: 'tree head', dir: 'H', gap: 'space/2', pad: [8, 16, 8, 16], fill: 'bg/subtle', stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text('Category', 'Caption/Strong', 'text/muted'), pcSp(), text('Live products', 'Caption/Strong', 'text/muted')]);
   const kids = [tools];
   if (o.note) kids.push(frame({ name: 'note', dir: 'H', pad: [0, 16, 12, 16], sizeH: 'FILL' }, [text(o.note, 'Body/Small', 'text/muted')]));
