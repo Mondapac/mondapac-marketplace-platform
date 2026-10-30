@@ -71,6 +71,11 @@ import { SellersAllowedProductTypesReader } from './sellers-allowed-product-type
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
+import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import {
+  ADMIN_PRODUCTS_READER,
+  type AdminProductsReader,
+} from '../application/ports/admin-products.reader';
 import {
   PRODUCT_IMAGE_REPOSITORY,
   type ProductImageRepository,
@@ -245,6 +250,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: OWN_CATALOG_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OwnCatalogReader => new PrismaOwnCatalogReader(prisma),
+  },
+  {
+    provide: ADMIN_PRODUCTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminProductsReader =>
+      new PrismaAdminProductsReader(prisma),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,
