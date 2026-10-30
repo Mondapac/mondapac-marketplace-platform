@@ -2540,6 +2540,8 @@
       "intro": "Controls store credit for every customer in this Market.",
       "current": "Current state",
       "never-changed": "Never changed",
+      "conflict-title": "The wallet state changed while you were on this page",
+      "conflict-body": "The state above is now the current one. The state you chose is kept: review it, then save again.",
       "changed": "Changed {when}",
       "reason-line": "Reason: {reason}",
       "change": "Change state",

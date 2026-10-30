@@ -35,6 +35,8 @@ export interface WalletSettings {
   readonly status: WalletState;
   readonly reason: string | null;
   readonly updatedAt: string | null;
+  /** 0 while never switched; sent back as `expectedVersion` on a save. */
+  readonly version: number;
 }
 
 export interface CustomerWallet {

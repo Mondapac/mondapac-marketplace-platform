@@ -142,8 +142,13 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   });
 
   const key = (label: string) => `${label}-${(seq += 1)}`.padEnd(8, '0');
-  const turn = (status: string, reasonCode?: string, context = adminCtx()) =>
-    new SetWalletStatus(gate, deps).execute(context, { status, reasonCode });
+  // The admin's tab is fresh unless a test says otherwise: the version it sends is the current one.
+  const turn = (
+    status: string,
+    reasonCode?: string,
+    context = adminCtx(),
+    expectedVersion: unknown = setting.record?.version ?? 0,
+  ) => new SetWalletStatus(gate, deps).execute(context, { status, reasonCode, expectedVersion });
   const open = async (status: 'active' | 'paused' | 'frozen' = 'active') => {
     const result = await turn(status, status === 'active' ? undefined : 'maintenance');
     expect(result.ok).toBe(true);
@@ -200,7 +205,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   describe('the Market switch', () => {
     it('is off by default: every write answers wallet.disabled and the customer sees nothing', async () => {
       expect(await new ViewWalletSettings(gate, deps).execute(adminCtx(), {})).toEqual(
-        ok({ status: 'off', reason: null, updatedAt: null }),
+        ok({ status: 'off', reason: null, updatedAt: null, version: 0 }),
       );
       expect(await grant(100n)).toEqual(err({ code: 'wallet.disabled' }));
       expect(await hold(100n)).toEqual(err({ code: 'wallet.disabled' }));
@@ -322,6 +327,88 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       stepUpAsked = [];
       expect((await turn('active')).ok).toBe(true);
       expect(stepUpAsked).toEqual([]);
+    });
+
+    it('versions the switch: 0 before any change, +1 per real change, none for a no-op', async () => {
+      const view = async () => {
+        const result = await new ViewWalletSettings(gate, deps).execute(adminCtx(), {});
+        if (!result.ok) throw new Error(result.error.code);
+        return result.value.version;
+      };
+      expect(await view()).toBe(0);
+      await open('active');
+      expect(await view()).toBe(1);
+      await turn('active'); // no-op
+      expect(await view()).toBe(1);
+      await turn('paused', 'maintenance');
+      expect(await view()).toBe(2);
+    });
+
+    it('a stale expectedVersion answers wallet.settings-conflict and spends no proof (step-up ordering)', async () => {
+      await open('active'); // version 1
+      await turn('paused', 'maintenance'); // another admin: version 2
+      stepUpAsked = [];
+      audit.entries.length = 0;
+      const saves = setting.saves;
+      expect(await turn('frozen', 'security-incident', adminCtx(), 1)).toEqual(
+        err({ code: 'wallet.settings-conflict' }),
+      );
+      // The stale save is refused before the unit reaches the step-up consumer.
+      expect(stepUpAsked).toEqual([]);
+      expect(setting.saves).toBe(saves);
+      expect(setting.record).toMatchObject({ status: 'paused', version: 2 });
+      expect(audit.entries).toHaveLength(0);
+      // The same request with the current version goes through and then spends the proof once.
+      expect((await turn('frozen', 'security-incident', adminCtx(), 2)).ok).toBe(true);
+      expect(stepUpAsked).toEqual(['wallet.settings.change']);
+    });
+
+    it('a stale version is a conflict even for the state already set, and a first save needs 0', async () => {
+      expect(await turn('active', undefined, adminCtx(), 3)).toEqual(
+        err({ code: 'wallet.settings-conflict' }),
+      );
+      expect((await turn('active', undefined, adminCtx(), 0)).ok).toBe(true);
+      expect(await turn('active', undefined, adminCtx(), 0)).toEqual(
+        err({ code: 'wallet.settings-conflict' }),
+      );
+      expect(stepUpAsked).toEqual(['wallet.settings.change']);
+    });
+
+    it('keeps the conflict and the history refusal distinct, and checks the version first', async () => {
+      await open('active');
+      expect((await grant(100n)).ok).toBe(true);
+      expect(await turn('off')).toEqual(err({ code: 'wallet.cannot-turn-off-with-history' }));
+      expect(await turn('off', undefined, adminCtx(), 0)).toEqual(
+        err({ code: 'wallet.settings-conflict' }),
+      );
+    });
+
+    it('requires expectedVersion: a missing, negative or fractional value is a field error', async () => {
+      await open('active');
+      stepUpAsked = [];
+      for (const [value, code] of [
+        [-1, 'value'],
+        [1.5, 'value'],
+        ['1', 'value'],
+      ] as const) {
+        expect(await turn('paused', 'maintenance', adminCtx(), value)).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'expectedVersion', code }] }),
+        );
+      }
+      // Left out entirely (a default parameter would fill in `undefined`, so call the use case).
+      expect(
+        await new SetWalletStatus(gate, deps).execute(adminCtx(), {
+          status: 'paused',
+          reasonCode: 'maintenance',
+        }),
+      ).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [{ path: 'expectedVersion', code: 'required' }],
+        }),
+      );
+      expect(stepUpAsked).toEqual([]);
+      expect(setting.record?.status).toBe('active');
     });
 
     it('validates the body: a reason is required for paused and frozen and not allowed otherwise', async () => {
