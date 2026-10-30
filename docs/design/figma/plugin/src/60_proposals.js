@@ -6,8 +6,8 @@
 
 // ---- Admin · Catalog · Products (owner's brief, 30 Oct 2026): the list of every product on the platform with add, import,
 // bulk actions, search, filter icon with saved filters, sort icon, column picker, page size, pagination and the total.
-// Round 2 (owner, 30 Oct 19:47Z): view tabs read Active, All, Inactive; bulk actions move to an Actions icon beside the header
-// buttons (no bulk bar); a full admin saves a filter for themselves or for everyone, a products-only role only for themselves.
+// Round 2 (owner, 30 Oct 19:47Z): view tabs read Active, All, Inactive; bulk actions move beside the header buttons (no bulk
+// bar; round 3, 19:59Z: a Bulk action button, disabled until rows are selected); a full admin saves a filter for themselves or for everyone, a products-only role only for themselves.
 const PP = 'Proposal · Admin · Catalog · Products';
 const PP_MARKET = 'Australia';
 // [title, code, category, thumb, status, sellers, variants, last changed, type]
@@ -75,10 +75,12 @@ function ppTable(o) {
   kids.push(pag);
   return card('Product list', kids);
 }
-// The Actions icon sits with the header buttons; it acts on the rows selected in the list and shows how many are selected.
+// Bulk action (owner, round 3): a button with the header buttons, disabled until a row is selected; the count of selected rows
+// shows only in the menu it opens.
 function ppActions(o) {
-  const b = ppIconButton('more-horizontal', 'actions-button', o.open === 'actions' ? 'Focus' : 'Default');
-  return frame({ name: 'actions', dir: 'H', gap: 'space/1', align: 'center' }, [b].concat(o.selected ? [inst('CountBadge', { Tone: 'Info', Count: String(o.selected) }, { name: 'selected-count' })] : []));
+  const b = btn('Bulk action', 'Secondary', 'Md', { State: o.open === 'actions' ? 'Focus' : (o.selected ? 'Default' : 'Disabled'), 'Trailing icon': true });
+  b.name = 'actions-button';
+  return b;
 }
 function ppHeader(o) {
   o = o || {};
@@ -101,21 +103,19 @@ function ppUnder(scr, name, pop, alignRight) {
 
 // 1 · Default: the "Active products" filter, 25 rows a page, the total in the pagination and the subtitle.
 function ppDefault() { return ppScreen('Default', [ppHeader(), ppViews('Active'), ppToolbar(), ppTable()]); }
-// 2 · Rows selected, Actions open: the menu under the Actions icon acts on the selected rows (owner, round 2: no bulk bar).
+// 2 · Rows selected, Bulk action open: the menu under the Bulk action button acts on the selected rows (owner, round 2: no bulk bar).
 function ppActionItem(state, label, ic, desc) {
   return inst('MenuItem', Object.assign({ State: state, Label: label, 'Leading icon': true, Icon: { icon: ic }, 'Show description': !!desc }, desc ? { Description: desc } : {}), { name: 'action · ' + label, sizeH: 'FILL' });
 }
 function ppActionsMenu(n) {
-  const none = !n;
-  const why = none ? 'Select products in the list first.' : null;
-  return ppPopover('Actions menu (open)', 300, [
-    text(none ? 'No products selected' : n + ' products selected', 'Caption/Strong', 'text/muted', { name: 'title' }),
-    frame({ name: 'items', dir: 'V', sizeH: 'FILL' }, [ppActionItem(none ? 'Disabled' : 'Default', 'Activate', 'check', why), ppActionItem(none ? 'Disabled' : 'Default', 'Deactivate', 'ban', why), ppActionItem(none ? 'Disabled' : 'Destructive', 'Delete…', 'trash', why)]),
-    none ? null : frame({ name: 'scope', dir: 'V', gap: 'space/1', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [ppLink('Select all 1,148 products in this filter', null, 'select-all-matching'), ppLink('Clear selection', null, 'clear-selection')])]);
+  return ppPopover('Bulk action menu (open)', 300, [
+    text(n + ' products selected', 'Caption/Strong', 'text/muted', { name: 'title' }),
+    frame({ name: 'items', dir: 'V', sizeH: 'FILL' }, [ppActionItem('Default', 'Activate', 'check'), ppActionItem('Default', 'Deactivate', 'ban'), ppActionItem('Destructive', 'Delete…', 'trash')]),
+    frame({ name: 'scope', dir: 'V', gap: 'space/1', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [ppLink('Select all 1,148 products in this filter', null, 'select-all-matching'), ppLink('Clear selection', null, 'clear-selection')])]);
 }
 function ppSelected() {
-  const scr = ppScreen('Rows selected, Actions open', [ppHeader({ selected: 3, open: 'actions' }), ppViews('Active'), ppToolbar(), ppTable({ selected: [0, 1, 4] })]);
-  ppUnder(scr, 'actions-button', ppActionsMenu(3));
+  const scr = ppScreen('Rows selected, Bulk action open', [ppHeader({ selected: 3, open: 'actions' }), ppViews('Active'), ppToolbar(), ppTable({ selected: [0, 1, 4] })]);
+  ppUnder(scr, 'actions-button', ppActionsMenu(3), true);
   return scr;
 }
 // 3 · Search and filter together: the query and two conditions; the count of matches.
@@ -205,7 +205,6 @@ function ppStates() {
   const nomatch = inst('EmptyState', { Size: 'Card', Title: 'No products match', Body: 'Try another search or remove a filter.', Icon: { icon: 'search' } }, { name: 'no-match', sizeH: 'FILL' });
   setNested(nomatch, 'action', prop('Button', 'Label', 'Clear all'));
   const scr = frame({ name: PP + ' · States', dir: 'V', w: 900, pad: 40, gap: 'space/6', fill: 'bg/page' }, [text('Products: loading and empty states', 'Heading/H1'), para('The page header, filter tabs and toolbar stay visible in every state. Loading shows skeleton rows; a list that cannot load is the Critical banner with "Try again".', 800),
-    text('Actions with no rows selected', 'Caption/Strong', 'text/muted'), ppActionsMenu(0),
     text('Loading', 'Caption/Strong', 'text/muted'), loading, text('No products in the catalog', 'Caption/Strong', 'text/muted'), none, text('Search or filter with no match', 'Caption/Strong', 'text/muted'), nomatch]);
   tag(scr); scr.setPluginData('proposal', 'admin-products');
   return scr;
