@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, Icon } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, Dialog, Icon, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -34,7 +34,6 @@ export function SessionsCard({
   const [asking, setAsking] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [done, setDone] = useState<number | null>(null);
   const busy = useRef(false);
   const others = rows.filter((row) => !row.current).length;
 
@@ -53,7 +52,9 @@ export function SessionsCard({
     setPending(false);
     if (result.ok) {
       setAsking(false);
-      setDone(result.body.revokedSessions);
+      const text = t('signed-out-others', { count: result.body.revokedSessions });
+      if (result.body.revokedSessions > 0) toast.success(text);
+      else toast.info(text);
       router.refresh();
       return;
     }
@@ -65,9 +66,6 @@ export function SessionsCard({
     <Card title={t('list-title')}>
       <div className="flex flex-col gap-4">
         <p className="text-fg-secondary">{t('intro')}</p>
-        {done === null ? null : (
-          <Banner tone="success">{t('signed-out-others', { count: done })}</Banner>
-        )}
         <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
           {rows.map((row, index) => (
             <li
@@ -105,7 +103,6 @@ export function SessionsCard({
             <Button
               variant="secondary"
               onClick={() => {
-                setDone(null);
                 setProblem(null);
                 setAsking(true);
               }}

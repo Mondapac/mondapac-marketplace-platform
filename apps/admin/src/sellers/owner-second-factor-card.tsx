@@ -41,6 +41,7 @@ export function OwnerSecondFactorCard({
   const t = useTranslations('sellers.owner-reset');
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
+  // The receipt stays while the link is out; the button then offers to send another.
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [wait, setWait] = useCountdown();

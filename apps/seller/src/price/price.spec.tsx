@@ -14,6 +14,7 @@ import { formatMinor, inputOf, minorOf } from './money.ts';
 import { OfferPrices } from './offer-prices.tsx';
 import { formatInZone, instantOfZoned } from './zone-time.ts';
 import type { OfferPricesView } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const view: OfferPricesView = {
@@ -105,9 +106,7 @@ describe('OfferPrices', () => {
       { amount: '4550', currency: 'AUD', expectedVersion: 3 },
       'csrf',
     );
-    expect(
-      await screen.findByText('Saved. The change is large, so it waits for review.'),
-    ).toBeTruthy();
+    await expectToast('Saved. The change is large, so it waits for review.', 'info');
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -194,7 +193,7 @@ describe('OfferPrices', () => {
       },
       'csrf',
     );
-    expect(await screen.findByText(/The discount is large/)).toBeTruthy();
+    await expectToast(/The discount is large/, 'info');
     call.mockResolvedValue({
       ok: true,
       status: 200,
@@ -252,7 +251,7 @@ describe('OfferPrices', () => {
       { expectedVersion: 3 },
       'csrf',
     );
-    expect(await screen.findByText('The special price was ended.')).toBeTruthy();
+    await expectToast('The special price was ended.');
     call.mockResolvedValueOnce({
       ok: false,
       failure: { status: 422, code: 'pricing.special-not-below-regular' },

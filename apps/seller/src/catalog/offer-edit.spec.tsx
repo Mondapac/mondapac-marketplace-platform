@@ -10,6 +10,7 @@ import { callApi } from '../api/client.ts';
 import { descriptionWith, OfferEditForm } from './offer-edit-form.tsx';
 import { offerEditProblemOf } from './offer-edit-errors.ts';
 import type { OfferView, ProductOptions } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const assign = vi.fn();
@@ -67,7 +68,7 @@ describe('OfferEditForm', () => {
       },
       'csrf',
     );
-    expect(await screen.findByText('Offer saved.')).toBeTruthy();
+    await expectToast('Offer saved.');
   });
 
   it('shows a taken SKU on the field', async () => {

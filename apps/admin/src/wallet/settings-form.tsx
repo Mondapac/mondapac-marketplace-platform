@@ -11,6 +11,7 @@ import {
   LoadError,
   Select,
   SkeletonRows,
+  toast,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -35,10 +36,6 @@ const TONE: Readonly<Record<WalletState, BadgeTone>> = {
   off: 'neutral',
 };
 
-type Notice =
-  | { readonly kind: 'changed'; readonly state: WalletState }
-  | { readonly kind: 'already'; readonly state: WalletState };
-
 /**
  * The wallet switch of the Market: current state, a change form and what each state means. The
  * response drives the screen; no optimistic update. Every change goes through the step-up dialog.
@@ -61,7 +58,6 @@ export function SettingsForm({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [reasonError, setReasonError] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
   const busy = useRef(false);
 
   const load = useCallback(async () => {
@@ -106,7 +102,6 @@ export function SettingsForm({
     setConfirming(false);
     setProblem(null);
     setReasonError(false);
-    setNotice(null);
     const before = current;
     const result = await guarded<WalletSettings>(
       'PUT',
@@ -121,7 +116,12 @@ export function SettingsForm({
       setSettings(result.body);
       setState('');
       setReason('');
-      setNotice({ kind: before === chosen ? 'already' : 'changed', state: result.body.status });
+      const kind = before === chosen ? 'already' : 'changed';
+      const text = t(`settings.notice.${kind}`, {
+        state: t(`state.${result.body.status}`).toLowerCase(),
+      });
+      if (kind === 'changed') toast.success(text);
+      else toast.info(text);
       return;
     }
     if (isStepUpCancelled(result)) return;
@@ -135,7 +135,6 @@ export function SettingsForm({
   }
 
   function review() {
-    setNotice(null);
     setProblem(null);
     if (chosen === 'active') void send();
     else setConfirming(true);
@@ -151,11 +150,6 @@ export function SettingsForm({
 
   return (
     <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
-      {notice === null ? null : (
-        <Banner tone={notice.kind === 'changed' ? 'success' : 'info'}>
-          {t(`settings.notice.${notice.kind}`, { state: t(`state.${notice.state}`).toLowerCase() })}
-        </Banner>
-      )}
       {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
       <Card title={t('settings.current')}>
         <div className="flex flex-wrap items-center gap-3">

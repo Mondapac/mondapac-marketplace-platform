@@ -1,6 +1,14 @@
 'use client';
 
-import { Banner, Button, Card, FormActionBar, SkeletonRows, TextAreaField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  Card,
+  FormActionBar,
+  SkeletonRows,
+  TextAreaField,
+  toast,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -19,7 +27,7 @@ function languageName(code: string, uiLocale: string): string {
   }
 }
 
-type Status = 'idle' | 'saving' | 'saved' | 'reloading';
+type Status = 'idle' | 'saving' | 'reloading';
 
 export function AboutCard({
   initial,
@@ -64,7 +72,8 @@ export function AboutCard({
     busy.current = false;
     if (result.ok) {
       adopt(result.body);
-      setStatus('saved');
+      setStatus('idle');
+      toast.success(t('store-profile.about.saved'));
       return;
     }
     if (result.failure.status === 401) {
@@ -137,7 +146,6 @@ export function AboutCard({
               readOnly={!canEdit}
               onChange={(event) => {
                 setDraft((current) => ({ ...current, [locale]: event.target.value }));
-                if (status === 'saved') setStatus('idle');
                 if (problem !== null) setProblem(null);
               }}
               error={
@@ -161,11 +169,7 @@ export function AboutCard({
           // Always in the page, so a screen reader hears the text when it is put in.
           status={
             <span role="status">
-              {status === 'saved'
-                ? t('store-profile.about.saved')
-                : status === 'saving'
-                  ? t('store-profile.about.saving')
-                  : null}
+              {status === 'saving' ? t('store-profile.about.saving') : null}
             </span>
           }
         >

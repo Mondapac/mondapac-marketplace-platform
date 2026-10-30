@@ -140,6 +140,9 @@ export { NoticeCenter, type NoticeCenterProps } from './notifications/notice-cen
 export { Toaster, type ToasterProps } from './feedback/toaster.tsx';
 export {
   toast,
+  consumeFlash,
+  flashToast,
+  TOAST_FLASH_KEY,
   type ToastAction,
   type ToastOptions,
   type ToastPromiseMessages,

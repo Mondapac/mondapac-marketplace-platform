@@ -12,6 +12,7 @@ import { callApi } from '../../api/client.ts';
 import { ID, detail, version } from './test-data.ts';
 import { SlideVersions } from './slide-versions.tsx';
 import type { SlideDetail } from './slide-types.ts';
+import { expectToast } from '../../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const V4 = '0190a000-0000-7000-8000-0000000000b4';
@@ -190,9 +191,7 @@ describe('Restore (storefront.slide.edit)', () => {
         'csrf-1',
       ),
     );
-    expect(
-      await screen.findByText(/Version 1 was copied into the draft as version 4/),
-    ).toBeTruthy();
+    await expectToast(/Version 1 was copied into the draft as version 4/);
     expect(screen.getByRole('rowheader', { name: 'Version 4' })).toBeTruthy();
     expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
   });
