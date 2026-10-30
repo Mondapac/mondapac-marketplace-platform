@@ -3,10 +3,10 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../messages/en.json';
-import type { AdminSession } from '../../../src/server/session.ts';
-import type { ServerGet } from '../../../src/server/server-fetch.ts';
-import type { TeamPage } from '../../../src/team/types.ts';
+import messages from '../../../../messages/en.json';
+import type { AdminSession } from '../../../../src/server/session.ts';
+import type { ServerGet } from '../../../../src/server/server-fetch.ts';
+import type { TeamPage } from '../../../../src/team/types.ts';
 import TeamPageRoute from './page.tsx';
 
 const mocks = vi.hoisted(() => ({
@@ -21,11 +21,11 @@ vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
 }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
-vi.mock('../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
-vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
-vi.mock('../../../src/team/team-table.tsx', () => ({ TeamTable: () => <table /> }));
-vi.mock('../../../src/server/admin-shell.tsx', () => ({
-  AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
+vi.mock('../../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
+vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
+vi.mock('../../../../src/team/team-table.tsx', () => ({ TeamTable: () => <table /> }));
+vi.mock('../../../../src/server/settings-shell.tsx', () => ({
+  SettingsShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
 }));
 
 const VIEW = 'identity.admin-account.view';
@@ -77,7 +77,7 @@ describe('admin team page', () => {
     await show(ID);
     expect(mocks.get).toHaveBeenCalledWith(`identity/admin/team?after=${ID}`);
     expect(screen.getByRole('link', { name: 'Next page' }).getAttribute('href')).toBe(
-      `/team?after=${ID}`,
+      `/settings/admins?after=${ID}`,
     );
     cleanup();
     mocks.get.mockResolvedValue({ kind: 'ok', body: page(null) });

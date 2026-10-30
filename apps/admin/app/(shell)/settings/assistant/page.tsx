@@ -1,9 +1,9 @@
 import { LoadError, NoAccess, SettingsPage } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 import { AssistantSettingsPanel } from '../../../../src/settings/assistant-settings-panel.tsx';
 import {
   ASSISTANT_MANAGE_PERMISSION,
@@ -11,7 +11,6 @@ import {
   ASSISTANT_VIEW_PERMISSION,
   type AssistantSettingsAnswer,
 } from '../../../../src/settings/assistant-types.ts';
-import { SettingsTabs, settingsTabLabels } from '../../../../src/settings/settings-tabs.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -24,13 +23,12 @@ export default async function AssistantSettingsPage() {
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const title = t('settings.title');
+  const title = t('settings.assistant.title');
   const { permissionKeys, csrfToken } = gate.session;
   const shell = (body: React.ReactNode) => (
-    <AdminShell session={gate.session} activeId="settings" title={title}>
-      <SettingsTabs active="assistant" labels={settingsTabLabels(t, permissionKeys)} />
+    <SettingsShell session={gate.session} linkId="assistant" title={title}>
       {body}
-    </AdminShell>
+    </SettingsShell>
   );
   if (!permissionKeys.includes(ASSISTANT_VIEW_PERMISSION)) {
     return shell(

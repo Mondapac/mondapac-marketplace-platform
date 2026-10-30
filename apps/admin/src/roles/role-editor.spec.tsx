@@ -71,7 +71,7 @@ describe('role editor', () => {
     fireEvent.change(screen.getByLabelText('Role name'), { target: { value: '  Night shift ' } });
     fireEvent.click(screen.getByLabelText('Invite'));
     fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/roles/${ID}`));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/settings/roles/${ID}`));
     expect(call).toHaveBeenCalledWith(
       'POST',
       'identity/admin/roles',
@@ -144,7 +144,7 @@ describe('role editor', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Delete role' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete role' }).at(-1)!);
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/roles'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/settings/roles'));
   });
 
   it('hides delete when the API says it is not allowed, and ends the session on 401', async () => {

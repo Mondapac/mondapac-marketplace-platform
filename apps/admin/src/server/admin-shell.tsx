@@ -4,6 +4,7 @@ import {
   NAV_OPEN_COOKIE,
   SIDEBAR_COOKIE,
   Sidebar,
+  type Crumb,
   THEME_COOKIE,
   navOpenGroups,
   navTrail,
@@ -31,11 +32,14 @@ export async function AdminShell({
   session,
   activeId,
   title,
+  trail,
   children,
 }: {
   readonly session: AdminSession;
   readonly activeId: string;
   readonly title: string;
+  /** The breadcrumb above the page when it is not the one the active menu item gives. */
+  readonly trail?: readonly Crumb[];
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
@@ -72,7 +76,7 @@ export async function AdminShell({
         topbar={
           <Topbar
             pageTitle={title}
-            trail={navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
+            trail={trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
             trailLabel={t('nav.breadcrumb')}
             actions={
               <>

@@ -113,7 +113,7 @@ export async function RolesTable({
                           >
                             <a
                               className="font-medium text-link underline"
-                              href={`/roles/${role.roleId}`}
+                              href={`/settings/roles/${role.roleId}`}
                             >
                               {t(
                                 role.kind === 'custom' && role.actions.edit.allowed

@@ -25,6 +25,8 @@ export type SidebarEntry =
 export interface SidebarNavProps {
   readonly panelName: string;
   readonly entries: readonly SidebarEntry[];
+  /** Links pinned to the bottom of the sidebar (the Settings item), outside the scrolling menu. */
+  readonly footer?: readonly SidebarLink[];
   readonly activeId: string;
   /** Ids of the open groups from the cookie (the server reads it), so the first paint is right. */
   readonly openGroups?: readonly string[];
@@ -58,6 +60,7 @@ function readCookie(): readonly string[] | undefined {
 export function SidebarNav({
   panelName,
   entries,
+  footer = [],
   activeId,
   openGroups = [],
   expandAll,
@@ -148,71 +151,84 @@ export function SidebarNav({
       ref={nav}
       aria-label={panelName}
       onKeyDown={onKeyDown}
-      className="flex flex-col gap-1 overflow-y-auto overflow-x-hidden p-3"
+      className="flex min-h-0 flex-1 flex-col"
     >
-      {groups.length >= 2 && expandAll !== undefined && collapseAll !== undefined ? (
-        <button
-          type="button"
-          data-nav-stop="control"
-          onClick={() => save(allOpen ? [] : groupIds)}
-          className="mb-1 min-h-(--mp-size-control-sm) self-end rounded-md px-3 text-xs font-medium text-link hover:bg-muted md:min-h-8 group-data-[rail=true]/rail:invisible"
-        >
-          {allOpen ? collapseAll : expandAll}
-        </button>
-      ) : null}
-      {entries.map((entry) => {
-        if (entry.kind === 'item') {
-          return <NavLink key={entry.id} link={entry} active={entry.id === activeId} stop="link" />;
-        }
-        const isOpen = open.includes(entry.id);
-        const listId = `${baseId}-${entry.id}`;
-        return (
-          <div key={entry.id} className="flex flex-col gap-1">
-            <button
-              type="button"
-              data-nav-stop="header"
-              data-nav-group={entry.id}
-              aria-expanded={isOpen}
-              aria-controls={listId}
-              // A press on a rail icon opens the group at once: the press also widens the rail, so
-              // the layout can move before the click lands.
-              onPointerDown={(event) => {
-                fromRail.current = event.currentTarget.closest('[data-rail="true"]') !== null;
-                if (fromRail.current) setGroup(entry.id, true);
-              }}
-              onClick={() => {
-                if (fromRail.current) fromRail.current = false;
-                else setGroup(entry.id, !isOpen);
-              }}
-              // A closed group that holds the page keeps the link colour, so the place stays visible.
-              className={`${ROW} text-start hover:bg-muted hover:text-fg ${
-                !isOpen && entry.id === activeGroup ? 'font-medium text-link' : 'text-fg-secondary'
-              }`}
-            >
-              <Icon name={entry.icon} className="text-icon" />
-              <span className={`min-w-0 flex-1 break-words ${RAIL_HIDDEN}`}>{entry.label}</span>
-              <Icon
-                name="chevron-down"
-                className={`text-icon transition-transform motion-reduce:transition-none group-data-[rail=true]/rail:hidden ${isOpen ? '' : '-rotate-90 rtl:rotate-90'}`}
-              />
-            </button>
-            {/* Closed links stay in the page (the header controls this list) but are hidden. On
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden p-3">
+        {groups.length >= 2 && expandAll !== undefined && collapseAll !== undefined ? (
+          <button
+            type="button"
+            data-nav-stop="control"
+            onClick={() => save(allOpen ? [] : groupIds)}
+            className="mb-1 min-h-(--mp-size-control-sm) self-end rounded-md px-3 text-xs font-medium text-link hover:bg-muted md:min-h-8 group-data-[rail=true]/rail:invisible"
+          >
+            {allOpen ? collapseAll : expandAll}
+          </button>
+        ) : null}
+        {entries.map((entry) => {
+          if (entry.kind === 'item') {
+            return (
+              <NavLink key={entry.id} link={entry} active={entry.id === activeId} stop="link" />
+            );
+          }
+          const isOpen = open.includes(entry.id);
+          const listId = `${baseId}-${entry.id}`;
+          return (
+            <div key={entry.id} className="flex flex-col gap-1">
+              <button
+                type="button"
+                data-nav-stop="header"
+                data-nav-group={entry.id}
+                aria-expanded={isOpen}
+                aria-controls={listId}
+                // A press on a rail icon opens the group at once: the press also widens the rail, so
+                // the layout can move before the click lands.
+                onPointerDown={(event) => {
+                  fromRail.current = event.currentTarget.closest('[data-rail="true"]') !== null;
+                  if (fromRail.current) setGroup(entry.id, true);
+                }}
+                onClick={() => {
+                  if (fromRail.current) fromRail.current = false;
+                  else setGroup(entry.id, !isOpen);
+                }}
+                // A closed group that holds the page keeps the link colour, so the place stays visible.
+                className={`${ROW} text-start hover:bg-muted hover:text-fg ${
+                  !isOpen && entry.id === activeGroup
+                    ? 'font-medium text-link'
+                    : 'text-fg-secondary'
+                }`}
+              >
+                <Icon name={entry.icon} className="text-icon" />
+                <span className={`min-w-0 flex-1 break-words ${RAIL_HIDDEN}`}>{entry.label}</span>
+                <Icon
+                  name="chevron-down"
+                  className={`text-icon transition-transform motion-reduce:transition-none group-data-[rail=true]/rail:hidden ${isOpen ? '' : '-rotate-90 rtl:rotate-90'}`}
+                />
+              </button>
+              {/* Closed links stay in the page (the header controls this list) but are hidden. On
                 the rail a group is its icon only; its links show when the sidebar peeks open. */}
-            <div id={listId} hidden={!isOpen} className="group-data-[rail=true]/rail:hidden">
-              <div className="ms-5 flex flex-col gap-1 border-s border-line ps-2">
-                {entry.items.map((item) => (
-                  <NavLink
-                    key={item.id}
-                    link={item}
-                    active={item.id === activeId}
-                    stop="link-in-group"
-                  />
-                ))}
+              <div id={listId} hidden={!isOpen} className="group-data-[rail=true]/rail:hidden">
+                <div className="ms-5 flex flex-col gap-1 border-s border-line ps-2">
+                  {entry.items.map((item) => (
+                    <NavLink
+                      key={item.id}
+                      link={item}
+                      active={item.id === activeId}
+                      stop="link-in-group"
+                    />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      {footer.length === 0 ? null : (
+        <div className="flex shrink-0 flex-col gap-1 border-t border-line p-3">
+          {footer.map((link) => (
+            <NavLink key={link.id} link={link} active={link.id === activeId} stop="link" />
+          ))}
+        </div>
+      )}
     </nav>
   );
 }

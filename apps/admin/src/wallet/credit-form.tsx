@@ -144,7 +144,7 @@ export function CreditForm({
       <Banner tone="attention">
         {t('error.disabled')}{' '}
         {canViewSettings ? (
-          <a className="font-medium underline" href="/wallet">
+          <a className="font-medium underline" href="/settings/wallet">
             {t('credit.open-switch')}
           </a>
         ) : null}
@@ -309,7 +309,7 @@ export function CreditForm({
         <Banner tone="attention">
           {t(`error.${marketState === 'off' ? 'disabled' : marketState}`)}{' '}
           {canViewSettings ? (
-            <a className="font-medium underline" href="/wallet">
+            <a className="font-medium underline" href="/settings/wallet">
               {t('credit.open-switch')}
             </a>
           ) : null}

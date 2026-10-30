@@ -1,16 +1,16 @@
 import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { DeliverySettingsPanel } from '../../../src/delivery-settings/delivery-settings-panel.tsx';
+import { DeliverySettingsPanel } from '../../../../src/delivery-settings/delivery-settings-panel.tsx';
 import {
   DELIVERY_MANAGE_PERMISSION,
   DELIVERY_SETTINGS_PATH,
   DELIVERY_VIEW_PERMISSION,
   type DeliverySettings,
-} from '../../../src/delivery-settings/types.ts';
-import { AdminShell } from '../../../src/server/admin-shell.tsx';
-import { serverGet } from '../../../src/server/server-fetch.ts';
-import { requireSession } from '../../../src/server/session.ts';
+} from '../../../../src/delivery-settings/types.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
+import { requireSession } from '../../../../src/server/session.ts';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -26,11 +26,11 @@ export default async function DeliverySettingsPage() {
   const title = t('deliverySettings.title');
   const { permissionKeys, csrfToken } = gate.session;
   const shell = (body: React.ReactNode) => (
-    <AdminShell session={gate.session} activeId="delivery-settings" title={title}>
+    <SettingsShell session={gate.session} linkId="delivery" title={title}>
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
       <p className="mb-6 max-w-prose text-fg-muted">{t('deliverySettings.intro')}</p>
       {body}
-    </AdminShell>
+    </SettingsShell>
   );
   if (!permissionKeys.includes(DELIVERY_VIEW_PERMISSION)) {
     return shell(

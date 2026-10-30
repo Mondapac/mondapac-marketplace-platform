@@ -64,7 +64,7 @@ describe('admin roles', () => {
     expect(screen.getByText('2 permissions')).toBeTruthy();
     expect(screen.getByText('None yet')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Edit Night shift' }).getAttribute('href')).toBe(
-      '/roles/0190a000-0000-7000-8000-0000000000a3',
+      '/settings/roles/0190a000-0000-7000-8000-0000000000a3',
     );
   });
 
@@ -119,7 +119,7 @@ describe('admin roles', () => {
     cleanup();
     render(await RoleView({ role: locked, catalogue, canDuplicate: true }));
     expect(screen.getByRole('link', { name: 'Duplicate' }).getAttribute('href')).toBe(
-      `/roles/new?from=${locked.roleId}`,
+      `/settings/roles/new?from=${locked.roleId}`,
     );
   });
 

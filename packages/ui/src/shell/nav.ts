@@ -17,6 +17,11 @@ export interface NavItem {
   readonly anyOf?: readonly string[];
   /** Where the badge count comes from; the count itself is fetched by the app. */
   readonly badgeSource?: string;
+  /**
+   * `footer` pins the item to the bottom of the sidebar, outside the work menu and its groups
+   * (the one Settings item). Absent means it sits in the menu in config order.
+   */
+  readonly placement?: 'footer';
 }
 
 /** A topic the sidebar folds its items under (a header that opens and closes the group). */
@@ -41,6 +46,17 @@ export function visibleNavItems(
   return config.items.filter(
     (item) => item.anyOf === undefined || item.anyOf.some((key) => permissionKeys.has(key)),
   );
+}
+
+/** The menu items (everything not pinned to the footer) and the footer items, in config order. */
+export function splitNavPlacement(items: readonly NavItem[]): {
+  readonly menu: readonly NavItem[];
+  readonly footer: readonly NavItem[];
+} {
+  return {
+    menu: items.filter((item) => item.placement !== 'footer'),
+    footer: items.filter((item) => item.placement === 'footer'),
+  };
 }
 
 /** What the sidebar draws, top to bottom: a plain item, or a group header with its items. */

@@ -16,8 +16,8 @@ export function TeamTabs({
         label={labels.nav}
         activeId={active}
         items={[
-          { id: 'admins', href: '/team', label: labels.admins },
-          { id: 'roles', href: '/roles', label: labels.roles },
+          { id: 'admins', href: '/settings/admins', label: labels.admins },
+          { id: 'roles', href: '/settings/roles', label: labels.roles },
         ]}
       />
     </div>

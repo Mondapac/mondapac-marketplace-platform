@@ -32,12 +32,9 @@
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
     "home": "Dashboard",
-    "team": "Roles & permissions",
     "customers": "Customers",
     "sellers": "All sellers",
     "orders": "Orders",
-    "fleet-selection": "Delivery fleets",
-    "delivery-settings": "Delivery settings",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
@@ -50,10 +47,8 @@
       "content": "Content",
       "sellers": "Sellers",
       "orders": "Orders & customers",
-      "money": "Money",
-      "platform": "Platform"
+      "money": "Money"
     },
-    "wallet-settings": "Wallet switch",
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
     "disputes": "Disputes"
@@ -1460,7 +1455,7 @@
       "leave": "Leave page"
     },
     "support": {
-      "title": "Support email",
+      "title": "Support contact",
       "section": "Contact address",
       "none": "Not set",
       "permission-view": "Support email: view",
@@ -1483,13 +1478,33 @@
         "unknown": "Something went wrong. Try again."
       }
     },
-    "tabs": {
-      "label": "Settings sections",
-      "general": "General",
-      "assistant": "Smart assistant"
+    "hub": {
+      "description": "Set up how the marketplace works. Changes here apply to every seller and customer.",
+      "view-only": "View only",
+      "no-access-title": "You don't have access to settings",
+      "no-access-body": "Your role doesn't include any settings page. Ask an admin who manages roles to add one.",
+      "group": {
+        "marketplace": "Marketplace",
+        "delivery": "Delivery",
+        "money": "Money",
+        "people": "People & access"
+      },
+      "link": {
+        "support": "Support contact",
+        "assistant": "Smart assistant",
+        "delivery": "Delivery rules",
+        "fleets": "Delivery fleets",
+        "wallet": "Customer wallet",
+        "admins": "Admins",
+        "roles": "Roles & permissions"
+      }
+    },
+    "sub": {
+      "label": "Settings pages",
+      "back": "Back to Settings"
     },
     "assistant": {
-      "title": "Smart assistant settings",
+      "title": "Smart assistant",
       "permission-view": "Smart assistant: view",
       "intro": "Whether the shopping assistant is on, who sees it, what it answers and what it may spend.",
       "no-access": "You don't have access to the smart assistant settings.",
@@ -2291,7 +2306,7 @@
     "loading": "Loading notifications"
   },
   "deliverySettings": {
-    "title": "Delivery settings",
+    "title": "Delivery rules",
     "intro": "Choose which delivery methods the whole Market offers, when same-day orders close, how far ahead buyers can schedule, and what the platform adds on top of the fleet quote. Which methods each seller supports is set on the seller page.",
     "no-access": "Your role cannot see delivery settings.",
     "back-home": "Back to the dashboard",
@@ -2530,7 +2545,7 @@
       "owner-decision": "Owner decision"
     },
     "settings": {
-      "title": "Wallet switch",
+      "title": "Customer wallet",
       "intro": "Controls store credit for every customer in this Market.",
       "current": "Current state",
       "never-changed": "Never changed",
