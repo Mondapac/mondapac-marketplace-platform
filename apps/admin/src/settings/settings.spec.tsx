@@ -114,11 +114,72 @@ describe('SupportEmailCard', () => {
     type('care@example.com');
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('Your role cannot change the support email.')).toBeTruthy();
+  });
 
-    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'notifications.conflict' } });
+  it('keeps the typed address after a conflict, compares, and sends the new version next', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { status: 409, code: 'notifications.conflict' },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: contact('<b>ops</b>@example.com', 3) })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: contact('care2@example.com', 4) });
+    mount(contact('help@example.com', 2));
+    type('care@example.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByText('Someone else saved these settings first')).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(
+      1,
+      'PUT',
+      'notifications/admin/support-contact',
+      { email: 'care@example.com', expectedVersion: 2 },
+      'csrf',
+    );
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'notifications/admin/support-contact');
+    // The draft is kept; the current saved address is shown.
+    expect(screen.getByLabelText<HTMLInputElement>('Support email address').value).toBe(
+      'care@example.com',
+    );
+    expect(screen.getByText('<b>ops</b>@example.com')).toBeTruthy();
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    const line = screen.getByText(
+      'Support email address: saved now <b>ops</b>@example.com, yours care@example.com',
+    );
+    // Text, never markup.
+    expect(line.querySelector('b')).toBeNull();
+
     type('care2@example.com');
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      'notifications/admin/support-contact',
+      { email: 'care2@example.com', expectedVersion: 3 },
+      'csrf',
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Someone else saved these settings first')).toBeNull(),
+    );
+  });
+
+  it('falls back to the reload message when the re-read fails too', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { status: 409, code: 'notifications.conflict' },
+      })
+      .mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'x' } });
+    mount(contact('help@example.com'));
+    type('care@example.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText(/Someone else changed the address first/)).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('Support email address').value).toBe(
+      'care@example.com',
+    );
   });
 });
 

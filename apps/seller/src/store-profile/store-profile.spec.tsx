@@ -141,32 +141,66 @@ describe('StoreProfile About card', () => {
     expect(call).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the stale conflict, keeps the text, and loads the latest on request', async () => {
-    mount();
-    call.mockResolvedValueOnce(failure({ status: 409, code: 'conflict.stale' }));
-    fireEvent.change(box(), { target: { value: 'My edit' } });
+  it('keeps the drafts on a stale save, compares per locale, and sends the new version next', async () => {
+    mount(
+      view({
+        locales: ['en-AU', 'ja'],
+        about: { 'en-AU': 'Family bakery.', ja: '' },
+      }),
+    );
+    const boxFor = (name: RegExp) => screen.getByRole<HTMLTextAreaElement>('textbox', { name });
+    call
+      .mockResolvedValueOnce(failure({ status: 409, code: 'conflict.stale' }))
+      .mockResolvedValueOnce(
+        done(
+          view({
+            version: 5,
+            locales: ['en-AU', 'ja'],
+            about: { 'en-AU': '<b>Their</b> text', ja: '' },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        done(
+          view({
+            version: 6,
+            locales: ['en-AU', 'ja'],
+            about: { 'en-AU': 'My edit', ja: 'Mine' },
+          }),
+        ),
+      );
+    fireEvent.change(boxFor(/English/), { target: { value: 'My edit' } });
     fireEvent.click(save());
 
-    await screen.findByText(/Someone else saved a newer version first/);
-    expect(box().value).toBe('My edit');
+    await screen.findByText('Someone else saved these settings first');
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'sellers/store-profile');
+    // Both drafts stay in the boxes.
+    expect(boxFor(/English/).value).toBe('My edit');
+    fireEvent.change(boxFor(/Japanese/), { target: { value: 'Mine' } });
 
-    call.mockResolvedValueOnce(done(view({ version: 5, about: { 'en-AU': 'Their text' } })));
-    fireEvent.click(screen.getByRole('button', { name: 'Show the latest version' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    const line = screen.getByText(
+      /^About your store \(.*English.*\): saved now <b>Their<\/b> text, yours My edit$/,
+    );
+    expect(line.querySelector('b')).toBeNull();
+    expect(
+      screen.getByText(/^About your store \(Japanese\): saved now empty, yours Mine$/),
+    ).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      '2 unsaved changes',
+    );
 
-    await waitFor(() => expect(box().value).toBe('Their text'));
-    expect(call).toHaveBeenLastCalledWith('GET', 'sellers/store-profile');
-    expect(screen.queryByText(/Someone else saved/)).toBeNull();
-
-    // The next save names the version that was loaded.
-    call.mockResolvedValueOnce(done(view({ version: 6, about: { 'en-AU': 'Merged' } })));
-    fireEvent.change(box(), { target: { value: 'Merged' } });
     fireEvent.click(save());
-    await expectToast('Saved. Buyers can see it now.');
-    expect(call).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
       'PUT',
       'sellers/store-profile/about',
-      { expectedVersion: 5, about: { 'en-AU': 'Merged' } },
+      { expectedVersion: 5, about: { 'en-AU': 'My edit', ja: 'Mine' } },
       'csrf',
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Someone else saved these settings first')).toBeNull(),
     );
   });
 

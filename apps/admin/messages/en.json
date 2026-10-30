@@ -1536,6 +1536,15 @@
       "stay": "Stay on page",
       "leave": "Leave page"
     },
+    "conflict": {
+      "title": "Someone else saved these settings first",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Compare",
+      "hide": "Hide comparison",
+      "same": "Your draft now matches what is saved.",
+      "line": "{field}: saved now {saved}, yours {yours}",
+      "unset": "not set"
+    },
     "support": {
       "title": "Support contact",
       "section": "Contact address",
@@ -1597,7 +1606,6 @@
       "version": "Saved version {version}",
       "save": "Save settings",
       "saved": "Settings saved. They apply on the storefront from now on.",
-      "reloaded": "Another admin saved changes first. The page now shows their settings. Make your change again and save.",
       "status": {
         "title": "Status",
         "switch": "Assistant",

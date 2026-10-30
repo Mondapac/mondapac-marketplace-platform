@@ -84,6 +84,19 @@ export {
   SettingsConflictBanner,
   type SettingsConflictBannerProps,
 } from './settings/conflict-banner.tsx';
+export {
+  SettingsConflictCompare,
+  type ConflictCompareRow,
+  type SettingsConflictCompareProps,
+} from './settings/conflict-compare.tsx';
+export {
+  useSettingsForm,
+  type FieldChange,
+  type RunResult,
+  type SaveResult,
+  type SettingsForm,
+  type UseSettingsFormOptions,
+} from './settings/use-settings-form.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';

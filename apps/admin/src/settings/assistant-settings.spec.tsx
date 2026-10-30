@@ -212,23 +212,59 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
-  it('re-reads the settings after a conflict and says so', async () => {
+  it('keeps the draft after a conflict, compares with what is saved now, and then sends the new version', async () => {
     call
       .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'assistant.conflict' } })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        body: answer({ guestMessageLimit: 30 }, { version: 4 }),
+        body: answer(
+          { guestMessageLimit: 30, welcomeText: '<img src=x onerror=alert(1)> hi' },
+          { version: 4 },
+        ),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: answer({ guestMessageLimit: 25 }, { version: 5 }),
       });
     mount(answer());
     touch();
     save();
-    expect(
-      await screen.findByText(/Another admin saved changes first. The page now shows/),
-    ).toBeTruthy();
-    expect(call).toHaveBeenLastCalledWith('GET', 'assistant/admin/settings');
-    expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('30');
+    expect(await screen.findByText('Someone else saved these settings first')).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(
+      1,
+      'PUT',
+      'assistant/admin/settings',
+      expect.objectContaining({ expectedVersion: 0 }),
+      'csrf',
+    );
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'assistant/admin/settings');
+    // The admin's draft is kept, not replaced by the saved settings.
+    expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('21');
     expect(screen.getByText('Saved version 4')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(screen.getByText('Messages per guest: saved now 30, yours 21')).toBeTruthy();
+    // The welcome message is user content: shown as text, never as markup.
+    const welcome = screen.getByText(
+      "Welcome message: saved now <img src=x onerror=alert(1)> hi, yours The storefront's default text",
+    );
+    expect(welcome.querySelector('img')).toBeNull();
+
+    touch('25');
+    save();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      'assistant/admin/settings',
+      expect.objectContaining({ expectedVersion: 4 }),
+      'csrf',
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Someone else saved these settings first')).toBeNull(),
+    );
   });
 
   it('marks the fields the API refused', async () => {

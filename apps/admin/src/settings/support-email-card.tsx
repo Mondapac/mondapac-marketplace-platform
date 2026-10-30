@@ -9,10 +9,13 @@ import {
   SettingsPage,
   SettingsSection,
   toast,
+  useSettingsForm,
+  type SaveResult,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { SettingsConflictView } from './conflict-view.tsx';
 import { supportProblemOf } from './errors.ts';
 import type { SupportContact } from './types.ts';
 
@@ -20,6 +23,14 @@ import type { SupportContact } from './types.ts';
 const SHAPE = /^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 const MAX_LENGTH = 254;
 const EMAIL_ROW = 'setting-support-email';
+const SUPPORT_PATH = 'notifications/admin/support-contact';
+
+const toDraft = (contact: SupportContact) => contact.email ?? '';
+const versionOf = (contact: SupportContact) => contact.version;
+async function reload(): Promise<SupportContact | null> {
+  const fresh = await callApi<SupportContact>('GET', SUPPORT_PATH);
+  return fresh.ok ? fresh.body : null;
+}
 
 export function SupportEmailCard({
   initial,
@@ -31,26 +42,41 @@ export function SupportEmailCard({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
-  const [contact, setContact] = useState(initial);
-  const [text, setText] = useState(initial.email ?? '');
-  const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
   const [failedSaves, setFailedSaves] = useState(0);
-  const busy = useRef(false);
+  const unset = t('settings.conflict.unset');
+  const form = useSettingsForm<SupportContact, string>({
+    initial,
+    toDraft,
+    versionOf,
+    reload,
+    changes: (saved, text) =>
+      text === (saved.email ?? '')
+        ? []
+        : [
+            {
+              key: 'email',
+              label: t('settings.support.field'),
+              saved: saved.email ?? unset,
+              yours: text.trim() === '' ? unset : text.trim(),
+            },
+          ],
+  });
+  const contact = form.saved;
+  const text = form.draft;
 
-  const dirty = canManage && text !== (contact.email ?? '');
-  const count = dirty ? 1 : 0;
+  const dirty = canManage && form.dirty;
+  const count = canManage ? form.count : 0;
   const errorCount = invalid ? 1 : 0;
 
   function discard() {
-    setText(contact.email ?? '');
+    form.discard();
     setInvalid(false);
     setProblem(null);
   }
 
   async function submit() {
-    if (busy.current) return;
     const email = text.trim().toLowerCase();
     setProblem(null);
     if (email.length > MAX_LENGTH || !SHAPE.test(email)) {
@@ -59,24 +85,22 @@ export function SupportEmailCard({
       return;
     }
     setInvalid(false);
-    busy.current = true;
-    setPending(true);
-    const result = await callApi<SupportContact>(
-      'PUT',
-      'notifications/admin/support-contact',
-      { email, expectedVersion: contact.version },
-      csrfToken,
-    );
-    busy.current = false;
-    setPending(false);
-    if (result.ok) {
-      setContact(result.body);
-      setText(result.body.email ?? '');
-      toast.success(t('settings.support.saved'));
-      return;
-    }
-    if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setProblem(supportProblemOf(result.failure));
+    const result = await form.run(async (expectedVersion): Promise<SaveResult<SupportContact>> => {
+      const answer = await callApi<SupportContact>(
+        'PUT',
+        SUPPORT_PATH,
+        { email, expectedVersion },
+        csrfToken,
+      );
+      if (answer.ok) return { status: 'saved', saved: answer.body };
+      if (answer.failure.status === 401) window.location.assign('/session-ended');
+      else if (supportProblemOf(answer.failure) === 'conflict') return { status: 'conflict' };
+      else setProblem(supportProblemOf(answer.failure));
+      return { status: 'failed' };
+    });
+    if (result.status === 'saved') toast.success(t('settings.support.saved'));
+    // The re-read failed too: the plain "reload the page" message is all that is left.
+    else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
 
   const banners = [
@@ -92,6 +116,9 @@ export function SupportEmailCard({
         items={[{ id: EMAIL_ROW, label: t('settings.support.field') }]}
         focusSignal={failedSaves}
       />
+    ) : null,
+    form.theirs !== null ? (
+      <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
     ) : null,
     contact.email === null ? (
       <Banner key="not-set" tone="attention">
@@ -127,7 +154,7 @@ export function SupportEmailCard({
             summary={t('settings.bar.summary', { count })}
             errorCount={errorCount}
             errorsSummary={t('settings.bar.errors', { count: errorCount })}
-            saving={pending}
+            saving={form.saving}
             labels={{
               region: t('settings.bar.region'),
               discard: t('settings.bar.discard'),
@@ -166,7 +193,7 @@ export function SupportEmailCard({
               maxLength={MAX_LENGTH}
               value={text}
               onChange={(event) => {
-                setText(event.target.value);
+                form.setDraft(event.target.value);
                 setInvalid(false);
               }}
             />

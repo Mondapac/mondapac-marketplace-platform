@@ -175,12 +175,76 @@ describe('StockLocations', () => {
     expect(screen.getByLabelText('Name').getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('tells the seller to reload after a stale write', async () => {
-    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+  it('refreshes the list after a stale move and says so', async () => {
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: view({
+          version: 7,
+          sources: [view().sources[0]!, { ...view().sources[1]!, name: 'Shed' }],
+        }),
+      });
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Move Garage up' }));
-    expect(await screen.findByRole('button', { name: 'Reload the page' })).toBeTruthy();
-    expect(screen.getByText('Your locations changed')).toBeTruthy();
+    expect(await screen.findByText(/The list is up to date now/)).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'inventory/seller/sources');
+    expect(screen.getByText('Shed')).toBeTruthy();
+    expect(screen.queryByText('Garage')).toBeNull();
+  });
+
+  it('keeps the open editor draft after a stale save and shows the saved location next to it', async () => {
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: view({
+          version: 7,
+          sources: [
+            view().sources[0]!,
+            {
+              ...view().sources[1]!,
+              name: '<i>Shed</i>',
+              address: { line1: '9 Other Rd', suburb: 'Sunnybank' },
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: view({ version: 8 }) });
+    mount();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]!);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Warehouse' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Someone else saved these settings first')).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(
+      1,
+      'PUT',
+      `inventory/seller/sources/${B}`,
+      expect.objectContaining({ expectedVersion: 4, name: 'Warehouse' }),
+      'csrf',
+    );
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'inventory/seller/sources');
+    // The draft is kept in the open editor.
+    expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('Warehouse');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    const name = screen.getByText('Name: saved now <i>Shed</i>, yours Warehouse');
+    expect(name.querySelector('i')).toBeNull();
+    expect(screen.getByText(/saved now 9 Other Rd, yours 1 Test St/)).toBeTruthy();
+
+    // The next save names the version read after the conflict.
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      `inventory/seller/sources/${B}`,
+      expect.objectContaining({ expectedVersion: 7, name: 'Warehouse' }),
+      'csrf',
+    );
   });
 });
 
