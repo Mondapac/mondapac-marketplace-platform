@@ -209,7 +209,7 @@ function ppStates() {
   return scr;
 }
 
-// ---- Admin · Catalog · Products · Import (owner, 30 Oct 20:20Z): a page of its own with three steps. Upload a CSV or XLSX file
+// ---- Admin · Catalog · Products · Import, owner 30 Oct 20:20Z: a page of its own with three steps. Upload a CSV or XLSX file
 // (templates to download), check the file (counts, errors per row, nothing saved yet), then import after a confirmation, with a
 // progress bar and a final report; Done returns to the product list. Additions to the owner's brief: a column guide, the choice
 // of the status new products start in (Inactive by default), skipping rows with errors only by an explicit tick, a downloadable
@@ -317,7 +317,7 @@ function piDone() {
 }
 // I8 · Back on the list after Done: a toast and the Inactive tab ready.
 function piBackOnList() {
-  const scr = ppScreen('After import (Done)', [ppHeader(), ppViews('Inactive'), ppToolbar(), ppTable({ showInactive: true, range: '1–25 of 1,332 products' })]);
+  const scr = ppScreen('After import, Done', [ppHeader(), ppViews('Inactive'), ppToolbar(), ppTable({ showInactive: true, range: '1–25 of 1,332 products' })]);
   const t = inst('Toast', { Tone: 'Success', Message: '1,196 products imported as Inactive.', 'Show action': true, Action: 'View report' }, { name: 'toast' });
   setMeta(t, { abs: [1440 - 400 - 24, 900 - 80] }); add(scr, t);
   return scr;
