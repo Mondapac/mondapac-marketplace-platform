@@ -1,6 +1,9 @@
 import 'server-only';
 import {
   AppShell,
+  PaletteSearchButton,
+  PanelTools,
+  PinButton,
   NAV_OPEN_COOKIE,
   SIDEBAR_COOKIE,
   Sidebar,
@@ -9,18 +12,22 @@ import {
   navOpenGroups,
   navTrail,
   Topbar,
+  panelToolsLabels,
   sidebarCollapsed,
   themeChoice,
   visibleNavItems,
 } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { adminNav } from '../nav.ts';
+import { adminDefaultPinIds, adminGoShortcuts, adminPaletteEntries } from '../palette.ts';
 import { AdminNotifications } from '../notifications/admin-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { panelHostFor } from './bff.ts';
+import { panelConfig } from './config.ts';
 import type { AdminSession } from './session.ts';
 
 /**
@@ -48,52 +55,66 @@ export async function AdminShell({
   const openGroups = navOpenGroups(jar.get(NAV_OPEN_COOKIE)?.value);
   const items = visibleNavItems(adminNav, new Set(session.permissionKeys));
   const bell = showsNoticeBell(session.permissionKeys);
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  const entries = adminPaletteEntries(session.permissionKeys, (key) => t(key));
   return (
-    <StepUpProvider>
-      <AppShell
-        labels={{
-          menu: t('nav.menu'),
-          close: t('nav.close'),
-          more: t('nav.more'),
-          main: t('nav.main'),
-          collapse: t('nav.collapse'),
-          expand: t('nav.expand'),
-          toasts: { region: t('toast.region'), close: t('toast.close') },
-        }}
-        collapsed={collapsed}
-        sidebar={
-          <Sidebar
-            panelName={t('panel.name')}
-            items={items}
-            groups={adminNav.groups}
-            activeId={activeId}
-            label={(key) => t(key)}
-            openGroups={openGroups}
-            expandAll={t('nav.expandAll')}
-            collapseAll={t('nav.collapseAll')}
-          />
-        }
-        topbar={
-          <Topbar
-            pageTitle={title}
-            trail={trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
-            trailLabel={t('nav.breadcrumb')}
-            actions={
-              <>
-                {bell ? <AdminNotifications csrfToken={session.csrfToken} /> : null}
-                <UserMenu
-                  name={session.displayName}
-                  email={session.email}
-                  theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
-                  csrfToken={session.csrfToken}
-                />
-              </>
-            }
-          />
-        }
-      >
-        {children}
-      </AppShell>
-    </StepUpProvider>
+    <PanelTools
+      panel="admin"
+      market={marketId}
+      accountId={session.accountId}
+      entries={entries}
+      defaultPinIds={adminDefaultPinIds(entries, session.permissionKeys)}
+      goShortcuts={adminGoShortcuts(entries, (key) => t(key))}
+      labels={panelToolsLabels((key) => t.raw(key) as string)}
+    >
+      <StepUpProvider>
+        <AppShell
+          labels={{
+            menu: t('nav.menu'),
+            close: t('nav.close'),
+            more: t('nav.more'),
+            main: t('nav.main'),
+            collapse: t('nav.collapse'),
+            expand: t('nav.expand'),
+            toasts: { region: t('toast.region'), close: t('toast.close') },
+          }}
+          collapsed={collapsed}
+          sidebar={
+            <Sidebar
+              panelName={t('panel.name')}
+              items={items}
+              groups={adminNav.groups}
+              activeId={activeId}
+              label={(key) => t(key)}
+              openGroups={openGroups}
+              expandAll={t('nav.expandAll')}
+              collapseAll={t('nav.collapseAll')}
+            />
+          }
+          topbar={
+            <Topbar
+              pageTitle={title}
+              trail={trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
+              trailLabel={t('nav.breadcrumb')}
+              titleAction={<PinButton />}
+              actions={
+                <>
+                  <PaletteSearchButton />
+                  {bell ? <AdminNotifications csrfToken={session.csrfToken} /> : null}
+                  <UserMenu
+                    name={session.displayName}
+                    email={session.email}
+                    theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
+                    csrfToken={session.csrfToken}
+                  />
+                </>
+              }
+            />
+          }
+        >
+          {children}
+        </AppShell>
+      </StepUpProvider>
+    </PanelTools>
   );
 }

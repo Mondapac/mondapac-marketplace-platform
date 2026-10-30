@@ -38,14 +38,23 @@ export interface NavConfig {
   readonly groups?: readonly NavGroup[];
 }
 
+/**
+ * The one permission rule of the menu, the settings hub and the command palette: no `anyOf` means
+ * always shown, otherwise any one held key is enough. Presentation only; the server authorises.
+ */
+export function permits(
+  anyOf: readonly string[] | undefined,
+  permissionKeys: ReadonlySet<string>,
+): boolean {
+  return anyOf === undefined || anyOf.some((key) => permissionKeys.has(key));
+}
+
 /** The items the caller may see, in config order. An item with no `anyOf` is always shown. */
 export function visibleNavItems(
   config: NavConfig,
   permissionKeys: ReadonlySet<string>,
 ): readonly NavItem[] {
-  return config.items.filter(
-    (item) => item.anyOf === undefined || item.anyOf.some((key) => permissionKeys.has(key)),
-  );
+  return config.items.filter((item) => permits(item.anyOf, permissionKeys));
 }
 
 /** The menu items (everything not pinned to the footer) and the footer items, in config order. */

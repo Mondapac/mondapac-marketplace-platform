@@ -1,6 +1,9 @@
 import 'server-only';
 import {
   AppShell,
+  PaletteSearchButton,
+  PanelTools,
+  PinButton,
   NAV_OPEN_COOKIE,
   SIDEBAR_COOKIE,
   Sidebar,
@@ -9,17 +12,21 @@ import {
   navOpenGroups,
   navTrail,
   Topbar,
+  panelToolsLabels,
   sidebarCollapsed,
   themeChoice,
 } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNav, sellerNavItems } from '../nav.ts';
+import { sellerDefaultPinIds, sellerGoShortcuts, sellerPaletteEntries } from '../palette.ts';
 import { SellerNotifications } from '../notifications/seller-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { panelHostFor } from './bff.ts';
+import { panelConfig } from './config.ts';
 import type { SellerSession } from './session.ts';
 
 /**
@@ -59,53 +66,69 @@ export async function SellerShell({
         active: item.id === activeId,
       }))
     : undefined;
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  const entries = sellerPaletteEntries(session.sellerAccessState, session.permissionKeys, (key) =>
+    t(key),
+  );
   return (
-    <AppShell
-      bottomTabs={bottomTabs}
-      moreActive={bottomTabs?.every((tab) => !tab.active)}
-      labels={{
-        menu: t('nav.menu'),
-        close: t('nav.close'),
-        more: t('nav.more'),
-        main: t('nav.main'),
-        collapse: t('nav.collapse'),
-        expand: t('nav.expand'),
-        toasts: { region: t('toast.region'), close: t('toast.close') },
-      }}
-      collapsed={collapsed}
-      sidebar={
-        <Sidebar
-          panelName={t('panel.name')}
-          items={items}
-          groups={sellerNav.groups}
-          activeId={activeId}
-          label={(key) => t(key)}
-          openGroups={openGroups}
-          expandAll={t('nav.expandAll')}
-          collapseAll={t('nav.collapseAll')}
-        />
-      }
-      topbar={
-        <Topbar
-          pageTitle={title}
-          trail={trail ?? navTrail(items, activeId, title, (key) => t(key), sellerNav.groups)}
-          trailLabel={t('nav.breadcrumb')}
-          actions={
-            <>
-              {bell ? <SellerNotifications csrfToken={session.csrfToken} /> : null}
-              <UserMenu
-                name={session.displayName}
-                email={session.email}
-                theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
-                approved={session.sellerAccessState === 'approved'}
-                csrfToken={session.csrfToken}
-              />
-            </>
-          }
-        />
-      }
+    <PanelTools
+      panel="seller"
+      market={marketId}
+      accountId={session.accountId}
+      entries={entries}
+      defaultPinIds={sellerDefaultPinIds(entries, session.permissionKeys)}
+      goShortcuts={sellerGoShortcuts(entries, (key) => t(key))}
+      labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
-      <StepUpProvider>{children}</StepUpProvider>
-    </AppShell>
+      <AppShell
+        bottomTabs={bottomTabs}
+        moreActive={bottomTabs?.every((tab) => !tab.active)}
+        labels={{
+          menu: t('nav.menu'),
+          close: t('nav.close'),
+          more: t('nav.more'),
+          main: t('nav.main'),
+          collapse: t('nav.collapse'),
+          expand: t('nav.expand'),
+          toasts: { region: t('toast.region'), close: t('toast.close') },
+        }}
+        collapsed={collapsed}
+        sidebar={
+          <Sidebar
+            panelName={t('panel.name')}
+            items={items}
+            groups={sellerNav.groups}
+            activeId={activeId}
+            label={(key) => t(key)}
+            openGroups={openGroups}
+            expandAll={t('nav.expandAll')}
+            collapseAll={t('nav.collapseAll')}
+          />
+        }
+        topbar={
+          <Topbar
+            pageTitle={title}
+            trail={trail ?? navTrail(items, activeId, title, (key) => t(key), sellerNav.groups)}
+            trailLabel={t('nav.breadcrumb')}
+            titleAction={<PinButton />}
+            actions={
+              <>
+                <PaletteSearchButton />
+                {bell ? <SellerNotifications csrfToken={session.csrfToken} /> : null}
+                <UserMenu
+                  name={session.displayName}
+                  email={session.email}
+                  theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
+                  approved={session.sellerAccessState === 'approved'}
+                  csrfToken={session.csrfToken}
+                />
+              </>
+            }
+          />
+        }
+      >
+        <StepUpProvider>{children}</StepUpProvider>
+      </AppShell>
+    </PanelTools>
   );
 }

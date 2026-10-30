@@ -3,7 +3,10 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useId,
+  useRef,
+  useState,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
@@ -17,6 +20,9 @@ interface SettingField {
   readonly changed: boolean;
   readonly disabled: boolean;
 }
+
+/** How long a row reached from the palette stays highlighted. */
+export const FOUND_MS = 2500;
 
 const FieldContext = createContext<SettingField | null>(null);
 
@@ -45,6 +51,11 @@ export interface SettingRowProps {
   readonly plain?: boolean;
   /** Anchor for an error summary link; generated when absent. */
   readonly id?: string;
+  /**
+   * The setting's id in the command palette's registry. The row answers to `#setting-<settingId>`:
+   * it scrolls into view, takes focus and is highlighted for a moment.
+   */
+  readonly settingId?: string;
   /** One control (`SettingInput`, `SettingSelect`, `SettingCheckbox`) or a group of them. */
   readonly children: ReactNode;
 }
@@ -64,10 +75,34 @@ export function SettingRow({
   group = false,
   plain = false,
   id: given,
+  settingId,
   children,
 }: SettingRowProps) {
   const generated = useId();
   const id = given ?? generated;
+  const row = useRef<HTMLDivElement>(null);
+  const [found, setFound] = useState(false);
+  useEffect(() => {
+    if (settingId === undefined) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const reveal = () => {
+      const element = row.current;
+      if (element === null || window.location.hash !== `#setting-${settingId}`) return;
+      element.scrollIntoView?.({ block: 'center' });
+      const control = element.querySelector<HTMLElement>('input, select, textarea, button');
+      const target = control !== null && !control.hasAttribute('disabled') ? control : element;
+      target.focus({ preventScroll: true });
+      setFound(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setFound(false), FOUND_MS);
+    };
+    reveal();
+    window.addEventListener('hashchange', reveal);
+    return () => {
+      window.removeEventListener('hashchange', reveal);
+      clearTimeout(timer);
+    };
+  }, [settingId]);
   const labelId = `${id}-label`;
   const helpId = `${id}-help`;
   const errorId = `${id}-error`;
@@ -80,10 +115,14 @@ export function SettingRow({
   );
   return (
     <div
+      ref={row}
+      data-setting={settingId}
+      tabIndex={settingId === undefined ? undefined : -1}
+      data-found={found ? '' : undefined}
       role={group ? 'group' : undefined}
       aria-labelledby={group ? labelId : undefined}
       aria-describedby={group ? describedBy || undefined : undefined}
-      className="grid gap-1.5 border-b border-line-row px-5 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] md:gap-4"
+      className="grid gap-1.5 border-b border-line-row px-5 py-4 transition-colors last:border-b-0 motion-reduce:transition-none data-found:bg-attention-bg data-found:ring-2 data-found:ring-inset data-found:ring-attention-border focus:outline-none md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] md:gap-4"
     >
       <div className="flex min-w-0 flex-col gap-0.5">
         {group || plain ? (

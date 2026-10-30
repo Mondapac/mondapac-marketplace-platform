@@ -1,4 +1,4 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError, NoAccess, RecentPages } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
@@ -41,6 +41,7 @@ export default async function SettingsHubPage() {
               {t('settings.hub.description')}
             </p>
           </header>
+          <RecentPages heading={t('palette.recent-heading')} />
           <SettingsHub
             groups={groups}
             label={(key) => t(key)}

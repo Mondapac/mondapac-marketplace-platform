@@ -8,6 +8,63 @@
     "region": "Action notifications",
     "close": "Close notification"
   },
+  "palette": {
+    "search": "Search",
+    "title": "Search",
+    "placeholder": "Search pages, settings and actions",
+    "close": "Close search",
+    "results": "Search results",
+    "recent": "Recent",
+    "recent-heading": "Recently visited",
+    "pinned": "Pinned",
+    "kind": {
+      "page": "Pages",
+      "setting": "Settings",
+      "action": "Actions"
+    },
+    "empty": "No results for “{query}”",
+    "count-one": "1 result",
+    "count-many": "{count} results",
+    "hint-move": "to move",
+    "hint-open": "to open",
+    "hint-close": "to close",
+    "group": {
+      "account": "Account"
+    },
+    "pin": {
+      "pin": "Pin this page",
+      "unpin": "Unpin this page",
+      "limit": "You can pin up to 5 pages. Unpin one first."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "close": "Close",
+      "open-search": "Search",
+      "show-list": "Show keyboard shortcuts",
+      "then": "then",
+      "go-settings": "Go to Settings",
+      "go-orders": "Go to Orders"
+    },
+    "action": {
+      "create-role": "Create role",
+      "invite-admin": "Invite admin"
+    },
+    "setting": {
+      "support-email": "Support email",
+      "support-email-words": "contact, help, customer support, email address",
+      "assistant-enabled": "Smart assistant on or off",
+      "assistant-audience": "Who sees the smart assistant",
+      "assistant-model": "Smart assistant model",
+      "assistant-welcome": "Smart assistant welcome message",
+      "delivery-methods": "Delivery methods",
+      "delivery-cutoff": "Same-day cut-off",
+      "delivery-margin": "Delivery fee margin",
+      "delivery-margin-words": "delivery fee, markup, platform fee, charge",
+      "wallet-state": "Wallet state",
+      "wallet-state-words": "store credit, pause, freeze, turn off",
+      "two-step": "Two-step sign-in"
+    }
+  },
   "theme": {
     "menu": "Theme",
     "system": "System",

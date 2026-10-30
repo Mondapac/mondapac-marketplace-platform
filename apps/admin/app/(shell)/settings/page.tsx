@@ -1,4 +1,4 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError, NoAccess, RecentPages } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../src/server/session.ts';
@@ -36,6 +36,7 @@ export default async function SettingsHubPage() {
               {t('settings.hub.description')}
             </p>
           </header>
+          <RecentPages heading={t('palette.recent-heading')} />
           <SettingsHub
             groups={groups}
             label={(key) => t(key)}

@@ -326,6 +326,7 @@ export function AccountSecurity({
       ) : null}
       <SettingsSection title={t('two-step.title')} description={t('two-step.description')}>
         <SettingRow
+          settingId="two-step"
           label={t('two-step.status')}
           help={active ? t('two-step.cannot-turn-off') : undefined}
           plain

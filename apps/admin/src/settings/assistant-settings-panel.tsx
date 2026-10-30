@@ -275,6 +275,7 @@ export function AssistantSettingsPanel({
       {status}
       <SettingsSection title={t(`${P}.section.rollout`)}>
         <SettingRow
+          settingId="assistant-enabled"
           label={t(`${P}.enabled.label`)}
           help={t(`${P}.enabled.help`)}
           changed={changed('enabled')}
@@ -287,6 +288,7 @@ export function AssistantSettingsPanel({
           />
         </SettingRow>
         <SettingRow
+          settingId="assistant-audience"
           label={t(`${P}.audience.label`)}
           help={t(`${P}.audience.help`)}
           changed={changed('audience')}
@@ -333,7 +335,12 @@ export function AssistantSettingsPanel({
             onChange={(event) => set('scope', event.target.value as AssistantForm['scope'])}
           />
         </SettingRow>
-        <SettingRow label={t(`${P}.model.label`)} help={tierHelp} changed={changed('modelTier')}>
+        <SettingRow
+          settingId="assistant-model"
+          label={t(`${P}.model.label`)}
+          help={tierHelp}
+          changed={changed('modelTier')}
+        >
           <SettingSelect
             name="modelTier"
             options={options(
@@ -358,6 +365,7 @@ export function AssistantSettingsPanel({
         </SettingRow>
         <SettingRow
           id={rowId('welcomeText')}
+          settingId="assistant-welcome"
           label={t(`${P}.welcome.label`)}
           optionalLabel={t(`${P}.optional`)}
           help={t(`${P}.welcome.help`, { max: BOUNDS.welcomeTextLength })}

@@ -1,4 +1,4 @@
-import type { IconName } from '@mondapac/ui';
+import type { IconName, PaletteSettingSpec } from '@mondapac/ui';
 import { PAYOUT_MANAGE_PERMISSION, PAYOUT_VIEW_PERMISSION } from '../payout/types.ts';
 import { SOURCE_EDIT_PERMISSION, STOCK_VIEW_PERMISSION } from '../stock/types.ts';
 import {
@@ -125,3 +125,29 @@ export function settingsLink(
   }
   return undefined;
 }
+
+/**
+ * The settings registry (command palette, package S5): one entry per findable setting, on a page
+ * of the map above. An entry opens its page at `#setting-<id>`, and the page's `SettingRow` with
+ * the same `settingId` scrolls to it, takes focus and is highlighted. An entry shows only when its
+ * page does. A page that has not tagged the row yet still opens; only the highlight is missing.
+ * Labels and search words live in the app's messages under `palette.setting`.
+ */
+export const settingEntries: readonly PaletteSettingSpec[] = [
+  { id: 'store-name', pageId: 'store-profile', labelKey: 'palette.setting.store-name' },
+  { id: 'store-logo', pageId: 'store-profile', labelKey: 'palette.setting.store-logo' },
+  { id: 'store-banner', pageId: 'store-profile', labelKey: 'palette.setting.store-banner' },
+  {
+    id: 'stock-locations',
+    pageId: 'stock-locations',
+    labelKey: 'palette.setting.stock-locations',
+    keywordsKey: 'palette.setting.stock-locations-words',
+  },
+  {
+    id: 'payout-bank',
+    pageId: 'payout-account',
+    labelKey: 'palette.setting.payout-bank',
+    keywordsKey: 'palette.setting.payout-bank-words',
+  },
+  { id: 'team-members', pageId: 'team', labelKey: 'palette.setting.team-members' },
+];
