@@ -158,7 +158,7 @@ others (`CarrierGateway`: `fleet`, `capabilities(market)`, `book`, `quote`, `can
 - **Ranking.** The admin picks one model per Market and method (`shipping.fleet_selection_*`):
   `cheapest` (lowest quote), `weighted` (weights over price, ETA and reliability) or
   `fixed_priority` (an ordered list; fleets not on it are not used). Without an active model the
-  built-in order is Drive, Uber Direct, Zoom2u, Australia Post. Quotes are asked only when the
+  built-in order is Drive, Uber Direct, Zoom2u, DoorDash Drive, Australia Post. Quotes are asked only when the
   rule needs them and more than one candidate exists. Drive wins ties. A weighted score uses
   integer arithmetic; a fleet with no ETA scores 0 on it.
 - **Reliability** is a 0 to 100 score per fleet and Market that an admin sets (default 50 when

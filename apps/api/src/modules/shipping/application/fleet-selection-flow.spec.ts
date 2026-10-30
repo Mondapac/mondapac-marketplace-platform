@@ -359,6 +359,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       ['mondapac_drive', true, null, 50],
       ['uber_direct', false, 90, 90],
       ['zoom2u', false, null, 50],
+      ['doordash_drive', false, null, 50],
       ['auspost', false, null, 50],
       ['fake_test', false, null, 50],
     ]);
@@ -367,6 +368,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       'mondapac_drive',
       'uber_direct',
       'zoom2u',
+      'doordash_drive',
       'auspost',
       'fake_test',
     ]);

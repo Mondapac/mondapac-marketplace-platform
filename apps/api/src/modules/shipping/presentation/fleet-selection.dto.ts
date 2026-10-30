@@ -4,7 +4,14 @@ import type { FleetSelectionModel, FleetSelectionView } from '../domain/fleet-se
 // Bodies of the fleet-selection routes (delivery models, package 3). Ids, names, whole numbers
 // and fleet codes only.
 
-const FLEETS = ['mondapac_drive', 'uber_direct', 'zoom2u', 'auspost', 'fake_test'];
+const FLEETS = [
+  'mondapac_drive',
+  'uber_direct',
+  'zoom2u',
+  'doordash_drive',
+  'auspost',
+  'fake_test',
+];
 const METHODS = ['instant', 'same_day', 'scheduled'];
 
 export class WeightsBody {
