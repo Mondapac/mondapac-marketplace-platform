@@ -500,13 +500,13 @@ function pcTreeRow(r, sel, match) {
   const chev = r[3] === null ? frame({ name: 'leaf', w: 16, h: 16 }) : icon(r[3] ? 'chevron-down' : 'chevron-right', 'icon/muted', 16);
   const name = text(r[1], on || match === r[1] ? 'Body/Strong' : 'Body/Default', 'text/primary');
   return frame({ name: 'node · ' + r[1], dir: 'H', gap: 'space/2', align: 'center', pad: [9, 16, 9, 16 + r[0] * 24], fill: on ? 'bg/selected' : null, stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [
-    chev, name, f.hidden ? bdg('Neutral', 'Icon', 'Hidden', 'eye-off') : null, f.isNew ? bdg('Info', 'None', 'New') : null, f.notInMenu ? bdg('Neutral', 'None', 'Not in menu') : null, pcSp(), f.direct ? text(f.direct + ' direct', 'Caption/Default', 'text/muted', { name: 'direct' }) : null, text(r[2], 'Body/Small', 'text/muted', { name: 'count' })]);
+    chev, name, f.hidden ? bdg('Neutral', 'Icon', 'Hidden', 'eye-off') : null, f.isNew ? bdg('Info', 'None', 'New') : null, f.notInMenu ? bdg('Neutral', 'None', 'Not in menu') : null, f.missing ? bdg('Attention', 'None', 'Missing: ' + f.missing) : null, pcSp(), f.direct ? text(f.direct + ' direct', 'Caption/Default', 'text/muted', { name: 'direct' }) : null, text(r[2], 'Body/Small', 'text/muted', { name: 'count' })]);
 }
 function pcTree(o) {
   o = o || {};
   const rows = (o.rows || PC_TREE).map(function (r) { return pcTreeRow(r, o.selected, o.match); });
   const search = inst('Input', { Type: 'Text', State: o.query ? 'Filled' : 'Default', Value: o.query || 'Search categories', 'Leading icon': true }, { name: 'search', sizeH: 'FILL' });
-  const tools = frame({ name: 'tree tools', dir: 'H', gap: 'space/3', align: 'center', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [search, inst('Select', { State: 'Filled', Value: 'Status: ' + (o.status || 'All') }, { name: 'status', w: 160 }), ppLink('Expand all', null, 'expand-all'), ppLink('Collapse all', null, 'collapse-all')]);
+  const tools = frame({ name: 'tree tools', dir: 'H', gap: 'space/3', align: 'center', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [search, inst('Select', { State: 'Filled', Value: 'Status: ' + (o.status || 'All') }, { name: 'status', w: 140 }), inst('Select', { State: 'Filled', Value: o.langFilter || 'Language: All' }, { name: 'language', w: 170 }), ppLink('Expand all', null, 'expand-all'), ppLink('Collapse all', null, 'collapse-all')]);
   const head = frame({ name: 'tree head', dir: 'H', gap: 'space/2', pad: [8, 16, 8, 16], fill: 'bg/subtle', stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text('Category', 'Caption/Strong', 'text/muted'), pcSp(), text('Live products', 'Caption/Strong', 'text/muted')]);
   const kids = [tools];
   if (o.note) kids.push(frame({ name: 'note', dir: 'H', pad: [0, 16, 12, 16], sizeH: 'FILL' }, [text(o.note, 'Body/Small', 'text/muted')]));
@@ -532,22 +532,55 @@ function pcPanel(o) {
     btn('Add child', 'Secondary', 'Sm', { State: o.leafFull ? 'Disabled' : dis, 'Leading icon': true, Icon: { icon: 'plus' } }), btn('Move…', 'Secondary', 'Sm', { State: dis }), btn('Merge…', 'Secondary', 'Sm', { State: dis }), pcSp(), btn('Archive…', 'Ghost', 'Sm', { State: dis })]);
   return card('Category details', [head, body, acts], { w: 440, sizeH: null });
 }
+// Category text is entered per language (plan v7, 8A): English plus every language live for customers is required, a draft language is optional.
+const PC_LANGS = [['en', 'English', 'English', 'Default · required'], ['fa', 'فارسی', 'Persian', 'Live for customers · required'], ['ar', 'العربية', 'Arabic', 'Draft · optional']];
+const PC_TEXT = {
+  en: { name: 'Basmati rice', desc: 'Long-grain rice that cooks fluffy and separate. Aged basmati from India and Pakistan.', keywords: 'basmati, long grain, biryani rice' },
+  fa: { name: 'برنج باسماتی', desc: 'برنج دانه‌بلند که پس از پخت دانه‌دانه و پف‌دار می‌شود. باسماتی کهنه از هند و پاکستان.', keywords: 'باسماتی، دانه بلند، برنج بریانی' },
+  ar: { name: '', desc: '', keywords: '' },
+};
+// A right-to-left field for Persian and Arabic text, drawn with the Input tokens; the value is right-aligned.
+function pcRtl(v, st, o) {
+  o = o || {};
+  const err = st === 'Error', dis = st === 'Disabled', empty = !v;
+  const t = text(empty ? (o.ph || '') : v, 'Body/Default', empty || dis ? 'text/muted' : 'text/primary', { name: 'value', align: 'right', sizeH: 'FILL' });
+  return frame({ name: (o.multi ? 'textarea' : 'input') + ' · rtl' + (st ? ' · ' + st : ''), dir: 'H', pad: o.multi ? [10, 12, 30, 12] : [9, 12, 9, 12], fill: dis ? 'bg/muted' : 'bg/surface', stroke: err ? 'status/critical/solid' : 'border/input', radius: 'radius/control', sizeH: 'FILL' }, [t]);
+}
+function pcLangTabs(sel, missing, errLang) {
+  missing = missing || ['ar'];
+  return frame({ name: 'language tabs', dir: 'H', gap: 'space/1', align: 'center', sizeH: 'FILL' }, PC_LANGS.map(function (l) {
+    const on = l[0] === sel, miss = missing.indexOf(l[0]) >= 0;
+    return frame({ name: 'lang · ' + l[2], dir: 'H', gap: 'space/1-5', align: 'center', pad: [6, 10, 6, 10], fill: on ? 'bg/selected' : null, stroke: on ? 'action/primary' : 'border/default', radius: 'radius/control' }, [
+      text(l[1], on ? 'Body/Strong' : 'Body/Default', 'text/primary'), miss ? bdg(errLang === l[0] ? 'Critical' : 'Neutral', 'None', 'Missing') : null]);
+  }));
+}
 function pcDetails(o) {
   const dis = o.viewOnly ? 'Disabled' : null;
-  return [pcField('Name (English)', pcIn(o.name || 'Basmati rice', dis), 'Shown to buyers in the menu, filters and breadcrumbs.'),
+  const lang = o.lang || 'en', L = PC_LANGS.filter(function (l) { return l[0] === lang; })[0];
+  const tx = lang === 'en' ? { name: o.name || PC_TEXT.en.name, desc: o.desc === undefined ? PC_TEXT.en.desc : o.desc, keywords: o.keywords || PC_TEXT.en.keywords } : Object.assign({}, PC_TEXT[lang], o.text || {});
+  const rtl = lang !== 'en';
+  const nameErr = o.nameError ? 'Error' : dis;
+  const nameCtl = rtl ? pcRtl(tx.name, nameErr, { ph: 'Name in ' + L[2] }) : pcIn(tx.name, dis);
+  const nameField = o.nameError ? frame({ name: 'field · Name', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [text('Name', 'Body/Strong'), nameCtl, text(o.nameError, 'Body/Small', 'status/critical/fg', { sizeH: 'FILL' })]) : pcField('Name', nameCtl, 'Shown to buyers in the menu, filters and breadcrumbs.');
+  const descCtl = rtl ? pcRtl(tx.desc, dis, { multi: true, ph: 'Short description in ' + L[2] }) : pcTa(tx.desc, dis);
+  const kwCtl = rtl ? pcRtl(tx.keywords, dis, { ph: 'Search words in ' + L[2] }) : pcIn(tx.keywords, dis);
+  const langBlock = frame({ name: 'language text', dir: 'V', gap: 'space/4', pad: 'space/4', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
+    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangTabs(lang, o.missing, o.errLang), text(L[2] + ' · ' + L[3] + (rtl ? ' · right to left' : ''), 'Caption/Default', 'text/muted')]),
+    nameField, pcField('Short description', descCtl), pcField('Search keywords', kwCtl, 'Other words buyers type for this category.')]);
+  return [langBlock,
+    text('For all languages', 'Caption/Strong', 'text/muted'),
     pcValue('URL', text('/c/' + (o.slug || 'basmati-rice'), 'Body/Default', 'text/primary'), ppLink('Change URL name…', null, 'change-url')),
     pcValue('Products', text(o.products || '41 live · 63 offers', 'Body/Default', 'text/primary'), ppLink('Move products…', null, 'move-products')),
-    pcField('Short description', pcTa(o.desc === undefined ? 'Long-grain rice that cooks fluffy and separate. Aged basmati from India and Pakistan.' : o.desc, dis)),
     pcField('Image', frame({ name: 'image', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [o.noImage ? frame({ name: 'no image', dir: 'H', w: 72, h: 48, align: 'center', justify: 'center', fill: 'bg/muted', radius: 'radius/control' }, [icon('file', 'icon/muted', 18)]) : rect({ name: 'image preview', w: 72, h: 48, fill: 'bg/muted', radius: 'radius/control' }), pcSp(), btn(o.noImage ? 'Add image' : 'Replace', 'Secondary', 'Sm', { State: o.viewOnly ? 'Disabled' : 'Default' })]), 'Card and page picture, at least 1200 × 600 px.'),
-    pcField('Search keywords', pcIn(o.keywords || 'basmati, long grain, biryani rice', dis), 'Other words buyers type for this category.'),
     inst('CheckboxRow', { Value: o.notInMenu ? 'Unchecked' : 'Checked', State: o.viewOnly ? 'Disabled' : 'Default', Label: 'Show in the main menu', Description: 'Empty categories leave the menu on their own.' }, { name: 'show-in-menu', sizeH: 'FILL' }),
-    frame({ name: 'save', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Discard', 'Secondary', 'Sm', { State: 'Disabled' }), btn('Save changes', 'Primary', 'Sm', { State: 'Disabled' })])];
+    frame({ name: 'save', dir: 'H', gap: 'space/2', align: 'center', justify: 'end', sizeH: 'FILL' }, [o.unsaved ? text(o.unsaved, 'Body/Small', 'text/muted') : null, o.unsaved ? pcSp() : null, btn('Discard', 'Secondary', 'Sm', { State: o.unsaved ? 'Default' : 'Disabled' }), btn('Save changes', 'Primary', 'Sm', { State: o.unsaved && !o.nameError ? 'Default' : 'Disabled' })])];
 }
 function pcSeo() {
   const preview = frame({ name: 'search preview', dir: 'V', gap: 'space/1', pad: 'space/4', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [
     text('mondapac.com.au › c › basmati-rice', 'Caption/Default', 'text/muted'), text('Basmati rice | Mondapac', 'Body/Strong', 'text/link'),
     text('Shop aged basmati rice from halal-certified sellers in Brisbane. Long-grain, fluffy and separate. Delivered same day.', 'Body/Small', 'text/secondary', { sizeH: 'FILL' })]);
-  return [pcField('Meta title', pcIn('Basmati rice | Mondapac'), '23 of 60 characters. Empty uses "{name} | Mondapac".'),
+  return [inst('InfoBanner', { Tone: 'Info', Title: 'English only', Body: 'Search engines index the English pages. The URL name is English too. Persian and Arabic names, descriptions and keywords are on the Details tab.', 'Show action': false }, { name: 'seo-english', sizeH: 'FILL' }),
+    pcField('Meta title', pcIn('Basmati rice | Mondapac'), '23 of 60 characters. Empty uses "{name} | Mondapac".'),
     pcField('Meta description', pcTa('Shop aged basmati rice from halal-certified sellers in Brisbane. Long-grain, fluffy and separate. Delivered same day.'), '118 of 160 characters.'),
     text('Search result preview', 'Caption/Strong', 'text/muted'), preview,
     inst('CheckboxRow', { Value: 'Unchecked', State: 'Default', Label: 'Hide from search engines (noindex)', Description: 'Filtered and paged lists are always noindex.' }, { name: 'noindex', sizeH: 'FILL' }),
@@ -617,7 +650,8 @@ function pcScene(name, dialogs) {
 function pcReason() { return pcField('Reason (for the audit log)', inst('Textarea', { State: 'Default', Value: '' }, { name: 'reason', sizeH: 'FILL' }), '10 to 500 characters.'); }
 function pcDialogsA() {
   const add = pcDialog('Add category', 'Add category', 'It starts Hidden. Show it once the image and search details are ready.', [
-    pcField('Name (English)', pcIn('Sella rice')), pcField('Parent', inst('Select', { State: 'Filled', Value: 'Pantry › Rice and grains › Rice' }, { name: 'parent', sizeH: 'FILL' }), 'Level 4 of 4. A subcategory can’t have children.'),
+    pcField('Name · English', pcIn('Sella rice'), 'Required.'), pcField('Name · فارسی', pcRtl('برنج سلا'), 'Required: Persian is live for customers.'), pcField('Name · العربية', pcRtl('', null, { ph: 'Name in Arabic' }), 'Optional: Arabic is a draft. You can add it later.'),
+    text('Add the short description and keywords per language on the Details tab.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }), pcField('Parent', inst('Select', { State: 'Filled', Value: 'Pantry › Rice and grains › Rice' }, { name: 'parent', sizeH: 'FILL' }), 'Level 4 of 4. A subcategory can’t have children.'),
     pcField('URL name', pcIn('sella-rice'), 'mondapac.com.au/c/sella-rice')], 'Add category');
   const url = pcDialog('Change URL name', 'Change the URL name?', 'The old address keeps working: it sends buyers and search engines to the new one (301). It isn’t given to another category for 12 months.', [
     pcValue('Now', text('/c/basmati-rice', 'Body/Default')), pcField('New URL name', pcIn('basmati'), 'mondapac.com.au/c/basmati'),
@@ -638,10 +672,11 @@ function pcDialogsB() {
     pcPicker([[1, 'Rice and grains', null, 'Group: no products'], [2, 'Rice', null, 'Current'], [3, 'Basmati rice'], [3, 'Jasmine rice', null, 'Hidden'], [3, 'Brown rice']], 'Basmati rice'),
     pcImpact([['Products that change category', '9'], ['Their main category changes', '7'], ['Sellers emailed', '5'], ['Published now, each one logged', 'Yes']]), pcReason()], 'Move 9 products', { w: 560 });
   const tile = function (l, v, tone) { return frame({ name: 'tile · ' + l, dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(l, 'Caption/Default', 'text/muted'), text(v, 'Heading/H2', tone || 'text/primary')]); };
-  const imp = pcDialog('Import preview', 'Check categories-oct.xlsx', 'Nothing has changed yet. Rows are matched by URL name; merge and archive are done on the page only.', [
-    frame({ name: 'tiles', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [tile('New', '12'), tile('Renamed', '3'), tile('Moved', '2'), tile('Unchanged', '214'), tile('Errors', '1', 'status/critical/fg')]),
+  const imp = pcDialog('Import preview', 'Check categories-oct.xlsx', 'Nothing has changed yet. Rows are matched by URL name; merge and archive are done on the page only. Each language has its own columns: name_en, name_fa, name_ar, description_fa and so on.', [
+    frame({ name: 'tiles', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [tile('New', '12'), tile('Renamed', '3'), tile('Moved', '2'), tile('Unchanged', '214'), tile('Errors', '2', 'status/critical/fg')]),
+    inst('InfoBanner', { Tone: 'Critical', Title: 'Row 17: add the Persian name', Body: 'Persian is live for customers, so name_fa is required.', 'Show action': false }, { name: 'error-lang', sizeH: 'FILL' }),
     inst('InfoBanner', { Tone: 'Critical', Title: 'Row 41: categories can be at most 4 levels deep', Body: '"Sella rice parboiled" would be level 5. Fix the row or leave it out.', 'Show action': false }, { name: 'error', sizeH: 'FILL' }),
-    inst('CheckboxRow', { Value: 'Checked', State: 'Default', Label: 'Skip the row with an error', Description: 'New categories start Hidden.' }, { name: 'skip', sizeH: 'FILL' })], 'Import 17 changes', { w: 640 });
+    inst('CheckboxRow', { Value: 'Checked', State: 'Default', Label: 'Skip the 2 rows with errors', Description: 'New categories start Hidden. An empty Arabic column is fine: Arabic is a draft.' }, { name: 'skip', sizeH: 'FILL' })], 'Import 16 changes', { w: 640 });
   return pcTag(pcScene(PC + ' · Dialogs · Archive, Move products, Import', [archive, moveP, imp]));
 }
 // The messages of the plan's section 13, where each one appears.
@@ -656,6 +691,12 @@ function pcStates() {
     text('Tree empty', 'Caption/Strong', 'text/muted'), empty, text('Search with no match', 'Caption/Strong', 'text/muted'), nomatch,
     text('Page', 'Caption/Strong', 'text/muted'), b('load-error', 'Critical', 'We couldn’t load categories.', 'Check your connection and try again.', 'Try again'), b('stale', 'Attention', 'Someone changed this category.', 'Reload to see the latest. Your unsaved changes are kept.', 'Reload'), b('tree-changed', 'Attention', 'The tree changed since you opened it.', 'Reload before you move a category.', 'Reload'), b('read-only', 'Info', 'View only', 'Your role can’t change categories.'),
     text('Fields', 'Caption/Strong', 'text/muted'), field('slug', 'This URL name is already used by Basmati rice.'), field('claim', 'Category names can’t include certification words like "halal".'),
+    text('Languages (plan 8A)', 'Caption/Strong', 'text/muted'),
+    frame({ name: 'lang-required', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [pcRtl('', 'Error', { ph: 'Name in Persian' }), text('Add the Persian name. Persian is live for customers.', 'Body/Small', 'status/critical/fg', { sizeH: 'FILL' })]),
+    b('lang-no-words', 'Critical', 'We can’t check Arabic names yet, so this wasn’t saved.', 'Ask an admin to add Arabic certification words.'),
+    frame({ name: 'lang-claim', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [pcRtl('برنج باسماتی حلال', 'Error'), text('Category names can’t include certification words like "halal", in any language.', 'Body/Small', 'status/critical/fg', { sizeH: 'FILL' })]),
+    text('Language filter options in the tree', 'Caption/Strong', 'text/muted'),
+    card('language filter menu', [['Language: All', ''], ['Missing: Persian', '0'], ['Missing: Arabic', '12']].map(function (m, i) { return frame({ name: 'option · ' + m[0], dir: 'H', gap: 'space/2', align: 'center', pad: [9, 12, 9, 12], fill: i === 2 ? 'bg/selected' : null, stroke: i ? 'border/row' : null, sides: ['top'], sizeH: 'FILL' }, [text(m[0], i === 2 ? 'Body/Strong' : 'Body/Default'), pcSp(), m[1] ? text(m[1] + ' categories', 'Caption/Default', 'text/muted') : null]); }), { w: 320, sizeH: null }),
     text('Inside Move, Merge, Archive and Move products', 'Caption/Strong', 'text/muted'), b('loop', 'Critical', 'A category can’t go inside itself.', 'Choose a parent outside Rice.'), b('depth', 'Critical', 'Categories can be at most 4 levels deep.', 'Rice has subcategories, so it can go up to level 2.'),
     b('cert-rules', 'Critical', 'Certificate rules for Halal use this category, so it can’t be moved yet.', 'Move or remove those rules first.', 'Open certificate rules'), b('cert-down', 'Critical', 'We couldn’t check the certificate rules, so nothing was changed.', 'Try again.', 'Try again'),
     b('too-big', 'Critical', 'This change affects more than 50,000 badges.', 'Move its subcategories one at a time.'), b('no-home', 'Critical', '9 live products would be left without a category.', 'Choose a replacement.'), b('level', 'Critical', 'Choose a category or subcategory.', 'Products can’t go on a department or group.'),
@@ -667,12 +708,16 @@ PROPOSALS['admin-categories'] = { title: PC, rows: function () {
   const newRows = PC_TREE.slice(0, 6).concat([[3, 'Sella rice', '0', null, { hidden: true, isNew: true }]], PC_TREE.slice(6));
   const parentRows = PC_TREE.map(function (r) { return r[1] === 'Rice' ? [2, 'Rice', '96', true, { selected: true, direct: '9' }] : (r[1] === 'Basmati rice' ? [3, 'Basmati rice', '41', null] : r); });
   const ready = inst('InfoBanner', { Tone: 'Attention', Title: 'Hidden until you show it', Body: 'Buyers don’t see Sella rice yet. Add an image and a meta description, then select Show.', 'Show action': false }, { name: 'new-hidden', sizeH: 'FILL' });
-  return [[pcScreen('Default, Details'), pcScreen('SEO', { panel: { tab: 'SEO', body: pcSeo() } }), pcScreen('Filters', { panel: { tab: 'Filters', body: pcFilters() } })],
+  const missRows = [[0, 'Pantry', '412', true], [1, 'Rice and grains', '138', true], [2, 'Rice', '96', true, { missing: 'Arabic' }], [3, 'Basmati rice', '41', null, { selected: true, missing: 'Arabic' }], [3, 'Brown rice', '14', null, { missing: 'Arabic' }], [1, 'Oils and ghee', '64', true], [2, 'Ghee', '22', null, { missing: 'Arabic' }], [0, 'Ramadan specials', '31', false, { notInMenu: true, missing: 'Arabic' }]];
+  const L = [[pcScreen('Language · Persian', { panel: { body: pcDetails({ lang: 'fa' }) } }),
+    pcScreen('Language · Persian name missing', { panel: { body: pcDetails({ lang: 'fa', missing: ['fa', 'ar'], errLang: 'fa', text: { name: '' }, nameError: 'Add the Persian name. Persian is live for customers.', unsaved: '1 needs fixing' }) } }),
+    pcScreen('Language · Missing Arabic filter', { tree: { rows: missRows, langFilter: 'Missing: Arabic (12)', note: '12 categories have no Arabic name. Arabic is a draft, so buyers aren’t affected yet.', foot: 'Parents without the filter match are shown for context.' }, panel: { body: pcDetails({ lang: 'ar' }) } })]];
+  return L.concat([[pcScreen('Default, Details'), pcScreen('SEO', { panel: { tab: 'SEO', body: pcSeo() } }), pcScreen('Filters', { panel: { tab: 'Filters', body: pcFilters() } })],
     [pcScreen('Products', { panel: { tab: 'Products', body: pcProducts() } }), pcScreen('History', { panel: { tab: 'History', body: pcHistory() } }), pcScreen('Search', { tree: { rows: searchRows, query: 'rice', match: 'Rice', note: '6 categories match "rice". Their parents are shown in grey context.', foot: 'Matches stay in the tree so their place is clear.' } })],
     [pcScreen('New category, Hidden', { tree: { rows: newRows, selected: 'Sella rice' }, panel: { name: 'Sella rice', slug: 'sella-rice', hidden: true, leafFull: true, products: '0 live · 0 offers', desc: '', noImage: true, keywords: 'sella, parboiled', banner: ready } }),
       pcScreen('Category with subcategories', { tree: { rows: parentRows, selected: 'Rice' }, panel: { name: 'Rice', slug: 'rice', path: 'Pantry › Rice and grains', products: '96 live · 9 directly on Rice', banner: inst('InfoBanner', { Tone: 'Info', Title: '9 products sit directly on Rice', Body: 'Buyers find them under "Other Rice" in the filter. In the product form, sellers see the subcategories first and Rice as "General".', 'Show action': true, Action: 'Move products…' }, { name: 'direct-products', sizeH: 'FILL' }) } }),
       pcScreen('View only', { viewOnly: true, banner: inst('InfoBanner', { Tone: 'Info', Title: 'View only', Body: 'Your role can’t change categories. A Platform Administrator can give you access.', 'Show action': false }, { name: 'view-only', sizeH: 'FILL' }), panel: { viewOnly: true } })],
-    [pcDialogsA(), pcDialogsB(), pcStates()]];
+    [pcDialogsA(), pcDialogsB(), pcStates()]]);
 } };
 
 async function buildProposal(key) {
