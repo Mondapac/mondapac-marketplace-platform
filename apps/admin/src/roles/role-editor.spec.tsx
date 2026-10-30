@@ -11,6 +11,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { RoleEditor } from './role-editor.tsx';
 import type { RoleCatalogue, RoleRecord } from './types.ts';
+import { expectFlash, expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ID = '0190a000-0000-7000-8000-0000000000a3';
@@ -72,6 +73,8 @@ describe('role editor', () => {
     fireEvent.click(screen.getByLabelText('Invite'));
     fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/settings/roles/${ID}`));
+    // The outcome waits for the page of the new role; nothing is announced here.
+    expectFlash('Saved. People with this role see the change now.');
     expect(call).toHaveBeenCalledWith(
       'POST',
       'identity/admin/roles',
@@ -106,7 +109,7 @@ describe('role editor', () => {
     expect(screen.getByLabelText<HTMLInputElement>('View').checked).toBe(true);
     fireEvent.click(screen.getByLabelText('Invite'));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(await screen.findByText(/Saved\./)).toBeTruthy();
+    await expectToast(/Saved\./);
     expect(call).toHaveBeenCalledWith(
       'PUT',
       `identity/admin/roles/${ID}`,

@@ -12,6 +12,7 @@ const FLEET_FIELD = auditField.enumOf([
   'mondapac-drive',
   'uber-direct',
   'zoom2u',
+  'doordash-drive',
   'auspost',
   'fake-test',
 ] as const);

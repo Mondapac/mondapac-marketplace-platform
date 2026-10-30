@@ -227,7 +227,7 @@ export class FleetSelectionController {
   @ApiHeader(CSRF)
   @ApiParam({
     name: 'fleet',
-    enum: ['mondapac_drive', 'uber_direct', 'zoom2u', 'auspost', 'fake_test'],
+    enum: ['mondapac_drive', 'uber_direct', 'zoom2u', 'doordash_drive', 'auspost', 'fake_test'],
   })
   @ApiBody({ type: ReliabilityRequest })
   @ApiOkResponse({ type: FleetSelectionBody })

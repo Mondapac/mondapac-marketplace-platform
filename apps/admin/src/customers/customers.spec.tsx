@@ -11,6 +11,7 @@ import { callApi } from '../api/client.ts';
 import { CustomerLookup } from './customer-lookup.tsx';
 import { customerProblemOf } from './errors.ts';
 import type { CustomerAccount } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -122,7 +123,7 @@ describe('CustomerLookup', () => {
       {},
       'csrf',
     ]);
-    expect(await screen.findByText(/Account disabled/)).toBeTruthy();
+    await expectToast(/Account disabled/);
     expect(screen.getByText('Disabled')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Enable account' })).toBeTruthy();
   });
@@ -141,7 +142,7 @@ describe('CustomerLookup', () => {
     fireEvent.click(confirm as HTMLElement);
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
     expect(call.mock.calls[1]?.[1]).toBe(`identity/admin/customers/${ID}/enable`);
-    expect(await screen.findByText(/Account enabled/)).toBeTruthy();
+    await expectToast(/Account enabled/);
     expect(screen.getByText('Active')).toBeTruthy();
   });
 

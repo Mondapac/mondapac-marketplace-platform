@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, FieldAction, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, FieldAction, TextField, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -38,7 +38,6 @@ function VariantRow({
   );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<PriceWritten['status'] | null>(null);
   // A page refresh brings the version the server holds now; the typed text and message stay.
   useEffect(() => setVersion(variant.seriesVersion), [variant.seriesVersion]);
   const readOnly = !canEdit || variant.retired;
@@ -53,7 +52,6 @@ function VariantRow({
     }
     setPending(true);
     setError(null);
-    setDone(null);
     const result = await callGuarded<PriceWritten>(
       'PUT',
       `pricing/seller/offers/${offerId}/variants/${variant.variantId}/regular-price`,
@@ -73,7 +71,10 @@ function VariantRow({
       return;
     }
     setVersion(result.body.seriesVersion);
-    setDone(result.body.status);
+    const message = t(`price.saved.${result.body.status}`);
+    // A price that waits for review, or did not change, is news rather than a done deal.
+    if (result.body.status === 'accepted') toast.success(message);
+    else toast.info(message);
     router.refresh();
   }
 
@@ -113,7 +114,6 @@ function VariantRow({
                   error={error ?? undefined}
                   onChange={(event) => {
                     setText(event.target.value);
-                    setDone(null);
                   }}
                 />
               </div>
@@ -128,9 +128,6 @@ function VariantRow({
                 </Button>
               </FieldAction>
             </div>
-            {done === null ? null : (
-              <span className="text-sm text-fg-muted">{t(`price.saved.${done}`)}</span>
-            )}
           </form>
         )}
         {variant.seriesVersion === null && variant.special === null ? null : (

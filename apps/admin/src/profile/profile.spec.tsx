@@ -14,6 +14,7 @@ import { DisplayNameCard } from './display-name-card.tsx';
 import { nameProblemOf, passwordProblemOf, preferencesProblemOf } from './errors.ts';
 import { PasswordCard } from './password-card.tsx';
 import { PreferencesCard } from './preferences-card.tsx';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -41,7 +42,7 @@ describe('DisplayNameCard', () => {
     typeName('  Amina R.  ');
     save();
 
-    expect(await screen.findByText('Your name was updated.')).toBeTruthy();
+    await expectToast('Your name was updated.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'identity/admin/profile/display-name',
@@ -56,7 +57,7 @@ describe('DisplayNameCard', () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { changed: false } });
     mount();
     save();
-    expect(await screen.findByText('That is already your name.')).toBeTruthy();
+    await expectToast('That is already your name.', 'info');
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
@@ -109,7 +110,7 @@ describe('PasswordCard', () => {
     typeCode('123456');
     submit();
 
-    expect(await screen.findByText(/Your password was changed/)).toBeTruthy();
+    await expectToast(/Your password was changed/);
     expect(call).toHaveBeenCalledWith(
       'POST',
       'identity/admin/change-password',
@@ -267,7 +268,7 @@ describe('PreferencesCard', () => {
     fireEvent.change(language(), { target: { value: 'en' } });
     save();
 
-    expect(await screen.findByText('Your settings were saved.')).toBeTruthy();
+    await expectToast('Your settings were saved.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'identity/admin/profile/preferences',
@@ -284,7 +285,7 @@ describe('PreferencesCard', () => {
     fireEvent.change(language(), { target: { value: '' } });
     save();
 
-    expect(await screen.findByText('Those settings are already saved.')).toBeTruthy();
+    await expectToast('Those settings are already saved.', 'info');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'identity/admin/profile/preferences',

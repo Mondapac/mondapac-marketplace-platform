@@ -12,6 +12,7 @@ import { callApi } from '../../api/client.ts';
 import { SlideOrderView } from './slide-order-view.tsx';
 import type { OrderEntry, OrderPlace, OrderView } from './slide-order.ts';
 import { SlidesViewSwitch } from './slides-view-switch.tsx';
+import { expectToast } from '../../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ZONE = 'Australia/Brisbane';
@@ -264,7 +265,7 @@ describe('saving', () => {
       { position: 'home.hero', scope: 'all', scopeId: null, slideIds: ['p', 'b', 'a', 'c'] },
       'csrf-1',
     ]);
-    expect((await screen.findByText(/^Order saved\./)).getAttribute('aria-live')).toBe('polite');
+    await expectToast(/^Order saved\./);
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(names()[1]).toContain('Spring fruit boxes');
     expect(save().disabled).toBe(true);

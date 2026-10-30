@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, EmptyState, Select } from '@mondapac/ui';
+import { Badge, Banner, Button, EmptyState, Select, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -26,13 +26,11 @@ export function ReviewQueue({
 }) {
   const t = useTranslations('catalog.review');
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
-  const [notice, setNotice] = useState<'approved' | 'sent-back' | null>(null);
   const visible = rows.filter((row) => !gone.has(row.offerId));
   const leave = (offerId: string) => setGone((current) => new Set(current).add(offerId));
 
   return (
     <div className="flex flex-col gap-4">
-      {notice === null ? null : <Banner tone="success">{t(`notice.${notice}`)}</Banner>}
       {visible.length === 0 ? (
         <EmptyState icon="inbox" title={t('empty')} />
       ) : (
@@ -44,7 +42,7 @@ export function ReviewQueue({
               canDecide={canDecide}
               csrfToken={csrfToken}
               onDecided={(kind) => {
-                setNotice(kind);
+                toast.success(t(`notice.${kind}`));
                 leave(row.offerId);
               }}
               onGone={() => leave(row.offerId)}

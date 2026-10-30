@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, OtpField, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, OtpField, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -31,7 +31,6 @@ export function PasswordCard({
   const [boxes, setBoxes] = useState(0);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [saved, setSaved] = useState(false);
   const busy = useRef(false);
 
   function focusInvalid() {
@@ -51,7 +50,6 @@ export function PasswordCard({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current) return;
-    setSaved(false);
     setProblem(null);
     const limits = { min: passwordMin, max: passwordMax };
     if (current === '') return refuse({ key: 'current-required', field: 'current' });
@@ -75,7 +73,7 @@ export function PasswordCard({
       setNext('');
       setCode('');
       setBoxes((n) => n + 1);
-      setSaved(true);
+      toast.success(t('password-saved'));
       router.refresh();
       return;
     }
@@ -94,7 +92,6 @@ export function PasswordCard({
         noValidate
       >
         <p className="text-sm text-fg-muted">{t('password-intro')}</p>
-        {saved ? <Banner tone="success">{t('password-saved')}</Banner> : null}
         {problem === null || problem.field !== null ? null : (
           <Banner tone="critical">{t(`error.${problem.key}`, problem.values)}</Banner>
         )}

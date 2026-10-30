@@ -30,6 +30,7 @@ Names only, set as server environment secrets, never in the repository:
 | `MONDAPAC_DRIVE_WEBHOOK_SECRET` (per Market, `AU=...`) | Signature check of Drive webhooks | Drive and the server, see step 5 |
 | Throttle key secret (identity sign-in counters), `<confirm env name; not in .env.example>` | Keys of sign-in rate counters | Server secret store; rotating only resets counters |
 | Uber Direct, Zoom2u secrets | `<not in code yet; confirm when those carriers are integrated>` | Provider console |
+| `DOORDASH_DEVELOPER_ID`, `DOORDASH_KEY_ID`, `DOORDASH_SIGNING_SECRET` (per Market, `AU=...`) | Signs the per-request JWT sent to DoorDash Drive | DoorDash developer portal (rotate the key, then update the env) |
 | Database credentials, session and encryption secrets, email and SMS provider keys | `<confirm env names in the deployment config; no host chosen yet>` | Provider or host secret store |
 
 ## Human steps

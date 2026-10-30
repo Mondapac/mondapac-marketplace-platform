@@ -1,6 +1,6 @@
 'use client';
 
-import { addressLines, Badge, Banner, Button, DataList } from '@mondapac/ui';
+import { addressLines, Badge, Banner, Button, DataList, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -26,7 +26,6 @@ export function StockLocations({
   const [mode, setMode] = useState<Mode>(null);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<StockProblem | null>(null);
-  const [saved, setSaved] = useState(false);
   const busy = useRef(false);
 
   /** One write at a time; the answer is the new list, which replaces the screen's copy. */
@@ -35,13 +34,12 @@ export function StockLocations({
     busy.current = true;
     setPending(true);
     setProblem(null);
-    setSaved(false);
     const result = await callApi<SourcesView>(method, path, body, csrfToken);
     busy.current = false;
     setPending(false);
     if (result.ok) {
       setView(result.body);
-      setSaved(true);
+      toast.success(t('stock.saved'));
       return true;
     }
     if (result.failure.status === 401) window.location.assign('/session-ended');
@@ -71,7 +69,6 @@ export function StockLocations({
 
   function open(next: Mode) {
     setProblem(null);
-    setSaved(false);
     setMode(next);
   }
 
@@ -94,7 +91,6 @@ export function StockLocations({
           </div>
         ) : null}
       </div>
-      {saved ? <Banner tone="success">{t('stock.saved')}</Banner> : null}
       {mode === null && problem !== null ? (
         <Banner tone="critical">
           {t(problem.form.key, problem.form.values)}

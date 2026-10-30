@@ -16,6 +16,7 @@ import {
 } from './draft-content.ts';
 import { EditForm } from './edit-form.tsx';
 import type { FormField, ProductView } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const field = (over: Partial<FormField> & Pick<FormField, 'code' | 'dataType'>): FormField => ({
@@ -176,7 +177,7 @@ describe('EditForm product details', () => {
         variants: [{ variantId: 'v1' }, { variantId: 'v9', optionValues: { size: 'large' } }],
       },
     });
-    expect(await screen.findByText('Draft saved.')).toBeTruthy();
+    await expectToast('Draft saved.');
   });
 
   it('tells the seller to save again when the second write fails, and a retry sends real ids', async () => {
@@ -191,7 +192,7 @@ describe('EditForm product details', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(call.mock.calls[2]?.[2]).toMatchObject({ variantIds: ['v1', 'v9'] });
-    expect(await screen.findByText('Draft saved.')).toBeTruthy();
+    await expectToast('Draft saved.');
   });
 
   it('stops adding at the limit and keeps a published variant', () => {

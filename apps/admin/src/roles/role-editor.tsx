@@ -8,6 +8,7 @@ import {
   Dialog,
   FormActionBar,
   TextField,
+  toast,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -52,7 +53,6 @@ export function RoleEditor({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set(initialKeys));
   const [nameError, setNameError] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const editing = role !== undefined;
@@ -80,7 +80,6 @@ export function RoleEditor({
   }
 
   function toggle(key: string, on: boolean) {
-    setSaved(false);
     setSelected((previous) => {
       const next = new Set(previous);
       if (on) next.add(key);
@@ -112,7 +111,6 @@ export function RoleEditor({
     event?.preventDefault();
     setNameError(null);
     setProblem(null);
-    setSaved(false);
     const trimmed = name.trim();
     if (trimmed === '') {
       setNameError(t('editor.name-required'));
@@ -136,9 +134,11 @@ export function RoleEditor({
         return;
       }
       if (editing) {
-        setSaved(true);
+        toast.success(t('editor.saved'));
         router.refresh();
       } else {
+        // The page of the new role shows the outcome.
+        toast.flash('success', t('editor.saved'));
         router.push(`/settings/roles/${result.body.roleId}`);
       }
     });
@@ -178,7 +178,6 @@ export function RoleEditor({
         maxLength={MAX_NAME}
         error={nameError ?? undefined}
         onChange={(event) => {
-          setSaved(false);
           setName(event.target.value);
         }}
       />
@@ -217,7 +216,7 @@ export function RoleEditor({
           </div>
         </fieldset>
       ))}
-      <FormActionBar status={saved ? t('editor.saved') : undefined}>
+      <FormActionBar>
         {canDelete ? (
           <Button
             variant="secondary"
