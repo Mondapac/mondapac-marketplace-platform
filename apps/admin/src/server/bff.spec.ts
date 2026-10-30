@@ -523,6 +523,8 @@ describe('relay allowlist for seller decisions', () => {
     const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
     const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
     expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    const extra = new Request(`http://admin.localhost:3002/api/${path}/x`, { headers: sameOrigin });
+    expect((await relay(config, extra, [...path.split('/'), 'x'], fetchImpl)).status).toBe(404);
     expect((await call('PUT', path)).status).toBe(200);
     expect((await call('POST', path)).status).toBe(404);
     expect((await call('DELETE', path)).status).toBe(404);

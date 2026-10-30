@@ -76,6 +76,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
+
 describe('the margin example', () => {
   it('turns A$12.34 into A$13.60 with 10 percent and a 5c round-up', () => {
     expect(priceOf(EXAMPLE_QUOTE_MINOR, { kind: 'percent', basisPoints: 1000 }, 5)).toEqual({
@@ -369,7 +377,7 @@ describe('the delivery settings page', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('9');
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
-    expect(screen.getByText('Days ahead: saved now 4, yours 9')).toBeTruthy();
+    expect(compared('Days ahead')).toMatchObject({ saved: '4', yours: '9' });
 
     // The confirm-impact dialog still comes before the next save, which names version 5.
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));

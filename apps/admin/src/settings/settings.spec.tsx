@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +25,14 @@ const mount = (initial: SupportContact, canManage = true) =>
 
 const type = (value: string) =>
   fireEvent.change(screen.getByLabelText('Support email address'), { target: { value } });
+
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
@@ -145,11 +153,14 @@ describe('SupportEmailCard', () => {
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
-    const line = screen.getByText(
-      'Support email address: saved now <b>ops</b>@example.com, yours care@example.com',
-    );
+    const row = compared('Support email address');
+    expect(row.saved).toBe('<b>ops</b>@example.com');
+    expect(row.yours).toBe('care@example.com');
     // Text, never markup.
-    expect(line.querySelector('b')).toBeNull();
+    expect(row.item.querySelector('b')).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Hide comparison' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy();
 
     type('care2@example.com');
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));

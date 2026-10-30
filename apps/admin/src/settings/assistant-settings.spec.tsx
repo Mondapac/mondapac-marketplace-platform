@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,6 +59,14 @@ const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save chan
 /** A change that is valid, so the save bar shows. */
 const touch = (value = '21') =>
   fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value } });
+
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
@@ -245,12 +253,12 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByText('Saved version 4')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
-    expect(screen.getByText('Messages per guest: saved now 30, yours 21')).toBeTruthy();
+    expect(compared('Messages per guest')).toMatchObject({ saved: '30', yours: '21' });
     // The welcome message is user content: shown as text, never as markup.
-    const welcome = screen.getByText(
-      "Welcome message: saved now <img src=x onerror=alert(1)> hi, yours The storefront's default text",
-    );
-    expect(welcome.querySelector('img')).toBeNull();
+    const welcome = compared('Welcome message');
+    expect(welcome.saved).toBe('<img src=x onerror=alert(1)> hi');
+    expect(welcome.yours).toBe("The storefront's default text");
+    expect(welcome.item.querySelector('img')).toBeNull();
 
     touch('25');
     save();

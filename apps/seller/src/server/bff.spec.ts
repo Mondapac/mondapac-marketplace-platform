@@ -468,6 +468,17 @@ describe('relay allowlist for stock locations', () => {
     expect(
       (await relay(config, read, ['inventory', 'seller', 'sources'], upstreamOk())).status,
     ).toBe(200);
+    for (const tail of ['extra', ID]) {
+      const other = new Request(
+        `http://seller.localhost:3001/api/inventory/seller/sources/${tail}`,
+        {
+          headers: sameOrigin,
+        },
+      );
+      expect(
+        (await relay(config, other, ['inventory', 'seller', 'sources', tail], upstreamOk())).status,
+      ).toBe(404);
+    }
   });
 
   it('relays a location edit by UUID and the order, and refuses other shapes', async () => {

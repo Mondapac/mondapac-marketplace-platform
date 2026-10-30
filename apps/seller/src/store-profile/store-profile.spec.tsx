@@ -46,6 +46,14 @@ const mount = (initial = view(), canEdit = true) =>
 const box = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: /About your store/ });
 const save = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' });
 
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
+
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
@@ -179,13 +187,13 @@ describe('StoreProfile About card', () => {
     fireEvent.change(boxFor(/Japanese/), { target: { value: 'Mine' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
-    const line = screen.getByText(
-      /^About your store \(.*English.*\): saved now <b>Their<\/b> text, yours My edit$/,
-    );
-    expect(line.querySelector('b')).toBeNull();
-    expect(
-      screen.getByText(/^About your store \(Japanese\): saved now empty, yours Mine$/),
-    ).toBeTruthy();
+    const english = compared(/^About your store \(.*English.*\)$/);
+    expect(english).toMatchObject({ saved: '<b>Their</b> text', yours: 'My edit' });
+    expect(english.item.querySelector('b')).toBeNull();
+    expect(compared('About your store (Japanese)')).toMatchObject({
+      saved: 'empty',
+      yours: 'Mine',
+    });
     expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
       '2 unsaved changes',
     );

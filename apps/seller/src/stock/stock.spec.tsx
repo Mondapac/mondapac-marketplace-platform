@@ -50,8 +50,8 @@ const view = (over: Partial<SourcesView> = {}): SourcesView => ({
 });
 const options: StockFormOptions = {
   fields: [
-    { key: 'line1', labelKey: 'sellers.address.field.line1', required: true, maxLength: 120 },
-    { key: 'suburb', labelKey: 'sellers.address.field.suburb', required: true, maxLength: 120 },
+    { key: 'line1', labelKey: 'sellers.address.line1', required: true, maxLength: 120 },
+    { key: 'suburb', labelKey: 'sellers.address.suburb', required: true, maxLength: 120 },
   ],
   regionField: null,
   regions: [],
@@ -62,6 +62,14 @@ const mount = (initial = view(), canEdit = true) =>
   render(
     wrap(<StockLocations initial={initial} options={options} csrfToken="csrf" canEdit={canEdit} />),
   );
+
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
@@ -95,7 +103,7 @@ describe('StockLocations', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Shed' } });
-    fireEvent.change(screen.getByLabelText(/^Address line 1|^line1/), {
+    fireEvent.change(screen.getByLabelText(/^Street address/), {
       target: { value: '2 Test St' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -231,9 +239,11 @@ describe('StockLocations', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('Warehouse');
 
     fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
-    const name = screen.getByText('Name: saved now <i>Shed</i>, yours Warehouse');
-    expect(name.querySelector('i')).toBeNull();
-    expect(screen.getByText(/saved now 9 Other Rd, yours 1 Test St/)).toBeTruthy();
+    const name = compared('Name');
+    expect(name).toMatchObject({ saved: '<i>Shed</i>', yours: 'Warehouse' });
+    expect(name.item.querySelector('i')).toBeNull();
+    // Address rows use the form's own (translated) labels, not the field keys.
+    expect(compared('Street address')).toMatchObject({ saved: '9 Other Rd', yours: '1 Test St' });
 
     // The next save names the version read after the conflict.
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
