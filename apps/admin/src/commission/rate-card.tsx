@@ -1,6 +1,6 @@
 'use client';
 
-import { ActionRow, Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
+import { ActionRow, Badge, Banner, Button, Card, Dialog, TextField, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
@@ -24,7 +24,6 @@ export function CommissionRateCard({
   const [pending, setPending] = useState<'save' | 'reset' | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
-  const [saved, setSaved] = useState<'saved' | 'reset' | null>(null);
   const [confirming, setConfirming] = useState(false);
   const busy = useRef(false);
   // Setting or removing the rate needs a fresh two-step code: the shared dialog asks for it.
@@ -45,7 +44,6 @@ export function CommissionRateCard({
     event.preventDefault();
     if (busy.current) return;
     const bps = bpsOf(text);
-    setSaved(null);
     setProblem(null);
     if (bps === null) {
       setInvalid(true);
@@ -59,7 +57,7 @@ export function CommissionRateCard({
     setPending(null);
     if (result.ok) {
       adopt(result.body);
-      setSaved('saved');
+      toast.success(t('saved-done'));
     } else if (!isStepUpCancelled(result)) fail(result.failure);
   }
 
@@ -67,7 +65,6 @@ export function CommissionRateCard({
     if (busy.current) return;
     busy.current = true;
     setPending('reset');
-    setSaved(null);
     setProblem(null);
     setInvalid(false);
     // The confirm closes first, so the code dialog never opens on top of it.
@@ -77,7 +74,7 @@ export function CommissionRateCard({
     setPending(null);
     if (result.ok) {
       adopt(result.body);
-      setSaved('reset');
+      toast.success(t('reset-done'));
       return;
     }
     if (isStepUpCancelled(result)) return;
@@ -104,7 +101,6 @@ export function CommissionRateCard({
             {t('market-rate', { rate: percentOf(rate.marketRateBps, locale) })}
           </p>
         ) : null}
-        {saved === null ? null : <Banner tone="success">{t(`${saved}-done`)}</Banner>}
         {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
         {canEdit ? (
           <form className="flex flex-col gap-3" onSubmit={(e) => void save(e)} noValidate>

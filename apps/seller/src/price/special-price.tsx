@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, TextField } from '@mondapac/ui';
+import { Banner, Button, TextField, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -40,7 +40,6 @@ export function SpecialPrice({
   const [endText, setEndText] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
   const base = `pricing/seller/offers/${offerId}/variants/${variant.variantId}/special-price`;
   const { special, heldSpecial } = variant;
 
@@ -66,7 +65,6 @@ export function SpecialPrice({
     }
     setPending(true);
     setError(null);
-    setDone(null);
     const result = await callApi<SpecialWritten>(
       'PUT',
       base,
@@ -76,7 +74,9 @@ export function SpecialPrice({
     setPending(false);
     if (!result.ok) return fail(result.failure);
     onVersion(result.body.seriesVersion);
-    setDone(t(`price.special.saved.${result.body.status}`));
+    const text = t(`price.special.saved.${result.body.status}`);
+    if (result.body.status === 'accepted') toast.success(text);
+    else toast.info(text);
     setAmountText('');
     setStartText('');
     setEndText('');
@@ -87,7 +87,6 @@ export function SpecialPrice({
     if (pending || version === null) return;
     setPending(true);
     setError(null);
-    setDone(null);
     const result = await callApi<SpecialWithdrawn>(
       'POST',
       `${base}/withdraw`,
@@ -97,7 +96,7 @@ export function SpecialPrice({
     setPending(false);
     if (!result.ok) return fail(result.failure);
     onVersion(result.body.seriesVersion);
-    setDone(t('price.special.withdrawn'));
+    toast.success(t('price.special.withdrawn'));
     router.refresh();
   }
 
@@ -139,7 +138,6 @@ export function SpecialPrice({
             value={amountText}
             onChange={(event) => {
               setAmountText(event.target.value);
-              setDone(null);
             }}
           />
           <TextField
@@ -182,7 +180,6 @@ export function SpecialPrice({
               </Button>
             )}
           </div>
-          {done === null ? null : <span className="text-sm text-fg-muted">{done}</span>}
         </form>
       ) : null}
     </div>

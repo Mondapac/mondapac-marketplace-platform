@@ -43,6 +43,7 @@ describe('loadAppConfig', () => {
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
       uberDirect: { customerIds: {}, clientIds: {}, clientSecrets: {}, webhookSecrets: {} },
       zoom2u: { apiKeys: {} },
+      doordashDrive: { developerIds: {}, keyIds: {}, signingSecrets: {} },
       auspost: { apiKeys: {}, apiPasswords: {}, accountNumbers: {} },
     });
   });
@@ -186,6 +187,49 @@ describe('loadAppConfig', () => {
       ).toThrow('UBER_DIRECT_CLIENT_SECRET');
       try {
         loadAppConfig({ HOSTED_MARKETS: 'AU', UBER_DIRECT_CLIENT_SECRET: `NZ=${SECRET}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('NZ is not in HOSTED_MARKETS');
+        expect((error as Error).message).not.toContain(SECRET);
+      }
+    });
+  });
+
+  describe('the DoorDash Drive credentials (per Market)', () => {
+    const DEVELOPER = 'dev-0123456789-abcdef';
+    const KEY_ID = 'key-0123456789-abcdef';
+    const SECRET = 'c2lnbmluZy1zZWNyZXQtMDEyMzQ1Njc4OQ';
+
+    it('reads the three values per hosted Market, and none when unset', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU,ZZ',
+        DOORDASH_DEVELOPER_ID: `AU=${DEVELOPER}`,
+        DOORDASH_KEY_ID: `AU=${KEY_ID}`,
+        DOORDASH_SIGNING_SECRET: `AU=${SECRET}`,
+      });
+      expect(config.doordashDrive).toEqual({
+        developerIds: { AU: DEVELOPER },
+        keyIds: { AU: KEY_ID },
+        signingSecrets: { AU: SECRET },
+      });
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).doordashDrive.signingSecrets).toEqual({});
+    });
+
+    it('refuses a short or truncated secret and an unhosted Market without echoing the value', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', DOORDASH_SIGNING_SECRET: 'AU=too-short' }),
+      ).toThrow('DOORDASH_SIGNING_SECRET');
+      // A truncated secret decodes leniently to another key: refused, without echoing it.
+      const truncated = SECRET.slice(0, 33);
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', DOORDASH_SIGNING_SECRET: `AU=${truncated}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('DOORDASH_SIGNING_SECRET');
+        expect((error as Error).message).not.toContain(truncated);
+      }
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', DOORDASH_SIGNING_SECRET: `NZ=${SECRET}` });
         throw new Error('should have thrown');
       } catch (error) {
         expect((error as Error).message).toContain('NZ is not in HOSTED_MARKETS');

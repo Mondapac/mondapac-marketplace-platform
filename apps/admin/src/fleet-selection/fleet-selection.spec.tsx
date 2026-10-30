@@ -13,6 +13,7 @@ import { callApi } from '../api/client.ts';
 import { checkForm, EMPTY_FORM, moved, scoreOf } from './form.ts';
 import { FleetSelectionPanel } from './fleet-selection-panel.tsx';
 import type { Selection } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -166,9 +167,7 @@ describe('the fleet selection page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
     confirmDialog();
 
-    await waitFor(() =>
-      expect(screen.getByText('Active models saved. They apply to the next booking.')).toBeTruthy(),
-    );
+    await expectToast('Active models saved. They apply to the next booking.');
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -207,7 +206,11 @@ describe('the fleet selection page', () => {
     fireEvent.change(screen.getByLabelText('Price'), { target: { value: '60' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
-    await waitFor(() => expect(screen.getByText('Model created.')).toBeTruthy());
+    await expectToast('Model created.');
+    // The form is gone: focus goes back to the button that opened it.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New model' })),
+    );
     expect(call).toHaveBeenNthCalledWith(
       1,
       'POST',
@@ -219,6 +222,18 @@ describe('the fleet selection page', () => {
       'csrf',
     );
     expect(call).toHaveBeenNthCalledWith(2, 'GET', 'shipping/admin/fleet-selection');
+  });
+
+  it('puts focus on the edited model after it is saved', async () => {
+    call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Cheapest first' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
+    await expectToast(/^Model saved\./);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Cheapest first' })),
+    );
   });
 
   it('flags a bad form without calling the API', () => {
@@ -308,7 +323,7 @@ describe('the fleet selection page', () => {
     });
     fireEvent.click(within(drive).getByRole('button', { name: 'Save score' }));
 
-    await waitFor(() => expect(within(drive).getByText('Score saved.')).toBeTruthy());
+    await expectToast('Score saved.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'shipping/admin/fleet-selection/fleets/mondapac_drive/reliability',
@@ -440,14 +455,16 @@ describe('the review changes', () => {
     expect(screen.getByLabelText('Add Australia Post (off in this Market)')).toBeTruthy();
   });
 
-  it('moves focus to the saved notice', async () => {
-    call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
+  it('moves focus to the note that the page was reloaded after a conflict', async () => {
+    call
+      .mockResolvedValueOnce(refused(409, 'shipping.fleet-model-conflict'))
+      .mockResolvedValueOnce(ok(selection()));
     mount(selection());
-    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Another' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mine' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
-    const notice = await screen.findByText('Model created.');
+    const notice = await screen.findByText(/Someone saved this model first/);
     await waitFor(() => expect(document.activeElement).toBe(notice.closest('[tabindex]')));
   });
 });

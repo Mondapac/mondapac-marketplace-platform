@@ -12,6 +12,7 @@ import { callApi } from '../api/client.ts';
 import { editProblemOf } from './edit-errors.ts';
 import { contentWith, EditForm } from './edit-form.tsx';
 import type { ProductView } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const product = (over: Partial<ProductView> = {}): ProductView => ({
@@ -81,7 +82,7 @@ describe('EditForm', () => {
       },
       'csrf',
     );
-    expect(await screen.findByText('Draft saved.')).toBeTruthy();
+    await expectToast('Draft saved.');
   });
 
   it('submits without saving first when nothing changed', async () => {
@@ -117,7 +118,7 @@ describe('EditForm', () => {
     fireEvent.click(button);
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
     expect(call.mock.calls.map((c) => c[0])).toEqual(['PUT', 'POST']);
-    expect(await screen.findByText('Published.')).toBeTruthy();
+    await expectToast('Published.');
   });
 
   it('shows the refused texts and does not submit', async () => {

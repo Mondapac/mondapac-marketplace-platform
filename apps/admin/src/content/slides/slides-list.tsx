@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, EmptyState, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, EmptyState, LoadError, SkeletonRows, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
@@ -36,7 +36,7 @@ export function SlidesList({
   const [filters, setFilters] = useState<FilterValues>(NO_FILTERS);
   const [slides, setSlides] = useState<readonly SlideSummary[]>([]);
   const [load, setLoad] = useState<Load>('loading');
-  const [notice, setNotice] = useState<{ tone: 'success' | 'info'; text: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const latest = useRef(0);
   const { position, status } = filters;
 
@@ -88,17 +88,15 @@ export function SlidesList({
       setSlides((previous) =>
         sortSlides(previous.map((slide) => (slide.id === row.id ? row : slide))),
       );
-      setNotice({
-        tone: 'success',
-        text: t(row.status === 'paused' ? 'done-paused' : 'done-resumed', {
-          name: row.internalName,
-        }),
-      });
+      setNotice(null);
+      toast.success(
+        t(row.status === 'paused' ? 'done-paused' : 'done-resumed', { name: row.internalName }),
+      );
     },
     [t],
   );
   const stale = useCallback(() => {
-    setNotice({ tone: 'info', text: t('stale') });
+    setNotice(t('stale'));
     void fetchSlides();
   }, [t, fetchSlides]);
 
@@ -114,7 +112,7 @@ export function SlidesList({
   return (
     <div className="flex flex-col gap-4">
       {trulyEmpty ? null : <FilterBar values={filters} onChange={setFilters} />}
-      {notice === null ? null : <Banner tone={notice.tone}>{notice.text}</Banner>}
+      {notice === null ? null : <Banner tone="info">{notice}</Banner>}
       {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
       {load === 'failed' ? (
         <LoadError

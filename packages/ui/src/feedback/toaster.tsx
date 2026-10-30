@@ -4,6 +4,7 @@ import { useEffect, type KeyboardEvent } from 'react';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import {
   TOAST_EXIT_MS,
+  consumeFlash,
   toastStore,
   useToasts,
   type ToastType,
@@ -42,6 +43,11 @@ const TONE: Record<
  */
 export function Toaster({ labels, aboveBottomBar = false }: ToasterProps) {
   const { visible } = useToasts();
+
+  // The outcome of an action that navigated here (`toast.flash`), shown once.
+  useEffect(() => {
+    consumeFlash();
+  }, []);
 
   useEffect(() => {
     const sync = () => toastStore.setHidden(document.hidden);

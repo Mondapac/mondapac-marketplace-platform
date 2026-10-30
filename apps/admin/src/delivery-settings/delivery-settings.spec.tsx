@@ -22,6 +22,7 @@ import {
 } from './form.ts';
 import { SellerMethodsCard } from './seller-methods-card.tsx';
 import type { DeliverySettings, SellerMethods } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode, locale = 'en-AU') => (
@@ -251,7 +252,7 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
     pressInDialog('Confirm and save');
 
-    await waitFor(() => expect(screen.getByText(/Delivery settings saved/)).toBeTruthy());
+    await expectToast(/Delivery settings saved/);
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -408,7 +409,7 @@ describe('the seller delivery methods card', () => {
     );
     pressInDialog('Confirm and save');
 
-    await waitFor(() => expect(screen.getByText(/Delivery methods saved/)).toBeTruthy());
+    await expectToast(/Delivery methods saved/);
     expect(call).toHaveBeenCalledWith(
       'PUT',
       `shipping/admin/sellers/${SELLER}/delivery-methods`,

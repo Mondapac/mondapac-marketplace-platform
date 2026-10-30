@@ -8,6 +8,7 @@ export const FLEET_CODES = [
   'mondapac_drive',
   'uber_direct',
   'zoom2u',
+  'doordash_drive',
   'auspost',
   'fake_test',
 ] as const;

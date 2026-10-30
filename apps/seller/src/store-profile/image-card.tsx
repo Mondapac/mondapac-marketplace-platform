@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, FileButton, ImageSlot } from '@mondapac/ui';
+import { Banner, Button, Card, FileButton, ImageSlot, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -13,7 +13,7 @@ import {
   type StoreProfileView,
 } from './types.ts';
 
-type Status = 'idle' | 'uploading' | 'removing' | 'saved' | 'removed';
+type Status = 'idle' | 'uploading' | 'removing';
 type Preview = 'phone' | 'desktop';
 
 /** The classes of the banner boxes buyers see (packages/ui styles.css): a phone strip and a wide one. */
@@ -55,7 +55,7 @@ export function ImageCard({
   const path = `sellers/store-profile/${kind}`;
 
   // A layout effect, so focus moves in the same commit as the change it follows. A passive effect
-  // ran a moment later, after the status line ("Logo removed.") was already on screen.
+  // ran a moment later, after the toast ("Logo removed.") was already on screen.
   useLayoutEffect(() => {
     const target = focusNext.current;
     if (target === null) return;
@@ -95,7 +95,8 @@ export function ImageCard({
       );
       if (result.ok) {
         onImage(result.body[kind]);
-        setStatus('saved');
+        setStatus('idle');
+        toast.success(t(`store-profile.${kind}.saved`));
       } else if (result.failure.status === 401) {
         window.location.assign('/session-ended');
       } else {
@@ -118,7 +119,8 @@ export function ImageCard({
       onImage(result.body[kind]);
       // The Remove button is gone with the picture: focus moves to the way to choose another.
       focusNext.current = 'choose';
-      setStatus('removed');
+      setStatus('idle');
+      toast.success(t(`store-profile.${kind}.removed`));
     } else if (result.failure.status === 401) {
       window.location.assign('/session-ended');
     } else {
@@ -142,9 +144,7 @@ export function ImageCard({
       ? t('store-profile.image.uploading')
       : status === 'removing'
         ? t('store-profile.image.removing')
-        : status === 'saved' || status === 'removed'
-          ? t(`store-profile.${kind}.${status}`)
-          : null;
+        : null;
 
   return (
     <Card title={t(`store-profile.${kind}.title`)}>
@@ -260,7 +260,7 @@ export function ImageCard({
         </div>
       ) : null}
       {/* Always in the page, so a screen reader hears the text when it is put in. */}
-      <p role="status" className="text-sm text-success-fg empty:sr-only">
+      <p role="status" className="text-sm text-fg-muted empty:sr-only">
         {announced}
       </p>
     </Card>

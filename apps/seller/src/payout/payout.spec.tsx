@@ -10,6 +10,7 @@ import { callApi } from '../api/client.ts';
 import { payoutProblemOf } from './errors.ts';
 import { PayoutAccountView } from './payout-account.tsx';
 import type { PayoutAccount, StripeReturn } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const account = (over: Partial<PayoutAccount> = {}): PayoutAccount => ({
@@ -149,7 +150,7 @@ describe('payout account status', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
     expect(await screen.findByText('Ready for payouts')).toBeTruthy();
-    expect(screen.getByText('Checked just now').getAttribute('role')).toBe('status');
+    await expectToast('Checked just now');
     expect(call).toHaveBeenCalledWith('GET', 'payments/seller/payout-account');
   });
 });

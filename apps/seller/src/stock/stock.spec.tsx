@@ -12,6 +12,7 @@ import { problemOf } from './errors.ts';
 import { addressOf } from './stock-form.tsx';
 import { StockLocations } from './stock-locations.tsx';
 import type { SourcesView, StockFormOptions } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -96,7 +97,7 @@ describe('StockLocations', () => {
       { expectedVersion: 4, name: 'Shed', address: { line1: '2 Test St' }, timeZone: null },
       'csrf',
     );
-    expect(await screen.findByText('Saved.')).toBeTruthy();
+    await expectToast('Saved.');
   });
 
   it('edits a location through its own path', async () => {

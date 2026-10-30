@@ -58,6 +58,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/fleet-selection/fleets/mondapac_drive/reliability',
     'shipping/admin/fleet-selection/fleets/uber_direct/reliability',
     'shipping/admin/fleet-selection/fleets/zoom2u/reliability',
+    'shipping/admin/fleet-selection/fleets/doordash_drive/reliability',
     'shipping/admin/fleet-selection/fleets/auspost/reliability',
     'shipping/admin/fleet-selection/fleets/fake_test/reliability',
     'shipping/admin/fleet-selection/active/instant',

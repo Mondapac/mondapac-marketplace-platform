@@ -269,7 +269,78 @@ export const toast = {
   info: (text: string, options?: ToastOptions) => toastStore.show('info', text, options),
   promise: toastStore.promise,
   dismiss: toastStore.dismiss,
+  /** The outcome of an action that navigates: shown by the Toaster of the page it lands on. */
+  flash: flashToast,
 };
+
+/** The one sessionStorage key a flash toast waits under. */
+export const TOAST_FLASH_KEY = 'mp-toast-flash';
+/** A flash older than this was left by a navigation that never landed: it is dropped. */
+export const TOAST_FLASH_MAX_AGE_MS = 10_000;
+
+type FlashType = Exclude<ToastType, 'loading'>;
+const FLASH_TYPES: readonly string[] = ['success', 'error', 'warning', 'info'];
+
+function flashStorage(): Storage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Keep the outcome of an action that navigates away, to show on the page it lands on. One flash
+ * waits at a time (the last wins) and is dropped after ten seconds. Without sessionStorage
+ * nothing is kept.
+ *
+ * It is read when the Toaster mounts, so it relies on every page rendering its own AppShell (the
+ * panels do). A layout that kept one Toaster across pages would not show it; this package does
+ * not depend on the router, so there is no pathname guard.
+ */
+export function flashToast(
+  type: FlashType,
+  text: string,
+  options: Pick<ToastOptions, 'title' | 'description'> = {},
+) {
+  try {
+    flashStorage()?.setItem(
+      TOAST_FLASH_KEY,
+      JSON.stringify({ type, text, ...options, at: Date.now() }),
+    );
+  } catch {
+    // Storage blocked or full: the outcome is lost, the action itself has happened.
+  }
+}
+
+/** Show the waiting flash toast, if any, and clear it: it is shown once. The Toaster calls this on mount. */
+export function consumeFlash(store: ToastStore = toastStore): string | null {
+  const storage = flashStorage();
+  if (storage === null) return null;
+  try {
+    const raw = storage.getItem(TOAST_FLASH_KEY);
+    if (raw === null) return null;
+    storage.removeItem(TOAST_FLASH_KEY);
+    const value = JSON.parse(raw) as {
+      type?: unknown;
+      text?: unknown;
+      title?: unknown;
+      description?: unknown;
+      at?: unknown;
+    };
+    // No stamp, or an old one: a navigation that never landed left it behind.
+    if (typeof value.at !== 'number' || Date.now() - value.at > TOAST_FLASH_MAX_AGE_MS) return null;
+    if (typeof value.type !== 'string' || !FLASH_TYPES.includes(value.type)) return null;
+    if (typeof value.text !== 'string' || value.text === '') return null;
+    return store.show(value.type as FlashType, value.text, {
+      id: 'flash',
+      ...(typeof value.title === 'string' ? { title: value.title } : {}),
+      ...(typeof value.description === 'string' ? { description: value.description } : {}),
+    });
+  } catch {
+    return null;
+  }
+}
 
 export function useToasts(store: ToastStore = toastStore): ToastSnapshot {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, () => EMPTY);

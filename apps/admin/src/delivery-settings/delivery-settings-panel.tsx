@@ -9,6 +9,7 @@ import {
   Dialog,
   Select,
   TextField,
+  toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
@@ -62,7 +63,7 @@ export function DeliverySettingsPanel({
   const [form, setForm] = useState<SettingsForm>(() => formOf(initial));
   const [invalid, setInvalid] = useState<readonly FormField[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
-  const [notice, setNotice] = useState<'saved' | 'reloaded' | null>(null);
+  const [notice, setNotice] = useState<'reloaded' | null>(null);
   const [pending, setPending] = useState(false);
   const [confirm, setConfirm] = useState<Body | null>(null);
   const busy = useRef(false);
@@ -110,7 +111,7 @@ export function DeliverySettingsPanel({
     );
     if (result.ok) {
       adopt(result.body);
-      setNotice('saved');
+      toast.success(t(`${P}.notice.saved`));
     } else if (result.failure.status === 401) {
       window.location.assign('/session-ended');
     } else {
@@ -137,11 +138,7 @@ export function DeliverySettingsPanel({
   return (
     <form ref={formRef} className="flex flex-col gap-6" onSubmit={submit} noValidate>
       {readOnly ? <Banner tone="info">{t(`${P}.viewer-only`)}</Banner> : null}
-      {notice === null ? null : (
-        <Banner tone={notice === 'saved' ? 'success' : 'attention'}>
-          {t(`${P}.notice.${notice}`)}
-        </Banner>
-      )}
+      {notice === null ? null : <Banner tone="attention">{t(`${P}.notice.${notice}`)}</Banner>}
       {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
       {settings.version === 0 ? <Banner tone="info">{t(`${P}.defaults`)}</Banner> : null}
 
