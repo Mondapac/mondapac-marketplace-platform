@@ -1,6 +1,7 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -18,6 +19,7 @@ import { CARRIER_POLICY } from './application/ports/carrier-policy';
 import { CARRIER_WEBHOOK_SIGNATURE } from './application/ports/carrier-webhook-signature';
 import { DELIVERY_QUOTE_REPOSITORY } from './application/ports/delivery-quote.repository';
 import { FLEET_LEDGER_REPOSITORY } from './application/ports/fleet-ledger.repository';
+import { UBER_WEBHOOK_SIGNATURE } from './application/ports/fleet-webhook-signature';
 import { PICKUP_DIRECTORY } from './application/ports/pickup-directory';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
 import { SHIPPING_POLICY } from './application/ports/shipping-policy';
@@ -32,21 +34,25 @@ import { SetDeliverySettings } from './application/use-cases/set-delivery-settin
 import { SetSellerDeliveryMethods } from './application/use-cases/set-seller-delivery-methods.use-case';
 import { ViewDeliverySettings } from './application/use-cases/view-delivery-settings.use-case';
 import { ViewSellerDeliveryMethods } from './application/use-cases/view-seller-delivery-methods.use-case';
-import { ActivateFleetSelectionModel } from './application/use-cases/activate-fleet-selection-model.use-case';
 import { CreateFleetSelectionModel } from './application/use-cases/create-fleet-selection-model.use-case';
-import { SetFleetReliability } from './application/use-cases/set-fleet-reliability.use-case';
+import { SetFleetSelection } from './application/use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from './application/use-cases/update-fleet-selection-model.use-case';
 import { ViewFleetSelection } from './application/use-cases/view-fleet-selection.use-case';
 import { BookCarrierDelivery } from './application/use-cases/book-carrier-delivery.use-case';
 import { CancelCarrierDelivery } from './application/use-cases/cancel-carrier-delivery.use-case';
+import { CarrierTrackingLinks } from './application/use-cases/carrier-tracking-links.use-case';
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
 import { PickupAvailability } from './application/use-cases/pickup-availability.use-case';
+import { PollFleetStatus } from './application/use-cases/poll-fleet-status.use-case';
+import { ReceiveUberWebhook } from './application/use-cases/receive-uber-webhook.use-case';
 import { ReceiveCarrierWebhook } from './application/use-cases/receive-carrier-webhook.use-case';
 import { SHIPPING_FACADE, SHIPPING_PERMISSIONS } from './contracts';
 import { SHIPPING_AUDIT_ACTIONS } from './domain/audit';
 import { SHIPPING_EVENTS } from './domain/events';
 import { shippingProviders } from './infrastructure/shipping-providers';
+import { pollFleetStatusJob } from './presentation/jobs/poll-fleet-status.job';
+import { UberWebhookController } from './presentation/uber-webhook.controller';
 import { CarrierWebhookController } from './presentation/carrier-webhook.controller';
 import { DeliverySettingsController } from './presentation/delivery-settings.controller';
 import { FleetSelectionController } from './presentation/fleet-selection.controller';
@@ -72,6 +78,7 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['ledger', FLEET_LEDGER_REPOSITORY],
   ['pickups', PICKUP_DIRECTORY],
   ['webhookSignature', CARRIER_WEBHOOK_SIGNATURE],
+  ['uberWebhookSignature', UBER_WEBHOOK_SIGNATURE],
   ['securityEvents', SECURITY_EVENTS],
 ];
 
@@ -110,6 +117,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     DeliveryAreaController,
     CarrierWebhookController,
+    UberWebhookController,
     FleetSelectionController,
     DeliverySettingsController,
   ],
@@ -121,18 +129,23 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('shipping', SHIPPING_EVENTS),
     PersistenceModule.outboxWriterFor('shipping'),
     ...shippingProviders,
+    registerJobsFrom('shipping', [PollFleetStatus], (poll: PollFleetStatus) => [
+      pollFleetStatusJob(poll),
+    ]),
     ...[
       DeliveryArea,
       PickupAvailability,
       BookCarrierDelivery,
       CarrierShipmentQuery,
+      CarrierTrackingLinks,
       CancelCarrierDelivery,
       ReceiveCarrierWebhook,
+      ReceiveUberWebhook,
+      PollFleetStatus,
       ViewFleetSelection,
       CreateFleetSelectionModel,
       UpdateFleetSelectionModel,
-      ActivateFleetSelectionModel,
-      SetFleetReliability,
+      SetFleetSelection,
       ViewDeliverySettings,
       SetDeliverySettings,
       ViewSellerDeliveryMethods,
@@ -152,6 +165,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         BookCarrierDelivery,
         CarrierShipmentQuery,
         CancelCarrierDelivery,
+        CarrierTrackingLinks,
         DeliveryAvailability,
         DeliveryChoice,
         PriceDelivery,
@@ -165,6 +179,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         book: BookCarrierDelivery,
         shipment: CarrierShipmentQuery,
         cancel: CancelCarrierDelivery,
+        trackingLinks: CarrierTrackingLinks,
         availability: DeliveryAvailability,
         choice: DeliveryChoice,
         price: PriceDelivery,
@@ -178,6 +193,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           book,
           shipment,
           cancel,
+          trackingLinks,
           availability,
           choice,
           price,

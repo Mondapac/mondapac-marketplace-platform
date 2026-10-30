@@ -24,6 +24,7 @@ const labels = {
   main: 'Main',
   collapse: 'Collapse sidebar',
   expand: 'Expand sidebar',
+  toasts: { region: 'Action notifications', close: 'Close notification' },
 };
 const tabs = [
   { id: 'a', href: '/', label: 'Home', icon: 'home' as const, active: true },
@@ -360,11 +361,11 @@ describe('team pages', () => {
       '../src/team/row-actions.tsx',
       '../src/team/invite-member-button.tsx',
       '../src/auth/accept-invitation-form.tsx',
-      '../app/(shell)/team/page.tsx',
+      '../app/(shell)/settings/team/page.tsx',
     ]) {
       expect(read(file), file).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
     }
-    const page = read('../app/(shell)/team/page.tsx');
+    const page = read('../app/(shell)/settings/team/page.tsx');
     expect(page).toContain('flex-col gap-2 sm:flex-row');
     expect(page).toContain('min-h-12');
     expect(read('../src/team/role-dialog.tsx')).toContain('<Dialog');
@@ -443,5 +444,32 @@ describe('route states', () => {
       expect(error, app).toContain('<RouteError');
       expect(error, app).toContain('onRetry={reset}');
     }
+  });
+});
+
+describe('settings navigation', () => {
+  const read = (file: string) => readFileSync(join(__dirname, '..', file), 'utf8');
+  const shell = read('src/server/settings-shell.tsx');
+
+  it('shows the sub-navigation column from 1180px and the back link only below it', () => {
+    expect(shell).toContain('min-[1180px]:grid-cols-[12.5rem_minmax(0,1fr)]');
+    expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
+    expect(shell).toMatch(/min-\[1180px\]:hidden[^]*<BackLink href="\/settings"/);
+  });
+
+  it('keeps the sub-navigation inside the viewport and lets the content column shrink', () => {
+    expect(shell).toContain('min-[1180px]:overflow-y-auto');
+    expect(shell).toContain('min-w-0');
+  });
+
+  it('keeps every hub and sub-navigation link tall enough to touch', () => {
+    expect(read('src/settings/settings-hub.tsx')).toContain('min-h-12');
+    expect(read('src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
+  });
+
+  it('puts the hub cards on one column on phones and two from 640px', () => {
+    const hub = read('src/settings/settings-hub.tsx');
+    expect(hub).toContain('grid-cols-1');
+    expect(hub).toContain('sm:grid-cols-2');
   });
 });

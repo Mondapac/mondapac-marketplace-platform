@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Toaster, type ToasterProps } from '../feedback/toaster.tsx';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { SIDEBAR_COLLAPSED, SIDEBAR_COOKIE } from './nav.ts';
 
@@ -26,6 +27,8 @@ export interface AppShellProps {
     /** The sidebar toggle from 760 px, before and after it narrows the sidebar to icons. */
     readonly collapse: string;
     readonly expand: string;
+    /** The toast stack: name of its region and of the close button of a toast. */
+    readonly toasts: ToasterProps['labels'];
   };
   /** The saved sidebar choice (the `SIDEBAR_COOKIE` cookie), so the first paint is right. */
   readonly collapsed?: boolean;
@@ -228,6 +231,7 @@ export function AppShell({
           </button>
         </nav>
       ) : null}
+      <Toaster labels={labels.toasts} aboveBottomBar={hasBar} />
     </div>
   );
 }

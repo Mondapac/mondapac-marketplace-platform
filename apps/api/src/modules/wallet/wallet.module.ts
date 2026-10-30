@@ -19,6 +19,7 @@ import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.re
 import { WALLET_POLICY } from './application/ports/wallet-policy';
 import { WALLET_REPOSITORY } from './application/ports/wallet.repository';
 import { ApproveAdminCredit } from './application/use-cases/approve-admin-credit.use-case';
+import { AdminBalanceOf } from './application/use-cases/admin-balance-of.use-case';
 import { BalanceOf } from './application/use-cases/balance-of.use-case';
 import { CaptureHold } from './application/use-cases/capture-hold.use-case';
 import { ExpireAdminCreditRequests } from './application/use-cases/expire-admin-credit-requests.use-case';
@@ -105,6 +106,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReleaseHold,
       BalanceOf,
       OwnBalanceOf,
+      AdminBalanceOf,
       ExpireWalletCredit,
       ViewMyWallet,
       ViewMyHistory,
@@ -119,7 +121,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: WALLET_FACADE,
-      inject: [GrantCredit, PlaceHold, CaptureHold, ReleaseHold, BalanceOf, OwnBalanceOf],
+      inject: [
+        GrantCredit,
+        PlaceHold,
+        CaptureHold,
+        ReleaseHold,
+        BalanceOf,
+        OwnBalanceOf,
+        AdminBalanceOf,
+      ],
       useFactory: (
         grant: GrantCredit,
         place: PlaceHold,
@@ -127,7 +137,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         release: ReleaseHold,
         balance: BalanceOf,
         ownBalance: OwnBalanceOf,
-      ) => new WalletFacadeImplementation(grant, place, capture, release, balance, ownBalance),
+        adminBalance: AdminBalanceOf,
+      ) =>
+        new WalletFacadeImplementation(
+          grant,
+          place,
+          capture,
+          release,
+          balance,
+          ownBalance,
+          adminBalance,
+        ),
     },
     registerJobsFrom(
       'wallet',

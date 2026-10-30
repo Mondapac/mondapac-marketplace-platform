@@ -1,4 +1,5 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   AllowedProductTypesSetting,
@@ -7,6 +8,9 @@ import type {
 } from '../application/ports/selling-facts.repository';
 
 const MAX_IDS = 100;
+
+/** The revision statuses a revision can have once it was approved (a later one supersedes it). */
+const ONCE_APPROVED = ['approved', 'superseded'];
 
 /**
  * {@link SellingFactsRepository} on `sellers.seller_files`, `business_file_revisions`,
@@ -88,5 +92,24 @@ export class PrismaSellingFactsRepository implements SellingFactsRepository {
       select: { blogEnabled: true },
     });
     return row === null ? null : row.blogEnabled;
+  }
+
+  async firstApprovedAt(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Temporal.Instant | null> {
+    // A superseded revision was approved before a later one replaced it, so it still dates the
+    // seller's start; a rejected or withdrawn one never does.
+    const first = await this.prisma.tx(market).sellersBusinessFileRevision.aggregate({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        status: { in: ONCE_APPROVED },
+        decidedAt: { not: null },
+      },
+      _min: { decidedAt: true },
+    });
+    const at = first._min.decidedAt;
+    return at === null ? null : Temporal.Instant.fromEpochMilliseconds(at.getTime());
   }
 }

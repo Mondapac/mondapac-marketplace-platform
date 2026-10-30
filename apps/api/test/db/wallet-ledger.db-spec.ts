@@ -131,8 +131,22 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       (error: { code?: string }) => error.code,
     );
   const key = (label: string) => `${label}-${code}-${(n += 1)}-db`;
-  const turn = (status: string, reasonCode?: string) =>
-    new SetWalletStatus(gate, deps).execute(adminCtx, { status, reasonCode });
+  /** What a fresh admin tab sees: 0 for no row or the seeded "never set" row, else the column. */
+  const switchVersion = async () => {
+    const [row] = await rows(
+      `SELECT version, updated_by_account_id FROM wallet.market_settings WHERE market_id = $1`,
+      [market.marketId],
+    );
+    return row === undefined || row.updated_by_account_id === '00000000-0000-0000-0000-000000000000'
+      ? 0
+      : Number(row.version);
+  };
+  const turn = async (status: string, reasonCode?: string, expectedVersion?: number) =>
+    new SetWalletStatus(gate, deps).execute(adminCtx, {
+      status,
+      reasonCode,
+      expectedVersion: expectedVersion ?? (await switchVersion()),
+    });
   const grant = (
     customerAccountId: Id<'Account'>,
     minor: bigint,
@@ -1844,9 +1858,15 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await new ViewMyWallet(gate, deps).execute(customerCtx(customer), {})).toEqual(
         err({ code: 'wallet.disabled' }),
       );
-      // Two first PUTs at once queue on the seeded row; neither fails.
-      const firstPuts = await Promise.all([turn('active'), turn('active')]);
-      expect(firstPuts.every((r) => r.ok)).toBe(true);
+      // Two first PUTs at once queue on the seeded row; the first commits version 1 and the second,
+      // which saw version 0, is a stale save: wallet.settings-conflict, never a failure or a second row.
+      const firstPuts = await Promise.all([
+        turn('active', undefined, 0),
+        turn('active', undefined, 0),
+      ]);
+      expect(firstPuts.filter((r) => r.ok)).toHaveLength(1);
+      expect(firstPuts.filter((r) => !r.ok)).toEqual([err({ code: 'wallet.settings-conflict' })]);
+      expect(await switchVersion()).toBe(1);
       expect((await turn('active')).ok).toBe(true);
       expect((await turn('off')).ok).toBe(true);
       expect(await grant(customer, 100n)).toEqual(err({ code: 'wallet.disabled' }));

@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, CARD_TABLE, type BadgeTone } from '@mondapac/ui';
+import { Badge, Banner, Button, CARD_TABLE, type BadgeTone, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -44,7 +44,6 @@ export function SlideVersions({
   const router = useRouter();
   const [detail, setDetail] = useState<SlideDetail>(slide);
   const [restoring, setRestoring] = useState<{ id: string; versionNo: number } | null>(null);
-  const [done, setDone] = useState<string | null>(null);
   const archived = detail.status === 'archived';
   const editable = canEdit && !archived;
 
@@ -60,15 +59,11 @@ export function SlideVersions({
           gates: { edit: canEdit, pause: canPause, publish: canPublish },
           csrfToken,
           zone,
-          onChange: (next) => {
-            setDone(null);
-            setDetail(next);
-          },
+          onChange: setDetail,
         }}
       />
       {!canEdit ? <Banner tone="info">{t('read-only')}</Banner> : null}
       {canEdit && archived ? <Banner tone="info">{t('archived')}</Banner> : null}
-      {done === null ? null : <Banner tone="success">{done}</Banner>}
       {detail.versions.length === 0 ? (
         <p className="rounded-lg border border-line bg-surface p-6 text-sm text-fg-muted">
           {t('none')}
@@ -172,7 +167,7 @@ export function SlideVersions({
             const from = restoring?.versionNo ?? 0;
             setRestoring(null);
             setDetail(next);
-            setDone(t('done', { from, to: next.draft?.versionNo ?? 0 }));
+            toast.success(t('done', { from, to: next.draft?.versionNo ?? 0 }));
           }}
           onStale={() => router.refresh()}
         />

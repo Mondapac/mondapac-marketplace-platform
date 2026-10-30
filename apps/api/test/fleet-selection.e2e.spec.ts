@@ -7,9 +7,8 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
-import { ActivateFleetSelectionModel } from '../src/modules/shipping/application/use-cases/activate-fleet-selection-model.use-case';
 import { CreateFleetSelectionModel } from '../src/modules/shipping/application/use-cases/create-fleet-selection-model.use-case';
-import { SetFleetReliability } from '../src/modules/shipping/application/use-cases/set-fleet-reliability.use-case';
+import { SetFleetSelection } from '../src/modules/shipping/application/use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from '../src/modules/shipping/application/use-cases/update-fleet-selection-model.use-case';
 import { ViewFleetSelection } from '../src/modules/shipping/application/use-cases/view-fleet-selection.use-case';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -65,10 +64,8 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
           .useValue(stub('create'))
           .overrideProvider(UpdateFleetSelectionModel)
           .useValue(stub('update'))
-          .overrideProvider(ActivateFleetSelectionModel)
-          .useValue(stub('activate'))
-          .overrideProvider(SetFleetReliability)
-          .useValue(stub('reliability')),
+          .overrideProvider(SetFleetSelection)
+          .useValue(stub('save')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'ship-seed-0001'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -171,6 +168,7 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     updatedAt: START,
   };
   const selection = {
+    version: 4,
     models: [model],
     active: { instant: MODEL, same_day: null, scheduled: null },
     defaultOrder: ['mondapac_drive', 'uber_direct'],
@@ -204,16 +202,22 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
 
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
+    expect((res.body as { version: number }).version).toBe(4);
     expect(body.active).toEqual({ instant: MODEL, same_day: null, scheduled: null });
     expect(body.models[0]).toMatchObject({ id: MODEL, version: 1, rule: { kind: 'cheapest' } });
     expect(body.fleets[0]).toMatchObject({ fleet: 'mondapac_drive', reliability: 90 });
     expect(calls).toEqual([{ name: 'view', input: {} }]);
   });
 
-  it('creates, edits, activates and scores, passing the closed body to each use case', async () => {
+  it('creates and edits models, and saves the page in one batch, passing the closed body to each use case', async () => {
     await boot();
     const session = admin();
     const rule = { kind: 'fixed_priority', order: ['mondapac_drive', 'zoom2u'] };
+    const page = {
+      expectedVersion: 4,
+      active: { instant: MODEL, same_day: null, scheduled: null },
+      reliability: { zoom2u: 70, auspost: null },
+    };
 
     next = ok(model);
     const created = await call('post', 'admin', `${BASE}/models`, session, { name: 'A', rule });
@@ -225,47 +229,39 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     });
     expect(updated.status).toBe(200);
     next = ok(selection);
-    const activated = await call('put', 'admin', `${BASE}/active/same_day`, session, {
-      modelId: MODEL,
-    });
-    expect(activated.status).toBe(200);
-    const cleared = await call('put', 'admin', `${BASE}/active/same_day`, session, {
-      modelId: null,
-    });
-    expect(cleared.status).toBe(200);
-    const scored = await call('put', 'admin', `${BASE}/fleets/zoom2u/reliability`, session, {
-      score: 70,
-    });
-    expect(scored.status).toBe(200);
+    const saved = await call('put', 'admin', BASE, session, page);
+    expect(saved.status).toBe(200);
+    expect((saved.body as { version: number }).version).toBe(4);
+    expect(saved.headers['cache-control']).toBe('no-store');
 
     expect(calls).toEqual([
       { name: 'create', input: { name: 'A', rule } },
       { name: 'update', input: { modelId: MODEL, name: 'B', rule, expectedVersion: 1 } },
-      { name: 'activate', input: { method: 'same_day', modelId: MODEL } },
-      { name: 'activate', input: { method: 'same_day', modelId: undefined } },
-      { name: 'reliability', input: { fleet: 'zoom2u', score: 70 } },
+      { name: 'save', input: page },
     ]);
+  });
+
+  it('no longer serves the per-method and per-fleet writes', async () => {
+    await boot();
+    const session = admin();
+
+    expect(
+      (await call('put', 'admin', `${BASE}/active/same_day`, session, { modelId: null })).status,
+    ).toBe(404);
+    expect(
+      (await call('put', 'admin', `${BASE}/fleets/zoom2u/reliability`, session, { score: 1 }))
+        .status,
+    ).toBe(404);
+    expect(calls).toEqual([]);
   });
 
   it('refuses a write without CSRF, with a stray field and not as JSON', async () => {
     await boot();
     const session = admin();
+    const page = { expectedVersion: 0, active: {}, reliability: {} };
 
-    expect(
-      (
-        await call(
-          'put',
-          'admin',
-          `${BASE}/fleets/zoom2u/reliability`,
-          { cookie: session.cookie },
-          { score: 1 },
-        )
-      ).status,
-    ).toBe(403);
-    const extra = await call('put', 'admin', `${BASE}/fleets/zoom2u/reliability`, session, {
-      score: 1,
-      fleet: 'x',
-    });
+    expect((await call('put', 'admin', BASE, { cookie: session.cookie }, page)).status).toBe(403);
+    const extra = await call('put', 'admin', BASE, session, { ...page, fleet: 'x' });
     expect(extra.status).toBe(400);
     expect(extra.body).toMatchObject({
       details: { fields: [{ path: 'fleet', code: 'unknown-field' }] },
@@ -277,6 +273,24 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
       .send('x');
     expect(text.status).toBe(415);
     expect(calls).toEqual([]);
+  });
+
+  it('maps a stale page to 409 shipping.fleet-selection-conflict and a missing model to 404', async () => {
+    await boot();
+    const session = admin();
+    const save = () =>
+      call('put', 'admin', BASE, session, { expectedVersion: 3, active: {}, reliability: {} });
+
+    next = err({ code: 'shipping.fleet-selection-conflict' });
+    const stale = await save();
+    expect(stale.status).toBe(409);
+    expect(stale.body).toEqual({ statusCode: 409, code: 'shipping.fleet-selection-conflict' });
+    next = err({ code: 'shipping.fleet-model-not-found' });
+    expect((await save()).status).toBe(404);
+    next = err({ code: 'validation.failed', fields: [{ path: 'active', code: 'format' }] });
+    expect((await save()).status).toBe(400);
+    next = err({ code: 'access.denied' });
+    expect((await save()).status).toBe(403);
   });
 
   it('maps invalid, unknown model, taken name, stale version, denied and unavailable', async () => {

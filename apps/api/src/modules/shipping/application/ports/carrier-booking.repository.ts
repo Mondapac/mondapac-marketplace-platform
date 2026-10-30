@@ -13,6 +13,26 @@ export interface CarrierBookingRepository {
     sellerOrderId: Id<'SellerOrder'>,
   ): Promise<CarrierBooking | null>;
 
+  /** The booking a fleet holds under its own id of the delivery (a webhook names that id). */
+  findByCarrierReference(
+    market: MarketContext,
+    fleet: FleetCode,
+    carrierReference: string,
+  ): Promise<CarrierBooking | null>;
+
+  /**
+   * Up to `limit` bookings of `fleet` that are not final (booked or picked up), the ones the poll
+   * asked least recently first (never asked before all).
+   */
+  listOpen(market: MarketContext, fleet: FleetCode, limit: number): Promise<CarrierBooking[]>;
+
+  /** Notes that the poll asked the fleet about a booking; no version change, no event. */
+  markPolled(
+    market: MarketContext,
+    bookingId: Id<'CarrierBooking'>,
+    at: Temporal.Instant,
+  ): Promise<void>;
+
   /** Stores a new booking; `exists` when the seller order already has one (nothing changes). */
   insert(market: MarketContext, booking: CarrierBooking): Promise<'inserted' | 'exists'>;
 

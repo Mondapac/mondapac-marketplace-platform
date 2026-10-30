@@ -2,7 +2,7 @@ import type { Money } from '@mondapac/shared-kernel';
 import type { CarrierMethod } from './booking-service';
 
 // Fleets (delivery models, package 3). A fleet is a delivery provider the platform can book:
-// Mondapac Drive (our own), Uber Direct, Zoom2u, Australia Post, and a deterministic fake for
+// Mondapac Drive (our own), Uber Direct, Zoom2u, DoorDash Drive, Australia Post, and a deterministic fake for
 // tests. The seller never chooses one: the router picks per seller order from the buyer's method,
 // what each fleet declares it can carry, and the admin's active selection model. Pure rules only.
 
@@ -11,6 +11,7 @@ export const FLEET_CODES = [
   'mondapac_drive',
   'uber_direct',
   'zoom2u',
+  'doordash_drive',
   'auspost',
   'fake_test',
 ] as const;
@@ -24,15 +25,23 @@ export const OWN_FLEET: FleetCode = 'mondapac_drive';
 
 /**
  * The order used when no model is active for a method, and the last tie-break: own fleet first,
- * then Uber Direct, Zoom2u, Australia Post. The fake never outranks a real fleet.
+ * then Uber Direct, Zoom2u, DoorDash Drive, Australia Post. The fake never outranks a real fleet.
  */
 export const DEFAULT_FLEET_ORDER: readonly FleetCode[] = [
   'mondapac_drive',
   'uber_direct',
   'zoom2u',
+  'doordash_drive',
   'auspost',
   'fake_test',
 ];
+
+/**
+ * The fleets whose delivery status the platform polls because they send no webhook it can verify
+ * (Zoom2u: no signed webhook is known; Australia Post: none). Uber Direct and Mondapac Drive
+ * push signed webhooks and are not polled.
+ */
+export const POLLED_FLEETS: readonly FleetCode[] = ['zoom2u', 'auspost'];
 
 export const TEMPERATURES = ['ambient', 'chilled', 'frozen'] as const;
 export type Temperature = (typeof TEMPERATURES)[number];

@@ -27,7 +27,6 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PROMOTIONS_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigPromotionsPolicy } from '../infrastructure/config-promotions-policy';
-import { UnknownPriceHistory, UnknownSellerActivity } from '../infrastructure/unavailable-adapters';
 import { PromotionsFacadeImplementation } from '../presentation/promotions.facade';
 import type { PromotionsDependencies } from './promotions-dependencies';
 import { setOptIn, decideReview } from './review-flow';
@@ -78,6 +77,10 @@ const SELLER_2 = id<'Seller'>(0x5e2);
 const SELLER_ACCOUNT = id<'Account'>(0xa1);
 const SELLER_2_ACCOUNT = id<'Account'>(0xa2);
 const product = (n: number) => id<'Product'>(0x1000 + n);
+const unit = (n: number) => ({
+  offerId: id<'Offer'>(0x2000 + n),
+  variantId: id<'Variant'>(0x3000 + n),
+});
 
 const ACTIONS = new Set<string>(PROMOTIONS_AUDIT_ACTIONS.map((a) => a.action));
 
@@ -455,8 +458,8 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       expect(fresh.ok && fresh.value.status).toBe('PENDING_APPROVAL');
       expect([...reviewQueue.entries.values()][0]?.reason).toBe('NEW_SELLER');
 
-      // The shipped adapter knows nothing: every seller is treated as new (fail closed).
-      deps = { ...deps, sellerActivity: new UnknownSellerActivity() };
+      // An unknown age (never approved, or the read failed) is treated as new (fail closed).
+      deps = { ...deps, sellerActivity: { activeSince: () => Promise.resolve(null) } };
       const unknown = await make(CreateOwnPromotion).execute(seller(), sale());
       expect(unknown.ok && unknown.value.status).toBe('PENDING_APPROVAL');
     });
@@ -802,9 +805,9 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
   describe('the was-price check', () => {
     it('is fail-closed while no price history exists', async () => {
       await switchOn();
-      deps = { ...deps, priceHistory: new UnknownPriceHistory() };
+      deps = { ...deps, priceHistory: { daysSoldAtPrice: () => Promise.resolve(null) } };
       const result = await make(CheckWasPrice).execute(anonymous, {
-        productId: product(1),
+        ...unit(1),
         price: { amountMinor: 10000n, currency },
       });
       expect(result).toEqual({ ok: true, value: { eligible: false } });
@@ -814,7 +817,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       await switchOn();
       const ask = () =>
         make(CheckWasPrice).execute(anonymous, {
-          productId: product(1),
+          ...unit(1),
           price: { amountMinor: 10000n, currency },
         });
       history.days = rules.wasPrice.minDaysAtPrice - 1;

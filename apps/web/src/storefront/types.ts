@@ -687,6 +687,8 @@ export interface OrderPart {
   readonly note?: string;
   /** Set for a pickup part that is ready and not collected yet. */
   readonly pickup?: PickupCode;
+  /** The delivery fleet's tracking page, when it gave one. Shown only if it is an https URL. */
+  readonly trackingUrl?: string;
   readonly lines: readonly OrderLine[];
 }
 

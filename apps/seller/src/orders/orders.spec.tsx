@@ -15,6 +15,7 @@ import { orderProblemOf } from './errors.ts';
 import { OrderDetail } from './order-detail.tsx';
 import { SellerOrders } from './seller-orders.tsx';
 import type { OrderLineView, SellerOrderPage, SellerOrderView } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -461,7 +462,7 @@ describe('Pickup handover', () => {
     mountDetail(readyPickup());
     type('0427');
     fireEvent.click(screen.getByRole('button', { name: 'Confirm pickup' }));
-    await waitFor(() => expect(screen.getByText(/Handed over to the customer/)).toBeTruthy());
+    await expectToast(/Handed over to the customer/);
     expect(call).toHaveBeenCalledWith(
       'POST',
       'ordering/seller/orders/0190a000-0000-7000-8000-0000000000a1/confirm-pickup',

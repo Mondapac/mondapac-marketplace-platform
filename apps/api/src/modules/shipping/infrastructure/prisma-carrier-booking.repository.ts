@@ -19,6 +19,9 @@ interface Row {
   readonly progress: string;
   readonly carrierStatus: string;
   readonly version: number;
+  readonly trackingUrl: string | null;
+  readonly podRecordedAt: Date | null;
+  readonly polledAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -34,6 +37,9 @@ const toBooking = (row: Row): CarrierBooking => ({
   progress: row.progress as CarrierProgress,
   carrierStatus: row.carrierStatus,
   version: row.version,
+  trackingUrl: row.trackingUrl,
+  podRecordedAt: row.podRecordedAt === null ? null : toInstant(row.podRecordedAt),
+  polledAt: row.polledAt === null ? null : toInstant(row.polledAt),
   createdAt: toInstant(row.createdAt),
   updatedAt: toInstant(row.updatedAt),
 });
@@ -52,6 +58,29 @@ export class PrismaCarrierBookingRepository implements CarrierBookingRepository 
     return row === null ? null : toBooking(row);
   }
 
+  async findByCarrierReference(market: MarketContext, fleet: FleetCode, carrierReference: string) {
+    const row = await this.prisma.tx(market).shippingCarrierBooking.findFirst({
+      where: { marketId: market.marketId, fleet, carrierReference },
+    });
+    return row === null ? null : toBooking(row);
+  }
+
+  async listOpen(market: MarketContext, fleet: FleetCode, limit: number) {
+    const rows = await this.prisma.tx(market).shippingCarrierBooking.findMany({
+      where: { marketId: market.marketId, fleet, progress: { in: ['booked', 'picked-up'] } },
+      orderBy: [{ polledAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toBooking);
+  }
+
+  async markPolled(market: MarketContext, bookingId: Id<'CarrierBooking'>, at: Temporal.Instant) {
+    await this.prisma.tx(market).shippingCarrierBooking.updateMany({
+      where: { marketId: market.marketId, id: bookingId },
+      data: { polledAt: toDate(at) },
+    });
+  }
+
   async insert(market: MarketContext, booking: CarrierBooking): Promise<'inserted' | 'exists'> {
     const created = await this.prisma.tx(market).shippingCarrierBooking.createMany({
       data: [
@@ -67,6 +96,9 @@ export class PrismaCarrierBookingRepository implements CarrierBookingRepository 
           progress: booking.progress,
           carrierStatus: booking.carrierStatus,
           version: booking.version,
+          trackingUrl: booking.trackingUrl,
+          podRecordedAt: booking.podRecordedAt === null ? null : toDate(booking.podRecordedAt),
+          polledAt: booking.polledAt === null ? null : toDate(booking.polledAt),
           createdAt: toDate(booking.createdAt),
           updatedAt: toDate(booking.updatedAt),
         },
@@ -87,6 +119,7 @@ export class PrismaCarrierBookingRepository implements CarrierBookingRepository 
         progress: booking.progress,
         carrierStatus: booking.carrierStatus,
         version: booking.version,
+        podRecordedAt: booking.podRecordedAt === null ? null : toDate(booking.podRecordedAt),
         updatedAt: toDate(booking.updatedAt),
       },
     });

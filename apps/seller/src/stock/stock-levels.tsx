@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, FieldAction, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, FieldAction, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -42,7 +42,6 @@ function Cell({
   const [text, setText] = useState(cell === undefined ? '' : String(cell.onHand));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   const readOnly = !canEdit || cell?.retired === true;
   const label = t('stock.levels.on-hand');
   const help = t('stock.levels.held', { count: cell?.held ?? 0 });
@@ -57,7 +56,6 @@ function Cell({
     }
     setPending(true);
     setError(null);
-    setDone(false);
     const result = await callApi<StockSet>(
       'PUT',
       `inventory/seller/offers/${offerId}/variants/${variantId}/sources/${source.id}/stock`,
@@ -77,7 +75,7 @@ function Cell({
     }
     setSaved({ onHand: result.body.onHand, version: result.body.version });
     setText(String(result.body.onHand));
-    setDone(true);
+    toast.success(t('stock.levels.saved'));
   }
 
   if (readOnly) {
@@ -105,7 +103,6 @@ function Cell({
             error={error ?? undefined}
             onChange={(event) => {
               setText(event.target.value);
-              setDone(false);
             }}
           />
         </div>
@@ -122,7 +119,6 @@ function Cell({
       </div>
       {/* Under the whole row, so the field and Save keep one baseline. */}
       <span className="text-sm text-fg-muted">{help}</span>
-      {done ? <span className="text-sm text-fg-muted">{t('stock.levels.saved')}</span> : null}
     </form>
   );
 }
@@ -146,7 +142,7 @@ export function StockLevels({
     return (
       <Banner tone="attention">
         <p>{t('stock.levels.no-locations')}</p>
-        <a className="font-medium text-link underline" href="/stock-locations">
+        <a className="font-medium text-link underline" href="/settings/stock-locations">
           {t('stock.title')}
         </a>
       </Banner>

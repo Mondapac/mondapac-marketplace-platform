@@ -13,6 +13,7 @@ import { levelsProblemOf } from './levels-errors.ts';
 import type { StockLevelsView } from './levels-types.ts';
 import { onHandOf, StockLevels } from './stock-levels.tsx';
 import type { SourceView } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const source = (id: string, name: string): SourceView => ({
@@ -68,7 +69,7 @@ describe('StockLevels', () => {
       { onHand: 20, expectedVersion: 3 },
       'csrf',
     );
-    expect(await screen.findByText('Saved.')).toBeTruthy();
+    await expectToast('Saved.');
     fireEvent.change(input, { target: { value: '21' } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0] as HTMLElement);
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));

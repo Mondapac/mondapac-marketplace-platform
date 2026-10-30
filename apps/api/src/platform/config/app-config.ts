@@ -174,6 +174,17 @@ const envSchema = z.object({
       'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
     )
     .optional(),
+  // Phase 6 package 5e: the signing secret of Uber Direct's delivery status webhook, as
+  // MARKET=secret pairs separated by commas (each Market at most once and only hosted ones). A
+  // Market without it has the Uber webhook answer 503 (Uber retries). A server secret, never
+  // echoed; it must differ from the OAuth client secret.
+  UBER_DIRECT_WEBHOOK_SECRET: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
+      'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
   // Phase 6 package 5c, the external fleet Zoom2u: its API key (a bearer token) as MARKET=key
   // pairs separated by commas (each Market at most once and only hosted ones). A Market without
   // it has Zoom2u off, whatever its `shipping.zoom2u.enabled` says. A server secret, never
@@ -183,6 +194,43 @@ const envSchema = z.object({
     .regex(
       new RegExp(`^${MARKET_VALUE(ZOOM2U_KEY)}(,${MARKET_VALUE(ZOOM2U_KEY)})*$`),
       'must be MARKET=key pairs separated by commas (a key is 20 to 500 of A-Z a-z 0-9 . _ ~ + / -)',
+    )
+    .optional(),
+  // The external fleet DoorDash Drive: its developer id, signing key id and signing secret
+  // (base64url, decoded to the HMAC key of the per-request JWT), each as MARKET=value pairs
+  // separated by commas (each Market at most once and only hosted ones). A Market without all
+  // three has DoorDash Drive off, whatever its `shipping.doordashDrive.enabled` says. Server
+  // secrets, never echoed; checked in parseMarketValues.
+  DOORDASH_DEVELOPER_ID: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(FLEET_ID)}(,${MARKET_VALUE(FLEET_ID)})*$`),
+      'must be MARKET=id pairs separated by commas (an id is 8 to 100 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  DOORDASH_KEY_ID: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(FLEET_ID)}(,${MARKET_VALUE(FLEET_ID)})*$`),
+      'must be MARKET=id pairs separated by commas (an id is 8 to 100 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  DOORDASH_SIGNING_SECRET: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
+      'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -, base64url)',
+    )
+    // The secret is the HMAC key once base64url-decoded, and decoding is lenient: a truncated or
+    // mis-pasted value would give a different key and a 401 on every call. Each must re-encode
+    // to exactly itself.
+    .refine(
+      (value) =>
+        value.split(',').every((pair) => {
+          const secret = pair.slice(pair.indexOf('=') + 1);
+          return Buffer.from(secret, 'base64url').toString('base64url') === secret;
+        }),
+      'each secret must be canonical base64url (it looks truncated or mis-pasted)',
     )
     .optional(),
   // Phase 6 package 5d, the external fleet Australia Post: its API key, API password and account
@@ -399,6 +447,8 @@ export interface AppConfig {
     customerIds: Readonly<Record<string, string>>;
     clientIds: Readonly<Record<string, string>>;
     clientSecrets: Readonly<Record<string, string>>;
+    /** The signing secret of the status webhook (`UBER_DIRECT_WEBHOOK_SECRET`). */
+    webhookSecrets: Readonly<Record<string, string>>;
   }>;
   /**
    * The Zoom2u API key of each hosted Market (`ZOOM2U_API_KEY`). Holds secrets: read by
@@ -406,6 +456,16 @@ export interface AppConfig {
    */
   readonly zoom2u: Readonly<{
     apiKeys: Readonly<Record<string, string>>;
+  }>;
+  /**
+   * The DoorDash Drive credentials of each hosted Market (`DOORDASH_DEVELOPER_ID`,
+   * `DOORDASH_KEY_ID`, `DOORDASH_SIGNING_SECRET`). Holds secrets: read by shipping's DoorDash
+   * Drive adapter alone.
+   */
+  readonly doordashDrive: Readonly<{
+    developerIds: Readonly<Record<string, string>>;
+    keyIds: Readonly<Record<string, string>>;
+    signingSecrets: Readonly<Record<string, string>>;
   }>;
   /**
    * The Australia Post credentials of each hosted Market (`AUSPOST_API_KEY`,
@@ -656,11 +716,41 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
   const uberCustomers = uberValues('UBER_DIRECT_CUSTOMER_ID');
   const uberClients = uberValues('UBER_DIRECT_CLIENT_ID');
   const uberSecrets = uberValues('UBER_DIRECT_CLIENT_SECRET');
-  issues.push(...uberCustomers.issues, ...uberClients.issues, ...uberSecrets.issues);
+  const uberWebhook = parsed.success
+    ? parseMarketValues(
+        parsed.data.UBER_DIRECT_WEBHOOK_SECRET,
+        parsed.data.HOSTED_MARKETS,
+        'UBER_DIRECT_WEBHOOK_SECRET',
+      )
+    : { values: {}, issues: [] };
+  issues.push(
+    ...uberCustomers.issues,
+    ...uberClients.issues,
+    ...uberSecrets.issues,
+    ...uberWebhook.issues,
+  );
+  // The client secret goes out with every call; the webhook secret proves Uber's events.
+  for (const [market, secret] of Object.entries(uberWebhook.values)) {
+    if (uberSecrets.values[market] === secret) {
+      issues.push(
+        `UBER_DIRECT_WEBHOOK_SECRET: ${market} must differ from UBER_DIRECT_CLIENT_SECRET`,
+      );
+    }
+  }
   const zoom2uKeys = parsed.success
     ? parseMarketValues(parsed.data.ZOOM2U_API_KEY, parsed.data.HOSTED_MARKETS, 'ZOOM2U_API_KEY')
     : { values: {}, issues: [] };
   issues.push(...zoom2uKeys.issues);
+  const doordashValues = (
+    variable: 'DOORDASH_DEVELOPER_ID' | 'DOORDASH_KEY_ID' | 'DOORDASH_SIGNING_SECRET',
+  ) =>
+    parsed.success
+      ? parseMarketValues(parsed.data[variable], parsed.data.HOSTED_MARKETS, variable)
+      : { values: {}, issues: [] };
+  const doordashDevelopers = doordashValues('DOORDASH_DEVELOPER_ID');
+  const doordashKeys = doordashValues('DOORDASH_KEY_ID');
+  const doordashSecrets = doordashValues('DOORDASH_SIGNING_SECRET');
+  issues.push(...doordashDevelopers.issues, ...doordashKeys.issues, ...doordashSecrets.issues);
   const auspostValues = (
     variable: 'AUSPOST_API_KEY' | 'AUSPOST_API_PASSWORD' | 'AUSPOST_ACCOUNT_NUMBER',
   ) =>
@@ -721,8 +811,14 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       customerIds: uberCustomers.values,
       clientIds: uberClients.values,
       clientSecrets: uberSecrets.values,
+      webhookSecrets: uberWebhook.values,
     }),
     zoom2u: Object.freeze({ apiKeys: zoom2uKeys.values }),
+    doordashDrive: Object.freeze({
+      developerIds: doordashDevelopers.values,
+      keyIds: doordashKeys.values,
+      signingSecrets: doordashSecrets.values,
+    }),
     auspost: Object.freeze({
       apiKeys: auspostKeys.values,
       apiPasswords: auspostPasswords.values,

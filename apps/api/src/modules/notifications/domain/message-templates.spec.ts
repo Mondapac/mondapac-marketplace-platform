@@ -50,6 +50,11 @@ describe('message templates', () => {
         '',
       ].join('\n'),
     );
+    expect(
+      orderShippedMail({ ...base, trackingRef: null, trackingUrl: 'https://t.example/x' }).text,
+    ).toContain(
+      'Carrier: Australia Post\nTrack your delivery: https://t.example/x\n\nView your order',
+    );
     expect(orderShippedMail({ ...base, trackingRef: null }).text).toContain(
       'Carrier: Australia Post\n\nView your order',
     );

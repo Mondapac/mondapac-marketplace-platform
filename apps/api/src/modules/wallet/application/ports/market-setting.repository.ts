@@ -6,6 +6,8 @@ export interface MarketSettingRecord {
   readonly reason: WalletStatusReason | null;
   readonly updatedAt: Temporal.Instant;
   readonly updatedBy: Id<'Account'>;
+  /** Starts at 1 with the first real change; the seeded or missing row reads as 0 (no record). */
+  readonly version: number;
 }
 
 /** The runtime switch of the wallet (`wallet.market_settings`): one row per Market, none means `off`. */

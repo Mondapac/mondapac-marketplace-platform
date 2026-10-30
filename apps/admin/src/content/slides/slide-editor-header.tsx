@@ -1,8 +1,7 @@
 'use client';
 
-import { BackLink, Badge, Banner, Tabs } from '@mondapac/ui';
+import { BackLink, Badge, Banner, Tabs, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
 import { SlideHeaderActions } from './slide-actions.tsx';
 import { STATUS_TONE } from './slide-labels.tsx';
 import {
@@ -44,7 +43,6 @@ export function SlideEditorHeader({
 }) {
   const t = useTranslations('content.slides.editor');
   const tstatus = useTranslations('content.slides.status');
-  const [done, setDone] = useState<string | null>(null);
   const status = slide?.status ?? null;
   return (
     <>
@@ -95,11 +93,8 @@ export function SlideEditorHeader({
             zone={commands.zone}
             unsaved={commands.unsaved ?? false}
             startReview={commands.startReview ?? false}
-            onChange={(detail) => {
-              setDone(null);
-              commands.onChange(detail);
-            }}
-            onDone={setDone}
+            onChange={commands.onChange}
+            onDone={(message) => toast.success(message)}
           />
         )}
       </div>
@@ -116,7 +111,6 @@ export function SlideEditorHeader({
               ]
         }
       />
-      {done === null ? null : <Banner tone="success">{done}</Banner>}
       {slide !== null && slide.pending && slide.status !== 'archived' ? (
         <Banner tone="info" title={t('pending-title')}>
           {t('pending-body')}

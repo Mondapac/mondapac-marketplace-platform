@@ -1,6 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import { CARRIER_METHODS } from '../domain/booking-service';
+import { CARRIER_METHODS, type CarrierMethod } from '../domain/booking-service';
 import {
   auditCode,
   FleetModelActivated,
@@ -8,7 +8,7 @@ import {
   FleetModelEdited,
   FleetReliabilitySet,
 } from '../domain/audit';
-import { DEFAULT_FLEET_ORDER, FLEET_CODES, isFleetCode } from '../domain/fleet';
+import { DEFAULT_FLEET_ORDER, FLEET_CODES, isFleetCode, type FleetCode } from '../domain/fleet';
 import {
   DEFAULT_RELIABILITY,
   parseMethod,
@@ -27,11 +27,13 @@ import type { ActorId } from './ports/fleet-selection.repository';
 import type { ShippingDependencies } from './shipping-dependencies';
 
 // The admin side of fleet selection (delivery models, package 3): define named models, pick the
-// active model per delivery method in the Market, set each fleet's reliability score. Every
+// active model per delivery method in the Market and set each fleet's reliability score (both in
+// one batch save guarded by a page version, settings S4). Every
 // change is audited in the same unit. Authorization is the use case's access declaration; these
 // functions only re-check that the actor is an admin account (defence in depth).
 
-type AuditFleet = 'mondapac-drive' | 'uber-direct' | 'zoom2u' | 'auspost' | 'fake-test';
+type AuditFleet =
+  'mondapac-drive' | 'uber-direct' | 'zoom2u' | 'doordash-drive' | 'auspost' | 'fake-test';
 
 export type FleetSelectionFailure =
   | { readonly code: 'access.denied' }
@@ -39,7 +41,9 @@ export type FleetSelectionFailure =
   | { readonly code: 'shipping.fleet-model-not-found' }
   | { readonly code: 'shipping.fleet-model-name-taken' }
   /** The model changed since the admin read it: read again and retry. */
-  | { readonly code: 'shipping.fleet-model-conflict' };
+  | { readonly code: 'shipping.fleet-model-conflict' }
+  /** The page changed since the admin read it: read again and retry. */
+  | { readonly code: 'shipping.fleet-selection-conflict' };
 
 const adminOf = (context: CallContext): ActorId | null => {
   const actor = context.actor;
@@ -70,10 +74,11 @@ async function readView(
   context: CallContext,
 ): Promise<FleetSelectionView> {
   const { market } = context;
-  const [models, assigned, scores] = await Promise.all([
+  const [models, assigned, scores, version] = await Promise.all([
     deps.selection.listModels(market),
     deps.selection.assignments(market),
     deps.selection.reliabilities(market),
+    deps.selection.selectionVersion(market),
   ]);
   const known = new Set(models.map((model) => model.id));
   const active = Object.fromEntries(
@@ -93,7 +98,7 @@ async function readView(
       effectiveReliability: scores.get(fleet) ?? DEFAULT_RELIABILITY,
     };
   });
-  return { models, active, defaultOrder: DEFAULT_FLEET_ORDER, fleets };
+  return { version, models, active, defaultOrder: DEFAULT_FLEET_ORDER, fleets };
 }
 
 /** `view-fleet-selection`: the models, the active model per method and the fleets of the Market. */
@@ -209,74 +214,116 @@ export async function updateFleetSelectionModel(
   );
 }
 
-/**
- * `activate-fleet-selection-model`: makes a model the active one for a delivery method in the
- * Market, or (`modelId` null) puts the built-in default order back. A model is never deleted, so
- * an assignment never dangles.
- */
-export async function activateFleetSelectionModel(
-  deps: ShippingDependencies,
-  context: CallContext,
-  input: { readonly method: unknown; readonly modelId: unknown },
-): Promise<Result<FleetSelectionView, FleetSelectionFailure>> {
-  const admin = adminOf(context);
-  if (admin === null) return err({ code: 'access.denied' });
-  const method = parseMethod(input?.method);
-  const modelId = input?.modelId === null ? null : modelIdOf(input?.modelId);
-  const fields: Field[] = [
-    ...(method === null ? [{ path: 'method', code: 'value' }] : []),
-    ...(input?.modelId !== null && modelId === null ? [{ path: 'modelId', code: 'format' }] : []),
-  ];
-  if (method === null || fields.length > 0) return err({ code: 'validation.failed', fields });
-  const now = deps.clock.now();
-  return deps.unitOfWork.run<FleetSelectionView, FleetSelectionFailure>(
-    context.market,
-    async () => {
-      if (modelId !== null && (await deps.selection.findModel(context.market, modelId)) === null) {
-        return err({ code: 'shipping.fleet-model-not-found' });
-      }
-      const before = (await deps.selection.assignments(context.market)).get(method) ?? null;
-      await deps.selection.assign(context.market, method, modelId, admin, now);
-      await deps.audit.record(
-        context,
-        FleetModelActivated.entry(auditCode<'instant' | 'same-day' | 'scheduled'>(method), {
-          before: { modelId: before },
-          after: { modelId },
-        }),
-      );
-      return ok(await readView(deps, context));
-    },
-  );
-}
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** `set-fleet-reliability`: the admin-set score (0 to 100) of a fleet in the Market. */
-export async function setFleetReliability(
+/**
+ * `set-fleet-selection`: saves the whole fleet-selection page in one unit: the active model per
+ * delivery method (`modelId` or null for the built-in default order; every method present) and
+ * the reliability score per fleet (0 to 100; null or absent leaves the fleet as it is). The page
+ * version is compared and raised first, so a stale page is `shipping.fleet-selection-conflict`
+ * and nothing is written. Only the items that changed are written and audited. A model is never
+ * deleted, so an assignment never dangles; a model id of another Market is not found.
+ */
+export async function setFleetSelection(
   deps: ShippingDependencies,
   context: CallContext,
-  input: { readonly fleet: unknown; readonly score: unknown },
+  input: {
+    readonly expectedVersion: unknown;
+    readonly active: unknown;
+    readonly reliability: unknown;
+  },
 ): Promise<Result<FleetSelectionView, FleetSelectionFailure>> {
   const admin = adminOf(context);
   if (admin === null) return err({ code: 'access.denied' });
-  const fleet = isFleetCode(input?.fleet) ? input.fleet : null;
-  const score = parseReliability(input?.score);
-  const fields: Field[] = [
-    ...(fleet === null ? [{ path: 'fleet', code: 'value' }] : []),
-    ...(score === null ? [{ path: 'score', code: 'range' }] : []),
-  ];
-  if (fleet === null || score === null) return err({ code: 'validation.failed', fields });
+  const fields: Field[] = [];
+  const version = input?.expectedVersion;
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+    fields.push({ path: 'expectedVersion', code: 'range' });
+  }
+
+  const active = new Map<CarrierMethod, Id<'FleetSelectionModel'> | null>();
+  if (!isRecord(input?.active)) {
+    fields.push({ path: 'active', code: 'format' });
+  } else {
+    for (const key of Object.keys(input.active)) {
+      if (parseMethod(key) === null) fields.push({ path: `active.${key}`, code: 'unknown-field' });
+    }
+    for (const method of CARRIER_METHODS) {
+      const value = input.active[method];
+      if (value === null) active.set(method, null);
+      else if (value === undefined) fields.push({ path: `active.${method}`, code: 'required' });
+      else {
+        const modelId = modelIdOf(value);
+        if (modelId === null) fields.push({ path: `active.${method}`, code: 'format' });
+        else active.set(method, modelId);
+      }
+    }
+  }
+
+  const scores = new Map<FleetCode, number>();
+  if (!isRecord(input?.reliability)) {
+    fields.push({ path: 'reliability', code: 'format' });
+  } else {
+    for (const [key, value] of Object.entries(input.reliability)) {
+      if (!isFleetCode(key)) {
+        fields.push({ path: `reliability.${key}`, code: 'unknown-field' });
+      } else if (value !== null) {
+        const score = parseReliability(value);
+        if (score === null) fields.push({ path: `reliability.${key}`, code: 'range' });
+        else scores.set(key, score);
+      }
+    }
+  }
+  if (fields.length > 0 || typeof version !== 'number') {
+    return err({ code: 'validation.failed', fields });
+  }
+
   const now = deps.clock.now();
   return deps.unitOfWork.run<FleetSelectionView, FleetSelectionFailure>(
     context.market,
     async () => {
-      const before = (await deps.selection.reliabilities(context.market)).get(fleet) ?? null;
-      await deps.selection.setReliability(context.market, fleet, score, admin, now);
-      await deps.audit.record(
-        context,
-        FleetReliabilitySet.entry(auditCode<AuditFleet>(fleet), {
-          before: { score: before },
-          after: { score },
-        }),
-      );
+      for (const modelId of new Set(active.values())) {
+        if (
+          modelId !== null &&
+          (await deps.selection.findModel(context.market, modelId)) === null
+        ) {
+          return err({ code: 'shipping.fleet-model-not-found' });
+        }
+      }
+      // The compare-and-bump is the first write: a stale page writes nothing at all.
+      if (
+        (await deps.selection.bumpSelectionVersion(context.market, version, admin, now)) ===
+        'conflict'
+      ) {
+        return err({ code: 'shipping.fleet-selection-conflict' });
+      }
+      const assigned = await deps.selection.assignments(context.market);
+      for (const [method, modelId] of active) {
+        const before = assigned.get(method) ?? null;
+        if (before === modelId) continue;
+        await deps.selection.assign(context.market, method, modelId, admin, now);
+        await deps.audit.record(
+          context,
+          FleetModelActivated.entry(auditCode<'instant' | 'same-day' | 'scheduled'>(method), {
+            before: { modelId: before },
+            after: { modelId },
+          }),
+        );
+      }
+      const stored = await deps.selection.reliabilities(context.market);
+      for (const [fleet, score] of scores) {
+        const before = stored.get(fleet) ?? null;
+        if (before === score) continue;
+        await deps.selection.setReliability(context.market, fleet, score, admin, now);
+        await deps.audit.record(
+          context,
+          FleetReliabilitySet.entry(auditCode<AuditFleet>(fleet), {
+            before: { score: before },
+            after: { score },
+          }),
+        );
+      }
       return ok(await readView(deps, context));
     },
   );

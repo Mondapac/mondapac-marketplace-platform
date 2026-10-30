@@ -8,6 +8,7 @@ import {
   Select,
   TextAreaField,
   TextField,
+  toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -121,7 +122,6 @@ export function SlideEditor({
   const [form, setForm] = useState<SlideFormState>(baseline);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [problem, setProblem] = useState<Problem>(null);
-  const [saved, setSaved] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
 
@@ -139,7 +139,6 @@ export function SlideEditor({
 
   function change(patch: Partial<SlideFormState>, ...fields: FormField[]) {
     setForm((previous) => ({ ...previous, ...patch }));
-    setSaved(null);
     if (fields.length > 0) {
       setErrors((previous) => {
         const next = { ...previous };
@@ -172,7 +171,6 @@ export function SlideEditor({
     event?.preventDefault();
     if (!editable || inFlight.current) return;
     setProblem(null);
-    setSaved(null);
     const found = validate(form);
     if (Object.keys(found).length > 0) {
       failWith(found);
@@ -193,6 +191,8 @@ export function SlideEditor({
         : await callApi<SlideDetail>('PUT', `${SLIDES_API_PATH}/${detail.id}`, body, csrfToken);
       if (result.ok) {
         if (creating) {
+          // The editor of the new slide shows the outcome.
+          toast.flash('success', t('saved', { version: result.body.draft?.versionNo ?? 0 }));
           router.push(`${SLIDES_PATH}/${result.body.id}`);
           return;
         }
@@ -200,7 +200,7 @@ export function SlideEditor({
         setDetail(result.body);
         setBaseline(next);
         setForm(next);
-        setSaved(t('saved', { version: result.body.draft?.versionNo ?? 0 }));
+        toast.success(t('saved', { version: result.body.draft?.versionNo ?? 0 }));
         return;
       }
       const failure = result.failure;
@@ -243,7 +243,6 @@ export function SlideEditor({
     setForm(baseline);
     setErrors({});
     setProblem(null);
-    setSaved(null);
   }
 
   const version = detail === null ? null : currentVersion(detail);
@@ -434,16 +433,7 @@ export function SlideEditor({
           )}
           {editable ? (
             <div className="sticky bottom-0 z-10 -mx-4 bg-page px-4 pb-4 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0">
-              <FormActionBar
-                status={
-                  <>
-                    <span role="status" aria-live="polite" className="block">
-                      {saved}
-                    </span>
-                    <span className="block">{t('approval-note')}</span>
-                  </>
-                }
-              >
+              <FormActionBar status={<span className="block">{t('approval-note')}</span>}>
                 <Button variant="secondary" disabled={!dirty || pending} onClick={discard}>
                   {t('discard')}
                 </Button>

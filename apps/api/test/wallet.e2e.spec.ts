@@ -40,6 +40,7 @@ it('maps every refusal code of the wallet routes to its exact status', () => {
     'wallet.disabled': 404,
     'wallet.unavailable': 503,
     'wallet.busy': 409,
+    'wallet.settings-conflict': 409,
     'wallet.cannot-turn-off-with-history': 409,
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
@@ -173,7 +174,7 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
       .get(path)
       .set({ 'x-market-id': code, ...headers });
 
-  const settings = { status: 'paused', reason: 'wind-down', updatedAt: START };
+  const settings = { status: 'paused', reason: 'wind-down', updatedAt: START, version: 4 };
 
   beforeEach(() => {
     fakes.reset();
@@ -195,12 +196,20 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
       status: 'paused',
       reason: 'wind-down',
       updatedAt: START.toString(),
+      version: 4,
     });
-    const set = await asAdmin('put', session, { status: 'paused', reasonCode: 'wind-down' });
+    const set = await asAdmin('put', session, {
+      status: 'paused',
+      reasonCode: 'wind-down',
+      expectedVersion: 4,
+    });
     expect(set.status).toBe(200);
     expect(calls).toEqual([
       { name: 'view-settings', input: {} },
-      { name: 'set-status', input: { status: 'paused', reasonCode: 'wind-down' } },
+      {
+        name: 'set-status',
+        input: { status: 'paused', reasonCode: 'wind-down', expectedVersion: 4 },
+      },
     ]);
   });
 
@@ -270,6 +279,20 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
     expect((await put()).status).toBe(409);
     next = err({ code: 'access.denied' });
     expect((await put()).status).toBe(403);
+  });
+
+  it('answers a stale save as 409 wallet.settings-conflict and the guard does not spend the proof', async () => {
+    await boot();
+    const session = admin();
+    next = err({ code: 'wallet.settings-conflict' });
+    const stale = await asAdmin('put', session, { status: 'active', expectedVersion: 1 });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toEqual({ statusCode: 409, code: 'wallet.settings-conflict' });
+    // The route guard only reads the proof; the use case spends it (and did not, here).
+    expect(fakes.stepUpProofs.size).toBe(1);
+    expect(calls).toEqual([
+      { name: 'set-status', input: { status: 'active', expectedVersion: 1 } },
+    ]);
   });
 
   it('serves the customer balance and history with money as strings, no-store, and wallet.disabled as 404', async () => {

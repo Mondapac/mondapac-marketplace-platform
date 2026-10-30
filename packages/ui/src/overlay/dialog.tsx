@@ -12,13 +12,21 @@ import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from '
  * open, so the page can paint an empty modal for a frame, and a test that waits for the next
  * state can still find the dialog open.
  */
-export function useModal(ref: RefObject<HTMLDialogElement | null>, open: boolean): void {
+export function useModal(
+  ref: RefObject<HTMLDialogElement | null>,
+  open: boolean,
+  initialFocus?: RefObject<HTMLElement | null>,
+): void {
   useLayoutEffect(() => {
     const dialog = ref.current;
     if (dialog === null) return;
-    if (open && !dialog.open) dialog.showModal();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      // The browser focuses the first focusable element; a caller can name a safer one.
+      initialFocus?.current?.focus();
+    }
     if (!open && dialog.open) dialog.close();
-  }, [ref, open]);
+  }, [ref, open, initialFocus]);
 }
 
 export interface DialogProps {
@@ -31,16 +39,26 @@ export interface DialogProps {
   readonly actions: ReactNode;
   /** A short line under the buttons (why one is disabled); tie it to the button with aria-describedby. */
   readonly actionsNote?: ReactNode;
+  /** The element that takes focus when the dialog opens (the safe choice of a destructive one). */
+  readonly initialFocus?: RefObject<HTMLElement | null>;
 }
 
 /**
  * A modal dialog on the native `<dialog>` element: the browser traps focus, makes the rest of
  * the page inert and closes on Escape. Focus returns to the opener when it closes.
  */
-export function Dialog({ open, title, onClose, children, actions, actionsNote }: DialogProps) {
+export function Dialog({
+  open,
+  title,
+  onClose,
+  children,
+  actions,
+  actionsNote,
+  initialFocus,
+}: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  useModal(ref, open);
+  useModal(ref, open, initialFocus);
   return (
     <dialog
       ref={ref}

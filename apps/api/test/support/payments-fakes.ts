@@ -223,6 +223,10 @@ export class FakeOrderingFacade implements OrderingFacade {
     return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
   }
 
+  adminOpenObligationsOf(): ReturnType<OrderingFacade['adminOpenObligationsOf']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
+  }
+
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
     return Promise.resolve(ok([]));
   }
@@ -234,6 +238,7 @@ export function accountEvent(fields: {
   readonly type?:
     | 'account.updated'
     | 'capability.updated'
+    | 'balance_settings.updated'
     | 'account.external_account.created'
     | 'account.external_account.updated'
     | 'account.external_account.deleted';
@@ -244,6 +249,7 @@ export function accountEvent(fields: {
   const account = fields.account === undefined ? 'acct_test_0001' : fields.account;
   const capability = fields.type === 'capability.updated';
   const external = fields.type?.startsWith('account.external_account.') === true;
+  const balanceSettings = fields.type === 'balance_settings.updated';
   return {
     id: fields.id ?? 'evt_test_acct_0001',
     object: 'event',
@@ -253,16 +259,21 @@ export function accountEvent(fields: {
     data: {
       object: capability
         ? { id: 'transfers', object: 'capability', account }
-        : external
-          ? { id: 'ba_test_0001', object: 'bank_account', account }
-          : {
-              id: account,
-              object: 'account',
-              metadata: {
-                market_id: fields.marketId ?? 'AU',
-                seller_id: 'from-payload-not-trusted',
+        : balanceSettings
+          ? {
+              object: 'balance_settings',
+              payments: { payouts: { schedule: { interval: 'daily' } } },
+            }
+          : external
+            ? { id: 'ba_test_0001', object: 'bank_account', account }
+            : {
+                id: account,
+                object: 'account',
+                metadata: {
+                  market_id: fields.marketId ?? 'AU',
+                  seller_id: 'from-payload-not-trusted',
+                },
               },
-            },
     },
   };
 }

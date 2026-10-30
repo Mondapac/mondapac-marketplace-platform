@@ -43,6 +43,7 @@ import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
+import { AdminOpenObligationsOfQuery } from './use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
@@ -1379,6 +1380,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: sellerOrderId as Id<'SellerOrder'>,
           carrierName: 'Mondapac Drive',
           trackingRef: trackingOf(sellerOrderId),
+          trackingUrl: null,
           progress: 'picked-up',
         });
         progressN += 1;
@@ -1636,6 +1638,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
             sellerOrderId: a,
             carrier: 'Mondapac Drive',
             trackingRef: trackingOf(a),
+            trackingUrl: null,
           }),
         );
         expect(await notice(system, { orderId: order.id, sellerOrderId: b })).toEqual(
@@ -1645,8 +1648,82 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
             sellerOrderId: b,
             carrier: 'Mondapac Drive',
             trackingRef: trackingOf(b),
+            trackingUrl: null,
           }),
         );
+      });
+
+      it('adds the fleet tracking link to the notice only when it is https, and survives shipping being down', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const b = sellerOrderIdOf(order.id, SELLER_B);
+        await ship(sellerA, a);
+        await ship(sellerB, b);
+        const shipmentA = shipping.carrierShipments.get(a)!;
+        shipping.carrierShipments.set(a, {
+          ...shipmentA,
+          trackingUrl: 'https://track.example.com/d/1',
+        });
+        shipping.carrierShipments.set(b, {
+          ...shipping.carrierShipments.get(b)!,
+          trackingUrl: 'http://track.example.com/d/2',
+        });
+
+        const withLink = await notice(system, { orderId: order.id, sellerOrderId: a });
+        const insecure = await notice(system, { orderId: order.id, sellerOrderId: b });
+        shipping.carrierDown = true;
+        const down = await notice(system, { orderId: order.id, sellerOrderId: a });
+
+        expect(withLink.ok && withLink.value.trackingUrl).toBe('https://track.example.com/d/1');
+        expect(insecure.ok && insecure.value.trackingUrl).toBeNull();
+        expect(down.ok && down.value.trackingUrl).toBeNull();
+        expect(down.ok && down.value.trackingRef).toBe(trackingOf(a));
+      });
+
+      it("shows the buyer the tracking link of a shipped part, to the buyer's own order only", async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        shipping.trackingLinks.set(a, 'https://track.example.com/d/1');
+        shipping.trackingLinks.set(
+          sellerOrderIdOf(order.id, SELLER_B),
+          'https://track.example.com/d/unshipped',
+        );
+        const view = (context: CallContext) =>
+          new ViewOrder(gate, deps).execute(context, { orderId: order.id });
+
+        const own = await view(customer);
+        expect(own.ok && own.value.trackingLinks).toEqual([
+          { sellerOrderId: a, sellerId: SELLER_A, url: 'https://track.example.com/d/1' },
+        ]);
+        // Shipping is asked about this order too, so it can check ownership itself.
+        expect(shipping.trackingOrderIds).toEqual([order.id]);
+        // Another customer's read of this order is not found, and asks shipping for nothing.
+        const asked: string[][] = [];
+        const original = shipping.carrierTrackingLinks.bind(shipping);
+        shipping.carrierTrackingLinks = (c, orderId, ids) => {
+          asked.push([...ids]);
+          return original(c, orderId, ids);
+        };
+        const stranger = await view(customerOf(id<'Account'>(0x999)));
+        expect(stranger.ok).toBe(false);
+        expect(asked).toEqual([]);
+      });
+
+      it('shows no link when shipping is down or answers a link that is not https', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        const view = () => new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+
+        shipping.trackingDown = true;
+        const down = await view();
+        shipping.trackingDown = false;
+        shipping.trackingLinks.set(a, 'javascript:alert(1)');
+        const unsafe = await view();
+
+        expect(down.ok && down.value.trackingLinks).toEqual([]);
+        expect(unsafe.ok && unsafe.value.trackingLinks).toEqual([]);
       });
 
       it('answers not-found for an unknown, foreign, unshipped or unpaid seller order', async () => {
@@ -2203,6 +2280,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: a,
           carrierName: 'Mondapac Drive',
           trackingRef,
+          trackingUrl: null,
           progress: 'booked',
         });
         expect(await progress(order.id, a, 1)).toEqual(
@@ -2247,6 +2325,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: b,
           carrierName: 'Mondapac Drive',
           trackingRef: '01990000-0000-7000-8000-00000000d002',
+          trackingUrl: null,
           progress: 'delivered',
         });
         expect(await progress(order.id, b, 1)).toEqual(ok({ code: 'ordering.carrier.handled' }));
@@ -2349,6 +2428,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: b,
           carrierName: 'Mondapac Drive',
           trackingRef: '01990000-0000-7000-8000-00000000d003',
+          trackingUrl: null,
           progress: 'delivered',
         });
         written.length = 0;
@@ -2385,6 +2465,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: a,
           carrierName: 'Mondapac Drive',
           trackingRef: '01990000-0000-7000-8000-00000000d004',
+          trackingUrl: null,
           progress: 'delivered',
         });
         expect(delivered()[0]!.payload).toMatchObject({ source: 'seller-click' });
@@ -2948,6 +3029,39 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await ofAccount.execute(customer, { accountId: ACCOUNT })).toMatchObject({
         ok: false,
       });
+    });
+  });
+
+  describe('the admin read of open obligations (customers package 5c)', () => {
+    const adminActor = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'obligations-admin',
+      );
+
+    it('answers the counts to a platform admin and to nobody else', async () => {
+      const systemContext = testCallContext(market, 'system', 'admin-obligations-sys');
+      const read = new AdminOpenObligationsOfQuery(gate, deps);
+      expect(await read.execute(adminActor(), { accountId: ACCOUNT })).toEqual({
+        ok: true,
+        value: { openOrders: 0, pendingRefunds: 0 },
+      });
+      for (const context of [
+        customer,
+        systemContext,
+        {
+          ...adminActor(),
+          actor: { ...adminActor().actor, actingAs: { adminAccountId: ACCOUNT } },
+        } as never,
+      ]) {
+        expect(await read.execute(context, { accountId: ACCOUNT })).toMatchObject({ ok: false });
+      }
     });
   });
 

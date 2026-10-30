@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { toast, Toaster } from '@mondapac/ui';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +11,6 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { InviteAdminButton } from './invite-admin-button.tsx';
-import { NoticeProvider } from './notice.tsx';
 import { RowActions } from './row-actions.tsx';
 import type { PlatformRole } from './types.ts';
 
@@ -38,7 +38,8 @@ const roles: PlatformRole[] = [
 function wrap(node: React.ReactNode) {
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <NoticeProvider>{node}</NoticeProvider>
+      {node}
+      <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     </NextIntlClientProvider>,
   );
 }
@@ -52,7 +53,10 @@ beforeEach(() => {
     this.removeAttribute('open');
   };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+});
 
 const row = (roleList: readonly PlatformRole[] | null = roles) =>
   wrap(

@@ -252,6 +252,56 @@ describe('relay', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  describe('role delete carries its version in the body', () => {
+    const id = '0190a000-0000-7000-8000-000000000001';
+    const path = ['identity', 'admin', 'roles', id];
+    const del = (headers: Record<string, string>, body: string) =>
+      new Request(`http://admin.localhost:3002/api/${path.join('/')}`, {
+        method: 'DELETE',
+        headers,
+        body,
+      });
+
+    it('forwards the JSON body and its content type', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del(sameOrigin, '{"expectedVersion":1}'),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(200);
+      const init = fetchImpl.mock.calls[0]?.[1];
+      expect(init?.method).toBe('DELETE');
+      expect(init?.body).toBe('{"expectedVersion":1}');
+      expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
+    });
+
+    it('refuses a cross-site delete without calling the API', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del({ ...sameOrigin, 'sec-fetch-site': 'cross-site' }, '{"expectedVersion":1}'),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(403);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('refuses a delete body over 16 KB', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del(sameOrigin, 'x'.repeat(16 * 1024 + 1)),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(413);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+  });
+
   it('refuses a body over 16 KB', async () => {
     const fetchImpl = upstreamOk();
     const response = await relay(
@@ -468,8 +518,13 @@ describe('relay allowlist for seller decisions', () => {
       vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
     );
 
-  it('relays the support email write on its exact path and method only', async () => {
+  it('relays the support email read and write on their exact path and method only', async () => {
     const path = 'notifications/admin/support-contact';
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    const extra = new Request(`http://admin.localhost:3002/api/${path}/x`, { headers: sameOrigin });
+    expect((await relay(config, extra, [...path.split('/'), 'x'], fetchImpl)).status).toBe(404);
     expect((await call('PUT', path)).status).toBe(200);
     expect((await call('POST', path)).status).toBe(404);
     expect((await call('DELETE', path)).status).toBe(404);
@@ -497,6 +552,20 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', password)).status).toBe(404);
   });
 
+  it('relays the own authenticator replacement (POST) on its two exact paths only', async () => {
+    for (const path of [
+      'identity/admin/second-factor/replacement',
+      'identity/admin/second-factor/replacement/confirm',
+    ]) {
+      expect((await call('POST', path)).status, path).toBe(200);
+      expect((await call('PUT', path)).status, path).toBe(404);
+      expect((await call('DELETE', path)).status, path).toBe(404);
+      expect((await call('POST', `${path}/extra`)).status, path).toBe(404);
+    }
+    // Recovery codes are not part of this page.
+    expect((await call('POST', 'identity/admin/second-factor/recovery-codes')).status).toBe(404);
+  });
+
   it('no longer relays the retired flat delivery fee route', async () => {
     expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
     expect((await call('PUT', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(200);
@@ -510,10 +579,10 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `${base}/models`)).status).toBe(200);
     expect((await call('PUT', `${base}/models/${ID}`)).status).toBe(200);
     expect((await call('PUT', `${base}/models/nope`)).status).toBe(404);
-    expect((await call('PUT', `${base}/active/same_day`)).status).toBe(200);
-    expect((await call('PUT', `${base}/active/weekly`)).status).toBe(404);
-    expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(200);
-    expect((await call('PUT', `${base}/fleets/other/reliability`)).status).toBe(404);
+    // The page is saved in one batch; the per-method and per-fleet routes are gone.
+    expect((await call('PUT', base)).status).toBe(200);
+    expect((await call('PUT', `${base}/active/same_day`)).status).toBe(404);
+    expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(404);
     expect((await call('DELETE', `${base}/models/${ID}`)).status).toBe(404);
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
   });
