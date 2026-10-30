@@ -1,7 +1,8 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
+import { SettingsNoAccess } from '../../../../src/settings/settings-no-access.tsx';
 import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 import { SETUP_ROOT } from '../../../../src/setup/steps.ts';
@@ -40,11 +41,11 @@ export default async function TeamPageRoute({
   if (!session.permissionKeys.includes(TEAM_VIEW_PERMISSION)) {
     return (
       <SettingsShell session={session} linkId="team" title={title}>
-        <NoAccess
+        <SettingsNoAccess
+          permissionKeys={session.permissionKeys}
           title={t('identity.team.no-access.title')}
           body={t('identity.team.no-access.body')}
-          backHref="/settings"
-          backLabel={t('settings.sub.back')}
+          labels={{ settings: t('settings.sub.back'), home: t('settings.back-home') }}
         />
       </SettingsShell>
     );

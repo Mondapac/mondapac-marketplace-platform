@@ -1,5 +1,6 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { SettingsNoAccess } from '../../../../src/settings/settings-no-access.tsx';
 import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 import { loadStoreProfilePage } from '../../../../src/server/store-profile-page.ts';
 import { StoreProfile } from '../../../../src/store-profile/store-profile.tsx';
@@ -21,11 +22,11 @@ export default async function StoreProfilePage() {
   if (page.kind === 'no-access') {
     return (
       <SettingsShell session={page.session} linkId="store-profile" title={t('store-profile.title')}>
-        <NoAccess
+        <SettingsNoAccess
+          permissionKeys={page.session.permissionKeys}
           title={t('store-profile.no-access.title')}
           body={t('store-profile.no-access.body')}
-          backHref="/settings"
-          backLabel={t('settings.sub.back')}
+          labels={{ settings: t('settings.sub.back'), home: t('settings.back-home') }}
         />
       </SettingsShell>
     );

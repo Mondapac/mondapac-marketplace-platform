@@ -44,10 +44,12 @@ describe('AccountSecurity status', () => {
   it('shows Off with guidance and no action when two-step is not set up', () => {
     mount(false);
     expect(screen.getByText('Off')).toBeTruthy();
-    // Once in the authenticator row, once under "Lost your phone?".
+    // One guidance line, in a banner; no status help and no "Lost your phone?" section.
     expect(
-      screen.getAllByText(/Ask an admin with Roles & permissions to send you a reset link/),
-    ).toHaveLength(2);
+      screen.getAllByText(/Ask an admin who manages Roles & permissions to send you a reset link/),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('region', { name: 'Lost your phone?' })).toBeNull();
+    expect(screen.queryByText(/cannot be turned off/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Replace authenticator' })).toBeNull();
   });
 
@@ -82,7 +84,7 @@ describe('AccountSecurity authenticator replacement', () => {
     typeCode('123456');
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(await screen.findByText('Add the new device')).toBeTruthy();
+    expect(await screen.findByText('Step 1 of 2: Add the new key')).toBeTruthy();
     expect(call).toHaveBeenNthCalledWith(
       1,
       'POST',
@@ -94,7 +96,7 @@ describe('AccountSecurity authenticator replacement', () => {
     expect(screen.getByTestId('setup-qr')).toBeTruthy();
 
     typeCode('654321');
-    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator', hidden: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replacement' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
     expect(call).toHaveBeenNthCalledWith(
       2,
@@ -137,7 +139,7 @@ describe('AccountSecurity authenticator replacement', () => {
     typeCode('123456');
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText(/That code didn't work/)).toBeTruthy();
-    expect(screen.queryByText('Add the new device')).toBeNull();
+    expect(screen.queryByText('Step 1 of 2: Add the new key')).toBeNull();
   });
 
   it('names a locked code check and a session that is gone', async () => {
@@ -166,5 +168,181 @@ describe('AccountSecurity authenticator replacement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('button', { name: 'Replace authenticator' })).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
+  });
+
+  const START = {
+    ok: true as const,
+    status: 200,
+    body: {
+      code: 'second-factor-replacement-started',
+      secret: 'JBSWY3DPEHPK3PXP',
+      otpauthUri: URI,
+    },
+  };
+  const toSecretStep = async () => {
+    call.mockResolvedValueOnce(START);
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Step 1 of 2: Add the new key');
+  };
+
+  it('sends a 401 to the session-ended page', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 401, code: 'session.invalid' } });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the minutes to wait from retryAfterSeconds when throttled', async () => {
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 429, code: 'request.throttled', details: { retryAfterSeconds: 150 } },
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(/Try again in 3 minutes/)).toBeTruthy();
+  });
+
+  it('says nothing is waiting when confirm answers 409 second-factor.unavailable', async () => {
+    await toSecretStep();
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 409, code: 'second-factor.unavailable' },
+    });
+    typeCode('654321');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replacement' }));
+    expect(await screen.findByText(/Nothing is waiting to be confirmed/)).toBeTruthy();
+  });
+
+  it('cannot cancel while the request runs, so no secret appears after a cancel', async () => {
+    let resolve: (value: typeof START) => void = () => {};
+    call.mockReturnValueOnce(new Promise((done) => (resolve = done)));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect((cancel as HTMLButtonElement).disabled).toBe(true);
+    resolve(START);
+    await waitFor(() => expect(screen.queryByText('Step 1 of 2: Add the new key')).not.toBeNull());
+  });
+
+  it('sends the new CSRF token on the next call after the swap', async () => {
+    await toSecretStep();
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'second-factor-replaced', csrfToken: 'fresh' },
+    });
+    typeCode('654321');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replacement' }));
+    await screen.findByText(/Your authenticator was replaced/);
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 400, code: 'second-factor.invalid' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('111111');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call.mock.calls[2]?.[3]).toBe('fresh');
+  });
+});
+
+describe('AccountSecurity focus and copy', () => {
+  it('moves focus to the step heading, back to the code after a wrong code, and to the button on cancel', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        code: 'second-factor-replacement-started',
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpauthUri: URI,
+      },
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    const heading = await screen.findByText('Step 1 of 2: Add the new key');
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading.getAttribute('tabindex')).toBe('-1');
+
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 400, code: 'second-factor.invalid' },
+    });
+    typeCode('000000');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replacement' }));
+    await screen.findByText(/That code didn't work/);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Digit 1 of 6')));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Replace authenticator' }),
+      ),
+    );
+  });
+
+  it('moves focus to the success banner when the swap is done', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        code: 'second-factor-replacement-started',
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpauthUri: URI,
+      },
+    });
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'second-factor-replaced', csrfToken: 'n' },
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Step 2 of 2: Confirm the code');
+    typeCode('654321');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replacement' }));
+    const banner = await screen.findByText(/Your authenticator was replaced/);
+    await waitFor(() => expect(document.activeElement).toBe(banner.closest('[tabindex="-1"]')));
+  });
+
+  it('announces a failed copy and labels the key by its caption', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        code: 'second-factor-replacement-started',
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpauthUri: URI,
+      },
+    });
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn(() => Promise.reject(new Error('denied'))) },
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace authenticator' }));
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Step 1 of 2: Add the new key');
+    expect(screen.getByText('JBSW Y3DP EHPK 3PXP').getAttribute('aria-labelledby')).toBe(
+      'replace-key-label',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Copy key' }));
+    const status = await screen.findByText("Couldn't copy. Select the key and copy it manually.");
+    expect(status.getAttribute('role')).toBe('status');
   });
 });

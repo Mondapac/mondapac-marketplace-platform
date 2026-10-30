@@ -1,6 +1,7 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { loadStockPage } from '../../../../src/server/stock-page.ts';
+import { SettingsNoAccess } from '../../../../src/settings/settings-no-access.tsx';
 import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 import { StockLocations } from '../../../../src/stock/stock-locations.tsx';
 import { SOURCE_EDIT_PERMISSION } from '../../../../src/stock/types.ts';
@@ -19,11 +20,11 @@ export default async function StockLocationsPage() {
   if (page.kind === 'no-access') {
     return (
       <SettingsShell session={page.session} linkId="stock-locations" title={t('stock.title')}>
-        <NoAccess
+        <SettingsNoAccess
+          permissionKeys={page.session.permissionKeys}
           title={t('stock.no-access.title')}
           body={t('stock.no-access.body')}
-          backHref="/settings"
-          backLabel={t('settings.sub.back')}
+          labels={{ settings: t('settings.sub.back'), home: t('settings.back-home') }}
         />
       </SettingsShell>
     );

@@ -120,7 +120,7 @@ describe('the Store profile page', () => {
     expect(html).not.toContain('catalog.no-access');
     expect(html).toContain('store-profile.no-access.title');
     expect(html).toContain('store-profile.no-access.body');
-    expect(html).toContain('href="/settings"');
+    expect(html).toContain('href="/"');
     expect(html).not.toContain('data-can-edit');
   });
 

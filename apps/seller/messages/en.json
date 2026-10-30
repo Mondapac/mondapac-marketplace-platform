@@ -425,7 +425,7 @@
       }
     },
     "team": {
-      "title": "Team",
+      "title": "Members",
       "table-caption": "Team members and pending invitations",
       "label": {
         "person": "Person",
@@ -1898,7 +1898,7 @@
   },
   "settings": {
     "title": "Settings",
-    "back-home": "Back to dashboard",
+    "back-home": "Back to Dashboard",
     "hub": {
       "description": "Set up how your store works. Changes here apply to your whole store.",
       "view-only": "View only",

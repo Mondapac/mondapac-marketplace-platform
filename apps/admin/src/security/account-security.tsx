@@ -12,7 +12,7 @@ import {
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { SetupQr } from '../auth/setup-qr.tsx';
 import { replacementProblemOf, type Problem } from '../profile/errors.ts';
@@ -22,6 +22,8 @@ type Step =
   | { readonly kind: 'verify' }
   | { readonly kind: 'secret'; readonly secret: string; readonly otpauthUri: string }
   | { readonly kind: 'done' };
+
+type FocusTarget = 'secret' | 'code' | 'button' | 'done';
 
 interface Started {
   readonly secret: string;
@@ -43,7 +45,7 @@ function grouped(secret: string): string {
  */
 export function AccountSecurity({
   active,
-  csrfToken,
+  csrfToken: initialCsrf,
 }: {
   readonly active: boolean;
   readonly csrfToken: string;
@@ -57,16 +59,38 @@ export function AccountSecurity({
   const [boxes, setBoxes] = useState(0);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
+  // The token the next call sends. A completed replacement hands out a new one; the page refresh
+  // brings the same one later, and the prop then wins again.
+  const [csrfToken, setCsrfToken] = useState(initialCsrf);
+  const [focus, setFocus] = useState<{ target: FocusTarget; n: number } | null>(null);
   const busy = useRef(false);
+  // The step the person is on now, so an answer to a step they left is ignored.
+  const stepKind = useRef<Step['kind']>('idle');
+  const formRef = useRef<HTMLDivElement>(null);
+  const secretHeading = useRef<HTMLHeadingElement>(null);
+  const replaceButton = useRef<HTMLButtonElement>(null);
+  const doneBanner = useRef<HTMLDivElement>(null);
 
-  function go(next: Step) {
+  useEffect(() => setCsrfToken(initialCsrf), [initialCsrf]);
+
+  useEffect(() => {
+    if (focus === null) return;
+    if (focus.target === 'secret') secretHeading.current?.focus();
+    else if (focus.target === 'button') replaceButton.current?.focus();
+    else if (focus.target === 'done') doneBanner.current?.focus();
+    else formRef.current?.querySelector<HTMLElement>('input')?.focus();
+  }, [focus]);
+
+  function go(next: Step, target: FocusTarget | null = null) {
+    stepKind.current = next.kind;
     setStep(next);
     setCode('');
     setBackup(false);
     setBoxes((n) => n + 1);
     setProblem(null);
-    setCopied(false);
+    setCopy('idle');
+    if (target !== null) setFocus((last) => ({ target, n: (last?.n ?? 0) + 1 }));
   }
 
   /** Runs one call; returns the body on success and shows the failure on the form otherwise. */
@@ -93,6 +117,7 @@ export function AccountSecurity({
     if (refused.field === 'code') {
       setCode('');
       setBoxes((n) => n + 1);
+      setFocus((last) => ({ target: 'code', n: (last?.n ?? 0) + 1 }));
     }
     return null;
   }
@@ -101,15 +126,18 @@ export function AccountSecurity({
     event.preventDefault();
     if (code.trim() === '') return setProblem({ key: 'code-required', field: 'code' });
     const body = await call<Started>('replacement', code);
-    if (body) go({ kind: 'secret', secret: body.secret, otpauthUri: body.otpauthUri });
+    if (body && stepKind.current === 'verify') {
+      go({ kind: 'secret', secret: body.secret, otpauthUri: body.otpauthUri }, 'secret');
+    }
   }
 
   async function confirm(event: FormEvent) {
     event.preventDefault();
     if (code.trim() === '') return setProblem({ key: 'code-required', field: 'code' });
-    const body = await call<unknown>('replacement/confirm', code);
-    if (body) {
-      go({ kind: 'done' });
+    const body = await call<{ readonly csrfToken?: string }>('replacement/confirm', code);
+    if (body && stepKind.current === 'secret') {
+      if (typeof body.csrfToken === 'string') setCsrfToken(body.csrfToken);
+      go({ kind: 'done' }, 'done');
       router.refresh();
     }
   }
@@ -117,9 +145,9 @@ export function AccountSecurity({
   async function copyKey(secret: string) {
     try {
       await navigator.clipboard.writeText(secret);
-      setCopied(true);
+      setCopy('copied');
     } catch {
-      setCopied(false);
+      setCopy('failed');
     }
   }
 
@@ -169,91 +197,139 @@ export function AccountSecurity({
       {p(backup ? 'use-app' : 'use-backup')}
     </button>
   );
+  const cancel = (
+    <Button
+      type="button"
+      variant="secondary"
+      disabled={pending}
+      onClick={() => go({ kind: 'idle' }, 'button')}
+    >
+      {t('replace.cancel')}
+    </Button>
+  );
 
   let flow = null;
   if (step.kind === 'verify') {
     flow = (
-      <form
-        onSubmit={(event) => void verify(event)}
-        noValidate
-        aria-labelledby="replace-verify-title"
-        className="flex flex-col gap-4 px-5 py-4 sm:max-w-md"
-      >
-        <h3 id="replace-verify-title" className="text-base font-semibold text-fg">
-          {t('replace.verify-title')}
-        </h3>
-        <p className="text-sm text-fg-muted">{t('replace.verify-body')}</p>
-        {wholeForm}
-        {codeField(t('replace.current-code'))}
-        {toggleBackup}
-        <div className="flex flex-wrap gap-3">
-          <Button type="submit" loading={pending}>
-            {t('replace.continue')}
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => go({ kind: 'idle' })}>
-            {t('replace.cancel')}
-          </Button>
-        </div>
-      </form>
+      <div ref={formRef}>
+        <form
+          onSubmit={(event) => void verify(event)}
+          noValidate
+          aria-labelledby="replace-verify-title"
+          className="flex flex-col gap-4 px-5 py-4 sm:max-w-md"
+        >
+          <div className="flex flex-col gap-2">
+            <h3 id="replace-verify-title" className="text-base font-semibold text-fg">
+              {t('replace.verify-title')}
+            </h3>
+            <p className="text-sm text-fg-muted">{t('replace.verify-body')}</p>
+          </div>
+          {wholeForm}
+          {codeField(t('replace.current-code'))}
+          {toggleBackup}
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" loading={pending}>
+              {t('replace.continue')}
+            </Button>
+            {cancel}
+          </div>
+        </form>
+      </div>
     );
   } else if (step.kind === 'secret') {
     const { secret, otpauthUri } = step;
     flow = (
-      <form
-        onSubmit={(event) => void confirm(event)}
-        noValidate
-        aria-labelledby="replace-secret-title"
-        className="flex flex-col gap-4 px-5 py-4 sm:max-w-md"
-      >
-        <h3 id="replace-secret-title" className="text-base font-semibold text-fg">
-          {t('replace.secret-title')}
-        </h3>
-        <p className="text-sm text-fg-muted">{t('replace.secret-body')}</p>
-        {wholeForm}
-        {otpauthUri.startsWith('otpauth://') ? (
-          <SetupQr
-            uri={otpauthUri}
-            label={t('replace.qr-label')}
-            intro={t('replace.scan')}
-            fallback={t('replace.cannot-scan')}
+      <div ref={formRef}>
+        <form
+          onSubmit={(event) => void confirm(event)}
+          noValidate
+          aria-labelledby="replace-secret-title"
+          className="flex flex-col gap-4 px-5 py-4 sm:max-w-md"
+        >
+          <div className="flex flex-col gap-2">
+            <h3
+              id="replace-secret-title"
+              ref={secretHeading}
+              tabIndex={-1}
+              className="text-base font-semibold text-fg outline-none focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              {t('replace.secret-title')}
+            </h3>
+            <p className="text-sm text-fg-muted">{t('replace.secret-body')}</p>
+          </div>
+          {wholeForm}
+          {otpauthUri.startsWith('otpauth://') ? (
+            <SetupQr
+              uri={otpauthUri}
+              label={t('replace.qr-label')}
+              intro={t('replace.scan')}
+              fallback={t('replace.cannot-scan')}
+            />
+          ) : null}
+          <span id="replace-key-label" className="text-sm text-fg-muted">
+            {t('replace.key-label')}
+          </span>
+          <code
+            dir="ltr"
+            aria-labelledby="replace-key-label"
+            className="font-mono text-base break-all"
+          >
+            {grouped(secret)}
+          </code>
+          <div className="flex flex-wrap items-center gap-4">
+            <Button type="button" variant="secondary" onClick={() => void copyKey(secret)}>
+              {copy === 'copied' ? t('replace.copied') : t('replace.copy')}
+            </Button>
+            <p
+              role="status"
+              aria-live="polite"
+              className={copy === 'failed' ? 'text-sm text-critical-fg' : 'sr-only'}
+            >
+              {copy === 'copied'
+                ? t('replace.copied')
+                : copy === 'failed'
+                  ? t('replace.copy-failed')
+                  : ''}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <h4 className="text-base font-semibold text-fg">{t('replace.confirm-title')}</h4>
+            <p className="text-sm text-fg-muted">{t('replace.confirm-body')}</p>
+          </div>
+          <OtpField
+            key={`new-${boxes}`}
+            label={t('replace.new-code')}
+            digitLabel={(position, total) => p('code-digit', { position, total })}
+            name="code"
+            readOnly={pending}
+            error={errorOf('code')}
+            onChange={setCode}
           />
-        ) : null}
-        <span className="text-sm text-fg-muted">{t('replace.key-label')}</span>
-        <code dir="ltr" className="font-mono text-base break-all">
-          {grouped(secret)}
-        </code>
-        <div className="flex flex-wrap items-center gap-4">
-          <Button type="button" variant="secondary" onClick={() => void copyKey(secret)}>
-            {copied ? t('replace.copied') : t('replace.copy')}
-          </Button>
-        </div>
-        <OtpField
-          key={`new-${boxes}`}
-          label={t('replace.new-code')}
-          digitLabel={(position, total) => p('code-digit', { position, total })}
-          name="code"
-          readOnly={pending}
-          error={errorOf('code')}
-          onChange={setCode}
-        />
-        <Banner tone="info">{t('replace.effect')}</Banner>
-        <div className="flex flex-wrap gap-3">
-          <Button type="submit" loading={pending}>
-            {t('replace.confirm')}
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => go({ kind: 'idle' })}>
-            {t('replace.cancel')}
-          </Button>
-        </div>
-      </form>
+          <Banner tone="info">{t('replace.effect')}</Banner>
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" loading={pending}>
+              {t('replace.confirm')}
+            </Button>
+            {cancel}
+          </div>
+        </form>
+      </div>
     );
   }
 
   return (
     <SettingsPage title={t('title')} description={t('description')}>
-      {step.kind === 'done' ? <Banner tone="success">{t('replace.done')}</Banner> : null}
+      {step.kind === 'done' ? (
+        <div ref={doneBanner} tabIndex={-1} className="outline-none">
+          <Banner tone="success">{t('replace.done')}</Banner>
+        </div>
+      ) : null}
       <SettingsSection title={t('two-step.title')} description={t('two-step.description')}>
-        <SettingRow label={t('two-step.status')} help={t('two-step.cannot-turn-off')} plain>
+        <SettingRow
+          label={t('two-step.status')}
+          help={active ? t('two-step.cannot-turn-off') : undefined}
+          plain
+        >
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={active ? 'success' : 'attention'}>
               {t(active ? 'two-step.on' : 'two-step.off')}
@@ -263,7 +339,12 @@ export function AccountSecurity({
         {active ? (
           <SettingRow label={t('replace.label')} help={t('replace.help')} plain>
             {step.kind === 'idle' || step.kind === 'done' ? (
-              <Button type="button" variant="secondary" onClick={() => go({ kind: 'verify' })}>
+              <Button
+                ref={replaceButton}
+                type="button"
+                variant="secondary"
+                onClick={() => go({ kind: 'verify' })}
+              >
                 {t('replace.action')}
               </Button>
             ) : (
@@ -271,17 +352,19 @@ export function AccountSecurity({
             )}
           </SettingRow>
         ) : (
-          <SettingRow label={t('replace.label')} plain>
-            <p className="text-sm text-fg-secondary">{t('two-step.off-guidance')}</p>
-          </SettingRow>
+          <div className="px-5 py-4">
+            <Banner tone="attention">{t('two-step.off-guidance')}</Banner>
+          </div>
         )}
         {flow}
       </SettingsSection>
-      <SettingsSection title={t('lost.title')}>
-        <SettingRow label={t('lost.label')} help={t('lost.help')} plain>
-          <p className="text-sm text-fg-secondary">{t('lost.guidance')}</p>
-        </SettingRow>
-      </SettingsSection>
+      {active ? (
+        <SettingsSection title={t('lost.title')}>
+          <SettingRow label={t('lost.label')} help={t('lost.help')} plain>
+            <p className="text-sm text-fg-secondary">{t('lost.guidance')}</p>
+          </SettingRow>
+        </SettingsSection>
+      ) : null}
       <SettingsSection title={t('sessions.title')}>
         <SettingRow label={t('sessions.label')} help={t('sessions.help')} plain>
           <a

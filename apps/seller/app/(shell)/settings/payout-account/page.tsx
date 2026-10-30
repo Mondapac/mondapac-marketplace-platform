@@ -1,8 +1,9 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { PayoutAccountView } from '../../../../src/payout/payout-account.tsx';
 import { PAYOUT_MANAGE_PERMISSION } from '../../../../src/payout/types.ts';
 import { loadPayoutPage } from '../../../../src/server/payout-page.ts';
+import { SettingsNoAccess } from '../../../../src/settings/settings-no-access.tsx';
 import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 
 export async function generateMetadata() {
@@ -23,11 +24,11 @@ export default async function PayoutAccountPage({
   if (page.kind === 'no-access') {
     return (
       <SettingsShell session={page.session} linkId="payout-account" title={t('payout.title')}>
-        <NoAccess
+        <SettingsNoAccess
+          permissionKeys={page.session.permissionKeys}
           title={t('payout.no-access.title')}
           body={t('payout.no-access.body')}
-          backHref="/settings"
-          backLabel={t('settings.sub.back')}
+          labels={{ settings: t('settings.sub.back'), home: t('settings.back-home') }}
         />
       </SettingsShell>
     );

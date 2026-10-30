@@ -2914,19 +2914,19 @@
       "on": "On",
       "off": "Off",
       "cannot-turn-off": "Two-step verification cannot be turned off for an admin account.",
-      "off-guidance": "Two-step verification is not set up on this account. Ask an admin with Roles & permissions to send you a reset link."
+      "off-guidance": "Two-step verification is not set up on this account. Ask an admin who manages Roles & permissions to send you a reset link."
     },
     "replace": {
       "label": "Authenticator app",
       "help": "Move your codes to a new phone. Your current app keeps working until the new one is confirmed.",
       "action": "Replace authenticator",
-      "in-progress": "Replacing your authenticator, finish the steps below.",
+      "in-progress": "Replacing your authenticator. Finish the steps below.",
       "verify-title": "Confirm it is you",
       "verify-body": "Enter the current code from your authenticator app, or a backup code.",
       "current-code": "Current 6-digit code",
       "continue": "Continue",
       "cancel": "Cancel",
-      "secret-title": "Add the new device",
+      "secret-title": "Step 1 of 2: Add the new key",
       "secret-body": "In the authenticator app on your new device, add this account, then enter the 6-digit code it shows.",
       "qr-label": "QR code for your authenticator app",
       "scan": "Scan this code with the authenticator app on your new phone.",
@@ -2935,15 +2935,18 @@
       "copy": "Copy key",
       "copied": "Copied",
       "new-code": "6-digit code from the new device",
-      "confirm": "Replace authenticator",
+      "confirm": "Confirm replacement",
       "effect": "When you confirm, your other devices are signed out and we email you a notice. You stay signed in here.",
-      "done": "Your authenticator was replaced. Your other devices were signed out."
+      "done": "Your authenticator was replaced. Your other devices were signed out.",
+      "confirm-title": "Step 2 of 2: Confirm the code",
+      "confirm-body": "Enter the 6-digit code the new device shows now.",
+      "copy-failed": "Couldn't copy. Select the key and copy it manually."
     },
     "lost": {
       "title": "Lost your phone?",
       "label": "No access to your authenticator",
-      "help": "You cannot replace it here without a current code or a backup code.",
-      "guidance": "Ask an admin with Roles & permissions to send you a reset link."
+      "help": "Ask an admin who manages Roles & permissions to send you a reset link.",
+      "guidance": "You cannot replace it here without a current code or a backup code."
     },
     "sessions": {
       "title": "Signed-in devices",

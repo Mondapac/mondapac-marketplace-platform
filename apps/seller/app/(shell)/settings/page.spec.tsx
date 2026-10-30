@@ -94,7 +94,7 @@ describe('seller settings hub page', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
       messages.settings.hub['no-access-title'],
     );
-    expect(screen.getByRole('link', { name: 'Back to dashboard' }).getAttribute('href')).toBe('/');
+    expect(screen.getByRole('link', { name: 'Back to Dashboard' }).getAttribute('href')).toBe('/');
     expect(screen.queryByText(messages.settings.hub.description)).toBeNull();
   });
 
