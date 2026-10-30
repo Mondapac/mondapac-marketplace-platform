@@ -31,11 +31,7 @@ export default async function TeamPageRoute({
   }
   if (!gate.session.permissionKeys.includes(VIEW_PERMISSION)) {
     return (
-      <SettingsShell
-        session={gate.session}
-        linkId="admins"
-        title={t('identity.members.no-access.title')}
-      >
+      <SettingsShell session={gate.session} linkId="admins" title={t('settings.hub.link.admins')}>
         <NoAccess
           title={t('identity.members.no-access.title')}
           body={t('identity.members.no-access.body')}
@@ -66,14 +62,14 @@ export default async function TeamPageRoute({
   const roles = rolesResult?.kind === 'ok' ? rolesResult.body.items : undefined;
   return (
     <SettingsShell session={gate.session} linkId="admins" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        {result.kind === 'ok' && canInvite && roles !== undefined ? (
+          <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
+        ) : null}
+      </div>
       {result.kind === 'ok' ? (
         <>
-          {canInvite && roles !== undefined ? (
-            <div className="mb-4 flex justify-end">
-              <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
-            </div>
-          ) : null}
           <TeamTable
             page={result.body}
             after={after}

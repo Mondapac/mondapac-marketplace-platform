@@ -7,7 +7,7 @@ import type { AdminSession } from '../server/session.ts';
 export async function RolesNoAccess({ session }: { readonly session: AdminSession }) {
   const t = await getTranslations();
   return (
-    <SettingsShell session={session} linkId="roles" title={t('identity.members.no-access.title')}>
+    <SettingsShell session={session} linkId="roles" title={t('identity.members.title.admin')}>
       <NoAccess
         title={t('identity.members.no-access.title')}
         body={t('identity.members.no-access.body')}

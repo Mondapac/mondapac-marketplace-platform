@@ -40,14 +40,14 @@ export async function RolesTable({
               <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
                 {/* Fixed layout with shared widths, so the System, Default and Custom tables
                     line their columns up with each other; Role takes what is left. */}
-                <table className={`${CARD_TABLE.table} lg:min-w-180 lg:table-fixed`}>
+                <table className={`${CARD_TABLE.table} lg:table-fixed`}>
                   <caption className="sr-only">{t(`identity.roles.group.${kind}`)}</caption>
                   <colgroup className="max-lg:hidden">
                     <col />
-                    <col className="w-36" />
-                    <col className="w-36" />
-                    {members === null ? null : <col className="w-32" />}
-                    <col className="w-28" />
+                    <col className="w-32" />
+                    <col className="w-32" />
+                    {members === null ? null : <col className="w-24" />}
+                    <col className="w-20" />
                   </colgroup>
                   <thead className={CARD_TABLE.head}>
                     <tr>
