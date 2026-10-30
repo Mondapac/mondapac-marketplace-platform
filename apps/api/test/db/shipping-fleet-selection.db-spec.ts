@@ -153,12 +153,12 @@ describe.each(TEST_MARKETS)('fleet selection repository in market %s (database)'
     ).toBe('conflict');
     const race = await Promise.all(
       [1, 2].map(() =>
-        value(market, () => repository.bumpSelectionVersion(market, start, admin, T0)).catch(
-          () => 'conflict' as const,
-        ),
+        value(market, () => repository.bumpSelectionVersion(market, start, admin, T0)),
       ),
     );
-    expect(race.filter((answer) => answer === 'bumped')).toHaveLength(1);
+    // A real database error rejects the Promise.all and fails the test; the loser must answer
+    // 'conflict'.
+    expect([...race].sort()).toEqual(['bumped', 'conflict']);
     expect(await value(market, () => repository.selectionVersion(market))).toBe(start + 1);
     // The version of one Market never moves another's.
     expect(await value(other, () => repository.selectionVersion(other))).not.toBe(start + 1);
@@ -200,5 +200,13 @@ describe.each(TEST_MARKETS)('fleet selection repository in market %s (database)'
         ['ZZ_OTHER', market.tenantId, admin],
       ),
     ).toBe(CHECK);
+    const scoped = (marketId: string, tenantId: string) =>
+      attempt(
+        `INSERT INTO shipping.fleet_selection_settings (market_id, tenant_id, version, updated_by, updated_at)
+         VALUES ($1, $2, 1, $3, now())`,
+        [marketId, tenantId, admin],
+      );
+    expect(await scoped('au', market.tenantId)).toBe(CHECK);
+    expect(await scoped('ZZ_OTHER', 'Not A Tenant')).toBe(CHECK);
   });
 });
