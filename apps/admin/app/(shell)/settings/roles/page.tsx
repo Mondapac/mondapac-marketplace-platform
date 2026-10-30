@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LinkButton, LoadError, SettingsPage } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { RolesNoAccess } from '../../../../src/roles/roles-page-gate.tsx';
@@ -35,22 +35,25 @@ export default async function RolesPageRoute() {
   const title = t('identity.members.title.admin');
   return (
     <SettingsShell session={gate.session} linkId="roles" title={title}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {gate.session.permissionKeys.includes(CREATE_PERMISSION) ? (
-          <a
-            className="inline-flex h-(--mp-size-control) items-center rounded-md bg-accent px-4 font-medium text-on-accent hover:bg-accent-hover"
-            href="/settings/roles/new"
-          >
-            {t('identity.roles.action.create')}
-          </a>
-        ) : null}
-      </div>
-      {result.kind === 'ok' ? (
-        <RolesTable roles={result.body.items} members={members} />
-      ) : (
-        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
-      )}
+      <SettingsPage
+        title={title}
+        description={t('settings.roles.description')}
+        actions={
+          gate.session.permissionKeys.includes(CREATE_PERMISSION) ? (
+            <LinkButton href="/settings/roles/new">{t('identity.roles.action.create')}</LinkButton>
+          ) : null
+        }
+      >
+        {result.kind === 'ok' ? (
+          <RolesTable roles={result.body.items} members={members} />
+        ) : (
+          <LoadError
+            message={t('identity.error.unknown')}
+            retryLabel={t('load.retry')}
+            className="flex flex-col items-start gap-3"
+          />
+        )}
+      </SettingsPage>
     </SettingsShell>
   );
 }

@@ -15,6 +15,11 @@ export interface SaveBarProps {
   readonly errorCount?: number;
   /** "1 needs fixing": shown after the summary when `errorCount` is above 0. */
   readonly errorsSummary?: string;
+  /**
+   * A page that is unsaved by definition (a new record) passes this: the bar then shows at
+   * `count` 0 with this text ("New role · nothing entered yet") instead of an invented change.
+   */
+  readonly emptySummary?: string;
   readonly saving?: boolean;
   readonly labels: {
     /** Name of the bar's landmark. */
@@ -40,13 +45,14 @@ export function SaveBar({
   summary,
   errorCount = 0,
   errorsSummary,
+  emptySummary,
   saving = false,
   labels,
   onDiscard,
   aboveBottomBar = false,
 }: SaveBarProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const visible = count > 0;
+  const visible = count > 0 || emptySummary !== undefined;
 
   useLayoutEffect(() => {
     const bar = ref.current;
@@ -87,7 +93,7 @@ export function SaveBar({
       >
         <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-attention-solid" />
         <span className="min-w-0 break-words">
-          {summary}
+          {count > 0 ? summary : emptySummary}
           {errorCount > 0 && errorsSummary ? (
             <span className="text-critical-fg"> · {errorsSummary}</span>
           ) : null}

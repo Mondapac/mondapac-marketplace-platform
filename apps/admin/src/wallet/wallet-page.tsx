@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, NoAccess } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { AdminShell } from '../server/admin-shell.tsx';
@@ -15,6 +15,7 @@ export async function WalletPage({
   title,
   intro,
   anyOf,
+  permissionLabel,
   stepUpNote,
   settingsLinkId,
   body,
@@ -26,6 +27,8 @@ export async function WalletPage({
   readonly title: string;
   readonly intro: string;
   readonly anyOf: readonly string[];
+  /** The permission named in the no-access block of a settings page (what the caller needs). */
+  readonly permissionLabel?: string;
   /** Show the "wait for a new code" help line (the page has a button that asks for a code). */
   readonly stepUpNote: boolean;
   readonly body: (session: AdminSession, keys: ReadonlySet<string>) => ReactNode;
@@ -47,6 +50,24 @@ export async function WalletPage({
         {children}
       </SettingsShell>
     );
+  if (settingsLinkId !== undefined) {
+    // A settings page draws its own header: the body is a `SettingsPage` (title, intro, rows).
+    return shell(
+      allowed ? (
+        body(gate.session, keys)
+      ) : (
+        <NoAccess
+          title={t('settings.no-access-title')}
+          body={t('settings.no-access-needs', {
+            page: title,
+            permission: permissionLabel ?? anyOf.join(', '),
+          })}
+          backHref="/"
+          backLabel={t('settings.back-home')}
+        />
+      ),
+    );
+  }
   return shell(
     <>
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>

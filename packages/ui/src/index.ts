@@ -59,11 +59,13 @@ export {
   SettingInput,
   SettingSelect,
   SettingCheckbox,
+  SettingTextArea,
   useSettingField,
   type SettingRowProps,
   type SettingInputProps,
   type SettingSelectProps,
   type SettingCheckboxProps,
+  type SettingTextAreaProps,
 } from './settings/setting-row.tsx';
 export { SaveBar, SAVE_BAR_OFFSET_VAR, type SaveBarProps } from './settings/save-bar.tsx';
 export {

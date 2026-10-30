@@ -1,4 +1,4 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError, NoAccess, SettingsPage, SettingsSection } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
@@ -62,34 +62,46 @@ export default async function TeamPageRoute({
   const roles = rolesResult?.kind === 'ok' ? rolesResult.body.items : undefined;
   return (
     <SettingsShell session={gate.session} linkId="admins" title={title}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {result.kind === 'ok' && canInvite && roles !== undefined ? (
-          <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
-        ) : null}
-      </div>
-      {result.kind === 'ok' ? (
-        <>
-          <TeamTable
-            page={result.body}
-            after={after}
-            csrfToken={gate.session.csrfToken}
-            roles={canAssign ? roles : undefined}
-          />
-          {result.body.next === null || !UUID.test(result.body.next) ? null : (
-            <p className="mt-4">
-              <a
-                className="font-medium text-link underline"
-                href={`/settings/admins?after=${result.body.next}`}
-              >
-                {t('identity.members.next-page')}
-              </a>
-            </p>
+      <SettingsPage
+        title={title}
+        description={t('settings.admins.description')}
+        actions={
+          result.kind === 'ok' && canInvite && roles !== undefined ? (
+            <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
+          ) : null
+        }
+      >
+        <SettingsSection title={t('settings.admins.section')}>
+          {result.kind === 'ok' ? (
+            <>
+              <TeamTable
+                page={result.body}
+                after={after}
+                csrfToken={gate.session.csrfToken}
+                roles={canAssign ? roles : undefined}
+              />
+              {result.body.next === null || !UUID.test(result.body.next) ? null : (
+                <p className="border-t border-line-row px-5 py-4">
+                  <a
+                    className="font-medium text-link underline"
+                    href={`/settings/admins?after=${result.body.next}`}
+                  >
+                    {t('identity.members.next-page')}
+                  </a>
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="px-5 py-4">
+              <LoadError
+                message={t('identity.error.unknown')}
+                retryLabel={t('load.retry')}
+                className="flex flex-col items-start gap-3"
+              />
+            </div>
           )}
-        </>
-      ) : (
-        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
-      )}
+        </SettingsSection>
+      </SettingsPage>
     </SettingsShell>
   );
 }

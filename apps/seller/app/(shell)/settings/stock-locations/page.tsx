@@ -31,7 +31,6 @@ export default async function StockLocationsPage() {
   }
   return (
     <SettingsShell session={page.session} linkId="stock-locations" title={t('stock.title')}>
-      <h1 className="mb-6 text-2xl font-semibold">{t('stock.title')}</h1>
       <StockLocations
         initial={page.view}
         options={page.options}

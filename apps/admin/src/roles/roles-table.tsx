@@ -1,4 +1,4 @@
-import { Badge, CARD_TABLE, EmptyState, Icon, type BadgeTone } from '@mondapac/ui';
+import { Badge, CARD_TABLE, EmptyState, Icon, SettingsSection, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { roleName } from './role-name.ts';
 import type { RoleRecord } from './types.ts';
@@ -21,23 +21,22 @@ export async function RolesTable({
 }) {
   const t = await getTranslations();
   return (
-    <div className="flex flex-col gap-6">
+    <>
       {KINDS.map((kind) => {
         const rows = roles.filter((role) => role.kind === kind);
         if (rows.length === 0 && kind !== 'custom') return null;
         return (
-          <section key={kind} aria-labelledby={`roles-${kind}`}>
-            <h2 id={`roles-${kind}`} className="mb-2 text-lg font-semibold">
-              {t(`identity.roles.group.${kind}`)}
-            </h2>
+          <SettingsSection key={kind} title={t(`identity.roles.group.${kind}`)}>
             {rows.length === 0 ? (
-              <EmptyState
-                icon="key"
-                title={t('identity.roles.empty-custom.title')}
-                body={t('identity.roles.empty-custom.body')}
-              />
+              <div className="px-5 py-4">
+                <EmptyState
+                  icon="key"
+                  title={t('identity.roles.empty-custom.title')}
+                  body={t('identity.roles.empty-custom.body')}
+                />
+              </div>
             ) : (
-              <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+              <div className="relative overflow-x-auto">
                 {/* Fixed layout with shared widths, so the System, Default and Custom tables
                     line their columns up with each other; Role takes what is left. */}
                 <table className={`${CARD_TABLE.table} lg:table-fixed`}>
@@ -130,9 +129,9 @@ export async function RolesTable({
                 </table>
               </div>
             )}
-          </section>
+          </SettingsSection>
         );
       })}
-    </div>
+    </>
   );
 }

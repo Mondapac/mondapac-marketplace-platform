@@ -5,8 +5,10 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
   Dialog,
+  SettingRow,
+  SettingsPage,
+  SettingsSection,
   TextField,
   toast,
   type BadgeTone,
@@ -140,109 +142,123 @@ export function PayoutAccountView({
     else setCheckFailed(true);
   }
 
+  const banners = [
+    back === 'return' ? (
+      <Banner key="return" tone="info" title={t('back.return.title')}>
+        {t('back.return.body')}
+      </Banner>
+    ) : null,
+    back === 'refresh' ? (
+      <Banner key="refresh" tone="attention" title={t('back.refresh.title')}>
+        {t('back.refresh.body')}
+      </Banner>
+    ) : null,
+  ].filter((node) => node !== null);
+
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-fg-muted">{t('intro')}</p>
-      {back === 'return' ? (
-        <Banner tone="info" title={t('back.return.title')}>
-          {t('back.return.body')}
-        </Banner>
-      ) : null}
-      {back === 'refresh' ? (
-        <Banner tone="attention" title={t('back.refresh.title')}>
-          {t('back.refresh.body')}
-        </Banner>
-      ) : null}
-      <Card title={t('status.title')}>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={TONE[status] ?? 'neutral'}>{t(`status.${status}`)}</Badge>
-          {connected && !coolingOff ? (
-            <Badge tone={account.ready ? 'success' : 'neutral'}>
-              {t(account.ready ? 'ready.yes' : 'ready.no')}
-            </Badge>
-          ) : null}
-        </div>
-        <p className="text-fg-secondary">
-          {t(`status.about.${status === 'enabled' && coolingOff ? 'waiting' : status}`)}
-        </p>
+    <SettingsPage
+      title={t('title')}
+      description={t('intro')}
+      banner={
+        banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
+      }
+    >
+      <SettingsSection title={t('status.title')}>
+        <SettingRow label={t('status.account')} plain>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={TONE[status] ?? 'neutral'}>{t(`status.${status}`)}</Badge>
+            {connected && !coolingOff ? (
+              <Badge tone={account.ready ? 'success' : 'neutral'}>
+                {t(account.ready ? 'ready.yes' : 'ready.no')}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="mt-2 text-fg-secondary">
+            {t(`status.about.${status === 'enabled' && coolingOff ? 'waiting' : status}`)}
+          </p>
+        </SettingRow>
         {connected ? (
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-fg-muted">{t('field.requirements')}</dt>
-              <dd className="font-medium">
+          <>
+            <SettingRow label={t('field.requirements')} plain>
+              <p className="font-medium">
                 {account.requirementsDue === 0
                   ? t('requirements.none')
                   : t('requirements.due', { count: account.requirementsDue })}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-fg-muted">{t('field.past-due')}</dt>
-              <dd className="font-medium">{t(account.requirementsPastDue ? 'yes' : 'no')}</dd>
-            </div>
-          </dl>
+              </p>
+            </SettingRow>
+            <SettingRow label={t('field.past-due')} plain>
+              <p className="font-medium">{t(account.requirementsPastDue ? 'yes' : 'no')}</p>
+            </SettingRow>
+          </>
         ) : null}
-        {account.requirementsPastDue ? <Banner tone="critical">{t('past-due')}</Banner> : null}
-        {coolingOff && account.coolingOffUntil !== null ? (
-          <Banner tone="attention" title={t('cooling-off.title')}>
-            {t('cooling-off.body', { until: formatInstant(account.coolingOffUntil, locale, zone) })}
-            {account.payoutsPaused ? ` ${t('cooling-off.paused')}` : ''}
-          </Banner>
-        ) : null}
-        {!coolingOff && account.payoutsPaused ? (
-          <Banner tone="attention">{t('cooling-off.paused')}</Banner>
-        ) : null}
-        {canManage ? (
-          account.secondFactorActive ? (
-            <ActionRow>
-              <Button type="button" onClick={() => setOpen(true)}>
-                {t(`action.${actionKey}`)}
-              </Button>
-              {connected ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={checking}
-                  onClick={() => void check()}
-                >
-                  {t('action.check')}
-                </Button>
-              ) : null}
-            </ActionRow>
-          ) : (
-            <Banner tone="info" title={t('second-factor.title')}>
-              <p>{t('second-factor.body')}</p>
-              <a
-                href="/account/security"
-                className="inline-flex min-h-12 items-center font-medium text-link underline"
-              >
-                {t('second-factor.link')}
-              </a>
+        <div className="flex flex-col gap-3 px-5 py-4 empty:hidden">
+          {account.requirementsPastDue ? <Banner tone="critical">{t('past-due')}</Banner> : null}
+          {coolingOff && account.coolingOffUntil !== null ? (
+            <Banner tone="attention" title={t('cooling-off.title')}>
+              {t('cooling-off.body', {
+                until: formatInstant(account.coolingOffUntil, locale, zone),
+              })}
+              {account.payoutsPaused ? ` ${t('cooling-off.paused')}` : ''}
             </Banner>
-          )
-        ) : null}
-        {checkFailed ? <Banner tone="critical">{t('error.check')}</Banner> : null}
-      </Card>
-      <Card title={t('changes.title')}>
-        {account.changes.length === 0 ? (
-          <p className="text-fg-muted">{t('changes.empty')}</p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-line-row">
-            {account.changes.map((change) => (
-              <li
-                key={`${change.detectedAt}-${change.kind}`}
-                className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0 sm:grid sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-x-6"
-              >
-                <span className="text-fg-muted">
-                  {formatInstant(change.detectedAt, locale, zone)}
-                </span>
-                <span className="font-medium">
-                  {t(`changes.kind.${known(change.kind, CHANGE_KINDS)}`)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+          ) : null}
+          {!coolingOff && account.payoutsPaused ? (
+            <Banner tone="attention">{t('cooling-off.paused')}</Banner>
+          ) : null}
+          {canManage ? (
+            account.secondFactorActive ? (
+              <ActionRow>
+                <Button type="button" onClick={() => setOpen(true)}>
+                  {t(`action.${actionKey}`)}
+                </Button>
+                {connected ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={checking}
+                    onClick={() => void check()}
+                  >
+                    {t('action.check')}
+                  </Button>
+                ) : null}
+              </ActionRow>
+            ) : (
+              <Banner tone="info" title={t('second-factor.title')}>
+                <p>{t('second-factor.body')}</p>
+                <a
+                  href="/account/security"
+                  className="inline-flex min-h-12 items-center font-medium text-link underline"
+                >
+                  {t('second-factor.link')}
+                </a>
+              </Banner>
+            )
+          ) : null}
+          {checkFailed ? <Banner tone="critical">{t('error.check')}</Banner> : null}
+        </div>
+      </SettingsSection>
+      <SettingsSection title={t('changes.title')}>
+        <div className="px-5 py-4">
+          {account.changes.length === 0 ? (
+            <p className="text-fg-muted">{t('changes.empty')}</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line-row">
+              {account.changes.map((change) => (
+                <li
+                  key={`${change.detectedAt}-${change.kind}`}
+                  className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0 sm:grid sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-x-6"
+                >
+                  <span className="text-fg-muted">
+                    {formatInstant(change.detectedAt, locale, zone)}
+                  </span>
+                  <span className="font-medium">
+                    {t(`changes.kind.${known(change.kind, CHANGE_KINDS)}`)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </SettingsSection>
       <Dialog
         open={open}
         title={t('dialog.title')}
@@ -281,6 +297,6 @@ export function PayoutAccountView({
           />
         </form>
       </Dialog>
-    </div>
+    </SettingsPage>
   );
 }

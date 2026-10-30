@@ -153,9 +153,25 @@ describe('the fleet selection page', () => {
     mount(selection(), false);
 
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('Instant').disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'New model' })).toBeNull();
     expect(screen.queryByLabelText('Reliability (0 to 100)')).toBeNull();
     expect(screen.getAllByText('Reliability (0 to 100):')).toHaveLength(4);
+  });
+
+  it('marks a changed method, counts it in the save bar and discards it', () => {
+    mount(selection());
+
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('1 unsaved change');
+    expect(screen.getByLabelText('Instant').className).toContain('ring-attention-border');
+    expect(screen.getByLabelText('Scheduled').className).not.toContain('ring-attention-border');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('Instant').value).toBe('');
+    expect(call).not.toHaveBeenCalled();
   });
 
   const PATH = 'shipping/admin/fleet-selection';
@@ -396,6 +412,7 @@ describe('the fleet selection page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
     await waitFor(() => expect(screen.getByText(/Someone saved this model first/)).toBeTruthy());
+    expect(screen.getByText('This page changed while you were editing')).toBeTruthy();
     expect(call.mock.calls[0]).toEqual([
       'PUT',
       `shipping/admin/fleet-selection/models/${MODEL}`,

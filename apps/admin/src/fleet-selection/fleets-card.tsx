@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Card, TextField } from '@mondapac/ui';
+import { Badge, SettingsSection, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import type { FleetCode, FleetRow } from './types.ts';
 
@@ -22,7 +22,7 @@ function FleetItem({
 }) {
   const t = useTranslations();
   return (
-    <li className="flex flex-col gap-3 rounded-md border border-line p-4">
+    <li className="flex flex-col gap-3 border-b border-line-row px-5 py-4 last:border-b-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-base font-medium">{row.displayName}</h3>
         <Badge tone={row.enabled ? 'success' : 'neutral'}>
@@ -37,21 +37,23 @@ function FleetItem({
           : t(`${P}.fleet.no-methods`)}
       </p>
       {canManage ? (
-        <TextField
-          name={`reliability-${row.fleet}`}
-          label={t(`${P}.reliability.label`)}
-          help={
-            row.reliability === null
-              ? t(`${P}.reliability.unset`, { score: row.effectiveReliability })
-              : t(`${P}.reliability.help`)
-          }
-          inputMode="numeric"
-          autoComplete="off"
-          className="sm:max-w-40"
-          value={text}
-          error={invalid ? t(`${P}.invalid.score`) : undefined}
-          onChange={(event) => onText(event.target.value)}
-        />
+        <div className="flex flex-col gap-2">
+          <TextField
+            name={`reliability-${row.fleet}`}
+            label={t(`${P}.reliability.label`)}
+            help={
+              row.reliability === null
+                ? t(`${P}.reliability.unset`, { score: row.effectiveReliability })
+                : t(`${P}.reliability.help`)
+            }
+            inputMode="numeric"
+            autoComplete="off"
+            className="sm:max-w-40"
+            value={text}
+            error={invalid ? t(`${P}.invalid.score`) : undefined}
+            onChange={(event) => onText(event.target.value)}
+          />
+        </div>
       ) : (
         <p className="text-sm">
           <span className="text-fg-muted">{t(`${P}.reliability.label`)}: </span>
@@ -78,9 +80,8 @@ export function FleetsCard({
 }) {
   const t = useTranslations();
   return (
-    <Card title={t(`${P}.fleets.title`)}>
-      <p className="text-sm text-fg-muted">{t(`${P}.fleets.intro`)}</p>
-      <ul className="flex flex-col gap-3">
+    <SettingsSection title={t(`${P}.fleets.title`)} description={t(`${P}.fleets.intro`)}>
+      <ul className="flex flex-col">
         {fleets.map((row) => (
           <FleetItem
             key={row.fleet}
@@ -92,6 +93,6 @@ export function FleetsCard({
           />
         ))}
       </ul>
-    </Card>
+    </SettingsSection>
   );
 }

@@ -103,7 +103,9 @@ describe('the Store profile page', () => {
     const html = await render();
 
     expect(html).toContain('data-can-edit="true"');
-    expect(html).toContain('<h1');
+    // The page heading is drawn by the settings template inside the profile, not by this page.
+    expect(html).not.toContain('<h1');
+    expect(html).toContain('data-title="store-profile.title"');
   });
 
   it('renders the profile read-only without the edit permission', async () => {

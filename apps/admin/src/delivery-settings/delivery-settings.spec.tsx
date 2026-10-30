@@ -188,7 +188,7 @@ describe('the delivery settings page', () => {
       'Same-day delivery',
       'Scheduled delivery',
     ]) {
-      expect(screen.getByLabelText<HTMLInputElement>(name).checked).toBe(true);
+      expect(screen.getByRole<HTMLInputElement>('checkbox', { name }).checked).toBe(true);
     }
   });
 
@@ -222,8 +222,10 @@ describe('the delivery settings page', () => {
   it('is read-only without the manage permission', () => {
     mount(settings({ version: 2 }), false);
 
-    expect(screen.queryByRole('button', { name: 'Save delivery settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').disabled).toBe(true);
+    expect(screen.getByLabelText<HTMLSelectElement>('Window length').disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>('Cut-off time').disabled).toBe(true);
     expect(screen.getByText(/You can view these settings but not change them/)).toBeTruthy();
   });
@@ -248,7 +250,7 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Rounding'), { target: { value: '5' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(call).not.toHaveBeenCalled();
     pressInDialog('Confirm and save');
 
@@ -279,9 +281,11 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Rounding'), { target: { value: '10' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    const dialog = within(screen.getByRole('dialog', { hidden: true }));
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Save these delivery settings?', hidden: true }),
+    );
     const text = flat(dialog.getByRole('list', { hidden: true }).textContent);
     expect(text).toContain('Instant delivery will be unavailable for all sellers in this Market.');
     expect(text).toContain('Sellers can’t receive Instant delivery orders');
@@ -293,17 +297,43 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('puts the error on the field, marks it invalid and focuses the first one', () => {
+  it('puts the error on the field, lists it in the summary and moves focus to the summary', () => {
     mount(settings());
 
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '250' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     const field = screen.getByLabelText<HTMLInputElement>('Percentage');
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
+    const summary = screen.getByRole('alert');
+    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(document.activeElement).toBe(summary);
+    fireEvent.click(within(summary).getByRole('link', { name: 'Percentage' }));
     expect(document.activeElement).toBe(field);
+    // Typing in the field takes its error away.
+    fireEvent.change(field, { target: { value: '12' } });
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('marks each changed field, counts them in the save bar and discards them', () => {
+    mount(settings({ version: 1 }));
+
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.click(screen.getByLabelText('Instant delivery'));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('2 unsaved changes');
+    expect(screen.getByLabelText('Days ahead').className).toContain('ring-attention-border');
+    expect(screen.getByLabelText('Cut-off time').className).not.toContain('ring-attention-border');
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('7');
+    expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').checked).toBe(true);
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -313,7 +343,7 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '45' } });
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'fixed' } });
     fireEvent.change(screen.getByLabelText(/^Amount/), { target: { value: '1.505' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(screen.getByText('Enter a whole number of days from 1 to 30.')).toBeTruthy();
     expect(screen.getByText(/Enter an amount up to/)).toBeTruthy();
@@ -326,11 +356,14 @@ describe('the delivery settings page', () => {
       .mockResolvedValueOnce(ok(settings({ scheduledDaysAhead: 4, version: 5 })));
     mount(settings({ version: 4 }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
 
     await waitFor(() =>
       expect(screen.getByText(/Someone saved these settings first/)).toBeTruthy(),
     );
+    expect(screen.getByText('These settings changed while you were editing')).toBeTruthy();
     expect(call).toHaveBeenNthCalledWith(2, 'GET', 'shipping/admin/delivery-settings');
     expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('4');
   });
@@ -339,7 +372,9 @@ describe('the delivery settings page', () => {
     call.mockResolvedValue(refused(403, 'access.denied'));
     mount(settings());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
 
     await waitFor(() =>
       expect(screen.getByText('Your role cannot change delivery settings.')).toBeTruthy(),
@@ -352,7 +387,9 @@ describe('the delivery settings page', () => {
     call.mockResolvedValue(refused(401, 'session.invalid'));
     mount(settings());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
     vi.unstubAllGlobals();

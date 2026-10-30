@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -123,6 +123,27 @@ describe('role editor', () => {
     expect(router.refresh).toHaveBeenCalled();
   });
 
+  it('guards leaving again when something is edited after a save', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'role.updated', roleId: ID },
+    });
+    mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    const leaves = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    fireEvent.click(screen.getByLabelText('Invite'));
+    expect(leaves()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await expectToast(/Saved\./);
+    expect(leaves()).toBe(false);
+    fireEvent.click(screen.getByLabelText('View'));
+    expect(leaves()).toBe(true);
+  });
+
   it('on a stale save keeps the draft, shows the conflict banner, and the next save sends the new version', async () => {
     const saved: RoleRecord = {
       ...custom,
@@ -196,6 +217,7 @@ describe('role editor', () => {
       .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } })
       .mockResolvedValueOnce({ ok: true, status: 200, body: { ...catalogue, items: [] } });
     mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    fireEvent.click(screen.getByLabelText('Invite'));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(router.refresh).toHaveBeenCalled());
     expect(screen.queryByText('Someone saved this role first')).toBeNull();
@@ -245,7 +267,53 @@ describe('role editor', () => {
       initialKeys: [],
     });
     expect(screen.queryByRole('button', { name: 'Delete role' })).toBeNull();
+    fireEvent.click(screen.getByLabelText('Invite'));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/session-ended'));
+  });
+
+  it('shows the save bar from the first change, marks what changed and discards it', () => {
+    mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Invite'));
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Late shift' } });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('2 unsaved changes');
+    expect(screen.getByLabelText('Invite').className).toContain('outline-attention-solid');
+    expect(screen.getByLabelText('View').className).not.toContain('outline-attention-solid');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Role name').value).toBe('Night shift');
+    expect(screen.getByLabelText<HTMLInputElement>('Invite').checked).toBe(false);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('shows a new role with its bar from the start, named Create role', () => {
+    mount({ initialName: '' });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('New role · nothing entered yet');
+    expect(bar.textContent).not.toContain('unsaved change');
+    expect(screen.getByRole('button', { name: 'Create role' })).toBeTruthy();
+  });
+
+  it('lists a missing name in the error summary, which links to the field', () => {
+    mount({ initialName: '' });
+    fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
+    const summary = screen.getByRole('alert');
+    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    fireEvent.click(within(summary).getByRole('link', { name: 'Role name' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Role name'));
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('puts Delete role in a danger zone at the end of the page', () => {
+    mount({ role: custom, initialName: 'Night shift', initialKeys: custom.permissionKeys });
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
+    expect(headings.at(-1)).toBe('Danger zone');
+    const zone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section')!;
+    expect(zone.getAttribute('data-variant')).toBe('danger');
+    expect(within(zone).getByRole('button', { name: 'Delete role' })).toBeTruthy();
   });
 });

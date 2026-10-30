@@ -54,12 +54,26 @@ function mount(initial: PayoutAccount, back: StripeReturn = null, canManage = tr
 
 const open = (name: string) => {
   fireEvent.click(screen.getByRole('button', { name }));
-  return screen.getByRole('dialog', { hidden: true });
+  // The page also holds the closed "Leave without saving?" dialog, so name the one asked for.
+  return screen.getByRole('dialog', { name: 'Enter your verification code', hidden: true });
 };
 const enter = (dialog: HTMLElement, code: string) => {
   fireEvent.change(within(dialog).getByLabelText('Code'), { target: { value: code } });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
 };
+
+describe('payout account page frame', () => {
+  it('uses the settings template: a header, two sections, and no save bar', () => {
+    mount(account({ status: 'enabled', ready: true }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Payout account' })).toBeTruthy();
+    expect(screen.getByText(/MondaPac never sees your bank details/)).toBeTruthy();
+    const sections = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
+    expect(sections).toEqual(['Status', 'Recent changes']);
+    // Nothing on this page is saved with a bar: its one action asks for a code of its own.
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Review details on Stripe' })).toBeTruthy();
+  });
+});
 
 describe('payout account status', () => {
   it('says not connected and offers to connect', () => {
