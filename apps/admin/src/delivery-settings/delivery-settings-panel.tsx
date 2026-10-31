@@ -21,6 +21,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from '../settings/conflict-view.tsx';
+import { useChangeHistory } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { deliveryProblemOf } from './errors.ts';
 import {
@@ -167,6 +168,10 @@ export function DeliverySettingsPanel({
     changes: (saved, draft) => changesOf(saved, draft, t, locale),
   });
   const settings = state.saved;
+  const changeHistory = useChangeHistory(
+    settings.lastChanged,
+    'shipping/admin/delivery-settings/history',
+  );
   const form = state.draft;
   const { currency } = settings;
   const money = (minor: number) => moneyOf(minor, currency, locale);
@@ -268,7 +273,12 @@ export function DeliverySettingsPanel({
       />
     ),
     state.theirs === null ? null : (
-      <SettingsConflictView key="conflict" conflictId={state.conflictId} changes={state.changes} />
+      <SettingsConflictView
+        key="conflict"
+        conflictId={state.conflictId}
+        changes={state.changes}
+        winner={state.theirs.lastChanged}
+      />
     ),
     problem === null ? null : (
       <Banner key="problem" tone="critical">
@@ -286,6 +296,8 @@ export function DeliverySettingsPanel({
     <SettingsPage
       title={t(`${P}.title`)}
       description={t(`${P}.intro`)}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }

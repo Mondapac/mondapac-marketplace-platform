@@ -32,10 +32,14 @@ function languageName(code: string, uiLocale: string): string {
 }
 
 /** What the form holds as saved: the About texts and the version they were saved at. */
-type Saved = Pick<StoreProfileView, 'version' | 'about'>;
+type Saved = Pick<StoreProfileView, 'version' | 'about' | 'lastChanged'>;
 
 const STORE_PROFILE_PATH = 'sellers/store-profile';
-const savedOf = (view: StoreProfileView): Saved => ({ version: view.version, about: view.about });
+const savedOf = (view: StoreProfileView): Saved => ({
+  version: view.version,
+  about: view.about,
+  lastChanged: view.lastChanged ?? null,
+});
 const toDraft = (saved: Saved): Record<string, string> => ({ ...saved.about });
 const versionOf = (saved: Saved) => saved.version;
 async function reload(): Promise<Saved | null> {
@@ -146,7 +150,13 @@ export function useAbout({
       />
     ),
     form.theirs === null ? null : (
-      <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
+      <SettingsConflictView
+        key="conflict"
+        conflictId={form.conflictId}
+        changes={form.changes}
+        winner={form.theirs.lastChanged}
+        subject="store-profile"
+      />
     ),
     banner === null ? null : (
       <Banner key="problem" tone="critical">
@@ -160,6 +170,8 @@ export function useAbout({
   ].filter((node) => node !== null);
 
   return {
+    /** The newest change this form knows of (its load, or its last save). */
+    lastChanged: base.lastChanged ?? null,
     dirty: count > 0,
     count,
     errorCount: invalid.length,

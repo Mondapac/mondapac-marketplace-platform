@@ -524,3 +524,97 @@ describe('problem mapping', () => {
     expect(imageProblemOf({ status: 0, code: 'network' }, 'logo').key).toBe('unavailable');
   });
 });
+
+describe('StoreProfile last changed and history (panel settings T3a, ST4)', () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const change = (over: Partial<NonNullable<StoreProfileView['lastChanged']>> = {}) => ({
+    at: ago(3 * 86_400_000),
+    byDisplayName: 'Amir R.',
+    byKind: 'member' as const,
+    ...over,
+  });
+  const line = () => screen.getByTestId('last-changed');
+
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+
+  it('shows who and when under the title, and nothing while never changed', () => {
+    mount(view({ lastChanged: change() }));
+    expect(line().textContent).toBe('Last changed by Amir R. · 3 days ago · View history');
+    cleanup();
+    mount(view({ lastChanged: null }));
+    expect(screen.queryByTestId('last-changed')).toBeNull();
+  });
+
+  it('opens the history of the store profile, with Mondapac staff named as Mondapac only', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        items: [
+          { id: 'a', ...change({ at: ago(60_000) }), fields: ['about'] },
+          {
+            id: 'b',
+            ...change({ at: ago(120_000), byDisplayName: null, byKind: 'platform' }),
+            fields: ['logo'],
+          },
+        ],
+        next: null,
+      },
+    });
+    mount(view({ lastChanged: change() }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'History' });
+    expect(call).toHaveBeenCalledWith('GET', 'sellers/store-profile/history?limit=20');
+    expect(await within(dialog).findByText('Changed: About')).toBeTruthy();
+    expect(within(dialog).getByText('Changed: Logo')).toBeTruthy();
+    expect(within(dialog).getByText('Amir R.')).toBeTruthy();
+    expect(within(dialog).getByText('Mondapac')).toBeTruthy();
+  });
+
+  it('names who saved the store profile first in the conflict banner', async () => {
+    call
+      .mockResolvedValueOnce(failure({ status: 409, code: 'conflict.stale' }))
+      .mockResolvedValueOnce(
+        done(
+          view({
+            version: 3,
+            about: { 'en-AU': 'Their text.' },
+            lastChanged: change({ at: ago(60_000) }),
+          }),
+        ),
+      );
+    mount(view({ lastChanged: change() }));
+    fireEvent.change(box(), { target: { value: 'Mine.' } });
+    fireEvent.click(save());
+
+    expect(await screen.findByText('Amir R. saved the store profile 1 minute ago')).toBeTruthy();
+  });
+
+  it('moves the line when a picture is saved: that answer carries the newest change', async () => {
+    mount(view({ lastChanged: change() }));
+    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
+    call.mockResolvedValueOnce(
+      done(
+        view({
+          banner: { id: IMAGE, width: 1536, height: 384 },
+          lastChanged: change({ at: ago(1000), byDisplayName: 'Lena W.' }),
+        }),
+      ),
+    );
+    const banner = screen.getByRole('heading', { name: 'Banner' }).closest('section')!;
+    fireEvent.change(banner.querySelector('input[type=file]')!, {
+      target: { files: [new File([new Uint8Array([1])], 'b.png', { type: 'image/png' })] },
+    });
+
+    await waitFor(() => expect(line().textContent).toContain('Lena W.'));
+  });
+});

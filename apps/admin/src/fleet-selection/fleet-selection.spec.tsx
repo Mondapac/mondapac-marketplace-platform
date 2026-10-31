@@ -589,3 +589,41 @@ describe('right-to-left readiness', () => {
     }
   });
 });
+
+describe('last changed and history (panel settings T3a)', () => {
+  it('shows who changed the page last and opens its own history route', async () => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    vi.mocked(callApi).mockReset();
+    vi.mocked(callApi).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { items: [], next: null },
+    });
+    mount(
+      selection({
+        lastChanged: {
+          at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+          byDisplayName: 'Sara K.',
+          byKind: 'member' as const,
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('last-changed').textContent).toBe(
+      'Last changed by Sara K. · 2 days ago · View history',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }));
+    await waitFor(() =>
+      expect(vi.mocked(callApi)).toHaveBeenCalledWith(
+        'GET',
+        'shipping/admin/fleet-selection/history?limit=20',
+      ),
+    );
+    expect(await screen.findByText('No changes yet')).toBeTruthy();
+  });
+});

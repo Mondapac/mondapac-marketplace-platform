@@ -1,3 +1,5 @@
+import type { LastChangedValue } from '@mondapac/ui';
+
 // Answers of the wallet admin routes (apps/api wallet presentation). Amounts are minor-unit digit
 // strings, always with the currency they are in; ids and instants only.
 
@@ -32,6 +34,8 @@ export const NOTE_MAX = 500;
 export const PAGE_SIZE = 20;
 
 export interface WalletSettings {
+  /** The newest change, from the audit log; null while it was never changed. */
+  readonly lastChanged?: LastChangedValue | null;
   readonly status: WalletState;
   readonly reason: string | null;
   readonly updatedAt: string | null;

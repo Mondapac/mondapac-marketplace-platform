@@ -17,6 +17,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
+import { useChangeHistory, useWinnerTitle } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { fleetProblemOf } from './errors.ts';
 import { FleetsCard } from './fleets-card.tsx';
@@ -87,6 +88,11 @@ export function FleetSelectionPanel({
     if (notice !== null) noticeRef.current?.focus();
   }, [notice]);
 
+  const changeHistory = useChangeHistory(
+    selection.lastChanged,
+    'shipping/admin/fleet-selection/history',
+  );
+  const winnerTitle = useWinnerTitle();
   const nameOf = (fleet: FleetCode) =>
     selection.fleets.find((row) => row.fleet === fleet)?.displayName ?? fleet;
 
@@ -269,7 +275,7 @@ export function FleetSelectionPanel({
     conflict ? (
       <div key="conflict" className="flex flex-col gap-3">
         <SettingsConflictBanner
-          title={t(`${P}.conflict.title`)}
+          title={winnerTitle(selection.lastChanged) ?? t(`${P}.conflict.title`)}
           body={t(`${P}.conflict.body`, { count })}
           compareLabel={t(`${P}.conflict.${comparing ? 'hide' : 'compare'}`)}
           onCompare={() => setComparing((open) => !open)}
@@ -311,6 +317,8 @@ export function FleetSelectionPanel({
     <SettingsPage
       title={t(`${P}.title`)}
       description={t(`${P}.intro`)}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }

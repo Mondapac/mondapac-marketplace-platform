@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from './conflict-view.tsx';
 import { supportProblemOf } from './errors.ts';
+import { useChangeHistory } from './last-changed.tsx';
 import type { SupportContact } from './types.ts';
 
 /** The same rule the API checks: lower-case printable ASCII, one "@", a dotted domain. */
@@ -64,6 +65,10 @@ export function SupportEmailCard({
           ],
   });
   const contact = form.saved;
+  const changeHistory = useChangeHistory(
+    contact.lastChanged,
+    'notifications/admin/support-contact/history',
+  );
   const text = form.draft;
 
   const dirty = canManage && form.dirty;
@@ -118,7 +123,12 @@ export function SupportEmailCard({
       />
     ) : null,
     form.theirs !== null ? (
-      <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
+      <SettingsConflictView
+        key="conflict"
+        conflictId={form.conflictId}
+        changes={form.changes}
+        winner={form.theirs.lastChanged}
+      />
     ) : null,
     contact.email === null ? (
       <Banner key="not-set" tone="attention">
@@ -138,6 +148,8 @@ export function SupportEmailCard({
     <SettingsPage
       title={t('settings.support.title')}
       description={t('settings.support.intro')}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={banner}
       onSubmit={canManage ? () => void submit() : undefined}
       dirty={dirty}

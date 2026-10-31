@@ -1,8 +1,9 @@
 'use client';
 
-import { Banner, SaveBar, SettingsPage } from '@mondapac/ui';
+import { Banner, SaveBar, SettingsPage, type LastChangedValue } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
+import { useChangeHistory } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { useAbout } from './about-card.tsx';
 import { ImageCard } from './image-card.tsx';
@@ -29,6 +30,23 @@ export function StoreProfile({
   const about = useAbout({ initial, csrfToken });
   const [logo, setLogo] = useState<StoreImageRef | null>(initial.logo);
   const [banner, setBanner] = useState<StoreImageRef | null>(initial.banner);
+  // A picture save answers with the whole profile, so its change is the newest the page knows of.
+  const [pictureChange, setPictureChange] = useState<LastChangedValue | null>(null);
+  const textChange = about.lastChanged;
+  const newest =
+    pictureChange !== null &&
+    (textChange === null || Date.parse(pictureChange.at) >= Date.parse(textChange.at))
+      ? pictureChange
+      : textChange;
+  const changeHistory = useChangeHistory(newest, 'sellers/store-profile/history');
+  const onPicture = (
+    set: (image: StoreImageRef | null) => void,
+    image: StoreImageRef | null,
+    change: LastChangedValue | null,
+  ) => {
+    set(image);
+    if (change !== null) setPictureChange(change);
+  };
 
   const banners = [
     canEdit ? null : (
@@ -43,6 +61,8 @@ export function StoreProfile({
     <SettingsPage
       title={t('store-profile.title')}
       description={t('store-profile.intro')}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
@@ -66,14 +86,14 @@ export function StoreProfile({
       <ImageCard
         kind="logo"
         image={logo}
-        onImage={setLogo}
+        onImage={(image, change) => onPicture(setLogo, image, change)}
         csrfToken={csrfToken}
         canEdit={canEdit}
       />
       <ImageCard
         kind="banner"
         image={banner}
-        onImage={setBanner}
+        onImage={(image, change) => onPicture(setBanner, image, change)}
         csrfToken={csrfToken}
         canEdit={canEdit}
       />
