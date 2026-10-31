@@ -7362,7 +7362,7 @@ PROPOSALS['variants'] = { title: PV, rows: function () {
 } };
 
 // Sandbox upkeep (owner, 31 Oct): a rebuilt proposal is drawn at the bottom, so the rows it replaced left empty bands. Rows
-// (frames sharing a top edge) move up so 240 px separate them, in their order; nothing changes side to side.
+// (frames sharing a top edge) move up so 240 px separate them, in their order; a row left of the section moves back inside.
 function compactRows(host) {
   const kids = host.children.slice().sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
   if (!kids.length) return;
@@ -7371,7 +7371,9 @@ function compactRows(host) {
     const top = kids[i].y; const rowK = [];
     while (i < kids.length && Math.abs(kids[i].y - top) < 1) { rowK.push(kids[i]); i++; }
     let bottom = y;
-    rowK.forEach(function (n) { n.y = y; bottom = Math.max(bottom, y + n.height); });
+    // a row that ended up left of the section (31 Oct: the Order detail rows sat 3,250 px left of it) moves back inside
+    const left = Math.min.apply(null, rowK.map(function (n) { return n.x; }));
+    rowK.forEach(function (n) { n.y = y; if (left < 0) n.x -= left; bottom = Math.max(bottom, y + n.height); });
     y = bottom + 240;
   }
 }
@@ -7404,6 +7406,7 @@ async function buildProposal(key) {
     removeStrays(figma.currentPage);
     compactRows(host);
     placeRows(host, rows, bottomEdge(host) + 240);
+    compactRows(host);
     // helpers that build a part a state does not use leave it on the page root: remove what this run added there
     figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0 && drawn.indexOf(n) < 0 && n !== host; }).forEach(function (n) { n.remove(); });
     fitSection(host);
