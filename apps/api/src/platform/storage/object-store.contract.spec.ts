@@ -53,7 +53,7 @@ const adapters: Record<string, () => Promise<Harness>> = {
     });
     return Promise.resolve({
       store: new S3ObjectStore(
-        { bucket: 'b', region: 'ap-southeast-2', endpoint: null, credentials: null },
+        { bucket: 'b', region: 'ap-southeast-2', credentials: null },
         new S3Client({ region: 'ap-southeast-2' }),
       ),
       cleanup: () => {
@@ -111,7 +111,7 @@ describe('S3ObjectStore failures', () => {
     mock.on(PutObjectCommand).rejects(new Error('boom'));
     mock.on(DeleteObjectCommand).rejects(new Error('boom'));
     const store = new S3ObjectStore(
-      { bucket: 'b', region: 'ap-southeast-2', endpoint: null, credentials: null },
+      { bucket: 'b', region: 'ap-southeast-2', credentials: null },
       new S3Client({ region: 'ap-southeast-2' }),
     );
     await expect(store.get('a')).rejects.toBeInstanceOf(ObjectStoreUnavailableError);

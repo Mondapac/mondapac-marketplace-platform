@@ -93,10 +93,6 @@ const envSchema = z.object({
     .string()
     .regex(/^[a-z]{2}(-[a-z]+)+-\d$/, 'must be an AWS region such as ap-southeast-2')
     .optional(),
-  // Only for an S3-compatible server (SeaweedFS in CI or staging). Unset for Amazon S3.
-  OBJECT_STORE_S3_ENDPOINT: z
-    .url({ protocol: /^https?$/, error: 'must be an http(s) URL' })
-    .optional(),
   // Both or neither: with neither, the AWS default credential chain applies (an instance role).
   OBJECT_STORE_S3_ACCESS_KEY_ID: z.string().min(1).max(256).optional(),
   OBJECT_STORE_S3_SECRET_ACCESS_KEY: z.string().min(1).max(512).optional(),
@@ -551,7 +547,6 @@ export type ObjectStoreConfig =
       readonly driver: 's3';
       readonly bucket: string;
       readonly region: string;
-      readonly endpoint: string | null;
       readonly credentials: {
         readonly accessKeyId: string;
         readonly secretAccessKey: string;
@@ -564,7 +559,6 @@ function objectStoreSettings(data: {
   OBJECT_STORE_DIR?: string | undefined;
   OBJECT_STORE_S3_BUCKET?: string | undefined;
   OBJECT_STORE_S3_REGION?: string | undefined;
-  OBJECT_STORE_S3_ENDPOINT?: string | undefined;
   OBJECT_STORE_S3_ACCESS_KEY_ID?: string | undefined;
   OBJECT_STORE_S3_SECRET_ACCESS_KEY?: string | undefined;
 }): { config: ObjectStoreConfig | null; issues: string[] } {
@@ -572,7 +566,6 @@ function objectStoreSettings(data: {
   const s3Names = [
     'OBJECT_STORE_S3_BUCKET',
     'OBJECT_STORE_S3_REGION',
-    'OBJECT_STORE_S3_ENDPOINT',
     'OBJECT_STORE_S3_ACCESS_KEY_ID',
     'OBJECT_STORE_S3_SECRET_ACCESS_KEY',
   ] as const;
@@ -619,7 +612,6 @@ function objectStoreSettings(data: {
       driver: 's3',
       bucket: data.OBJECT_STORE_S3_BUCKET,
       region: data.OBJECT_STORE_S3_REGION,
-      endpoint: data.OBJECT_STORE_S3_ENDPOINT ?? null,
       credentials:
         keyId !== undefined && secret !== undefined
           ? { accessKeyId: keyId, secretAccessKey: secret }

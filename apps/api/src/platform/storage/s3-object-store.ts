@@ -12,8 +12,6 @@ import { assertObjectKey, ObjectStoreUnavailableError, type ObjectStore } from '
 export interface S3ObjectStoreOptions {
   readonly bucket: string;
   readonly region: string;
-  /** Set only for an S3-compatible server; Amazon S3 leaves it null. */
-  readonly endpoint: string | null;
   /** Null: the AWS default credential chain (an instance role). Never logged. */
   readonly credentials: { readonly accessKeyId: string; readonly secretAccessKey: string } | null;
 }
@@ -31,19 +29,16 @@ export class ObjectStoreMisconfiguredError extends Error {
 export class S3ObjectStore implements ObjectStore {
   readonly #client: S3Client;
   readonly #bucket: string;
-  readonly #custom: boolean;
   readonly #region: string;
 
   constructor(options: S3ObjectStoreOptions, client?: S3Client) {
     this.#bucket = options.bucket;
     this.#region = options.region;
-    this.#custom = options.endpoint !== null;
     this.#client =
       client ??
       new S3Client({
         region: options.region,
         maxAttempts: 3,
-        ...(options.endpoint === null ? {} : { endpoint: options.endpoint, forcePathStyle: true }),
         ...(options.credentials === null ? {} : { credentials: options.credentials }),
       });
   }
@@ -67,8 +62,6 @@ export class S3ObjectStore implements ObjectStore {
         `object store bucket is not reachable (${describe(error)})`,
       );
     }
-    // An S3-compatible server has no public access block to read.
-    if (this.#custom) return;
     let blocked: boolean;
     try {
       const out = await this.#client.send(
@@ -101,7 +94,7 @@ export class S3ObjectStore implements ObjectStore {
           Key: key,
           Body: bytes,
           ContentLength: bytes.length,
-          ServerSideEncryption: this.#custom ? undefined : 'AES256',
+          ServerSideEncryption: 'AES256',
         }),
       );
     } catch {

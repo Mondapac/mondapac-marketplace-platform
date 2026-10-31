@@ -8,9 +8,9 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { ObjectStoreMisconfiguredError, S3ObjectStore } from './s3-object-store';
 
 const REGION = 'ap-southeast-2';
-const make = (endpoint: string | null = null) =>
+const make = () =>
   new S3ObjectStore(
-    { bucket: 'b', region: REGION, endpoint, credentials: null },
+    { bucket: 'b', region: REGION, credentials: null },
     new S3Client({ region: REGION }),
   );
 const allBlocked = {
@@ -58,23 +58,16 @@ describe('S3ObjectStore.verify', () => {
       .rejects(Object.assign(new Error('x'), { name: 'AccessDenied' }));
     await expect(make().verify()).rejects.toThrow('cannot be read');
   });
-
-  it('skips the public access block on an S3-compatible server', async () => {
-    mock.on(HeadBucketCommand).resolves({});
-    await expect(make('http://localhost:8333').verify()).resolves.toBeUndefined();
-    expect(mock.commandCalls(GetPublicAccessBlockCommand)).toHaveLength(0);
-  });
 });
 
 describe('S3ObjectStore.put', () => {
-  it('asks for encryption at rest on Amazon S3 only', async () => {
+  it('asks for encryption at rest', async () => {
     const mock = mockClient(S3Client);
     mock.on(PutObjectCommand).resolves({});
     await make().put('a', Buffer.from('x'));
-    await make('http://localhost:8333').put('a', Buffer.from('x'));
-    const [amazon, custom] = mock.commandCalls(PutObjectCommand);
-    expect(amazon?.args[0].input.ServerSideEncryption).toBe('AES256');
-    expect(custom?.args[0].input.ServerSideEncryption).toBeUndefined();
+    expect(mock.commandCalls(PutObjectCommand)[0]?.args[0].input.ServerSideEncryption).toBe(
+      'AES256',
+    );
     mock.restore();
   });
 });

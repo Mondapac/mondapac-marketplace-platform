@@ -758,21 +758,18 @@ describe('loadAppConfig', () => {
         driver: 's3',
         bucket: 'mondapac-pilot-files',
         region: 'ap-southeast-2',
-        endpoint: null,
         credentials: null,
       });
     });
 
-    it('accepts s3 with a key pair and an S3-compatible endpoint', () => {
+    it('accepts s3 with a key pair', () => {
       const config = loadAppConfig({
         HOSTED_MARKETS: 'AU',
         ...s3,
-        OBJECT_STORE_S3_ENDPOINT: 'http://localhost:8333',
         OBJECT_STORE_S3_ACCESS_KEY_ID: 'id',
         OBJECT_STORE_S3_SECRET_ACCESS_KEY: 'secret',
       });
       expect(config.objectStore).toMatchObject({
-        endpoint: 'http://localhost:8333',
         credentials: { accessKeyId: 'id', secretAccessKey: 'secret' },
       });
     });
