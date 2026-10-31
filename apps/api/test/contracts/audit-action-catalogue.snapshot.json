@@ -58,6 +58,45 @@
     }
   },
   {
+    "action": "catalog.saved-filter.changed",
+    "targetType": "catalog.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "listKey": "enumOf(admin.catalog.products)",
+      "ownedByActor": "boolean",
+      "renamed": "boolean",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "catalog.saved-filter.removed",
+    "targetType": "catalog.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "listKey": "enumOf(admin.catalog.products)",
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "ownedByActor": "boolean"
+    }
+  },
+  {
+    "action": "catalog.saved-filter.shared",
+    "targetType": "catalog.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "listKey": "enumOf(admin.catalog.products)",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
     "action": "assistant.settings.changed",
     "targetType": "assistant.settings",
     "targetId": "enumOf(assistant-settings)",
