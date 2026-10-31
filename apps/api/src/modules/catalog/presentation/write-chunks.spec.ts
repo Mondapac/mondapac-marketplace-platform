@@ -28,6 +28,7 @@ describe('writeChunks (export streaming, Hassan L-583-2)', () => {
     const run = writeChunks(
       asResponse(response),
       (async function* () {
+        await Promise.resolve();
         yield 'a';
         yield 'b';
         yield 'c';
@@ -49,6 +50,7 @@ describe('writeChunks (export streaming, Hassan L-583-2)', () => {
     const run = writeChunks(
       asResponse(response),
       (async function* () {
+        await Promise.resolve();
         try {
           for (;;) {
             pulled += 1;
@@ -74,6 +76,7 @@ describe('writeChunks (export streaming, Hassan L-583-2)', () => {
       writeChunks(
         asResponse(response),
         (async function* () {
+          await Promise.resolve();
           yield 'a';
         })(),
       ),
@@ -86,6 +89,7 @@ describe('writeChunks (export streaming, Hassan L-583-2)', () => {
     await writeChunks(
       asResponse(response),
       (async function* () {
+        await Promise.resolve();
         yield 'a';
       })(),
     );
