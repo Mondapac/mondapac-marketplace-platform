@@ -152,7 +152,7 @@ describe('SupportEmailCard', () => {
     expect(screen.getByText('<b>ops</b>@example.com')).toBeTruthy();
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     const row = compared('Support email address');
     expect(row.saved).toBe('<b>ops</b>@example.com');
     expect(row.yours).toBe('care@example.com');

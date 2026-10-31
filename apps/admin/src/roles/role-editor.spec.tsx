@@ -170,7 +170,7 @@ describe('role editor', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Role name').value).toBe('My draft name');
     expect(screen.getByLabelText<HTMLInputElement>('View').checked).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(
       screen.getByText('Saved name: Night shift (renamed). Your name: My draft name.'),
     ).toBeTruthy();

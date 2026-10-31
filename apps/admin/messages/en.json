@@ -607,7 +607,7 @@
       "conflict": {
         "title": "Someone saved this role first",
         "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
-        "compare": "Compare",
+        "compare": "Show what changed",
         "hide": "Hide comparison",
         "name": "Saved name: {saved}. Your name: {yours}.",
         "saved-only": "In the saved role but not in yours: {keys}.",
@@ -1539,8 +1539,8 @@
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "heading": "What changed",
       "list-label": "Changes compared",
@@ -1889,7 +1889,7 @@
       "title": "Someone else saved the fleet settings first",
       "model-title": "This page changed while you were editing",
       "body": "{count, plural, one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
-      "compare": "Compare",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "same": "Your draft now matches what is saved.",
       "line": "{field}: saved now {saved}, yours {yours}"

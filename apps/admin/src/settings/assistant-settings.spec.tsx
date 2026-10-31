@@ -252,7 +252,7 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('21');
     expect(screen.getByText('Saved version 4')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(compared('Messages per guest')).toMatchObject({ saved: '30', yours: '21' });
     // The welcome message is user content: shown as text, never as markup.
     const welcome = compared('Welcome message');

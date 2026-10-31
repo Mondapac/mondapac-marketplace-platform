@@ -376,7 +376,7 @@ describe('the delivery settings page', () => {
     // The draft stays; the compare list names what is saved now.
     expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('9');
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(compared('Days ahead')).toMatchObject({ saved: '4', yours: '9' });
 
     // The confirm-impact dialog still comes before the next save, which names version 5.

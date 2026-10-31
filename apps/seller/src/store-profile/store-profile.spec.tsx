@@ -186,7 +186,7 @@ describe('StoreProfile About card', () => {
     expect(boxFor(/English/).value).toBe('My edit');
     fireEvent.change(boxFor(/Japanese/), { target: { value: 'Mine' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     const english = compared(/^About your store \(.*English.*\)$/);
     expect(english).toMatchObject({ saved: '<b>Their</b> text', yours: 'My edit' });
     expect(english.item.querySelector('b')).toBeNull();
