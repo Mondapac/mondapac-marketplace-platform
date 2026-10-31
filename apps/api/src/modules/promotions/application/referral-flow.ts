@@ -99,15 +99,22 @@ export async function viewMyReferral(
       // The pepper changed since the code was stored: the code on file cannot be shown.
       return err({ code: 'promotions.unavailable' });
     }
-    const mine = (status: ReferralRecord['status']) =>
-      deps.referrals.countByReferrer(context.market, customer.accountId, program.id, status);
+    // A PENDING referral past its window is waiting to be marked EXPIRED: it is not pending.
+    const mine = (status: ReferralRecord['status'], notExpiredAt?: Temporal.Instant) =>
+      deps.referrals.countByReferrer(
+        context.market,
+        customer.accountId,
+        program.id,
+        status,
+        notExpiredAt,
+      );
     return ok({
       code,
       referrerRewardMinor: program.reward.amount,
       refereeRewardMinor: program.refereeRewardMinor!,
       currency: program.currency,
       maxRewarded: program.maxUsesPerCustomer ?? rules.maxRewardedPerReferrer,
-      pending: await mine('PENDING'),
+      pending: await mine('PENDING', now),
       qualified: await mine('QUALIFIED'),
     });
   });
@@ -156,6 +163,11 @@ export async function applyReferralCode(
 
   const now = deps.clock.now();
   return deps.unitOfWork.run<AppliedReferral, PromotionsFailure>(context.market, async () => {
+    // The eligibility checks come before any look at the code, so a customer who may not apply
+    // cannot use this route to learn which codes exist.
+    if ((await deps.referrals.findByReferee(context.market, customer.accountId)) !== null) {
+      return err({ code: 'promotions.referral-not-eligible' });
+    }
     const program = programOf(
       await deps.promotions.listLiveOfTypes(context.market, now, ['REFERRAL']),
       switched.value.currency,
@@ -164,9 +176,6 @@ export async function applyReferralCode(
     const owner = await deps.referrals.findCodeByHash(context.market, hash);
     if (owner === null) return err({ code: 'promotions.not-found' });
     if (owner.accountId === customer.accountId) {
-      return err({ code: 'promotions.referral-not-eligible' });
-    }
-    if ((await deps.referrals.findByReferee(context.market, customer.accountId)) !== null) {
       return err({ code: 'promotions.referral-not-eligible' });
     }
     const expiresAt = now.add({ hours: rules.qualifyWithinDays * 24 });

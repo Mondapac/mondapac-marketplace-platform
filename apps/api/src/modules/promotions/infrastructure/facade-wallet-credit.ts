@@ -8,12 +8,15 @@ const FINAL = new Set([
   'wallet.cap-exceeded',
   'validation.failed',
   'idempotency.key-reused',
+  // The account has no wallet and none will appear by waiting.
+  'wallet.customer-not-found',
+  'wallet.not-found',
 ]);
 
 /**
  * {@link WalletCredit} on `wallet`'s public facade: promo credit with the reason `promotion`. The
  * wallet's own idempotency makes a repeated call with the same key answer the first result. A
- * refusal the wallet will repeat (its account is closed or over its cap) is final; everything else
+ * refusal the wallet will repeat (its account is closed, unknown or over its cap) is final; everything else
  * (the wallet is off, paused, frozen or unavailable, or an unknown answer) is worth a retry.
  */
 export class FacadeWalletCredit implements WalletCredit {

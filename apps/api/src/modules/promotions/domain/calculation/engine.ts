@@ -584,6 +584,13 @@ const validReward = (reward: Reward): boolean =>
 /** The path of the first wrong phase 2 or phase 3 field of a promotion, or null. */
 export function validatePhase2(promotion: CalculationPromotion): string | null {
   const audience = promotion.audience ?? null;
+  // These two types are defined by their audience: without one they would apply to everybody.
+  if (
+    (promotion.type === 'CUSTOMER_GROUP' || promotion.type === 'STORE_FOLLOWER') &&
+    audience === null
+  ) {
+    return 'promotions.audience';
+  }
   if (audience !== null) {
     if (
       audience.kind === 'RETURNING_CUSTOMER' &&

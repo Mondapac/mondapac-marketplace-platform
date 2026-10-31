@@ -815,26 +815,29 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     it('lists the credits of a promotion for an admin, closed query, digits for amounts', async () => {
       await boot();
       const URL = `/promotions/admin/promotions/${PROMOTION}/credits`;
-      next = ok([
-        {
-          id: CREDIT,
-          promotionId: PROMOTION,
-          kind: 'CASHBACK',
-          recipientAccountId: CUSTOMER,
-          orderId: null,
-          sourceKind: 'SELLER_ORDER',
-          sourceId: 'x',
-          amountMinor: 250n,
-          currency: 'AUD',
-          status: 'RECORDED',
-          failureCode: null,
-          walletJournalId: null,
-          idempotencyKey: 'promotions:cashback:x',
-          createdAt: START,
-          settledAt: START,
-        },
-      ]);
-      const response = await call('admin', 'get', `${URL}?limit=5`, admin());
+      next = ok({
+        nextCursor: 'abc_DEF-1',
+        items: [
+          {
+            id: CREDIT,
+            promotionId: PROMOTION,
+            kind: 'CASHBACK',
+            recipientAccountId: CUSTOMER,
+            orderId: null,
+            sourceKind: 'SELLER_ORDER',
+            sourceId: 'x',
+            amountMinor: 250n,
+            currency: 'AUD',
+            status: 'RECORDED',
+            failureCode: null,
+            walletJournalId: null,
+            idempotencyKey: 'promotions:cashback:x',
+            createdAt: START,
+            settledAt: START,
+          },
+        ],
+      });
+      const response = await call('admin', 'get', `${URL}?limit=5&cursor=abc_DEF-1`, admin());
       expect(response.status).toBe(200);
       expect(response.headers['cache-control']).toBe('no-store');
       expect(itemsOf(response)[0]).toMatchObject({
@@ -843,11 +846,12 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
         status: 'RECORDED',
       });
       expect(itemsOf(response)[0]).not.toHaveProperty('idempotencyKey');
+      expect(response.body).toMatchObject({ nextCursor: 'abc_DEF-1' });
       expect(calls.at(-1)).toEqual({
         name: 'credits',
-        input: { promotionId: PROMOTION, limit: 5 },
+        input: { promotionId: PROMOTION, limit: 5, cursor: 'abc_DEF-1' },
       });
-      const stray = await call('admin', 'get', `${URL}?cursor=1`, admin());
+      const stray = await call('admin', 'get', `${URL}?offset=1`, admin());
       expect(stray.status).toBe(400);
     });
   });

@@ -194,8 +194,9 @@ promotion data; nothing is hardcoded.
   spend, budget, `maxTotalUses` and `maxUsesPerCustomer`; the larger of several live cashbacks wins, never both.
   Handler `promotions.cashback-on-delivery`. Cashback is per seller order because the delivery event is.
 
-Credits (`credit_issuances`): one row per (kind, source), unique, and a unique idempotency key
-`promotions:<kind>:<source id>` that the wallet also honours. Order of work per delivery: read, order facts
+Credits (`credit_issuances`): one real row (PENDING, GRANTED, FAILED) per (kind, source), unique, and a unique
+idempotency key `promotions:<kind>:<source id>` that the wallet also honours; a RECORDED note has a slot of its
+own (partial unique indexes, see the review fixes below). Order of work per delivery: read, order facts
 (another module, outside any unit), reserve the credit PENDING in a unit with the promotion row locked, call
 `wallet.grantCredit` (source `promo`, reason `promotion`) outside any unit, then settle GRANTED or FAILED and
 record the event in the inbox in one `runOnce`. A crash repeats the delivery and carries on from the wallet call.
@@ -204,7 +205,9 @@ active, cap exceeded) is FAILED and not retried; any other refusal retries the d
 touches wallet tables. PENDING and GRANTED credits hold budget and count against limits; a FAILED one releases.
 
 GST test mode: a test-mode promotion only records the intended credit (status RECORDED, no wallet call, no
-budget held, no use counted). A real platform promotion in a Market whose `gstRulingConfirmed` is false earns
+budget held, no use counted, not part of the per-order cap). A RECORDED note is made only when no real promotion
+applies to the order, and a test-mode referral is left PENDING (not counted toward the referrer cap), so a real
+program can still reward the referee later. A real platform promotion in a Market whose `gstRulingConfirmed` is false earns
 nothing (skipped, nothing recorded); creation already requires test mode there. A test order never earns real
 credit.
 
@@ -221,6 +224,69 @@ Not built here: refund or clawback of cashback and referral credit when an order
 out of scope: nothing is reversed today), a sweep that retries credits left PENDING (the delivery retry and the
 dead-letter alert cover them for now), listing a customer's own credits (the wallet history shows them), and any
 panel or buyer UI.
+
+## Phase 3 review fixes (PR #601)
+
+Changes after review, all in the `20261031120000_promotions_phase3_types` migration (not yet merged, edited in
+place) and the promotions module.
+
+- **Reserved credits are always finished.** A delivery first looks up the credits that already exist for its
+  source (cashback: by seller order; referral: the referral that seller order qualified, and its two credits) and
+  calls the wallet for every PENDING one, whatever the Market switch or the programs say now. Only a NEW
+  reservation is gated on the switch and on a live program. A credit that is already FAILED is reported as
+  `failed`, never `issued`.
+- **Test mode never displaces real credit.** Cashback picks among REAL candidates first and makes a RECORDED note
+  only when none applies; the per-order cap, `maxTotalUses`, `maxUsesPerCustomer` and the budget count PENDING
+  and GRANTED credits only. Uniqueness is two pairs of partial unique indexes: one for real rows
+  (`status <> 'RECORDED'`) and one for RECORDED rows, per (market, kind, source) and per (market, idempotency
+  key). A note therefore never keeps the real credit from being made later.
+- **Test-mode referral decides nothing.** In RECORD mode the intended credits are noted, the referral stays
+  PENDING and is not counted toward the referrer cap (no `QUALIFIED`, no `CAP_REACHED`/`BUDGET_EXHAUSTED`
+  rejection). Once the program is real, the referee's next delivered order rewards both people for real.
+  The referral stays bound to the program it was applied under, so "a later real program" means that program
+  leaving test mode, not a second program taking over.
+- **Market limits are applied at issue time.** The referral rewards are clamped to `referral.maxRewardMinor`,
+  the cashback percent to `cashback.maxBps` and its cap to `cashback.maxCapMinor`, whatever the promotion says.
+  A Market whose config has since dropped `referral` or `cashback` issues nothing new.
+- **Apply order.** `POST /promotions/referral/apply` checks the order history and the already-referred state
+  before it looks the code up, so an ineligible customer cannot probe whether a code exists.
+- **Wallet refusals.** `wallet.customer-not-found` and `wallet.not-found` are final (FAILED, budget released),
+  with the other final codes.
+- **Database guard.** `BEFORE UPDATE` triggers allow only `credit_issuances` PENDING to GRANTED or FAILED and
+  `referrals` PENDING to QUALIFIED, REJECTED or EXPIRED, for every role (the owner too).
+- **Indexes.** `referrals (market_id, promotion_id, status)` and `(market_id, qualifying_seller_order_id)`;
+  `credit_issuances (market_id, promotion_id, created_at DESC, id DESC)` for the list; the status index carries
+  `amount_minor` as a trailing key column (the design's INCLUDE) so the budget sum is an index-only scan.
+- **Credit list.** `GET /promotions/admin/promotions/:id/credits` pages by keyset: `limit` and `cursor` in, `items`
+  and `nextCursor` out (an opaque cursor over `created_at, id`). It reads while the Market switch is off.
+- **`viewMyReferral`** counts a referral as pending only while `expires_at > now` (the injected clock).
+- **The engine refuses** a CUSTOMER_GROUP or STORE_FOLLOWER promotion that has no audience (it would apply to
+  everybody).
+- **Change log (no `brief.md` exists for this module).** New dependency: the `wallet` module's public facade
+  (`grantCredit`, source `promo`, reason `promotion`); new tables `promotions.referral_codes`,
+  `promotions.referrals`, `promotions.credit_issuances` and `promotions.inbox`.
+
+### Operating notes and carry-forward
+
+- **Do NOT turn the switch on in any Market that has a cashback or referral program configured until refund
+  reversal (T3) is merged.** Until then nothing claws a credit back when an order is returned or refunded.
+- **Switch-on order:** wallet on, then the fact ports published (`CustomerOrderHistory`, `StoreFollows`,
+  `DeliveredOrderFacts`, `ReferralSignals`), then promotions. Otherwise the delivery handlers retry and the
+  deliveries dead-letter (alert after the last attempt).
+- `GET /promotions/referral/me` creates the customer's code row on first ask (a write behind a GET).
+- `wholeDaysBetween` counts elapsed UTC 24-hour blocks, not calendar days or the customer's local days.
+- Cashback `maxUsesPerCustomer` counts seller orders (one credit per delivered seller order), not orders.
+- For REFERRAL, `maxUsesPerCustomer` is the per-referrer cap of rewarded referrals, and it is per program.
+- Ordering must pass the session's own `customerAccountId` to the quote; it is not wired yet, so the
+  customer-group and store-follower discounts are not offered until it is.
+- Inbox retention (how long `promotions.inbox` rows are kept) is still to be decided.
+- T2 carry-forward: a per-account rate limit on `POST /promotions/referral/apply`. The repo's rate counters
+  (`catalog.rate_counters`, sellers' counters) are module-owned tables; there is no platform-wide limiter that
+  promotions may use without importing another module, so the route has none yet. The apply route answers
+  uniformly for ineligible customers, which limits what a probe learns, but it is not a limiter.
+- Follow-ups: running counters on the promotion row for cashback volume (today `countLive` and `reservedTotal`
+  aggregate the credit rows under the promotion lock), and a per-account code version so one customer's code can
+  be revoked without rotating the pepper.
 
 ## Open points
 

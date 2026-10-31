@@ -572,16 +572,18 @@ export class AdminPromotionsController {
   @ApiOperation({
     summary: 'The wallet credits a referral or cashback promotion has made (admin manager)',
     description:
-      'Needs promotions.promotion.manage. Newest first. A RECORDED credit was only noted (GST test ' +
-      'mode), never paid.',
+      'Needs promotions.promotion.manage. Newest first, a page at a time (pass nextCursor as ' +
+      'cursor). Works while promotions are switched off. A RECORDED credit was only noted (GST ' +
+      'test mode), never paid.',
   })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 50.' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'nextCursor of the previous page.' })
   @ApiOkResponse({ type: CreditsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
-  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.not-found' })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
   async credits(
     @Call() context: CallContext,
@@ -590,11 +592,12 @@ export class AdminPromotionsController {
     @Query() query: Record<string, unknown>,
   ) {
     noStore(response);
-    const unknown = closedQuery(query, ['limit']);
+    const unknown = closedQuery(query, ['limit', 'cursor']);
     if (unknown !== null) throw unknown;
     const result = await this.listCredits.execute(context, {
       promotionId: id,
       limit: limitOf(query.limit),
+      cursor: query.cursor,
     });
     return creditsBody(
       settle(this.#logger, 'promotions.list-credits-route', context, result, 'read'),

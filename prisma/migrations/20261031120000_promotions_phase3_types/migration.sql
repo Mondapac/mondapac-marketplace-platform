@@ -77,13 +77,25 @@ CREATE UNIQUE INDEX "referral_codes_market_id_code_hash_key" ON "promotions"."re
 CREATE INDEX "referrals_market_id_referrer_account_id_status_idx" ON "promotions"."referrals"("market_id", "referrer_account_id", "status");
 
 -- CreateIndex
+CREATE INDEX "referrals_market_id_promotion_id_status_idx" ON "promotions"."referrals"("market_id", "promotion_id", "status");
+
+-- CreateIndex
+CREATE INDEX "referrals_market_id_qualifying_seller_order_id_idx" ON "promotions"."referrals"("market_id", "qualifying_seller_order_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "referrals_market_id_id_key" ON "promotions"."referrals"("market_id", "id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "referrals_market_id_referee_account_id_key" ON "promotions"."referrals"("market_id", "referee_account_id");
 
 -- CreateIndex
-CREATE INDEX "credit_issuances_market_id_promotion_id_status_idx" ON "promotions"."credit_issuances"("market_id", "promotion_id", "status");
+-- The budget of a promotion is the sum of its PENDING and GRANTED credits: the amount is a trailing
+-- key column, so that sum is an index-only scan (the design's INCLUDE, written as a key column so
+-- Prisma knows the index and never drops it as drift).
+CREATE INDEX "credit_issuances_market_id_promotion_id_status_amount_minor_idx" ON "promotions"."credit_issuances"("market_id", "promotion_id", "status", "amount_minor");
+
+-- CreateIndex
+CREATE INDEX "credit_issuances_market_id_promotion_id_created_at_id_idx" ON "promotions"."credit_issuances"("market_id", "promotion_id", "created_at" DESC, "id" DESC);
 
 -- CreateIndex
 CREATE INDEX "credit_issuances_market_id_order_id_idx" ON "promotions"."credit_issuances"("market_id", "order_id");
@@ -93,12 +105,6 @@ CREATE INDEX "credit_issuances_market_id_promotion_id_recipient_account_i_idx" O
 
 -- CreateIndex
 CREATE UNIQUE INDEX "credit_issuances_market_id_id_key" ON "promotions"."credit_issuances"("market_id", "id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "credit_issuances_market_id_kind_source_id_key" ON "promotions"."credit_issuances"("market_id", "kind", "source_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "credit_issuances_market_id_idempotency_key_key" ON "promotions"."credit_issuances"("market_id", "idempotency_key");
 
 -- AddForeignKey
 ALTER TABLE "promotions"."referrals" ADD CONSTRAINT "referrals_market_id_promotion_id_fkey" FOREIGN KEY ("market_id", "promotion_id") REFERENCES "promotions"."promotions"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -186,6 +192,47 @@ ALTER TABLE "promotions"."inbox"
   ADD CONSTRAINT "inbox_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "inbox_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
   ADD CONSTRAINT "inbox_handler_check" CHECK ("handler" ~ '^promotions\.[a-z0-9-]+$');
+
+-- One credit of a kind per source, and one per idempotency key, among the REAL credits (PENDING,
+-- GRANTED, FAILED): the event handler's idempotency. A RECORDED credit (the intended credit of a
+-- test-mode promotion) has a slot of its own, so a note never keeps a real credit from being
+-- made once a real promotion applies. (Partial indexes are not expressible in the Prisma schema.)
+CREATE UNIQUE INDEX "credit_issuances_real_source_key"
+  ON "promotions"."credit_issuances" ("market_id", "kind", "source_id") WHERE "status" <> 'RECORDED';
+CREATE UNIQUE INDEX "credit_issuances_real_idempotency_key"
+  ON "promotions"."credit_issuances" ("market_id", "idempotency_key") WHERE "status" <> 'RECORDED';
+CREATE UNIQUE INDEX "credit_issuances_recorded_source_key"
+  ON "promotions"."credit_issuances" ("market_id", "kind", "source_id") WHERE "status" = 'RECORDED';
+CREATE UNIQUE INDEX "credit_issuances_recorded_idempotency_key"
+  ON "promotions"."credit_issuances" ("market_id", "idempotency_key") WHERE "status" = 'RECORDED';
+
+-- The only state changes: a PENDING credit is GRANTED or FAILED once; a PENDING referral is
+-- QUALIFIED, REJECTED or EXPIRED once. Anything else (a settled row moving again, a RECORDED
+-- note changing, a row going back to PENDING) is refused for every role, the owner included.
+CREATE FUNCTION "promotions"."guard_credit_transition"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF OLD."status" = 'PENDING' AND NEW."status" IN ('GRANTED', 'FAILED') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'promotions.credit_issuances: % -> % is not allowed', OLD."status", NEW."status"
+    USING ERRCODE = 'restrict_violation';
+END; $$;
+
+CREATE FUNCTION "promotions"."guard_referral_transition"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF OLD."status" = 'PENDING' AND NEW."status" IN ('QUALIFIED', 'REJECTED', 'EXPIRED') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'promotions.referrals: % -> % is not allowed', OLD."status", NEW."status"
+    USING ERRCODE = 'restrict_violation';
+END; $$;
+
+CREATE TRIGGER "credit_issuances_transition" BEFORE UPDATE ON "promotions"."credit_issuances"
+  FOR EACH ROW EXECUTE FUNCTION "promotions"."guard_credit_transition"();
+CREATE TRIGGER "referrals_transition" BEFORE UPDATE ON "promotions"."referrals"
+  FOR EACH ROW EXECUTE FUNCTION "promotions"."guard_referral_transition"();
 
 -- A referral code, a referral and a credit are never deleted or truncated, whoever asks.
 CREATE TRIGGER "referral_codes_no_delete" BEFORE DELETE ON "promotions"."referral_codes"

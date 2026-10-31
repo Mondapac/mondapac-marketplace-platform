@@ -90,6 +90,20 @@ export class PrismaReferralRepository implements ReferralRepository {
     return created.count === 1 ? 'inserted' : 'duplicate';
   }
 
+  async findQualifiedBySellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<ReferralRecord | null> {
+    const row = await this.prisma.tx(market).promotionsReferral.findFirst({
+      where: {
+        marketId: market.marketId,
+        qualifyingSellerOrderId: sellerOrderId,
+        status: 'QUALIFIED',
+      },
+    });
+    return row === null ? null : toRecord(row);
+  }
+
   async findByReferee(
     market: MarketContext,
     refereeAccountId: Id<'Account'>,
@@ -159,9 +173,16 @@ export class PrismaReferralRepository implements ReferralRepository {
     referrerAccountId: Id<'Account'>,
     promotionId: Id<'Promotion'>,
     status: ReferralStatus,
+    notExpiredAt?: Temporal.Instant,
   ): Promise<number> {
     return this.prisma.tx(market).promotionsReferral.count({
-      where: { marketId: market.marketId, referrerAccountId, promotionId, status },
+      where: {
+        marketId: market.marketId,
+        referrerAccountId,
+        promotionId,
+        status,
+        ...(notExpiredAt === undefined ? {} : { expiresAt: { gt: toDate(notExpiredAt) } }),
+      },
     });
   }
 

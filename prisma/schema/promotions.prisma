@@ -330,6 +330,10 @@ model PromotionsReferral {
   @@unique([marketId, refereeAccountId])
   /// A referrer's referrals by state (the per-referrer cap).
   @@index([marketId, referrerAccountId, status])
+  /// A promotion's referrals by state (the promotion-wide cap).
+  @@index([marketId, promotionId, status])
+  /// The referral a delivered seller order qualified (finishing its credits on a retry).
+  @@index([marketId, qualifyingSellerOrderId])
   @@map("referrals")
   @@schema("promotions")
 }
@@ -367,11 +371,14 @@ model PromotionsCreditIssuance {
   promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, id])
-  /// One credit of a kind per source: the event handler's idempotency.
-  @@unique([marketId, kind, sourceId])
-  @@unique([marketId, idempotencyKey])
-  /// The budget of a promotion: the sum of its PENDING and GRANTED credits.
-  @@index([marketId, promotionId, status])
+  /// Not expressible here, declared in the migration: partial unique indexes on (market_id, kind,
+  /// source_id) and on (market_id, idempotency_key), one pair for the real credits and one for
+  /// the RECORDED ones (a test-mode note has a slot of its own).
+  /// The budget of a promotion: the sum of its PENDING and GRANTED credits, an index-only scan
+  /// (the amount is a trailing key column, the design's INCLUDE).
+  @@index([marketId, promotionId, status, amountMinor])
+  /// A promotion's credits, newest first (the keyset list).
+  @@index([marketId, promotionId, createdAt(sort: Desc), id(sort: Desc)])
   /// What an order has been credited (the cashback cap is per order).
   @@index([marketId, orderId])
   /// What a customer has received from a promotion (the per-customer limit).

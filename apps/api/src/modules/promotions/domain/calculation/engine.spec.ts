@@ -1695,6 +1695,36 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
     });
   });
 
+  describe('phase 3: types defined by their audience', () => {
+    it('refuses a customer-group or store-follower promotion that has no audience', () => {
+      for (const over of [
+        { type: 'CUSTOMER_GROUP', layer: 'PLATFORM_CART', platformShareBps: 10000 },
+        { type: 'STORE_FOLLOWER', layer: 'SELLER_CART', sellerId: 's1' },
+      ] as Partial<CalculationPromotion>[]) {
+        for (const audience of [null, undefined]) {
+          const result = calculateDiscounts({
+            currency: market.currency,
+            lines: [line('l1', 's1', P)],
+            shipping: [],
+            promotions: [
+              promo({
+                id: 'aud',
+                reward: { kind: 'PERCENT', bps: 1000 },
+                ...over,
+                ...(audience === undefined ? {} : { audience }),
+              }),
+            ],
+            code: null,
+            isFirstOrder: false,
+            orderCommission: 100000n,
+            rules: { lineDiscountCapBps: market.lineCapBps },
+          });
+          expect(result.ok).toBe(false);
+        }
+      }
+    });
+  });
+
   describe('phase 3: store-follower offer', () => {
     const follower = (over: Partial<CalculationPromotion> = {}) =>
       promo({

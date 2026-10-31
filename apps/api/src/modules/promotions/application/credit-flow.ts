@@ -33,9 +33,15 @@ import { locked } from './shared';
 // A crash anywhere repeats the delivery: step 1 finds the reserved credit and carries on from step
 // 4, and the wallet answers the first result again for the same key.
 //
+// A credit already reserved (PENDING) is always finished, whatever the switch or the programs say
+// now: the money was committed in a unit that has already run, so only NEW reservations are gated
+// on the switch and on a live program.
+//
 // A test-mode promotion only records the intended credit (status RECORDED) and never calls the
 // wallet; platform money in a Market whose tax ruling is not confirmed, and a test order, earn
-// nothing (see `creditModeFor`).
+// nothing (see `creditModeFor`). A RECORDED credit is a note, not a claim: it is chosen only when
+// no real promotion applies, holds no budget, counts toward no limit, and (for a referral) leaves
+// the referral PENDING, so a real program can still reward it later.
 
 const logger = new Logger('PromotionsCredits');
 
@@ -189,11 +195,42 @@ async function settleAndHandle(
   });
 }
 
+/** What the delivery reports for credits that need no wallet call (all settled or recorded). */
+function outcomeOfSettled(credits: readonly CreditRecord[]): CreditFlowOutput['outcome'] {
+  if (credits.some((c) => c.status === 'FAILED')) return 'failed';
+  if (credits.some((c) => c.status === 'GRANTED')) return 'issued';
+  if (credits.some((c) => c.status === 'RECORDED')) return 'recorded';
+  return 'nothing';
+}
+
+/**
+ * Finishes credits that were reserved by an earlier attempt: calls the wallet for the PENDING
+ * ones and settles them, or records the event when nothing is left to do. Needs no switch and no
+ * live program (see the header).
+ */
+async function finishReserved(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  delivery: EventDelivery,
+  credits: readonly CreditRecord[],
+): Promise<Result<CreditFlowOutput, CreditFlowFailure>> {
+  if (credits.some((c) => c.status === 'PENDING')) {
+    const settlements = await grantPending(deps, context, credits);
+    if (settlements === null) return tryAgain();
+    return settleAndHandle(deps, context, delivery, settlements, 'issued');
+  }
+  return handled(deps, context, delivery, outcomeOfSettled(credits));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Cashback
 // ---------------------------------------------------------------------------------------------
 
-/** The best cashback among the live promotions for this order, reserved in the caller's unit. */
+/**
+ * The best cashback among the live promotions for this order, reserved in the caller's unit. A
+ * real promotion (the wallet is credited) always wins over a test-mode one (the intended credit
+ * is only recorded): the test-mode credit is made only when no real promotion applies.
+ */
 async function reserveCashback(
   deps: PromotionsDependencies,
   context: CallContext,
@@ -203,11 +240,15 @@ async function reserveCashback(
 ): Promise<Result<CreditRecord | null, CreditFlowFailure>> {
   const now = deps.clock.now();
   const goods = facts.goodsPaid.amount;
-  let best: {
+  // The Market's limits as they are now: a promotion made under wider limits is clamped.
+  const limits = settings.rules.cashback ?? null;
+  if (limits === null) return ok(null);
+  interface Choice {
     readonly promotion: PromotionRecord;
     readonly amount: bigint;
     readonly mode: CreditMode;
-  } | null = null;
+  }
+  const best: { REAL: Choice | null; RECORD: Choice | null } = { REAL: null, RECORD: null };
   // Locked in id order, so two handlers never wait on each other in a circle.
   for (const candidate of [...live].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     const lock = await locked(() => deps.promotions.findForUpdate(context.market, candidate.id));
@@ -245,8 +286,8 @@ async function reserveCashback(
     const reserved = await deps.credits.reservedTotal(context.market, promotion.id);
     const amount = cashbackAmount({
       goodsPaid: goods,
-      bps: promotion.reward.bps,
-      capMinor: promotion.capMinor,
+      bps: Math.min(promotion.reward.bps, limits.maxBps),
+      capMinor: promotion.capMinor < limits.maxCapMinor ? promotion.capMinor : limits.maxCapMinor,
       alreadyCreditedForOrder: await deps.credits.creditedForOrder(
         context.market,
         facts.orderId,
@@ -262,25 +303,27 @@ async function reserveCashback(
     });
     if (amount <= 0n) continue;
     // The larger credit for the customer; a tie goes to the smaller promotion id (already sorted).
-    if (best === null || amount > best.amount) best = { promotion, amount, mode };
+    const current = best[mode];
+    if (current === null || amount > current.amount) best[mode] = { promotion, amount, mode };
   }
-  if (best === null) return ok(null);
+  const chosen = best.REAL ?? best.RECORD;
+  if (chosen === null) return ok(null);
   const record: CreditRecord = {
     id: deps.ids.next<'PromotionCredit'>(),
-    promotionId: best.promotion.id,
+    promotionId: chosen.promotion.id,
     kind: 'CASHBACK',
     recipientAccountId: facts.customerAccountId,
     orderId: facts.orderId,
     sourceKind: 'SELLER_ORDER',
     sourceId: facts.sellerOrderId,
-    amountMinor: best.amount,
+    amountMinor: chosen.amount,
     currency: settings.currency,
-    status: best.mode === 'RECORD' ? 'RECORDED' : 'PENDING',
+    status: chosen.mode === 'RECORD' ? 'RECORDED' : 'PENDING',
     failureCode: null,
     walletJournalId: null,
     idempotencyKey: creditKey('CASHBACK', facts.sellerOrderId),
     createdAt: now,
-    settledAt: best.mode === 'RECORD' ? now : null,
+    settledAt: chosen.mode === 'RECORD' ? now : null,
   };
   if ((await deps.credits.insert(context.market, record)) === 'duplicate') {
     return ok(await deps.credits.findBySource(context.market, 'CASHBACK', facts.sellerOrderId));
@@ -301,52 +344,56 @@ export async function cashbackOnDelivery(
   const ids = idsOf(input);
   if (ids === null) return err({ code: 'validation.failed' });
   const { market } = context;
-  const settings = await switchState(deps, context);
-  if (settings === 'fault') return tryAgain();
-  if (settings === 'off') return handled(deps, context, input.delivery, 'nothing');
 
-  const read = await deps.unitOfWork.run(
+  // A credit made by an earlier attempt is finished first, whatever the switch and the programs
+  // say now. A RECORDED note does not count: a real promotion may still apply.
+  const found = await deps.unitOfWork.run(
     market,
-    async () =>
-      ok({
-        live: await deps.promotions.listLiveOfTypes(market, deps.clock.now(), ['CASHBACK']),
-        existing: await deps.credits.findBySource(market, 'CASHBACK', ids.sellerOrderId),
-      }),
+    async () => ok(await deps.credits.findBySource(market, 'CASHBACK', ids.sellerOrderId)),
     { readOnly: true },
   );
-  if (!read.ok) return tryAgain();
-  let credit = read.value.existing;
-  if (credit === null) {
-    if (read.value.live.length === 0) return handled(deps, context, input.delivery, 'nothing');
-    const facts = await deps.orderFacts.read(context, ids);
-    if (!facts.known) {
-      logger.warn({
-        msg: 'promotions.cashback.facts-unknown',
-        sellerOrderId: ids.sellerOrderId,
-        marketId: market.marketId,
-        correlationId: context.correlationId,
-      });
-      return tryAgain();
-    }
-    if (
-      facts.value.sellerOrderId !== ids.sellerOrderId ||
-      facts.value.orderId !== ids.orderId ||
-      facts.value.goodsPaid.currency !== settings.currency
-    ) {
-      return handled(deps, context, input.delivery, 'nothing');
-    }
-    const reserved = await deps.unitOfWork.run(market, () =>
-      reserveCashback(deps, context, settings, read.value.live, facts.value),
-    );
-    if (!reserved.ok) return reserved;
-    credit = reserved.value;
-    if (credit === null) return handled(deps, context, input.delivery, 'nothing');
+  if (!found.ok) return tryAgain();
+  const existing = found.value;
+  if (existing !== null && existing.status !== 'RECORDED') {
+    return finishReserved(deps, context, input.delivery, [existing]);
   }
-  if (credit.status === 'RECORDED') return handled(deps, context, input.delivery, 'recorded');
-  if (credit.status !== 'PENDING') return handled(deps, context, input.delivery, 'issued');
-  const settlements = await grantPending(deps, context, [credit]);
-  if (settlements === null) return tryAgain();
-  return settleAndHandle(deps, context, input.delivery, settlements, 'issued');
+  const noted = (): Promise<Result<CreditFlowOutput, CreditFlowFailure>> =>
+    handled(deps, context, input.delivery, existing === null ? 'nothing' : 'recorded');
+
+  const settings = await switchState(deps, context);
+  if (settings === 'fault') return tryAgain();
+  if (settings === 'off') return noted();
+
+  const live = await deps.unitOfWork.run(
+    market,
+    async () => ok(await deps.promotions.listLiveOfTypes(market, deps.clock.now(), ['CASHBACK'])),
+    { readOnly: true },
+  );
+  if (!live.ok) return tryAgain();
+  if (live.value.length === 0) return noted();
+  const facts = await deps.orderFacts.read(context, ids);
+  if (!facts.known) {
+    logger.warn({
+      msg: 'promotions.cashback.facts-unknown',
+      sellerOrderId: ids.sellerOrderId,
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return tryAgain();
+  }
+  if (
+    facts.value.sellerOrderId !== ids.sellerOrderId ||
+    facts.value.orderId !== ids.orderId ||
+    facts.value.goodsPaid.currency !== settings.currency
+  ) {
+    return noted();
+  }
+  const reserved = await deps.unitOfWork.run(market, () =>
+    reserveCashback(deps, context, settings, live.value, facts.value),
+  );
+  if (!reserved.ok) return reserved;
+  if (reserved.value === null) return noted();
+  return finishReserved(deps, context, input.delivery, [reserved.value]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -365,6 +412,8 @@ type Qualification =
 /**
  * Decides a pending referral inside the caller's unit: expiry, the promotion's caps, its budget,
  * then the two credits (the referrer's and the new customer's) reserved together, or a rejection.
+ * In test mode (RECORD) the intended credits are only noted and the referral is left PENDING: it
+ * is not counted toward the referrer's cap, and a real program may still reward it.
  */
 async function qualifyInUnit(
   deps: PromotionsDependencies,
@@ -378,7 +427,10 @@ async function qualifyInUnit(
   const lock = await locked(() => deps.promotions.findForUpdate(market, referral.promotionId));
   if (!lock.ok) return tryAgain();
   const promotion = lock.value;
+  // The Market's limits as they are now: a promotion made under wider limits is clamped.
+  const limits = settings.rules.referral ?? null;
   if (
+    limits === null ||
     promotion === null ||
     promotion.type !== 'REFERRAL' ||
     !isLive(promotion, now) ||
@@ -399,7 +451,10 @@ async function qualifyInUnit(
   if (promotion.minSpendMinor !== null && facts.goodsPaid.amount < promotion.minSpendMinor) {
     return ok({ kind: 'nothing' });
   }
+  const record = mode === 'RECORD';
+  // A test-mode run decides nothing about the referral, so it neither rejects nor qualifies it.
   const reject = async (reason: ReferralRejectReason) => {
+    if (record) return ok({ kind: 'nothing' } as const);
     await deps.referrals.decide(market, referral.id, { status: 'REJECTED', reason }, now);
     return ok({ kind: 'decided', outcome: 'rejected' } as const);
   };
@@ -416,8 +471,14 @@ async function qualifyInUnit(
   ) {
     return reject('CAP_REACHED');
   }
-  const referrerAmount = promotion.reward.amount;
-  const refereeAmount = promotion.refereeRewardMinor;
+  const referrerAmount =
+    promotion.reward.amount < limits.maxRewardMinor
+      ? promotion.reward.amount
+      : limits.maxRewardMinor;
+  const refereeAmount =
+    promotion.refereeRewardMinor < limits.maxRewardMinor
+      ? promotion.refereeRewardMinor
+      : limits.maxRewardMinor;
   const reserved = await deps.credits.reservedTotal(market, promotion.id);
   if (
     promotion.budgetMinor !== null &&
@@ -425,13 +486,15 @@ async function qualifyInUnit(
   ) {
     return reject('BUDGET_EXHAUSTED');
   }
-  const decided = await deps.referrals.decide(
-    market,
-    referral.id,
-    { status: 'QUALIFIED', orderId: facts.orderId, sellerOrderId: facts.sellerOrderId },
-    now,
-  );
-  if (!decided) return ok({ kind: 'nothing' });
+  if (!record) {
+    const decided = await deps.referrals.decide(
+      market,
+      referral.id,
+      { status: 'QUALIFIED', orderId: facts.orderId, sellerOrderId: facts.sellerOrderId },
+      now,
+    );
+    if (!decided) return ok({ kind: 'nothing' });
+  }
   const credit = (
     kind: 'REFERRER_REWARD' | 'REFEREE_REWARD',
     recipient: Id<'Account'>,
@@ -446,18 +509,19 @@ async function qualifyInUnit(
     sourceId: referral.id,
     amountMinor: amount,
     currency: settings.currency,
-    status: mode === 'RECORD' ? 'RECORDED' : 'PENDING',
+    status: record ? 'RECORDED' : 'PENDING',
     failureCode: null,
     walletJournalId: null,
     idempotencyKey: creditKey(kind, referral.id),
     createdAt: now,
-    settledAt: mode === 'RECORD' ? now : null,
+    settledAt: record ? now : null,
   });
   const records = [
     credit('REFERRER_REWARD', referral.referrerAccountId, referrerAmount),
     credit('REFEREE_REWARD', referral.refereeAccountId, refereeAmount),
   ];
-  for (const record of records) await deps.credits.insert(market, record);
+  // A note made by an earlier attempt (a crash before the event was recorded) stays as it is.
+  for (const entry of records) await deps.credits.insert(market, entry);
   return ok({ kind: 'credits', credits: records, mode });
 }
 
@@ -474,6 +538,30 @@ export async function qualifyReferralOnDelivery(
   const ids = idsOf(input);
   if (ids === null) return err({ code: 'validation.failed' });
   const { market } = context;
+
+  // Credits reserved by an earlier attempt for the referral this seller order qualified are
+  // finished first, whatever the switch and the programs say now.
+  const earlier = await deps.unitOfWork.run(
+    market,
+    async () => {
+      const qualified = await deps.referrals.findQualifiedBySellerOrder(market, ids.sellerOrderId);
+      if (qualified === null) return ok([] as CreditRecord[]);
+      return ok(
+        (
+          await Promise.all([
+            deps.credits.findBySource(market, 'REFERRER_REWARD', qualified.id),
+            deps.credits.findBySource(market, 'REFEREE_REWARD', qualified.id),
+          ])
+        ).flatMap((c) => (c === null ? [] : [c])),
+      );
+    },
+    { readOnly: true },
+  );
+  if (!earlier.ok) return tryAgain();
+  if (earlier.value.length > 0) {
+    return finishReserved(deps, context, input.delivery, earlier.value);
+  }
+
   const settings = await switchState(deps, context);
   if (settings === 'fault') return tryAgain();
   if (settings === 'off') return handled(deps, context, input.delivery, 'nothing');

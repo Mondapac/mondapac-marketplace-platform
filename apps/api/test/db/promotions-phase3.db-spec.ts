@@ -343,11 +343,13 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
 
   describe('referral codes', () => {
     const account = () => ids.next<'Account'>();
+    // 64 hex digits from the deterministic id generator: never repeated within the run.
+    const uniqueHash = () => ids.next<'x'>().replaceAll('-', '').padStart(64, '0');
     const codeRow = (overrides: Record<string, unknown> = {}) => ({
       market_id: mk,
       tenant_id: 'default',
       account_id: account(),
-      code_hash: HASH(Number(`${Math.floor(Math.random() * 1e9)}`)),
+      code_hash: uniqueHash(),
       created_at: new Date(),
       ...overrides,
     });
@@ -535,6 +537,86 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
     });
   });
 
+  describe('referral transitions', () => {
+    let promotionId: string;
+    beforeAll(async () => {
+      const row = promotionRow(referralTerms);
+      await sql.query(...(insert('promotions', row).slice(0, 2) as [string, unknown[]]));
+      promotionId = row.id;
+    });
+    const pendingReferral = async () => {
+      const row = {
+        id: ids.next<'Referral'>(),
+        market_id: mk,
+        tenant_id: 'default',
+        promotion_id: promotionId,
+        referrer_account_id: ids.next<'Account'>(),
+        referee_account_id: ids.next<'Account'>(),
+        status: 'PENDING',
+        reject_reason: null,
+        created_at: new Date('2026-10-25T10:00:00Z'),
+        expires_at: new Date('2026-11-25T10:00:00Z'),
+        decided_at: null,
+        qualifying_order_id: null,
+        qualifying_seller_order_id: null,
+      };
+      await sql.query(...(insert('referrals', row).slice(0, 2) as [string, unknown[]]));
+      return row.id;
+    };
+    const move = (client: Client, id: string, set: string, values: unknown[]) =>
+      state(
+        client.query(`UPDATE promotions.referrals SET ${set} WHERE market_id = $1 AND id = $2`, [
+          mk,
+          id,
+          ...values,
+        ]),
+      );
+    const decidedAt = new Date('2026-10-26T10:00:00Z');
+
+    it('decides a PENDING referral once, to QUALIFIED, REJECTED or EXPIRED, and never changes a decided one', async () => {
+      for (const client of [sql, owner]) {
+        const qualified = await pendingReferral();
+        expect(
+          await move(
+            client,
+            qualified,
+            'status = $3, decided_at = $4, qualifying_order_id = $5, qualifying_seller_order_id = $6',
+            ['QUALIFIED', decidedAt, ids.next<'Order'>(), ids.next<'SellerOrder'>()],
+          ),
+        ).toBe('allowed');
+        const rejected = await pendingReferral();
+        expect(
+          await move(client, rejected, 'status = $3, decided_at = $4, reject_reason = $5', [
+            'REJECTED',
+            decidedAt,
+            'CAP_REACHED',
+          ]),
+        ).toBe('allowed');
+        const expired = await pendingReferral();
+        expect(
+          await move(client, expired, 'status = $3, decided_at = $4', ['EXPIRED', decidedAt]),
+        ).toBe('allowed');
+        // A decided referral moves no more: not to another decision, not back to PENDING.
+        for (const done of [qualified, rejected, expired]) {
+          expect(
+            await move(client, done, 'status = $3, decided_at = $4, reject_reason = NULL', [
+              'EXPIRED',
+              decidedAt,
+            ]),
+          ).toBe(RESTRICT);
+          expect(
+            await move(
+              client,
+              done,
+              'status = $3, decided_at = NULL, reject_reason = NULL, qualifying_order_id = NULL, qualifying_seller_order_id = NULL',
+              ['PENDING'],
+            ),
+          ).toBe(RESTRICT);
+        }
+      }
+    });
+  });
+
   describe('credit issuances', () => {
     let promotionId: string;
     beforeAll(async () => {
@@ -566,7 +648,7 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       };
     };
 
-    it('is one credit per kind and source, and one per idempotency key', async () => {
+    it('is one real credit per kind and source, and one per idempotency key', async () => {
       const row = creditRow();
       expect(await attempt(insert('credit_issuances', row))).toBe('allowed');
       expect(
@@ -577,6 +659,129 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
           insert('credit_issuances', creditRow({ idempotency_key: row.idempotency_key })),
         ),
       ).toBe(UNIQUE);
+      // FAILED is real too: it keeps the slot, so a failed credit is not made again.
+      const failed = creditRow({
+        status: 'FAILED',
+        settled_at: new Date(),
+        failure_code: 'wallet.cap-exceeded',
+      });
+      expect(await attempt(insert('credit_issuances', failed))).toBe('allowed');
+      expect(
+        await attempt(insert('credit_issuances', creditRow({ source_id: failed.source_id }))),
+      ).toBe(UNIQUE);
+    });
+
+    it('gives a RECORDED note a slot of its own, apart from the real credit of the same source', async () => {
+      const settled = new Date();
+      const note = creditRow({ status: 'RECORDED', settled_at: settled });
+      expect(await attempt(insert('credit_issuances', note))).toBe('allowed');
+      // The note does not keep the real credit out ...
+      const real = creditRow({
+        source_id: note.source_id,
+        idempotency_key: note.idempotency_key,
+      });
+      expect(await attempt(insert('credit_issuances', real))).toBe('allowed');
+      // ... but each of the two is still once per source and per key.
+      expect(
+        await attempt(
+          insert(
+            'credit_issuances',
+            creditRow({
+              status: 'RECORDED',
+              settled_at: settled,
+              source_id: note.source_id,
+            }),
+          ),
+        ),
+      ).toBe(UNIQUE);
+      expect(
+        await attempt(
+          insert(
+            'credit_issuances',
+            creditRow({
+              status: 'RECORDED',
+              settled_at: settled,
+              idempotency_key: note.idempotency_key,
+            }),
+          ),
+        ),
+      ).toBe(UNIQUE);
+      expect(
+        await attempt(insert('credit_issuances', creditRow({ source_id: note.source_id }))),
+      ).toBe(UNIQUE);
+    });
+
+    it('moves a PENDING credit to GRANTED or FAILED once and no other way, whoever asks', async () => {
+      const settledAt = new Date();
+      const move = (client: Client, id: unknown, set: string, values: unknown[]) =>
+        state(
+          client.query(
+            `UPDATE promotions.credit_issuances SET ${set} WHERE market_id = $1 AND id = $2`,
+            [mk, id, ...values],
+          ),
+        );
+      const granted = 'status = $3, settled_at = $4, wallet_journal_id = $5';
+      const failed = 'status = $3, settled_at = $4, failure_code = $5';
+      for (const client of [sql, owner]) {
+        const row = creditRow();
+        await sql.query(...(insert('credit_issuances', row).slice(0, 2) as [string, unknown[]]));
+        expect(
+          await move(client, row.id, granted, ['GRANTED', settledAt, ids.next<'WalletJournal'>()]),
+        ).toBe('allowed');
+        // A settled credit never moves again, nor back.
+        expect(
+          await move(client, row.id, failed, ['FAILED', settledAt, 'wallet.cap-exceeded']),
+        ).toBe(RESTRICT);
+        expect(
+          await move(client, row.id, 'status = $3, settled_at = NULL, wallet_journal_id = NULL', [
+            'PENDING',
+          ]),
+        ).toBe(RESTRICT);
+        const second = creditRow();
+        await sql.query(...(insert('credit_issuances', second).slice(0, 2) as [string, unknown[]]));
+        expect(
+          await move(client, second.id, failed, ['FAILED', settledAt, 'wallet.cap-exceeded']),
+        ).toBe('allowed');
+        expect(
+          await move(client, second.id, granted, [
+            'GRANTED',
+            settledAt,
+            ids.next<'WalletJournal'>(),
+          ]),
+        ).toBe(RESTRICT);
+        // A RECORDED note is never settled into money.
+        const note = creditRow({ status: 'RECORDED', settled_at: settledAt });
+        await sql.query(...(insert('credit_issuances', note).slice(0, 2) as [string, unknown[]]));
+        expect(
+          await move(client, note.id, granted, ['GRANTED', settledAt, ids.next<'WalletJournal'>()]),
+        ).toBe(RESTRICT);
+        // PENDING to RECORDED is no transition either.
+        const pending = creditRow();
+        await sql.query(
+          ...(insert('credit_issuances', pending).slice(0, 2) as [string, unknown[]]),
+        );
+        expect(
+          await move(client, pending.id, 'status = $3, settled_at = $4', ['RECORDED', settledAt]),
+        ).toBe(RESTRICT);
+      }
+    });
+
+    it('has the indexes of the budget sum (with the amount) and of the keyset list', async () => {
+      const found = await rows(
+        `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'promotions' AND tablename = 'credit_issuances'`,
+      );
+      const defs = new Map(found.map((r) => [r.indexname as string, r.indexdef as string]));
+      expect(defs.get('credit_issuances_market_id_promotion_id_status_amount_minor_idx')).toMatch(
+        /\(market_id, promotion_id, status, amount_minor\)/,
+      );
+      expect(defs.get('credit_issuances_market_id_promotion_id_created_at_id_idx')).toMatch(
+        /\(market_id, promotion_id, created_at DESC, id DESC\)/,
+      );
+      const referrals = await rows(
+        `SELECT indexdef FROM pg_indexes WHERE schemaname = 'promotions' AND indexname = 'referrals_market_id_promotion_id_status_idx'`,
+      );
+      expect(referrals).toHaveLength(1);
+      expect(referrals[0]!.indexdef).toMatch(/\(market_id, promotion_id, status\)/);
     });
 
     it('holds the amount, kind and source, and the settlement fields together', async () => {
@@ -763,6 +968,122 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
     });
   });
 
+  describe('the repositories: lists, counts and lookups', () => {
+    it('pages the credits of a promotion newest first by keyset, with ties broken by id', async () => {
+      const row = promotionRow();
+      await sql.query(...(insert('promotions', row).slice(0, 2) as [string, unknown[]]));
+      const base = clock.now();
+      const made: string[] = [];
+      for (let n = 0; n < 5; n += 1) {
+        const source = ids.next<'SellerOrder'>();
+        const id = ids.next<'PromotionCredit'>();
+        made.push(id);
+        await sql.query(
+          ...(insert('credit_issuances', {
+            id,
+            market_id: mk,
+            tenant_id: 'default',
+            promotion_id: row.id,
+            kind: 'CASHBACK',
+            recipient_account_id: ids.next<'Account'>(),
+            order_id: ids.next<'Order'>(),
+            source_kind: 'SELLER_ORDER',
+            source_id: source,
+            amount_minor: 10 + n,
+            currency: 'AUD',
+            status: 'PENDING',
+            failure_code: null,
+            wallet_journal_id: null,
+            idempotency_key: `promotions:cashback:${source}`,
+            // The first three share an instant.
+            created_at: new Date(base.epochMilliseconds + (n < 3 ? 0 : n * 1000)),
+            settled_at: null,
+          }).slice(0, 2) as [string, unknown[]]),
+        );
+      }
+      const credits = deps.credits;
+      const seen: string[] = [];
+      let after: { createdAt: Temporal.Instant; id: never } | undefined;
+      for (let page = 0; page < 5; page += 1) {
+        const got = await db.unitOfWork.run(
+          market,
+          async () =>
+            ok(await credits.listForPromotion(market, row.id as never, 2, after as never)),
+          { readOnly: true },
+        );
+        if (!got.ok || got.value.length === 0) break;
+        seen.push(...got.value.map((c) => c.id));
+        const last = got.value[got.value.length - 1]!;
+        after = { createdAt: last.createdAt, id: last.id as never };
+      }
+      // Newest first; the three that share an instant come by descending id.
+      expect(seen).toEqual([made[4], made[3], ...[made[2]!, made[1]!, made[0]!].sort().reverse()]);
+    });
+
+    it('finds the referral a seller order qualified, and counts pending ones only while open', async () => {
+      const promotionRowValue = promotionRow(referralTerms);
+      await sql.query(
+        ...(insert('promotions', promotionRowValue).slice(0, 2) as [string, unknown[]]),
+      );
+      const referrer = ids.next<'Account'>();
+      const referralRow = (over: Record<string, unknown>) => ({
+        id: ids.next<'Referral'>(),
+        market_id: mk,
+        tenant_id: 'default',
+        promotion_id: promotionRowValue.id,
+        referrer_account_id: referrer,
+        referee_account_id: ids.next<'Account'>(),
+        status: 'PENDING',
+        reject_reason: null,
+        created_at: new Date('2026-10-01T00:00:00Z'),
+        expires_at: new Date('2026-11-25T10:00:00Z'),
+        decided_at: null,
+        qualifying_order_id: null,
+        qualifying_seller_order_id: null,
+        ...over,
+      });
+      const open = referralRow({});
+      const exactly = referralRow({ expires_at: new Date(clock.now().epochMilliseconds) });
+      const sellerOrder = ids.next<'SellerOrder'>();
+      const qualified = referralRow({
+        status: 'QUALIFIED',
+        decided_at: new Date('2026-10-20T00:00:00Z'),
+        qualifying_order_id: ids.next<'Order'>(),
+        qualifying_seller_order_id: sellerOrder,
+      });
+      for (const row of [open, exactly, qualified]) {
+        await sql.query(...(insert('referrals', row).slice(0, 2) as [string, unknown[]]));
+      }
+      const referrals = deps.referrals;
+      const read = await db.unitOfWork.run(
+        market,
+        async () =>
+          ok({
+            found: await referrals.findQualifiedBySellerOrder(market, sellerOrder),
+            none: await referrals.findQualifiedBySellerOrder(market, ids.next<'SellerOrder'>()),
+            all: await referrals.countByReferrer(
+              market,
+              referrer,
+              promotionRowValue.id as never,
+              'PENDING',
+            ),
+            open: await referrals.countByReferrer(
+              market,
+              referrer,
+              promotionRowValue.id as never,
+              'PENDING',
+              clock.now(),
+            ),
+          }),
+        { readOnly: true },
+      );
+      expect(read.ok && read.value.found).toMatchObject({ id: qualified.id, status: 'QUALIFIED' });
+      expect(read.ok && read.value.none).toBeNull();
+      // now == expires_at is not open (expires_at > now).
+      expect(read.ok && [read.value.all, read.value.open]).toEqual([2, 1]);
+    });
+  });
+
   describe('the delivery handlers end to end', () => {
     const delivery = (subscriber: string): EventDelivery => ({
       eventId: ids.next<'event'>(),
@@ -900,13 +1221,314 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
         'SELECT status FROM promotions.referrals WHERE market_id = $1 AND referee_account_id = $2',
         [mk, newcomer],
       );
-      expect(referral).toEqual([{ status: 'QUALIFIED' }]);
+      // A test-mode run leaves the referral open for a real program.
+      expect(referral).toEqual([{ status: confirmed ? 'QUALIFIED' : 'PENDING' }]);
       // Only the hash of the code is stored.
       const codes = await rows(
         'SELECT code_hash FROM promotions.referral_codes WHERE market_id = $1 AND account_id = $2',
         [mk, referrer],
       );
       expect(codes[0]!.code_hash).not.toBe(mine.value.code);
+    });
+  });
+  // These come last: they end every live cashback and referral program of the Market first (the
+  // earlier tests leave some behind), so the best credit for an order is the one made here.
+  describe('after-review behavior on the real tables', () => {
+    const rulesNow = settings.rules;
+    const delivery = (subscriber: string): EventDelivery => ({
+      eventId: ids.next<'event'>(),
+      subscriber,
+      attempt: 1,
+    });
+    const deliverTo = (who: string, goodsMinor: bigint, orderId = ids.next<'Order'>()) => {
+      const order = {
+        orderId,
+        sellerOrderId: ids.next<'SellerOrder'>(),
+        customerAccountId: who as never,
+        goodsPaid: money(goodsMinor, currency),
+        placedAt: clock.now().add({ hours: 1 }),
+        deliveredAt: clock.now().add({ hours: 48 }),
+        testOrder: false,
+      };
+      facts.orderFacts.add(order);
+      return order;
+    };
+    const inputOf = (
+      order: { orderId: string; sellerOrderId: string },
+      d: EventDelivery = delivery('promotions.cashback-on-delivery'),
+    ) => ({ delivery: d, orderId: order.orderId, sellerOrderId: order.sellerOrderId });
+    const cashbackBody = (extra: Record<string, unknown> = {}) => ({
+      funding: 'PLATFORM',
+      startsAt: '2026-10-01T00:00:00Z',
+      budgetMinor: '100000',
+      testMode: !confirmed,
+      type: 'CASHBACK',
+      name: 'DB review cashback',
+      reward: { kind: 'PERCENT', bps: 500 },
+      capMinor: '700',
+      ...extra,
+    });
+    const referralBody = (extra: Record<string, unknown> = {}) => ({
+      funding: 'PLATFORM',
+      startsAt: '2026-10-01T00:00:00Z',
+      budgetMinor: '100000',
+      testMode: !confirmed,
+      type: 'REFERRAL',
+      name: 'DB review referral',
+      reward: { kind: 'FIXED', amountMinor: '1000' },
+      refereeRewardMinor: '800',
+      maxUsesPerCustomer: 2,
+      ...extra,
+    });
+    const create = async (body: Record<string, unknown>) => {
+      const made = await make(CreatePromotion).execute(admin, body);
+      if (!made.ok) throw new Error(`create failed: ${JSON.stringify(made.error)}`);
+      return made.value.id as string;
+    };
+    /** Ends every cashback and referral program of the Market (they are never deleted). */
+    const endPrograms = () =>
+      owner.query(
+        `UPDATE promotions.promotions SET ends_at = '2026-10-02T00:00:00Z'
+          WHERE market_id = $1 AND type IN ('CASHBACK', 'REFERRAL')`,
+        [mk],
+      );
+    const asCustomer = (accountId: string) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'customer',
+          accountId: accountId as never,
+          sessionId: ids.next<'Session'>(),
+          sellerId: null,
+        }),
+        'promo3-db-customer-2',
+      );
+    const creditsOfOrder = (orderId: string) =>
+      rows(
+        `SELECT status, kind, amount_minor::text AS amount FROM promotions.credit_issuances
+          WHERE market_id = $1 AND order_id = $2 ORDER BY status, amount_minor`,
+        [mk, orderId],
+      );
+    const referralFlow = async () => {
+      const referrer = ids.next<'Account'>();
+      const newcomer = ids.next<'Account'>();
+      const mine = await make(ViewMyReferral).execute(asCustomer(referrer), {});
+      if (!mine.ok) throw new Error(`view failed ${JSON.stringify(mine.error)}`);
+      facts.orderHistory.lastOrder.set(newcomer, null);
+      const applied = await make(ApplyReferralCode).execute(asCustomer(newcomer), {
+        code: mine.value.code,
+      });
+      expect(applied.ok).toBe(true);
+      return { referrer, newcomer };
+    };
+    const qualifyInput = (order: { orderId: string; sellerOrderId: string }) =>
+      inputOf(order, delivery('promotions.qualify-referral-on-delivery'));
+
+    beforeAll(async () => {
+      await endPrograms();
+    });
+    afterEach(async () => {
+      facts.walletCredit.failure = null;
+      await endPrograms();
+    });
+
+    it('keeps the per-order cap when two seller orders of one order are delivered at once', async () => {
+      await create(cashbackBody());
+      const customer = ids.next<'Account'>();
+      const order = ids.next<'Order'>();
+      const a = deliverTo(customer, 10000n, order);
+      const b = deliverTo(customer, 10000n, order);
+      const results = await Promise.all([
+        make(CashbackOnDelivery).execute(system, inputOf(a)),
+        make(CashbackOnDelivery).execute(system, inputOf(b)),
+      ]);
+      expect(results.every((r) => r.ok)).toBe(true);
+      const stored = await creditsOfOrder(order);
+      if (confirmed) {
+        // 5% of 10000 is 500 each, but the promotion pays at most 700 for the whole order.
+        expect(stored.map((c) => [c.status, c.amount])).toEqual([
+          ['GRANTED', '200'],
+          ['GRANTED', '500'],
+        ]);
+      } else {
+        // Test-mode notes are not money: nothing caps them, and the two never wait on each other.
+        expect(stored.map((c) => [c.status, c.amount])).toEqual([
+          ['RECORDED', '500'],
+          ['RECORDED', '500'],
+        ]);
+      }
+    });
+
+    it('recovers from a crash in test mode: the cashback note is kept once', async () => {
+      await create(cashbackBody({ testMode: true }));
+      const customer = ids.next<'Account'>();
+      const order = deliverTo(customer, 10000n);
+      let armed = true;
+      const crashing: PromotionsDependencies = {
+        ...deps,
+        unitOfWork: {
+          run: (...args) => deps.unitOfWork.run(...args),
+          runOnce: (...args) => {
+            if (!armed) return deps.unitOfWork.runOnce(...args);
+            armed = false;
+            return Promise.reject(new Error('crash before the inbox'));
+          },
+        },
+      };
+      const d = delivery('promotions.cashback-on-delivery');
+      await expect(
+        new CashbackOnDelivery(gate, crashing).execute(system, inputOf(order, d)),
+      ).rejects.toThrow('crash before the inbox');
+      expect(await creditsOfOrder(order.orderId)).toHaveLength(1);
+      expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
+        ok: true,
+        value: { outcome: 'recorded' },
+      });
+      expect(await creditsOfOrder(order.orderId)).toEqual([
+        { status: 'RECORDED', kind: 'CASHBACK', amount: '500' },
+      ]);
+    });
+
+    it('records a note only when no real program applies, and a real credit can follow the note', async () => {
+      // A test-mode program alone: the note.
+      await create(cashbackBody({ name: 'DB test', testMode: true, capMinor: '3000' }));
+      const customer = ids.next<'Account'>();
+      const order = deliverTo(customer, 10000n);
+      expect(await make(CashbackOnDelivery).execute(system, inputOf(order))).toEqual({
+        ok: true,
+        value: { outcome: 'recorded' },
+      });
+      // A real program starts (it can only pay where the tax ruling is confirmed).
+      const realId = await create(
+        cashbackBody({ name: 'DB real', testMode: true, reward: { kind: 'PERCENT', bps: 200 } }),
+      );
+      await owner.query(
+        'UPDATE promotions.promotions SET test_mode = false WHERE market_id = $1 AND id = $2',
+        [mk, realId],
+      );
+      const again = await make(CashbackOnDelivery).execute(system, inputOf(order));
+      const stored = await creditsOfOrder(order.orderId);
+      if (confirmed) {
+        // The real credit is made although the note holds the source: the slots are separate.
+        expect(again).toEqual({ ok: true, value: { outcome: 'issued' } });
+        expect(stored.map((c) => [c.status, c.amount])).toEqual([
+          ['GRANTED', '200'],
+          ['RECORDED', '500'],
+        ]);
+      } else {
+        // The real program earns nothing while the ruling is open; the note stays the only row.
+        expect(again).toEqual({ ok: true, value: { outcome: 'recorded' } });
+        expect(stored.map((c) => [c.status, c.amount])).toEqual([['RECORDED', '500']]);
+      }
+    });
+
+    it('leaves a test-mode referral pending, and a real program can reward the referee later', async () => {
+      const programId = await create(referralBody({ testMode: true }));
+      const { referrer, newcomer } = await referralFlow();
+      const first = deliverTo(newcomer, 5000n);
+      expect(await make(QualifyReferralOnDelivery).execute(system, qualifyInput(first))).toEqual({
+        ok: true,
+        value: { outcome: 'recorded' },
+      });
+      const state = () =>
+        rows(
+          'SELECT status FROM promotions.referrals WHERE market_id = $1 AND referee_account_id = $2',
+          [mk, newcomer],
+        );
+      expect(await state()).toEqual([{ status: 'PENDING' }]);
+      expect((await creditsOfOrder(first.orderId)).map((c) => c.status)).toEqual([
+        'RECORDED',
+        'RECORDED',
+      ]);
+
+      await owner.query(
+        'UPDATE promotions.promotions SET test_mode = false WHERE market_id = $1 AND id = $2',
+        [mk, programId],
+      );
+      const second = deliverTo(newcomer, 6000n);
+      const result = await make(QualifyReferralOnDelivery).execute(system, qualifyInput(second));
+      if (confirmed) {
+        expect(result).toEqual({ ok: true, value: { outcome: 'issued' } });
+        expect(await state()).toEqual([{ status: 'QUALIFIED' }]);
+        expect(
+          (await creditsOfOrder(second.orderId)).map((c) => [c.status, c.kind, c.amount]),
+        ).toEqual([
+          ['GRANTED', 'REFEREE_REWARD', '800'],
+          ['GRANTED', 'REFERRER_REWARD', '1000'],
+        ]);
+        expect(facts.walletCredit.grants.filter((g) => g.orderId === second.orderId)).toHaveLength(
+          2,
+        );
+        expect(referrer).not.toBe(newcomer);
+      } else {
+        expect(result).toEqual({ ok: true, value: { outcome: 'pending' } });
+        expect(await state()).toEqual([{ status: 'PENDING' }]);
+      }
+    });
+
+    if (confirmed) {
+      it('finishes a pending cashback after its program ended', async () => {
+        await create(cashbackBody());
+        const customer = ids.next<'Account'>();
+        const order = deliverTo(customer, 10000n);
+        const d = delivery('promotions.cashback-on-delivery');
+        facts.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+        expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
+          ok: false,
+          error: { code: 'promotions.try-again' },
+        });
+        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual(['PENDING']);
+        await endPrograms();
+        expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
+          ok: true,
+          value: { outcome: 'issued' },
+        });
+        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual(['GRANTED']);
+      });
+
+      it('finishes both pending referral credits after the program ended', async () => {
+        await create(referralBody());
+        const { newcomer } = await referralFlow();
+        const order = deliverTo(newcomer, 5000n);
+        const d = delivery('promotions.qualify-referral-on-delivery');
+        facts.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+        expect(await make(QualifyReferralOnDelivery).execute(system, inputOf(order, d))).toEqual({
+          ok: false,
+          error: { code: 'promotions.try-again' },
+        });
+        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual([
+          'PENDING',
+          'PENDING',
+        ]);
+        await endPrograms();
+        expect(await make(QualifyReferralOnDelivery).execute(system, inputOf(order, d))).toEqual({
+          ok: true,
+          value: { outcome: 'issued' },
+        });
+        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual([
+          'GRANTED',
+          'GRANTED',
+        ]);
+      });
+    }
+
+    it('clamps a promotion made under wider limits to the Market limits now', async () => {
+      const limits = rulesNow.cashback!;
+      const id = await create(cashbackBody({ testMode: true, capMinor: '100' }));
+      await owner.query(
+        `UPDATE promotions.promotions SET reward_bps = $3, cap_minor = $4
+          WHERE market_id = $1 AND id = $2`,
+        [mk, id, limits.maxBps * 2, limits.maxCapMinor * 2n],
+      );
+      const customer = ids.next<'Account'>();
+      const goods = (limits.maxCapMinor * 40000n) / BigInt(limits.maxBps);
+      const order = deliverTo(customer, goods);
+      await make(CashbackOnDelivery).execute(system, inputOf(order));
+      const byPercent = (goods * BigInt(limits.maxBps)) / 10000n;
+      const expected = byPercent < limits.maxCapMinor ? byPercent : limits.maxCapMinor;
+      expect((await creditsOfOrder(order.orderId)).map((c) => c.amount)).toEqual([
+        expected.toString(),
+      ]);
     });
   });
 });

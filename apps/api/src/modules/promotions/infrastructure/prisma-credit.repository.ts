@@ -1,7 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { CreditRepository } from '../application/ports/credit.repository';
+import type { CreditCursor, CreditRepository } from '../application/ports/credit.repository';
 import type { CreditKind, CreditRecord, CreditSourceKind, CreditStatus } from '../domain/credit';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -82,10 +82,13 @@ export class PrismaCreditRepository implements CreditRepository {
     kind: CreditKind,
     sourceId: string,
   ): Promise<CreditRecord | null> {
-    const row = await this.prisma.tx(market).promotionsCreditIssuance.findFirst({
+    // At most one real row and one RECORDED row per source (partial unique indexes); the real wins.
+    const found = await this.prisma.tx(market).promotionsCreditIssuance.findMany({
       where: { marketId: market.marketId, kind, sourceId },
+      take: 2,
     });
-    return row === null ? null : toRecord(row);
+    const row = found.find((r) => r.status !== 'RECORDED') ?? found[0];
+    return row === undefined ? null : toRecord(row);
   }
 
   async settle(
@@ -142,7 +145,7 @@ export class PrismaCreditRepository implements CreditRepository {
         marketId: market.marketId,
         orderId,
         kind,
-        status: { in: ['PENDING', 'GRANTED', 'RECORDED'] },
+        status: { in: ['PENDING', 'GRANTED'] },
       },
       _sum: { amountMinor: true },
     });
@@ -153,9 +156,21 @@ export class PrismaCreditRepository implements CreditRepository {
     market: MarketContext,
     promotionId: Id<'Promotion'>,
     limit: number,
+    after?: CreditCursor,
   ): Promise<readonly CreditRecord[]> {
     const rows = await this.prisma.tx(market).promotionsCreditIssuance.findMany({
-      where: { marketId: market.marketId, promotionId },
+      where: {
+        marketId: market.marketId,
+        promotionId,
+        ...(after === undefined
+          ? {}
+          : {
+              OR: [
+                { createdAt: { lt: toDate(after.createdAt) } },
+                { createdAt: toDate(after.createdAt), id: { lt: after.id } },
+              ],
+            }),
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
     });

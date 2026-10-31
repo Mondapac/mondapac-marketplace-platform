@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { CalculationOutput } from '../domain/calculation/types';
-import type { CreditRecord } from '../domain/credit';
+import type { CreditPage } from '../application/use-cases/list-promotion-credits.use-case';
 import type { AppliedReferral } from '../application/use-cases/apply-referral-code.use-case';
 import type { MyReferralView } from '../application/use-cases/view-my-referral.use-case';
 import { PROMOTIONS_STATUSES } from '../domain/market-status';
@@ -653,11 +653,18 @@ export class CreditBody {
 
 export class CreditsBody {
   @ApiProperty({ type: [CreditBody] }) items!: CreditBody[];
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Pass as `cursor` for the next page; null on the last page.',
+  })
+  nextCursor!: string | null;
 }
 
-export function creditsBody(credits: readonly CreditRecord[]): CreditsBody {
+export function creditsBody(page: CreditPage): CreditsBody {
   return {
-    items: credits.map((credit) => ({
+    nextCursor: page.nextCursor,
+    items: page.items.map((credit) => ({
       id: credit.id,
       promotionId: credit.promotionId,
       kind: credit.kind,

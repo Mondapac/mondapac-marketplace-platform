@@ -1,6 +1,6 @@
 -- Never run this against production after launch: it drops every referral code, referral, credit
 -- record and inbox row. Reverses 20261031120000_promotions_phase3_types: the grants first, then the
--- new tables (which drops their triggers, indexes and foreign keys), then the new columns and
+-- new tables (which drops their triggers, indexes and foreign keys) and the trigger functions, then the new columns and
 -- checks, and last the two type checks of the phase 2 migration. The type checks are put back
 -- last, so the down refuses when a promotion of a phase 3 type is still stored. Nothing is lost
 -- then because the file runs as one transaction (as the reversibility script runs it), so the
@@ -17,6 +17,9 @@ DROP TABLE "promotions"."inbox";
 DROP TABLE "promotions"."credit_issuances";
 DROP TABLE "promotions"."referrals";
 DROP TABLE "promotions"."referral_codes";
+
+DROP FUNCTION "promotions"."guard_credit_transition"();
+DROP FUNCTION "promotions"."guard_referral_transition"();
 
 ALTER TABLE "promotions"."promotions"
   DROP CONSTRAINT "promotions_phase3_check",

@@ -16,6 +16,7 @@ import type {
   BatchCodeRepository,
 } from '../../src/modules/promotions/application/ports/batch-code.repository';
 import type {
+  CreditCursor,
   CreditRepository,
   ReferralCodeRecord,
   ReferralRepository,
@@ -540,6 +541,11 @@ export class FakeWalletCredit implements WalletCredit {
   /** The failure to answer next (once), or for every call while `always` is set. */
   failure: WalletCreditFailure | null = null;
   always = false;
+  /** Decides per request (before `failure`): a failure to answer, or null to go on. */
+  failWhen: ((request: { readonly idempotencyKey: string }) => WalletCreditFailure | null) | null =
+    null;
+  /** Every call, including the refused ones. */
+  calls = 0;
   grant(
     _context: CallContext,
     request: {
@@ -549,6 +555,9 @@ export class FakeWalletCredit implements WalletCredit {
       readonly idempotencyKey: string;
     },
   ): Promise<Result<{ readonly journalId: string }, WalletCreditFailure>> {
+    this.calls += 1;
+    const scripted = this.failWhen?.(request) ?? null;
+    if (scripted !== null) return Promise.resolve(err(scripted));
     if (this.failure !== null) {
       const failure = this.failure;
       if (!this.always) this.failure = null;
@@ -564,23 +573,27 @@ export class FakeWalletCredit implements WalletCredit {
   }
 }
 
-/** Credits in memory: unique per kind and source and per idempotency key, like the table. */
+/**
+ * Credits in memory: unique per kind and source and per idempotency key, like the table; the real
+ * credits and the RECORDED notes each have their own slots (the partial unique indexes).
+ */
 export class MemoryCredits implements CreditRepository {
   readonly rows = new Map<Id<'PromotionCredit'>, CreditRecord>();
   insert(_market: MarketContext, record: CreditRecord) {
+    const recorded = record.status === 'RECORDED';
     const clash = [...this.rows.values()].some(
       (r) =>
-        (r.kind === record.kind && r.sourceId === record.sourceId) ||
-        r.idempotencyKey === record.idempotencyKey,
+        (r.status === 'RECORDED') === recorded &&
+        ((r.kind === record.kind && r.sourceId === record.sourceId) ||
+          r.idempotencyKey === record.idempotencyKey),
     );
     if (clash) return Promise.resolve('duplicate' as const);
     this.rows.set(record.id, record);
     return Promise.resolve('inserted' as const);
   }
   findBySource(_market: MarketContext, kind: CreditKind, sourceId: string) {
-    return Promise.resolve(
-      [...this.rows.values()].find((r) => r.kind === kind && r.sourceId === sourceId) ?? null,
-    );
+    const found = [...this.rows.values()].filter((r) => r.kind === kind && r.sourceId === sourceId);
+    return Promise.resolve(found.find((r) => r.status !== 'RECORDED') ?? found[0] ?? null);
   }
   settle(
     _market: MarketContext,
@@ -628,16 +641,31 @@ export class MemoryCredits implements CreditRepository {
           (r) =>
             r.orderId === orderId &&
             r.kind === kind &&
-            (r.status === 'PENDING' || r.status === 'GRANTED' || r.status === 'RECORDED'),
+            (r.status === 'PENDING' || r.status === 'GRANTED'),
         )
         .reduce((sum, r) => sum + r.amountMinor, 0n),
     );
   }
-  listForPromotion(_market: MarketContext, promotionId: Id<'Promotion'>, limit: number) {
+  listForPromotion(
+    _market: MarketContext,
+    promotionId: Id<'Promotion'>,
+    limit: number,
+    after?: CreditCursor,
+  ) {
+    const newestFirst = (a: CreditRecord, b: CreditRecord) =>
+      b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
     return Promise.resolve(
       [...this.rows.values()]
         .filter((r) => r.promotionId === promotionId)
-        .sort((a, b) => b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds)
+        .sort(newestFirst)
+        .filter(
+          (r) =>
+            after === undefined ||
+            r.createdAt.epochMilliseconds < after.createdAt.epochMilliseconds ||
+            (r.createdAt.epochMilliseconds === after.createdAt.epochMilliseconds &&
+              r.id < after.id),
+        )
         .slice(0, limit),
     );
   }
@@ -662,6 +690,13 @@ export class MemoryReferrals implements ReferralRepository {
     }
     this.codes.set(record.accountId, record);
     return Promise.resolve('inserted' as const);
+  }
+  findQualifiedBySellerOrder(_market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    return Promise.resolve(
+      [...this.rows.values()].find(
+        (r) => r.status === 'QUALIFIED' && r.qualifyingSellerOrderId === sellerOrderId,
+      ) ?? null,
+    );
   }
   findByReferee(_market: MarketContext, refereeAccountId: Id<'Account'>) {
     return Promise.resolve(
@@ -705,13 +740,16 @@ export class MemoryReferrals implements ReferralRepository {
     referrerAccountId: Id<'Account'>,
     promotionId: Id<'Promotion'>,
     status: ReferralStatus,
+    notExpiredAt?: Temporal.Instant,
   ) {
     return Promise.resolve(
       [...this.rows.values()].filter(
         (r) =>
           r.referrerAccountId === referrerAccountId &&
           r.promotionId === promotionId &&
-          r.status === status,
+          r.status === status &&
+          (notExpiredAt === undefined ||
+            r.expiresAt.epochMilliseconds > notExpiredAt.epochMilliseconds),
       ).length,
     );
   }
