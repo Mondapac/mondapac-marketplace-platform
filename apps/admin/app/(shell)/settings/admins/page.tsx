@@ -33,6 +33,7 @@ export default async function TeamPageRoute({
     return (
       <SettingsShell session={gate.session} linkId="admins" title={t('settings.hub.link.admins')}>
         <NoAccess
+          pageTitle={t('settings.hub.link.admins')}
           title={t('identity.members.no-access.title')}
           body={t('identity.members.no-access.body')}
           backHref="/settings"
@@ -94,9 +95,10 @@ export default async function TeamPageRoute({
           ) : (
             <div className="px-5 py-4">
               <LoadError
-                message={t('identity.error.unknown')}
+                title={t('settings.load-error.title', { page: t('settings.hub.link.admins') })}
+                message={t('settings.load-error.body')}
                 retryLabel={t('load.retry')}
-                className="flex flex-col items-start gap-3"
+                className="w-full"
               />
             </div>
           )}

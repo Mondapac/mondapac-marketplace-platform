@@ -144,10 +144,13 @@ describe('admin roles pages', () => {
     ).rejects.toThrow('not-found');
   });
 
-  it('says something went wrong when the API is unavailable', async () => {
+  it('shows a titled critical banner when the API is unavailable', async () => {
     mocks.get.mockResolvedValue({ kind: 'unavailable' });
     render(await RolesPageRoute());
-    expect(screen.getByText(messages.identity.error.unknown)).toBeTruthy();
+    expect(
+      screen.getByText(`${messages.identity.members.title.admin} could not be loaded`),
+    ).toBeTruthy();
+    expect(screen.getByText(messages.settings['load-error'].body)).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
   });
 

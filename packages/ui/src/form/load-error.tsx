@@ -1,27 +1,35 @@
 'use client';
 
+import { Banner } from './banner.tsx';
 import { Button } from './button.tsx';
 
 export interface LoadErrorProps {
-  /** What went wrong, in the reader's words. */
+  /** The body under the title, in the reader's words ("Try again. If it keeps happening, ..."). */
   readonly message: string;
   readonly retryLabel: string;
   /** Called by the button. Without it the page is reloaded (server-rendered pages). */
   readonly onRetry?: () => void;
+  /** Around the banner; the default adds page padding. */
   readonly className?: string;
-  /** The page's h1, for a page whose whole content failed to load (it renders no other heading). */
+  /** The banner's bold first line: what could not be loaded ("Delivery settings could not be loaded"). */
   readonly title?: string;
 }
 
-/** A load error with a "try again" button: one place for every page that can fail to load. */
+/**
+ * A load error: a critical banner with what failed (title), what to do (body) and a "try again"
+ * button. One place for every page that can fail to load.
+ */
 export function LoadError({ message, retryLabel, onRetry, className, title }: LoadErrorProps) {
   return (
-    <div role="alert" className={className ?? 'flex flex-col items-start gap-3 p-6'}>
-      {title === undefined ? null : <h1 className="text-2xl font-semibold text-fg">{title}</h1>}
-      <p className="text-fg-muted">{message}</p>
-      <Button variant="secondary" onClick={onRetry ?? (() => window.location.reload())}>
-        {retryLabel}
-      </Button>
+    <div className={className ?? 'p-6'}>
+      <Banner tone="critical" title={title}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-0">{message}</p>
+          <Button variant="secondary" onClick={onRetry ?? (() => window.location.reload())}>
+            {retryLabel}
+          </Button>
+        </div>
+      </Banner>
     </div>
   );
 }

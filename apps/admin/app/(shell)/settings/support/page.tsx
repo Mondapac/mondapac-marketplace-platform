@@ -32,13 +32,14 @@ export default async function SupportSettingsPage() {
   if (!permissionKeys.includes(SUPPORT_VIEW_PERMISSION)) {
     return shell(
       <NoAccess
+        pageTitle={t('settings.support.title')}
         title={t('settings.no-access-title')}
         body={t('settings.no-access-needs', {
           page: t('settings.support.title'),
           permission: t('settings.support.permission-view'),
         })}
-        backHref="/"
-        backLabel={t('settings.back-home')}
+        backHref="/settings"
+        backLabel={t('settings.sub.back')}
       />,
     );
   }
@@ -48,9 +49,10 @@ export default async function SupportSettingsPage() {
     return shell(
       <SettingsFrame title={t('settings.support.title')}>
         <LoadError
-          message={t('settings.unavailable')}
+          title={t('settings.load-error.title', { page: title })}
+          message={t('settings.load-error.body')}
           retryLabel={t('load.retry')}
-          className="flex flex-col items-start gap-3"
+          className="w-full"
         />
       </SettingsFrame>,
     );

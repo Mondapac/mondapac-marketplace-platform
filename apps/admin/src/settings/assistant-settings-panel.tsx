@@ -317,9 +317,10 @@ export function AssistantSettingsPanel({
       {...frame}
       onSubmit={() => void submit()}
       dirty={changedKeys.length > 0}
+      dirtyCount={changedKeys.length}
       leave={{
         title: t('settings.leave.title'),
-        message: t('settings.leave.message'),
+        message: (info) => t('settings.leave.message', { count: info.count, page: info.page }),
         stay: t('settings.leave.stay'),
         leave: t('settings.leave.leave'),
       }}
