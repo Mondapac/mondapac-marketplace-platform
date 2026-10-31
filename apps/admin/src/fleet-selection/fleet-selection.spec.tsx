@@ -302,7 +302,7 @@ describe('the fleet selection page', () => {
     expect(screen.getByLabelText<HTMLSelectElement>('Instant').value).toBe(MODEL);
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
     expect(screen.getByText(/Your 1 change is kept/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(
       screen.getByText('Instant: saved now Own fleet first, yours Cheapest first'),
     ).toBeTruthy();
@@ -493,7 +493,8 @@ describe('the review changes', () => {
 
   it('says a viewer can look but not change', () => {
     mount(selection(), false);
-    expect(screen.getByText('You can view but not change delivery fleets.')).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(screen.getByText(/^Your role can see these settings but not change them/)).toBeTruthy();
   });
 
   it('ties a weights error to its inputs and focuses the first one', () => {

@@ -195,7 +195,7 @@ describe('AssistantSettingsPanel', () => {
     // The bar counts the errors and Save waits until they are fixed.
     expect(screen.getByText(/2 need fixing/)).toBeTruthy();
     const summary = screen.getByRole('alert');
-    expect(summary.textContent).toContain('2 settings need fixing before you can save');
+    expect(summary.textContent).toContain('2 settings need fixing');
     expect(document.activeElement).toBe(summary);
     fireEvent.click(screen.getByRole('link', { name: 'Messages per guest' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Messages per guest'));
@@ -252,7 +252,7 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('21');
     expect(screen.getByText('Saved version 4')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(compared('Messages per guest')).toMatchObject({ saved: '30', yours: '21' });
     // The welcome message is user content: shown as text, never as markup.
     const welcome = compared('Welcome message');
@@ -287,7 +287,8 @@ describe('AssistantSettingsPanel', () => {
     mount(answer());
     touch();
     save();
-    expect(await screen.findByText(/without < or >/)).toBeTruthy();
+    // The field's own message, and the same message in the error summary.
+    expect((await screen.findAllByText(/without < or >/)).length).toBe(2);
     expect(
       screen.getByText('Some settings were refused. Check the fields and try again.'),
     ).toBeTruthy();

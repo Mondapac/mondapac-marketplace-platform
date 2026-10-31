@@ -14,6 +14,7 @@ import {
 } from './setting-row.tsx';
 import { SettingsPage } from './settings-page.tsx';
 import { SettingsSection } from './settings-section.tsx';
+import { SettingsViewOnlyBanner } from './view-only-banner.tsx';
 import { leavesPage, type ClickInfo } from './unsaved-changes-guard.tsx';
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(node);
@@ -315,7 +316,7 @@ describe('SettingsErrorSummary', () => {
   it('is a critical alert that links each invalid field', () => {
     const out = html(
       <SettingsErrorSummary
-        title="2 settings need fixing before you can save"
+        title="2 settings need fixing"
         items={[
           { id: 'cutoff', label: 'Cut-off time' },
           { id: 'free', label: 'Free delivery from' },
@@ -324,10 +325,27 @@ describe('SettingsErrorSummary', () => {
     );
     expect(out).toContain('role="alert"');
     expect(out).toContain('tabindex="-1"');
-    expect(out).toContain('2 settings need fixing before you can save');
+    expect(out).toContain('2 settings need fixing');
     expect(out).toContain('<a href="#cutoff"');
     expect(out).toContain('>Free delivery from</a>');
+    expect(out).not.toContain(': ');
     expect(out).toContain('text-critical-fg');
+  });
+
+  it('follows a link with what is wrong when the field says so', () => {
+    const out = html(
+      <SettingsErrorSummary
+        title="1 setting needs fixing"
+        items={[
+          {
+            id: 'cutoff',
+            label: 'Same-day cut-off',
+            message: 'enter a time between 00:00 and 23:59.',
+          },
+        ]}
+      />,
+    );
+    expect(out).toContain('>Same-day cut-off</a>: enter a time between 00:00 and 23:59.');
   });
 
   it('renders nothing without fields', () => {
@@ -348,5 +366,19 @@ describe('Button disabled state', () => {
       expect(out).not.toContain('accent-disabled');
     }
     expect(html(<Button disabled>Save</Button>)).toContain('disabled:bg-muted');
+  });
+});
+
+describe('SettingsViewOnlyBanner', () => {
+  it('is an info banner titled with the same words on every page, with the reason under it', () => {
+    const out = html(
+      <SettingsViewOnlyBanner title="View only">
+        Your role can see these settings but not change them.
+      </SettingsViewOnlyBanner>,
+    );
+    expect(out).toContain('role="status"');
+    expect(out).toContain('<p class="font-semibold">View only</p>');
+    expect(out).toContain('Your role can see these settings but not change them.');
+    expect(out).toContain('text-info-fg');
   });
 });

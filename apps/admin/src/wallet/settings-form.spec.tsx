@@ -89,7 +89,8 @@ describe('SettingsForm', () => {
     call.mockResolvedValue(ok(settings()));
     mount(false);
     await screen.findByText('Never changed');
-    expect(screen.getByText(/^View only\./)).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(screen.getByText(/Your role can see these settings but not change them/)).toBeTruthy();
     expect(screen.getByLabelText<HTMLSelectElement>('New state').disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Review change' })).toBeNull();
   });

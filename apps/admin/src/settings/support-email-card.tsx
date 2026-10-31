@@ -6,6 +6,7 @@ import {
   SettingInput,
   SettingRow,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   SettingsPage,
   SettingsSection,
   toast,
@@ -105,15 +106,21 @@ export function SupportEmailCard({
 
   const banners = [
     canManage ? null : (
-      <Banner key="read-only" tone="info">
-        {t('settings.support.read-only')}
-      </Banner>
+      <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ),
     invalid ? (
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: 1 })}
-        items={[{ id: EMAIL_ROW, label: t('settings.support.field') }]}
+        items={[
+          {
+            id: EMAIL_ROW,
+            label: t('settings.support.field'),
+            message: t('settings.support.invalid'),
+          },
+        ]}
         focusSignal={failedSaves}
       />
     ) : null,

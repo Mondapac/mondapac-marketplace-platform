@@ -10,6 +10,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   SettingsPage,
   SettingsSection,
   toast,
@@ -256,15 +257,19 @@ export function AssistantSettingsPanel({
   };
   const banners = [
     canManage ? null : (
-      <Banner key="read-only" tone="info">
+      <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
         {t(`${P}.read-only`)}
-      </Banner>
+      </SettingsViewOnlyBanner>
     ),
     invalid.length === 0 ? null : (
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: invalid.length })}
-        items={invalid.map((key) => ({ id: rowId(key), label: t(`${P}.${FIELD_LABEL[key]}`) }))}
+        items={invalid.map((key) => ({
+          id: rowId(key),
+          label: t(`${P}.${FIELD_LABEL[key]}`),
+          message: errorOf(key),
+        }))}
         focusSignal={failedSaves}
       />
     ),

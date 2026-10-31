@@ -3,6 +3,7 @@
 import {
   Badge,
   Banner,
+  SettingsViewOnlyBanner,
   Button,
   DataList,
   Dialog,
@@ -182,9 +183,9 @@ export function SettingsForm({
       />
     ) : null,
     canManage ? null : (
-      <Banner key="view-only" tone="info">
-        {t('settings.view-only')}
-      </Banner>
+      <SettingsViewOnlyBanner key="view-only" title={root('settings.view-only.title')}>
+        {root('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ),
     problem === null ? null : (
       <Banner key="problem" tone="critical">

@@ -87,7 +87,12 @@ describe('StockLocations', () => {
   it('hides every action without the edit permission', () => {
     mount(view(), false);
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.getByText(/You can see your stock locations but not change them/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /You can see your stock locations but not change them. The store owner can give you access/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
   });
 
   it('is a list in a section of the template, with no save bar', () => {
@@ -176,8 +181,8 @@ describe('StockLocations', () => {
     // The summary at the top of the form links to the field.
     const summary = screen
       .getAllByRole('alert')
-      .find((node) => node.textContent?.includes('needs fixing before you can save'))!;
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+      .find((node) => node.textContent?.includes('needs fixing'))!;
+    expect(summary.textContent).toContain('1 setting needs fixing');
     fireEvent.click(within(summary).getByRole('link', { name: 'Name' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Name'));
     expect(screen.getByLabelText('Name').getAttribute('aria-invalid')).toBe('true');
@@ -238,7 +243,7 @@ describe('StockLocations', () => {
     // The draft is kept in the open editor.
     expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('Warehouse');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     const name = compared('Name');
     expect(name).toMatchObject({ saved: '<i>Shed</i>', yours: 'Warehouse' });
     expect(name.item.querySelector('i')).toBeNull();

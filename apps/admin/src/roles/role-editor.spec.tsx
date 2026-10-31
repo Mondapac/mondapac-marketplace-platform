@@ -170,7 +170,7 @@ describe('role editor', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Role name').value).toBe('My draft name');
     expect(screen.getByLabelText<HTMLInputElement>('View').checked).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(
       screen.getByText('Saved name: Night shift (renamed). Your name: My draft name.'),
     ).toBeTruthy();
@@ -302,7 +302,7 @@ describe('role editor', () => {
     mount({ initialName: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
     const summary = screen.getByRole('alert');
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain('1 setting needs fixing');
     fireEvent.click(within(summary).getByRole('link', { name: 'Role name' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Role name'));
     expect(call).not.toHaveBeenCalled();

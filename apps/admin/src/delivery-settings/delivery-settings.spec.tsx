@@ -235,7 +235,12 @@ describe('the delivery settings page', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').disabled).toBe(true);
     expect(screen.getByLabelText<HTMLSelectElement>('Window length').disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>('Cut-off time').disabled).toBe(true);
-    expect(screen.getByText(/You can view these settings but not change them/)).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Your role can see these settings but not change them. An admin who manages roles can give you access.',
+      ),
+    ).toBeTruthy();
   });
 
   it('saves the whole set with the version read and shows the answer', async () => {
@@ -262,7 +267,7 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
     pressInDialog('Confirm and save');
 
-    await expectToast(/Delivery settings saved/);
+    await expectToast('Delivery rules saved.');
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -316,7 +321,10 @@ describe('the delivery settings page', () => {
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
     const summary = screen.getByRole('alert');
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain('1 setting needs fixing');
+    expect(summary.textContent).toContain(
+      'Percentage: Enter a percentage from 0 to 100, with up to two decimals.',
+    );
     expect(document.activeElement).toBe(summary);
     fireEvent.click(within(summary).getByRole('link', { name: 'Percentage' }));
     expect(document.activeElement).toBe(field);
@@ -354,7 +362,8 @@ describe('the delivery settings page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(screen.getByText('Enter a whole number of days from 1 to 30.')).toBeTruthy();
-    expect(screen.getByText(/Enter an amount up to/)).toBeTruthy();
+    // Under the field, and again in the error summary.
+    expect(screen.getAllByText(/Enter an amount up to/)).toHaveLength(2);
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -376,7 +385,10 @@ describe('the delivery settings page', () => {
     // The draft stays; the compare list names what is saved now.
     expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('9');
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(
+      screen.getByText('Your 1 change is kept. Review what changed, then save again.'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(compared('Days ahead')).toMatchObject({ saved: '4', yours: '9' });
 
     // The confirm-impact dialog still comes before the next save, which names version 5.

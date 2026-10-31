@@ -1152,7 +1152,7 @@
   "stock": {
     "title": "Stock locations",
     "section": "Your locations",
-    "view-only": "You can see your stock locations but not change them. Ask the store owner for access.",
+    "view-only": "You can see your stock locations but not change them. The store owner can give you access.",
     "intro": "Where you keep stock, in the order we use it to fill orders. You can have up to {max} locations.",
     "optional": "optional",
     "default": "Default",
@@ -1858,7 +1858,7 @@
     "title": "Store profile",
     "intro": "What buyers see on your store page: a few words about your store, a logo and a banner. Changes are public as soon as you save them.",
     "loading": "Loading the store profile",
-    "view-only": "You can see the store profile but not change it. Ask the store owner for access.",
+    "view-only": "You can see the store profile but not change it. The store owner can give you access.",
     "error": {
       "unavailable": "The store profile is unavailable right now. Try again later."
     },
@@ -1869,7 +1869,7 @@
       "counter": "{count} of {max} characters",
       "save": "Save",
       "saving": "Saving…",
-      "saved": "Saved. Buyers can see it now.",
+      "saved": "Store profile saved. Buyers can see it now.",
       "error": {
         "stale": "Someone else saved a newer version first. Your changes are still in the box. Reload the page to see the latest version, then save again.",
         "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
@@ -1885,6 +1885,9 @@
         "url": "Remove web addresses and links, or add a space after a full stop. Buyers contact you through the platform.",
         "claim-term": "This text claims a certification. Remove that wording. Certificates are shown as verified badges after our team checks them.",
         "invalid": "This text is not valid."
+      },
+      "summary": {
+        "claim-term": "remove the wording that claims a certification."
       }
     },
     "logo": {
@@ -2055,7 +2058,7 @@
     "title": "Settings",
     "back-home": "Back to Dashboard",
     "errors": {
-      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+      "title": "{count, plural, one {# setting needs fixing} other {# settings need fixing}}"
     },
     "bar": {
       "region": "Unsaved changes",
@@ -2073,9 +2076,9 @@
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
-      "hide": "Hide comparison",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
+      "hide": "Hide what changed",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
@@ -2103,6 +2106,9 @@
     "sub": {
       "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "view-only": {
+      "title": "View only"
     }
   }
 }

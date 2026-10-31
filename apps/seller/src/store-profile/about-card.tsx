@@ -133,6 +133,10 @@ export function useAbout({
   const errorItems: SettingsErrorItem[] = invalid.map((locale) => ({
     id: rowId(locale),
     label: label(locale),
+    message:
+      problem?.fields[locale] === 'claim-term'
+        ? t('store-profile.about.summary.claim-term')
+        : errorOf(locale),
   }));
 
   /** The conflict, the error summary and the other problems, for the page's banner slot. */
