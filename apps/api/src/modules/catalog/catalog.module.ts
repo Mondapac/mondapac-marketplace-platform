@@ -185,6 +185,7 @@ import { BrandMerge } from './application/use-cases/brand-merge.use-case';
 import { BrandMergeQueueDismiss } from './application/use-cases/brand-merge-queue-dismiss.use-case';
 import { BrandMergeQueueList } from './application/use-cases/brand-merge-queue-list.use-case';
 import { OwnBrandPropose } from './application/use-cases/own-brand-propose.use-case';
+import { BrandProductIdsQuery } from './application/use-cases/brand-product-ids.use-case';
 import { PublicBrandQuery } from './application/use-cases/public-brand.use-case';
 import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.use-case';
 import { BrandAdminController } from './presentation/brand-admin.controller';
@@ -430,6 +431,7 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       ids: true,
     }),
+    useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandsAzQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PlatformProductCreate, {
@@ -845,6 +847,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferListingsSystemQuery,
         OfferBadgesQuery,
         PublishedProductQuery,
+        BrandProductIdsQuery,
         PublishedProductImagesQuery,
         PendingProductRevisionsQuery,
         SellerProductOwnersQuery,
@@ -860,6 +863,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerListingsSystem: OfferListingsSystemQuery,
         offerBadges: OfferBadgesQuery,
         publishedProduct: PublishedProductQuery,
+        brandProductIds: BrandProductIdsQuery,
         publishedProductImages: PublishedProductImagesQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
         sellerProductOwners: SellerProductOwnersQuery,
@@ -875,6 +879,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerListingsSystem,
           offerBadges,
           publishedProduct,
+          brandProductIds,
           publishedProductImages,
           pendingProductRevisions,
           sellerProductOwners,

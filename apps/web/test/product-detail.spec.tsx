@@ -170,6 +170,49 @@ describe('product page on API data', () => {
   });
 });
 
+// The brand of the product (the API's `brand`, untrusted): a link to its page under the title.
+describe('the brand on the product page', () => {
+  const renderPage = (extra: Partial<ProductDetailBody>) => {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('min-width: 1000px'),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf({ ...TWO_SELLERS, ...extra }, 'en', labels)!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+  };
+
+  it('links the brand name to its page, beside the seller line', () => {
+    renderPage({ brand: { slug: 'kedron-farms', name: 'Kedron Farms' } });
+    const link = screen.getByRole('link', { name: 'Kedron Farms' });
+    expect(link.getAttribute('href')).toBe('/brands/kedron-farms');
+    expect(link.closest('p')?.textContent).toBe('Brand: Kedron Farms');
+    expect(screen.getByRole('link', { name: 'Kedron Butchers' })).toBeTruthy();
+  });
+
+  it('shows no brand line for a product without a brand or with a malformed one', () => {
+    for (const brand of [undefined, null, { slug: 'Bad_Slug', name: 'x' }, { slug: 'ok-slug' }]) {
+      renderPage({ brand });
+      expect(screen.queryByText(/^Brand:/u)).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('maps a valid brand reference of the answer', () => {
+    expect(
+      productDetailOf({ ...TWO_SELLERS, brand: { slug: 'a-1', name: 'A1' } }, 'en', labels)?.brand,
+    ).toEqual({ slug: 'a-1', name: 'A1' });
+  });
+});
+
 // Certification badges: the API's `badges` are untrusted input. Each is checked field by field and
 // a malformed one is dropped whole; absent means none.
 describe('certification badges from the API', () => {

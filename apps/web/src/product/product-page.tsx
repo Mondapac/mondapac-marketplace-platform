@@ -56,6 +56,18 @@ export function ProductPage({
                 seller: (chunks) => <Link href={`/s/${offer.seller.id}`}>{chunks}</Link>,
               })}
             </p>
+            {product.brand === undefined ? null : (
+              <p className="pbrand">
+                {t.rich('brand', {
+                  name: product.brand.name,
+                  brand: (chunks) => (
+                    <Link href={`/brands/${encodeURIComponent(product.brand!.slug)}`}>
+                      {chunks}
+                    </Link>
+                  ),
+                })}
+              </p>
+            )}
           </div>
           <Gallery
             name={product.name}
