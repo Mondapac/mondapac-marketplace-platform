@@ -6746,13 +6746,38 @@ function pcRtl(v, st, o) {
   const t = text(empty ? (o.ph || '') : v, 'Body/Default', empty || dis ? 'text/muted' : 'text/primary', { name: 'value', align: 'right', sizeH: 'FILL' });
   return frame({ name: (o.multi ? 'textarea' : 'input') + ' · rtl' + (st ? ' · ' + st : ''), dir: 'H', pad: o.multi ? [10, 12, 30, 12] : [9, 12, 9, 12], fill: dis ? 'bg/muted' : 'bg/surface', stroke: err ? 'status/critical/solid' : 'border/input', radius: 'radius/control', sizeH: 'FILL' }, [t]);
 }
-function pcLangTabs(sel, missing, errLang) {
+// Language picker (john 31 Oct): one dropdown instead of a tab per language, so more languages don't add tabs.
+// The trigger shows the chosen language; a summary next to it says which languages still miss text.
+function pcLangLabel(l) { return l[0] === 'en' ? 'English' : l[1] + ' · ' + l[2]; }
+function pcLangPicker(sel, missing, errLang) {
   missing = missing || ['ar'];
-  return frame({ name: 'language tabs', dir: 'H', gap: 'space/1', align: 'center', sizeH: 'FILL' }, PC_LANGS.map(function (l) {
-    const on = l[0] === sel, miss = missing.indexOf(l[0]) >= 0;
-    return frame({ name: 'lang · ' + l[2], dir: 'H', gap: 'space/1-5', align: 'center', pad: [6, 10, 6, 10], fill: on ? 'bg/selected' : null, stroke: on ? 'action/primary' : 'border/default', radius: 'radius/control' }, [
-      text(l[1], on ? 'Body/Strong' : 'Body/Default', 'text/primary'), miss ? bdg(errLang === l[0] ? 'Critical' : 'Neutral', 'None', 'Missing') : null]);
-  }));
+  const L = PC_LANGS.filter(function (l) { return l[0] === sel; })[0];
+  const names = PC_LANGS.filter(function (l) { return missing.indexOf(l[0]) >= 0; }).map(function (l) { return l[2]; });
+  const err = errLang && missing.indexOf(errLang) >= 0;
+  return frame({ name: 'language picker', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [
+    text('Language', 'Body/Strong'), inst('Select', { State: errLang === sel ? 'Error' : 'Filled', Value: pcLangLabel(L) }, { name: 'language', w: 220 }), pcSp(),
+    names.length ? bdg(err ? 'Critical' : 'Attention', 'None', 'Missing: ' + names.join(', ')) : bdg('Success', 'Dot', 'All languages done')]);
+}
+// The picker open: every language from Settings, required ones first, each with its status; search shows from 8 languages.
+function pcLangMenu(sel, missing) {
+  missing = missing || ['ar'];
+  const item = function (l) {
+    const st = (l[0] === 'en' ? 'Default · required' : l[3]) + (missing.indexOf(l[0]) >= 0 ? ' · Missing' : ' · Done');
+    return inst('MenuItem', { State: l[0] === sel ? 'Selected' : 'Default', Label: pcLangLabel(l), 'Leading icon': false, 'Show description': true, Description: st }, { name: 'lang · ' + l[2], sizeH: 'FILL' });
+  };
+  return ppPopover('Language picker (open)', 300, [inst('Input', { Type: 'Text', State: 'Default', Value: 'Find a language', 'Leading icon': true }, { name: 'find', sizeH: 'FILL' }),
+    frame({ name: 'languages', dir: 'V', sizeH: 'FILL' }, PC_LANGS.map(item)),
+    text('Search shows when there are 8 or more languages. Languages come from Settings › Languages.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]);
+}
+// A name in one more language: a small language dropdown and the text. Required languages are listed already; others come from "Add a language".
+function pcLangRow(code, v, o) {
+  o = o || {};
+  const l = PC_LANGS.filter(function (x) { return x[0] === code; })[0];
+  return frame({ name: 'name · ' + l[2], dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: l[1] }, { name: 'language', w: 120 }), pcRtl(v, o.st, { ph: o.ph || 'Name in ' + l[2] }),
+    o.removable ? inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' }) : null]);
+}
+function pcOtherNames(rows, help) {
+  return pcField('Name in other languages', frame({ name: 'other languages', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, rows.concat([ppLink('Add a language', 'plus', 'add-language')])), help);
 }
 function pcDetails(o) {
   const dis = o.viewOnly ? 'Disabled' : null;
@@ -6765,7 +6790,7 @@ function pcDetails(o) {
   const descCtl = rtl ? pcRtl(tx.desc, dis, { multi: true, ph: 'Short description in ' + L[2] }) : pcTa(tx.desc, dis);
   const kwCtl = rtl ? pcRtl(tx.keywords, dis, { ph: 'Search words in ' + L[2] }) : pcIn(tx.keywords, dis);
   const langBlock = frame({ name: 'language text', dir: 'V', gap: 'space/4', pad: 'space/4', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangTabs(lang, o.missing, o.errLang), text(L[2] + ' · ' + L[3] + (rtl ? ' · right to left' : ''), 'Caption/Default', 'text/muted')]),
+    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangPicker(lang, o.missing, o.errLang), text(L[2] + ' · ' + L[3] + (rtl ? ' · right to left' : ''), 'Caption/Default', 'text/muted')]),
     nameField, pcField('Short description', descCtl), pcField('Search keywords', kwCtl, 'Other words buyers type for this category.')]);
   return [langBlock,
     text('For all languages', 'Caption/Strong', 'text/muted'),
@@ -6852,7 +6877,7 @@ function pcScene(name, dialogs) {
 function pcReason() { return pcField('Reason (for the audit log)', inst('Textarea', { State: 'Default', Value: '' }, { name: 'reason', sizeH: 'FILL' }), '10 to 500 characters.'); }
 function pcDialogsA() {
   const add = pcDialog('Add category', 'Add category', 'It starts Hidden. Show it once the image and search details are ready.', [
-    pcField('Name · English', pcIn('Sella rice'), 'Required.'), pcField('Name · فارسی', pcRtl('برنج سلا'), 'Required: Persian is live for customers.'), pcField('Name · العربية', pcRtl('', null, { ph: 'Name in Arabic' }), 'Optional: Arabic is a draft. You can add it later.'),
+    pcField('Name · English', pcIn('Sella rice'), 'Required.'), pcOtherNames([pcLangRow('fa', 'برنج سلا')], 'Persian is listed because it is live for customers. Add draft languages such as Arabic now or later.'),
     text('Add the short description and keywords per language on the Details tab.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }), pcField('Parent', inst('Select', { State: 'Filled', Value: 'Pantry › Rice and grains › Rice' }, { name: 'parent', sizeH: 'FILL' }), 'Level 4 of 4. A subcategory can’t have children.'),
     pcField('URL name', pcIn('sella-rice'), 'mondapac.com.au/c/sella-rice')], 'Add category');
   const url = pcDialog('Change URL name', 'Change the URL name?', 'The old address keeps working: it sends buyers and search engines to the new one (301). It isn’t given to another category for 12 months.', [
@@ -6897,6 +6922,7 @@ function pcStates() {
     frame({ name: 'lang-required', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [pcRtl('', 'Error', { ph: 'Name in Persian' }), text('Add the Persian name. Persian is live for customers.', 'Body/Small', 'status/critical/fg', { sizeH: 'FILL' })]),
     b('lang-no-words', 'Critical', 'We can’t check Arabic names yet, so this wasn’t saved.', 'Ask an admin to add Arabic certification words.'),
     frame({ name: 'lang-claim', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [pcRtl('برنج باسماتی حلال', 'Error'), text('Category names can’t include certification words like "halal", in any language.', 'Body/Small', 'status/critical/fg', { sizeH: 'FILL' })]),
+    text('Language picker open (Details, SEO and attribute text)', 'Caption/Strong', 'text/muted'), pcLangMenu('fa', ['ar']),
     text('Language filter options in the tree', 'Caption/Strong', 'text/muted'),
     card('language filter menu', [['Language: All', ''], ['Missing: Persian', '0'], ['Missing: Arabic', '12']].map(function (m, i) { return frame({ name: 'option · ' + m[0], dir: 'H', gap: 'space/2', align: 'center', pad: [9, 12, 9, 12], fill: i === 2 ? 'bg/selected' : null, stroke: i ? 'border/row' : null, sides: ['top'], sizeH: 'FILL' }, [text(m[0], i === 2 ? 'Body/Strong' : 'Body/Default'), pcSp(), m[1] ? text(m[1] + ' categories', 'Caption/Default', 'text/muted') : null]); }), { w: 320, sizeH: null }),
     text('Inside Move, Merge, Archive and Move products', 'Caption/Strong', 'text/muted'), b('loop', 'Critical', 'A category can’t go inside itself.', 'Choose a parent outside Rice.'), b('depth', 'Critical', 'Categories can be at most 4 levels deep.', 'Rice has subcategories, so it can go up to level 2.'),
@@ -6981,7 +7007,7 @@ function paPanel(o) {
 function paLangBlock(o, fields) {
   const lang = o.lang || 'en', L = PC_LANGS.filter(function (l) { return l[0] === lang; })[0];
   return frame({ name: 'language text', dir: 'V', gap: 'space/4', pad: 'space/4', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangTabs(lang, o.missing || ['ar'], o.errLang), text(L[2] + ' · ' + L[3] + (lang !== 'en' ? ' · right to left' : ''), 'Caption/Default', 'text/muted')])].concat(fields));
+    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangPicker(lang, o.missing || ['ar'], o.errLang), text(L[2] + ' · ' + L[3] + (lang !== 'en' ? ' · right to left' : ''), 'Caption/Default', 'text/muted')])].concat(fields));
 }
 function paDetails(o) {
   const dis = o.viewOnly ? 'Disabled' : null, cd = o.viewOnly ? 'Disabled' : 'Default';
@@ -7003,16 +7029,15 @@ function paDetails(o) {
 }
 function paValues() {
   const vals = [['250 g', '۲۵۰ گرم', '', '96', '250 g'], ['500 g', '۵۰۰ گرم', '', '141', '500 g'], ['1 kg', '۱ کیلوگرم', '١ كغ', '122', '1,000 g'], ['5 kg', '۵ کیلوگرم', '', '41', '5,000 g'], ['10 kg', '۱۰ کیلوگرم', '', '12', '10,000 g', 'Inactive'], ['1000 g', '۱۰۰۰ گرم', '', '0', '1,000 g', 'Merged into 1 kg']];
-  const head = headerRow([['Value · English', 'fill'], ['فارسی', 100], ['العربية', 90], ['Products', 80], ['', 44]]);
+  const head = headerRow([['Value · English', 'fill'], ['فارسی', 150], ['Products', 80], ['', 44]]);
   const rows = vals.map(function (v) {
     const st = v[5];
     const name = frame({ name: 'value', dir: 'V', sizeH: 'FILL' }, [frame({ name: 'name-row', dir: 'H', gap: 'space/1-5', align: 'center' }, [text(v[0], 'Body/Default', st ? 'text/muted' : 'text/primary'), st ? bdg('Neutral', 'None', st) : null]), text('Net weight ' + v[4], 'Caption/Default', 'text/muted')]);
-    const ar = v[2] ? text(v[2], 'Body/Small', 'text/primary', { align: 'right', sizeH: 'FILL' }) : text('Missing', 'Caption/Default', 'status/attention/fg');
-    return row([[name, 'fill'], [text(v[1], 'Body/Small', 'text/primary', { align: 'right', sizeH: 'FILL' }), 100], [ar, 90], [text(v[3], 'Body/Small', 'text/muted'), 80], [rowAction(), 44, { justify: 'center' }]], false, false, 56);
+    return row([[name, 'fill'], [text(v[1], 'Body/Small', 'text/primary', { align: 'right', sizeH: 'FILL' }), 150], [text(v[3], 'Body/Small', 'text/muted'), 80], [rowAction(), 44, { justify: 'center' }]], false, false, 56);
   });
-  return [frame({ name: 'values tools', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Order: Manual (drag rows)' }, { name: 'order', w: 220 }), pcSp(), btn('Merge values…', 'Secondary', 'Sm'), btn('Add value', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })]),
+  return [frame({ name: 'values tools', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Order: Manual (drag rows)' }, { name: 'order', w: 220 }), inst('Select', { State: 'Filled', Value: 'Show next to English: فارسی' }, { name: 'language', w: 250 }), bdg('Attention', 'None', 'Missing in Arabic: 5'), pcSp(), btn('Merge values…', 'Secondary', 'Sm'), btn('Add value', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })]),
     card('values', [head].concat(rows)),
-    text('Type each language in its own column. Values in use can’t be deleted, only made inactive: products keep them and stay in the filter. A merged value counts under its target.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }),
+    text('Choose which language shows next to English and type in that column. Missing names show in the dropdown and the badge. Values in use can’t be deleted, only made inactive: products keep them and stay in the filter. A merged value counts under its target.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }),
     inst('InfoBanner', { Tone: 'Info', Title: 'Variant attribute', Body: '412 live sizes use Pack size. It can’t be archived, merged or converted. A product can have 2 variant attributes at most.', 'Show action': false }, { name: 'variant', sizeH: 'FILL' })];
 }
 function paUsedIn() {
@@ -7053,7 +7078,7 @@ function paFeatureSets() {
   const editor = card('Feature set editor', [frame({ name: 'editor body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
     frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('Rice and grains', 'Heading/H2'), bdg('Success', 'Dot', 'Active'), pcSp(), btn('Seller form preview', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye' } })]),
     text('Used by Basmati rice, Jasmine rice and Brown rice · 138 products', 'Body/Small', 'text/muted'),
-    frame({ name: 'names', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [pcField('Name · English', pcIn('Rice and grains')), pcField('Name · فارسی', pcRtl('برنج و غلات')), pcField('Name · العربية', pcRtl('', null, { ph: 'Missing' }))]),
+    frame({ name: 'names', dir: 'V', gap: 'space/3', sizeH: 'FILL' }, [pcField('Name · English', pcIn('Rice and grains')), pcOtherNames([pcLangRow('fa', 'برنج و غلات'), pcLangRow('ar', '', { ph: 'Missing', removable: true })])]),
     inst('InfoBanner', { Tone: 'Attention', Title: '14 live products are missing required details', Body: 'Grain length became required on 29 Oct. They stay on sale; sellers must fill it in before their next change is accepted.', 'Show action': true, Action: 'View report' }, { name: 'missing', sizeH: 'FILL' }),
     paSetGroup('Core', 'Shared by every feature set. Edit it once in Settings.', [paSetRow('Brand', 'Brand', 'Required', { locked: true }), paSetRow('Country of origin', 'Single choice', 'Required', { locked: true }), paSetRow('Net weight', 'Number with unit', 'Required', { locked: true })], true),
     paSetGroup('Rice details', null, [paSetRow('Pack size', 'Single choice', 'Required', { variant: true }), paSetRow('Grain length', 'Single choice', 'Required'), paSetRow('Variety', 'Text', 'Recommended'), paSetRow('Cooking time', 'Number with unit', 'Optional')]),
@@ -7069,7 +7094,7 @@ function paBrands() {
     const st = b[5] === 'Active' ? bdg('Success', 'Dot', 'Active') : (b[5] === 'Draft' ? bdg('Neutral', 'Dot', 'Draft') : bdg('Attention', 'None', 'Possible duplicate'));
     return row([[twoLine(b[0], b[1], i === 0 ? 'Body/Strong' : 'Body/Default'), 'fill'], [text(b[2] || '—', 'Body/Small', 'text/muted', { truncate: true, w: 110 }), 130], [text(b[4], 'Body/Small', 'text/muted'), 90], [st, 150]], i === 0, false, 56);
   })));
-  const alias = function (lang, v, rtl) { return frame({ name: 'alias · ' + lang, dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text(lang, 'Body/Small', 'text/muted', { w: 72 }), rtl ? pcRtl(v) : pcIn(v), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]); };
+  const alias = function (lang, v, rtl) { return frame({ name: 'alias · ' + lang, dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: lang }, { name: 'language', w: 120 }), rtl ? pcRtl(v) : pcIn(v), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]); };
   const panel = card('Brand details', [frame({ name: 'brand body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
     frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [rect({ name: 'logo', w: 40, h: 40, fill: 'bg/muted', radius: 'radius/control' }), text('Tilda', 'Heading/H2'), bdg('Success', 'Dot', 'Active'), pcSp(), btn('Hide', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye-off' } })]),
     inst('InfoBanner', { Tone: 'Attention', Title: '"Tilda Rice" looks like the same brand', Body: '3 products. Merging makes "Tilda Rice" an alias of Tilda and moves its products.', 'Show action': true, Action: 'Merge…' }, { name: 'duplicate', sizeH: 'FILL' }),
@@ -7088,7 +7113,7 @@ function paWaiting() {
   })));
   const decide = card('Decision', [frame({ name: 'decision body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
     text('Flavour: "Saffron"', 'Heading/H2'), text('Suggested by Kuraby Fresh for Saffron basmati rice 1 kg. The product can be submitted meanwhile; Flavour stays empty until you decide.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
-    paRadio(true, 'Add as a new value', 'Sellers can choose it right away.', [frame({ name: 'names', dir: 'V', gap: 'space/2', pad: ['space/2', 0, 0, 0], sizeH: 'FILL' }, [pcField('English', pcIn('Saffron')), pcField('فارسی · required', pcRtl('زعفرانی')), pcField('العربية · optional', pcRtl('', null, { ph: 'Missing' }))])]),
+    paRadio(true, 'Add as a new value', 'Sellers can choose it right away.', [frame({ name: 'names', dir: 'V', gap: 'space/2', pad: ['space/2', 0, 0, 0], sizeH: 'FILL' }, [pcField('English', pcIn('Saffron')), pcOtherNames([pcLangRow('fa', 'زعفرانی')], 'Persian is required. Arabic is optional.')])]),
     paRadio(false, 'Use an existing value', 'The seller gets an email with the value you chose.'),
     paRadio(false, 'Reject', 'Tell the seller why. They can suggest again.'),
     frame({ name: 'footer', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Add value', 'Primary', 'Sm')])])], { w: 480, sizeH: null });
@@ -7264,9 +7289,9 @@ function pvSimple() {
   return [frame({ name: 'two', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [card1, second])];
 }
 // Buyer product page: a sketch of the picker; the storefront page layout itself comes from the storefront design.
-function pvBuyerOpt(label, st) {
+function pvBuyerOpt(label, st, rtl) {
   const on = st === 'on', out = st === 'out', na = st === 'na';
-  return frame({ name: 'opt · ' + label, dir: 'V', gap: 0, align: 'center', pad: [8, 14, 8, 14], radius: 'radius/control', stroke: on ? 'action/primary' : 'border/default', fill: on ? 'bg/selected' : 'bg/surface', strokeW: on ? 2 : 1 }, [text(label, on ? 'Body/Strong' : 'Body/Default', out || na ? 'text/muted' : 'text/primary', { strike: na }), out ? text('Out of stock', 'Caption/Default', 'text/muted') : null]);
+  return frame({ name: 'opt · ' + label, dir: 'V', gap: 0, align: 'center', pad: [8, 14, 8, 14], radius: 'radius/control', stroke: on ? 'action/primary' : 'border/default', fill: on ? 'bg/selected' : 'bg/surface', strokeW: on ? 2 : 1 }, [text(label, on ? 'Body/Strong' : 'Body/Default', out || na ? 'text/muted' : 'text/primary', { strike: na }), out ? text(rtl ? 'ناموجود' : 'Out of stock', 'Caption/Default', 'text/muted') : null]);
 }
 function pvBuyerDesktop() {
   const gallery = frame({ name: 'gallery', dir: 'V', gap: 'space/2', w: 520 }, [rect({ name: 'image 5 kg', w: 520, h: 420, fill: 'bg/muted', radius: 'radius/card' }), frame({ name: 'thumbs', dir: 'H', gap: 'space/2' }, [0, 1, 2, 3].map(function (i) { return rect({ name: 'thumb', w: 72, h: 72, fill: 'bg/muted', radius: 'radius/control', stroke: i === 0 ? 'action/primary' : null }); }))]);
@@ -7287,8 +7312,9 @@ function pvBuyerDesktop() {
 }
 function pvBuyerPhone(name, sel, rtl) {
   const opts = rtl ? [['۱ کیلوگرم'], ['۵ کیلوگرم'], ['۱۰ کیلوگرم'], ['۲۰ کیلوگرم', 'out']] : [['1 kg'], ['5 kg'], ['10 kg'], ['20 kg', 'out']];
-  const row1 = frame({ name: 'options', dir: 'H', gap: 'space/2', sizeH: 'FILL', clip: true }, opts.map(function (o, i) { return pvBuyerOpt(o[0], i === sel ? (o[1] === 'out' ? 'out' : 'on') : o[1]); }));
-  if (rtl) row1.counterAxisAlignItems = 'CENTER';
+  // Right to left: smallest size sits on the right and the row starts (and scrolls) from the right edge.
+  const optEls = opts.map(function (o, i) { return pvBuyerOpt(o[0], i === sel ? (o[1] === 'out' ? 'out' : 'on') : o[1], rtl); });
+  const row1 = frame(Object.assign({ name: 'options', dir: 'H', gap: 'space/2', sizeH: 'FILL', clip: true }, rtl ? { justify: 'end' } : {}), rtl ? optEls.reverse() : optEls);
   const out = opts[sel][1] === 'out';
   const t = function (str, st, c, o) { return text(str, st, c, Object.assign({ sizeH: 'FILL' }, rtl ? { align: 'right' } : {}, o || {})); };
   const body = frame({ name: 'body', dir: 'V', gap: 'space/3', pad: 16, sizeH: 'FILL' }, [rect({ name: 'image', w: 328, h: 240, fill: 'bg/muted', radius: 'radius/card' }),
