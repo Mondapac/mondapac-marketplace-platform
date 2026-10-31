@@ -3,13 +3,15 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
-import { PRODUCT_SCOPES, type ProductScope, type ProductStatus } from '../../domain/product';
+import { PRODUCT_SCOPES, type ProductScope } from '../../domain/product';
 import {
   ADMIN_PRODUCT_SORTS,
   type AdminProductSort,
+  type AdminProductStatus,
   type AdminProductsFilter,
   type AdminProductsReader,
   type SortDirection,
+  type StateMatch,
 } from '../ports/admin-products.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
@@ -21,16 +23,34 @@ export { ADMIN_PRODUCT_SORTS };
 export const ADMIN_PRODUCT_VIEWS = ['active', 'all', 'inactive'] as const;
 export type AdminProductView = (typeof ADMIN_PRODUCT_VIEWS)[number];
 
-/** `active` is published; `inactive` is unpublished and withdrawn; `all` is every listed status. */
-export const VIEW_STATUSES: Readonly<Record<AdminProductView, readonly ProductStatus[]>> =
+/**
+ * `active` is published and not paused; `inactive` is unpublished, withdrawn and paused (a paused
+ * product is a published one the admin took off sale, design 4.1a); `all` is every listed state.
+ */
+export const VIEW_MATCHES: Readonly<Record<AdminProductView, readonly StateMatch[]>> =
   Object.freeze({
-    active: ['published'],
-    inactive: ['unpublished', 'withdrawn'],
-    all: ['unpublished', 'published', 'matched', 'withdrawn', 'retired'],
+    active: [{ status: 'published', paused: false }],
+    inactive: [
+      { status: 'unpublished', paused: null },
+      { status: 'withdrawn', paused: null },
+      { status: 'published', paused: true },
+    ],
+    all: [
+      { status: 'unpublished', paused: null },
+      { status: 'published', paused: false },
+      { status: 'published', paused: true },
+      { status: 'matched', paused: null },
+      { status: 'withdrawn', paused: null },
+      { status: 'retired', paused: null },
+    ],
   });
 
-/** The statuses a row of the list can have, for the status filter. */
-export const LISTED_STATUSES = VIEW_STATUSES.all;
+/** The status a state shows: `published` with the pause on is `paused`. */
+const shownStatus = (match: StateMatch): AdminProductStatus =>
+  match.status === 'published' && match.paused === true ? 'paused' : match.status;
+
+/** The statuses a row of the list can have, for the status filter (`published` is not paused). */
+export const LISTED_STATUSES: readonly AdminProductStatus[] = VIEW_MATCHES.all.map(shownStatus);
 
 export const DEFAULT_ADMIN_PAGE_SIZE = 25;
 export const MAX_ADMIN_PAGE_SIZE = 100;
@@ -64,7 +84,7 @@ export interface AdminProductListItem {
   readonly categoryId: string | null;
   readonly categoryName: string | null;
   readonly typeCode: string;
-  readonly status: ProductStatus;
+  readonly status: AdminProductStatus;
   readonly offerCount: number;
   readonly updatedAt: string;
   readonly createdAt: string;
@@ -111,14 +131,18 @@ const KEYS = new Set<string>([
 ]);
 const TYPE_CODE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
-interface Parsed {
+/** What picks products: a tab, a search and the filters (also the selector of a bulk action). */
+export interface ProductSelector {
   readonly view: AdminProductView;
   readonly text: string | null;
   readonly scope: ProductScope | null;
-  readonly status: ProductStatus | null;
+  readonly status: AdminProductStatus | null;
   readonly categoryId: Id<'Category'> | null;
   readonly typeCode: string | null;
   readonly sellerId: Id<'Seller'> | null;
+}
+
+interface Parsed extends ProductSelector {
   readonly sort: AdminProductSort;
   readonly direction: SortDirection;
   readonly page: number;
@@ -161,6 +185,72 @@ function wholeOf(
     : invalid(path, 'range');
 }
 
+/**
+ * The selector part of a closed record: `view`, `q`, `scope`, `status`, `categoryId`, `typeCode`
+ * and `sellerId`, each checked as the list checks it. Keys of the record that are not selector
+ * keys are ignored here (the caller owns them).
+ */
+export function parseSelector(
+  record: Record<string, unknown>,
+  prefix = '',
+): Result<ProductSelector, ValidationFailure> {
+  const at = (name: string) => `${prefix}${name}`;
+  const view = oneOf(at('view'), record['view'], ADMIN_PRODUCT_VIEWS, 'active');
+  if (!view.ok) return view;
+  const scope = oneOf(at('scope'), record['scope'], PRODUCT_SCOPES, null);
+  if (!scope.ok) return scope;
+  const status = oneOf(at('status'), record['status'], LISTED_STATUSES, null);
+  if (!status.ok) return status;
+  const categoryId = idOf<'Category'>(at('categoryId'), record['categoryId']);
+  if (!categoryId.ok) return categoryId;
+  const sellerId = idOf<'Seller'>(at('sellerId'), record['sellerId']);
+  if (!sellerId.ok) return sellerId;
+  let text: string | null = null;
+  if (!absent(record['q'])) {
+    const q = record['q'];
+    if (typeof q !== 'string' || Array.from(q).length > SEARCH_MAX_LENGTH) {
+      return invalid(at('q'), 'length');
+    }
+    // Control characters are never part of a name or a code.
+    if (/\p{C}/u.test(q)) return invalid(at('q'), 'format');
+    text = q.trim() === '' ? null : q.trim();
+  }
+  let typeCode: string | null = null;
+  if (!absent(record['typeCode'])) {
+    const code = record['typeCode'];
+    if (typeof code !== 'string' || !TYPE_CODE.test(code)) return invalid(at('typeCode'), 'format');
+    typeCode = code;
+  }
+  return ok({
+    view: view.value as AdminProductView,
+    text,
+    scope: scope.value,
+    status: status.value,
+    categoryId: categoryId.value,
+    typeCode,
+    sellerId: sellerId.value,
+  });
+}
+
+/** The filter of one tab for a selector: the tab's states, narrowed by a status filter. */
+export function filterOfSelector(
+  selector: ProductSelector,
+  view: AdminProductView,
+  locale: string,
+): AdminProductsFilter {
+  return {
+    matches: VIEW_MATCHES[view].filter(
+      (match) => selector.status === null || shownStatus(match) === selector.status,
+    ),
+    scope: selector.scope,
+    categoryId: selector.categoryId,
+    typeCode: selector.typeCode,
+    sellerId: selector.sellerId,
+    text: selector.text,
+    locale,
+  };
+}
+
 /** The closed query of the list: unknown keys, bad values and out-of-range numbers are refused. */
 function parse(input: unknown): Result<Parsed, ValidationFailure> {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
@@ -169,16 +259,8 @@ function parse(input: unknown): Result<Parsed, ValidationFailure> {
   const record = input as Record<string, unknown>;
   for (const key of Object.keys(record)) if (!KEYS.has(key)) return invalid(key, 'unknown');
 
-  const view = oneOf('view', record['view'], ADMIN_PRODUCT_VIEWS, 'active');
-  if (!view.ok) return view;
-  const scope = oneOf('scope', record['scope'], PRODUCT_SCOPES, null);
-  if (!scope.ok) return scope;
-  const status = oneOf('status', record['status'], LISTED_STATUSES, null);
-  if (!status.ok) return status;
-  const categoryId = idOf<'Category'>('categoryId', record['categoryId']);
-  if (!categoryId.ok) return categoryId;
-  const sellerId = idOf<'Seller'>('sellerId', record['sellerId']);
-  if (!sellerId.ok) return sellerId;
+  const selector = parseSelector(record);
+  if (!selector.ok) return selector;
   const sort = oneOf('sort', record['sort'], ADMIN_PRODUCT_SORTS, 'updated');
   if (!sort.ok) return sort;
   const direction = oneOf(
@@ -198,31 +280,8 @@ function parse(input: unknown): Result<Parsed, ValidationFailure> {
     MAX_ADMIN_PAGE_SIZE,
   );
   if (!pageSize.ok) return pageSize;
-
-  let text: string | null = null;
-  if (!absent(record['q'])) {
-    const q = record['q'];
-    if (typeof q !== 'string' || Array.from(q).length > SEARCH_MAX_LENGTH) {
-      return invalid('q', 'length');
-    }
-    // Control characters are never part of a name or a code.
-    if (/\p{C}/u.test(q)) return invalid('q', 'format');
-    text = q.trim() === '' ? null : q.trim();
-  }
-  let typeCode: string | null = null;
-  if (!absent(record['typeCode'])) {
-    const code = record['typeCode'];
-    if (typeof code !== 'string' || !TYPE_CODE.test(code)) return invalid('typeCode', 'format');
-    typeCode = code;
-  }
   return ok({
-    view: view.value as AdminProductView,
-    text,
-    scope: scope.value,
-    status: status.value,
-    categoryId: categoryId.value,
-    typeCode,
-    sellerId: sellerId.value,
+    ...selector.value,
     sort: sort.value as AdminProductSort,
     direction: direction.value as SortDirection,
     page: page.value,
@@ -232,9 +291,9 @@ function parse(input: unknown): Result<Parsed, ValidationFailure> {
 
 /**
  * `admin-products.list` (catalog design 8.2, 9.2): the products of the caller's Market, PLATFORM
- * and SELLER scope, for the admin Catalogue page. A tab (`view`) narrows by status (`active` is
- * published, `inactive` is unpublished and withdrawn, `all` every status but draft and
- * discarded); free text matches the name in the Market's default locale or the product code;
+ * and SELLER scope, for the admin Catalogue page. A tab (`view`) narrows by state (`active` is
+ * published and not paused, `inactive` is unpublished, withdrawn and paused, `all` every status
+ * but draft and discarded); free text matches the name in the Market's default locale or the product code;
  * filters narrow by scope, status, category, product type and owner seller; paged by `page` and
  * `pageSize`. The answer carries the three tab counts for the same search and filters. Rule: the
  * key `catalog.product.view` and the admin population; the Market comes from the context, so
@@ -275,16 +334,9 @@ export class AdminProductsList extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
-    // A tab shows its statuses; a status filter narrows them further (maybe to none).
-    const filterFor = (view: AdminProductView): AdminProductsFilter => ({
-      statuses: VIEW_STATUSES[view].filter((status) => q.status === null || status === q.status),
-      scope: q.scope,
-      categoryId: q.categoryId,
-      typeCode: q.typeCode,
-      sellerId: q.sellerId,
-      text: q.text,
-      locale,
-    });
+    // A tab shows its states; a status filter narrows them further (maybe to none).
+    const filterFor = (view: AdminProductView): AdminProductsFilter =>
+      filterOfSelector(q, view, locale);
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {

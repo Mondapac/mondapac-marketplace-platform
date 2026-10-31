@@ -15,10 +15,14 @@ export {
   // Consumed by notifications' seller notices (package 4), with their reason vocabularies.
   IMAGE_TAKEDOWN_REASONS,
   OFFER_CHANGE_REASONS,
+  OfferListingChanged,
   OfferTagRemoved,
   OfferTagRestored,
   OfferTagSuspended,
   ProductImageTakenDown,
+  // Consumed by search: a paused product's Offers leave the index, a resumed one's return.
+  ProductPaused,
+  ProductResumed,
   ProductRevisionChangesRequested,
   VariantAdded,
   VariantRemoved,

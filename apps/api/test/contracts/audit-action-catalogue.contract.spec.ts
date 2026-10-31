@@ -53,6 +53,7 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 const AUDITING_MODULES = [
   'AssistantModule',
   'BlogModule',
+  'CatalogModule',
   'CertificationModule',
   'CommissionPayoutsModule',
   'CustomersModule',
@@ -484,6 +485,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     expect(binders.sort()).toEqual([
       ['AssistantModule', 'assistant'],
       ['BlogModule', 'blog'],
+      ['CatalogModule', 'catalog'],
       ['CertificationModule', 'certification'],
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['CustomersModule', 'customers'],
@@ -524,6 +526,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['AssistantModule', 'writer'],
       ['BlogModule', 'actions'],
       ['BlogModule', 'writer'],
+      ['CatalogModule', 'actions'],
+      ['CatalogModule', 'writer'],
       ['CertificationModule', 'actions'],
       ['CertificationModule', 'writer'],
       ['CommissionPayoutsModule', 'actions'],
@@ -637,6 +641,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'assistant', 'assistant.module.ts')}: registerAuditActions('assistant')`,
       `${path.join('modules', 'blog', 'blog.module.ts')}: auditWriterFor('blog')`,
       `${path.join('modules', 'blog', 'blog.module.ts')}: registerAuditActions('blog')`,
+      `${path.join('modules', 'catalog', 'catalog.module.ts')}: auditWriterFor('catalog')`,
+      `${path.join('modules', 'catalog', 'catalog.module.ts')}: registerAuditActions('catalog')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: auditWriterFor('certification')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: registerAuditActions('certification')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: auditWriterFor('commission-payouts')`,

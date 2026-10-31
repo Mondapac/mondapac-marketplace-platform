@@ -250,7 +250,8 @@ unit (PP 3.1 row 5; ADR-0019 decision 6 for models). A transition not listed is 
 ### 4.1 Product lifecycle
 `draft` → `unpublished` → `published`; `unpublished` → `matched` (terminal);
 `unpublished` | `published` → `withdrawn` (terminal, SELLER); `published` → `retired` (terminal,
-PLATFORM); `draft` → `discarded` (terminal).
+PLATFORM); `draft` → `discarded` (terminal). A `published` product also carries the reversible
+admin pause `pausedAt` (4.1a), which is a flag and not a status.
 
 | From → to | Trigger and guard | Effects | Serves |
 |---|---|---|---|
@@ -262,10 +263,51 @@ PLATFORM); `draft` → `discarded` (terminal).
 | `unpublished` or `published` → `withdrawn` | `own-product.delete` of a submitted SELLER product (not promoted). Pending revision `superseded` | Terminal; revisions kept (VER-06 references them); its Offer `deleted` in the same unit; product leaves the seller's list; events `catalog.product-withdrawn.v1`, `catalog.offer-deleted.v1` | OFR-06, ADR-0009 d7 |
 | `published` → `retired` | `platform-product.retire` (protected key), PLATFORM only; the confirm request carries the affected Offer count the page showed (brief s4 f 3); if the count in the unit differs, refused with `retire.count-changed` and the current count, so the admin confirms again. No `evaluateClaims` (ADR-0028 d5) | Terminal; every Offer gets cause `product-retired`; event `catalog.product-retired.v1`; mail to Offer owners | CAT-48 |
 | `published` (SELLER) → `published` (PLATFORM) | `product.promote` (4.5) | Scope changes; not a status | CAT-44 |
+| `published`, not paused → `published`, paused | `admin-product.pause` (key `catalog.product.pause`), either scope (4.1a) | `pausedAt` and `pausedByAccountId` set; every non-deleted Offer gets cause `product-paused` (4.4); events `catalog.product-paused.v1`, `catalog.offer-listing-changed.v1`; audit `catalog.product.paused` | Admin Deactivate |
+| `published`, paused → `published`, not paused | `admin-product.resume` (key `catalog.product.pause`) (4.1a) | Flag cleared; cause `product-paused` cleared from every Offer, with every tag re-asked first (ADR-0028 d5); events `catalog.product-resumed.v1`, `catalog.offer-listing-changed.v1`; audit `catalog.product.resumed` | Admin Activate |
 
 Forbidden: deleting a submitted product; any change of type, family, scope back to SELLER, owner
 seller, `productCode`; any seller content command on a PLATFORM product (AC 3); retirement of a
-SELLER product (it is withdrawn instead); "un-retire".
+SELLER product (it is withdrawn instead); "un-retire"; pausing a product that is not `published`.
+`withdraw` and `retire` of a paused product clear the flag in the same write.
+
+### 4.1a Admin pause (Catalogue > Products, Deactivate and Activate; owner ruling, 30 Oct 2026)
+The owner ruled that **Deactivate is a reversible pause and Delete is terminal**. The pause is a
+new state of its own, because the existing terminal states (`withdrawn`, `retired`) cannot be
+undone and the page's Activate must undo Deactivate.
+
+- **Shape.** Two columns on `products`: `pausedAt` and `pausedByAccountId`, both null or both set
+  (CHECK). Valid only while the product is `published` (CHECK). The status stays `published`, so
+  every existing guard on `published` (promote, match, revisions, review queues) keeps its meaning.
+  The list shows the product as **Inactive** (the Figma copy); the API status is `paused` (9.2b).
+- **Pause** (either scope; a SELLER product too, since the Offers return on Activate). In one unit:
+  the flag, the cause `product-paused` on every non-deleted Offer (4.4; one
+  `offer-listing-changed.v1` for each Offer that was listed), the events and the audit row. A
+  pending revision stays pending and can still be reviewed; a publish while paused keeps the flag.
+- **Resume.** In one unit: every Offer that has the cause is re-asked per ADR-0028 d5 (entry path
+  `offer-reactivated`; the claim query is built for **every** non-removed tag, and the facts are
+  read at the product lock before the product is saved). A change of the facts makes the unit
+  return a refusal that rolls the whole unit back, and the use case retries; there is never a
+  partial result. Only then the flag clears and the cause is removed; an Offer that still has
+  another cause stays unlisted.
+- **Search.** The public and storefront readers treat a paused product as not published
+  (`pausedAt is null`). The search subscribers `search.index-paused-product`,
+  `search.index-resumed-product` and `search.index-listing-changed-offer` remove or restore the
+  documents by `productId` and `offerId`.
+- **New Offers.** `own-offer.create-on-platform-product` answers `product.not-found` for a paused
+  PLATFORM product (the M3 byte-identical answer) until Activate.
+- **Delete is terminal and splits by scope.** A PLATFORM product is **retired** (CAT-48; the
+  existing protected key `catalog.platform-product.retire`; the confirm carries the affected Offer
+  count, and a different count is `retire.count-changed`). A SELLER product is **withdrawn**
+  (`admin-product.withdraw`; key `catalog.product.delete`; its Offers are deleted in the same
+  unit). A paused product can be deleted.
+- **Permission keys.** One key is new: `catalog.product.pause` (platform, not protected, since
+  Activate undoes it; Catalogue Moderator). It is separate from `catalog.product.delete` because a
+  role may be trusted to take a product off sale without being trusted to end it.
+  `catalog.product.delete` is **reused** for the withdraw of a SELLER product (8.1 already named
+  it for that), and `catalog.platform-product.retire` is reused unchanged for a PLATFORM product.
+  The seeded role `catalogue-moderator` moves to version 9 with the pause key; the Viewer has
+  neither.
 
 ### 4.2 Product revision: `pending` → `published` | `changes-needed` | `superseded`
 | # | From → to | Trigger and guard | Effects |
@@ -325,7 +367,7 @@ reasons: SensitiveReason[] }`.
 | `pending-first-publish` → `changes-needed` → `draft` | `offer.request-changes` (reason code); the seller edits, which returns it to `draft` | Mail |
 | `pending-first-publish` → `draft` | The seller edits (after a warning) | Leaves the queue |
 | `published` → `published` (edit) | `own-offer.edit` (description, condition, shelf, SKU; closed input schema without handling, attestation or tag fields, B1): no queue (M-3); claim-text check; `evaluateClaims` for **every** non-removed tag (AC 11, AC 33); audit row. Handling and attestation change only through `own-offer.set-handling` and `own-offer.record-attestation`, which ask the same way and are refused in acting-as | History row |
-| `published`: cause added / cleared (off sale ⇄ listed) | `type-not-allowed`: added by the handler of `sellers.allowed-product-types-changed.v1` after reading `allowedProductTypesOf`; cleared the same way when the type is allowed again **and every tag is re-asked** (Offer reactivation is an entry path, ADR-0028 d5). `product-retired`: added, never cleared. `product-not-listed`: added on withdraw, match, claim-text flag; cleared when the flag clears (6.4). `tag-suspended`: present while any tag is `suspended` (5.3) | Event `catalog.offer-listing-changed.v1` (`listed` boolean) when the set goes from empty to non-empty or back; mail |
+| `published`: cause added / cleared (off sale ⇄ listed) | `product-paused` (M-5): added to every non-deleted Offer of a product by the admin pause (4.1a); cleared by the admin resume **and every tag is re-asked** (ADR-0028 d5; entry path `offer-reactivated`); no handler touches it. `type-not-allowed`: added by the handler of `sellers.allowed-product-types-changed.v1` after reading `allowedProductTypesOf`; cleared the same way when the type is allowed again **and every tag is re-asked** (Offer reactivation is an entry path, ADR-0028 d5). `product-retired`: added, never cleared. `product-not-listed`: added on withdraw, match, claim-text flag; cleared when the flag clears (6.4). `tag-suspended`: present while any tag is `suspended` (5.3) | Event `catalog.offer-listing-changed.v1` (`listed` boolean) when the set goes from empty to non-empty or back; mail |
 | any non-deleted → `deleted` | `own-offer.delete` (OFR-06): on a PLATFORM product only the Offer; for an own SELLER product the product is withdrawn (4.1) | Terminal; event `catalog.offer-deleted.v1` (PRC CF2, INV 3.5); audit |
 
 Rules: an Offer is **listed** when it is `published`, its product is `published`, and it has no
@@ -775,7 +817,8 @@ approved at identity G2 (ID 5.6); the mapping is the identity mini-review of req
 | `catalog.product.view` | platform | no | Marketplace products, Offers, revisions incl. reasons, queues (view), tag copies, admin product search (9.2) | Catalogue Moderator; Certification Reviewer; Operations and Support; Viewer |
 | `catalog.product.approve` | platform | no | Approve, request changes, bulk approve for product revisions and first Offer publication (CAT-32, CAT-37 "Edit") | Catalogue Moderator |
 | `catalog.product.match` | platform | no | CAT-45 at first approval | Catalogue Moderator |
-| `catalog.product.delete` | platform | no | Withdraw a seller product or delete an Offer as admin; photo takedown (CAT-37 "Delete"; 10.5) | Catalogue Moderator |
+| `catalog.product.pause` | platform | no | Deactivate and Activate: the reversible admin pause of a product (4.1a), one or many (9.2c) | Catalogue Moderator |
+| `catalog.product.delete` | platform | no | Withdraw a seller product or delete an Offer as admin; photo takedown (CAT-37 "Delete"; 10.5). The Products page's Delete of a SELLER product, single and bulk | Catalogue Moderator |
 | `catalog.product.promote` | platform | yes | CAT-44 (irreversible) | Platform Administrator |
 | `catalog.platform-product.edit` | platform | no | Create, edit, submit, revert PLATFORM products (CAT-41) | Catalogue Moderator |
 | `catalog.platform-product.retire` | platform | yes | CAT-48 | Platform Administrator |
@@ -790,7 +833,7 @@ approved at identity G2 (ID 5.6); the mapping is the identity mini-review of req
 | `catalog.own-import.run` | seller | no | Import (P1) | Store Manager |
 | `catalog.own-category.propose` | seller | no | Propose categories (with SEL-26 on) | Store Manager |
 
-Non-default verbs: `approve`, `match`, `promote`, `retire`, `override`, `decide`, `promote-merge`,
+Non-default verbs: `approve`, `match`, `promote`, `retire`, `pause`, `override`, `decide`, `promote-merge`,
 `propose`, `run`. **Review queue tabs (IA 8 item 2):** "Product revisions" (product revisions,
 first Offer publication; later Import rows) opens with `catalog.product.approve`; "Category
 proposals" with `catalog.category-proposal.decide`. The admin nav item `catalogue` shows with any
@@ -818,6 +861,9 @@ session (and when the context cannot say, CD M5).
 | `product.match` | `permissions [catalog.product.match]` | — | 4.5 |
 | `product.promote` | `permissions [catalog.product.promote]` | — | 4.5 |
 | `admin-product.withdraw`, `admin-offer.delete`, `image.take-down` | `permissions [catalog.product.delete]` | — | 4.1, 10.5 |
+| `admin-product.pause`, `admin-product.resume` | `permissions [catalog.product.pause]` | — | 4.1a |
+| `admin-products.bulk` (`POST catalog/admin/products/bulk`) | `permissions [catalog.product.view]` at the gate; **each product** then needs the key of its action (`pause`, `resume`: `catalog.product.pause`; `delete`: `catalog.product.delete` for a SELLER product, `catalog.platform-product.retire` for a PLATFORM product), checked per product; a product the admin may not act on is skipped as `access.denied`, and all of them denied refuses the request | refused | 9.2c |
+| `admin-products.export` (`GET catalog/admin/products/export`) | `permissions [catalog.product.view]` | — | 9.2c |
 | `platform-product.*` (create, save-draft, submit, revert, upload) | `permissions [catalog.platform-product.edit]` | — | CAT-41 |
 | `platform-product.retire` | `permissions [catalog.platform-product.retire]` | — | Confirm carries the count shown |
 | `tax-category.override` | `permissions [catalog.tax-category.override]` | — | 4.3 |
@@ -1049,7 +1095,7 @@ reorder PLATFORM photos through `platform-product.save-draft`.
 ### 9.2b Admin product list (`admin-products.list`)
 `GET catalog/admin/products` (`catalog.product.view`, admin population) lists the products of the
 caller's Market, PLATFORM and SELLER scope, for the Catalogue > Products page. `view` is a tab:
-`active` is `published`, `inactive` is `unpublished` and `withdrawn`, `all` is every status but
+`active` is `published` and not paused, `inactive` is `unpublished`, `withdrawn` and **paused**, `all` is every status but
 `draft` and `discarded`. Free text `q` (up to 100 characters) matches a part of the name in the
 Market's default locale or of `productCode`, ignoring case; the name is the published revision's,
 else the pending one's (a never-published product). Filters: `scope`, `status`, `categoryId`
@@ -1059,10 +1105,36 @@ The answer carries `total` and `counts` `{active, all, inactive}` for the same s
 (the status filter included). A row: id, `productCode`, name, `primaryImageId` (position 1 of that
 revision, not taken down; served by the admin image route), scope, owner seller id and store name
 (through `sellerSummaries`, absent when `sellers` cannot say), first category name, `typeCode`,
-status, `offerCount` (Offers not deleted, any seller), `updatedAt`, `createdAt`. No price and no
+status (`paused` for a published product with the admin pause on, 4.1a), `offerCount` (Offers not deleted, any seller), `updatedAt`, `createdAt`. No price and no
 stock: catalog imports neither `pricing` nor `inventory`. Sorting by name is made in memory over
 the matching products (the name is a revision text per locale); more than 5000 matches refuse
 that sort with `validation.failed` (`sort`, `too-broad`) and the admin narrows the search.
+
+### 9.2c Bulk action and export (`admin-products.bulk`, `admin-products.export`)
+**Bulk.** `POST catalog/admin/products/bulk` (admin session, CSRF token, closed JSON body) takes
+`action` (`pause`, `resume` or `delete`) and the products, either as `productIds` (1 to 200, no
+repeats) or as a `selector` `{view, q, scope, status, categoryId, typeCode, sellerId}` (what the
+list showed; resolved in the request and capped at **2000** products, `batch.too-large` with `max`
+and `total` above that; run inline for now). `dryRun: true` changes nothing and answers what would
+happen. The house bulk-approve rules apply: **each product is its own unit**, so there is no
+partial unit and one failure never rolls back another. The answer lists every product as `done`,
+`skipped` (with a reason such as `already-paused`, `not-paused`, `not-published`,
+`not-withdrawable`, `access.denied`) or `failed`, plus the counts. An id that is no product of the
+Market answers `product.not-found` for the whole request (the same answer for every unknown id).
+**Delete of PLATFORM products** needs `confirmOfferCount`, the number of Offers the dry run showed
+(summed over the PLATFORM products in the request); another number is refused with
+`retire.count-changed` and `details.currentCount`, so the admin confirms again. Statuses: 400, 403,
+404, 409, 413, 415, 503. Events and audit are those of the single command, once per product.
+
+**Export.** `GET catalog/admin/products/export?format=csv&columns=...` plus `ids` (comma-separated,
+at most 200) or the selector keys of the list, at most **10 000** rows. Only **CSV** ships: the
+repository has no spreadsheet library, so `format=xlsx` answers `validation.failed` (`format`,
+`unsupported`) until one is approved. Product, product code, category and status are always
+present; `columns` adds `code`, `offers`, `updated`, `type`, `scope`, `seller`, `created` in the
+order given. The file streams in chunks as a `text/csv; charset=utf-8` attachment
+(`products-<date>.csv`, UTF-8 BOM, `no-store`, `nosniff`). **Formula-injection guard:** a text cell
+that starts with `=`, `+`, `-`, `@`, tab or carriage return is written with a leading `'`. A paused
+product shows the status label **Inactive**. Neither route reads a price or stock.
 
 ### 9.3 Ports
 | Port | Declared in | Implemented by | Notes |
@@ -1086,12 +1158,13 @@ ships in the slice that changes the state (brief s6).
 | `catalog.variant-removed.v1` | `productId`, `variantId` (once per variant, in the unit that retires it: the working-copy save that deletes a `proposed` variant, or the publish that removes a `published` one; never followed by an add of the same id; B2) | `pricing` (CF2; at a draft save too, P-1), `inventory` (INV 3.5) |
 | `catalog.product-material-content-changed.v1` | `productId`, `productRevisionId`, `previousRevisionId` | Own handler → `certification` (C-2) |
 | `catalog.product-withdrawn.v1`, `-retired.v1`, `-promoted.v1` | `productId` | Own mail; `search` |
+| `catalog.product-paused.v1`, `catalog.product-resumed.v1` | `productId` (4.1a; the actor is in the audit row, not here) | `search` (removes or restores the product's documents) |
 | `catalog.product-matched.v1` | `productId` (duplicate), `targetProductId` | Own mail |
 | `catalog.offer-created.v1` | `offerId`, `productId`, `sellerId` | `inventory` (INV 3.5) |
 | `catalog.offer-published.v1` | `offerId` | Own mail; `search` |
 | `catalog.offer-deleted.v1` | `offerId`, `productId`, `sellerId` | `pricing` (CF2), `inventory` (INV 3.5) |
 | `catalog.offer-moved.v1` | `offerId`, `fromProductId`, `toProductId`, `fromVariantIds`, `toVariantIds` (ids only; the variant mapping as two lists read pairwise, `fromVariantIds[i]` becomes `toVariantIds[i]`, because event field kinds hold no list of objects. **Invariants, enforced in the producer through `buildOfferMovedMapping`:** the lists have equal length, at least one entry, no id repeats within either list, and at most `maxVariantsPerProduct` entries (AU 100), since the mapping covers the duplicate's non-retired variants. A payload that breaks one is never emitted; consumers dead-letter such an event whole, with no partial re-key) | `pricing` (CF4), `inventory` (request V-1) |
-| `catalog.offer-listing-changed.v1` | `offerId`, `listed` | `search`, storefront (Phase 6) |
+| `catalog.offer-listing-changed.v1` | `offerId`, `listed` (the admin pause and resume also emit it, once per Offer whose listing changed, 4.4) | `search`, storefront (Phase 6) |
 | `catalog.offer-tag-added.v1`, `-removed.v1`, `-suspended.v1`, `-restored.v1`, `-basis-switched.v1` | `offerId`, `typeCode`, `basis` (enum or null) | Own mail; `search` |
 | `catalog.platform-category-created.v1`, `-moved.v1`, `-merged.v1` (with `targetCategoryId`), `-archived.v1` | `categoryId` | Own handler (4.6); `search` |
 | `catalog.category-proposed.v1`, `-proposal-approved.v1`, `-proposal-rejected.v1`, `-proposal-cancelled.v1`, `catalog.seller-category-promoted.v1`, `-merged.v1` | ids | Own mail; storefront |
@@ -1232,7 +1305,9 @@ bodies; request bodies are not logged.
 `catalog.product-revision.approved`, `.changes-requested`, `.auto-published` (system), `.reverted`;
 `catalog.offer.first-publication-approved`, `.changes-requested`; `catalog.product.matched`,
 `.promoted` (with the admin's no-claim confirmation flag), `.retired`, `.withdrawn` (seller or
-admin), `.deleted-draft` is **not** audited (never submitted; 4.1); `catalog.offer.deleted`,
+admin), `.paused`, `.resumed` (4.1a; each carries the scope code `platform` or `seller` and the
+Offer count; the bulk action writes one row per product, never one for the batch, and the export
+writes none because it only reads), `.deleted-draft` is **not** audited (never submitted; 4.1); `catalog.offer.deleted`,
 `.edited` (published Offer edits, AC 33), `.attestation-recorded`, `.attestation-withdrawn`,
 `.handling-changed`; `catalog.offer-tag.added`, `.removed`, `.removed-while-suspended` (the
 "sell without badge" confirmation), `.suspended`, `.restored`, `.basis-switched` (system actor for

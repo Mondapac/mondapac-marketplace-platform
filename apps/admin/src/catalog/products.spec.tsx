@@ -7,6 +7,7 @@ import messages from '../../messages/en.json';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
+import { toast, Toaster } from '@mondapac/ui';
 import { ProductsList } from './products-list.tsx';
 import {
   cleanColumns,
@@ -74,10 +75,24 @@ const listCalls = () =>
   call.mock.calls.map((entry) => entry[1]).filter((path) => path.startsWith('catalog/admin'));
 const lastList = () => listCalls()[listCalls().length - 1]!;
 
-function mount() {
+const ALL_KEYS = [
+  'catalog.product.view',
+  'catalog.product.pause',
+  'catalog.product.delete',
+  'catalog.platform-product.retire',
+];
+
+function mount(permissionKeys: readonly string[] = ALL_KEYS) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <ProductsList accountId="acc-1" marketId="AU" timeZone="Australia/Brisbane" />
+      <ProductsList
+        accountId="acc-1"
+        marketId="AU"
+        timeZone="Australia/Brisbane"
+        permissionKeys={permissionKeys}
+        csrfToken="csrf-1"
+      />
+      <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     </NextIntlClientProvider>,
   );
 }
@@ -87,7 +102,10 @@ describe('admin product list', () => {
     vi.clearAllMocks();
     window.localStorage.clear();
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    toast.dismiss();
+  });
 
   it('loads the Active tab first, newest change first, and shows the tab counts', async () => {
     serve(() => page([row()]));
@@ -102,10 +120,12 @@ describe('admin product list', () => {
     expect(screen.getByRole('button', { name: 'All (1,284)' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Inactive (136)' })).toBeTruthy();
     expect(screen.getByText('Sorted by Last changed: Newest first')).toBeTruthy();
-    // No "Products" heading over the tabs (the topbar names the page), no selection, no write actions.
+    // No "Products" heading over the tabs (the topbar names the page); the header holds the Bulk
+    // action button and the count of the Market's products, and no Import, Add product or saved views.
     expect(screen.queryByRole('heading', { name: 'Products' })).toBeNull();
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    for (const absent of ['Bulk action', 'Import', 'Add product', 'Manage filters']) {
+    expect(screen.getByText('1,284 products in the AU market')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Bulk action' })).toBeTruthy();
+    for (const absent of ['Import', 'Add product', 'Manage filters']) {
       expect(screen.queryByText(absent)).toBeNull();
     }
   });
@@ -115,7 +135,8 @@ describe('admin product list', () => {
     mount();
     await screen.findByText('Lamb cutlets 500 g');
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
-    expect(headers).toEqual(['Product', 'Category', 'Status']);
+    // The first header is the select-all box: it has no text.
+    expect(headers).toEqual(['', 'Product', 'Category', 'Status']);
     const body = screen.getAllByRole('row')[1]!;
     expect(within(body).getByText('AU-000184')).toBeTruthy();
     expect(within(body).getByText('Meat')).toBeTruthy();
@@ -229,7 +250,7 @@ describe('admin product list', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
 
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
-    expect(headers).toEqual(['Product', 'Category', 'Status', 'Last changed', 'Offers']);
+    expect(headers).toEqual(['', 'Product', 'Category', 'Status', 'Last changed', 'Offers']);
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:products-columns')!)).toEqual([
       'updated',
       'offers',
@@ -249,6 +270,7 @@ describe('admin product list', () => {
     await screen.findByText('Lamb cutlets 500 g');
     await waitFor(() =>
       expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+        '',
         'Product',
         'Category',
         'Status',
@@ -262,7 +284,7 @@ describe('admin product list', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reset to default' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(screen.getAllByRole('columnheader')).toHaveLength(3);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(4);
   });
 
   it('still works when storage is missing or refuses', async () => {
@@ -303,7 +325,7 @@ describe('admin product list', () => {
     );
     mount();
     await screen.findByText('Unnamed product');
-    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(5));
+    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
     expect(screen.getByText('No category')).toBeTruthy();
     expect(screen.getByText('Unnamed seller')).toBeTruthy();
     expect(screen.getAllByText('Platform').length).toBeGreaterThan(0);
@@ -400,6 +422,471 @@ describe('admin product list', () => {
     mount();
     expect(await screen.findByText(/Too many products to sort by name/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+});
+
+describe('admin product bulk action', () => {
+  const ID2 = '0190a000-0000-7000-8000-000000000002';
+  const rows = () => [row(), row({ productId: ID2, name: 'Beef mince', productCode: 'AU-000185' })];
+  const answer = (
+    counts: { done: number; skipped: number; failed: number },
+    extra: Record<string, unknown> = {},
+  ) => ({
+    action: 'pause',
+    dryRun: false,
+    requested: 2,
+    eligible: counts.done,
+    confirmOfferCount: 0,
+    affectedOfferCount: 0,
+    counts,
+    results: [],
+    ...extra,
+  });
+  type Posted = { path: string; body: Record<string, unknown>; csrf: unknown };
+  let posted: Posted[];
+
+  /** The list answers by URL; a POST to the bulk route answers what `reply` says. */
+  function serveBulk(
+    reply: (body: Record<string, unknown>) => unknown,
+    list: () => ProductsPage = () => page(rows(), { total: 26 }),
+  ) {
+    call.mockImplementation(((method: string, path: string, body?: unknown, csrf?: unknown) => {
+      if (path === 'catalog/categories') {
+        return Promise.resolve({ ok: true, status: 200, body: tree });
+      }
+      if (method === 'POST') {
+        posted.push({ path, body: body as Record<string, unknown>, csrf });
+        const result = reply(body as Record<string, unknown>);
+        if (result !== null && typeof result === 'object' && 'failure' in result) {
+          return Promise.resolve({ ok: false, ...result });
+        }
+        return Promise.resolve({ ok: true, status: 200, body: result });
+      }
+      return Promise.resolve({ ok: true, status: 200, body: list() });
+    }) as never);
+  }
+  const rowBox = (name: string) => screen.getByRole('checkbox', { name: `Select ${name}` });
+  const menuButton = () => screen.getByRole('button', { name: 'Bulk action' });
+  const openMenu = async () => {
+    fireEvent.click(menuButton());
+    return screen.findByRole('menu', { name: 'Bulk action' });
+  };
+
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    posted = [];
+  });
+  afterEach(() => {
+    cleanup();
+    toast.dismiss();
+  });
+
+  it('keeps Bulk action disabled until a row is selected, and shows the count only in the open menu', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    mount();
+    await screen.findByText('Beef mince');
+    expect(menuButton().hasAttribute('disabled')).toBe(true);
+
+    fireEvent.click(rowBox('Lamb cutlets 500 g'));
+    fireEvent.click(rowBox('Beef mince'));
+
+    expect(menuButton().hasAttribute('disabled')).toBe(false);
+    expect(menuButton().textContent).toBe('Bulk action');
+    // No floating bar and no count outside the menu.
+    expect(screen.queryByText(/selected/)).toBeNull();
+    const menu = await openMenu();
+    expect(within(menu).getByText('2 products selected')).toBeTruthy();
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual([
+      'Activate',
+      'Deactivate',
+      'ExportCSV, with the columns shown',
+      'Delete…',
+      'Select all 26 products in this filter',
+      'Clear selection',
+    ]);
+  });
+
+  it('ticks the whole page with the header box, and shows a dash when only some rows are ticked', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    mount();
+    await screen.findByText('Beef mince');
+    const header = screen.getByRole('checkbox', { name: 'Select all products on this page' });
+
+    fireEvent.click(rowBox('Beef mince'));
+    expect((header as HTMLInputElement).indeterminate).toBe(true);
+    expect((header as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(header);
+    expect((rowBox('Lamb cutlets 500 g') as HTMLInputElement).checked).toBe(true);
+    expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(true);
+    expect((header as HTMLInputElement).checked).toBe(true);
+    expect((header as HTMLInputElement).indeterminate).toBe(false);
+
+    fireEvent.click(header);
+    expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(false);
+    expect(menuButton().hasAttribute('disabled')).toBe(true);
+  });
+
+  it('clears the selection with Clear selection and when the tab changes', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Clear selection' }));
+    expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(false);
+    expect(menuButton().hasAttribute('disabled')).toBe(true);
+
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    await waitFor(() => expect(lastList()).toContain('view=all'));
+    await waitFor(() => expect(menuButton().hasAttribute('disabled')).toBe(true));
+  });
+
+  it('Deactivate asks first, then posts the ticked ids with the CSRF token, and toasts the counts', async () => {
+    serveBulk(() =>
+      answer(
+        { done: 1, skipped: 1, failed: 0 },
+        {
+          results: [
+            { productId: ID, outcome: 'done' },
+            { productId: ID2, outcome: 'skipped', reason: 'product.already-paused' },
+          ],
+        },
+      ),
+    );
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Lamb cutlets 500 g'));
+    fireEvent.click(rowBox('Beef mince'));
+
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Deactivate' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate 2 products?' });
+    expect(within(dialog).getByText(/Customers stop seeing them/)).toBeTruthy();
+    expect(posted).toEqual([]);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
+
+    expect(
+      await screen.findByText('1 product deactivated. 1 skipped (already inactive).'),
+    ).toBeTruthy();
+    expect(posted).toEqual([
+      {
+        path: 'catalog/admin/products/bulk',
+        body: { action: 'pause', productIds: [ID, ID2] },
+        csrf: 'csrf-1',
+      },
+    ]);
+    // The list loads again and the selection is gone.
+    await waitFor(() => expect(menuButton().hasAttribute('disabled')).toBe(true));
+    expect(listCalls().length).toBeGreaterThan(1);
+  });
+
+  it('Cancel in the Deactivate dialog changes nothing', async () => {
+    serveBulk(() => answer({ done: 1, skipped: 0, failed: 0 }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Deactivate' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate 1 product?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(posted).toEqual([]);
+    expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('Activate runs at once, without a dialog', async () => {
+    serveBulk(() => answer({ done: 2, skipped: 0, failed: 0 }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Lamb cutlets 500 g'));
+    fireEvent.click(rowBox('Beef mince'));
+
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Activate' }));
+
+    expect(await screen.findByText('2 products activated.')).toBeTruthy();
+    expect(posted[0]?.body).toEqual({ action: 'resume', productIds: [ID, ID2] });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('says so in a warning when nothing changed, and as an error when some products failed', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 2, failed: 0 }, { results: [] }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Activate' }));
+    expect(await screen.findByText('2 skipped ().')).toBeTruthy();
+    toast.dismiss();
+    cleanup();
+
+    serveBulk(() => answer({ done: 1, skipped: 0, failed: 1 }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Activate' }));
+    expect(
+      await screen.findByText('1 product activated. 1 could not be changed. Try again.'),
+    ).toBeTruthy();
+  });
+
+  it('Delete shows how many Offers end from a dry run, then confirms with that number', async () => {
+    serveBulk((body) =>
+      body['dryRun'] === true
+        ? answer(
+            { done: 0, skipped: 0, failed: 0 },
+            { dryRun: true, eligible: 2, confirmOfferCount: 12, affectedOfferCount: 18 },
+          )
+        : answer({ done: 2, skipped: 0, failed: 0 }),
+    );
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Lamb cutlets 500 g'));
+    fireEvent.click(rowBox('Beef mince'));
+
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Delete…' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Delete 2 products?' });
+    expect(
+      await within(dialog).findByText(
+        'They are removed from the catalog for customers and sellers, and the 18 offers on them end. Order history keeps them. You can’t undo this.',
+      ),
+    ).toBeTruthy();
+    // The safe choice has focus.
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(posted).toEqual([
+      {
+        path: 'catalog/admin/products/bulk',
+        body: { action: 'delete', productIds: [ID, ID2], dryRun: true },
+        csrf: 'csrf-1',
+      },
+    ]);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete products' }));
+
+    expect(await screen.findByText('2 products deleted.')).toBeTruthy();
+    expect(posted[1]?.body).toEqual({
+      action: 'delete',
+      productIds: [ID, ID2],
+      confirmOfferCount: 12,
+    });
+  });
+
+  it('shows the new Offer count when it moved before the confirmation, to confirm again', async () => {
+    let count = 12;
+    serveBulk((body) => {
+      if (body['dryRun'] === true) {
+        return answer(
+          { done: 0, skipped: 0, failed: 0 },
+          { dryRun: true, eligible: 1, confirmOfferCount: count, affectedOfferCount: count },
+        );
+      }
+      count = 14;
+      return {
+        failure: {
+          status: 409,
+          code: 'retire.count-changed',
+          details: { currentCount: 14 },
+        },
+      };
+    });
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Delete…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete 1 product?' });
+    await within(dialog).findByText(/the 12 offers on them end/);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete products' }));
+
+    expect(
+      await screen.findByText('The number of offers changed to 14. Check it and confirm again.'),
+    ).toBeTruthy();
+    expect(await within(dialog).findByText(/the 14 offers on them end/)).toBeTruthy();
+  });
+
+  it('Select all N in this filter sends the tab and filters as a selector, not the ids', async () => {
+    serveBulk(() => answer({ done: 26, skipped: 0, failed: 0 }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(
+      within(await openMenu()).getByRole('menuitem', {
+        name: 'Select all 26 products in this filter',
+      }),
+    );
+
+    // Every row shows ticked, and the menu counts the whole filter and no longer offers the link.
+    expect((rowBox('Lamb cutlets 500 g') as HTMLInputElement).checked).toBe(true);
+    const menu = await openMenu();
+    expect(within(menu).getByText('26 products selected')).toBeTruthy();
+    expect(within(menu).queryByRole('menuitem', { name: /Select all/ })).toBeNull();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Activate' }));
+
+    expect(await screen.findByText('26 products activated.')).toBeTruthy();
+    expect(posted[0]?.body).toEqual({ action: 'resume', selector: { view: 'active' } });
+  });
+
+  it('unticking one row leaves "all in this filter" and keeps the other rows of the page', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(
+      within(await openMenu()).getByRole('menuitem', {
+        name: 'Select all 26 products in this filter',
+      }),
+    );
+
+    fireEvent.click(rowBox('Beef mince'));
+
+    expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(false);
+    expect((rowBox('Lamb cutlets 500 g') as HTMLInputElement).checked).toBe(true);
+    expect(within(await openMenu()).getByText('1 product selected')).toBeTruthy();
+  });
+
+  it('refuses a filter over the cap with a message that says how to narrow it', async () => {
+    serveBulk(() => ({
+      failure: {
+        status: 413,
+        code: 'batch.too-large',
+        details: { max: 2000, total: 2500 },
+      },
+    }));
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(
+      within(await openMenu()).getByRole('menuitem', {
+        name: 'Select all 26 products in this filter',
+      }),
+    );
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Activate' }));
+
+    expect(
+      await screen.findByText('Too many products (2,500). Narrow the filter to 2,000 or fewer.'),
+    ).toBeTruthy();
+  });
+
+  it('exports the ticked rows with the columns shown, as a CSV download', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:products-columns',
+      JSON.stringify(['offers', 'updated']),
+    );
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    const fetched: string[] = [];
+    const fetchMock = vi.fn((url: string) => {
+      fetched.push(url);
+      return Promise.resolve(
+        new Response('﻿Product,Status\r\nBeef mince,Active\r\nLamb,Active\r\n', { status: 200 }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const create = vi.fn(() => 'blob:csv');
+    const revoke = vi.fn();
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    try {
+      mount();
+      await screen.findByText('Beef mince');
+      await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+      fireEvent.click(rowBox('Lamb cutlets 500 g'));
+      fireEvent.click(rowBox('Beef mince'));
+
+      fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: /^Export/ }));
+
+      expect(await screen.findByText('2 products exported.')).toBeTruthy();
+      expect(fetched).toEqual([
+        `/api/catalog/admin/products/export?format=csv&columns=offers%2Cupdated&ids=${ID}%2C${ID2}`,
+      ]);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(revoke).toHaveBeenCalledWith('blob:csv');
+      // An export changes nothing: no POST and the selection stays.
+      expect(posted).toEqual([]);
+      expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      click.mockRestore();
+    }
+  });
+
+  it('says so when the export fails', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('{"code":"access.unavailable"}', { status: 503 }))),
+    );
+    try {
+      mount();
+      await screen.findByText('Beef mince');
+      fireEvent.click(rowBox('Beef mince'));
+      fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: /^Export/ }));
+      expect(await screen.findByText('That didn’t work. Try again.')).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('offers only Export to an admin who may view but not pause or delete', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    mount(['catalog.product.view']);
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    const menu = await openMenu();
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual([
+      'ExportCSV, with the columns shown',
+      'Select all 26 products in this filter',
+      'Clear selection',
+    ]);
+  });
+
+  it('shows a paused product as Inactive, in the Inactive tab and the status filter', async () => {
+    serveBulk(
+      () => answer({ done: 0, skipped: 0, failed: 0 }),
+      () => page([row({ status: 'paused' })]),
+    );
+    mount();
+    expect(await screen.findByText('Inactive', { selector: 'span' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'status' } });
+    expect(
+      within(within(panel).getByLabelText('Value')).getByRole('option', { name: 'Inactive' }),
+    ).toBeTruthy();
+  });
+
+  it('stops ticking single rows at the cap of one request', async () => {
+    const many = Array.from({ length: 201 }, (_, index) =>
+      row({
+        productId: `0190a000-0000-7000-8000-${String(index + 100).padStart(12, '0')}`,
+        name: `Product ${index}`,
+        productCode: `AU-${index}`,
+      }),
+    );
+    serveBulk(
+      () => answer({ done: 0, skipped: 0, failed: 0 }),
+      () => page(many, { total: 400 }),
+    );
+    mount();
+    await screen.findByText('Product 0');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all products on this page' }));
+    expect((rowBox('Product 199') as HTMLInputElement).checked).toBe(true);
+    expect((rowBox('Product 200') as HTMLInputElement).checked).toBe(false);
+    expect((rowBox('Product 200') as HTMLInputElement).disabled).toBe(true);
+    expect(within(await openMenu()).getByText('200 products selected')).toBeTruthy();
   });
 });
 

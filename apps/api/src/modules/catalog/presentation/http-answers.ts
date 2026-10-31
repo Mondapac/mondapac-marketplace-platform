@@ -13,7 +13,15 @@ export function fail(status: number, code: string, details?: object): HttpExcept
 }
 
 /** The refusal fields that reach the client as `details`; any other field stays on the server. */
-const DETAIL_KEYS = ['fields', 'issues', 'retryAfterSeconds', 'max', 'tags'] as const;
+const DETAIL_KEYS = [
+  'fields',
+  'issues',
+  'retryAfterSeconds',
+  'max',
+  'tags',
+  'total',
+  'currentCount',
+] as const;
 const logger = new Logger('CatalogHttp');
 
 /**

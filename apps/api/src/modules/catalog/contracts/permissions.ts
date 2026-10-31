@@ -52,10 +52,44 @@ export const CATALOG_PRODUCT_APPROVE = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Pause and resume a published product (catalog design 4.1a, 8.1): the reversible admin hold that
+ * takes the product and all its Offers off sale. Platform scope; unprotected, so Catalogue
+ * Moderator receives it by identity's seed, next to `catalog.product.delete`.
+ */
+export const CATALOG_PRODUCT_PAUSE = definePermission('catalog', {
+  key: 'catalog.product.pause',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Withdraw a SELLER product as admin (catalog design 4.1, 8.1: "Delete" on the Products page).
+ * Terminal. Platform scope; unprotected, so Catalogue Moderator receives it by identity's seed.
+ */
+export const CATALOG_PRODUCT_DELETE = definePermission('catalog', {
+  key: 'catalog.product.delete',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Retire a PLATFORM product (catalog design 4.1, CAT-48): terminal, so protected; the Platform
+ * Administrator grants it in a custom role and no default role lists it.
+ */
+export const CATALOG_PLATFORM_PRODUCT_RETIRE = definePermission('catalog', {
+  key: 'catalog.platform-product.retire',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
   CATALOG_PRODUCT_VIEW,
   CATALOG_PRODUCT_APPROVE,
+  CATALOG_PRODUCT_PAUSE,
+  CATALOG_PRODUCT_DELETE,
+  CATALOG_PLATFORM_PRODUCT_RETIRE,
 ]);

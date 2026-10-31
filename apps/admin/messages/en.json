@@ -2082,6 +2082,7 @@
       },
       "status": {
         "published": "Active",
+        "paused": "Inactive",
         "unpublished": "Unpublished",
         "withdrawn": "Withdrawn",
         "retired": "Retired",
@@ -2117,6 +2118,68 @@
           "active": "No active products",
           "all": "No products",
           "inactive": "No inactive products"
+        }
+      },
+      "subtitle": "{count, plural, one {# product} other {# products}} in the {market} market",
+      "select": {
+        "page": "Select all products on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# product selected} other {# products selected}}",
+        "select-all": "Select all {count, number} products in this filter",
+        "clear": "Clear selection",
+        "cancel": "Cancel",
+        "menu": {
+          "resume": "Activate",
+          "pause": "Deactivate",
+          "export": "Export",
+          "export-help": "CSV, with the columns shown",
+          "delete": "Delete…"
+        },
+        "pause": {
+          "title": "Deactivate {count, plural, one {# product} other {# products}}?",
+          "body": "Customers stop seeing them and sellers can’t add new offers to them. Existing orders aren’t affected. You can activate them again at any time.",
+          "confirm": "Deactivate"
+        },
+        "delete": {
+          "title": "Delete {count, plural, one {# product} other {# products}}?",
+          "checking": "Checking the products…",
+          "body": "They are removed from the catalog for customers and sellers, and {offers, plural, =0 {they have no offers} one {the # offer on them ends} other {the # offers on them end}}. Order history keeps them. You can’t undo this.",
+          "some-skipped": "{count, plural, one {# of them can’t be deleted and is skipped.} other {# of them can’t be deleted and are skipped.}}",
+          "none": "None of these products can be deleted.",
+          "confirm": "Delete products"
+        },
+        "pending": {
+          "resume": "Activating products…",
+          "pause": "Deactivating products…",
+          "delete": "Deleting products…",
+          "export": "Preparing the file…"
+        },
+        "done": {
+          "resume": "{count, plural, one {# product activated.} other {# products activated.}}",
+          "pause": "{count, plural, one {# product deactivated.} other {# products deactivated.}}",
+          "delete": "{count, plural, one {# product deleted.} other {# products deleted.}}",
+          "export": "{count, plural, one {# product exported.} other {# products exported.}}"
+        },
+        "skipped": "{count, number} skipped ({reasons}).",
+        "skip": {
+          "already-paused": "already inactive",
+          "not-paused": "already active",
+          "not-published": "not active",
+          "not-withdrawable": "can’t be deleted",
+          "denied": "you can’t do this to them",
+          "other": "not changed"
+        },
+        "failed": "{count, plural, one {# could not be changed.} other {# could not be changed.}} Try again.",
+        "error": {
+          "unavailable": "That didn’t work. Try again.",
+          "denied": "You don’t have access to do this.",
+          "invalid": "That request can’t be done. Reload the page and try again.",
+          "too-large": "Too many products ({total}). Narrow the filter to {max} or fewer.",
+          "count-changed": "The number of offers changed to {count}. Check it and confirm again."
         }
       }
     }

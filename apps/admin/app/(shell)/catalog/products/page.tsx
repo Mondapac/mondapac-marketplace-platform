@@ -32,6 +32,8 @@ export default async function ProductsPage() {
           accountId={gate.session.accountId}
           marketId={marketId}
           timeZone={displayZone(gate.session.timezone)}
+          permissionKeys={gate.session.permissionKeys}
+          csrfToken={gate.session.csrfToken}
         />
       ) : (
         <>

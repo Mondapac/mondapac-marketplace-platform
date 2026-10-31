@@ -250,6 +250,34 @@
     }
   },
   {
+    "type": "catalog.product-paused.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
+    }
+  },
+  {
+    "type": "catalog.product-resumed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
+    }
+  },
+  {
+    "type": "catalog.product-retired.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
+    }
+  },
+  {
+    "type": "catalog.product-withdrawn.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
+    }
+  },
+  {
     "type": "certification.certification-type-activated.v1",
     "aggregateType": "certification-type",
     "fields": {

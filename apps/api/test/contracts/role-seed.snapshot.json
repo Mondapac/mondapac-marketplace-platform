@@ -846,5 +846,22 @@
       "shipping.delivery-settings.view",
       "shipping.fleet-selection.view"
     ]
+  },
+  {
+    "entry": "platform:catalogue-moderator@9",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.platform-product.edit",
+      "catalog.product.approve",
+      "catalog.product.delete",
+      "catalog.product.pause",
+      "catalog.product.view",
+      "certification.claim-policy.view",
+      "certification.product-certificate.view",
+      "certification.type.view",
+      "identity.seller-access.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view"
+    ]
   }
 ]

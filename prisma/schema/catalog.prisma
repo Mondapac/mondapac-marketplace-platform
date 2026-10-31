@@ -82,6 +82,10 @@ model CatalogProduct {
   promotedAt           DateTime?                  @map("promoted_at") @db.Timestamptz(6)
   retiredAt            DateTime?                  @map("retired_at") @db.Timestamptz(6)
   withdrawnAt          DateTime?                  @map("withdrawn_at") @db.Timestamptz(6)
+  /// The reversible admin pause (catalog design 4.1a): set only on a published product, with the
+  /// admin who paused it; both or neither (CHECKs). Cleared by resume, retire and withdraw.
+  pausedAt             DateTime?                  @map("paused_at") @db.Timestamptz(6)
+  pausedByAccountId    String?                    @map("paused_by_account_id") @db.Uuid
   /// The published revision (V1 pointer); only a revision of this product (CE4). Null until first publish.
   publishedRevisionId  String?                    @map("published_revision_id") @db.Uuid
   /// The one pending revision (VER-01), a single column so the rule holds by construction.
@@ -587,10 +591,12 @@ model CatalogOffer {
   /// draft | pending-first-publish | changes-needed | published | deleted.
   status                      String
   /// The stored off-sale causes (M-5): type-not-allowed, product-retired, product-not-listed,
-  /// tag-suspended, description-claim-text.
+  /// product-paused, tag-suspended, description-claim-text.
   offSaleTypeNotAllowed       Boolean               @map("off_sale_type_not_allowed")
   offSaleProductRetired       Boolean               @map("off_sale_product_retired")
   offSaleProductNotListed     Boolean               @map("off_sale_product_not_listed")
+  /// The admin paused the product (catalog design 4.1a); added on pause, cleared on resume.
+  offSaleProductPaused        Boolean               @map("off_sale_product_paused")
   offSaleTagSuspended         Boolean               @map("off_sale_tag_suspended")
   offSaleDescriptionClaimText Boolean               @map("off_sale_description_claim_text")
   /// Exactly `status = 'published'` and no cause (CHECK offers_listed_check).

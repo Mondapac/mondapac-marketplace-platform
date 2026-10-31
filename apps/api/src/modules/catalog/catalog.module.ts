@@ -7,6 +7,8 @@ import {
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -56,6 +58,14 @@ import { ReviewQueueList } from './application/use-cases/review-queue-list.use-c
 import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
 import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
 import { AdminProductListController } from './presentation/admin-product-list.controller';
+import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
+import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
+import { AdminProductResume } from './application/use-cases/admin-product-resume.use-case';
+import { AdminProductWithdraw } from './application/use-cases/admin-product-withdraw.use-case';
+import { PlatformProductRetire } from './application/use-cases/platform-product-retire.use-case';
+import { AdminProductsBulk } from './application/use-cases/admin-products-bulk.use-case';
+import { AdminProductsExport } from './application/use-cases/admin-products-export.use-case';
+import { CATALOG_AUDIT_ACTIONS } from './domain/audit';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
@@ -239,6 +249,11 @@ const PORT = {
   mailTransport: MAIL_TRANSPORT,
   mailSettings: OFFER_OWNER_MAIL_SETTINGS,
   notices: OFFER_OWNER_NOTICES,
+  audit: AUDIT_WRITER,
+  pause: AdminProductPause,
+  resume: AdminProductResume,
+  withdraw: AdminProductWithdraw,
+  retire: PlatformProductRetire,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -307,6 +322,7 @@ const productTypeProvider: FactoryProvider<string> = {
     ProductImageController,
     OfferReviewController,
     AdminProductListController,
+    AdminProductBulkController,
     ProductReviewController,
     ProductImageReviewController,
     PublicCategoryController,
@@ -315,6 +331,8 @@ const productTypeProvider: FactoryProvider<string> = {
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
+    PersistenceModule.auditWriterFor('catalog'),
+    registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS),
     registerEvents('catalog', CATALOG_EVENTS),
     productTypeProvider,
     {
@@ -524,6 +542,56 @@ const productTypeProvider: FactoryProvider<string> = {
       adminProductsReader: true,
       policy: true,
       sellerNames: true,
+    }),
+    useCaseProvider(AdminProductPause, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminProductResume, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      claims: true,
+      evaluator: true,
+    }),
+    useCaseProvider(AdminProductWithdraw, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformProductRetire, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminProductsBulk, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      pause: true,
+      resume: true,
+      withdraw: true,
+      retire: true,
+    }),
+    useCaseProvider(AdminProductsExport, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      sellerNames: true,
+      clock: true,
     }),
     useCaseProvider(ProductRevisionApprove, {
       unitOfWork: true,

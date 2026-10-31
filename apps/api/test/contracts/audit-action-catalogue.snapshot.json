@@ -1,5 +1,63 @@
 [
   {
+    "action": "catalog.product.paused",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "paused": "boolean"
+    },
+    "after": {
+      "offerCount": "integer",
+      "paused": "boolean",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "action": "catalog.product.resumed",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "paused": "boolean"
+    },
+    "after": {
+      "offerCount": "integer",
+      "paused": "boolean",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "action": "catalog.product.retired",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "paused": "boolean",
+      "status": "enumOf(published)"
+    },
+    "after": {
+      "confirmedOfferCount": "integer",
+      "offerCount": "integer",
+      "scope": "enumOf(platform|seller)",
+      "status": "enumOf(retired)"
+    }
+  },
+  {
+    "action": "catalog.product.withdrawn",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(unpublished|published)"
+    },
+    "after": {
+      "offerCount": "integer",
+      "scope": "enumOf(platform|seller)",
+      "status": "enumOf(withdrawn)"
+    }
+  },
+  {
     "action": "assistant.settings.changed",
     "targetType": "assistant.settings",
     "targetId": "enumOf(assistant-settings)",

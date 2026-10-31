@@ -128,6 +128,7 @@ migration in 8. "Privileges" lines are in 7.
 | `own_brand` | `boolean` | no | 1 | CAT-46; insert writes `false` |
 | `matched_into_product_id` | `uuid` | yes | 1 | FK `(market_id, matched_into_product_id)` → `products`. CHECK `(status = 'matched') = (matched_into_product_id IS NOT NULL)`; CHECK `<> id` |
 | `promoted_at`, `retired_at`, `withdrawn_at` | `timestamptz(6)` | yes | 1 | CHECK `(status = 'retired') = (retired_at IS NOT NULL)`, the same for `withdrawn`; `promoted_at IS NULL OR scope = 'PLATFORM'` |
+| `paused_at`, `paused_by_account_id` | `timestamptz(6)`, `uuid` | yes | 1 | The admin pause (domain 4.1a). CHECK `(paused_at IS NULL) = (paused_by_account_id IS NULL)` and `paused_at IS NULL OR status = 'published'`. Migration `20261030110000_catalog_product_pause` (Mojtaba to review) |
 | `published_revision_id` | `uuid` | yes | 4 | V1 pointer. FK `(market_id, id, published_revision_id)` → `product_revisions (market_id, product_id, id)`: only a revision **of this product** (CE4). CHECK `status NOT IN ('published', 'retired') OR published_revision_id IS NOT NULL` |
 | `pending_revision_id` | `uuid` | yes | 4 | **The one pending revision** (VER-01; D 17.1 "at most one pending revision per product"): one column, so the rule holds by construction, as CE-data 3.4. Same-product FK. CHECK `pending_revision_id IS NULL OR pending_revision_id IS DISTINCT FROM published_revision_id` |
 | `pending_submitted_at` | `timestamptz(6)` | yes | 4 | Queue sort key, written with the pointer in the same statement. CHECK `(pending_revision_id IS NULL) = (pending_submitted_at IS NULL)` |
@@ -416,7 +417,7 @@ Position 1 is the primary image. Index `(market_id, image_id)` for "which revisi
 | `attestation_recorded_at`, `attestation_account_id` | `timestamptz(6)`, `uuid` | yes | Both or neither (CHECK). Written only by `own-offer.record-attestation` (D 2.1, B1) |
 | `shelf_category_id` | `uuid` | yes | Slice 23. FK `(market_id, shelf_category_id, seller_id)` → `seller_categories (market_id, id, seller_id)`: **the shelf belongs to the Offer's seller** (CE4; AC 35; measured) |
 | `status` | `text` | no | CHECK `draft`, `pending-first-publish`, `changes-needed`, `published`, `deleted` |
-| `off_sale_type_not_allowed`, `off_sale_product_retired`, `off_sale_product_not_listed`, `off_sale_tag_suspended`, `off_sale_description_claim_text` | `boolean` | no | The stored causes (D 2.3 M-5, 6.4). Booleans, not an array: each is a plain column in Prisma, a CHECK and an index predicate can name it, and adding a cause later is an `ADD COLUMN` plus a CHECK swap (8.2) |
+| `off_sale_type_not_allowed`, `off_sale_product_retired`, `off_sale_product_paused`, `off_sale_product_not_listed`, `off_sale_tag_suspended`, `off_sale_description_claim_text` | `boolean` | no | The stored causes (D 2.3 M-5, 6.4). Booleans, not an array: each is a plain column in Prisma, a CHECK and an index predicate can name it, and adding a cause later is an `ADD COLUMN` plus a CHECK swap (8.2) |
 | `listed` | `boolean` | no | **CHECK `offers_listed_check`: `listed = (status = 'published' AND NOT (<any cause>))`** (measured). Stored so a partial index and one-row reads can use it; it cannot disagree with the causes. The domain rule also needs "product published" (D 4.4): held by the transitions (5) |
 | `submitted_at` | `timestamptz(6)` | yes | Last submit for review; queue sort. CHECK `status <> 'pending-first-publish' OR submitted_at IS NOT NULL` |
 | `first_published_at` | `timestamptz(6)` | yes | |
@@ -1105,7 +1106,7 @@ No sequence; no function gets a grant.
 |---|---|---|---|
 | `outbox` | `SELECT, INSERT`, `UPDATE (published_at)` | Never | PM2 |
 | `inbox` | `SELECT, INSERT` | Prune job | PM4 |
-| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
+| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
 | `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | Never (the guard refuses it for every role) | M-1 |
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |

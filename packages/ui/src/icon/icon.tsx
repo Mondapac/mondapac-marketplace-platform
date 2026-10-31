@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 // grid, 1.75 stroke, lucide-like shapes. The size is the `size/icon` token (18 px, 20 px in the
 // touch density) and the colour is inherited, so a caller sets it with a text colour token.
 // Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `chevron-down`, `user`, `log-out`, `bell`,
-// `volume`, `volume-off`, `layout`, `link`, `chevron-up`, `pin`, `star`, `keyboard`, `alert-circle`, `alert-triangle`, `info`, `arrow-down` and `columns` are new in code and wait to be back-ported to the
+// `volume`, `volume-off`, `layout`, `link`, `chevron-up`, `pin`, `star`, `keyboard`, `alert-circle`, `alert-triangle`, `info`, `arrow-down`, `columns`, `ban`, `download` and `trash` are new in code and wait to be back-ported to the
 // Figma library (speed mode).
 const ICONS = {
   home: <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
@@ -277,6 +277,26 @@ const ICONS = {
       <rect width="18" height="18" x="3" y="3" rx="2" />
       <path d="M9 3v18" />
       <path d="M15 3v18" />
+    </>
+  ),
+  ban: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m4.9 4.9 14.2 14.2" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M12 15V3" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </>
   ),
 } satisfies Record<string, ReactNode>;
