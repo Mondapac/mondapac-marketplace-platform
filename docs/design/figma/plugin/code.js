@@ -8151,7 +8151,9 @@ function podUnavailableDialog() {
 function podSellerUnavailableOpen() {
   const scr = podSellerToShip();
   scr.name = POD + ' · Seller · Mark unavailable';
-  add(scr, frame({ name: 'scrim', w: 1440, h: PANEL_MIN_H, fill: 'bg/scrim', abs: [0, 0] }));
+  // The scrim covers the whole screen, which is taller than PANEL_MIN_H.
+  const h = Math.max(PANEL_MIN_H, Math.round(scr.height || PANEL_MIN_H));
+  add(scr, frame({ name: 'scrim', w: 1440, h: h, fill: 'bg/scrim', abs: [0, 0] }));
   const d = podUnavailableDialog(); setMeta(d, { abs: [460, 160] }); add(scr, d);
   return scr;
 }
