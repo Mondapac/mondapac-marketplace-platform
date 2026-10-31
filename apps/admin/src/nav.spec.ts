@@ -51,6 +51,7 @@ describe('admin nav: daily work only', () => {
       'sellers',
       'orders',
       'customers',
+      'payouts',
       'payout-accounts',
       'disputes',
       'wallet-credits',
