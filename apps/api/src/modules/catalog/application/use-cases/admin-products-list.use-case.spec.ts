@@ -122,6 +122,10 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
         listCalls.push({ market: m.marketId, filter, order, page });
         return Promise.resolve(options.page ?? { kind: 'rows', rows: options.rows ?? [] });
       },
+      ids: () => Promise.resolve([]),
+      existing: () => Promise.resolve(new Set<string>()),
+      states: () => Promise.resolve([]),
+      rowsByIds: () => Promise.resolve([]),
     };
     const nameCalls: (readonly Id<'Seller'>[])[] = [];
     const sellerNames: SellerNamesReader = {
@@ -214,31 +218,42 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
     expect(listCalls[0]!.filter.locale).toBe(locale);
   });
 
-  it('maps each tab to its statuses, and counts all three for the same search', async () => {
+  it('maps each tab to its states, and counts all three for the same search', async () => {
     const { useCase, countCalls, listCalls } = setup();
 
     await useCase.execute(adminContext(), { view: 'inactive', q: '  dates ' });
     await useCase.execute(adminContext(), { view: 'all' });
 
     const [filters] = countCalls.map((call) => call.filters);
-    expect(filters!.map((filter) => filter.statuses)).toEqual([
-      ['published'],
-      ['unpublished', 'published', 'matched', 'withdrawn', 'retired'],
-      ['unpublished', 'withdrawn'],
+    const inactive = [
+      { status: 'unpublished', paused: null },
+      { status: 'withdrawn', paused: null },
+      { status: 'published', paused: true },
+    ];
+    const all = [
+      { status: 'unpublished', paused: null },
+      { status: 'published', paused: false },
+      { status: 'published', paused: true },
+      { status: 'matched', paused: null },
+      { status: 'withdrawn', paused: null },
+      { status: 'retired', paused: null },
+    ];
+    expect(filters!.map((filter) => filter.matches)).toEqual([
+      [{ status: 'published', paused: false }],
+      all,
+      inactive,
     ]);
     expect(filters!.every((filter) => filter.text === 'dates')).toBe(true);
-    expect(listCalls[0]!.filter.statuses).toEqual(['unpublished', 'withdrawn']);
-    expect(listCalls[1]!.filter.statuses).toEqual([
-      'unpublished',
-      'published',
-      'matched',
-      'withdrawn',
-      'retired',
-    ]);
+    expect(listCalls[0]!.filter.matches).toEqual(inactive);
+    expect(listCalls[1]!.filter.matches).toEqual(all);
+    // The Inactive tab holds the paused products; the Active tab does not.
+    expect(filters![0]!.matches).not.toContainEqual({ status: 'published', paused: true });
+    expect(filters![2]!.matches).toContainEqual({ status: 'published', paused: true });
     // Neither tab shows a draft or a discarded product.
     for (const call of listCalls) {
-      expect(call.filter.statuses).not.toContain('draft');
-      expect(call.filter.statuses).not.toContain('discarded');
+      const statuses = call.filter.matches.map((match) => match.status);
+      expect(statuses).not.toContain('draft');
+      expect(statuses).not.toContain('discarded');
     }
   });
 
@@ -247,12 +262,24 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
 
     const result = await useCase.execute(adminContext(), { view: 'active', status: 'withdrawn' });
 
-    expect(countCalls[0]!.filters.map((filter) => filter.statuses)).toEqual([
+    expect(countCalls[0]!.filters.map((filter) => filter.matches)).toEqual([
       [],
-      ['withdrawn'],
-      ['withdrawn'],
+      [{ status: 'withdrawn', paused: null }],
+      [{ status: 'withdrawn', paused: null }],
     ]);
     expect(result).toMatchObject({ ok: true, value: { total: 0, items: [] } });
+  });
+
+  it('filters by Paused: only the paused state of the published products', async () => {
+    const { useCase, countCalls } = setup({ counts: [0, 2, 2] });
+
+    await useCase.execute(adminContext(), { view: 'inactive', status: 'paused' });
+
+    expect(countCalls[0]!.filters.map((filter) => filter.matches)).toEqual([
+      [],
+      [{ status: 'published', paused: true }],
+      [{ status: 'published', paused: true }],
+    ]);
   });
 
   it('passes the filters, sort and page on, and the offset follows the page', async () => {

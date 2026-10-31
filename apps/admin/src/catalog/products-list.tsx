@@ -18,11 +18,13 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
+import { ProductsBulk } from './products-bulk.tsx';
 import { ProductsColumnsPanel } from './products-columns-panel.tsx';
 import { ProductsFilterPanel } from './products-filter-panel.tsx';
 import { ProductsSortPanel } from './products-sort-panel.tsx';
 import { ProductsTable } from './products-table.tsx';
 import {
+  BULK_MAX_IDS,
   DEFAULT_COLUMNS,
   DEFAULT_QUERY,
   FILTER_FIELDS,
@@ -59,16 +61,24 @@ function failureOf(
  * The admin product list (catalog design 9.2b): the Active, All and Inactive tabs with their
  * counts, a search box, the filter builder, the sort menu and the column picker, then one page of
  * products. The column choice is the viewer's own and lives in this browser's storage (the list
- * works the same when storage is missing). Read-only: the actions of a product arrive later.
+ * works the same when storage is missing). Rows can be selected, and the Bulk action button in the
+ * header (Activate, Deactivate, Export, Delete) acts on the selection (catalog design 9.2c).
  */
 export function ProductsList({
   accountId,
   marketId,
+  marketName,
   timeZone,
+  permissionKeys,
+  csrfToken,
 }: {
   readonly accountId: string;
   readonly marketId: string;
+  /** The Market's display name for the subtitle (configuration, never a code). */
+  readonly marketName: string;
   readonly timeZone: string;
+  readonly permissionKeys: readonly string[];
+  readonly csrfToken: string;
 }) {
   const t = useTranslations('catalog.products');
   const tl = useTranslations('load');
@@ -80,6 +90,8 @@ export function ProductsList({
   const [failure, setFailure] = useState<Failure | null>(null);
   const [categories, setCategories] = useState<CategoryTree['categories']>([]);
   const [columns, setColumns] = useState<readonly OptionalColumn[]>(DEFAULT_COLUMNS);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [allMatching, setAllMatching] = useState(false);
   const latest = useRef(0);
   const storageKey = prefsKey('admin', marketId, accountId, 'products-columns');
 
@@ -130,6 +142,51 @@ export function ProductsList({
     );
     return () => clearTimeout(timer);
   }, [draft, query.q]);
+
+  // A new tab, search, filter or sort is another list: the selection does not follow it. Paging
+  // keeps it, so rows can be ticked on several pages.
+  const listKey = JSON.stringify([query.view, query.q, query.filters, query.sort, query.direction]);
+  useEffect(() => {
+    setSelected(new Set());
+    setAllMatching(false);
+  }, [listKey]);
+
+  const pageIds = answer?.items.map((item) => item.productId) ?? [];
+  const toggleRow = (productId: string) => {
+    if (allMatching) {
+      // Leaving "all in this filter": the rows of this page stay ticked, except this one.
+      setAllMatching(false);
+      setSelected(new Set(pageIds.filter((id) => id !== productId)));
+      return;
+    }
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(productId)) next.delete(productId);
+      else if (next.size < BULK_MAX_IDS) next.add(productId);
+      return next;
+    });
+  };
+  const togglePage = (checked: boolean) => {
+    if (allMatching) {
+      if (!checked) {
+        setAllMatching(false);
+        setSelected(new Set());
+      }
+      return;
+    }
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const id of pageIds) {
+        if (!checked) next.delete(id);
+        else if (next.size < BULK_MAX_IDS) next.add(id);
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => {
+    setSelected(new Set());
+    setAllMatching(false);
+  };
 
   const change = (patch: Partial<Query>) =>
     setQuery((current) => ({ ...current, page: 1, ...patch }));
@@ -195,6 +252,24 @@ export function ProductsList({
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <p className="min-w-0 text-sm text-fg-muted">
+          {counts === null ? '' : t('subtitle', { count: counts.all, market: marketName })}
+        </p>
+        <ProductsBulk
+          selection={{ ids: [...selected], allMatching, total: answer?.total ?? 0 }}
+          query={query}
+          columns={columns}
+          permissionKeys={permissionKeys}
+          csrfToken={csrfToken}
+          onSelectAll={() => setAllMatching(true)}
+          onClear={clearSelection}
+          onChanged={() => {
+            clearSelection();
+            void load(query);
+          }}
+        />
+      </div>
       <Tabs
         label={t('tabs')}
         activeId={query.view}
@@ -286,7 +361,19 @@ export function ProductsList({
       ) : null}
       {answer !== null && failure === null ? (
         <div className={loading ? 'opacity-60' : undefined} aria-busy={loading}>
-          <ProductsTable rows={answer.items} columns={columns} timeZone={timeZone} empty={empty} />
+          <ProductsTable
+            rows={answer.items}
+            columns={columns}
+            timeZone={timeZone}
+            empty={empty}
+            selection={{
+              selected,
+              allMatching,
+              full: !allMatching && selected.size >= BULK_MAX_IDS,
+              onToggle: toggleRow,
+              onTogglePage: togglePage,
+            }}
+          />
         </div>
       ) : null}
       {answer !== null && failure === null && answer.total > 0 ? (

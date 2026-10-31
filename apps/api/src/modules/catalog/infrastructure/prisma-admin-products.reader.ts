@@ -5,9 +5,11 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   AdminProductRow,
   AdminProductSort,
+  AdminProductStatus,
   AdminProductsFilter,
   AdminProductsPageResult,
   AdminProductsReader,
+  ProductState,
   SortDirection,
 } from '../application/ports/admin-products.reader';
 import type { ProductScope, ProductStatus } from '../domain/product';
@@ -55,7 +57,10 @@ function whereOf(
   }
   return {
     marketId: market.marketId,
-    status: { in: [...filter.statuses] },
+    OR: filter.matches.map((match): Prisma.CatalogProductWhereInput => ({
+      status: match.status,
+      ...(match.paused === null ? {} : { pausedAt: match.paused ? { not: null } : null }),
+    })),
     ...(filter.scope === null ? {} : { scope: filter.scope }),
     ...(filter.typeCode === null ? {} : { typeCode: filter.typeCode }),
     ...(filter.sellerId === null ? {} : { ownerSellerId: filter.sellerId }),
@@ -87,6 +92,88 @@ export class PrismaAdminProductsReader implements AdminProductsReader {
       counts.push(await tx.catalogProduct.count({ where: whereOf(market, filter) }));
     }
     return counts;
+  }
+
+  async ids(
+    market: MarketContext,
+    filter: AdminProductsFilter,
+    limit: number,
+  ): Promise<readonly Id<'Product'>[]> {
+    const rows = await this.prisma.tx(market).catalogProduct.findMany({
+      where: whereOf(market, filter),
+      select: { id: true },
+      orderBy: [{ lastChangedAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Product'>);
+  }
+
+  async existing(
+    market: MarketContext,
+    ids: readonly Id<'Product'>[],
+  ): Promise<ReadonlySet<string>> {
+    const found = new Set<string>();
+    const tx = this.prisma.tx(market);
+    for (let start = 0; start < ids.length; start += 1000) {
+      const rows = await tx.catalogProduct.findMany({
+        where: { marketId: market.marketId, id: { in: ids.slice(start, start + 1000) } },
+        select: { id: true },
+      });
+      for (const row of rows) found.add(row.id);
+    }
+    return found;
+  }
+
+  async states(
+    market: MarketContext,
+    ids: readonly Id<'Product'>[],
+  ): Promise<readonly ProductState[]> {
+    const tx = this.prisma.tx(market);
+    const out: ProductState[] = [];
+    for (let start = 0; start < ids.length; start += 1000) {
+      const chunk = ids.slice(start, start + 1000);
+      const rows = await tx.catalogProduct.findMany({
+        where: { marketId: market.marketId, id: { in: chunk } },
+        select: { id: true, scope: true, status: true, pausedAt: true },
+      });
+      const counts = await tx.catalogOffer.groupBy({
+        by: ['productId'],
+        where: { marketId: market.marketId, productId: { in: chunk }, status: { not: 'deleted' } },
+        _count: { _all: true },
+      });
+      const offers = new Map(counts.map((row) => [row.productId, row._count._all]));
+      for (const row of rows) {
+        out.push({
+          productId: row.id as Id<'Product'>,
+          scope: row.scope as ProductScope,
+          status: row.status as ProductStatus,
+          paused: row.pausedAt !== null,
+          offerCount: offers.get(row.id) ?? 0,
+        });
+      }
+    }
+    return out;
+  }
+
+  async rowsByIds(
+    market: MarketContext,
+    ids: readonly Id<'Product'>[],
+    locale: string,
+  ): Promise<readonly AdminProductRow[]> {
+    if (ids.length === 0) return [];
+    const tx = this.prisma.tx(market);
+    const shown = await tx.catalogProduct.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] } },
+      select: { id: true, publishedRevisionId: true, pendingRevisionId: true },
+    });
+    const byId = new Map(shown.map((row) => [row.id, row]));
+    const picked: Picked[] = ids.flatMap((id) => {
+      const row = byId.get(id);
+      return row === undefined
+        ? []
+        : [{ id, shownRevisionId: row.publishedRevisionId ?? row.pendingRevisionId }];
+    });
+    return this.rowsOf(market, picked, locale);
   }
 
   async list(
@@ -248,7 +335,9 @@ export class PrismaAdminProductsReader implements AdminProductsReader {
           categoryId: categoryId as Id<'Category'> | null,
           categoryName: categoryId === null ? null : (categoryName.get(categoryId) ?? null),
           typeCode: row.typeCode,
-          status: row.status as ProductStatus,
+          status: (row.status === 'published' && row.pausedAt !== null
+            ? 'paused'
+            : row.status) as AdminProductStatus,
           offerCount: offersOf.get(row.id) ?? 0,
           updatedAt: toInstant(row.lastChangedAt),
           createdAt: toInstant(row.createdAt),
