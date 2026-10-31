@@ -136,7 +136,8 @@ export class OfferApprove extends UseCase<
           version: offer.state.version,
           sellerId: offer.state.sellerId,
           description: offer.state.description,
-          productPublished: product?.state.status === 'published' && product.state.pausedAt === null,
+          productPublished:
+            product?.state.status === 'published' && product.state.pausedAt === null,
           typeCode: product?.state.typeCode ?? null,
         });
       },
