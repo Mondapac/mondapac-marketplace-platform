@@ -43,6 +43,7 @@ import {
   type ProductDetailSources,
 } from '../application/ports/product-detail-sources';
 import { PRODUCT_IMAGES, type ProductImages } from '../application/ports/product-images';
+import { BRAND_PRODUCTS, type BrandProducts } from '../application/ports/brand-products';
 import { STORE_RESOLVER, type StoreResolver } from '../application/ports/store-resolver';
 import {
   CATEGORY_SUBTREE_SOURCE,
@@ -50,6 +51,7 @@ import {
 } from '../application/ports/category-subtree';
 import { FacadeCategorySubtree } from './facade-category-subtree';
 import { FacadeProductImages } from './facade-product-images';
+import { FacadeBrandProducts } from './facade-brand-products';
 import { FacadeStoreResolver } from './facade-store-resolver';
 import { PERSONAL_SIGNALS, type PersonalSignals } from '../application/ports/personal-signals';
 import { FacadePersonalSignals } from './facade-personal-signals';
@@ -132,6 +134,11 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: STORE_RESOLVER,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): StoreResolver => new FacadeStoreResolver(sellers),
+  },
+  {
+    provide: BRAND_PRODUCTS,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): BrandProducts => new FacadeBrandProducts(catalog),
   },
   {
     provide: CATEGORY_SUBTREE_SOURCE,

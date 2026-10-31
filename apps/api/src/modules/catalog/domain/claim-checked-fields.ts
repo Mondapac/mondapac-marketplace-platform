@@ -170,6 +170,22 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
 export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Record<string, { readonly table: string } | { readonly noCustomerText: string }>
 > = {
+  ImportColumn: { noCustomerText: 'fixed header names of the import template' },
+  IgnoredColumn: { noCustomerText: 'a header of the file, shown to the admin only' },
+  MappedColumns: { noCustomerText: 'column positions' },
+  ParsedRow: { noCustomerText: 'raw cells of an import file; never shown to customers' },
+  ParsedTable: { noCustomerText: 'raw cells of an import file; never shown to customers' },
+  ImportFileParser: { noCustomerText: 'interface of methods' },
+  ImportJob: { noCustomerText: 'admin job record: counts, states and a cleaned file label' },
+  ImportRowRecord: { noCustomerText: 'admin report row: codes and the title as the admin sent it' },
+  CheckEnvironment: { noCustomerText: 'facts of the Market a row is checked against' },
+  RowIssue: { noCustomerText: 'issue code with a column and the cell as sent, for the admin only' },
+  ImportPlan: {
+    noCustomerText:
+      'draft content for the platform save-draft use case, which claim-checks every text itself',
+  },
+  RowSummary: { noCustomerText: 'the admin report line of a row' },
+  CheckedRow: { noCustomerText: 'the admin check result of a row' },
   AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
   AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
   LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
@@ -187,6 +203,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   BrandContent: { noCustomerText: 'the editable text of a brand; see BrandState' },
   BrandFieldProblem: { noCustomerText: 'field path and a problem code' },
   RateVerdict: { noCustomerText: 'numbers' },
+  SavedFilter: {
+    noCustomerText:
+      "an admin's own saved view; its name is shown to admins only and never to a customer",
+  },
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
@@ -236,8 +256,9 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   PublishedProduct: {
     noCustomerText:
-      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids',
+      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
   },
+  BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
   },

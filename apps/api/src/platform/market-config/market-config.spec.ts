@@ -2308,3 +2308,55 @@ describe('the shipping section (the real-time carrier, SHP-02/03)', () => {
     expect(() => load({ ...CARRIER, ...change })).toThrow(InvalidMarketConfigError);
   });
 });
+
+describe('promotions.batchCodes (single-use code batches)', () => {
+  const PROMOTIONS = {
+    lineDiscountCapBps: 8000,
+    sellerMaxDiscountBps: 7000,
+    platformBudgetStepUpMinor: 200000,
+    freeShippingThresholdMinor: 5000,
+    newSellerDays: 30,
+    priorApprovalDiscountBps: 5000,
+    wasPrice: { windowDays: 90, minDaysAtPrice: 28 },
+    gstRulingConfirmed: false,
+    maxActivePromotionsPerSeller: 50,
+  };
+  const BATCH = {
+    codeLength: 12,
+    alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+    maxPerBatch: 100,
+    maxPerPromotion: 1000,
+  };
+  const load = (batchCodes?: unknown) =>
+    loadMarketConfigs(
+      [directoryWith({ 'QQ.json': { ...VALID, promotions: { ...PROMOTIONS, batchCodes } } })],
+      [QQ],
+    ).get(QQ)!.promotions?.batchCodes;
+
+  it('is optional and loads when valid', () => {
+    expect(load()).toBeUndefined();
+    expect(load(BATCH)).toMatchObject({ codeLength: 12, maxPerBatch: 100 });
+  });
+
+  it('is in both Market fixtures, with different lengths of alphabet and limits', () => {
+    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+    const [first, second] = [...markets.values()].map((m) => m.promotions?.batchCodes);
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(first?.alphabet).not.toBe(second?.alphabet);
+    expect(first?.maxPerBatch).not.toBe(second?.maxPerBatch);
+  });
+
+  it.each([
+    ['too little entropy (8 characters of 32)', { ...BATCH, codeLength: 8 }],
+    ['a small alphabet', { ...BATCH, alphabet: 'ABCDEFGH', codeLength: 32 }],
+    ['a repeated character', { ...BATCH, alphabet: 'AABCDEFGHJKLMNPQRSTUVWXYZ23456789' }],
+    ['lower case', { ...BATCH, alphabet: 'abcdefghjklmnpqrstuvwxyz23456789' }],
+    ['a hyphen', { ...BATCH, alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ2345678-' }],
+    ['a promotion limit below the batch limit', { ...BATCH, maxPerPromotion: 10 }],
+    ['a zero batch', { ...BATCH, maxPerBatch: 0 }],
+    ['an unknown key', { ...BATCH, prefix: 'X' }],
+  ])('rejects %s', (_label, batchCodes) => {
+    expect(() => load(batchCodes)).toThrow(InvalidMarketConfigError);
+  });
+});

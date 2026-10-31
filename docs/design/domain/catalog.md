@@ -250,7 +250,8 @@ unit (PP 3.1 row 5; ADR-0019 decision 6 for models). A transition not listed is 
 ### 4.1 Product lifecycle
 `draft` → `unpublished` → `published`; `unpublished` → `matched` (terminal);
 `unpublished` | `published` → `withdrawn` (terminal, SELLER); `published` → `retired` (terminal,
-PLATFORM); `draft` → `discarded` (terminal).
+PLATFORM); `draft` → `discarded` (terminal). A `published` product also carries the reversible
+admin pause `pausedAt` (4.1a), which is a flag and not a status.
 
 | From → to | Trigger and guard | Effects | Serves |
 |---|---|---|---|
@@ -262,10 +263,51 @@ PLATFORM); `draft` → `discarded` (terminal).
 | `unpublished` or `published` → `withdrawn` | `own-product.delete` of a submitted SELLER product (not promoted). Pending revision `superseded` | Terminal; revisions kept (VER-06 references them); its Offer `deleted` in the same unit; product leaves the seller's list; events `catalog.product-withdrawn.v1`, `catalog.offer-deleted.v1` | OFR-06, ADR-0009 d7 |
 | `published` → `retired` | `platform-product.retire` (protected key), PLATFORM only; the confirm request carries the affected Offer count the page showed (brief s4 f 3); if the count in the unit differs, refused with `retire.count-changed` and the current count, so the admin confirms again. No `evaluateClaims` (ADR-0028 d5) | Terminal; every Offer gets cause `product-retired`; event `catalog.product-retired.v1`; mail to Offer owners | CAT-48 |
 | `published` (SELLER) → `published` (PLATFORM) | `product.promote` (4.5) | Scope changes; not a status | CAT-44 |
+| `published`, not paused → `published`, paused | `admin-product.pause` (key `catalog.product.pause`), either scope (4.1a) | `pausedAt` and `pausedByAccountId` set; every non-deleted Offer gets cause `product-paused` (4.4); events `catalog.product-paused.v1`, `catalog.offer-listing-changed.v1`; audit `catalog.product.paused` | Admin Deactivate |
+| `published`, paused → `published`, not paused | `admin-product.resume` (key `catalog.product.pause`) (4.1a) | Flag cleared; cause `product-paused` cleared from every Offer, with every tag re-asked first (ADR-0028 d5); events `catalog.product-resumed.v1`, `catalog.offer-listing-changed.v1`; audit `catalog.product.resumed` | Admin Activate |
 
 Forbidden: deleting a submitted product; any change of type, family, scope back to SELLER, owner
 seller, `productCode`; any seller content command on a PLATFORM product (AC 3); retirement of a
-SELLER product (it is withdrawn instead); "un-retire".
+SELLER product (it is withdrawn instead); "un-retire"; pausing a product that is not `published`.
+`withdraw` and `retire` of a paused product clear the flag in the same write.
+
+### 4.1a Admin pause (Catalogue > Products, Deactivate and Activate; owner ruling, 30 Oct 2026)
+The owner ruled that **Deactivate is a reversible pause and Delete is terminal**. The pause is a
+new state of its own, because the existing terminal states (`withdrawn`, `retired`) cannot be
+undone and the page's Activate must undo Deactivate.
+
+- **Shape.** Two columns on `products`: `pausedAt` and `pausedByAccountId`, both null or both set
+  (CHECK). Valid only while the product is `published` (CHECK). The status stays `published`, so
+  every existing guard on `published` (promote, match, revisions, review queues) keeps its meaning.
+  The list shows the product as **Inactive** (the Figma copy); the API status is `paused` (9.2b).
+- **Pause** (either scope; a SELLER product too, since the Offers return on Activate). In one unit:
+  the flag, the cause `product-paused` on every non-deleted Offer (4.4; one
+  `offer-listing-changed.v1` for each Offer that was listed), the events and the audit row. A
+  pending revision stays pending and can still be reviewed; a publish while paused keeps the flag.
+- **Resume.** In one unit: every Offer that has the cause is re-asked per ADR-0028 d5 (entry path
+  `offer-reactivated`; the claim query is built for **every** non-removed tag, and the facts are
+  read at the product lock before the product is saved). A change of the facts makes the unit
+  return a refusal that rolls the whole unit back, and the use case retries; there is never a
+  partial result. Only then the flag clears and the cause is removed; an Offer that still has
+  another cause stays unlisted.
+- **Search.** The public and storefront readers treat a paused product as not published
+  (`pausedAt is null`). The search subscribers `search.index-paused-product`,
+  `search.index-resumed-product` and `search.index-listing-changed-offer` remove or restore the
+  documents by `productId` and `offerId`.
+- **New Offers.** `own-offer.create-on-platform-product` answers `product.not-found` for a paused
+  PLATFORM product (the M3 byte-identical answer) until Activate.
+- **Delete is terminal and splits by scope.** A PLATFORM product is **retired** (CAT-48; the
+  existing protected key `catalog.platform-product.retire`; the confirm carries the affected Offer
+  count, and a different count is `retire.count-changed`). A SELLER product is **withdrawn**
+  (`admin-product.withdraw`; key `catalog.product.delete`; its Offers are deleted in the same
+  unit). A paused product can be deleted.
+- **Permission keys.** One key is new: `catalog.product.pause` (platform, not protected, since
+  Activate undoes it; Catalogue Moderator). It is separate from `catalog.product.delete` because a
+  role may be trusted to take a product off sale without being trusted to end it.
+  `catalog.product.delete` is **reused** for the withdraw of a SELLER product (8.1 already named
+  it for that), and `catalog.platform-product.retire` is reused unchanged for a PLATFORM product.
+  The seeded role `catalogue-moderator` moves to version 9 with the pause key; the Viewer has
+  neither.
 
 ### 4.2 Product revision: `pending` → `published` | `changes-needed` | `superseded`
 | # | From → to | Trigger and guard | Effects |
@@ -325,7 +367,7 @@ reasons: SensitiveReason[] }`.
 | `pending-first-publish` → `changes-needed` → `draft` | `offer.request-changes` (reason code); the seller edits, which returns it to `draft` | Mail |
 | `pending-first-publish` → `draft` | The seller edits (after a warning) | Leaves the queue |
 | `published` → `published` (edit) | `own-offer.edit` (description, condition, shelf, SKU; closed input schema without handling, attestation or tag fields, B1): no queue (M-3); claim-text check; `evaluateClaims` for **every** non-removed tag (AC 11, AC 33); audit row. Handling and attestation change only through `own-offer.set-handling` and `own-offer.record-attestation`, which ask the same way and are refused in acting-as | History row |
-| `published`: cause added / cleared (off sale ⇄ listed) | `type-not-allowed`: added by the handler of `sellers.allowed-product-types-changed.v1` after reading `allowedProductTypesOf`; cleared the same way when the type is allowed again **and every tag is re-asked** (Offer reactivation is an entry path, ADR-0028 d5). `product-retired`: added, never cleared. `product-not-listed`: added on withdraw, match, claim-text flag; cleared when the flag clears (6.4). `tag-suspended`: present while any tag is `suspended` (5.3) | Event `catalog.offer-listing-changed.v1` (`listed` boolean) when the set goes from empty to non-empty or back; mail |
+| `published`: cause added / cleared (off sale ⇄ listed) | `product-paused` (M-5): added to every non-deleted Offer of a product by the admin pause (4.1a); cleared by the admin resume **and every tag is re-asked** (ADR-0028 d5; entry path `offer-reactivated`); no handler touches it. `type-not-allowed`: added by the handler of `sellers.allowed-product-types-changed.v1` after reading `allowedProductTypesOf`; cleared the same way when the type is allowed again **and every tag is re-asked** (Offer reactivation is an entry path, ADR-0028 d5). `product-retired`: added, never cleared. `product-not-listed`: added on withdraw, match, claim-text flag; cleared when the flag clears (6.4). `tag-suspended`: present while any tag is `suspended` (5.3) | Event `catalog.offer-listing-changed.v1` (`listed` boolean) when the set goes from empty to non-empty or back; mail |
 | any non-deleted → `deleted` | `own-offer.delete` (OFR-06): on a PLATFORM product only the Offer; for an own SELLER product the product is withdrawn (4.1) | Terminal; event `catalog.offer-deleted.v1` (PRC CF2, INV 3.5); audit |
 
 Rules: an Offer is **listed** when it is `published`, its product is `published`, and it has no
@@ -775,10 +817,13 @@ approved at identity G2 (ID 5.6); the mapping is the identity mini-review of req
 | `catalog.product.view` | platform | no | Marketplace products, Offers, revisions incl. reasons, queues (view), tag copies, admin product search (9.2) | Catalogue Moderator; Certification Reviewer; Operations and Support; Viewer |
 | `catalog.product.approve` | platform | no | Approve, request changes, bulk approve for product revisions and first Offer publication (CAT-32, CAT-37 "Edit") | Catalogue Moderator |
 | `catalog.product.match` | platform | no | CAT-45 at first approval | Catalogue Moderator |
-| `catalog.product.delete` | platform | no | Withdraw a seller product or delete an Offer as admin; photo takedown (CAT-37 "Delete"; 10.5) | Catalogue Moderator |
+| `catalog.product.pause` | platform | no | Deactivate and Activate: the reversible admin pause of a product (4.1a), one or many (9.2c) | Catalogue Moderator |
+| `catalog.product.delete` | platform | no | Withdraw a seller product or delete an Offer as admin; photo takedown (CAT-37 "Delete"; 10.5). The Products page's Delete of a SELLER product, single and bulk | Catalogue Moderator |
+| `catalog.saved-filter.share` | platform | no | Save a filter of an admin list for every admin of the Market, and manage a filter another admin shared (9.2d). Without it an admin keeps filters for themselves only | Catalogue Moderator; Platform Administrator (holds every key) |
 | `catalog.product.promote` | platform | yes | CAT-44 (irreversible) | Platform Administrator |
 | `catalog.platform-product.edit` | platform | no | Create, edit, submit, revert PLATFORM products (CAT-41) | Catalogue Moderator |
 | `catalog.platform-product.retire` | platform | yes | CAT-48 | Platform Administrator |
+| `catalog.platform-import.run` | platform | no | Import products: upload, check, start, resume, discard and read the report of a CSV or XLSX file of PLATFORM products (14a). Each row still needs `catalog.platform-product.edit` | Catalogue Moderator |
 | `catalog.tax-category.override` | platform | yes | Admin tax-category revision on a SELLER product (ADR-0007 d5) | Platform Administrator |
 | `catalog.category-tree.edit` | platform | yes | Create, rename, move, merge, archive platform categories | Platform Administrator |
 | `catalog.attribute.edit` | platform | yes | Attribute definitions, families, the `material` flag (unsetting it relaxes ADR-0012 d3) | Platform Administrator |
@@ -790,7 +835,7 @@ approved at identity G2 (ID 5.6); the mapping is the identity mini-review of req
 | `catalog.own-import.run` | seller | no | Import (P1) | Store Manager |
 | `catalog.own-category.propose` | seller | no | Propose categories (with SEL-26 on) | Store Manager |
 
-Non-default verbs: `approve`, `match`, `promote`, `retire`, `override`, `decide`, `promote-merge`,
+Non-default verbs: `approve`, `match`, `promote`, `retire`, `pause`, `override`, `decide`, `promote-merge`,
 `propose`, `run`. **Review queue tabs (IA 8 item 2):** "Product revisions" (product revisions,
 first Offer publication; later Import rows) opens with `catalog.product.approve`; "Category
 proposals" with `catalog.category-proposal.decide`. The admin nav item `catalogue` shows with any
@@ -808,15 +853,24 @@ session (and when the context cannot say, CD M5).
 | `own-image.reorder` | `permissions [catalog.own-product.edit]` | allowed (content only) | 9.2a; working copy only |
 | `own-product.create`, `.save-draft`, `.submit`, `.delete`, `.revert`; `own-image.upload`, `.remove`; `own-offer.create-on-platform-product`, `.edit`, `.submit`, `.delete`; `claim-text.check` | `permissions [catalog.own-product.edit]` | allowed (content only); the claim-bearing commands are the next row | `sellingEligibility` on every write; SEL-12 on create and submit; a tag in the submitted form is added through the next row's rule: `.submit` with a non-empty `requestedTags` is **refused in acting-as** (`access.acting-as-refused`; Hassan M1), with an empty list it is content only. `own-offer.edit` and `.create-on-platform-product` have closed input schemas with no handling, attestation or tag field (B1; L8); a create with initial handling, attestation or tags is a create followed by the next row's commands, so acting-as gets a draft without them. Ids resolved in the actor's own seller scope (M3); `own-image.upload` refuses a PLATFORM product |
 | `own-offer.set-handling`, `.record-attestation`, `.add-tag`, `.remove-tag`, `.remove-suspended-tag` | `permissions [catalog.own-product.edit]` | refused | Brief s5, AC 19 |
-| `catalog-products.search-for-offer` (OFR-03) | `permissions [catalog.own-product.view]` | — | ≥ 3 characters; Market from context; PLATFORM, published, not retired; per result whether the seller already has an Offer, whether the type is allowed |
+| `catalog-products.search-for-offer` (OFR-03) | `permissions [catalog.own-product.view]` | — | ≥ 3 characters; Market from context; PLATFORM, published, not retired and **not paused** (4.1a; the same rule as `own-offer.create-on-platform-product`, which answers `product.not-found` for a paused product, so a paused product is never offered and then refused); per result whether the seller already has an Offer, whether the type is allowed |
 | `own-category.propose`, `.cancel` | `permissions [catalog.own-category.propose]` | — | `mayProposeCategories` at the command |
 | `own-import.*` | `permissions [catalog.own-import.run]` | refused (identity kept by the job; brief s5) | 14 |
 | `own-listing.suggest-text` (AIS-03) | `permissions [catalog.own-product.edit]` | refused (R3) | 13 |
-| `review-queue.list`, `revision.review-read`, `offer.review-read`, `revision.similar-products`, `admin-products.list`, `admin-product.read`, `admin-products.search` | `permissions [catalog.product.view]` | — | Store name through `sellerSummaries` per page (≤ 100 ids); AIA-03 flag on the review page (13); similar products and `matchable` (9.2) |
+| `review-queue.list`, `revision.review-read`, `offer.review-read`, `revision.similar-products`, `admin-product.read`, `admin-products.search` | `permissions [catalog.product.view]` | — | Store name through `sellerSummaries` per page (≤ 100 ids); AIA-03 flag on the review page (13); similar products and `matchable` (9.2) |
+| `admin-products.list` (`GET catalog/admin/products`) | `permissions [catalog.product.view]` | — | The Catalogue > Products page: tabs, search, filters, sort, page; owner store name through `sellerSummaries` per page (≤ 100 ids); catalog tables only, no price or stock (9.2b) |
 | `product-revision.approve`, `.request-changes`, `.bulk-approve`; `offer.approve`, `.request-changes` | `permissions [catalog.product.approve]` | — | 4.2, 4.4 |
 | `product.match` | `permissions [catalog.product.match]` | — | 4.5 |
 | `product.promote` | `permissions [catalog.product.promote]` | — | 4.5 |
 | `admin-product.withdraw`, `admin-offer.delete`, `image.take-down` | `permissions [catalog.product.delete]` | — | 4.1, 10.5 |
+| `admin-product.pause`, `admin-product.resume` | `permissions [catalog.product.pause]` | — | 4.1a |
+| `platform-import.check` | `permissions [catalog.platform-import.run, catalog.platform-product.edit]` | — | 14a |
+| `platform-import.start`, `.resume`, `.discard`, `.read`, `.report`, `.template` | `permissions [catalog.platform-import.run]` (`start` and `resume` also `catalog.platform-product.edit`, and `catalog.product.pause` for an Inactive start, checked in the use case); the starter only for `start`, `resume`, `discard` | `import.not-found` | 14a |
+| `platform-import.row-save`, `platform-import.row-submit` | `permissions [catalog.platform-product.edit, catalog.platform-import.run]` (`row-submit` for Inactive also `catalog.product.pause`, checked in the use case); no route, called by the run as the admin | — | 14a |
+| `platform-import.run`, `platform-import.purge` | `system` (the run acts as the admin who started the import) | — | 14a |
+| `admin-products.bulk` (`POST catalog/admin/products/bulk`) | `permissions [catalog.product.view]` at the gate; **each product** then needs the key of its action (`pause`, `resume`: `catalog.product.pause`; `delete`: `catalog.product.delete` for a SELLER product, `catalog.platform-product.retire` for a PLATFORM product), checked per product; a product the admin may not act on is skipped as `access.denied`, and all of them denied refuses the request | refused | 9.2c |
+| `admin-products.export` (`GET catalog/admin/products/export`) | `permissions [catalog.product.view]` | — | 9.2c |
+| `saved-filters.list`, `saved-filter.create`, `.update`, `.delete` (`catalog/admin/saved-filters`) | `permissions [catalog.product.view]` | — | 9.2d. Sharing and managing a shared filter need `catalog.saved-filter.share`, asked through `saved-filter.share-check` (`permissions [catalog.saved-filter.share]`), a use case that reads nothing |
 | `platform-product.*` (create, save-draft, submit, revert, upload) | `permissions [catalog.platform-product.edit]` | — | CAT-41 |
 | `platform-product.retire` | `permissions [catalog.platform-product.retire]` | — | Confirm carries the count shown |
 | `tax-category.override` | `permissions [catalog.tax-category.override]` | — | 4.3 |
@@ -883,6 +937,7 @@ A check is a human's statement; no AI output ticks one (R2), and AIA-03 never pr
 | OFR-03 search, admin product search | 60 per minute per account |
 | Bulk approve | At most 50 items per request; oversized refused whole (`batch.too-large`; Hassan 3b). Rows needing the named photo check are skipped (`review.checks-missing`); every skipped row is listed with its reason code (4.2) |
 | Import | One running per seller; 5 starts per 24 h; file ≤ 10 MiB, decompressed ≤ 50 MiB, 5,000 rows, 10,000 characters per cell (Hassan) |
+| Admin platform import (14a) | Its own: uploads 20 per admin per hour, confirmed starts 10 per admin per 24 h, one queued or running per admin, 5,000 rows a file. The rows of the job (`platform-import.row-save`) do **not** spend the interactive draft-save counters above, which keep their limits for every interactive call; the job is bounded by the row cap, the starts a day and a fixed work per row. For Hassan's review (14a, *Limits of a run*) |
 | AIS-03 calls | `platform/ai` budget; plus 50 per seller per 24 h |
 | Facade batches | 200 keys for `offerSellUnits`, `offerListings` (PRC 6.2, INV 7.1, CRT 7.1), `offerTaxCategories`, `productsForOrder`; 100 ids for `CatalogReferences.*`; 100 queries per `evaluateClaims` call; oversized calls refused whole (L7) |
 
@@ -1045,6 +1100,116 @@ exactly the working copy's image set (else `photos.order-mismatch`, nothing chan
 working copy only (the first is primary; a primary change is sensitive at submit, 4.3). Admins
 reorder PLATFORM photos through `platform-product.save-draft`.
 
+### 9.2b Admin product list (`admin-products.list`)
+`GET catalog/admin/products` (`catalog.product.view`, admin population) lists the products of the
+caller's Market, PLATFORM and SELLER scope, for the Catalogue > Products page. `view` is a tab:
+`active` is `published` and not paused, `inactive` is `unpublished`, `withdrawn` and **paused**, `all` is every status but
+`draft` and `discarded`. Free text `q` (up to 100 characters) matches a part of the name in the
+Market's default locale or of `productCode`, ignoring case; the name is the published revision's,
+else the pending one's (a never-published product). Filters: `scope`, `status`, `categoryId`
+(any category of that revision), `typeCode`, `sellerId`. `sort` is `name`, `updated` or `created`,
+`direction` `asc` or `desc`; paged by `page` (1 to 1000) and `pageSize` (1 to 100, default 25).
+The answer carries `total` and `counts` `{active, all, inactive}` for the same search and filters
+(the status filter included). A row: id, `productCode`, name, `primaryImageId` (position 1 of that
+revision, not taken down; served by the admin image route), scope, owner seller id and store name
+(through `sellerSummaries`, absent when `sellers` cannot say), first category name, `typeCode`,
+status (`paused` for a published product with the admin pause on, 4.1a), `offerCount` (Offers not deleted, any seller), `updatedAt`, `createdAt`. No price and no
+stock: catalog imports neither `pricing` nor `inventory`. Sorting by name is made in memory over
+the matching products (the name is a revision text per locale); more than 5000 matches refuse
+that sort with `validation.failed` (`sort`, `too-broad`) and the admin narrows the search.
+
+### 9.2c Bulk action and export (`admin-products.bulk`, `admin-products.export`)
+**Bulk.** `POST catalog/admin/products/bulk` (admin session, CSRF token, closed JSON body) takes
+`action` (`pause`, `resume` or `delete`) and the products, either as `productIds` (1 to 200, no
+repeats) or as a `selector` `{view, q, scope, status, categoryId, typeCode, sellerId}` (what the
+list showed; resolved in the request and capped at **2000** products, `batch.too-large` with `max`
+and `total` above that; run inline for now). `dryRun: true` changes nothing and answers what would
+happen. The house bulk-approve rules apply: **each product is its own unit**, so there is no
+partial unit and one failure never rolls back another. The answer lists every product as `done`,
+`skipped` (with a reason such as `already-paused`, `not-paused`, `not-published`,
+`not-withdrawable`, `access.denied`) or `failed`, plus the counts. An id that is no product of the
+Market answers `product.not-found` for the whole request (the same answer for every unknown id).
+**Delete of PLATFORM products** needs `confirmOfferCount`, the number of Offers the dry run showed
+(summed over the PLATFORM products in the request); another number is refused with
+`retire.count-changed` and `details.currentCount`, so the admin confirms again. Statuses: 400, 403,
+404, 409, 413, 415, 503. Events and audit are those of the single command, once per product.
+
+**Export.** `GET catalog/admin/products/export?format=csv|xlsx&columns=...` plus `ids` (comma-separated,
+at most 200) or the selector keys of the list, at most **10 000** rows (the same cap for both formats).
+`format` is `csv` (the default) or `xlsx`; any other value answers `validation.failed` (`format`,
+`value`). Product, product code, category and status are always present; `columns` adds `code`,
+`offers`, `updated`, `type`, `scope`, `seller`, `created` in the order given. The two formats carry the
+**same columns, header row and cell texts**; the rows are read once, by the same code, and only the
+writer differs. The file streams as an attachment (`products-<date>.csv` or `products-<date>.xlsx`,
+`no-store`, `nosniff`):
+
+| Format | Content type | Notes |
+|---|---|---|
+| `csv` | `text/csv; charset=utf-8` | UTF-8 BOM, CRLF lines, written in chunks of 500 products |
+| `xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | One sheet named `Products`, written by the exceljs streaming writer (`SheetWriter` port, adapter `ExceljsSheetWriter`) while the products are read; no styles, no shared strings table |
+
+**Formula-injection rule (both formats; Hassan).** *CSV:* a text cell that starts with `=`, `+`, `-`,
+`@`, tab or carriage return is written with a leading `'`. *XLSX:* **every cell is written as a string
+value** (`t="inlineStr"`), the count of Offers too: the adapter assigns only JavaScript strings, so
+exceljs never creates a formula, number, date or hyperlink cell, and a name such as
+`=HYPERLINK("...")` is text in the file, shown as typed and never run on open. Nothing is prefixed
+(the cell text is exactly the product's), and the rule lives in one place, the `SheetWriter`
+contract, with a test that reads every cell of the output back as a string. A paused product shows the status label
+**Inactive**. Neither route reads a price or stock. The admin page asks for the format in a small
+dialog (CSV, the default, or XLSX) before it downloads.
+
+### 9.2d Saved filters (`saved-filters.list`, `saved-filter.create`, `.update`, `.delete`)
+Saved views of the Products page (Figma "Save filter", "Manage filters"; the lists are keyed, so
+another admin list can reuse them: `listKey` `admin.catalog.products`). A saved filter is a name, a
+visibility and a **closed document** read by the list's own vocabulary: `{v: 1, view, q?, filters:
+{scope?, status?, categoryId?, typeCode?, sellerId?}, sort, direction}`. Saved columns are **not**
+part of it: the column picker is a per-viewer setting in the browser and stays one (the Figma shows
+no columns choice in the dialog). An unknown key, an unknown value or a value the list would refuse
+(a search over 100 characters) is `validation.failed` naming the field (`payload.filters.scope`).
+The document never changes after saving; a different view is a new filter.
+
+**Routes** (admin session; the writes need the CSRF token): `GET catalog/admin/saved-filters?listKey=`,
+`POST catalog/admin/saved-filters` (`listKey`, `name`, `visibility`, `payload`),
+`PUT catalog/admin/saved-filters/:id` (`name` and `visibility`, both), `DELETE
+catalog/admin/saved-filters/:id`. Bodies are closed.
+
+**Visibility.** `me` is for the owner only. `everyone` is every admin of the Market who holds
+`catalog.product.view`: it shows as a tab for each of them. Another admin's `me` filter does not
+exist for the caller (`saved-filter.not-found`, the same answer as an unknown id or another
+Market's).
+
+**Who may do what.** One key is new, `catalog.saved-filter.share` (platform, not protected;
+Platform Administrator, who holds every key, and Catalogue Moderator by seed version 10; the Viewer
+has `catalog.product.view` only).
+
+| Action | Needs |
+|---|---|
+| List; save a filter for yourself (`me`); rename, unshare or delete your own filter | `catalog.product.view` |
+| Save a filter for `everyone`; make a filter `everyone` (own or not) | `catalog.product.view` and `catalog.saved-filter.share` (else `access.denied`, nothing written) |
+| Rename, unshare or delete **another admin's** `everyone` filter | `catalog.product.view` and `catalog.saved-filter.share` |
+| Rename, unshare or delete your own `everyone` filter after losing the share key | `catalog.product.view` (the owner always manages their own; they cannot share it again) |
+
+An admin without the share key therefore keeps filters for themselves only, and the dialog says
+"Saved for you only. Your role can't share filters." A filter someone else shared and the caller may
+not manage is visible and read-only (`canManage: false` in the list; a write is `access.denied`).
+
+**Caps and names.** At most **50** filters per admin and list, and **20** shared with everyone per
+list (each is a tab for every admin): `saved-filter.limit-reached`,
+`saved-filter.shared-limit-reached` (both 409, `details.max`). A name is trimmed, 1 to 60
+characters, no control character, one per owner and list whatever its case, and one per list among
+the shared filters (`saved-filter.name-taken`, 409). The caps and the uniqueness hold under
+`SERIALIZABLE`.
+
+**Audit.** A filter that is or was shared with everyone is audited: `catalog.saved-filter.shared`
+(created for everyone), `.changed` (renamed, or moved between `me` and `everyone`; `ownedByActor`
+is false when a holder of the key changed someone else's), `.removed`. Ids, list code and
+booleans only; **never the name** (audit rows carry no free text). Private filters are not audited.
+
+**Counts.** `GET` answers `count` (the products the saved view matches now, by the list's own
+reader) for the first 12 filters in tab order and `null` for the rest, so a page load costs at most
+12 count statements, not one per tab; the page shows a count where there is one. Create and update
+answer `count: null`.
+
 ### 9.3 Ports
 | Port | Declared in | Implemented by | Notes |
 |---|---|---|---|
@@ -1067,12 +1232,14 @@ ships in the slice that changes the state (brief s6).
 | `catalog.variant-removed.v1` | `productId`, `variantId` (once per variant, in the unit that retires it: the working-copy save that deletes a `proposed` variant, or the publish that removes a `published` one; never followed by an add of the same id; B2) | `pricing` (CF2; at a draft save too, P-1), `inventory` (INV 3.5) |
 | `catalog.product-material-content-changed.v1` | `productId`, `productRevisionId`, `previousRevisionId` | Own handler → `certification` (C-2) |
 | `catalog.product-withdrawn.v1`, `-retired.v1`, `-promoted.v1` | `productId` | Own mail; `search` |
+| `catalog.product-paused.v1`, `catalog.product-resumed.v1` | `productId` (4.1a; the actor is in the audit row, not here) | `search` (removes or restores the product's documents) |
+| `catalog.platform-import-finished.v1` | `importId`, `outcome` (`completed`, `stopped`), `added`, `failed` (14a) | `notifications` (admin notice `admin.platform-import-finished`) |
 | `catalog.product-matched.v1` | `productId` (duplicate), `targetProductId` | Own mail |
 | `catalog.offer-created.v1` | `offerId`, `productId`, `sellerId` | `inventory` (INV 3.5) |
 | `catalog.offer-published.v1` | `offerId` | Own mail; `search` |
 | `catalog.offer-deleted.v1` | `offerId`, `productId`, `sellerId` | `pricing` (CF2), `inventory` (INV 3.5) |
 | `catalog.offer-moved.v1` | `offerId`, `fromProductId`, `toProductId`, `fromVariantIds`, `toVariantIds` (ids only; the variant mapping as two lists read pairwise, `fromVariantIds[i]` becomes `toVariantIds[i]`, because event field kinds hold no list of objects. **Invariants, enforced in the producer through `buildOfferMovedMapping`:** the lists have equal length, at least one entry, no id repeats within either list, and at most `maxVariantsPerProduct` entries (AU 100), since the mapping covers the duplicate's non-retired variants. A payload that breaks one is never emitted; consumers dead-letter such an event whole, with no partial re-key) | `pricing` (CF4), `inventory` (request V-1) |
-| `catalog.offer-listing-changed.v1` | `offerId`, `listed` | `search`, storefront (Phase 6) |
+| `catalog.offer-listing-changed.v1` | `offerId`, `listed` (the admin pause and resume also emit it, once per Offer whose listing changed, 4.4) | `search`, storefront (Phase 6) |
 | `catalog.offer-tag-added.v1`, `-removed.v1`, `-suspended.v1`, `-restored.v1`, `-basis-switched.v1` | `offerId`, `typeCode`, `basis` (enum or null) | Own mail; `search` |
 | `catalog.platform-category-created.v1`, `-moved.v1`, `-merged.v1` (with `targetCategoryId`), `-archived.v1` | `categoryId` | Own handler (4.6); `search` |
 | `catalog.category-proposed.v1`, `-proposal-approved.v1`, `-proposal-rejected.v1`, `-proposal-cancelled.v1`, `catalog.seller-category-promoted.v1`, `-merged.v1` | ids | Own mail; storefront |
@@ -1213,7 +1380,9 @@ bodies; request bodies are not logged.
 `catalog.product-revision.approved`, `.changes-requested`, `.auto-published` (system), `.reverted`;
 `catalog.offer.first-publication-approved`, `.changes-requested`; `catalog.product.matched`,
 `.promoted` (with the admin's no-claim confirmation flag), `.retired`, `.withdrawn` (seller or
-admin), `.deleted-draft` is **not** audited (never submitted; 4.1); `catalog.offer.deleted`,
+admin), `.paused`, `.resumed` (4.1a; each carries the scope code `platform` or `seller` and the
+Offer count; the bulk action writes one row per product, never one for the batch, and the export
+writes none because it only reads), `.deleted-draft` is **not** audited (never submitted; 4.1); `catalog.offer.deleted`,
 `.edited` (published Offer edits, AC 33), `.attestation-recorded`, `.attestation-withdrawn`,
 `.handling-changed`; `catalog.offer-tag.added`, `.removed`, `.removed-while-suspended` (the
 "sell without badge" confirmation), `.suspended`, `.restored`, `.basis-switched` (system actor for
@@ -1223,7 +1392,7 @@ policy revision id (brief s5); `catalog.tax-category.overridden`; `catalog.platf
 `materialFlagCleared` and both requester and confirmer account ids when relaxing, 8.2);
 `catalog.attribute-relaxation.requested`, `.cancelled`, `.expired`; `catalog.category-proposal.approved`, `.rejected`,
 `.cancelled`; `catalog.seller-category.promoted`, `.merged`; `catalog.import.started` (file hash,
-row counts); `catalog.image.taken-down`; `catalog.market-settings.changed`; `catalog.ai-claim-flag.
+row counts); `catalog.platform-import.started` (14a: counts and the start choice); `catalog.image.taken-down`; `catalog.market-settings.changed`; `catalog.ai-claim-flag.
 shown-and-decided` (AIA-03 R12: suggestion reference and hash, decision id). In acting-as, the
 acting admin is recorded (IMP-06). A seller's own draft save or submit is history, not an audit
 row (SL 9 pattern).
@@ -1326,6 +1495,46 @@ Designed to the level its slice needs; built after the shop-visit research (Q5).
 | Errors | Stop on errors (over a threshold) or skip error rows (OFR-14); a full report with row numbers (OFR-16), each cell starting with `=`, `+`, `-`, `@`, tab or carriage return neutralised (AC 41); the report readable only by the seller (AC 37) |
 | Audit | `catalog.import.started` with file hash and counts (11.3) |
 
+## 14a. Platform import (admin; the admin counterpart of 14)
+
+The Import products page of Catalogue > Products (handoff `page-ux-admin-catalog-and-settings`
+section 2; Figma proposal `pi*`). An admin uploads a CSV or XLSX file of **PLATFORM products**; each row
+becomes one product. It reuses the pieces of 14 that exist (the limits, the formula guard, the
+sniffed file type, the cleaned file label, the report shape) and builds what was missing: the file
+parser seam, the row check against the Market's facts, a job store with progress, a worker run that
+acts as the admin who started it, and an admin notice. Nothing here is a second way to create a
+product: every row goes through the use cases of the product editor.
+
+| Topic | Design |
+|---|---|
+| Key | `catalog.platform-import.run` (platform scope, **not protected**; default role Catalogue Moderator, seed `catalogue-moderator@11`; version 10 is the saved-filter share key). Not protected because it grants no power of its own: every row still needs `catalog.platform-product.edit` at the gate of each use case it calls (and `catalog.product.pause` for an Inactive start), the volume is bounded (5,000 rows a file, 20 checks an hour and 10 confirms a day per admin, one running import per admin), and the default result is reversible (Inactive products, bulk Activate or Delete in the list). Retiring a product stays protected (`catalog.platform-product.retire`); an import never retires or deletes. The check and the start need both `catalog.platform-import.run` and `catalog.platform-product.edit`, so a role holding only one cannot upload |
+| Formats | **CSV and XLSX.** `ImportFileParser` is the seam (`sniff(bytes)`, `parse(bytes, limits)`, which may be asynchronous); the module registers `[csvParser, xlsxParser]` (token `IMPORT_FILE_PARSERS`, `catalog-providers.ts`) and the checks read a `ParsedTable` whatever the format. The CSV parser is in the domain; the XLSX parser is in infrastructure (`infrastructure/xlsx/`) because it uses the **exceljs** library (owner decision, John, 31 Oct 2026; see 16.1). Any other ZIP, a macro-enabled workbook, PDF, XLS or XML is `file.unsupported-type` with `detected: other`. CSV: UTF-8, comma-separated, a header row, a byte order mark accepted, formulas never evaluated, a cell never trimmed by the parser. XLSX: see *XLSX safeguards*. The job records the format of the file read (`csv` or `xlsx`); the page says "CSV or XLSX file". `GET catalog/admin/platform-imports/template` returns the template as `csv` (text) and as `xlsx` (base64, every cell text, written by the same `SheetWriter` as the export), and the page offers both ("CSV template", "XLSX template", as the Figma proposal `pi*` shows) |
+| Limits (Hassan) | Enforced in this order, each before the next stage: the length of the base64 text (about 13.4 MB) before decoding, the admin's hourly count before reading, the byte size (**10 MiB**), the content sniff, then (XLSX only) the container checks below, then while reading: 64 columns, **10,000** characters a cell, **5,000** data rows. The decompressed limit is **50 MiB** (XLSX; a CSV is never inflated). The file name is only a label: cleaned to letters, digits, `. _ ( ) -` and spaces, at most 80 characters, never echoed as sent, never part of a storage key or a download name. The type is read from the content, never from the name or the declared type |
+| XLSX safeguards (Hassan) | Each is in code and tested (`infrastructure/xlsx/zip-inspection.ts`, `xlsx-import-parser.ts`, their specs; `limits.ts` holds the numbers). **(1) Size before parse:** more than 10 MiB is `file.too-large` before anything is opened. **(2) Zip-bomb guard, before exceljs sees a byte:** the ZIP is read from its central directory with plain arithmetic; the end record must end the file (no trailing bytes, no ZIP64, one disk); at most 1,000 entries; no encrypted entry; only the stored and deflate methods; clean unique names (no `..`, leading `/`, backslash or NUL); the declared sizes are summed and must stay within **50 MiB** and no entry (nor the whole container) may unpack by more than **100 times** once it is over 1 MiB; entries must not overlap, must lie before the central directory and must agree with their local header (name, method), so no other reader can see a different file; then **every entry is really inflated** with an output cap of its declared size plus one byte and its CRC-32 is checked, so a header that lies about its size cannot get past the sum. Failures answer `file.unpacked-too-large` (413, size and ratio) or `file.unreadable` (422, malformed). **(3) Only a plain workbook:** `[Content_Types].xml` and `xl/workbook.xml` must exist and the content type of `/xl/workbook.xml` must be exactly the plain workbook type; macro-enabled, template and binary workbooks are refused; a part that is a macro project (`vbaProject`), an external link (`xl/externalLinks/`), an embedded object (`xl/embeddings/`), an ActiveX control or a macro/dialog sheet refuses the file; an XML part that opens a DTD or entity is refused. All are `file.unsupported-type` (415, `detected: other`). **(4) First worksheet only:** the first sheet of the workbook is read, hidden or not; the others are ignored (exceljs still loads them into memory, which the 50 MiB bound limits). **(5) Formulas are refused, not evaluated:** a cell with a formula (also shared and array formulas) answers `file.formula-cell` (422, `rowNumber`) anywhere in the sheet, also outside the header's columns. Decision: a cached result is *not* read, because it is a value the admin cannot see in the file's data (it may differ from what the formula gives now), and refusing is deterministic; the answer tells the admin to paste values. **(6) No external fetch:** exceljs makes no network call when reading; a hyperlink gives its visible text only and its target is never read or followed; an image link in a cell is text and is never fetched (as for CSV). **(7) Limits while reading:** 5,000 data rows (`file.too-many-rows`, with the count), 10,000 characters a cell (`file.cell-too-long`, with the row) and 64 columns in the header (`file.too-many-columns`); a blank row is skipped; row numbers are the numbers the spreadsheet shows. **(8) Text, deterministically:** a string is kept as is (never trimmed); a number is its shortest round-trip form (`5901234123457`, `0.5`; a barcode stored as a number loses leading zeros, so the template's example row is text); a boolean is `TRUE` or `FALSE`; a date is the UTC calendar date (`2026-10-31`) or, with a time, `2026-10-31T13:45:00Z`, never read in the server's time zone; rich text and a link give their visible text; an error value (`#N/A`) is its text. **(9) Bounded memory:** the file is at most 10 MiB, the unpacked parts at most 50 MiB (checked above, one entry in memory at a time during the check), and rows past 5,000 are counted, not kept. The library reads the whole workbook into memory (not a streaming read: that read needs the shared strings before the sheets, which not every producer writes); a probe with 5,000 rows of 64 random 32-character cells (a 9.1 MiB file) parsed in about 2.4 s with a heap of about 245 MiB in the test process (the fixture included), so the cost is real but bounded by the limits. **(10) Isolated parse (Hassan M-586-8, round 4):** the whole parse (container checks, prescan, exceljs, canonical CSV) runs in a `worker_threads` worker (`xlsx/isolated-xlsx-parser.ts`, entry `xlsx/xlsx-parse-worker.ts`), never on the API's event loop. The thread has a heap cap (old space 192 MiB, young 32 MiB) and a 20 s wall-clock limit after which it is terminated. One parse runs at a time per process; a second upload meanwhile is answered at once with `file.busy` (503, `Retry-After: 5`), not queued. Failures are refusals: out of memory is `file.too-large` (413), the time limit is `file.too-complex` (422), a crash or a thread that ends without an answer is `file.unreadable` (422). Inside the parse: each shared rich string is turned into text once (not once per cell), a string (shared `<si>` or inline `<is>`) with more than 1,000 runs, empty runs counted, is `file.too-complex` (prescan of the shared strings and the sheet), and a cell reference that is not one to three capital letters then a positive number (`$XFD$2`, ` XFD2`, `-XFD2`) is `file.unreadable` (L-586-6). The ADR-0029 sandboxed intake process is still not built; the worker thread is the interim control. |
+| Columns | `Title`, `Main category`, `Product type` (required); `Description`, `Brand`, `Barcode (GTIN)`, `Unit size`, `Image URL`, `Tax category` (optional). Headers are matched case- and space-insensitively. Unknown headers are ignored and listed on the page; a header that looks like certification (halal, kosher, vegan, certif, attest, handling, tag, badge, approv, basis, provenance, publish, status) is listed as ignored with a "not imported" mark and is never read. **Certification tags are not imported**: they belong to each seller's offer, not to the product (CERT rules; Import never writes handling, attestation or tags: the row plan has no field for them, tested) |
+| Row check | A pure function of the row and the Market's facts (`checkRow`): live categories by name or slug (unknown, ambiguous), the product types the Market offers, the attribute schema of the default family through the type handler (the brand is required in the AU family), barcode length and check digit when given, `https` image links, the Market's tax categories (default: the first, with a warning), control characters and unpaired surrogates, duplicates of title and brand inside the file (the later row is the error). Only `simple` is importable; `configurable` is `product-type.needs-variants`. A barcode or unit size is stored only if the family has such an attribute; otherwise it is checked and a warning says it is not stored. An image link is **never fetched** (warning `image-url.not-fetched`; the photo is added in the product editor). Claim text is **not** checked at the check step (it is rate-limited per account, 30 a minute); it is checked per row at run time by the save of each product. No check against the existing catalogue for duplicates (open point) |
+| Check step | `platform-import.check`: nothing is saved but the check's own record: no product, no draft. The file goes to private object storage (ADR-0016) under `catalog/imports/<MARKET>/<jobId>`, never to the database; the job and its row results are written in one unit; the admin's earlier unconfirmed checks are discarded in that unit. Row numbers are the numbers a spreadsheet shows (the header is row 1). A row keeps at most 12 problems, errors first |
+| New products start as | **Inactive (default) or Active.** The Product has no "inactive" status of its own; the list's Inactive tab is the admin pause (4.1a). *Inactive* = the row is created, saved and submitted, and the submit **publishes and pauses in one unit**: `SubmitProduct` pauses the product (`Product.pause`, the same domain rule as `admin-product.pause`) before the product row is written, so one transaction holds the revision, the published pointer, the pause mark, the events `catalog.product-revision-submitted.v1` and `catalog.product-paused.v1` (one outbox append) and the audit `catalog.product.paused`. The product is never visible published, and a failure of any part (the pause refusal, the audit write) rolls the publish back (`pause-failed` stops the run). A new PLATFORM product has no Offers, so no Offer cause is added; a paused product refuses new Offers (4.1a). *Active* is the plain submit and leaves it published. The start needs `catalog.product.pause` when Inactive is chosen (`import.pause-not-allowed` otherwise, checked at the start so a run never stops at its first row for it) |
+| Start | `platform-import.start`: only the admin who uploaded, only a `checked` job; a file with errors is confirmed only with `skipErrors: true` (`import.errors-not-skipped`), and error rows are then marked skipped; one queued or running import per admin (`import.already-running`); counted against 10 starts a day. Audit `catalog.platform-import.started` (before and after: counts and the choice; the file hash stays on the job row, because audit fields are enumerated and carry no free string) |
+| Run | `catalog.run-platform-imports` (worker, every 5 s per Market, one indexed read when idle), use case `platform-import.run`, rule `system`, claim with a 120 s lease that is renewed per batch of 20 rows, a turn of at most 8 minutes. **It runs as the admin who started the import**: the job keeps the starting admin's account and session ids; `identity` resumes them (`JobIdentityResolver`, in `platform/authz/job-identity.ts`) into an authenticated admin actor only while that person is still an active admin of this Market with a session that was not revoked for account-disabled or password-reset. There is no acting-as and no stored credential. Each row is checked again against the facts of now, then `platform-product.create`, `platform-import.row-save` (the draft save of `platform-product.save-draft`, the same service, without the interactive save limit) and `platform-import.row-submit` (the submit of `platform-product.submit` with the Inactive pause in the same unit), so every gate and the claim-text and attribute-schema controls apply to the row again, with the admin's own permissions: a role taken away stops the next call (`access-lost`). The product of a row is recorded the moment it exists, so a retry never creates a second one |
+| Failure of a row | A refused text (`claim-text.found`), a schema or category fault: that row fails with a code and the import goes on. A refused text leaves an unpublished draft behind, which the existing draft prune removes (180 days); it is never visible. `access.unavailable` and stale versions are transient: the job waits and retries |
+| Stopped part way | A throttled row waits out a window of up to 120 s and the job goes back to the queue; a longer window (the daily limit), a lost permission or identity (`access-lost`), a failed pause (`pause-failed`), a file that is missing or not the one checked (`file-missing`, by SHA-256) or 24 hours of transient faults (`unexpected`) **stop** the import with that reason. "Retry the rest" resumes it for the admin who started it: products already added are kept and never added twice, failed rows stay failed |
+| Progress and report | `GET catalog/admin/platform-imports/:id` (polled by the page every few seconds) shows counts and state; the report is stored as the row results (not a second file): `GET .../report?kind=errors|full` returns the CSV, every cell starting with `=`, `+`, `-`, `@`, tab or carriage return written with a leading quote (the formula guard of 14, AC 41, shared code), the download name built from the date. Any admin holding the key can read any import of the Market; only the starter can start, resume or discard |
+| Notification | The finish writes `catalog.platform-import-finished.v1` (`importId`, `outcome` completed or stopped, `added`, `failed`) in the unit that ends the job. `notifications` turns it into the admin in-app notice `admin.platform-import-finished` (the same admin notice flow as the review queues), shown to **every admin who holds `catalog.platform-import.run`** when they read, not only the starter: the admin notices are Market-wide by design (package 3). No mail |
+| Retention | The uploaded file is deleted from object storage 7 days after its check (never while queued or running; a `stopped` import cannot be resumed after that), by `catalog.purge-platform-imports` (hourly, rule `system`, a failed delete leaves the row for the next run). An unconfirmed check whose file is purged becomes `discarded`. A **discarded** job (cancelled, replaced by a new upload, or unconfirmed) and its rows are deleted as soon as its file is gone. The job and its row results of a finished or stopped import are deleted 90 days after creation, only without a stored file. The purge works in units of 5 jobs within a 30-second budget (data design 3.29) |
+| Rate limits | The import's own: `platform-import-check.account.hour` 20, `platform-import-check.account.day` 100 and `platform-import-start.account.day` 10 per admin (counter kinds added to the `rate_counters` CHECK), one running import per admin, 5,000 rows a file. The interactive limits are **unchanged for interactive calls** (draft saves 60 a minute and 1,000 a day per account, the claim-text check 30 a minute and 1,000 a day, which only `claim-text.check` spends). See *Limits of a run* |
+| Limits of a run | **An import of 5,000 rows must be able to finish.** The interactive draft-save limit (1,000 a day) would stop it after 1,000 rows, so the rows of the job do not spend it: `platform-import.row-save` calls the same `SaveDraft` service with `spendSavesLimit: false` and nothing else changes (the claim-text control, the closed draft shape, the author rule and the variant registry are the same). The job is bounded by the import's own limits instead: the row cap (5,000), one running import per admin, 10 starts a day (so at most 50,000 rows a day per admin), the per-row work budget (one create, one save and one submit; at most 10,000 characters a cell and a closed set of texts, so a bounded number of matcher calls per row), the lease and the 8-minute turn, and every call still passes the gate of the admin the job runs as (a lost key stops it). `platform-import.row-save` and `.row-submit` have no route: only the run calls them, as the admin who started the import, and each needs `catalog.platform-product.edit` and `catalog.platform-import.run`. A throttle answer from any other limit still waits or stops as before. **Point for Hassan's review:** this is the one place a per-account editor limit is not spent by a caller who holds the key; the bounds above replace it, and a role holding the import key can write up to 50,000 drafts a day; confirm it or set a lower daily start count |
+| Events | `catalog.platform-import-finished.v1` (aggregate type `platform-import`) |
+| Audit | `catalog.platform-import.started` |
+| Errors | `validation.failed` 400, `import.pause-not-allowed` 403, `import.not-found` 404 (also another admin's job and another Market's), `import.not-confirmable`, `import.errors-not-skipped`, `import.nothing-to-import`, `import.already-running`, `import.not-resumable`, `import.not-discardable`, `import.report-unavailable` 409, `file.too-large` and `file.unpacked-too-large` 413 (`maxBytes`), `file.unsupported-type` 415, `file.empty`, `file.unreadable`, `file.too-many-rows`, `file.too-many-columns`, `file.cell-too-long`, `file.no-rows`, `file.formula-cell` (`rowNumber`), `file.too-complex`, `columns.missing`, `columns.duplicate` 422, `request.throttled` 429, `file.busy` and `access.unavailable` 503 (`file.busy` carries `Retry-After`) |
+
+Open points for the owner: (1) Hassan's review of the *Limits of a run* row (rows of the job spend no
+interactive draft-save counter); (2) ~~an XLSX parser~~ done: exceljs 4.4.0, see 16.1 (open: the sandboxed intake process, the ratio limit of 100, formulas refused rather than read as cached values); (3) a duplicate check against the
+existing catalogue (by title and brand or by barcode); (4) the Figma proposal shows Brand as optional
+and a product type list such as "Fresh meat"; the domain has the brand required in the AU family and
+the types `simple` and `configurable`, so the page follows the domain; (5) the notice goes to every
+admin with the key.
+
 ## 15. Slices
 
 ### 15.1 Order, size and security gates
@@ -1408,7 +1617,7 @@ pace of `identity` and `sellers` (brief s8: "4 weeks" is not credible).
 |---|---|---|
 | Image decode, re-encode, resize, metadata strip | No | The image library approved with ADR-0029 (shared with certification's previews), run in the sandboxed process; permissive or LGPL licence, never AGPL |
 | Cookieless public origin and CDN | Infrastructure | ADR-0029 (Ali, Kazem) |
-| XLSX reading (Import) | No | A streaming XLSX reader with formulas ignored, inside the sandbox; chosen at slice 24 with Hassan |
+| XLSX reading (Import) and writing (Export, template) | No | **`exceljs` 4.4.0, exact pin, `apps/api` only** (owner decision, John, 31 Oct 2026; Hassan reviews before merge). Licence MIT; no install script. Latest stable (published 2023-10-19, no release since; the maintainers' next release is a prerelease). It brings 147 packages, among them `jszip` (MIT OR GPL-3.0-or-later: used under MIT), `unzipper`, `archiver`, `saxes`, `fast-csv`, `dayjs`, `tmp`, `uuid` 8. `pnpm audit --prod` after the add lists two advisories on paths through exceljs, neither reachable: `uuid <11.1.1` (the missing buffer-bounds check of v3/v5/v6 with a caller buffer; exceljs calls v4 without one) and `minimatch` (a glob ReDoS in `archiver`'s file globbing, which exceljs never feeds a pattern from a file). Only `infrastructure/xlsx/` imports it (`ExceljsSheetWriter` and the XLSX parser); the guards are in 14a. A reading is never a streaming read (see 14a). There is no separate dependency register in the repository; this row, with ADR-0029's table, is the record |
 | CSV reading | Partly | A small streaming parser; a package only if the slice shows a need |
 | Unicode normalisation, confusables | — | `certification`'s matcher; nothing in catalog |
 

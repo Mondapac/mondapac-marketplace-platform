@@ -1253,8 +1253,7 @@
       "to-ship": "To ship",
       "empty": {
         "title": "No orders in this state",
-        "body": "Orders appear here as they move on.",
-        "body-more": "None of the orders loaded so far are in this state. Show more orders to look further back."
+        "body": "Orders appear here as they move on."
       }
     },
     "paid-line": "Paid {when}",

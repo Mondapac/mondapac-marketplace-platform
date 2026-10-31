@@ -17,6 +17,30 @@ describe('admin nav: Content', () => {
   });
 });
 
+describe('admin nav: Catalogue', () => {
+  it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
+    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'offer-reviews']);
+    const item = adminNav.items.find((entry) => entry.id === 'products');
+    expect(item).toMatchObject({
+      icon: 'package',
+      href: '/catalog/products',
+      labelKey: 'nav.products',
+      group: 'catalogue',
+      anyOf: ['catalog.product.view'],
+    });
+    expect(adminNav.groups).toContainEqual({
+      id: 'catalogue',
+      labelKey: 'nav.group.catalogue',
+      icon: 'package',
+    });
+  });
+
+  it('is hidden without the key, and the Offer reviews item stays in Reviews', () => {
+    expect(ids(['catalog.product.approve'])).not.toContain('products');
+    expect(adminNav.items.find((entry) => entry.id === 'offer-reviews')?.group).toBe('reviews');
+  });
+});
+
 describe('admin nav: Wallet', () => {
   it('lists the credit pages for wallet.credit.view; the switch is a settings page', () => {
     expect(ids(['wallet.credit.view'])).toEqual(['home', 'wallet-credits', 'wallet-requests']);
@@ -45,8 +69,10 @@ describe('admin nav: daily work only', () => {
       adminNav.items.filter((item) => item.placement !== 'footer').map((item) => item.id),
     ).toEqual([
       'home',
+      'products',
       'offer-reviews',
       'price-holds',
+      'brands',
       'content',
       'sellers',
       'orders',
@@ -152,5 +178,23 @@ describe('admin nav: Settings', () => {
   it('is there for the account deletion setting alone', () => {
     expect(ids(['customers.account-deletion-settings.view'])).toContain('settings');
     expect(ids(['customers.account-deletion-settings.manage'])).not.toContain('settings');
+  });
+});
+
+describe('admin nav: Brands', () => {
+  it('is there for catalog.brand.read, in its own Catalog group, with the tag icon', () => {
+    expect(ids(['catalog.brand.read'])).toEqual(['home', 'brands']);
+    expect(adminNav.items.find((item) => item.id === 'brands')).toMatchObject({
+      icon: 'tag',
+      href: '/catalog/brands',
+      labelKey: 'nav.brands',
+      group: 'catalog',
+    });
+    expect((adminNav.groups ?? []).map((group) => group.id)).toContain('catalog');
+  });
+
+  it('is hidden without it, also with the edit key alone', () => {
+    expect(ids([])).not.toContain('brands');
+    expect(ids(['catalog.brand.edit'])).not.toContain('brands');
   });
 });

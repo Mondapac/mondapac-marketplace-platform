@@ -48,7 +48,7 @@ export interface ResetAdminSecondFactorDependencies {
  * after it has written the operator's line to the external log (`platform-audit.md` 9.2, Hassan
  * L6); the audit row's correlation id links the two.
  *
- * In one unit: the factor's last version step (`SecondFactor.recordReset`), its removal with its
+ * In one unit (the account's credential lock first): the factor's last version step (`SecondFactor.recordReset`), its removal with its
  * recovery codes, **every session of the account revoked** (`second-factor-reset`), **every open
  * challenge void**, `identity.second-factor-changed.v1` (`reset`: the alert mail) and
  * `identity.second-factor.reset` as `SYSTEM`. The `second-factor.account` counter is never
@@ -94,6 +94,12 @@ export class ResetAdminSecondFactor extends UseCase<
         );
         if (account === null) return err({ code: 'account.unknown' });
         const accountId = account.state.id;
+        // The account's credential lock first, as every unit that changes a factor or revokes
+        // sessions: `revokeAllOf` row-locks the account last, so a unit that took the factor and
+        // the sessions first could deadlock with a password change (data design 3.3; Mojtaba S1).
+        if (!(await this.deps.accounts.lockCredential(market, accountId))) {
+          return err({ code: 'account.unknown' });
+        }
         const factor = await this.deps.factors.findByAccount(market, accountId);
         if (factor === null) return err({ code: 'second-factor.none' });
         const before = factor.state.state;

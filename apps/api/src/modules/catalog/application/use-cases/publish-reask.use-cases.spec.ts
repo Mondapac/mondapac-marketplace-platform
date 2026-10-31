@@ -182,7 +182,13 @@ describe.each([
   }
 
   describe('offer.approve re-asks every kept tag before publishing (5.1a point 3)', () => {
-    function rig(tags: () => OfferTagState[]) {
+    function rig(
+      tags: () => OfferTagState[],
+      productStates: readonly { status: string; pausedAt: unknown }[] = [
+        { status: 'published', pausedAt: null },
+      ],
+    ) {
+      let reads = 0;
       const state = offerState({
         status: 'pending-first-publish',
         listed: false,
@@ -196,7 +202,11 @@ describe.each([
         unitOfWork,
         offers,
         products: {
-          findById: () => Promise.resolve({ state: { status: 'published', typeCode: 'simple' } }),
+          findById: () => {
+            const shown = productStates[Math.min(reads, productStates.length - 1)]!;
+            reads += 1;
+            return Promise.resolve({ state: { ...shown, typeCode: 'simple' } });
+          },
         } as unknown as ProductRepository,
         eligibility: { isEligible: () => Promise.resolve(true) },
         allowedTypes: { allowedFor: () => Promise.resolve('all' as const) },
@@ -260,6 +270,28 @@ describe.each([
       expect(await run()).toEqual({ ok: false, error: { code: 'conflict.retry' } });
       expect(evaluator.calls).toHaveLength(3);
       expect(saved).toEqual([]);
+    });
+
+    it('refuses a paused product with offer.product-not-published and publishes nothing (I-583-6)', async () => {
+      const paused = { status: 'published', pausedAt: new Date(0) };
+      const { run, evaluator, saved, outbox } = rig(() => tagged(), [paused]);
+      expect(await run()).toEqual({ ok: false, error: { code: 'offer.product-not-published' } });
+      expect(evaluator.calls).toEqual([]);
+      expect(saved).toEqual([]);
+      expect(outbox.types).toEqual([]);
+    });
+
+    it('refuses when the product is paused between the first read and the unit (I-583-6)', async () => {
+      const { run, saved, outbox } = rig(
+        () => tagged(),
+        [
+          { status: 'published', pausedAt: null },
+          { status: 'published', pausedAt: new Date(0) },
+        ],
+      );
+      expect(await run()).toEqual({ ok: false, error: { code: 'offer.product-not-published' } });
+      expect(saved).toEqual([]);
+      expect(outbox.types).toEqual([]);
     });
 
     it('asks nothing and takes no lock for an Offer without tags', async () => {

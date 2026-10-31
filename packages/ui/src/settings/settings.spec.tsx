@@ -341,7 +341,13 @@ describe('SettingsErrorSummary', () => {
 
 describe('Button disabled state', () => {
   it('keeps every disabled label in a readable muted text colour, with no opacity fade', () => {
-    for (const variant of ['primary', 'secondary', 'destructive', 'link'] as const) {
+    for (const variant of [
+      'primary',
+      'secondary',
+      'destructive',
+      'destructive-solid',
+      'link',
+    ] as const) {
       const out = html(
         <Button variant={variant} disabled>
           Save
@@ -352,5 +358,11 @@ describe('Button disabled state', () => {
       expect(out).not.toContain('accent-disabled');
     }
     expect(html(<Button disabled>Save</Button>)).toContain('disabled:bg-muted');
+  });
+
+  it('fills the destructive-solid button with the critical colour', () => {
+    const out = html(<Button variant="destructive-solid">Delete</Button>);
+    expect(out).toContain('bg-critical-solid');
+    expect(out).toContain('text-on-accent');
   });
 });

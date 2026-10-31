@@ -53,6 +53,65 @@ export const CATALOG_PRODUCT_APPROVE = definePermission('catalog', {
 });
 
 /**
+ * Pause and resume a published product (catalog design 4.1a, 8.1): the reversible admin hold that
+ * takes the product and all its Offers off sale. Platform scope; unprotected, so Catalogue
+ * Moderator receives it by identity's seed, next to `catalog.product.delete`.
+ */
+export const CATALOG_PRODUCT_PAUSE = definePermission('catalog', {
+  key: 'catalog.product.pause',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Withdraw a SELLER product as admin (catalog design 4.1, 8.1: "Delete" on the Products page).
+ * Terminal. Platform scope; unprotected, so Catalogue Moderator receives it by identity's seed.
+ */
+export const CATALOG_PRODUCT_DELETE = definePermission('catalog', {
+  key: 'catalog.product.delete',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Retire a PLATFORM product (catalog design 4.1, CAT-48): terminal, so protected; the Platform
+ * Administrator grants it in a custom role and no default role lists it.
+ */
+export const CATALOG_PLATFORM_PRODUCT_RETIRE = definePermission('catalog', {
+  key: 'catalog.platform-product.retire',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Import PLATFORM products from a file (catalog design 14a, 8.1; Catalogue > Products > Import).
+ * Platform scope; **unprotected**: every row still goes through the use cases that need
+ * `catalog.platform-product.edit`, which the Catalogue Moderator already holds, so this key adds no
+ * power over what a row may contain, only the volume; the volume is bounded (5,000 rows, one running
+ * import per admin, 10 starts a day) and the default start is Inactive, which the admin can undo in
+ * bulk with the pause. The terminal step (retire) stays protected. Catalogue Moderator receives it
+ * by identity's seed.
+ */
+export const CATALOG_PLATFORM_IMPORT_RUN = definePermission('catalog', {
+  key: 'catalog.platform-import.run',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Share a saved filter with every admin of the Market (catalog design 9.2d): "Everyone" in the
+ * Save filter dialog, and the edit and delete of a filter somebody else shared. Without it an
+ * admin who can see the list still saves and manages filters for themselves only. Platform scope;
+ * unprotected, so Catalogue Moderator receives it by identity's seed (the Platform Administrator
+ * holds every key).
+ */
+export const CATALOG_SAVED_FILTER_SHARE = definePermission('catalog', {
+  key: 'catalog.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read brands, the brand merge queue and seller brand proposals (catalog brand package). Platform
  * scope; unprotected, so Viewer receives it by identity's seed.
  */
@@ -80,6 +139,11 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_EDIT,
   CATALOG_PRODUCT_VIEW,
   CATALOG_PRODUCT_APPROVE,
+  CATALOG_PRODUCT_PAUSE,
+  CATALOG_PRODUCT_DELETE,
+  CATALOG_PLATFORM_PRODUCT_RETIRE,
+  CATALOG_PLATFORM_IMPORT_RUN,
+  CATALOG_SAVED_FILTER_SHARE,
   CATALOG_BRAND_READ,
   CATALOG_BRAND_EDIT,
 ]);

@@ -6,6 +6,7 @@ import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import {
   ADMIN_NOTICES_PER_MARKET,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+  ADMIN_PLATFORM_IMPORT_FINISHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
@@ -13,6 +14,7 @@ import {
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   type CERTIFICATE_SUBMISSIONS,
   type HOLD_DIRECTIONS,
+  type PLATFORM_IMPORT_OUTCOMES,
   type SELLER_FILE_KINDS,
 } from '../../domain/in-app-notice';
 import type { InAppNoticeDependencies } from '../in-app-notice-flow';
@@ -50,6 +52,11 @@ export type AdminReviewItem =
       readonly kind: typeof ADMIN_DELIVERY_FALLBACK_OVER_CAP;
       readonly sellerOrderId: string;
       readonly sellerId: string;
+    }
+  | {
+      readonly kind: typeof ADMIN_PLATFORM_IMPORT_FINISHED;
+      readonly importId: string;
+      readonly outcome: (typeof PLATFORM_IMPORT_OUTCOMES)[number];
     };
 
 export interface RecordAdminReviewNoticeInput {
@@ -83,6 +90,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
       return { sellerId: item.sellerId };
     case ADMIN_DELIVERY_FALLBACK_OVER_CAP:
       return { sellerOrderId: item.sellerOrderId, sellerId: item.sellerId };
+    case ADMIN_PLATFORM_IMPORT_FINISHED:
+      return { importId: item.importId, outcome: item.outcome };
   }
 }
 

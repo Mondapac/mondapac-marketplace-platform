@@ -159,6 +159,18 @@ export interface PublishedProduct {
   readonly description: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
   readonly variants: readonly PublishedProductVariant[];
+  /** The product's ACTIVE brand (its public page slug and name), or null: none, or not active. */
+  readonly brand: { readonly slug: string; readonly name: string } | null;
+}
+
+/** The most product ids {@link CatalogFacade.brandProductIds} returns. */
+export const MAX_BRAND_PRODUCT_IDS = 1000;
+
+/** The live products of a brand: ids only, by product id, cut at {@link MAX_BRAND_PRODUCT_IDS}. */
+export interface BrandProductIds {
+  readonly productIds: readonly Id<'Product'>[];
+  /** True when the brand has more live products than the answer lists. */
+  readonly truncated: boolean;
 }
 
 /** The most photos a product page shows (the library limit of a product is the same). */
@@ -308,6 +320,17 @@ export interface CatalogFacade {
     productId: Id<'Product'>,
     locale: string,
   ): Promise<Result<PublishedProduct | null, AccessDenied | CatalogValidationFailed>>;
+
+  /**
+   * The live products of the ACTIVE brand with this slug in the context's Market: published, with
+   * an Offer on sale (the rule of the brand page's count). Rule `anonymous`; an unknown, draft or
+   * archived slug is an empty answer, byte-identical. Ids only. In-process only; `search` uses it
+   * to list a brand's products.
+   */
+  brandProductIds(
+    context: CallContext,
+    slug: string,
+  ): Promise<Result<BrandProductIds, AccessDenied | CatalogValidationFailed>>;
 
   /**
    * The photos of each requested product's PUBLISHED revision, in the revision's order, at most
