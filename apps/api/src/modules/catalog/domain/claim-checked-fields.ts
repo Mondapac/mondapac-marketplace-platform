@@ -236,8 +236,9 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   PublishedProduct: {
     noCustomerText:
-      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids',
+      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
   },
+  BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
   },

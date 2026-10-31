@@ -17,12 +17,21 @@ export const STORE_SLUG_MIN_LENGTH = 3;
 export const STORE_SLUG_MAX_LENGTH = 50;
 const STORE_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+/**
+ * The shape of a brand address (catalog's brand slug: lower case words joined by single hyphens,
+ * at most 80 characters). Search keeps its own copy: whether such a brand exists and is active is
+ * catalog's answer, never decided here.
+ */
+export const BRAND_SLUG_MAX_LENGTH = 80;
+
 /** What a visitor asked, as the transport hands it over: text, not yet checked. */
 export interface SearchProductsRequest {
   readonly q?: string | undefined;
   readonly category?: string | undefined;
   /** A store address: lists that store's Offers (no `q`). */
   readonly store?: string | undefined;
+  /** A brand address: lists the Offers of that brand's products (no `q`, no `store`). */
+  readonly brand?: string | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
 }
@@ -37,6 +46,8 @@ export interface SearchQuery {
   readonly categoryId: Id<'Category'> | null;
   /** The store address to list, or null. Never with a text. */
   readonly storeSlug: string | null;
+  /** The brand address to list, or null. Never with a text or a store. */
+  readonly brandSlug: string | null;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -101,7 +112,23 @@ export function parseSearchQuery(
     if (text !== null) return invalid('store', 'with-text');
     storeSlug = slug;
   }
-  if (text === null && categoryId === null && storeSlug === null) return invalid('q', 'required');
+  let brandSlug: string | null = null;
+  if (request.brand !== undefined && request.brand !== '') {
+    const slug = request.brand;
+    if (
+      typeof slug !== 'string' ||
+      slug.length > BRAND_SLUG_MAX_LENGTH ||
+      !STORE_SLUG_PATTERN.test(slug)
+    ) {
+      return invalid('brand', 'format');
+    }
+    // A brand's list is a browse by name, like a store's; it is not mixed with text or a store.
+    if (text !== null) return invalid('brand', 'with-text');
+    if (storeSlug !== null) return invalid('brand', 'with-store');
+    brandSlug = slug;
+  }
+  if (text === null && categoryId === null && storeSlug === null && brandSlug === null)
+    return invalid('q', 'required');
 
   const page = request.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return invalid('page', 'range');
@@ -109,5 +136,5 @@ export function parseSearchQuery(
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
     return invalid('pageSize', 'range');
   }
-  return ok({ text, categoryId, storeSlug, page, pageSize });
+  return ok({ text, categoryId, storeSlug, brandSlug, page, pageSize });
 }

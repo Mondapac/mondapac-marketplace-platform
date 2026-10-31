@@ -1,5 +1,5 @@
 import 'server-only';
-import type { CertificationBadge, Money, ProductDetail } from '../storefront/types.ts';
+import type { Brand, CertificationBadge, Money, ProductDetail } from '../storefront/types.ts';
 import { plainText } from './defaults.ts';
 import { imageUrl } from './metadata.ts';
 
@@ -100,6 +100,16 @@ export function productStructuredData(
     ...(images.length === 0 ? {} : { image: images }),
     ...(description === '' ? {} : { description }),
     ...(certifications.length === 0 ? {} : { hasCertification: certifications }),
+    // The brand entity of the product (its active brand's page), never a text a seller typed.
+    ...(product.brand === undefined
+      ? {}
+      : {
+          brand: {
+            '@type': 'Brand',
+            name: plainText(product.brand.name),
+            url: absolute(`/brands/${encodeURIComponent(product.brand.slug)}`, origin),
+          },
+        }),
     offers: {
       '@type': 'Offer',
       url,
@@ -187,4 +197,29 @@ export function homeStructuredData(
       ...business,
     },
   ];
+}
+
+/**
+ * A brand page's nodes: the Brand and its BreadcrumbList. The brand's `url` is its canonical page;
+ * `logo` only when the brand has a logo an https or site image can be built for.
+ *
+ * @param url the page's absolute canonical URL
+ */
+export function brandPageStructuredData(
+  brand: Brand,
+  crumbs: readonly BreadcrumbStep[],
+  origin: string,
+  url: string,
+): JsonLdNode[] {
+  const logo = imageUrl(brand.logo?.src, origin);
+  const description = brand.summary === undefined ? '' : plainText(brand.summary);
+  const node: JsonLdNode = {
+    '@type': 'Brand',
+    name: plainText(brand.name),
+    url,
+    ...(description === '' ? {} : { description }),
+    ...(logo === undefined ? {} : { logo }),
+  };
+  const trail = breadcrumbStructuredData(crumbs, origin);
+  return trail === null ? [node] : [node, trail];
 }
