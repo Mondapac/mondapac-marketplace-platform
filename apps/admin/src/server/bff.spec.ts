@@ -94,6 +94,27 @@ describe('relay', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('sets nosniff on every answer itself, because the panel proxy does not run for /api/', async () => {
+    const ok = await relay(
+      config,
+      post('identity/admin/sign-in'),
+      ['identity', 'admin', 'sign-in'],
+      upstreamOk(),
+    );
+    expect(ok.headers.get('x-content-type-options')).toBe('nosniff');
+    const refused = await relay(
+      config,
+      post('identity/admin/sign-in', { ...sameOrigin, origin: 'http://evil.test' }),
+      ['identity', 'admin', 'sign-in'],
+      upstreamOk(),
+    );
+    expect(refused.status).toBe(403);
+    expect(refused.headers.get('x-content-type-options')).toBe('nosniff');
+    const unlisted = await relay(config, post('nothing/here'), ['nothing', 'here'], upstreamOk());
+    expect(unlisted.status).toBe(404);
+    expect(unlisted.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
   it('answers 404 for a path outside the allowlist', async () => {
     const fetchImpl = upstreamOk();
     const response = await relay(
@@ -1087,6 +1108,11 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `wallet/admin/customers/${id}`],
     ['POST', `wallet/admin/credit-requests/${id}/approve`],
     ['POST', `wallet/admin/credit-requests/${id}/reject`],
+    ['GET', 'customers/admin/account-deletion-settings'],
+    ['PUT', 'customers/admin/account-deletion-settings'],
+    ['GET', 'customers/admin/deletion-requests'],
+    ['POST', `customers/admin/buyers/${id}/deletion-requests`],
+    ['DELETE', `customers/admin/deletion-requests/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1110,6 +1136,12 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `wallet/admin/credit-requests/${id}/delete`],
     ['GET', `wallet/admin/customers/${id}/extra`],
     ['GET', 'wallet/me'],
+    ['DELETE', 'customers/admin/account-deletion-settings'],
+    ['POST', 'customers/admin/account-deletion-settings'],
+    ['POST', 'customers/admin/deletion-requests'],
+    ['GET', `customers/admin/deletion-requests/${id}`],
+    ['POST', 'customers/admin/buyers/not-a-uuid/deletion-requests'],
+    ['DELETE', 'customers/admin/deletion-requests/not-a-uuid'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1118,6 +1150,25 @@ describe('relay of the wallet and step-up routes', () => {
     );
     expect(response.status).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes only limit and a well-formed cursor of the deletion request list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `customers/admin/deletion-requests?limit=50&cursor=1792000000000.${id}&status=executing&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests?cursor=1792000000000.${id}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      'customers/admin/deletion-requests?cursor=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/customers/admin/deletion-requests',
+    );
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {
@@ -1188,6 +1239,85 @@ describe('relay of the wallet and step-up routes', () => {
       expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
         'http://api.test/commission-payouts/admin/disputes?filter=closed',
       );
+    }
+  });
+
+  it.each([
+    ['GET', 'commission-payouts/admin/payouts'],
+    ['GET', `commission-payouts/admin/payouts/${id}`],
+    ['POST', `commission-payouts/admin/payouts/${id}/approve`],
+    ['GET', `commission-payouts/admin/sellers/${id}/payout-terms`],
+    ['PUT', `commission-payouts/admin/sellers/${id}/payout-terms`],
+    ['GET', `commission-payouts/admin/sellers/${id}/payout-holds`],
+    ['POST', `commission-payouts/admin/sellers/${id}/payout-holds`],
+    ['POST', `commission-payouts/admin/payout-holds/${id}/release`],
+  ])('relays the payout route %s %s', async (method, path) => {
+    const { response, upstream } = await run(
+      method,
+      path,
+      method === 'GET' ? readHeaders : undefined,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+  });
+
+  it('passes a payout list query only in the shape the API issues', async () => {
+    const cursor = `1790000000000.${id}`;
+    const ok = await run(
+      'GET',
+      `commission-payouts/admin/payouts?status=awaiting-approval&limit=50&cursor=${cursor}&x=1`,
+      readHeaders,
+    );
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?status=awaiting-approval&cursor=${encodeURIComponent(cursor)}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      'commission-payouts/admin/payouts?status=all&limit=100000&cursor=a%20b',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts',
+    );
+    // Only the states a tab shows cross; the API's other states are not relayed.
+    for (const state of ['pending', 'voided', 'settled-by-netting']) {
+      const other = await run(
+        'GET',
+        `commission-payouts/admin/payouts?status=${state}`,
+        readHeaders,
+      );
+      expect(other.upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/commission-payouts/admin/payouts',
+      );
+    }
+  });
+
+  it('passes the version and reason of removing payout terms, and nothing else', async () => {
+    const ok = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy&x=1`,
+    );
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy`,
+    );
+    const bad = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3.5&reasonCode=because`,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms`,
+    );
+  });
+
+  it('does not relay a payout write the panel has no screen for', async () => {
+    for (const [method, path] of [
+      ['DELETE', `commission-payouts/admin/payouts/${id}`],
+      ['PUT', `commission-payouts/admin/payouts/${id}`],
+      ['POST', `commission-payouts/admin/payouts/${id}/void`],
+    ] as const) {
+      const { response, upstream } = await run(method, path);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
     }
   });
 });

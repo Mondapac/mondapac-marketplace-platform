@@ -3,6 +3,10 @@ import {
   DELIVERY_MANAGE_PERMISSION,
   DELIVERY_VIEW_PERMISSION,
 } from '../delivery-settings/types.ts';
+import {
+  SETTINGS_MANAGE_PERMISSION as DELETION_MANAGE_PERMISSION,
+  SETTINGS_VIEW_PERMISSION as DELETION_VIEW_PERMISSION,
+} from '../account-deletion/types.ts';
 import { FLEET_MANAGE_PERMISSION, FLEET_VIEW_PERMISSION } from '../fleet-selection/types.ts';
 import { SETTINGS_MANAGE, SETTINGS_VIEW } from '../wallet/types.ts';
 import { ASSISTANT_MANAGE_PERMISSION, ASSISTANT_VIEW_PERMISSION } from './assistant-types.ts';
@@ -50,6 +54,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/assistant',
         view: [ASSISTANT_VIEW_PERMISSION],
         manage: [ASSISTANT_MANAGE_PERMISSION],
+      },
+      {
+        id: 'account-deletion',
+        labelKey: 'settings.hub.link.account-deletion',
+        href: '/settings/account-deletion',
+        view: [DELETION_VIEW_PERMISSION],
+        manage: [DELETION_MANAGE_PERMISSION],
       },
     ],
   },

@@ -26,6 +26,7 @@
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "catalog.brand-product-ids", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.offer-badges", "rule": "anonymous" },
   { "name": "catalog.offer-listings", "rule": "anonymous" },
@@ -58,6 +59,8 @@
   { "name": "catalog.platform-import-purge", "rule": "system" },
   { "name": "catalog.platform-import-run", "rule": "system" },
   { "name": "catalog.products-for-linking", "rule": "anonymous" },
+  { "name": "catalog.public-brand", "rule": "anonymous" },
+  { "name": "catalog.public-brands-az", "rule": "anonymous" },
   { "name": "catalog.published-image-read", "rule": "anonymous" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.published-product", "rule": "anonymous" },
@@ -146,6 +149,7 @@
   { "name": "certification.send-derecognition-mail", "rule": "system" },
   { "name": "certification.send-expiry-mail", "rule": "system" },
   { "name": "certification.send-issuer-request-mail", "rule": "system" },
+  { "name": "commission-payouts.apply-transfer-change", "rule": "system" },
   {
     "name": "commission-payouts.commission-rates",
     "rule": "own-resources",
@@ -156,12 +160,29 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "commission-payouts.list-own-payout-holds",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "commission-payouts.list-own-payouts",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "commission-payouts.note-seller-reinstated", "rule": "system" },
   { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
+  { "name": "commission-payouts.reconcile-instructions", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
+  { "name": "commission-payouts.run-payouts", "rule": "system" },
   { "name": "commission-payouts.sync-dispute", "rule": "system" },
+  {
+    "name": "commission-payouts.view-next-payout",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   {
     "name": "commission-payouts.view-own-ledger",
     "rule": "permissions",

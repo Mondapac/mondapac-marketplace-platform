@@ -104,14 +104,19 @@ function tokenise(text: string, limits: ImportLimits): Result<ParsedTable, FileR
   let recordNumber = 1;
   let isHeader = true;
 
-  const endCell = (): void => {
+  // A record is refused the moment it holds more cells than the column limit, header or data row:
+  // a 10 MB line of commas never builds an array of millions of cells (Hassan L-585-4).
+  const tooWide = (): Result<void, FileRefusal> =>
+    err({ code: 'file.too-many-columns', max: limits.columns });
+  const endCell = (): boolean => {
     record.push(cell);
     cell = '';
     wasQuoted = quoted;
     quoted = false;
+    return record.length > limits.columns;
   };
   const endRecord = (): Result<void, FileRefusal> => {
-    endCell();
+    if (endCell()) return tooWide();
     const blank = record.length === 1 && record[0] === '' && !wasQuoted;
     if (!blank) {
       if (isHeader) {
@@ -147,7 +152,7 @@ function tokenise(text: string, limits: ImportLimits): Result<ParsedTable, FileR
       inQuotes = true;
       quoted = true;
     } else if (char === ',') {
-      endCell();
+      if (endCell()) return err({ code: 'file.too-many-columns', max: limits.columns });
     } else if (char === '\n' || char === '\r') {
       if (char === '\r' && text[index + 1] === '\n') index += 1;
       const ended = endRecord();

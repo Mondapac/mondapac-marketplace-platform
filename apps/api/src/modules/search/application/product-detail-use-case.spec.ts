@@ -78,6 +78,9 @@ class MemoryShelves implements ShelfDocumentsReader {
   browseBySeller() {
     return Promise.resolve([]);
   }
+  browseByProducts() {
+    return Promise.resolve([]);
+  }
   byProductIds() {
     return Promise.resolve([]);
   }
@@ -181,6 +184,7 @@ describe.each([
     shortDescription: 'Sweet',
     description: null,
     categoryIds: [CATEGORY],
+    brand: null,
     variants: [
       { variantId: variant(1), label: '500 g' },
       { variantId: variant(2), label: null },
@@ -236,6 +240,21 @@ describe.each([
       expect.objectContaining({ variantId: variant(2), label: null, price: money(1200n) }),
     ]);
     expect(shelves.asked).toEqual([{ productId: PRODUCT, limit: MAX_DETAIL_OFFERS }]);
+  });
+
+  it("carries the product's brand from catalog, and null when it has none", async () => {
+    shelves.documents = [hit(1)];
+    price(1, 1, 900n);
+    sources.product_ = {
+      product: { ...content(), brand: { slug: 'saffron-co', name: 'Saffron & Co' } },
+    };
+
+    const branded = await run();
+    sources.product_ = { product: content() };
+    const plain = await run();
+
+    expect(branded.ok && branded.value.brand).toEqual({ slug: 'saffron-co', name: 'Saffron & Co' });
+    expect(plain.ok && plain.value.brand).toBeNull();
   });
 
   describe('photos', () => {

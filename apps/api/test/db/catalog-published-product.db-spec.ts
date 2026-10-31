@@ -6,6 +6,7 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import { PrismaPlatformCategoryRepository } from '../../src/modules/catalog/infrastructure/prisma-platform-category.repository';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
+import { PrismaBrandReader } from '../../src/modules/catalog/infrastructure/prisma-brand.reader';
 import { PrismaPublishedProductReader } from '../../src/modules/catalog/infrastructure/prisma-published-product.reader';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -250,8 +251,98 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         { variantId: a.variantIds[0], position: 0, label: '500 g' },
         { variantId: a.variantIds[1], position: 1, label: '1 kg' },
       ],
+      brand: null,
     });
     expect(JSON.stringify(answer)).not.toContain('DRAFT');
+  });
+
+  /** A brand row (brands are shared by every Market); `draft` needs the seller who proposed it. */
+  async function brand(status: 'active' | 'draft', name: string): Promise<string> {
+    const id = uuid7();
+    const slug = `pp-${uuid7().slice(-12)}`;
+    await insert('brands', {
+      id,
+      slug,
+      name,
+      name_key: slug.replaceAll('-', ''),
+      status,
+      ...(status === 'draft' ? { proposed_by_seller_id: uuid7() } : {}),
+      created_at: T0.toString(),
+      updated_at: T0.toString(),
+      version: 1,
+    });
+    return slug;
+  }
+  const setBrand = (target: typeof market, productId: string, slug: string) =>
+    owner.query(
+      `UPDATE catalog.products SET brand_id = (SELECT id FROM catalog.brands WHERE slug = $3)
+        WHERE market_id = $1 AND id = $2`,
+      [target.marketId, productId, slug],
+    );
+  const SPEC: Spec = {
+    texts: { 'en-AU': { name: 'Branded' } },
+    variants: [{ state: 'published', labels: { 'en-AU': 'A' } }],
+  };
+
+  it("carries the product's active brand, and none for a draft brand or no brand", async () => {
+    const withBrand = await product(market, SPEC);
+    const withDraft = await product(market, SPEC);
+    const plain = await product(market, SPEC);
+    const active = await brand('active', 'Saffron & Co');
+    const draft = await brand('draft', 'Not Yet');
+    await setBrand(market, withBrand.productId, active);
+    await setBrand(market, withDraft.productId, draft);
+
+    expect((await read(withBrand.productId))?.brand).toEqual({
+      slug: active,
+      name: 'Saffron & Co',
+    });
+    expect((await read(withDraft.productId))?.brand).toBeNull();
+    expect((await read(plain.productId))?.brand).toBeNull();
+  });
+
+  it('lists the live products of an active brand in this Market only (public brand ids)', async () => {
+    const brands = new PrismaBrandReader(db.service);
+    const live = await product(market, SPEC);
+    const unlisted = await product(market, SPEC);
+    const foreign = await product(other, SPEC);
+    const slug = await brand('active', 'Live Brand');
+    const draftSlug = await brand('draft', 'Draft Brand');
+    await setBrand(market, live.productId, slug);
+    await setBrand(market, unlisted.productId, slug);
+    await setBrand(other, foreign.productId, slug);
+    const offer = async (target: typeof market, productId: string, listed: boolean) => {
+      await owner.query(
+        `INSERT INTO catalog.offers (id, market_id, tenant_id, seller_id, product_id, seller_sku,
+           condition_code, description, handling, attestation_recorded_at, attestation_account_id,
+           status, off_sale_type_not_allowed, off_sale_product_retired, off_sale_product_not_listed,
+           off_sale_product_paused, off_sale_tag_suspended, off_sale_description_claim_text, listed,
+           submitted_at, first_published_at, version, created_at)
+         VALUES ($1,$2,$3,$4,$5,'SKU-LIVE','new','{"en":"x"}','SEALED_ORIGINAL',$6,$7,'published',
+           false,$8,false,false,false,false,$9,$6,$6,1,$6)`,
+        [
+          uuid7(),
+          target.marketId,
+          target.tenantId,
+          uuid7(),
+          productId,
+          T0.toString(),
+          uuid7(),
+          !listed,
+          listed,
+        ],
+      );
+    };
+    await offer(market, live.productId, true);
+    await offer(market, unlisted.productId, false);
+    await offer(other, foreign.productId, true);
+    const ids = (target: typeof market, slugOf: string, limit = 10) =>
+      run(target, () => brands.liveProductIds(target, slugOf, limit), true);
+
+    expect(await ids(market, slug)).toEqual([live.productId]);
+    expect(await ids(other, slug)).toEqual([foreign.productId]);
+    expect(await ids(market, draftSlug)).toEqual([]);
+    expect(await ids(market, 'no-such-brand')).toEqual([]);
   });
 
   it('leaves out a variant that is proposed or retired in the registry', async () => {

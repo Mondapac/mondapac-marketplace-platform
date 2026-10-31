@@ -193,6 +193,13 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
     expect([...r.files.keys()]).toEqual([r.jobs[0]!.fileKey]);
     expect(r.jobs[0]!.fileKey).toContain(`catalog/imports/${code}/`);
     expect(r.reserved.length).toBeGreaterThan(0);
+    // The hourly and the daily cap of a check are both spent (Mojtaba B2).
+    expect(r.reserved).toEqual(
+      expect.arrayContaining([
+        'platform-import-check.account.day',
+        'platform-import-check.account.hour',
+      ]),
+    );
   });
 
   it('checks an XLSX file like a CSV, with the same rows, and records its format', async () => {

@@ -441,7 +441,7 @@ export function ProductsBulk({
               {t('cancel')}
             </Button>
             <Button
-              variant="destructive"
+              variant="destructive-solid"
               disabled={ready === null || ready.eligible === 0 || busy}
               onClick={() => void confirmDelete()}
             >

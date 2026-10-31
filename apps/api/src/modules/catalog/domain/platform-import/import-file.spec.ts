@@ -76,6 +76,22 @@ describe('readImportFile', () => {
     if (!result.ok) expect(result.error.code).toBe('file.too-many-columns');
   });
 
+  it('refuses a data row with too many cells, and stops reading it at the limit', async () => {
+    const wide = ','.repeat(IMPORT_LIMITS.columns + 5);
+    expect(await readImportFile(bytes(`Title\nok\n${wide}\n`))).toEqual({
+      ok: false,
+      error: { code: 'file.too-many-columns', max: IMPORT_LIMITS.columns },
+    });
+    // A row of exactly the limit is still read (and cut to the header's width).
+    const atLimit = ','.repeat(IMPORT_LIMITS.columns - 1);
+    expect((await readImportFile(bytes(`Title\nok${atLimit}\n`))).ok).toBe(true);
+    // A 5 MB line of commas is refused at the limit, not after building millions of cells.
+    const started = Date.now();
+    const huge = await readImportFile(bytes(`Title\n${','.repeat(5_000_000)}\n`));
+    expect(huge.ok).toBe(false);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it('reads the type from the content, never the name: a ZIP is an unsupported XLSX', async () => {
     const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]);
     expect(isZipContainer(zip)).toBe(true);

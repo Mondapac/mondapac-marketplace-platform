@@ -13,6 +13,7 @@ export const RATE_COUNTER_KINDS = [
   'draft-save.account.minute',
   'import-start.seller.day',
   'photo-upload.seller.day',
+  'platform-import-check.account.day',
   'platform-import-check.account.hour',
   'platform-import-start.account.day',
   'reviewer-mail.market.hour',
@@ -47,8 +48,13 @@ export const CLAIM_TEXT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'claim-text-check.account.day', limit: 1000, windowMinutes: DAY },
 ]);
 
-/** Uploads of the admin platform import per account (catalog design 14a): 20 an hour. */
+/**
+ * Uploads of the admin platform import per account (catalog design 14a): 20 an hour and 100 a day.
+ * Every check stores its rows (about 2.4 MB for 5,000 rows) until the admin confirms or discards
+ * it, so the daily cap bounds what one account can write in a day (data design 3.29).
+ */
 export const PLATFORM_IMPORT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'platform-import-check.account.day', limit: 100, windowMinutes: DAY },
   { kind: 'platform-import-check.account.hour', limit: 20, windowMinutes: 60 },
 ]);
 

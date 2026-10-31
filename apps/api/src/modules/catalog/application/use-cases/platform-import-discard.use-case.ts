@@ -6,7 +6,7 @@ import { CATALOG_PLATFORM_IMPORT_RUN } from '../../contracts/permissions';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { PlatformImportRepository } from '../ports/platform-import.repository';
 import type { ImportCommonFailure } from '../platform-import/common';
-import { importIdOf } from '../platform-import/common';
+import { dropDiscardedJobs, importIdOf } from '../platform-import/common';
 
 export interface PlatformImportDiscardDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -17,7 +17,8 @@ export interface PlatformImportDiscardDependencies {
 
 /**
  * `platform-import.discard` (design 14a; the **Cancel** of the page's first two steps): the admin
- * who uploaded a checked file drops it. The job becomes `discarded` and its file is deleted. Only a
+ * who uploaded a checked file drops it. The job becomes `discarded`, its file is deleted and then
+ * the job and its rows (data design 3.29: a discarded check is not kept for 90 days). Only a
  * `checked` job: an import that was confirmed keeps running (the page's "You can leave this page");
  * a job of another admin is `import.not-found`. Rule: the key `catalog.platform-import.run`.
  */
@@ -70,8 +71,9 @@ export class PlatformImportDiscard extends UseCase<
       return ok(dropped);
     });
     if (!done.ok) return err(done.error);
-    // After the unit: a file that stays is deleted by the purge job.
-    await deps.importFiles.delete(done.value.fileKey).catch(() => undefined);
+    // After the unit: the file goes and, with it, the job and its rows (nobody reads a discarded
+    // check again). What stays after a failure is deleted by the purge job.
+    await dropDiscardedJobs(deps, market, [{ id, fileKey: done.value.fileKey }], now);
     return ok({ discarded: true });
   }
 }

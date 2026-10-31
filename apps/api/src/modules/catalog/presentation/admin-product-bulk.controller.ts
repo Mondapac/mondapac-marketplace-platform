@@ -44,6 +44,7 @@ import {
 import { AdminProductBulkDto, AdminProductBulkRequest } from './admin-product-bulk.dto';
 import { closedBody, refusalWith } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
+import { writeChunks } from './write-chunks';
 
 /**
  * The HTTP status of each refusal of the bulk action and the export (catalog design 9.2c). A
@@ -191,13 +192,8 @@ export class AdminProductBulkController {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     try {
-      for await (const chunk of chunks) {
-        // Backpressure: wait for the socket when its buffer is full.
-        if (!response.write(chunk)) {
-          await new Promise<void>((resolve) => response.once('drain', resolve));
-        }
-      }
-      response.end();
+      // Backpressure, and a stop as soon as the client disconnects (Hassan L-583-2).
+      await writeChunks(response, chunks);
     } catch {
       // The status line is gone: end the connection, so the client sees a failed download.
       this.#logger.warn({

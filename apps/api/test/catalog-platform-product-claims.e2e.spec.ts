@@ -1,3 +1,4 @@
+import { BRAND_ASSIGNER } from '../src/modules/catalog/application/ports/brand-assigner';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
@@ -105,6 +106,8 @@ describe('claim-text control behind the platform product routes (integration, sl
               return Promise.resolve();
             },
           })
+          .overrideProvider(BRAND_ASSIGNER)
+          .useValue({ assignFromPublished: () => Promise.resolve() })
           .overrideProvider(OFFER_REPOSITORY)
           .useValue(NO_OFFERS_ON_PRODUCT)
           .overrideProvider(TAG_REEVALUATION_REQUESTS)

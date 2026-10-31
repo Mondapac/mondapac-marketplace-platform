@@ -212,6 +212,25 @@ import { OwnProductCreate } from './application/use-cases/own-product-create.use
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSubmit } from './application/use-cases/own-product-submit.use-case';
+import { BRAND_ASSIGNER } from './application/ports/brand-assigner';
+import { BRAND_READER } from './application/ports/brand.reader';
+import { BRAND_REPOSITORY } from './application/ports/brand.repository';
+import { BrandApprove } from './application/use-cases/brand-approve.use-case';
+import { BrandArchive } from './application/use-cases/brand-archive.use-case';
+import { BrandCreate } from './application/use-cases/brand-create.use-case';
+import { BrandEdit } from './application/use-cases/brand-edit.use-case';
+import { BrandGet } from './application/use-cases/brand-get.use-case';
+import { BrandList } from './application/use-cases/brand-list.use-case';
+import { BrandMerge } from './application/use-cases/brand-merge.use-case';
+import { BrandMergeQueueDismiss } from './application/use-cases/brand-merge-queue-dismiss.use-case';
+import { BrandMergeQueueList } from './application/use-cases/brand-merge-queue-list.use-case';
+import { OwnBrandPropose } from './application/use-cases/own-brand-propose.use-case';
+import { BrandProductIdsQuery } from './application/use-cases/brand-product-ids.use-case';
+import { PublicBrandQuery } from './application/use-cases/public-brand.use-case';
+import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.use-case';
+import { BrandAdminController } from './presentation/brand-admin.controller';
+import { OwnBrandController } from './presentation/own-brand.controller';
+import { PublicBrandController } from './presentation/public-brand.controller';
 import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
@@ -292,6 +311,9 @@ const PORT = {
   rowSubmit: PlatformImportRowSubmit,
   savedFilters: SAVED_FILTER_REPOSITORY,
   shareCheck: SavedFilterShareCheck,
+  brands: BRAND_REPOSITORY,
+  brandReader: BRAND_READER,
+  brandAssigner: BRAND_ASSIGNER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -367,6 +389,9 @@ const productTypeProvider: FactoryProvider<string> = {
     ProductImageReviewController,
     PublicCategoryController,
     PublicProductImageController,
+    BrandAdminController,
+    OwnBrandController,
+    PublicBrandController,
   ],
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
@@ -451,7 +476,28 @@ const productTypeProvider: FactoryProvider<string> = {
       offers: true,
       requests: true,
       audit: true,
+      brandAssigner: true,
     }),
+    useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),
+    useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandArchive, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandApprove, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandMerge, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandMergeQueueList, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(BrandMergeQueueDismiss, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(OwnBrandPropose, {
+      unitOfWork: true,
+      brands: true,
+      brandReader: true,
+      eligibility: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(PublicBrandsAzQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PlatformProductCreate, {
       unitOfWork: true,
       products: true,
@@ -739,6 +785,7 @@ const productTypeProvider: FactoryProvider<string> = {
       offers: true,
       claims: true,
       evaluator: true,
+      brandAssigner: true,
     }),
     useCaseProvider(ProductRevisionRequestChanges, {
       unitOfWork: true,
@@ -1018,6 +1065,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferListingsSystemQuery,
         OfferBadgesQuery,
         PublishedProductQuery,
+        BrandProductIdsQuery,
         PublishedProductImagesQuery,
         PendingProductRevisionsQuery,
         SellerProductOwnersQuery,
@@ -1033,6 +1081,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerListingsSystem: OfferListingsSystemQuery,
         offerBadges: OfferBadgesQuery,
         publishedProduct: PublishedProductQuery,
+        brandProductIds: BrandProductIdsQuery,
         publishedProductImages: PublishedProductImagesQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
         sellerProductOwners: SellerProductOwnersQuery,
@@ -1048,6 +1097,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerListingsSystem,
           offerBadges,
           publishedProduct,
+          brandProductIds,
           publishedProductImages,
           pendingProductRevisions,
           sellerProductOwners,

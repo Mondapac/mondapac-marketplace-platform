@@ -13,12 +13,14 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { ProductPausedAudit, scopeCode } from '../../domain/audit';
+import { brandValueOf } from '../../domain/brand';
 import type { Product, ProductRefusal } from '../../domain/product';
 import { classify, decideOutcome } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
 import { revisionTextsOf, summaryOf } from '../../domain/revision-texts';
 import type { StoredRevision } from '../../domain/stored-revision';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
+import type { BrandAssigner } from '../ports/brand-assigner';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
@@ -44,7 +46,8 @@ export interface SubmitProductInput {
   /**
    * An admin import that starts products Inactive (design 14a): the product is paused in the same
    * unit that publishes it, so it is never visible published. Refused for a seller; the caller has
-   * checked the pause permission.
+   * checked the pause permission. A submit that would not publish (the revision policy asks for a
+   * review) is refused with `product.not-published` before any write, never skipped silently.
    */
   readonly pauseOnPublish?: boolean;
 }
@@ -119,6 +122,11 @@ export interface SubmitProductDependencies {
   readonly requests: TagReevaluationRequestRepository;
   /** The audit of the pause of `pauseOnPublish`; the import wires it. */
   readonly audit?: AuditWriter;
+  /**
+   * Sets the product's `brand_id` from the published `brand` attribute (catalog brand package).
+   * Optional so a caller that builds the service without brands still publishes as before.
+   */
+  readonly brandAssigner?: BrandAssigner;
 }
 
 /** A PLATFORM publish marks every Offer of the product in its unit: room for a large product. */
@@ -318,6 +326,12 @@ export class SubmitProduct {
           if (!submitted.ok) return err(submitted.error);
           // Inactive start: the pause is part of the publish, in this unit and with its events.
           const pausedAtPublish = input.pauseOnPublish === true && submitted.value.published;
+          // Fail closed (Hassan L-585-2): an Inactive start that does not publish would leave a
+          // pending revision that a later approval publishes active, unpaused. Nothing is written
+          // yet, so the refusal leaves no trace.
+          if (input.pauseOnPublish === true && !submitted.value.published) {
+            return err({ code: 'product.not-published' });
+          }
           if (pausedAtPublish) {
             const paused = product.pause({ accountId: actor.accountId, now });
             if (!paused.ok) return err(paused.error);
@@ -341,6 +355,14 @@ export class SubmitProduct {
           await revisions.add(market, revision);
           await products.save(market, product);
           const publishedAtOnce = submitted.value.published;
+          if (publishedAtOnce) {
+            // The brand entity follows the published `brand` text (it stays readable meanwhile).
+            await this.deps.brandAssigner?.assignFromPublished(
+              market,
+              product.state.id,
+              brandValueOf(frozen.value.content.attributeValues),
+            );
+          }
           if (input.claims !== undefined) {
             // After the product row: a tag write locks the product before its Offer (slice 11).
             const settled = await input.claims.settle(

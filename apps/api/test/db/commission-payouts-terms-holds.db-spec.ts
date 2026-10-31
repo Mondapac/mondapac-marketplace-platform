@@ -605,7 +605,7 @@ describe.each(TEST_MARKETS)('payout terms, anchors and holds in market %s (datab
       expect(active.map((h) => h.id)).toEqual([oldActive.id]);
     });
 
-    it('has the seller listing index and no seller-order index yet (F2, N1)', async () => {
+    it('has the seller listing index and the active seller-order index of the payout run (F2, N1)', async () => {
       const names = (
         await sql.query<{ indexname: string }>(
           `SELECT indexname FROM pg_indexes
@@ -619,7 +619,8 @@ describe.each(TEST_MARKETS)('payout terms, anchors and holds in market %s (datab
           'payout_holds_system_source_key',
         ]),
       );
-      expect(names).not.toContain('payout_holds_active_seller_order_idx');
+      // Added with the payout run (package 6d), the reader of an order's active holds (N1).
+      expect(names).toContain('payout_holds_active_seller_order_idx');
       const def = (
         await sql.query<{ indexdef: string }>(
           `SELECT indexdef FROM pg_indexes WHERE indexname = 'payout_holds_seller_placed_idx'`,

@@ -68,6 +68,13 @@ export class SearchQueryParams {
       '`category`. An unknown, retired or not-selling store answers an empty page.',
   })
   store?: string;
+  @ApiPropertyOptional({
+    maxLength: 80,
+    description:
+      "A brand address (slug): lists that brand's Offers by name. Not with `q` or `store`; may " +
+      'combine with `category`. An unknown, draft or archived brand answers an empty page.',
+  })
+  brand?: string;
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 1 }) page?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 48, default: 24 }) pageSize?: number;
 }
@@ -192,6 +199,12 @@ export class ProductDetailOfferBody {
   badges!: ProductDetailBadgeBody[];
 }
 
+export class ProductDetailBrandBody {
+  @ApiProperty({ description: 'The brand page slug: `/brands/{slug}` on the storefront.' })
+  slug!: string;
+  @ApiProperty() name!: string;
+}
+
 export class ProductDetailBody {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ description: 'The published name in the Market default locale.' })
@@ -200,6 +213,12 @@ export class ProductDetailBody {
   @ApiProperty({ nullable: true, type: String }) description!: string | null;
   @ApiProperty({ type: [String], description: 'Platform category ids, in the revision order.' })
   categoryIds!: string[];
+  @ApiProperty({
+    type: ProductDetailBrandBody,
+    nullable: true,
+    description: "The product's brand while it is active; null for none.",
+  })
+  brand!: ProductDetailBrandBody | null;
   @ApiProperty({
     type: [ProductImageRefBody],
     description:
