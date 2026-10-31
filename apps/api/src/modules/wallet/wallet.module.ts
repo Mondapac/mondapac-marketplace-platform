@@ -1,6 +1,7 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import {
   registerPermissions,
   registerStepUpActions,
@@ -13,7 +14,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
-import { IDENTITY_FACADE, IdentityModule } from '../identity';
+import { changeTrailProvider, IDENTITY_FACADE, IdentityModule } from '../identity';
 import { ADMIN_CREDIT_REPOSITORY } from './application/ports/admin-credit.repository';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { WALLET_POLICY } from './application/ports/wallet-policy';
@@ -35,6 +36,7 @@ import { SetWalletStatus } from './application/use-cases/set-wallet-status.use-c
 import { ViewCustomerWallet } from './application/use-cases/view-customer-wallet.use-case';
 import { ViewMyHistory } from './application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from './application/use-cases/view-my-wallet.use-case';
+import { ViewWalletSettingsHistory } from './application/use-cases/view-wallet-settings-history.use-case';
 import { ViewWalletSettings } from './application/use-cases/view-wallet-settings.use-case';
 import type { AdminCreditDependencies } from './application/wallet-dependencies';
 import {
@@ -63,6 +65,7 @@ const PORTS: readonly [keyof AdminCreditDependencies, InjectionToken][] = [
   ['stepUp', STEP_UP_CONSUMER],
   ['credits', ADMIN_CREDIT_REPOSITORY],
   ['identity', IDENTITY_FACADE],
+  ['trail', CHANGE_TRAIL],
 ];
 
 /** Every wallet use case shares one dependency object, built from the same ports. */
@@ -95,6 +98,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [AdminWalletController, AdminWalletCreditController, CustomerWalletController],
   providers: [
     PersistenceModule.auditWriterFor('wallet'),
+    PersistenceModule.auditTrailReaderFor('wallet'),
+    changeTrailProvider(),
     registerAuditActions('wallet', WALLET_AUDIT_ACTIONS),
     registerPermissions('wallet', WALLET_PERMISSIONS),
     registerStepUpActions('wallet', WALLET_STEP_UP_ACTIONS),
@@ -111,6 +116,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewMyWallet,
       ViewMyHistory,
       ViewWalletSettings,
+      ViewWalletSettingsHistory,
       SetWalletStatus,
       IssueAdminCredit,
       ApproveAdminCredit,

@@ -1,4 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
@@ -9,6 +10,7 @@ import { PublishedStoreImageRead } from '../src/modules/sellers/application/use-
 import { StoreImageReadOwn } from '../src/modules/sellers/application/use-cases/store-image-read-own.use-case';
 import { StoreImageRemove } from '../src/modules/sellers/application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from '../src/modules/sellers/application/use-cases/store-image-save.use-case';
+import { StoreProfileHistory } from '../src/modules/sellers/application/use-cases/store-profile-history.use-case';
 import { StoreProfileRead } from '../src/modules/sellers/application/use-cases/store-profile-read.use-case';
 import { StoreProfileSaveAbout } from '../src/modules/sellers/application/use-cases/store-profile-save-about.use-case';
 import { IdentityFakes } from './support/identity-fakes';
@@ -52,14 +54,26 @@ const VIEW = {
   locales: ['en-AU'],
   logo: { id: '0199dddd-0000-7000-8000-0000000000aa', width: 512, height: 512 },
   banner: null,
+  lastChanged: {
+    at: Temporal.Instant.from('2026-10-15T10:00:00Z'),
+    byDisplayName: 'Mia T.',
+    byKind: 'member',
+  },
 };
-const ANSWER = { ...VIEW, aboutMaxLength: 2000, imageMaxBytes: 4 * 1024 * 1024 };
+const LAST_CHANGED_BODY = { at: '2026-10-15T10:00:00Z', byDisplayName: 'Mia T.', byKind: 'member' };
+const ANSWER = {
+  ...VIEW,
+  lastChanged: LAST_CHANGED_BODY,
+  aboutMaxLength: 2000,
+  imageMaxBytes: 4 * 1024 * 1024,
+};
 const IMAGE_ID = '0199dddd-0000-7000-8000-0000000000aa';
 
 describe('the seller store profile over HTTP (integration)', () => {
   let app: NestExpressApplication;
   const stubs = {
     read: new Stub(),
+    history: new Stub(),
     about: new Stub(),
     image: new Stub(),
     remove: new Stub(),
@@ -78,6 +92,8 @@ describe('the seller store profile over HTTP (integration)', () => {
           ? faked
               .overrideProvider(StoreProfileRead)
               .useValue(stubs.read)
+              .overrideProvider(StoreProfileHistory)
+              .useValue(stubs.history)
               .overrideProvider(StoreProfileSaveAbout)
               .useValue(stubs.about)
               .overrideProvider(StoreImageSave)
@@ -177,6 +193,61 @@ describe('the seller store profile over HTTP (integration)', () => {
       expect(response.body).toEqual(ANSWER);
       expect(stubs.read.calls[0]!.context.market.marketId).toBe(code);
       expect(stubs.read.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    it('lists the changes of the page: paging passed on, names only, no cache', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.history.next = {
+        ok: true,
+        value: {
+          items: [
+            {
+              id: 'row-1',
+              at: Temporal.Instant.from('2026-10-15T10:00:00Z'),
+              byDisplayName: 'Mia T.',
+              byKind: 'member',
+              fields: ['about'],
+            },
+          ],
+          next: null,
+        },
+      };
+
+      const response = await http()
+        .get('/sellers/store-profile/history?limit=5&after=abc')
+        .set(session.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        items: [{ id: 'row-1', ...LAST_CHANGED_BODY, fields: ['about'] }],
+        next: null,
+      });
+      expect(stubs.history.calls[0]!.input).toEqual({ after: 'abc', limit: 5 });
+      expect(stubs.history.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+
+      stubs.history.next = { ok: false, error: { code: 'access.denied' } };
+      expect((await http().get('/sellers/store-profile/history').set(session.headers)).status).toBe(
+        403,
+      );
+    });
+
+    it('answers a stale save with 409 conflict.stale naming who saved first and when', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.about.next = {
+        ok: false,
+        error: { code: 'conflict.stale', lastChanged: VIEW.lastChanged },
+      };
+
+      const response = await putAbout(session.headers, aboutBody);
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        code: 'conflict.stale',
+        details: { lastChanged: LAST_CHANGED_BODY },
+      });
     });
 
     it('saves the About text: only the two named fields, CSRF required, no-store', async () => {

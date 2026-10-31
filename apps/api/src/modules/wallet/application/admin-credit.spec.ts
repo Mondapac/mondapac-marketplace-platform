@@ -1,3 +1,4 @@
+import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -147,6 +148,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
       ids: new SequenceIdGenerator(clock),
       clock,
       credits,
+      trail: unusedChangeTrail,
       identity: customers,
       stepUp: {
         consume: (context, actionKey) => {

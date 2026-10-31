@@ -16,6 +16,7 @@ import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { StoreTextClaimCheck } from '../ports/store-text-claim-check';
 import {
   loadStoreProfileView,
+  storeProfileChanges,
   storeProfileLogger,
   type StoreProfileReadDependencies,
   type StoreProfileView,
@@ -82,7 +83,18 @@ export class StoreProfileSaveAbout extends UseCase<
     context: CallContext,
     input: SaveAboutInput,
   ): Promise<Result<StoreProfileView, StoreProfileWriteFailure>> {
-    const result = await this.save(context, input ?? {});
+    const saved = await this.save(context, input ?? {});
+    const owner = sellerActorOf(context);
+    // A stale save names the winning one: who saved first and when.
+    const result =
+      owner === null
+        ? saved
+        : await this.deps.trail.namingTheWinner(
+            context,
+            storeProfileChanges(owner.sellerId),
+            saved,
+            ['conflict.stale'],
+          );
     logDraftOutcome(
       'store-profile-save-about',
       context,

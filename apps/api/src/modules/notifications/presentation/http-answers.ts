@@ -1,6 +1,7 @@
 import { HttpException, type Logger } from '@nestjs/common';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request } from 'express';
+import { lastChangedBody, type LastChanged } from '../../../platform/audit/change-trail';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 // The parts of a notifications route that every route shares: the error format
@@ -58,5 +59,11 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  // A conflict names who saved first and when (the winning save), or null when it cannot say.
+  if (error.lastChanged !== undefined) {
+    return fail(status, error.code, {
+      lastChanged: lastChangedBody(error.lastChanged as LastChanged | null),
+    });
+  }
   return fail(status, error.code);
 }
