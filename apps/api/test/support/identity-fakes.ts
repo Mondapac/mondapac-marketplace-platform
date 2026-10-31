@@ -1306,6 +1306,14 @@ export class IdentityFakes {
         ) {
           found.session = { ...s, revokedAt: now, revokedReason: reason };
           count += 1;
+        } else if (
+          s.marketId === market.marketId &&
+          s.accountId === accountId &&
+          s.revokedReason === 'sign-out' &&
+          s.id !== exceptId
+        ) {
+          // M-585-1: a signed-out session takes the bulk reason; its revokedAt stays.
+          found.session = { ...s, revokedReason: reason };
         }
       }
       return Promise.resolve(count);
@@ -1317,6 +1325,12 @@ export class IdentityFakes {
         if (s.marketId === market.marketId && s.sellerId === sellerId && s.revokedAt === null) {
           found.session = { ...s, revokedAt: now, revokedReason: reason };
           count += 1;
+        } else if (
+          s.marketId === market.marketId &&
+          s.sellerId === sellerId &&
+          s.revokedReason === 'sign-out'
+        ) {
+          found.session = { ...s, revokedReason: reason };
         }
       }
       return Promise.resolve(count);

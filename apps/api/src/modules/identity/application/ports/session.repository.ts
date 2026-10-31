@@ -75,7 +75,8 @@ export interface SessionRepository {
    * rotated). One set-based update; answers how many rows changed. The caller holds the
    * account's credential lock (`AccountRepository.lockCredential`), so a session a racing
    * sign-in opened with the old password is either already committed, and revoked here, or
-   * never opened.
+   * never opened. A session already revoked for `sign-out` keeps its `revokedAt` but takes
+   * `reason`, so a job that session started stops (Hassan M-585-1); the count is the live ones.
    */
   revokeAllOf(
     market: MarketContext,
@@ -91,7 +92,7 @@ export interface SessionRepository {
    * seller copy. The caller holds the seller access row's lock (it updated the row in the same
    * unit), and a seller sign-in takes that lock before it reads the state (item H), so a session
    * a racing sign-in opened is either already committed, and revoked here, or never opened.
-   * Answers how many rows changed.
+   * Answers how many rows changed. Signed-out sessions take `reason` as in `revokeAllOf`.
    */
   revokeAllOfSeller(
     market: MarketContext,
