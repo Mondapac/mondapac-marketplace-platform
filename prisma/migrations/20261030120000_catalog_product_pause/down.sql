@@ -1,5 +1,5 @@
 SET lock_timeout = '5s';
--- Reverses 20261030110000_catalog_product_pause. A rollback must never put a paused product back
+-- Reverses 20261030120000_catalog_product_pause. A rollback must never put a paused product back
 -- on sale: the Offers of a paused product swap the dropped cause for `product-not-listed`, which
 -- the older code knows (the pause itself cannot be undone then). The insert-only history keeps
 -- its rows, so its older cause CHECK comes back NOT VALID: it guards new rows, not the old ones.

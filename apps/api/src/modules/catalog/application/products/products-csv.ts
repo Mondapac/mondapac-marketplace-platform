@@ -28,8 +28,12 @@ export const EXPORT_HEADERS: Readonly<
   created: 'Created',
 });
 
-/** Spreadsheets run a cell that starts with one of these as a formula (CSV injection, OWASP). */
-const FORMULA_START = /^[=+\-@\t\r]/;
+/**
+ * Spreadsheets run a cell that starts with one of these as a formula (CSV injection, OWASP). The
+ * test looks past leading whitespace (some locales and import settings trim it) and covers the
+ * fullwidth signs `＝ ＋ － ＠` (U+FF1D, U+FF0B, U+FF0D, U+FF20) that a spreadsheet may fold.
+ */
+const FORMULA_START = /^\s*[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/u;
 
 /**
  * One cell as text: a text that a spreadsheet would read as a formula gets a leading quote (`'`),
