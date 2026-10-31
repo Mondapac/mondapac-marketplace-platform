@@ -33,9 +33,9 @@ export function storefrontCsp(nonce: string, dev: boolean, imageOrigin: string |
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${STRIPE_SCRIPTS}${dev ? " 'unsafe-eval'" : ''}`,
     // Stripe's Element and React set style attributes; no script can come through a style.
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: https://*.stripe.com${imageOrigin ? ` ${imageOrigin}` : ''}`,
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data:",
     `connect-src 'self' https://api.stripe.com https://merchant-ui-api.stripe.com${dev ? ' ws:' : ''}`,
     `frame-src ${STRIPE_SCRIPTS} https://hooks.stripe.com`,
     // PWA (package M5). A service worker is governed by worker-src, which would otherwise fall back

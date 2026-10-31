@@ -9,6 +9,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // The real module only works inside the Next.js compiler (self-hosted fonts, src/i18n/fonts.ts).
+      'next/font/google': fileURLToPath(new URL('./test/next-font-google.ts', import.meta.url)),
       // The real package throws outside React Server Components; the marker means nothing in tests.
       'server-only': fileURLToPath(new URL('./test/server-only.ts', import.meta.url)),
     },
