@@ -158,16 +158,18 @@ export function ProductsBulk({
     if (done > 0 || (skipped === 0 && failed === 0))
       parts.push(t(`done.${action}`, { count: done }));
     if (skipped > 0) {
-      const reasons = [
-        ...new Set(
-          answer.results.flatMap((item) =>
-            item.outcome === 'skipped' && item.reason !== undefined
-              ? [t(`skip.${SKIP_KEYS[item.reason] ?? 'other'}`)]
-              : [],
-          ),
-        ),
-      ];
-      parts.push(t('skipped', { count: skipped, reasons: reasons.join(', ') }));
+      const byReason = new Map<string, number>();
+      for (const item of answer.results) {
+        if (item.outcome !== 'skipped' || item.reason === undefined) continue;
+        const key = SKIP_KEYS[item.reason] ?? 'other';
+        byReason.set(key, (byReason.get(key) ?? 0) + 1);
+      }
+      const reasons = [...byReason].map(([key, n]) => `${number(n)} ${t(`skip.${key}`)}`);
+      parts.push(
+        reasons.length === 0
+          ? t('skipped', { count: skipped })
+          : t('skipped-why', { count: skipped, reasons: reasons.join(', ') }),
+      );
     }
     if (failed > 0) parts.push(t('failed', { count: failed }));
     return parts.join(' ');

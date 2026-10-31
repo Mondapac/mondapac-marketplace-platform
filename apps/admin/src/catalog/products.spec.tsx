@@ -577,7 +577,7 @@ describe('admin product bulk action', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
 
     expect(
-      await screen.findByText('1 product deactivated. 1 skipped (already inactive).'),
+      await screen.findByText('1 product deactivated. 1 skipped: 1 already inactive.'),
     ).toBeTruthy();
     expect(posted).toEqual([
       {
@@ -623,7 +623,7 @@ describe('admin product bulk action', () => {
     await screen.findByText('Beef mince');
     fireEvent.click(rowBox('Beef mince'));
     fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Activate' }));
-    expect(await screen.findByText('2 skipped ().')).toBeTruthy();
+    expect(await screen.findByText('2 skipped.')).toBeTruthy();
     toast.dismiss();
     cleanup();
 
@@ -635,6 +635,26 @@ describe('admin product bulk action', () => {
     expect(
       await screen.findByText('1 product activated. 1 could not be changed. Try again.'),
     ).toBeTruthy();
+  });
+
+  it('groups the skip reasons with their counts, and never shows empty parentheses', async () => {
+    serveBulk(() =>
+      answer(
+        { done: 0, skipped: 2, failed: 0 },
+        {
+          results: [
+            { productId: ID, outcome: 'skipped', reason: 'product.already-paused' },
+            { productId: ID2, outcome: 'skipped', reason: 'product.not-published' },
+          ],
+        },
+      ),
+    );
+    mount();
+    await screen.findByText('Beef mince');
+    fireEvent.click(rowBox('Beef mince'));
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Activate' }));
+    expect(await screen.findByText('2 skipped: 1 already inactive, 1 not active.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('()');
   });
 
   it('Delete shows how many Offers end from a dry run, then confirms with that number', async () => {

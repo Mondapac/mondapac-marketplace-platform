@@ -2164,7 +2164,8 @@
           "delete": "{count, plural, one {# product deleted.} other {# products deleted.}}",
           "export": "{count, plural, one {# product exported.} other {# products exported.}}"
         },
-        "skipped": "{count, number} skipped ({reasons}).",
+        "skipped": "{count, number} skipped.",
+        "skipped-why": "{count, number} skipped: {reasons}.",
         "skip": {
           "already-paused": "already inactive",
           "not-paused": "already active",
