@@ -469,9 +469,28 @@ describe('xlsxParser: the read is streaming and bounded (Hassan M-586-1)', () =>
       ok: false,
       error: { code: 'file.too-many-rows', rows: IMPORT_LIMITS.rows + 1, max: IMPORT_LIMITS.rows },
     });
-    // Parsing stopped a chunk after row 5,001: nowhere near the 60,000 rows of the sheet.
-    expect(Math.max(...seen)).toBeGreaterThan(IMPORT_LIMITS.rows);
-    expect(seen.length).toBeLessThan(IMPORT_LIMITS.rows + 2500);
+    // The pre-scan of the sheet bytes refuses it (a row number past 5,002) before the reader is
+    // built, so no row is handed over at all: stronger than "a chunk after row 5,001".
+    expect(seen).toEqual([]);
+  });
+
+  it('stops the reader after the last row the limit allows, on a sheet the pre-scan lets through', async () => {
+    // 5,001 data rows and the header are 5,002 elements, row numbers 1 to 5,002: within the
+    // pre-scan. The data row 5,002 is the 5,001st: one past the limit, refused.
+    const rows: [number, string[]][] = [[1, ['Title']]];
+    for (let n = 2; n <= IMPORT_LIMITS.rows + 2; n += 1) rows.push([n, [`P${n}`]]);
+    const seen: number[] = [];
+    const parser = createXlsxParser((rowNumber) => seen.push(rowNumber));
+    const result = await readImportFile(handMade(sheetXml(rows)), IMPORT_LIMITS, [
+      csvParser,
+      parser,
+    ]);
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'file.too-many-rows', rows: IMPORT_LIMITS.rows + 1, max: IMPORT_LIMITS.rows },
+    });
+    // The reader hands over row 5,002, the 5,001st data row, and stops there.
+    expect(Math.max(...seen)).toBe(IMPORT_LIMITS.rows + 2);
   });
 
   it('reads a good sheet that has no shared strings and no styles part', async () => {
@@ -624,5 +643,107 @@ describe('xlsxParser: the table is also given as plain CSV (parsed once)', () =>
   it('is not given for a CSV, which is stored as it came', async () => {
     const parsed = await readImportFile(Buffer.from('Title\nA\n'), IMPORT_LIMITS, PARSERS);
     expect(parsed.ok && parsed.value.canonical).toBeFalsy();
+  });
+});
+
+describe('xlsxParser: the sheet bytes are scanned before exceljs (Hassan M-586-1, M-586-4)', () => {
+  const sheetOf = (body: string): string =>
+    `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+  const cell = (ref: string, text: string): string =>
+    `<c r="${ref}" t="inlineStr"><is><t>${text}</t></is></c>`;
+  const tooManyRows = {
+    code: 'file.too-many-rows',
+    rows: IMPORT_LIMITS.rows + 1,
+    max: IMPORT_LIMITS.rows,
+  };
+
+  /** Refused quickly and as a result: no throw (no RangeError), no memory spike. */
+  async function refusedFast(sheet: string): Promise<FileRefusal> {
+    const started = Date.now();
+    const found = await refusal(handMade(sheet));
+    expect(Date.now() - started).toBeLessThan(1500);
+    return found;
+  }
+
+  it.each([5_003, 100_000_000, 1_000_000_000, 99_999_999_999_999_999_999])(
+    'refuses a file whose only row, the header, is numbered %d',
+    async (number) => {
+      const sheet = sheetOf(`<row r="${number}">${cell(`A${number}`, 'Title')}</row>`);
+      expect(await refusedFast(sheet)).toEqual(tooManyRows);
+    },
+  );
+
+  it('refuses a data row numbered 10^9 after a good header', async () => {
+    const sheet = sheetOf(
+      `<row r="1">${cell('A1', 'Title')}</row><row r="1000000000">${cell('A1000000000', 'x')}</row>`,
+    );
+    expect(await refusedFast(sheet)).toEqual(tooManyRows);
+  });
+
+  it('accepts a header on the last row number the job table holds, and refuses one past it', async () => {
+    const at = IMPORT_LIMITS.rows + 2;
+    const good = sheetOf(`<row r="${at}">${cell(`A${at}`, 'Title')}</row>`);
+    expect(await refusal(handMade(good))).toEqual({ code: 'file.no-rows' });
+    const bad = sheetOf(`<row r="${at + 1}">${cell(`A${at + 1}`, 'Title')}</row>`);
+    expect(await refusedFast(bad)).toEqual(tooManyRows);
+  });
+
+  it('refuses a row number that is not a whole number, zero or negative as unreadable', async () => {
+    for (const r of ['abc', '1.5', '-3', '0', '1e9', '', ' 7 ']) {
+      const sheet = sheetOf(`<row r="${r}">${cell('A1', 'Title')}</row>`);
+      expect([r, await refusedFast(sheet)]).toEqual([r, { code: 'file.unreadable' }]);
+    }
+  });
+
+  it('reads the row number from single quotes and from a prefixed element name', async () => {
+    const sheet = sheetOf(`<x:row r='100000000'><x:c r="A1"/></x:row>`);
+    expect(await refusedFast(sheet)).toEqual(tooManyRows);
+  });
+
+  it('refuses more row elements than the job table has row numbers, whatever they say', async () => {
+    const rows = Array.from({ length: IMPORT_LIMITS.rows + 3 }, () => '<row r="2"/>').join('');
+    expect(await refusedFast(sheetOf(rows))).toEqual(tooManyRows);
+  });
+
+  it('refuses a single row of far too many cells, before the reader sees them', async () => {
+    const wide = Array.from({ length: 2 * IMPORT_LIMITS.columns + 1 }, (_, i) => `<c r="A${i}"/>`);
+    const sheet = sheetOf(
+      `<row r="1">${cell('A1', 'Title')}</row><row r="2">${wide.join('')}</row>`,
+    );
+    expect(await refusedFast(sheet)).toEqual({
+      code: 'file.too-many-columns',
+      max: IMPORT_LIMITS.columns,
+    });
+    const huge = sheetOf(
+      `<row r="1">${cell('A1', 'Title')}</row><row r="2">${'<c r="A2"/>'.repeat(10_000)}</row>`,
+    );
+    expect(await refusedFast(huge)).toEqual({
+      code: 'file.too-many-columns',
+      max: IMPORT_LIMITS.columns,
+    });
+  });
+
+  it('counts cells per row: many rows of a normal width are fine', async () => {
+    const row = (n: number): string =>
+      `<row r="${n}">${Array.from({ length: IMPORT_LIMITS.columns }, (_, i) => `<c r="A${n}"><v>${i}</v></c>`).join('')}</row>`;
+    const sheet = sheetOf(`<row r="1">${cell('A1', 'Title')}</row>${row(2)}${row(3)}`);
+    const table = await read(handMade(sheet));
+    expect(table.rowCount).toBe(2);
+  });
+
+  it('does not take <col> or <cols> for cells', async () => {
+    const cols = '<cols>' + '<col min="1" max="1" width="9"/>'.repeat(500) + '</cols>';
+    const sheet =
+      `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols}<sheetData>` +
+      `<row r="1">${cell('A1', 'Title')}</row><row r="2">${cell('A2', 'x')}</row></sheetData></worksheet>`;
+    const table = await read(handMade(sheet));
+    expect(table.rows.map((r) => r.rowNumber)).toEqual([2]);
+  });
+
+  it('fails closed on a row tag hidden in a comment: the count can be too high, never too low', async () => {
+    const sheet = sheetOf(
+      `<!-- <row r="999999999"> --><row r="1">${cell('A1', 'Title')}</row><row r="2">${cell('A2', 'x')}</row>`,
+    );
+    expect(await refusedFast(sheet)).toEqual(tooManyRows);
   });
 });

@@ -11,6 +11,7 @@ import {
   type ParsedTable,
 } from '../../domain/platform-import/import-file';
 import type { ImportLimits } from '../../domain/platform-import/limits';
+import { prescanSheet } from './sheet-prescan';
 import { storedZip, type StoredPart } from './stored-zip';
 import { inspectXlsxContainer } from './zip-inspection';
 
@@ -169,6 +170,15 @@ function canonicalCsv(header: readonly string[], headerRow: number, rows: readon
   return Buffer.from(`\uFEFF${lines.join('\r\n')}\r\n`, 'utf8');
 }
 
+/** The reader's input chunk size: the events in flight at once are those of one slice. */
+export const READ_SLICE_BYTES = 64 * 1024;
+
+function* slices(bytes: Buffer): Generator<Buffer> {
+  for (let at = 0; at < bytes.length; at += READ_SLICE_BYTES) {
+    yield bytes.subarray(at, at + READ_SLICE_BYTES);
+  }
+}
+
 /** Called with the number of each sheet row the reader hands over (a test sees where it stopped). */
 export type RowObserver = (rowNumber: number) => void;
 
@@ -204,6 +214,10 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
       const sheetName = firstSheetPart(decode(WORKBOOK), decode(WORKBOOK_RELS));
       const sheet = sheetName === null ? undefined : parts.get(sheetName);
       if (sheet === undefined) return err({ code: 'file.unreadable' });
+      // Before exceljs sees a byte: a row number or an element count that could never fit the
+      // limits is refused from the bytes already in memory (Hassan M-586-1, M-586-4).
+      const refused = prescanSheet(sheet, limits);
+      if (refused !== null) return err(refused);
 
       // The parts in the order the reader needs: shared strings and styles before the sheet.
       const ordered: StoredPart[] = [
@@ -215,7 +229,9 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
           : []),
         { name: 'xl/worksheets/sheet1.xml', data: sheet },
       ];
-      const input = Readable.from([storedZip(ordered)]);
+      // Small slices, not one buffer: exceljs turns every SAX event of a chunk into objects before
+      // it yields any, so a whole sheet in one chunk costs far more memory than its bytes.
+      const input = Readable.from(slices(storedZip(ordered)));
       const reader = new excel.xlsx.WorkbookReader(input, {
         worksheets: 'emit',
         sharedStrings: 'cache',
@@ -236,6 +252,15 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
           for await (const row of worksheet) {
             if (!Number.isSafeInteger(row.number) || row.number < 1) {
               return err({ code: 'file.unreadable' });
+            }
+            // The header too: a number past the job table is refused before anything is built
+            // from it (Hassan M-586-4; the canonical CSV keeps one line per skipped row).
+            if (row.number > lastRowNumber) {
+              return err({
+                code: 'file.too-many-rows',
+                rows: limits.rows + 1,
+                max: limits.rows,
+              });
             }
             observe?.(row.number);
             const { cells, width } = cellsOf(row, limits);
