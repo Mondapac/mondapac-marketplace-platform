@@ -2183,6 +2183,54 @@
           "count-changed": "The number of offers changed to {count}. Check it and confirm again."
         }
       },
+      "saved": {
+        "manage-link": "Manage filters",
+        "save-link": "Save filter…",
+        "summary-search": "Search “{q}”",
+        "cancel": "Cancel",
+        "save": {
+          "title": "Save this filter",
+          "name": "Name",
+          "who": "Who can use it",
+          "submit": "Save filter",
+          "everyone-help": "Everyone: every admin who can see products gets it as a tab.",
+          "own-only": "Saved for you only. Your role can’t share filters."
+        },
+        "visibility": {
+          "me": "Only me",
+          "everyone": "Everyone"
+        },
+        "error": {
+          "name-taken": "A filter with this name already exists. Choose another name.",
+          "name-empty": "Enter a name for the filter.",
+          "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+          "shared-limit": "Up to {max} filters can be shared with everyone. Delete or unshare one first.",
+          "denied": "Your role can’t do this.",
+          "unavailable": "The filter could not be saved. Try again."
+        },
+        "toast": {
+          "saved": "Saved “{name}”",
+          "updated": "Updated “{name}”",
+          "deleted": "Deleted “{name}”"
+        },
+        "manage": {
+          "title": "Manage filters",
+          "close": "Close",
+          "edit": "Edit",
+          "edit-named": "Edit {name}",
+          "delete": "Delete",
+          "delete-named": "Delete {name}",
+          "delete-confirm": "Delete filter",
+          "delete-own": "Delete “{name}”? It is removed from your tabs.",
+          "delete-shared": "Delete “{name}”? It is removed from the tabs of every admin.",
+          "save": "Save changes",
+          "shared-by-other": "Shared by another admin",
+          "empty": "No saved filters yet",
+          "empty-help": "Set up a search or filters, then choose Save filter to keep them as a tab.",
+          "help-share": "Rename, change who can use a filter, or delete it.",
+          "help-own": "Rename or delete your filters. Your role can’t share filters."
+        }
+      },
       "import": "Import"
     },
     "import": {

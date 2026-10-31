@@ -183,7 +183,11 @@ const PINNED: readonly (readonly [string, string])[] = [
   ],
   [
     'platform:catalogue-moderator@10',
-    '8c6f8b1bf3b7bd6d86efae9a615da04ce976fbfc2305acaf063f5c2b1e53fbae',
+    '9903ab9e449425145c4a53f47b1b97e2a24cb70b1690a08a4ba3bbe3e0c920d8',
+  ],
+  [
+    'platform:catalogue-moderator@11',
+    '4ccab1de0bc348bdb96f477f3a706352cf1a70dc8af1aa9213752db3ae338a95',
   ],
 ];
 

@@ -31,7 +31,7 @@ export type RowFilter = {
 };
 
 /**
- * The store of the platform import jobs (catalog data design 3.28). Every method runs in the open
+ * The store of the platform import jobs (catalog data design 3.29). Every method runs in the open
  * unit of the caller, through the Market-scoped client; a write of a state is a conditional update
  * that answers whether it applied, so two runners or a double click never both win.
  */

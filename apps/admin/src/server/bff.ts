@@ -54,6 +54,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Import products (catalog): the CSV template and the admin's current import.
     'catalog/admin/platform-imports/template',
     'catalog/admin/platform-imports/current',
+    // The saved views of the product list (catalog), read-only (query: `listKey`).
+    'catalog/admin/saved-filters',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -114,6 +116,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Import products (catalog): the checked file, as base64 in a JSON body (the one path with a
     // larger body cap, see UPLOAD_PATH).
     'catalog/admin/platform-imports',
+    // Save the product list's current view as a tab (catalog): a closed body, for me or everyone.
+    'catalog/admin/saved-filters',
   ]),
 };
 
@@ -169,8 +173,15 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/commission-rate',
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
+    // A saved view's name and who can use it (catalog).
+    'catalog/admin/saved-filters/:id',
   ],
-  DELETE: ['identity/admin/roles/:id', 'commission-payouts/admin/sellers/:id/commission-rate'],
+  DELETE: [
+    'identity/admin/roles/:id',
+    'commission-payouts/admin/sellers/:id/commission-rate',
+    // A saved view of the product list (catalog).
+    'catalog/admin/saved-filters/:id',
+  ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
     // The primary photo of a listed product, thumbnail size only (catalog).
@@ -215,6 +226,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'page',
     'pageSize',
   ],
+  'catalog/admin/saved-filters': ['listKey'],
   'catalog/admin/products/export': [
     'format',
     'columns',
@@ -267,6 +279,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
+  'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,

@@ -81,6 +81,13 @@ import { AdminProductWithdraw } from './application/use-cases/admin-product-with
 import { PlatformProductRetire } from './application/use-cases/platform-product-retire.use-case';
 import { AdminProductsBulk } from './application/use-cases/admin-products-bulk.use-case';
 import { AdminProductsExport } from './application/use-cases/admin-products-export.use-case';
+import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
+import { SavedFilterCreate } from './application/use-cases/saved-filter-create.use-case';
+import { SavedFilterDelete } from './application/use-cases/saved-filter-delete.use-case';
+import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import { SavedFilterUpdate } from './application/use-cases/saved-filter-update.use-case';
+import { SavedFiltersList } from './application/use-cases/saved-filters-list.use-case';
+import { SavedFilterController } from './presentation/saved-filter.controller';
 import { CATALOG_AUDIT_ACTIONS } from './domain/audit';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
@@ -277,6 +284,8 @@ const PORT = {
   platformCreate: PlatformProductCreate,
   platformSaveDraft: PlatformProductSaveDraft,
   platformSubmit: PlatformProductSubmit,
+  savedFilters: SAVED_FILTER_REPOSITORY,
+  shareCheck: SavedFilterShareCheck,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -347,6 +356,7 @@ const productTypeProvider: FactoryProvider<string> = {
     AdminProductListController,
     AdminProductBulkController,
     PlatformImportController,
+    SavedFilterController,
     ProductReviewController,
     ProductImageReviewController,
     PublicCategoryController,
@@ -621,6 +631,39 @@ const productTypeProvider: FactoryProvider<string> = {
       importJobs: true,
       importFiles: true,
       clock: true,
+    }),
+    {
+      provide: SavedFilterShareCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    useCaseProvider(SavedFiltersList, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      adminProductsReader: true,
+      policy: true,
+    }),
+    useCaseProvider(SavedFilterCreate, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SavedFilterUpdate, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SavedFilterDelete, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
     }),
     useCaseProvider(AdminProductPause, {
       unitOfWork: true,

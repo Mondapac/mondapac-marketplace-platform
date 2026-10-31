@@ -6,6 +6,7 @@ import {
   EmptyState,
   FilterChip,
   LinkButton,
+  Icon,
   Popover,
   SearchField,
   SkeletonRows,
@@ -22,6 +23,14 @@ import { numberFormat } from '../shared/intl.ts';
 import { ProductsBulk } from './products-bulk.tsx';
 import { ProductsColumnsPanel } from './products-columns-panel.tsx';
 import { ProductsFilterPanel } from './products-filter-panel.tsx';
+import { ManageFiltersDialog } from './products-saved-manage.tsx';
+import { SaveFilterDialog } from './products-saved-save.tsx';
+import {
+  LIST_KEY,
+  SHARE_PERMISSION,
+  queryOf,
+  type SavedFiltersAnswer,
+} from './products-saved-types.ts';
 import { ProductsSortPanel } from './products-sort-panel.tsx';
 import { ProductsTable } from './products-table.tsx';
 import {
@@ -90,6 +99,11 @@ export function ProductsList({
   const [columns, setColumns] = useState<readonly OptionalColumn[]>(DEFAULT_COLUMNS);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
+  // The saved views (catalog design 9.2d): null until they load, and when they cannot (the page
+  // then has the three fixed tabs only). `savedId` is the saved tab the page is showing.
+  const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const latest = useRef(0);
   const storageKey = prefsKey('admin', marketId, accountId, 'products-columns');
 
@@ -107,6 +121,23 @@ export function ProductsList({
       live = false;
     };
   }, []);
+
+  const loadSaved = useCallback(async () => {
+    const result = await callApi<SavedFiltersAnswer>(
+      'GET',
+      `catalog/admin/saved-filters?listKey=${LIST_KEY}`,
+    );
+    if (!result.ok) return;
+    setSaved(result.body);
+    // A saved view that was deleted (here or by its owner) is no longer the one on show.
+    setSavedId((current) =>
+      current !== null && result.body.items.some((item) => item.id === current) ? current : null,
+    );
+  }, []);
+
+  useEffect(() => {
+    void loadSaved();
+  }, [loadSaved]);
 
   const load = useCallback(async (next: Query) => {
     const ticket = ++latest.current;
@@ -134,10 +165,10 @@ export function ProductsList({
   // Typing searches after a short pause; Enter does not wait.
   useEffect(() => {
     if (draft.trim() === query.q) return undefined;
-    const timer = setTimeout(
-      () => setQuery((current) => ({ ...current, q: draft.trim(), page: 1 })),
-      SEARCH_DELAY_MS,
-    );
+    const timer = setTimeout(() => {
+      setSavedId(null);
+      setQuery((current) => ({ ...current, q: draft.trim(), page: 1 }));
+    }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [draft, query.q]);
 
@@ -186,8 +217,19 @@ export function ProductsList({
     setAllMatching(false);
   };
 
-  const change = (patch: Partial<Query>) =>
+  // Any change of the tab, search, filters or sort leaves the saved view (it is no longer it).
+  const change = (patch: Partial<Query>) => {
+    setSavedId(null);
     setQuery((current) => ({ ...current, page: 1, ...patch }));
+  };
+  const openSaved = (id: string) => {
+    const filter = saved?.items.find((item) => item.id === id);
+    if (filter === undefined) return;
+    const next = queryOf(filter.payload);
+    setSavedId(id);
+    setDraft(next.q);
+    setQuery(next);
+  };
   const saveColumns = (next: readonly OptionalColumn[]) => {
     setColumns(next);
     writeIds(browserStorage(), storageKey, next);
@@ -198,6 +240,9 @@ export function ProductsList({
   };
   const withoutFilter = (field: (typeof FILTER_FIELDS)[number]): Filters =>
     Object.fromEntries(Object.entries(query.filters).filter(([name]) => name !== field));
+
+  const canShare = saved?.canShare ?? permissionKeys.includes(SHARE_PERMISSION);
+  const limits = saved?.limits ?? { perOwner: 50, shared: 20 };
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const counts = answer?.counts ?? null;
@@ -215,6 +260,12 @@ export function ProductsList({
     const label = chipLabel(field);
     return label === null ? [] : [{ field, label }];
   });
+
+  const summary = [
+    t(`tab.${query.view}`),
+    ...(query.q === '' ? [] : [t('saved.summary-search', { q: query.q })]),
+    ...chips.map((chip) => chip.label),
+  ].join(' · ');
 
   const start = answer === null ? 0 : (answer.page - 1) * answer.pageSize;
   const sortName = t(`sort.field.${query.sort}`);
@@ -271,19 +322,48 @@ export function ProductsList({
             onChanged={() => {
               clearSelection();
               void load(query);
+              void loadSaved();
             }}
           />
         </div>
       </div>
-      <Tabs
-        label={t('tabs')}
-        activeId={query.view}
-        onSelect={(id) => change({ view: id as View })}
-        items={VIEWS.map((view) => ({
-          id: view,
-          label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(counts[view])})`}`,
-        }))}
-      />
+      <div className="flex items-stretch">
+        <div className="min-w-0 flex-1">
+          <Tabs
+            label={t('tabs')}
+            activeId={savedId ?? query.view}
+            onSelect={(id) => {
+              if (saved?.items.some((item) => item.id === id)) openSaved(id);
+              else change({ view: id as View });
+            }}
+            items={[
+              ...VIEWS.map((view) => ({
+                id: view,
+                label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(counts[view])})`}`,
+              })),
+              ...(saved?.items ?? []).map((item) => {
+                const count = item.id === savedId ? (answer?.total ?? item.count) : item.count;
+                return {
+                  id: item.id,
+                  label: `${item.name}${count === null ? '' : ` (${number(count)})`}`,
+                };
+              }),
+            ]}
+          />
+        </div>
+        {saved === null ? null : (
+          <div className="flex shrink-0 items-center border-b border-line ps-3">
+            <Button
+              variant="link"
+              className="min-h-(--mp-size-control-sm)"
+              onClick={() => setDialog('manage')}
+            >
+              <Icon name="sliders" />
+              <span className="sr-only sm:not-sr-only">{t('saved.manage-link')}</span>
+            </Button>
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <SearchField
           label={t('search.label')}
@@ -344,6 +424,16 @@ export function ProductsList({
           <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
             {t('clear-all')}
           </Button>
+          {saved === null || savedId !== null ? null : (
+            <Button
+              variant="link"
+              className="min-h-(--mp-size-control-sm)"
+              onClick={() => setDialog('save')}
+            >
+              <Icon name="star" />
+              {t('saved.save-link')}
+            </Button>
+          )}
           <p role="status" className="text-sm font-medium text-fg-secondary sm:ms-auto">
             {answer === null || failure !== null ? '' : t('match', { count: answer.total })}
           </p>
@@ -408,6 +498,27 @@ export function ProductsList({
           </div>
         </div>
       ) : null}
+      <SaveFilterDialog
+        open={dialog === 'save'}
+        onClose={() => setDialog(null)}
+        query={query}
+        summary={summary}
+        canShare={canShare}
+        limits={limits}
+        csrfToken={csrfToken}
+        onSaved={(filter) => {
+          void loadSaved().then(() => setSavedId(filter.id));
+        }}
+      />
+      <ManageFiltersDialog
+        open={dialog === 'manage'}
+        onClose={() => setDialog(null)}
+        filters={saved?.items ?? []}
+        canShare={canShare}
+        limits={limits}
+        csrfToken={csrfToken}
+        onChanged={() => void loadSaved()}
+      />
     </div>
   );
 }

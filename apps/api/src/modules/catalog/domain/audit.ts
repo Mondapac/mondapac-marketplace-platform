@@ -82,10 +82,58 @@ export const PlatformImportStartedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a saved filter. */
+export const CATALOG_SAVED_FILTER_TARGET = 'catalog.saved-filter';
+
+const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
+
+/** The lists a saved filter can belong to (the keys of `SAVED_FILTER_LISTS`). */
+export const SAVED_FILTER_AUDIT_LISTS = ['admin.catalog.products'] as const;
+export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
+const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
+
+/** An admin saved a filter for everyone (design 9.2d). The name is not audited: ids and codes only. */
+export const SavedFilterSharedAudit = defineAuditAction({
+  action: 'catalog.saved-filter.shared',
+  targetType: CATALOG_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  after: { listKey: savedFilterList, visibility: savedFilterVisibility },
+});
+
+/**
+ * An admin changed a filter that is, or was, shared with everyone: renamed it or moved it between
+ * "me" and "everyone". `ownedByActor` is false when an admin with the share key changed somebody
+ * else's filter.
+ */
+export const SavedFilterChangedAudit = defineAuditAction({
+  action: 'catalog.saved-filter.changed',
+  targetType: CATALOG_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  before: { visibility: savedFilterVisibility },
+  after: {
+    listKey: savedFilterList,
+    visibility: savedFilterVisibility,
+    renamed: auditField.boolean(),
+    ownedByActor: auditField.boolean(),
+  },
+});
+
+/** An admin deleted a filter that was shared with everyone. */
+export const SavedFilterRemovedAudit = defineAuditAction({
+  action: 'catalog.saved-filter.removed',
+  targetType: CATALOG_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  before: { listKey: savedFilterList, visibility: savedFilterVisibility },
+  after: { ownedByActor: auditField.boolean() },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
   ProductWithdrawnAudit,
   ProductRetiredAudit,
   PlatformImportStartedAudit,
+  SavedFilterSharedAudit,
+  SavedFilterChangedAudit,
+  SavedFilterRemovedAudit,
 ] as const;

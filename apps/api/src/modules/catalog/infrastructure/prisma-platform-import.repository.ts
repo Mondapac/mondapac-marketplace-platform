@@ -79,7 +79,7 @@ const INSERT_BATCH = 500;
 
 /**
  * {@link PlatformImportRepository} on `catalog.platform_import_jobs` and `platform_import_rows`
- * (data design 3.28). Every statement goes through `PrismaService.tx(market)` with `marketId` at the
+ * (data design 3.29). Every statement goes through `PrismaService.tx(market)` with `marketId` at the
  * top level of `where`. A change of state is an `updateMany` guarded by the state it expects, so
  * it answers whether it applied.
  */

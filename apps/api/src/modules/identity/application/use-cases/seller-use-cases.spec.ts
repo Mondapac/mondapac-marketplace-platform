@@ -347,6 +347,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'catalog.product.delete',
       'catalog.product.pause',
       'catalog.product.view',
+      'catalog.saved-filter.share',
       'certification.claim-policy.view',
       'certification.product-certificate.view',
       'certification.type.view',
