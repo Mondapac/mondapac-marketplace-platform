@@ -383,6 +383,9 @@ model PromotionsCreditIssuance {
   @@index([marketId, orderId])
   /// What a customer has received from a promotion (the per-customer limit).
   @@index([marketId, promotionId, recipientAccountId])
+  /// The lookup of a credit by its source, whatever its status (the event handler's findBySource;
+  /// the partial unique indexes cannot serve a query that does not name the status).
+  @@index([marketId, kind, sourceId])
   @@map("credit_issuances")
   @@schema("promotions")
 }

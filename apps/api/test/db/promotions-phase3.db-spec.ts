@@ -13,6 +13,7 @@ import { CreatePromotion } from '../../src/modules/promotions/application/use-ca
 import { QualifyReferralOnDelivery } from '../../src/modules/promotions/application/use-cases/qualify-referral-on-delivery.use-case';
 import { SetPromotionsStatus } from '../../src/modules/promotions/application/use-cases/set-promotions-status.use-case';
 import { ViewMyReferral } from '../../src/modules/promotions/application/use-cases/view-my-referral.use-case';
+import type { PromotionsPolicy } from '../../src/modules/promotions/application/ports/promotions-policy';
 import { ConfigPromotionsPolicy } from '../../src/modules/promotions/infrastructure/config-promotions-policy';
 import { CryptoBatchCodeCrypto } from '../../src/modules/promotions/infrastructure/crypto-batch-code-crypto';
 import { PrismaBatchCodeRepository } from '../../src/modules/promotions/infrastructure/prisma-batch-code.repository';
@@ -82,7 +83,14 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
   const policy = new ConfigPromotionsPolicy(markets);
   const settings = policy.settings(market)!;
   const currency = settings.currency;
-  const confirmed = settings.rules.gstRulingConfirmed;
+  const rulingConfirmed = settings.rules.gstRulingConfirmed;
+  /** The Market's own policy with the tax ruling taken as confirmed. */
+  const confirmedPolicy: PromotionsPolicy = {
+    settings: (m) => {
+      const own = policy.settings(m);
+      return own === null ? null : { ...own, rules: { ...own.rules, gstRulingConfirmed: true } };
+    },
+  };
   const clock = new FixedClock(Temporal.Instant.from('2026-10-25T10:00:00Z'));
   const ids = new UuidV7IdGenerator(clock);
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
@@ -766,6 +774,31 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       }
     });
 
+    it('refuses a settlement that also changes an immutable column, even for the owner', async () => {
+      const settledAt = new Date();
+      const changes: Record<string, unknown> = {
+        amount_minor: 999,
+        kind: 'REFERRER_REWARD',
+        recipient_account_id: ids.next<'Account'>(),
+        source_id: ids.next<'SellerOrder'>(),
+        idempotency_key: 'a-different-idempotency-key',
+        promotion_id: ids.next<'Promotion'>(),
+        created_at: new Date(0),
+      };
+      for (const [column, value] of Object.entries(changes)) {
+        const row = creditRow();
+        await sql.query(...(insert('credit_issuances', row).slice(0, 2) as [string, unknown[]]));
+        expect(
+          await state(
+            owner.query(
+              `UPDATE promotions.credit_issuances SET status = 'FAILED', settled_at = $3, failure_code = 'x', ${column} = $4 WHERE market_id = $1 AND id = $2`,
+              [mk, row.id, settledAt, value],
+            ),
+          ),
+        ).not.toBe('allowed');
+      }
+    });
+
     it('has the indexes of the budget sum (with the amount) and of the keyset list', async () => {
       const found = await rows(
         `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'promotions' AND tablename = 'credit_issuances'`,
@@ -776,6 +809,9 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       );
       expect(defs.get('credit_issuances_market_id_promotion_id_created_at_id_idx')).toMatch(
         /\(market_id, promotion_id, created_at DESC, id DESC\)/,
+      );
+      expect(defs.get('credit_issuances_market_id_kind_source_id_idx')).toMatch(
+        /\(market_id, kind, source_id\)/,
       );
       const referrals = await rows(
         `SELECT indexdef FROM pg_indexes WHERE schemaname = 'promotions' AND indexname = 'referrals_market_id_promotion_id_status_idx'`,
@@ -1084,94 +1120,223 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
     });
   });
 
-  describe('the delivery handlers end to end', () => {
-    const delivery = (subscriber: string): EventDelivery => ({
-      eventId: ids.next<'event'>(),
-      subscriber,
-      attempt: 1,
+  // The money paths run twice: with the Market's own ruling, and with the ruling overridden as
+  // confirmed (the config file stays as it is), so a Market whose ruling is open is tested on real
+  // money too.
+  describe.each([[false], [true]] as const)('money paths, ruling override %s', (override) => {
+    const confirmed = override || rulingConfirmed;
+    beforeAll(() => {
+      deps = { ...deps, policy: override ? confirmedPolicy : policy };
     });
-    const deliver = (who: string, goodsMinor: bigint) => {
-      const order = {
-        orderId: ids.next<'Order'>(),
-        sellerOrderId: ids.next<'SellerOrder'>(),
-        customerAccountId: who as never,
-        goodsPaid: money(goodsMinor, currency),
-        placedAt: clock.now().add({ hours: 1 }),
-        deliveredAt: clock.now().add({ hours: 48 }),
-        testOrder: false,
+    describe('the delivery handlers end to end', () => {
+      const delivery = (subscriber: string): EventDelivery => ({
+        eventId: ids.next<'event'>(),
+        subscriber,
+        attempt: 1,
+      });
+      const deliver = (who: string, goodsMinor: bigint) => {
+        const order = {
+          orderId: ids.next<'Order'>(),
+          sellerOrderId: ids.next<'SellerOrder'>(),
+          customerAccountId: who as never,
+          goodsPaid: money(goodsMinor, currency),
+          placedAt: clock.now().add({ hours: 1 }),
+          deliveredAt: clock.now().add({ hours: 48 }),
+          testOrder: false,
+        };
+        facts.orderFacts.add(order);
+        return order;
       };
-      facts.orderFacts.add(order);
-      return order;
-    };
 
-    beforeAll(async () => {
-      const on = await make(SetPromotionsStatus).execute(admin, { status: 'active' });
-      expect(on.ok).toBe(true);
-      const base = {
+      beforeAll(async () => {
+        const on = await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+        expect(on.ok).toBe(true);
+        const base = {
+          funding: 'PLATFORM',
+          startsAt: '2026-10-01T00:00:00Z',
+          budgetMinor: '100000',
+          testMode: !confirmed,
+        };
+        for (const body of [
+          {
+            ...base,
+            type: 'CASHBACK',
+            name: 'DB cashback',
+            reward: { kind: 'PERCENT', bps: 500 },
+            capMinor: '2000',
+          },
+          {
+            ...base,
+            type: 'REFERRAL',
+            name: 'DB referral',
+            reward: { kind: 'FIXED', amountMinor: '1000' },
+            refereeRewardMinor: '800',
+            maxUsesPerCustomer: 2,
+          },
+        ]) {
+          const made = await make(CreatePromotion).execute(admin, body);
+          expect(made).toMatchObject({ ok: true });
+        }
+      });
+
+      it('credits cashback once, through the real tables, however often the event comes', async () => {
+        const customer = ids.next<'Account'>();
+        const order = deliver(customer, 10000n);
+        const input = (d: EventDelivery) => ({
+          delivery: d,
+          orderId: order.orderId,
+          sellerOrderId: order.sellerOrderId,
+        });
+        const d = delivery('promotions.cashback-on-delivery');
+        const first = await make(CashbackOnDelivery).execute(system, input(d));
+        expect(first).toEqual({ ok: true, value: { outcome: confirmed ? 'issued' : 'recorded' } });
+        expect(await make(CashbackOnDelivery).execute(system, input(d))).toEqual({
+          ok: true,
+          value: { outcome: 'already-handled' },
+        });
+        await make(CashbackOnDelivery).execute(
+          system,
+          input(delivery('promotions.cashback-on-delivery')),
+        );
+        const stored = await rows(
+          'SELECT status, amount_minor::text AS amount, wallet_journal_id FROM promotions.credit_issuances WHERE market_id = $1 AND order_id = $2',
+          [mk, order.orderId],
+        );
+        expect(stored).toHaveLength(1);
+        expect(stored[0]).toMatchObject({
+          amount: '500',
+          status: confirmed ? 'GRANTED' : 'RECORDED',
+        });
+        expect(facts.walletCredit.grants.filter((g) => g.orderId === order.orderId)).toHaveLength(
+          confirmed ? 1 : 0,
+        );
+      });
+
+      it('applies a code, then credits both customers once when the first order is delivered', async () => {
+        const referrer = ids.next<'Account'>();
+        const newcomer = ids.next<'Account'>();
+        const as = (accountId: string) =>
+          testCallContext(
+            market,
+            testAuthenticatedActor(market, {
+              population: 'customer',
+              accountId: accountId as never,
+              sessionId: ids.next<'Session'>(),
+              sellerId: null,
+            }),
+            'promo3-db-customer-1',
+          );
+        const mine = await make(ViewMyReferral).execute(as(referrer), {});
+        if (!mine.ok) throw new Error(`view failed ${JSON.stringify(mine.error)}`);
+        const again = await make(ViewMyReferral).execute(as(referrer), {});
+        expect(again.ok && again.value.code).toBe(mine.value.code);
+        facts.orderHistory.lastOrder.set(newcomer, null);
+        const applied = await make(ApplyReferralCode).execute(as(newcomer), {
+          code: mine.value.code,
+        });
+        expect(applied.ok).toBe(true);
+        expect(
+          await make(ApplyReferralCode).execute(as(newcomer), { code: mine.value.code }),
+        ).toEqual({ ok: false, error: { code: 'promotions.referral-not-eligible' } });
+
+        const order = deliver(newcomer, 5000n);
+        const input = (d: EventDelivery) => ({
+          delivery: d,
+          orderId: order.orderId,
+          sellerOrderId: order.sellerOrderId,
+        });
+        const d = delivery('promotions.qualify-referral-on-delivery');
+        const result = await make(QualifyReferralOnDelivery).execute(system, input(d));
+        expect(result).toEqual({ ok: true, value: { outcome: confirmed ? 'issued' : 'recorded' } });
+        await make(QualifyReferralOnDelivery).execute(system, input(d));
+        await make(QualifyReferralOnDelivery).execute(
+          system,
+          input(delivery('promotions.qualify-referral-on-delivery')),
+        );
+        const stored = await rows(
+          'SELECT kind, recipient_account_id::text AS recipient, amount_minor::text AS amount FROM promotions.credit_issuances WHERE market_id = $1 AND order_id = $2 ORDER BY kind',
+          [mk, order.orderId],
+        );
+        expect(stored).toEqual([
+          { kind: 'REFEREE_REWARD', recipient: newcomer, amount: '800' },
+          { kind: 'REFERRER_REWARD', recipient: referrer, amount: '1000' },
+        ]);
+        const referral = await rows(
+          'SELECT status FROM promotions.referrals WHERE market_id = $1 AND referee_account_id = $2',
+          [mk, newcomer],
+        );
+        // A test-mode run leaves the referral open for a real program.
+        expect(referral).toEqual([{ status: confirmed ? 'QUALIFIED' : 'PENDING' }]);
+        // Only the hash of the code is stored.
+        const codes = await rows(
+          'SELECT code_hash FROM promotions.referral_codes WHERE market_id = $1 AND account_id = $2',
+          [mk, referrer],
+        );
+        expect(codes[0]!.code_hash).not.toBe(mine.value.code);
+      });
+    });
+    // These come last: they end every live cashback and referral program of the Market first (the
+    // earlier tests leave some behind), so the best credit for an order is the one made here.
+    describe('after-review behavior on the real tables', () => {
+      const rulesNow = settings.rules;
+      const delivery = (subscriber: string): EventDelivery => ({
+        eventId: ids.next<'event'>(),
+        subscriber,
+        attempt: 1,
+      });
+      const deliverTo = (who: string, goodsMinor: bigint, orderId = ids.next<'Order'>()) => {
+        const order = {
+          orderId,
+          sellerOrderId: ids.next<'SellerOrder'>(),
+          customerAccountId: who as never,
+          goodsPaid: money(goodsMinor, currency),
+          placedAt: clock.now().add({ hours: 1 }),
+          deliveredAt: clock.now().add({ hours: 48 }),
+          testOrder: false,
+        };
+        facts.orderFacts.add(order);
+        return order;
+      };
+      const inputOf = (
+        order: { orderId: string; sellerOrderId: string },
+        d: EventDelivery = delivery('promotions.cashback-on-delivery'),
+      ) => ({ delivery: d, orderId: order.orderId, sellerOrderId: order.sellerOrderId });
+      const cashbackBody = (extra: Record<string, unknown> = {}) => ({
         funding: 'PLATFORM',
         startsAt: '2026-10-01T00:00:00Z',
         budgetMinor: '100000',
         testMode: !confirmed,
-      };
-      for (const body of [
-        {
-          ...base,
-          type: 'CASHBACK',
-          name: 'DB cashback',
-          reward: { kind: 'PERCENT', bps: 500 },
-          capMinor: '2000',
-        },
-        {
-          ...base,
-          type: 'REFERRAL',
-          name: 'DB referral',
-          reward: { kind: 'FIXED', amountMinor: '1000' },
-          refereeRewardMinor: '800',
-          maxUsesPerCustomer: 2,
-        },
-      ]) {
+        type: 'CASHBACK',
+        name: 'DB review cashback',
+        reward: { kind: 'PERCENT', bps: 500 },
+        capMinor: '700',
+        ...extra,
+      });
+      const referralBody = (extra: Record<string, unknown> = {}) => ({
+        funding: 'PLATFORM',
+        startsAt: '2026-10-01T00:00:00Z',
+        budgetMinor: '100000',
+        testMode: !confirmed,
+        type: 'REFERRAL',
+        name: 'DB review referral',
+        reward: { kind: 'FIXED', amountMinor: '1000' },
+        refereeRewardMinor: '800',
+        maxUsesPerCustomer: 2,
+        ...extra,
+      });
+      const create = async (body: Record<string, unknown>) => {
         const made = await make(CreatePromotion).execute(admin, body);
-        expect(made).toMatchObject({ ok: true });
-      }
-    });
-
-    it('credits cashback once, through the real tables, however often the event comes', async () => {
-      const customer = ids.next<'Account'>();
-      const order = deliver(customer, 10000n);
-      const input = (d: EventDelivery) => ({
-        delivery: d,
-        orderId: order.orderId,
-        sellerOrderId: order.sellerOrderId,
-      });
-      const d = delivery('promotions.cashback-on-delivery');
-      const first = await make(CashbackOnDelivery).execute(system, input(d));
-      expect(first).toEqual({ ok: true, value: { outcome: confirmed ? 'issued' : 'recorded' } });
-      expect(await make(CashbackOnDelivery).execute(system, input(d))).toEqual({
-        ok: true,
-        value: { outcome: 'already-handled' },
-      });
-      await make(CashbackOnDelivery).execute(
-        system,
-        input(delivery('promotions.cashback-on-delivery')),
-      );
-      const stored = await rows(
-        'SELECT status, amount_minor::text AS amount, wallet_journal_id FROM promotions.credit_issuances WHERE market_id = $1 AND order_id = $2',
-        [mk, order.orderId],
-      );
-      expect(stored).toHaveLength(1);
-      expect(stored[0]).toMatchObject({
-        amount: '500',
-        status: confirmed ? 'GRANTED' : 'RECORDED',
-      });
-      expect(facts.walletCredit.grants.filter((g) => g.orderId === order.orderId)).toHaveLength(
-        confirmed ? 1 : 0,
-      );
-    });
-
-    it('applies a code, then credits both customers once when the first order is delivered', async () => {
-      const referrer = ids.next<'Account'>();
-      const newcomer = ids.next<'Account'>();
-      const as = (accountId: string) =>
+        if (!made.ok) throw new Error(`create failed: ${JSON.stringify(made.error)}`);
+        return made.value.id as string;
+      };
+      /** Ends every cashback and referral program of the Market (they are never deleted). */
+      const endPrograms = () =>
+        owner.query(
+          `UPDATE promotions.promotions SET ends_at = '2026-10-02T00:00:00Z'
+          WHERE market_id = $1 AND type IN ('CASHBACK', 'REFERRAL')`,
+          [mk],
+        );
+      const asCustomer = (accountId: string) =>
         testCallContext(
           market,
           testAuthenticatedActor(market, {
@@ -1180,355 +1345,235 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
             sessionId: ids.next<'Session'>(),
             sellerId: null,
           }),
-          'promo3-db-customer-1',
+          'promo3-db-customer-2',
         );
-      const mine = await make(ViewMyReferral).execute(as(referrer), {});
-      if (!mine.ok) throw new Error(`view failed ${JSON.stringify(mine.error)}`);
-      const again = await make(ViewMyReferral).execute(as(referrer), {});
-      expect(again.ok && again.value.code).toBe(mine.value.code);
-      facts.orderHistory.lastOrder.set(newcomer, null);
-      const applied = await make(ApplyReferralCode).execute(as(newcomer), {
-        code: mine.value.code,
-      });
-      expect(applied.ok).toBe(true);
-      expect(
-        await make(ApplyReferralCode).execute(as(newcomer), { code: mine.value.code }),
-      ).toEqual({ ok: false, error: { code: 'promotions.referral-not-eligible' } });
-
-      const order = deliver(newcomer, 5000n);
-      const input = (d: EventDelivery) => ({
-        delivery: d,
-        orderId: order.orderId,
-        sellerOrderId: order.sellerOrderId,
-      });
-      const d = delivery('promotions.qualify-referral-on-delivery');
-      const result = await make(QualifyReferralOnDelivery).execute(system, input(d));
-      expect(result).toEqual({ ok: true, value: { outcome: confirmed ? 'issued' : 'recorded' } });
-      await make(QualifyReferralOnDelivery).execute(system, input(d));
-      await make(QualifyReferralOnDelivery).execute(
-        system,
-        input(delivery('promotions.qualify-referral-on-delivery')),
-      );
-      const stored = await rows(
-        'SELECT kind, recipient_account_id::text AS recipient, amount_minor::text AS amount FROM promotions.credit_issuances WHERE market_id = $1 AND order_id = $2 ORDER BY kind',
-        [mk, order.orderId],
-      );
-      expect(stored).toEqual([
-        { kind: 'REFEREE_REWARD', recipient: newcomer, amount: '800' },
-        { kind: 'REFERRER_REWARD', recipient: referrer, amount: '1000' },
-      ]);
-      const referral = await rows(
-        'SELECT status FROM promotions.referrals WHERE market_id = $1 AND referee_account_id = $2',
-        [mk, newcomer],
-      );
-      // A test-mode run leaves the referral open for a real program.
-      expect(referral).toEqual([{ status: confirmed ? 'QUALIFIED' : 'PENDING' }]);
-      // Only the hash of the code is stored.
-      const codes = await rows(
-        'SELECT code_hash FROM promotions.referral_codes WHERE market_id = $1 AND account_id = $2',
-        [mk, referrer],
-      );
-      expect(codes[0]!.code_hash).not.toBe(mine.value.code);
-    });
-  });
-  // These come last: they end every live cashback and referral program of the Market first (the
-  // earlier tests leave some behind), so the best credit for an order is the one made here.
-  describe('after-review behavior on the real tables', () => {
-    const rulesNow = settings.rules;
-    const delivery = (subscriber: string): EventDelivery => ({
-      eventId: ids.next<'event'>(),
-      subscriber,
-      attempt: 1,
-    });
-    const deliverTo = (who: string, goodsMinor: bigint, orderId = ids.next<'Order'>()) => {
-      const order = {
-        orderId,
-        sellerOrderId: ids.next<'SellerOrder'>(),
-        customerAccountId: who as never,
-        goodsPaid: money(goodsMinor, currency),
-        placedAt: clock.now().add({ hours: 1 }),
-        deliveredAt: clock.now().add({ hours: 48 }),
-        testOrder: false,
-      };
-      facts.orderFacts.add(order);
-      return order;
-    };
-    const inputOf = (
-      order: { orderId: string; sellerOrderId: string },
-      d: EventDelivery = delivery('promotions.cashback-on-delivery'),
-    ) => ({ delivery: d, orderId: order.orderId, sellerOrderId: order.sellerOrderId });
-    const cashbackBody = (extra: Record<string, unknown> = {}) => ({
-      funding: 'PLATFORM',
-      startsAt: '2026-10-01T00:00:00Z',
-      budgetMinor: '100000',
-      testMode: !confirmed,
-      type: 'CASHBACK',
-      name: 'DB review cashback',
-      reward: { kind: 'PERCENT', bps: 500 },
-      capMinor: '700',
-      ...extra,
-    });
-    const referralBody = (extra: Record<string, unknown> = {}) => ({
-      funding: 'PLATFORM',
-      startsAt: '2026-10-01T00:00:00Z',
-      budgetMinor: '100000',
-      testMode: !confirmed,
-      type: 'REFERRAL',
-      name: 'DB review referral',
-      reward: { kind: 'FIXED', amountMinor: '1000' },
-      refereeRewardMinor: '800',
-      maxUsesPerCustomer: 2,
-      ...extra,
-    });
-    const create = async (body: Record<string, unknown>) => {
-      const made = await make(CreatePromotion).execute(admin, body);
-      if (!made.ok) throw new Error(`create failed: ${JSON.stringify(made.error)}`);
-      return made.value.id as string;
-    };
-    /** Ends every cashback and referral program of the Market (they are never deleted). */
-    const endPrograms = () =>
-      owner.query(
-        `UPDATE promotions.promotions SET ends_at = '2026-10-02T00:00:00Z'
-          WHERE market_id = $1 AND type IN ('CASHBACK', 'REFERRAL')`,
-        [mk],
-      );
-    const asCustomer = (accountId: string) =>
-      testCallContext(
-        market,
-        testAuthenticatedActor(market, {
-          population: 'customer',
-          accountId: accountId as never,
-          sessionId: ids.next<'Session'>(),
-          sellerId: null,
-        }),
-        'promo3-db-customer-2',
-      );
-    const creditsOfOrder = (orderId: string) =>
-      rows(
-        `SELECT status, kind, amount_minor::text AS amount FROM promotions.credit_issuances
-          WHERE market_id = $1 AND order_id = $2 ORDER BY status, amount_minor`,
-        [mk, orderId],
-      );
-    const referralFlow = async () => {
-      const referrer = ids.next<'Account'>();
-      const newcomer = ids.next<'Account'>();
-      const mine = await make(ViewMyReferral).execute(asCustomer(referrer), {});
-      if (!mine.ok) throw new Error(`view failed ${JSON.stringify(mine.error)}`);
-      facts.orderHistory.lastOrder.set(newcomer, null);
-      const applied = await make(ApplyReferralCode).execute(asCustomer(newcomer), {
-        code: mine.value.code,
-      });
-      expect(applied.ok).toBe(true);
-      return { referrer, newcomer };
-    };
-    const qualifyInput = (order: { orderId: string; sellerOrderId: string }) =>
-      inputOf(order, delivery('promotions.qualify-referral-on-delivery'));
-
-    beforeAll(async () => {
-      await endPrograms();
-    });
-    afterEach(async () => {
-      facts.walletCredit.failure = null;
-      await endPrograms();
-    });
-
-    it('keeps the per-order cap when two seller orders of one order are delivered at once', async () => {
-      await create(cashbackBody());
-      const customer = ids.next<'Account'>();
-      const order = ids.next<'Order'>();
-      const a = deliverTo(customer, 10000n, order);
-      const b = deliverTo(customer, 10000n, order);
-      const results = await Promise.all([
-        make(CashbackOnDelivery).execute(system, inputOf(a)),
-        make(CashbackOnDelivery).execute(system, inputOf(b)),
-      ]);
-      expect(results.every((r) => r.ok)).toBe(true);
-      const stored = await creditsOfOrder(order);
-      if (confirmed) {
-        // 5% of 10000 is 500 each, but the promotion pays at most 700 for the whole order.
-        expect(stored.map((c) => [c.status, c.amount])).toEqual([
-          ['GRANTED', '200'],
-          ['GRANTED', '500'],
-        ]);
-      } else {
-        // Test-mode notes are not money: nothing caps them, and the two never wait on each other.
-        expect(stored.map((c) => [c.status, c.amount])).toEqual([
-          ['RECORDED', '500'],
-          ['RECORDED', '500'],
-        ]);
-      }
-    });
-
-    it('recovers from a crash in test mode: the cashback note is kept once', async () => {
-      await create(cashbackBody({ testMode: true }));
-      const customer = ids.next<'Account'>();
-      const order = deliverTo(customer, 10000n);
-      let armed = true;
-      const crashing: PromotionsDependencies = {
-        ...deps,
-        unitOfWork: {
-          run: (...args) => deps.unitOfWork.run(...args),
-          runOnce: (...args) => {
-            if (!armed) return deps.unitOfWork.runOnce(...args);
-            armed = false;
-            return Promise.reject(new Error('crash before the inbox'));
-          },
-        },
-      };
-      const d = delivery('promotions.cashback-on-delivery');
-      await expect(
-        new CashbackOnDelivery(gate, crashing).execute(system, inputOf(order, d)),
-      ).rejects.toThrow('crash before the inbox');
-      expect(await creditsOfOrder(order.orderId)).toHaveLength(1);
-      expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
-        ok: true,
-        value: { outcome: 'recorded' },
-      });
-      expect(await creditsOfOrder(order.orderId)).toEqual([
-        { status: 'RECORDED', kind: 'CASHBACK', amount: '500' },
-      ]);
-    });
-
-    it('records a note only when no real program applies, and a real credit can follow the note', async () => {
-      // A test-mode program alone: the note.
-      await create(cashbackBody({ name: 'DB test', testMode: true, capMinor: '3000' }));
-      const customer = ids.next<'Account'>();
-      const order = deliverTo(customer, 10000n);
-      expect(await make(CashbackOnDelivery).execute(system, inputOf(order))).toEqual({
-        ok: true,
-        value: { outcome: 'recorded' },
-      });
-      // A real program starts (it can only pay where the tax ruling is confirmed).
-      const realId = await create(
-        cashbackBody({ name: 'DB real', testMode: true, reward: { kind: 'PERCENT', bps: 200 } }),
-      );
-      await owner.query(
-        'UPDATE promotions.promotions SET test_mode = false WHERE market_id = $1 AND id = $2',
-        [mk, realId],
-      );
-      const again = await make(CashbackOnDelivery).execute(system, inputOf(order));
-      const stored = await creditsOfOrder(order.orderId);
-      if (confirmed) {
-        // The real credit is made although the note holds the source: the slots are separate.
-        expect(again).toEqual({ ok: true, value: { outcome: 'issued' } });
-        expect(stored.map((c) => [c.status, c.amount])).toEqual([
-          ['GRANTED', '200'],
-          ['RECORDED', '500'],
-        ]);
-      } else {
-        // The real program earns nothing while the ruling is open; the note stays the only row.
-        expect(again).toEqual({ ok: true, value: { outcome: 'recorded' } });
-        expect(stored.map((c) => [c.status, c.amount])).toEqual([['RECORDED', '500']]);
-      }
-    });
-
-    it('leaves a test-mode referral pending, and a real program can reward the referee later', async () => {
-      const programId = await create(referralBody({ testMode: true }));
-      const { referrer, newcomer } = await referralFlow();
-      const first = deliverTo(newcomer, 5000n);
-      expect(await make(QualifyReferralOnDelivery).execute(system, qualifyInput(first))).toEqual({
-        ok: true,
-        value: { outcome: 'recorded' },
-      });
-      const state = () =>
+      const creditsOfOrder = (orderId: string) =>
         rows(
-          'SELECT status FROM promotions.referrals WHERE market_id = $1 AND referee_account_id = $2',
-          [mk, newcomer],
+          `SELECT status, kind, amount_minor::text AS amount FROM promotions.credit_issuances
+          WHERE market_id = $1 AND order_id = $2 ORDER BY status, amount_minor`,
+          [mk, orderId],
         );
-      expect(await state()).toEqual([{ status: 'PENDING' }]);
-      expect((await creditsOfOrder(first.orderId)).map((c) => c.status)).toEqual([
-        'RECORDED',
-        'RECORDED',
-      ]);
+      const referralFlow = async () => {
+        const referrer = ids.next<'Account'>();
+        const newcomer = ids.next<'Account'>();
+        const mine = await make(ViewMyReferral).execute(asCustomer(referrer), {});
+        if (!mine.ok) throw new Error(`view failed ${JSON.stringify(mine.error)}`);
+        facts.orderHistory.lastOrder.set(newcomer, null);
+        const applied = await make(ApplyReferralCode).execute(asCustomer(newcomer), {
+          code: mine.value.code,
+        });
+        expect(applied.ok).toBe(true);
+        return { referrer, newcomer };
+      };
+      const qualifyInput = (order: { orderId: string; sellerOrderId: string }) =>
+        inputOf(order, delivery('promotions.qualify-referral-on-delivery'));
 
-      await owner.query(
-        'UPDATE promotions.promotions SET test_mode = false WHERE market_id = $1 AND id = $2',
-        [mk, programId],
-      );
-      const second = deliverTo(newcomer, 6000n);
-      const result = await make(QualifyReferralOnDelivery).execute(system, qualifyInput(second));
-      if (confirmed) {
-        expect(result).toEqual({ ok: true, value: { outcome: 'issued' } });
-        expect(await state()).toEqual([{ status: 'QUALIFIED' }]);
-        expect(
-          (await creditsOfOrder(second.orderId)).map((c) => [c.status, c.kind, c.amount]),
-        ).toEqual([
-          ['GRANTED', 'REFEREE_REWARD', '800'],
-          ['GRANTED', 'REFERRER_REWARD', '1000'],
-        ]);
-        expect(facts.walletCredit.grants.filter((g) => g.orderId === second.orderId)).toHaveLength(
-          2,
-        );
-        expect(referrer).not.toBe(newcomer);
-      } else {
-        expect(result).toEqual({ ok: true, value: { outcome: 'pending' } });
-        expect(await state()).toEqual([{ status: 'PENDING' }]);
-      }
-    });
+      beforeAll(async () => {
+        await endPrograms();
+      });
+      afterEach(async () => {
+        facts.walletCredit.failure = null;
+        await endPrograms();
+      });
 
-    if (confirmed) {
-      it('finishes a pending cashback after its program ended', async () => {
+      it('keeps the per-order cap when two seller orders of one order are delivered at once', async () => {
         await create(cashbackBody());
         const customer = ids.next<'Account'>();
+        const order = ids.next<'Order'>();
+        const a = deliverTo(customer, 10000n, order);
+        const b = deliverTo(customer, 10000n, order);
+        const results = await Promise.all([
+          make(CashbackOnDelivery).execute(system, inputOf(a)),
+          make(CashbackOnDelivery).execute(system, inputOf(b)),
+        ]);
+        expect(results.every((r) => r.ok)).toBe(true);
+        const stored = await creditsOfOrder(order);
+        if (confirmed) {
+          // 5% of 10000 is 500 each, but the promotion pays at most 700 for the whole order.
+          expect(stored.map((c) => [c.status, c.amount])).toEqual([
+            ['GRANTED', '200'],
+            ['GRANTED', '500'],
+          ]);
+        } else {
+          // Test-mode notes are not money: nothing caps them, so both are recorded in full.
+          expect(stored.map((c) => [c.status, c.amount])).toEqual([
+            ['RECORDED', '500'],
+            ['RECORDED', '500'],
+          ]);
+        }
+      });
+
+      it('recovers from a crash in test mode: the cashback note is kept once', async () => {
+        await create(cashbackBody({ testMode: true }));
+        const customer = ids.next<'Account'>();
         const order = deliverTo(customer, 10000n);
+        let armed = true;
+        const crashing: PromotionsDependencies = {
+          ...deps,
+          unitOfWork: {
+            run: (...args) => deps.unitOfWork.run(...args),
+            runOnce: (...args) => {
+              if (!armed) return deps.unitOfWork.runOnce(...args);
+              armed = false;
+              return Promise.reject(new Error('crash before the inbox'));
+            },
+          },
+        };
         const d = delivery('promotions.cashback-on-delivery');
-        facts.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
-        expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
-          ok: false,
-          error: { code: 'promotions.try-again' },
-        });
-        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual(['PENDING']);
-        await endPrograms();
+        await expect(
+          new CashbackOnDelivery(gate, crashing).execute(system, inputOf(order, d)),
+        ).rejects.toThrow('crash before the inbox');
+        expect(await creditsOfOrder(order.orderId)).toHaveLength(1);
         expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
           ok: true,
-          value: { outcome: 'issued' },
+          value: { outcome: 'recorded' },
         });
-        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual(['GRANTED']);
+        expect(await creditsOfOrder(order.orderId)).toEqual([
+          { status: 'RECORDED', kind: 'CASHBACK', amount: '500' },
+        ]);
       });
 
-      it('finishes both pending referral credits after the program ended', async () => {
-        await create(referralBody());
-        const { newcomer } = await referralFlow();
-        const order = deliverTo(newcomer, 5000n);
-        const d = delivery('promotions.qualify-referral-on-delivery');
-        facts.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
-        expect(await make(QualifyReferralOnDelivery).execute(system, inputOf(order, d))).toEqual({
-          ok: false,
-          error: { code: 'promotions.try-again' },
-        });
-        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual([
-          'PENDING',
-          'PENDING',
-        ]);
-        await endPrograms();
-        expect(await make(QualifyReferralOnDelivery).execute(system, inputOf(order, d))).toEqual({
+      it('records a note only when no real program applies, and a real credit can follow the note', async () => {
+        // A test-mode program alone: the note.
+        await create(cashbackBody({ name: 'DB test', testMode: true, capMinor: '3000' }));
+        const customer = ids.next<'Account'>();
+        const order = deliverTo(customer, 10000n);
+        expect(await make(CashbackOnDelivery).execute(system, inputOf(order))).toEqual({
           ok: true,
-          value: { outcome: 'issued' },
+          value: { outcome: 'recorded' },
         });
-        expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual([
-          'GRANTED',
-          'GRANTED',
-        ]);
+        // A real program starts (it can only pay where the tax ruling is confirmed).
+        const realId = await create(
+          cashbackBody({ name: 'DB real', testMode: true, reward: { kind: 'PERCENT', bps: 200 } }),
+        );
+        await owner.query(
+          'UPDATE promotions.promotions SET test_mode = false WHERE market_id = $1 AND id = $2',
+          [mk, realId],
+        );
+        const again = await make(CashbackOnDelivery).execute(system, inputOf(order));
+        const stored = await creditsOfOrder(order.orderId);
+        if (confirmed) {
+          // The real credit is made although the note holds the source: the slots are separate.
+          expect(again).toEqual({ ok: true, value: { outcome: 'issued' } });
+          expect(stored.map((c) => [c.status, c.amount])).toEqual([
+            ['GRANTED', '200'],
+            ['RECORDED', '500'],
+          ]);
+        } else {
+          // The real program earns nothing while the ruling is open; the note stays the only row.
+          expect(again).toEqual({ ok: true, value: { outcome: 'recorded' } });
+          expect(stored.map((c) => [c.status, c.amount])).toEqual([['RECORDED', '500']]);
+        }
       });
-    }
 
-    it('clamps a promotion made under wider limits to the Market limits now', async () => {
-      const limits = rulesNow.cashback!;
-      const id = await create(cashbackBody({ testMode: true, capMinor: '100' }));
-      await owner.query(
-        `UPDATE promotions.promotions SET reward_bps = $3, cap_minor = $4
+      it('leaves a test-mode referral pending, and a real program can reward the referee later', async () => {
+        const programId = await create(referralBody({ testMode: true }));
+        const { referrer, newcomer } = await referralFlow();
+        const first = deliverTo(newcomer, 5000n);
+        expect(await make(QualifyReferralOnDelivery).execute(system, qualifyInput(first))).toEqual({
+          ok: true,
+          value: { outcome: 'recorded' },
+        });
+        const state = () =>
+          rows(
+            'SELECT status FROM promotions.referrals WHERE market_id = $1 AND referee_account_id = $2',
+            [mk, newcomer],
+          );
+        expect(await state()).toEqual([{ status: 'PENDING' }]);
+        expect((await creditsOfOrder(first.orderId)).map((c) => c.status)).toEqual([
+          'RECORDED',
+          'RECORDED',
+        ]);
+
+        await owner.query(
+          'UPDATE promotions.promotions SET test_mode = false WHERE market_id = $1 AND id = $2',
+          [mk, programId],
+        );
+        const second = deliverTo(newcomer, 6000n);
+        const result = await make(QualifyReferralOnDelivery).execute(system, qualifyInput(second));
+        if (confirmed) {
+          expect(result).toEqual({ ok: true, value: { outcome: 'issued' } });
+          expect(await state()).toEqual([{ status: 'QUALIFIED' }]);
+          expect(
+            (await creditsOfOrder(second.orderId)).map((c) => [c.status, c.kind, c.amount]),
+          ).toEqual([
+            ['GRANTED', 'REFEREE_REWARD', '800'],
+            ['GRANTED', 'REFERRER_REWARD', '1000'],
+          ]);
+          expect(
+            facts.walletCredit.grants.filter((g) => g.orderId === second.orderId),
+          ).toHaveLength(2);
+          expect(referrer).not.toBe(newcomer);
+        } else {
+          expect(result).toEqual({ ok: true, value: { outcome: 'pending' } });
+          expect(await state()).toEqual([{ status: 'PENDING' }]);
+        }
+      });
+
+      if (confirmed) {
+        it('finishes a pending cashback after its program ended', async () => {
+          await create(cashbackBody());
+          const customer = ids.next<'Account'>();
+          const order = deliverTo(customer, 10000n);
+          const d = delivery('promotions.cashback-on-delivery');
+          facts.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+          expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
+            ok: false,
+            error: { code: 'promotions.try-again' },
+          });
+          expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual(['PENDING']);
+          await endPrograms();
+          expect(await make(CashbackOnDelivery).execute(system, inputOf(order, d))).toEqual({
+            ok: true,
+            value: { outcome: 'issued' },
+          });
+          expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual(['GRANTED']);
+        });
+
+        it('finishes both pending referral credits after the program ended', async () => {
+          await create(referralBody());
+          const { newcomer } = await referralFlow();
+          const order = deliverTo(newcomer, 5000n);
+          const d = delivery('promotions.qualify-referral-on-delivery');
+          facts.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+          expect(await make(QualifyReferralOnDelivery).execute(system, inputOf(order, d))).toEqual({
+            ok: false,
+            error: { code: 'promotions.try-again' },
+          });
+          expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual([
+            'PENDING',
+            'PENDING',
+          ]);
+          await endPrograms();
+          expect(await make(QualifyReferralOnDelivery).execute(system, inputOf(order, d))).toEqual({
+            ok: true,
+            value: { outcome: 'issued' },
+          });
+          expect((await creditsOfOrder(order.orderId)).map((c) => c.status)).toEqual([
+            'GRANTED',
+            'GRANTED',
+          ]);
+        });
+      }
+
+      it('clamps a promotion made under wider limits to the Market limits now', async () => {
+        const limits = rulesNow.cashback!;
+        const id = await create(cashbackBody({ testMode: true, capMinor: '100' }));
+        await owner.query(
+          `UPDATE promotions.promotions SET reward_bps = $3, cap_minor = $4
           WHERE market_id = $1 AND id = $2`,
-        [mk, id, limits.maxBps * 2, limits.maxCapMinor * 2n],
-      );
-      const customer = ids.next<'Account'>();
-      const goods = (limits.maxCapMinor * 40000n) / BigInt(limits.maxBps);
-      const order = deliverTo(customer, goods);
-      await make(CashbackOnDelivery).execute(system, inputOf(order));
-      const byPercent = (goods * BigInt(limits.maxBps)) / 10000n;
-      const expected = byPercent < limits.maxCapMinor ? byPercent : limits.maxCapMinor;
-      expect((await creditsOfOrder(order.orderId)).map((c) => c.amount)).toEqual([
-        expected.toString(),
-      ]);
+          [mk, id, limits.maxBps * 2, limits.maxCapMinor * 2n],
+        );
+        const customer = ids.next<'Account'>();
+        const goods = (limits.maxCapMinor * 40000n) / BigInt(limits.maxBps);
+        const order = deliverTo(customer, goods);
+        await make(CashbackOnDelivery).execute(system, inputOf(order));
+        const byPercent = (goods * BigInt(limits.maxBps)) / 10000n;
+        const expected = byPercent < limits.maxCapMinor ? byPercent : limits.maxCapMinor;
+        expect((await creditsOfOrder(order.orderId)).map((c) => c.amount)).toEqual([
+          expected.toString(),
+        ]);
+      });
     });
   });
 });

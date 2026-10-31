@@ -612,7 +612,8 @@ export async function qualifyReferralOnDelivery(
   const referral = read.value.referral;
   if (referral === null) return handled(deps, context, input.delivery, 'nothing');
 
-  // A crash after the credits were reserved: carry on from the wallet calls.
+  // Guard: the referral and its credits are written in one unit, so a QUALIFIED referral here is a
+  // legacy or manually repaired row; carry on from the wallet calls rather than skip it.
   if (referral.status === 'QUALIFIED') {
     if (referral.qualifyingSellerOrderId !== order.sellerOrderId) {
       return handled(deps, context, input.delivery, 'nothing');

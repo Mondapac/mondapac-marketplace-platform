@@ -104,6 +104,11 @@ CREATE INDEX "credit_issuances_market_id_order_id_idx" ON "promotions"."credit_i
 CREATE INDEX "credit_issuances_market_id_promotion_id_recipient_account_i_idx" ON "promotions"."credit_issuances"("market_id", "promotion_id", "recipient_account_id");
 
 -- CreateIndex
+-- The lookup by source without a status (the handler's findBySource): the partial unique indexes
+-- below cannot serve it.
+CREATE INDEX "credit_issuances_market_id_kind_source_id_idx" ON "promotions"."credit_issuances"("market_id", "kind", "source_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "credit_issuances_market_id_id_key" ON "promotions"."credit_issuances"("market_id", "id");
 
 -- AddForeignKey
@@ -212,7 +217,20 @@ CREATE UNIQUE INDEX "credit_issuances_recorded_idempotency_key"
 CREATE FUNCTION "promotions"."guard_credit_transition"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
-  IF OLD."status" = 'PENDING' AND NEW."status" IN ('GRANTED', 'FAILED') THEN
+  IF OLD."status" = 'PENDING' AND NEW."status" IN ('GRANTED', 'FAILED')
+     AND NEW."id" = OLD."id"
+     AND NEW."market_id" = OLD."market_id"
+     AND NEW."tenant_id" = OLD."tenant_id"
+     AND NEW."promotion_id" = OLD."promotion_id"
+     AND NEW."kind" = OLD."kind"
+     AND NEW."recipient_account_id" = OLD."recipient_account_id"
+     AND NEW."order_id" IS NOT DISTINCT FROM OLD."order_id"
+     AND NEW."source_kind" = OLD."source_kind"
+     AND NEW."source_id" = OLD."source_id"
+     AND NEW."amount_minor" = OLD."amount_minor"
+     AND NEW."currency" = OLD."currency"
+     AND NEW."idempotency_key" = OLD."idempotency_key"
+     AND NEW."created_at" = OLD."created_at" THEN
     RETURN NEW;
   END IF;
   RAISE EXCEPTION 'promotions.credit_issuances: % -> % is not allowed', OLD."status", NEW."status"
@@ -222,7 +240,15 @@ END; $$;
 CREATE FUNCTION "promotions"."guard_referral_transition"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
-  IF OLD."status" = 'PENDING' AND NEW."status" IN ('QUALIFIED', 'REJECTED', 'EXPIRED') THEN
+  IF OLD."status" = 'PENDING' AND NEW."status" IN ('QUALIFIED', 'REJECTED', 'EXPIRED')
+     AND NEW."id" = OLD."id"
+     AND NEW."market_id" = OLD."market_id"
+     AND NEW."tenant_id" = OLD."tenant_id"
+     AND NEW."promotion_id" = OLD."promotion_id"
+     AND NEW."referrer_account_id" = OLD."referrer_account_id"
+     AND NEW."referee_account_id" = OLD."referee_account_id"
+     AND NEW."created_at" = OLD."created_at"
+     AND NEW."expires_at" = OLD."expires_at" THEN
     RETURN NEW;
   END IF;
   RAISE EXCEPTION 'promotions.referrals: % -> % is not allowed', OLD."status", NEW."status"

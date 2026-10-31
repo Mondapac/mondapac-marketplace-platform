@@ -31,6 +31,7 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PROMOTIONS_AUDIT_ACTIONS } from '../domain/audit';
+import type { PromotionsPolicy } from './ports/promotions-policy';
 import { ConfigPromotionsPolicy } from '../infrastructure/config-promotions-policy';
 import { PromotionsFacadeImplementation } from '../presentation/promotions.facade';
 import type { PromotionsDependencies } from './promotions-dependencies';
@@ -86,7 +87,16 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
   const rules = policy.settings(market)!.rules;
   const currency = policy.settings(market)!.currency;
   const DAY = { hours: 24 };
-  const confirmed = rules.gstRulingConfirmed;
+  const rulingConfirmed = rules.gstRulingConfirmed;
+  /** The ruling the current test runs with: the Market's own, or the override of a money path. */
+  let rulingInForce = rulingConfirmed;
+  /** The Market's own policy with the tax ruling taken as confirmed. */
+  const confirmedPolicy: PromotionsPolicy = {
+    settings: (m) => {
+      const own = policy.settings(m);
+      return own === null ? null : { ...own, rules: { ...own.rules, gstRulingConfirmed: true } };
+    },
+  };
 
   let clock: FixedClock;
   let promotions: MemoryPromotions;
@@ -144,6 +154,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
     new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
 
   beforeEach(async () => {
+    rulingInForce = rulingConfirmed;
     clock = new FixedClock(T0);
     gate = createUseCaseGate(markets, {
       check: (): Promise<AccessDecision> => Promise.resolve({ allowed: true }),
@@ -187,7 +198,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
     funding: 'PLATFORM',
     startsAt: startsAt(),
     budgetMinor: '100000',
-    testMode: !confirmed,
+    testMode: !rulingInForce,
     ...extra,
   });
   const group = (extra: Record<string, unknown> = {}) =>
@@ -366,7 +377,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
 
     it('needs test mode for platform credit until the Market’s ruling is confirmed', async () => {
       const result = await make(CreatePromotion).execute(admin(), referral({ testMode: false }));
-      if (confirmed) expect(result.ok).toBe(true);
+      if (rulingConfirmed) expect(result.ok).toBe(true);
       else expect(fields(result)).toContain('testMode:required');
     });
 
@@ -496,7 +507,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       await adminCreate(group());
       p3.orderHistory.lastOrder.set(REFERRER, T0.subtract({ hours: 24 * 90 }));
       const real = await quote(request([line(1, 10000n, 1)], { testMode: false }));
-      expect(real.totals.goodsDiscount).toBe(confirmed ? 1000n : 0n);
+      expect(real.totals.goodsDiscount).toBe(rulingConfirmed ? 1000n : 0n);
     });
 
     it('lets an admin preview a stated customer without reading any module', async () => {
@@ -715,776 +726,803 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
   });
   const credits = () => [...p3.credits.rows.values()];
 
-  describe('cashback on delivery', () => {
-    const run = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
-      make(CashbackOnDelivery).execute(system, input(facts, d));
-
-    it('credits the percent of the goods paid to the wallet once, with a stable key', async () => {
-      await adminCreate(cashback({ testMode: !confirmed }));
-      const facts = deliverOrder(1, REFERRER, 10000n);
-      const first = delivery();
-      const result = await run(facts, first);
-      if (confirmed) {
-        expect(result).toEqual({ ok: true, value: { outcome: 'issued' } });
-        expect(p3.walletCredit.grants).toHaveLength(1);
-        expect(p3.walletCredit.grants[0]).toMatchObject({
-          accountId: REFERRER,
-          amount: money(500n, currency),
-          orderId: facts.orderId,
-        });
-        expect(credits()[0]).toMatchObject({
-          status: 'GRANTED',
-          amountMinor: 500n,
-          kind: 'CASHBACK',
-        });
-      } else {
-        // A test-mode promotion only records the intended credit.
-        expect(result).toEqual({ ok: true, value: { outcome: 'recorded' } });
-        expect(p3.walletCredit.grants).toHaveLength(0);
-        expect(credits()[0]).toMatchObject({ status: 'RECORDED', amountMinor: 500n });
-      }
+  // The money paths run twice: with the Market's own ruling, and with the ruling overridden as
+  // confirmed (the config file stays as it is), so a Market whose ruling is open is tested on real
+  // money too.
+  describe.each([[false], [true]] as const)('money paths, ruling override %s', (override) => {
+    const confirmed = override || rulingConfirmed;
+    beforeEach(() => {
+      rulingInForce = confirmed;
+      if (override) deps = { ...deps, policy: confirmedPolicy };
     });
+    describe('cashback on delivery', () => {
+      const run = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
+        make(CashbackOnDelivery).execute(system, input(facts, d));
 
-    it('the same event twice, and a new event for the same order, make one credit', async () => {
-      await adminCreate(cashback());
-      const facts = deliverOrder(1, REFERRER, 10000n);
-      const d = delivery();
-      await run(facts, d);
-      expect(await run(facts, d)).toEqual({ ok: true, value: { outcome: 'already-handled' } });
-      await run(facts);
-      expect(credits()).toHaveLength(1);
-      expect(p3.walletCredit.grants.length).toBe(confirmed ? 1 : 0);
-    });
-
-    it('stops at the promotion’s per-order cap, across the seller orders of one order', async () => {
-      await adminCreate(cashback({ capMinor: '700' }));
-      const order = id<'Order'>(0x0dff);
-      const a = deliverOrder(1, REFERRER, 10000n, { orderId: order });
-      const b = deliverOrder(2, REFERRER, 10000n, { orderId: order });
-      await run(a);
-      await run(b);
-      const amounts = credits()
-        .map((c) => c.amountMinor)
-        .sort();
-      // A test-mode note is not money: it counts toward no cap.
-      expect(amounts).toEqual(confirmed ? [200n, 500n] : [500n, 500n]);
-    });
-
-    it('stops at the budget and at the minimum spend, and counts the per-customer limit', async () => {
-      const made = await adminCreate(
-        cashback({ budgetMinor: '600', minSpendMinor: '2000', maxUsesPerCustomer: 2 }),
-      );
-      await run(deliverOrder(1, REFERRER, 1000n));
-      expect(credits()).toHaveLength(0);
-      await run(deliverOrder(2, REFERRER, 10000n));
-      await run(deliverOrder(3, REFERRER, 10000n));
-      await run(deliverOrder(4, REFERRER, 10000n));
-      if (confirmed) {
-        expect(credits().map((c) => c.amountMinor)).toEqual([500n, 100n]);
-        expect(await p3.credits.reservedTotal(market, made.id)).toBe(600n);
-      } else {
-        // A test-mode promotion only records: it holds no budget and counts no use.
-        expect(credits().map((c) => [c.status, c.amountMinor])).toEqual([
-          ['RECORDED', 500n],
-          ['RECORDED', 500n],
-          ['RECORDED', 500n],
-        ]);
-        expect(await p3.credits.reservedTotal(market, made.id)).toBe(0n);
-      }
-    });
-
-    it('pays the larger of two live cashbacks, not both', async () => {
-      await adminCreate(cashback({ name: 'Small', reward: { kind: 'PERCENT', bps: 200 } }));
-      await adminCreate(cashback({ name: 'Large', reward: { kind: 'PERCENT', bps: 400 } }));
-      await run(deliverOrder(1, REFERRER, 10000n));
-      expect(credits().map((c) => c.amountMinor)).toEqual([400n]);
-    });
-
-    it('does nothing, and reads no order fact, with no live cashback or with the switch off', async () => {
-      const facts = deliverOrder(1, REFERRER, 10000n);
-      expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'nothing' } });
-      expect(p3.orderFacts.reads).toBe(0);
-      await adminCreate(cashback());
-      await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
-      expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'nothing' } });
-      expect(credits()).toHaveLength(0);
-    });
-
-    it('retries when the order facts are unknown, never guessing an amount', async () => {
-      await adminCreate(cashback());
-      const unknown = { orderId: id<'Order'>(0x0d99), sellerOrderId: id<'SellerOrder'>(0x5099) };
-      expect(await run(unknown)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
-      expect(credits()).toHaveLength(0);
-    });
-
-    it('ignores a delivery in another currency, and rejects malformed ids', async () => {
-      await adminCreate(cashback());
-      const foreign = deliverOrder(1, REFERRER, 10000n, {
-        goodsCurrency: currency === 'USD' ? 'EUR' : 'USD',
-      });
-      expect(await run(foreign)).toEqual({ ok: true, value: { outcome: 'nothing' } });
-      expect(
-        await make(CashbackOnDelivery).execute(system, {
-          delivery: delivery(),
-          orderId: 'x',
-          sellerOrderId: 5,
-        }),
-      ).toEqual({ ok: false, error: { code: 'validation.failed' } });
-    });
-
-    if (confirmed) {
-      it('earns nothing on a test order', async () => {
-        await adminCreate(cashback({ testMode: false }));
-        await run(deliverOrder(1, REFERRER, 10000n, { testOrder: true }));
-        expect(credits()).toHaveLength(0);
-      });
-
-      it('keeps the credit pending when the wallet is not available, and finishes it on the retry with the same key', async () => {
-        await adminCreate(cashback({ testMode: false }));
+      it('credits the percent of the goods paid to the wallet once, with a stable key', async () => {
+        await adminCreate(cashback({ testMode: !confirmed }));
         const facts = deliverOrder(1, REFERRER, 10000n);
-        p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
-        expect(await run(facts)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
-        expect(credits()[0]!.status).toBe('PENDING');
-        const key = credits()[0]!.idempotencyKey;
-        expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
+        const first = delivery();
+        const result = await run(facts, first);
+        if (confirmed) {
+          expect(result).toEqual({ ok: true, value: { outcome: 'issued' } });
+          expect(p3.walletCredit.grants).toHaveLength(1);
+          expect(p3.walletCredit.grants[0]).toMatchObject({
+            accountId: REFERRER,
+            amount: money(500n, currency),
+            orderId: facts.orderId,
+          });
+          expect(credits()[0]).toMatchObject({
+            status: 'GRANTED',
+            amountMinor: 500n,
+            kind: 'CASHBACK',
+          });
+        } else {
+          // A test-mode promotion only records the intended credit.
+          expect(result).toEqual({ ok: true, value: { outcome: 'recorded' } });
+          expect(p3.walletCredit.grants).toHaveLength(0);
+          expect(credits()[0]).toMatchObject({ status: 'RECORDED', amountMinor: 500n });
+        }
+      });
+
+      it('the same event twice, and a new event for the same order, make one credit', async () => {
+        await adminCreate(cashback());
+        const facts = deliverOrder(1, REFERRER, 10000n);
+        const d = delivery();
+        await run(facts, d);
+        expect(await run(facts, d)).toEqual({ ok: true, value: { outcome: 'already-handled' } });
+        await run(facts);
         expect(credits()).toHaveLength(1);
-        expect(credits()[0]).toMatchObject({ status: 'GRANTED', idempotencyKey: key });
-        expect(p3.walletCredit.grants).toHaveLength(1);
+        expect(p3.walletCredit.grants.length).toBe(confirmed ? 1 : 0);
       });
 
-      it('marks the credit failed when the wallet refuses for good, and does not retry it', async () => {
-        await adminCreate(cashback({ testMode: false }));
-        const facts = deliverOrder(1, REFERRER, 10000n);
-        p3.walletCredit.failure = { retry: false, code: 'wallet.account-not-active' };
-        expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'failed' } });
-        expect(credits()[0]).toMatchObject({
-          status: 'FAILED',
-          failureCode: 'wallet.account-not-active',
-        });
-        // A failed credit no longer holds budget.
-        expect(await p3.credits.reservedTotal(market, credits()[0]!.promotionId)).toBe(0n);
+      it('stops at the promotion’s per-order cap, across the seller orders of one order', async () => {
+        await adminCreate(cashback({ capMinor: '700' }));
+        const order = id<'Order'>(0x0dff);
+        const a = deliverOrder(1, REFERRER, 10000n, { orderId: order });
+        const b = deliverOrder(2, REFERRER, 10000n, { orderId: order });
+        await run(a);
+        await run(b);
+        const amounts = credits()
+          .map((c) => c.amountMinor)
+          .sort();
+        // A test-mode note is not money: it counts toward no cap.
+        expect(amounts).toEqual(confirmed ? [200n, 500n] : [500n, 500n]);
       });
-    } else {
-      it('earns nothing from a real promotion while the tax ruling is open (skipped, not recorded)', async () => {
-        const made = await adminCreate(cashback());
-        promotions.records.set(made.id, { ...promotions.records.get(made.id)!, testMode: false });
-        await run(deliverOrder(1, REFERRER, 10000n));
+
+      it('stops at the budget and at the minimum spend, and counts the per-customer limit', async () => {
+        const made = await adminCreate(
+          cashback({ budgetMinor: '600', minSpendMinor: '2000', maxUsesPerCustomer: 2 }),
+        );
+        await run(deliverOrder(1, REFERRER, 1000n));
         expect(credits()).toHaveLength(0);
-        expect(p3.walletCredit.grants).toHaveLength(0);
+        await run(deliverOrder(2, REFERRER, 10000n));
+        await run(deliverOrder(3, REFERRER, 10000n));
+        await run(deliverOrder(4, REFERRER, 10000n));
+        if (confirmed) {
+          expect(credits().map((c) => c.amountMinor)).toEqual([500n, 100n]);
+          expect(await p3.credits.reservedTotal(market, made.id)).toBe(600n);
+        } else {
+          // A test-mode promotion only records: it holds no budget and counts no use.
+          expect(credits().map((c) => [c.status, c.amountMinor])).toEqual([
+            ['RECORDED', 500n],
+            ['RECORDED', 500n],
+            ['RECORDED', 500n],
+          ]);
+          expect(await p3.credits.reservedTotal(market, made.id)).toBe(0n);
+        }
       });
-    }
-  });
 
-  describe('referral reward on delivery', () => {
-    let referrerCode: string;
-    const qualify = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
-      make(QualifyReferralOnDelivery).execute(system, input(facts, d));
-    const applyAs = async (who: Id<'Account'>) => {
-      p3.orderHistory.lastOrder.set(who, null);
-      const result = await make(ApplyReferralCode).execute(customerOf(who), { code: referrerCode });
-      expect(result.ok).toBe(true);
-    };
-    const real = () => (confirmed ? { testMode: false } : {});
-
-    beforeEach(async () => {
-      await adminCreate(referral(real()));
-      const mine = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
-      if (!mine.ok) throw new Error('view failed');
-      referrerCode = mine.value.code;
-    });
-
-    it('credits the referrer and the new customer once the first order is delivered', async () => {
-      await applyAs(NEWBIE);
-      const facts = deliverOrder(1, NEWBIE, 5000n);
-      const result = await qualify(facts);
-      expect(result).toEqual({ ok: true, value: { outcome: confirmed ? 'issued' : 'recorded' } });
-      expect(
-        credits()
-          .map((c) => [c.kind, c.recipientAccountId, c.amountMinor])
-          .sort(),
-      ).toEqual(
-        [
-          ['REFEREE_REWARD', NEWBIE, 800n],
-          ['REFERRER_REWARD', REFERRER, 1000n],
-        ].sort(),
-      );
-      expect(p3.walletCredit.grants).toHaveLength(confirmed ? 2 : 0);
-      expect(credits().every((c) => c.status === (confirmed ? 'GRANTED' : 'RECORDED'))).toBe(true);
-      // A test-mode run decides nothing about the referral: it stays open for a real program.
-      expect([...p3.referrals.rows.values()][0]).toMatchObject(
-        confirmed
-          ? { status: 'QUALIFIED', qualifyingOrderId: facts.orderId }
-          : { status: 'PENDING', qualifyingOrderId: null },
-      );
-    });
-
-    it('the same event twice, and a later order, credit each person once', async () => {
-      await applyAs(NEWBIE);
-      const facts = deliverOrder(1, NEWBIE, 5000n);
-      const d = delivery();
-      await qualify(facts, d);
-      expect(await qualify(facts, d)).toEqual({ ok: true, value: { outcome: 'already-handled' } });
-      await qualify(facts);
-      await qualify(deliverOrder(2, NEWBIE, 7000n));
-      expect(credits()).toHaveLength(2);
-      expect(p3.walletCredit.grants).toHaveLength(confirmed ? 2 : 0);
-    });
-
-    it('does nothing for a customer who was not referred, and reads no wallet', async () => {
-      expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
-        ok: true,
-        value: { outcome: 'nothing' },
+      it('pays the larger of two live cashbacks, not both', async () => {
+        await adminCreate(cashback({ name: 'Small', reward: { kind: 'PERCENT', bps: 200 } }));
+        await adminCreate(cashback({ name: 'Large', reward: { kind: 'PERCENT', bps: 400 } }));
+        await run(deliverOrder(1, REFERRER, 10000n));
+        expect(credits().map((c) => c.amountMinor)).toEqual([400n]);
       });
-      expect(credits()).toHaveLength(0);
-    });
 
-    it('rejects a referral of the same household or the same payment, and never rewards it', async () => {
-      for (const [verdict, reason, who, n] of [
-        ['same-household', 'SAME_HOUSEHOLD', NEWBIE, 1],
-        ['same-payment', 'SAME_PAYMENT', NEWBIE_2, 2],
-      ] as const) {
-        await applyAs(who);
-        p3.referralSignals.verdict = verdict;
-        expect(await qualify(deliverOrder(n, who, 5000n))).toEqual({
-          ok: true,
-          value: { outcome: 'rejected' },
+      it('does nothing, and reads no order fact, with no live cashback or with the switch off', async () => {
+        const facts = deliverOrder(1, REFERRER, 10000n);
+        expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'nothing' } });
+        expect(p3.orderFacts.reads).toBe(0);
+        await adminCreate(cashback());
+        await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+        expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'nothing' } });
+        expect(credits()).toHaveLength(0);
+      });
+
+      it('retries when the order facts are unknown, never guessing an amount', async () => {
+        await adminCreate(cashback());
+        const unknown = { orderId: id<'Order'>(0x0d99), sellerOrderId: id<'SellerOrder'>(0x5099) };
+        expect(await run(unknown)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
+        expect(credits()).toHaveLength(0);
+      });
+
+      it('ignores a delivery in another currency, and rejects malformed ids', async () => {
+        await adminCreate(cashback());
+        const foreign = deliverOrder(1, REFERRER, 10000n, {
+          goodsCurrency: currency === 'USD' ? 'EUR' : 'USD',
         });
+        expect(await run(foreign)).toEqual({ ok: true, value: { outcome: 'nothing' } });
         expect(
-          [...p3.referrals.rows.values()].find((r) => r.refereeAccountId === who),
-        ).toMatchObject({
-          status: 'REJECTED',
-          rejectReason: reason,
+          await make(CashbackOnDelivery).execute(system, {
+            delivery: delivery(),
+            orderId: 'x',
+            sellerOrderId: 5,
+          }),
+        ).toEqual({ ok: false, error: { code: 'validation.failed' } });
+      });
+
+      if (confirmed) {
+        it('earns nothing on a test order', async () => {
+          await adminCreate(cashback({ testMode: false }));
+          await run(deliverOrder(1, REFERRER, 10000n, { testOrder: true }));
+          expect(credits()).toHaveLength(0);
+        });
+
+        it('keeps the credit pending when the wallet is not available, and finishes it on the retry with the same key', async () => {
+          await adminCreate(cashback({ testMode: false }));
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+          expect(await run(facts)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
+          expect(credits()[0]!.status).toBe('PENDING');
+          const key = credits()[0]!.idempotencyKey;
+          expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
+          expect(credits()).toHaveLength(1);
+          expect(credits()[0]).toMatchObject({ status: 'GRANTED', idempotencyKey: key });
+          expect(p3.walletCredit.grants).toHaveLength(1);
+        });
+
+        it('marks the credit failed when the wallet refuses for good, and does not retry it', async () => {
+          await adminCreate(cashback({ testMode: false }));
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          p3.walletCredit.failure = { retry: false, code: 'wallet.account-not-active' };
+          expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'failed' } });
+          expect(credits()[0]).toMatchObject({
+            status: 'FAILED',
+            failureCode: 'wallet.account-not-active',
+          });
+          // A failed credit no longer holds budget.
+          expect(await p3.credits.reservedTotal(market, credits()[0]!.promotionId)).toBe(0n);
+        });
+      } else {
+        it('earns nothing from a real promotion while the tax ruling is open (skipped, not recorded)', async () => {
+          const made = await adminCreate(cashback());
+          promotions.records.set(made.id, { ...promotions.records.get(made.id)!, testMode: false });
+          await run(deliverOrder(1, REFERRER, 10000n));
+          expect(credits()).toHaveLength(0);
+          expect(p3.walletCredit.grants).toHaveLength(0);
         });
       }
-      expect(credits()).toHaveLength(0);
     });
 
-    it('keeps the referral pending when the abuse check cannot tell (fail closed)', async () => {
-      await applyAs(NEWBIE);
-      p3.referralSignals.verdict = 'unknown';
-      expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
-        ok: true,
-        value: { outcome: 'pending' },
-      });
-      expect(credits()).toHaveLength(0);
-      expect([...p3.referrals.rows.values()][0]!.status).toBe('PENDING');
-      p3.referralSignals.verdict = 'clear';
-      expect((await qualify(deliverOrder(2, NEWBIE, 5000n))).ok).toBe(true);
-      expect(credits()).toHaveLength(2);
-    });
-
-    it('expires a referral whose order is delivered after the window', async () => {
-      await applyAs(NEWBIE);
-      clock.advance(
-        Temporal.Duration.from({ hours: 24 * (rules.referral!.qualifyWithinDays + 1) }),
-      );
-      expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
-        ok: true,
-        value: { outcome: 'expired' },
-      });
-      expect(credits()).toHaveLength(0);
-      expect([...p3.referrals.rows.values()][0]!.status).toBe('EXPIRED');
-    });
-
-    it('ignores an order placed before the code was applied', async () => {
-      await applyAs(NEWBIE);
-      const early = deliverOrder(1, NEWBIE, 5000n, { placedAt: T0.subtract({ hours: 5 }) });
-      expect(await qualify(early)).toEqual({ ok: true, value: { outcome: 'nothing' } });
-      expect(credits()).toHaveLength(0);
-    });
-
-    it('caps the rewarded referrals of one referrer, and the platform budget', async () => {
-      // maxUsesPerCustomer is 2: the third referral is rejected as over the cap.
-      const people = [id<'Account'>(0xd1), id<'Account'>(0xd2), id<'Account'>(0xd3)];
-      for (const [index, who] of people.entries()) {
-        await applyAs(who);
-        const result = await qualify(deliverOrder(index + 1, who, 5000n));
+    describe('referral reward on delivery', () => {
+      let referrerCode: string;
+      const qualify = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
+        make(QualifyReferralOnDelivery).execute(system, input(facts, d));
+      const applyAs = async (who: Id<'Account'>) => {
+        p3.orderHistory.lastOrder.set(who, null);
+        const result = await make(ApplyReferralCode).execute(customerOf(who), {
+          code: referrerCode,
+        });
         expect(result.ok).toBe(true);
-      }
-      const states = [...p3.referrals.rows.values()].map((r) => [r.status, r.rejectReason]);
-      expect(states).toEqual(
-        confirmed
-          ? [
-              ['QUALIFIED', null],
-              ['QUALIFIED', null],
-              ['REJECTED', 'CAP_REACHED'],
-            ]
-          : // Test mode qualifies nobody, so nobody counts toward the cap.
-            [
-              ['PENDING', null],
-              ['PENDING', null],
-              ['PENDING', null],
-            ],
-      );
-      expect(credits()).toHaveLength(confirmed ? 4 : 6);
-    });
+      };
+      const real = () => (confirmed ? { testMode: false } : {});
 
-    it('rejects a referral the budget cannot cover whole', async () => {
-      const [made] = [...promotions.records.values()];
-      promotions.records.set(made!.id, { ...made!, budgetMinor: 1500n });
-      await applyAs(NEWBIE);
-      expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
-        ok: true,
-        value: { outcome: confirmed ? 'rejected' : 'pending' },
+      beforeEach(async () => {
+        await adminCreate(referral(real()));
+        const mine = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
+        if (!mine.ok) throw new Error('view failed');
+        referrerCode = mine.value.code;
       });
-      // Test mode never rejects: it notes nothing and leaves the referral open.
-      expect([...p3.referrals.rows.values()][0]).toMatchObject(
-        confirmed
-          ? { status: 'REJECTED', rejectReason: 'BUDGET_EXHAUSTED' }
-          : { status: 'PENDING', rejectReason: null },
-      );
-      expect(credits()).toHaveLength(0);
-    });
 
-    it('retries when the order facts are unknown', async () => {
-      await applyAs(NEWBIE);
-      const unknown = { orderId: id<'Order'>(0x0d98), sellerOrderId: id<'SellerOrder'>(0x5098) };
-      expect(await qualify(unknown)).toEqual({
-        ok: false,
-        error: { code: 'promotions.try-again' },
-      });
-    });
-
-    if (confirmed) {
-      it('finishes both credits on the retry after a wallet fault, with the same keys', async () => {
+      it('credits the referrer and the new customer once the first order is delivered', async () => {
         await applyAs(NEWBIE);
         const facts = deliverOrder(1, NEWBIE, 5000n);
-        p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
-        expect(await qualify(facts)).toEqual({
+        const result = await qualify(facts);
+        expect(result).toEqual({ ok: true, value: { outcome: confirmed ? 'issued' : 'recorded' } });
+        expect(
+          credits()
+            .map((c) => [c.kind, c.recipientAccountId, c.amountMinor])
+            .sort(),
+        ).toEqual(
+          [
+            ['REFEREE_REWARD', NEWBIE, 800n],
+            ['REFERRER_REWARD', REFERRER, 1000n],
+          ].sort(),
+        );
+        expect(p3.walletCredit.grants).toHaveLength(confirmed ? 2 : 0);
+        expect(credits().every((c) => c.status === (confirmed ? 'GRANTED' : 'RECORDED'))).toBe(
+          true,
+        );
+        // A test-mode run decides nothing about the referral: it stays open for a real program.
+        expect([...p3.referrals.rows.values()][0]).toMatchObject(
+          confirmed
+            ? { status: 'QUALIFIED', qualifyingOrderId: facts.orderId }
+            : { status: 'PENDING', qualifyingOrderId: null },
+        );
+      });
+
+      it('the same event twice, and a later order, credit each person once', async () => {
+        await applyAs(NEWBIE);
+        const facts = deliverOrder(1, NEWBIE, 5000n);
+        const d = delivery();
+        await qualify(facts, d);
+        expect(await qualify(facts, d)).toEqual({
+          ok: true,
+          value: { outcome: 'already-handled' },
+        });
+        await qualify(facts);
+        await qualify(deliverOrder(2, NEWBIE, 7000n));
+        expect(credits()).toHaveLength(2);
+        expect(p3.walletCredit.grants).toHaveLength(confirmed ? 2 : 0);
+      });
+
+      it('does nothing for a customer who was not referred, and reads no wallet', async () => {
+        expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
+          ok: true,
+          value: { outcome: 'nothing' },
+        });
+        expect(credits()).toHaveLength(0);
+      });
+
+      it('rejects a referral of the same household or the same payment, and never rewards it', async () => {
+        for (const [verdict, reason, who, n] of [
+          ['same-household', 'SAME_HOUSEHOLD', NEWBIE, 1],
+          ['same-payment', 'SAME_PAYMENT', NEWBIE_2, 2],
+        ] as const) {
+          await applyAs(who);
+          p3.referralSignals.verdict = verdict;
+          expect(await qualify(deliverOrder(n, who, 5000n))).toEqual({
+            ok: true,
+            value: { outcome: 'rejected' },
+          });
+          expect(
+            [...p3.referrals.rows.values()].find((r) => r.refereeAccountId === who),
+          ).toMatchObject({
+            status: 'REJECTED',
+            rejectReason: reason,
+          });
+        }
+        expect(credits()).toHaveLength(0);
+      });
+
+      it('keeps the referral pending when the abuse check cannot tell (fail closed)', async () => {
+        await applyAs(NEWBIE);
+        p3.referralSignals.verdict = 'unknown';
+        expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
+          ok: true,
+          value: { outcome: 'pending' },
+        });
+        expect(credits()).toHaveLength(0);
+        expect([...p3.referrals.rows.values()][0]!.status).toBe('PENDING');
+        p3.referralSignals.verdict = 'clear';
+        expect((await qualify(deliverOrder(2, NEWBIE, 5000n))).ok).toBe(true);
+        expect(credits()).toHaveLength(2);
+      });
+
+      it('expires a referral whose order is delivered after the window', async () => {
+        await applyAs(NEWBIE);
+        clock.advance(
+          Temporal.Duration.from({ hours: 24 * (rules.referral!.qualifyWithinDays + 1) }),
+        );
+        expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
+          ok: true,
+          value: { outcome: 'expired' },
+        });
+        expect(credits()).toHaveLength(0);
+        expect([...p3.referrals.rows.values()][0]!.status).toBe('EXPIRED');
+      });
+
+      it('ignores an order placed before the code was applied', async () => {
+        await applyAs(NEWBIE);
+        const early = deliverOrder(1, NEWBIE, 5000n, { placedAt: T0.subtract({ hours: 5 }) });
+        expect(await qualify(early)).toEqual({ ok: true, value: { outcome: 'nothing' } });
+        expect(credits()).toHaveLength(0);
+      });
+
+      it('caps the rewarded referrals of one referrer, and the platform budget', async () => {
+        // maxUsesPerCustomer is 2: the third referral is rejected as over the cap.
+        const people = [id<'Account'>(0xd1), id<'Account'>(0xd2), id<'Account'>(0xd3)];
+        for (const [index, who] of people.entries()) {
+          await applyAs(who);
+          const result = await qualify(deliverOrder(index + 1, who, 5000n));
+          expect(result.ok).toBe(true);
+        }
+        const states = [...p3.referrals.rows.values()].map((r) => [r.status, r.rejectReason]);
+        expect(states).toEqual(
+          confirmed
+            ? [
+                ['QUALIFIED', null],
+                ['QUALIFIED', null],
+                ['REJECTED', 'CAP_REACHED'],
+              ]
+            : // Test mode qualifies nobody, so nobody counts toward the cap.
+              [
+                ['PENDING', null],
+                ['PENDING', null],
+                ['PENDING', null],
+              ],
+        );
+        expect(credits()).toHaveLength(confirmed ? 4 : 6);
+      });
+
+      it('rejects a referral the budget cannot cover whole', async () => {
+        const [made] = [...promotions.records.values()];
+        promotions.records.set(made!.id, { ...made!, budgetMinor: 1500n });
+        await applyAs(NEWBIE);
+        expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
+          ok: true,
+          value: { outcome: confirmed ? 'rejected' : 'pending' },
+        });
+        // Test mode never rejects: it notes nothing and leaves the referral open.
+        expect([...p3.referrals.rows.values()][0]).toMatchObject(
+          confirmed
+            ? { status: 'REJECTED', rejectReason: 'BUDGET_EXHAUSTED' }
+            : { status: 'PENDING', rejectReason: null },
+        );
+        expect(credits()).toHaveLength(0);
+      });
+
+      it('retries when the order facts are unknown', async () => {
+        await applyAs(NEWBIE);
+        const unknown = { orderId: id<'Order'>(0x0d98), sellerOrderId: id<'SellerOrder'>(0x5098) };
+        expect(await qualify(unknown)).toEqual({
           ok: false,
           error: { code: 'promotions.try-again' },
         });
-        expect(credits().every((c) => c.status === 'PENDING')).toBe(true);
-        expect(await qualify(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
-        expect(credits().every((c) => c.status === 'GRANTED')).toBe(true);
-        expect(p3.walletCredit.grants).toHaveLength(2);
-        expect(new Set(p3.walletCredit.grants.map((g) => g.idempotencyKey)).size).toBe(2);
       });
-    } else {
-      it('records the intended credits only while the tax ruling is open', async () => {
-        const [made] = [...promotions.records.values()];
-        expect(made!.testMode).toBe(true);
-        await applyAs(NEWBIE);
-        await qualify(deliverOrder(1, NEWBIE, 5000n));
-        expect(credits().every((c) => c.status === 'RECORDED')).toBe(true);
-        expect(p3.walletCredit.grants).toHaveLength(0);
-      });
-    }
-  });
 
-  describe('credits reserved earlier, test mode, and the Market limits at issue time', () => {
-    const cashRun = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
-      make(CashbackOnDelivery).execute(system, input(facts, d));
-    const qualify = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
-      make(QualifyReferralOnDelivery).execute(system, input(facts, d));
-    const mineCode = async () => {
-      const mine = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
-      if (!mine.ok) throw new Error('view failed');
-      return mine.value.code;
-    };
-    const applyAs = async (who: Id<'Account'>, code: string) => {
-      p3.orderHistory.lastOrder.set(who, null);
-      const result = await make(ApplyReferralCode).execute(customerOf(who), { code });
-      expect(result.ok).toBe(true);
-    };
-    const programOf = (type: string) =>
-      [...promotions.records.values()].find((record) => record.type === type)!;
-    const change = (type: string, over: Record<string, unknown>) => {
-      const record = programOf(type);
-      promotions.records.set(record.id, { ...record, ...over });
-    };
-    /** The next settle throws once, as a crash after the wallet call and before the settlement. */
-    const crashOnSettle = () => {
-      const original = p3.credits.settle.bind(p3.credits);
-      let armed = true;
-      p3.credits.settle = (...args: Parameters<typeof original>) => {
-        if (!armed) return original(...args);
-        armed = false;
-        return Promise.reject(new Error('crash after the wallet call'));
-      };
-    };
-    /** The next inbox write throws once, as a crash before the event is recorded as handled. */
-    const crashOnInbox = () => {
-      const original = units.runOnce;
-      let armed = true;
-      units.runOnce = ((...args: Parameters<typeof original>) => {
-        if (!armed) return original(...args);
-        armed = false;
-        return Promise.reject(new Error('crash before the inbox'));
-      }) as typeof original;
-    };
-
-    describe('a credit that is already reserved is always finished', () => {
       if (confirmed) {
-        it('cashback: a crash after the wallet call, the switch turned off, then the redelivery, grants it', async () => {
-          await adminCreate(cashback({ testMode: false }));
-          const facts = deliverOrder(1, REFERRER, 10000n);
-          const d = delivery();
-          crashOnSettle();
-          await expect(cashRun(facts, d)).rejects.toThrow('crash after the wallet call');
-          expect(credits().map((c) => c.status)).toEqual(['PENDING']);
-          expect(p3.walletCredit.grants).toHaveLength(1);
-
-          await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
-          expect(await cashRun(facts, d)).toEqual({ ok: true, value: { outcome: 'issued' } });
-          expect(credits().map((c) => c.status)).toEqual(['GRANTED']);
-          // The wallet answered the first journal again: one credit, not two.
-          expect(p3.walletCredit.grants).toHaveLength(1);
-          expect(p3.walletCredit.calls).toBe(2);
-          // And a new reservation is still gated on the switch.
-          expect(await cashRun(deliverOrder(2, REFERRER, 10000n))).toEqual({
-            ok: true,
-            value: { outcome: 'nothing' },
-          });
-          expect(credits()).toHaveLength(1);
-        });
-
-        it.each([
-          ['paused', { status: 'PAUSED' }],
-          ['ended', { endsAt: T0.subtract({ hours: 1 }) }],
-        ])(
-          'cashback: the program %s between the reservation and the retry, it is settled',
-          async (_name, over) => {
-            await adminCreate(cashback({ testMode: false }));
-            const facts = deliverOrder(1, REFERRER, 10000n);
-            p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
-            expect(await cashRun(facts)).toEqual({
-              ok: false,
-              error: { code: 'promotions.try-again' },
-            });
-            change('CASHBACK', over);
-            expect(await cashRun(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
-            expect(credits().map((c) => c.status)).toEqual(['GRANTED']);
-            // A new order earns nothing from the stopped program.
-            await cashRun(deliverOrder(2, REFERRER, 10000n));
-            expect(credits()).toHaveLength(1);
-          },
-        );
-
-        it('referral: a crash after the wallet calls, the switch turned off, then the redelivery, grants both', async () => {
-          await adminCreate(referral({ testMode: false }));
-          await applyAs(NEWBIE, await mineCode());
+        it('finishes both credits on the retry after a wallet fault, with the same keys', async () => {
+          await applyAs(NEWBIE);
           const facts = deliverOrder(1, NEWBIE, 5000n);
-          const d = delivery();
-          crashOnSettle();
-          await expect(qualify(facts, d)).rejects.toThrow('crash after the wallet call');
-          expect(credits().map((c) => c.status)).toEqual(['PENDING', 'PENDING']);
-          expect([...p3.referrals.rows.values()][0]!.status).toBe('QUALIFIED');
-
-          await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
-          expect(await qualify(facts, d)).toEqual({ ok: true, value: { outcome: 'issued' } });
-          expect(credits().map((c) => c.status)).toEqual(['GRANTED', 'GRANTED']);
-          expect(p3.walletCredit.grants).toHaveLength(2);
-        });
-
-        it.each([
-          ['paused', { status: 'PAUSED' }],
-          ['ended', { endsAt: T0.subtract({ hours: 1 }) }],
-        ])(
-          'referral: the program %s between the reservation and the retry, both are settled',
-          async (_name, over) => {
-            await adminCreate(referral({ testMode: false }));
-            await applyAs(NEWBIE, await mineCode());
-            const facts = deliverOrder(1, NEWBIE, 5000n);
-            p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
-            expect(await qualify(facts)).toEqual({
-              ok: false,
-              error: { code: 'promotions.try-again' },
-            });
-            change('REFERRAL', over);
-            expect(await qualify(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
-            expect(credits().map((c) => c.status)).toEqual(['GRANTED', 'GRANTED']);
-          },
-        );
-
-        it('settles the first credit again and finishes the second after a partial grant', async () => {
-          await adminCreate(referral({ testMode: false }));
-          await applyAs(NEWBIE, await mineCode());
-          const facts = deliverOrder(1, NEWBIE, 5000n);
-          // The referrer's credit goes through; the new customer's wallet is unavailable.
-          p3.walletCredit.failWhen = (request) =>
-            request.idempotencyKey.includes('referee')
-              ? { retry: true, code: 'wallet.unavailable' }
-              : null;
+          p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
           expect(await qualify(facts)).toEqual({
             ok: false,
             error: { code: 'promotions.try-again' },
           });
-          expect(p3.walletCredit.grants).toHaveLength(1);
-          p3.walletCredit.failWhen = null;
+          expect(credits().every((c) => c.status === 'PENDING')).toBe(true);
           expect(await qualify(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
-          expect(credits().map((c) => c.status)).toEqual(['GRANTED', 'GRANTED']);
-          // The referrer was not paid twice: the wallet answered its first journal again.
+          expect(credits().every((c) => c.status === 'GRANTED')).toBe(true);
           expect(p3.walletCredit.grants).toHaveLength(2);
           expect(new Set(p3.walletCredit.grants.map((g) => g.idempotencyKey)).size).toBe(2);
         });
-
-        it.each([['idempotency.key-reused'], ['wallet.customer-not-found'], ['wallet.not-found']])(
-          'a final wallet refusal (%s) fails the credit, releases the budget and is reported',
-          async (code) => {
-            await adminCreate(cashback({ testMode: false }));
-            const facts = deliverOrder(1, REFERRER, 10000n);
-            p3.walletCredit.failure = { retry: false, code };
-            expect(await cashRun(facts)).toEqual({ ok: true, value: { outcome: 'failed' } });
-            expect(credits()[0]).toMatchObject({ status: 'FAILED', failureCode: code });
-            expect(await p3.credits.reservedTotal(market, credits()[0]!.promotionId)).toBe(0n);
-            // A new event for the same order finds the failed credit and reports it as failed.
-            expect(await cashRun(facts)).toEqual({ ok: true, value: { outcome: 'failed' } });
-            expect(p3.walletCredit.calls).toBe(1);
-          },
-        );
-      }
-
-      it('recovers from a crash in test mode (cashback): the note is kept once', async () => {
-        await adminCreate(cashback({ testMode: true }));
-        const facts = deliverOrder(1, REFERRER, 10000n);
-        const d = delivery();
-        crashOnInbox();
-        await expect(cashRun(facts, d)).rejects.toThrow('crash before the inbox');
-        expect(credits().map((c) => c.status)).toEqual(['RECORDED']);
-        expect(await cashRun(facts, d)).toEqual({ ok: true, value: { outcome: 'recorded' } });
-        expect(credits()).toHaveLength(1);
-        expect(p3.walletCredit.calls).toBe(0);
-      });
-
-      it('recovers from a crash in test mode (referral): the notes are kept once and the referral stays open', async () => {
-        await adminCreate(referral({ testMode: true }));
-        await applyAs(NEWBIE, await mineCode());
-        const facts = deliverOrder(1, NEWBIE, 5000n);
-        const d = delivery();
-        crashOnInbox();
-        await expect(qualify(facts, d)).rejects.toThrow('crash before the inbox');
-        expect(credits()).toHaveLength(2);
-        expect(await qualify(facts, d)).toEqual({ ok: true, value: { outcome: 'recorded' } });
-        expect(credits()).toHaveLength(2);
-        expect([...p3.referrals.rows.values()][0]!.status).toBe('PENDING');
-        expect(p3.walletCredit.calls).toBe(0);
-      });
-    });
-
-    describe('test mode', () => {
-      it('records the intended cashback only when no real promotion applies, and never displaces a real one', async () => {
-        const cap = rules.cashback!;
-        await adminCreate(
-          cashback({
-            name: 'Real',
-            testMode: true,
-            reward: { kind: 'PERCENT', bps: cap.maxBps / 2 },
-          }),
-        );
-        await adminCreate(
-          cashback({ name: 'Test', testMode: true, reward: { kind: 'PERCENT', bps: cap.maxBps } }),
-        );
-        const real = [...promotions.records.values()].find((r) => r.name === 'Real')!;
-        const test = [...promotions.records.values()].find((r) => r.name === 'Test')!;
-        promotions.records.set(real.id, { ...real, testMode: false });
-        const facts = deliverOrder(1, REFERRER, 10000n);
-        await cashRun(facts);
-        if (confirmed) {
-          // The test promotion pays more, but the real one is the one that applies.
-          expect(credits()).toHaveLength(1);
-          expect(credits()[0]).toMatchObject({
-            promotionId: real.id,
-            status: 'GRANTED',
-            amountMinor: (10000n * BigInt(cap.maxBps / 2)) / 10000n,
-          });
-        } else {
-          // The real promotion earns nothing while the tax ruling is open, so the note is made.
-          expect(credits()).toHaveLength(1);
-          expect(credits()[0]).toMatchObject({ promotionId: test.id, status: 'RECORDED' });
-        }
-      });
-
-      if (confirmed) {
-        it('does not count a note toward the per-order cap or the limits, and a real credit follows it', async () => {
-          // Only a test-mode promotion at first: the order is noted.
-          await adminCreate(cashback({ name: 'Test', testMode: true }));
-          const order = id<'Order'>(0x0eee);
-          const first = deliverOrder(1, REFERRER, 10000n, { orderId: order });
-          const d = delivery();
-          expect(await cashRun(first, d)).toEqual({ ok: true, value: { outcome: 'recorded' } });
-          // A real promotion starts; the same seller order comes again in a new event.
-          await adminCreate(
-            cashback({ name: 'Real', testMode: false, capMinor: '700', maxUsesPerCustomer: 2 }),
-          );
-          expect(await cashRun(first)).toEqual({ ok: true, value: { outcome: 'issued' } });
-          expect(
-            credits()
-              .map((c) => c.status)
-              .sort(),
-          ).toEqual(['GRANTED', 'RECORDED']);
-          // The note was not money: the real cap of 700 is whole for the next seller order.
-          expect(await p3.credits.creditedForOrder(market, order, 'CASHBACK')).toBe(500n);
-          await cashRun(deliverOrder(2, REFERRER, 10000n, { orderId: order }));
-          expect(
-            credits()
-              .filter((c) => c.status === 'GRANTED')
-              .map((c) => c.amountMinor)
-              .sort(),
-          ).toEqual([200n, 500n]);
+      } else {
+        it('records the intended credits only while the tax ruling is open', async () => {
+          const [made] = [...promotions.records.values()];
+          expect(made!.testMode).toBe(true);
+          await applyAs(NEWBIE);
+          await qualify(deliverOrder(1, NEWBIE, 5000n));
+          expect(credits().every((c) => c.status === 'RECORDED')).toBe(true);
+          expect(p3.walletCredit.grants).toHaveLength(0);
         });
       }
+    });
 
-      it('qualifies nobody and counts toward no referrer cap, so a real program can still reward the referee', async () => {
-        await adminCreate(referral({ testMode: true }));
-        const code = await mineCode();
-        const people = [id<'Account'>(0xd1), id<'Account'>(0xd2), id<'Account'>(0xd3)];
-        for (const [index, who] of people.entries()) {
-          await applyAs(who, code);
-          expect(await qualify(deliverOrder(index + 1, who, 5000n))).toEqual({
+    describe('credits reserved earlier, test mode, and the Market limits at issue time', () => {
+      const cashRun = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
+        make(CashbackOnDelivery).execute(system, input(facts, d));
+      const qualify = (facts: Parameters<typeof input>[0], d?: EventDelivery) =>
+        make(QualifyReferralOnDelivery).execute(system, input(facts, d));
+      const mineCode = async () => {
+        const mine = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
+        if (!mine.ok) throw new Error('view failed');
+        return mine.value.code;
+      };
+      const applyAs = async (who: Id<'Account'>, code: string) => {
+        p3.orderHistory.lastOrder.set(who, null);
+        const result = await make(ApplyReferralCode).execute(customerOf(who), { code });
+        expect(result.ok).toBe(true);
+      };
+      const programOf = (type: string) =>
+        [...promotions.records.values()].find((record) => record.type === type)!;
+      const change = (type: string, over: Record<string, unknown>) => {
+        const record = programOf(type);
+        promotions.records.set(record.id, { ...record, ...over });
+      };
+      /** The next settle throws once, as a crash after the wallet call and before the settlement. */
+      const crashOnSettle = () => {
+        const original = p3.credits.settle.bind(p3.credits);
+        let armed = true;
+        p3.credits.settle = (...args: Parameters<typeof original>) => {
+          if (!armed) return original(...args);
+          armed = false;
+          return Promise.reject(new Error('crash after the wallet call'));
+        };
+      };
+      /** The next inbox write throws once, as a crash before the event is recorded as handled. */
+      const crashOnInbox = () => {
+        const original = units.runOnce;
+        let armed = true;
+        units.runOnce = ((...args: Parameters<typeof original>) => {
+          if (!armed) return original(...args);
+          armed = false;
+          return Promise.reject(new Error('crash before the inbox'));
+        }) as typeof original;
+      };
+
+      describe('a credit that is already reserved is always finished', () => {
+        if (confirmed) {
+          it('cashback: a crash after the wallet call, the switch turned off, then the redelivery, grants it', async () => {
+            await adminCreate(cashback({ testMode: false }));
+            const facts = deliverOrder(1, REFERRER, 10000n);
+            const d = delivery();
+            crashOnSettle();
+            await expect(cashRun(facts, d)).rejects.toThrow('crash after the wallet call');
+            expect(credits().map((c) => c.status)).toEqual(['PENDING']);
+            expect(p3.walletCredit.grants).toHaveLength(1);
+
+            await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+            expect(await cashRun(facts, d)).toEqual({ ok: true, value: { outcome: 'issued' } });
+            expect(credits().map((c) => c.status)).toEqual(['GRANTED']);
+            // The wallet answered the first journal again: one credit, not two.
+            expect(p3.walletCredit.grants).toHaveLength(1);
+            expect(p3.walletCredit.calls).toBe(2);
+            // And a new reservation is still gated on the switch.
+            expect(await cashRun(deliverOrder(2, REFERRER, 10000n))).toEqual({
+              ok: true,
+              value: { outcome: 'nothing' },
+            });
+            expect(credits()).toHaveLength(1);
+          });
+
+          it.each([
+            ['paused', { status: 'PAUSED' }],
+            ['ended', { endsAt: T0.subtract({ hours: 1 }) }],
+          ])(
+            'cashback: the program %s between the reservation and the retry, it is settled',
+            async (_name, over) => {
+              await adminCreate(cashback({ testMode: false }));
+              const facts = deliverOrder(1, REFERRER, 10000n);
+              p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+              expect(await cashRun(facts)).toEqual({
+                ok: false,
+                error: { code: 'promotions.try-again' },
+              });
+              change('CASHBACK', over);
+              expect(await cashRun(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
+              expect(credits().map((c) => c.status)).toEqual(['GRANTED']);
+              // A new order earns nothing from the stopped program.
+              await cashRun(deliverOrder(2, REFERRER, 10000n));
+              expect(credits()).toHaveLength(1);
+            },
+          );
+
+          it('referral: a crash after the wallet calls, the switch turned off, then the redelivery, grants both', async () => {
+            await adminCreate(referral({ testMode: false }));
+            await applyAs(NEWBIE, await mineCode());
+            const facts = deliverOrder(1, NEWBIE, 5000n);
+            const d = delivery();
+            crashOnSettle();
+            await expect(qualify(facts, d)).rejects.toThrow('crash after the wallet call');
+            expect(credits().map((c) => c.status)).toEqual(['PENDING', 'PENDING']);
+            expect([...p3.referrals.rows.values()][0]!.status).toBe('QUALIFIED');
+
+            await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+            expect(await qualify(facts, d)).toEqual({ ok: true, value: { outcome: 'issued' } });
+            expect(credits().map((c) => c.status)).toEqual(['GRANTED', 'GRANTED']);
+            expect(p3.walletCredit.grants).toHaveLength(2);
+          });
+
+          it.each([
+            ['paused', { status: 'PAUSED' }],
+            ['ended', { endsAt: T0.subtract({ hours: 1 }) }],
+          ])(
+            'referral: the program %s between the reservation and the retry, both are settled',
+            async (_name, over) => {
+              await adminCreate(referral({ testMode: false }));
+              await applyAs(NEWBIE, await mineCode());
+              const facts = deliverOrder(1, NEWBIE, 5000n);
+              p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+              expect(await qualify(facts)).toEqual({
+                ok: false,
+                error: { code: 'promotions.try-again' },
+              });
+              change('REFERRAL', over);
+              expect(await qualify(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
+              expect(credits().map((c) => c.status)).toEqual(['GRANTED', 'GRANTED']);
+            },
+          );
+
+          it('settles the first credit again and finishes the second after a partial grant', async () => {
+            await adminCreate(referral({ testMode: false }));
+            await applyAs(NEWBIE, await mineCode());
+            const facts = deliverOrder(1, NEWBIE, 5000n);
+            // The referrer's credit goes through; the new customer's wallet is unavailable.
+            p3.walletCredit.failWhen = (request) =>
+              request.idempotencyKey.includes('referee')
+                ? { retry: true, code: 'wallet.unavailable' }
+                : null;
+            expect(await qualify(facts)).toEqual({
+              ok: false,
+              error: { code: 'promotions.try-again' },
+            });
+            expect(p3.walletCredit.grants).toHaveLength(1);
+            p3.walletCredit.failWhen = null;
+            expect(await qualify(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
+            expect(credits().map((c) => c.status)).toEqual(['GRANTED', 'GRANTED']);
+            // The referrer was not paid twice: the wallet answered its first journal again.
+            expect(p3.walletCredit.grants).toHaveLength(2);
+            expect(new Set(p3.walletCredit.grants.map((g) => g.idempotencyKey)).size).toBe(2);
+          });
+
+          it.each([
+            ['idempotency.key-reused'],
+            ['wallet.customer-not-found'],
+            ['wallet.not-found'],
+          ])(
+            'a final wallet refusal (%s) fails the credit, releases the budget and is reported',
+            async (code) => {
+              await adminCreate(cashback({ testMode: false }));
+              const facts = deliverOrder(1, REFERRER, 10000n);
+              p3.walletCredit.failure = { retry: false, code };
+              expect(await cashRun(facts)).toEqual({ ok: true, value: { outcome: 'failed' } });
+              expect(credits()[0]).toMatchObject({ status: 'FAILED', failureCode: code });
+              expect(await p3.credits.reservedTotal(market, credits()[0]!.promotionId)).toBe(0n);
+              // A new event for the same order finds the failed credit and reports it as failed.
+              expect(await cashRun(facts)).toEqual({ ok: true, value: { outcome: 'failed' } });
+              expect(p3.walletCredit.calls).toBe(1);
+            },
+          );
+        }
+
+        it('recovers from a crash in test mode (cashback): the note is kept once', async () => {
+          await adminCreate(cashback({ testMode: true }));
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          const d = delivery();
+          crashOnInbox();
+          await expect(cashRun(facts, d)).rejects.toThrow('crash before the inbox');
+          expect(credits().map((c) => c.status)).toEqual(['RECORDED']);
+          expect(await cashRun(facts, d)).toEqual({ ok: true, value: { outcome: 'recorded' } });
+          expect(credits()).toHaveLength(1);
+          expect(p3.walletCredit.calls).toBe(0);
+        });
+
+        it('recovers from a crash in test mode (referral): the notes are kept once and the referral stays open', async () => {
+          await adminCreate(referral({ testMode: true }));
+          await applyAs(NEWBIE, await mineCode());
+          const facts = deliverOrder(1, NEWBIE, 5000n);
+          const d = delivery();
+          crashOnInbox();
+          await expect(qualify(facts, d)).rejects.toThrow('crash before the inbox');
+          expect(credits()).toHaveLength(2);
+          expect(await qualify(facts, d)).toEqual({ ok: true, value: { outcome: 'recorded' } });
+          expect(credits()).toHaveLength(2);
+          expect([...p3.referrals.rows.values()][0]!.status).toBe('PENDING');
+          expect(p3.walletCredit.calls).toBe(0);
+        });
+      });
+
+      describe('test mode', () => {
+        it('records the intended cashback only when no real promotion applies, and never displaces a real one', async () => {
+          const cap = rules.cashback!;
+          await adminCreate(
+            cashback({
+              name: 'Real',
+              testMode: true,
+              reward: { kind: 'PERCENT', bps: cap.maxBps / 2 },
+            }),
+          );
+          await adminCreate(
+            cashback({
+              name: 'Test',
+              testMode: true,
+              reward: { kind: 'PERCENT', bps: cap.maxBps },
+            }),
+          );
+          const real = [...promotions.records.values()].find((r) => r.name === 'Real')!;
+          const test = [...promotions.records.values()].find((r) => r.name === 'Test')!;
+          promotions.records.set(real.id, { ...real, testMode: false });
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          await cashRun(facts);
+          if (confirmed) {
+            // The test promotion pays more, but the real one is the one that applies.
+            expect(credits()).toHaveLength(1);
+            expect(credits()[0]).toMatchObject({
+              promotionId: real.id,
+              status: 'GRANTED',
+              amountMinor: (10000n * BigInt(cap.maxBps / 2)) / 10000n,
+            });
+          } else {
+            // The real promotion earns nothing while the tax ruling is open, so the note is made.
+            expect(credits()).toHaveLength(1);
+            expect(credits()[0]).toMatchObject({ promotionId: test.id, status: 'RECORDED' });
+          }
+        });
+
+        if (confirmed) {
+          it('does not count a note toward the per-order cap or the limits, and a real credit follows it', async () => {
+            // Only a test-mode promotion at first: the order is noted.
+            await adminCreate(cashback({ name: 'Test', testMode: true }));
+            const order = id<'Order'>(0x0eee);
+            const first = deliverOrder(1, REFERRER, 10000n, { orderId: order });
+            const d = delivery();
+            expect(await cashRun(first, d)).toEqual({ ok: true, value: { outcome: 'recorded' } });
+            // A real promotion starts; the same seller order comes again in a new event.
+            await adminCreate(
+              cashback({ name: 'Real', testMode: false, capMinor: '700', maxUsesPerCustomer: 2 }),
+            );
+            expect(await cashRun(first)).toEqual({ ok: true, value: { outcome: 'issued' } });
+            expect(
+              credits()
+                .map((c) => c.status)
+                .sort(),
+            ).toEqual(['GRANTED', 'RECORDED']);
+            // The note was not money: the real cap of 700 is whole for the next seller order.
+            expect(await p3.credits.creditedForOrder(market, order, 'CASHBACK')).toBe(500n);
+            await cashRun(deliverOrder(2, REFERRER, 10000n, { orderId: order }));
+            expect(
+              credits()
+                .filter((c) => c.status === 'GRANTED')
+                .map((c) => c.amountMinor)
+                .sort(),
+            ).toEqual([200n, 500n]);
+          });
+        }
+
+        it('qualifies nobody and counts toward no referrer cap, so a real program can still reward the referee', async () => {
+          await adminCreate(referral({ testMode: true }));
+          const code = await mineCode();
+          const people = [id<'Account'>(0xd1), id<'Account'>(0xd2), id<'Account'>(0xd3)];
+          for (const [index, who] of people.entries()) {
+            await applyAs(who, code);
+            expect(await qualify(deliverOrder(index + 1, who, 5000n))).toEqual({
+              ok: true,
+              value: { outcome: 'recorded' },
+            });
+          }
+          // Three referrals under a cap of two: none was rejected, none counts as rewarded.
+          expect([...p3.referrals.rows.values()].map((r) => r.status)).toEqual([
+            'PENDING',
+            'PENDING',
+            'PENDING',
+          ]);
+          expect(credits().every((c) => c.status === 'RECORDED')).toBe(true);
+          expect(credits()).toHaveLength(6);
+          const view = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
+          expect(view.ok && view.value).toMatchObject({ pending: 3, qualified: 0 });
+
+          // The program leaves test mode: the first referee's next order is rewarded for real.
+          change('REFERRAL', { testMode: false });
+          const next = deliverOrder(4, people[0]!, 6000n);
+          const result = await qualify(next);
+          if (confirmed) {
+            expect(result).toEqual({ ok: true, value: { outcome: 'issued' } });
+            expect(
+              [...p3.referrals.rows.values()].find((r) => r.refereeAccountId === people[0]),
+            ).toMatchObject({ status: 'QUALIFIED', qualifyingSellerOrderId: next.sellerOrderId });
+            const real = credits().filter((c) => c.status === 'GRANTED');
+            expect(real.map((c) => [c.kind, c.recipientAccountId, c.amountMinor]).sort()).toEqual(
+              [
+                ['REFEREE_REWARD', people[0], 800n],
+                ['REFERRER_REWARD', REFERRER, 1000n],
+              ].sort(),
+            );
+            expect(p3.walletCredit.grants).toHaveLength(2);
+          } else {
+            // The tax ruling is still open: a real program earns nothing, the referral waits.
+            expect(result).toEqual({ ok: true, value: { outcome: 'pending' } });
+            expect(p3.walletCredit.calls).toBe(0);
+          }
+        });
+      });
+
+      describe('the Market limits at issue time', () => {
+        it('clamps the cashback to the current percent and per-order cap', async () => {
+          const limits = rules.cashback!;
+          await adminCreate(cashback({ testMode: true }));
+          // The promotion was made under wider limits than the Market has now.
+          change('CASHBACK', {
+            reward: { kind: 'PERCENT', bps: limits.maxBps * 2 },
+            capMinor: limits.maxCapMinor * 2n,
+            budgetMinor: null,
+          });
+          const goods = (limits.maxCapMinor * 40000n) / BigInt(limits.maxBps);
+          await cashRun(deliverOrder(1, REFERRER, goods));
+          // The percent is clamped first (half of what the promotion says), then the cap.
+          const byPercent = (goods * BigInt(limits.maxBps)) / 10000n;
+          expect(credits()[0]!.amountMinor).toBe(
+            byPercent < limits.maxCapMinor ? byPercent : limits.maxCapMinor,
+          );
+          expect(credits()[0]!.amountMinor <= limits.maxCapMinor).toBe(true);
+          expect(credits()[0]!.amountMinor < (goods * BigInt(limits.maxBps * 2)) / 10000n).toBe(
+            true,
+          );
+        });
+
+        it('clamps both referral credits to the current maximum reward', async () => {
+          const limits = rules.referral!;
+          await adminCreate(referral({ testMode: true }));
+          change('REFERRAL', {
+            reward: { kind: 'FIXED', amount: limits.maxRewardMinor + 700n },
+            refereeRewardMinor: limits.maxRewardMinor + 300n,
+            budgetMinor: null,
+          });
+          await applyAs(NEWBIE, await mineCode());
+          await qualify(deliverOrder(1, NEWBIE, 5000n));
+          expect(credits().map((c) => c.amountMinor)).toEqual([
+            limits.maxRewardMinor,
+            limits.maxRewardMinor,
+          ]);
+        });
+      });
+
+      describe('referral timing', () => {
+        const windowHours = () => 24 * rules.referral!.qualifyWithinDays;
+        const exactly = () => Temporal.Duration.from({ hours: windowHours() });
+        const justBefore = () =>
+          Temporal.Duration.from({
+            hours: windowHours() - 1,
+            minutes: 59,
+            seconds: 59,
+            milliseconds: 999,
+          });
+
+        beforeEach(async () => {
+          await adminCreate(referral({ testMode: true }));
+        });
+
+        it('expires at the boundary instant (now equals the expiry) and not a millisecond before', async () => {
+          const code = await mineCode();
+          await applyAs(NEWBIE, code);
+          await applyAs(NEWBIE_2, code);
+          clock.advance(justBefore());
+          expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
             ok: true,
             value: { outcome: 'recorded' },
           });
-        }
-        // Three referrals under a cap of two: none was rejected, none counts as rewarded.
-        expect([...p3.referrals.rows.values()].map((r) => r.status)).toEqual([
-          'PENDING',
-          'PENDING',
-          'PENDING',
-        ]);
-        expect(credits().every((c) => c.status === 'RECORDED')).toBe(true);
-        expect(credits()).toHaveLength(6);
-        const view = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
-        expect(view.ok && view.value).toMatchObject({ pending: 3, qualified: 0 });
-
-        // The program leaves test mode: the first referee's next order is rewarded for real.
-        change('REFERRAL', { testMode: false });
-        const next = deliverOrder(4, people[0]!, 6000n);
-        const result = await qualify(next);
-        if (confirmed) {
-          expect(result).toEqual({ ok: true, value: { outcome: 'issued' } });
+          clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
+          expect(clock.now()).toEqual(T0.add(exactly()));
+          expect(await qualify(deliverOrder(2, NEWBIE_2, 5000n))).toEqual({
+            ok: true,
+            value: { outcome: 'expired' },
+          });
           expect(
-            [...p3.referrals.rows.values()].find((r) => r.refereeAccountId === people[0]),
-          ).toMatchObject({ status: 'QUALIFIED', qualifyingSellerOrderId: next.sellerOrderId });
-          const real = credits().filter((c) => c.status === 'GRANTED');
-          expect(real.map((c) => [c.kind, c.recipientAccountId, c.amountMinor]).sort()).toEqual(
-            [
-              ['REFEREE_REWARD', people[0], 800n],
-              ['REFERRER_REWARD', REFERRER, 1000n],
-            ].sort(),
+            [...p3.referrals.rows.values()].find((r) => r.refereeAccountId === NEWBIE_2)!.status,
+          ).toBe('EXPIRED');
+        });
+
+        it('counts a referral as pending only while its window is open', async () => {
+          await applyAs(NEWBIE, await mineCode());
+          const view = async () => {
+            const result = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
+            if (!result.ok) throw new Error('view failed');
+            return result.value.pending;
+          };
+          expect(await view()).toBe(1);
+          clock.advance(justBefore());
+          expect(await view()).toBe(1);
+          clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
+          expect(await view()).toBe(0);
+        });
+
+        it('checks eligibility before it looks the code up, so it does not say which codes exist', async () => {
+          const code = await mineCode();
+          const notEligible = { ok: false, error: { code: 'promotions.referral-not-eligible' } };
+          await applyAs(NEWBIE, code);
+          // Already referred: an unknown code gets the same answer as a real one.
+          const unknown = 'A'.repeat(code.length);
+          expect(
+            await make(ApplyReferralCode).execute(customerOf(NEWBIE), { code: unknown }),
+          ).toEqual(notEligible);
+          expect(await make(ApplyReferralCode).execute(customerOf(NEWBIE), { code })).toEqual(
+            notEligible,
           );
-          expect(p3.walletCredit.grants).toHaveLength(2);
-        } else {
-          // The tax ruling is still open: a real program earns nothing, the referral waits.
-          expect(result).toEqual({ ok: true, value: { outcome: 'pending' } });
-          expect(p3.walletCredit.calls).toBe(0);
-        }
-      });
-    });
-
-    describe('the Market limits at issue time', () => {
-      it('clamps the cashback to the current percent and per-order cap', async () => {
-        const limits = rules.cashback!;
-        await adminCreate(cashback({ testMode: true }));
-        // The promotion was made under wider limits than the Market has now.
-        change('CASHBACK', {
-          reward: { kind: 'PERCENT', bps: limits.maxBps * 2 },
-          capMinor: limits.maxCapMinor * 2n,
-          budgetMinor: null,
-        });
-        const goods = (limits.maxCapMinor * 40000n) / BigInt(limits.maxBps);
-        await cashRun(deliverOrder(1, REFERRER, goods));
-        // The percent is clamped first (half of what the promotion says), then the cap.
-        const byPercent = (goods * BigInt(limits.maxBps)) / 10000n;
-        expect(credits()[0]!.amountMinor).toBe(
-          byPercent < limits.maxCapMinor ? byPercent : limits.maxCapMinor,
-        );
-        expect(credits()[0]!.amountMinor <= limits.maxCapMinor).toBe(true);
-        expect(credits()[0]!.amountMinor < (goods * BigInt(limits.maxBps * 2)) / 10000n).toBe(true);
-      });
-
-      it('clamps both referral credits to the current maximum reward', async () => {
-        const limits = rules.referral!;
-        await adminCreate(referral({ testMode: true }));
-        change('REFERRAL', {
-          reward: { kind: 'FIXED', amount: limits.maxRewardMinor + 700n },
-          refereeRewardMinor: limits.maxRewardMinor + 300n,
-          budgetMinor: null,
-        });
-        await applyAs(NEWBIE, await mineCode());
-        await qualify(deliverOrder(1, NEWBIE, 5000n));
-        expect(credits().map((c) => c.amountMinor)).toEqual([
-          limits.maxRewardMinor,
-          limits.maxRewardMinor,
-        ]);
-      });
-    });
-
-    describe('referral timing', () => {
-      const windowHours = () => 24 * rules.referral!.qualifyWithinDays;
-      const exactly = () => Temporal.Duration.from({ hours: windowHours() });
-      const justBefore = () =>
-        Temporal.Duration.from({
-          hours: windowHours() - 1,
-          minutes: 59,
-          seconds: 59,
-          milliseconds: 999,
-        });
-
-      beforeEach(async () => {
-        await adminCreate(referral({ testMode: true }));
-      });
-
-      it('expires at the boundary instant (now equals the expiry) and not a millisecond before', async () => {
-        const code = await mineCode();
-        await applyAs(NEWBIE, code);
-        await applyAs(NEWBIE_2, code);
-        clock.advance(justBefore());
-        expect(await qualify(deliverOrder(1, NEWBIE, 5000n))).toEqual({
-          ok: true,
-          value: { outcome: 'recorded' },
-        });
-        clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
-        expect(clock.now()).toEqual(T0.add(exactly()));
-        expect(await qualify(deliverOrder(2, NEWBIE_2, 5000n))).toEqual({
-          ok: true,
-          value: { outcome: 'expired' },
-        });
-        expect(
-          [...p3.referrals.rows.values()].find((r) => r.refereeAccountId === NEWBIE_2)!.status,
-        ).toBe('EXPIRED');
-      });
-
-      it('counts a referral as pending only while its window is open', async () => {
-        await applyAs(NEWBIE, await mineCode());
-        const view = async () => {
-          const result = await make(ViewMyReferral).execute(customerOf(REFERRER), {});
-          if (!result.ok) throw new Error('view failed');
-          return result.value.pending;
-        };
-        expect(await view()).toBe(1);
-        clock.advance(justBefore());
-        expect(await view()).toBe(1);
-        clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
-        expect(await view()).toBe(0);
-      });
-
-      it('checks eligibility before it looks the code up, so it does not say which codes exist', async () => {
-        const code = await mineCode();
-        const notEligible = { ok: false, error: { code: 'promotions.referral-not-eligible' } };
-        await applyAs(NEWBIE, code);
-        // Already referred: an unknown code gets the same answer as a real one.
-        const unknown = 'A'.repeat(code.length);
-        expect(
-          await make(ApplyReferralCode).execute(customerOf(NEWBIE), { code: unknown }),
-        ).toEqual(notEligible);
-        expect(await make(ApplyReferralCode).execute(customerOf(NEWBIE), { code })).toEqual(
-          notEligible,
-        );
-        // A customer who ordered before: the same.
-        p3.orderHistory.lastOrder.set(NEWBIE_2, T0.subtract({ hours: 24 * 400 }));
-        expect(
-          await make(ApplyReferralCode).execute(customerOf(NEWBIE_2), { code: unknown }),
-        ).toEqual(notEligible);
-        // An eligible customer still gets not-found for an unknown code.
-        const fresh = id<'Account'>(0xd9);
-        p3.orderHistory.lastOrder.set(fresh, null);
-        expect(await make(ApplyReferralCode).execute(customerOf(fresh), { code: unknown })).toEqual(
-          {
+          // A customer who ordered before: the same.
+          p3.orderHistory.lastOrder.set(NEWBIE_2, T0.subtract({ hours: 24 * 400 }));
+          expect(
+            await make(ApplyReferralCode).execute(customerOf(NEWBIE_2), { code: unknown }),
+          ).toEqual(notEligible);
+          // An eligible customer still gets not-found for an unknown code.
+          const fresh = id<'Account'>(0xd9);
+          p3.orderHistory.lastOrder.set(fresh, null);
+          expect(
+            await make(ApplyReferralCode).execute(customerOf(fresh), { code: unknown }),
+          ).toEqual({
             ok: false,
             error: { code: 'promotions.not-found' },
-          },
-        );
+          });
+        });
       });
     });
   });
