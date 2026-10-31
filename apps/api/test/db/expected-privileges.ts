@@ -1118,6 +1118,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.products': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
+        'brand_id',
         'discarded_at',
         'last_changed_at',
         'matched_into_product_id',
@@ -1133,6 +1134,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'version',
         'withdrawn_at',
       ],
+    },
+    // Catalog brand package: a brand is never deleted (a trigger refuses it); identity, origin and
+    // creation columns never change; an alias only moves to another brand (a merge); a queue row
+    // only gets its outcome.
+    'catalog.brands': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'approved_by',
+        'header_image_id',
+        'logo_alt',
+        'logo_image_id',
+        'merged_into_id',
+        'name',
+        'name_key',
+        'origin_country',
+        'slug',
+        'status',
+        'summary',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.brand_aliases': { table: ['INSERT', 'SELECT'], columnUpdate: ['brand_id'] },
+    'catalog.brand_merge_candidates': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['resolution', 'resolved_at', 'resolved_by', 'status'],
     },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],

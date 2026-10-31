@@ -48,6 +48,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'commission-payouts/admin/payouts',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
+    // The buyer account deletion setting, read again after a conflict, and the pending deletion
+    // requests (customers; query: `cursor`, `limit`).
+    'customers/admin/account-deletion-settings',
+    'customers/admin/deletion-requests',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -68,6 +72,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/settings',
     // The delivery settings of the Market (shipping): the whole set, with `expectedVersion`.
     'shipping/admin/delivery-settings',
+    // The buyer account deletion setting (customers), behind a fresh two-step code.
+    'customers/admin/account-deletion-settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -147,6 +153,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Place a hold on a seller, and release one (commission-payouts), behind a two-step code.
     'commission-payouts/admin/sellers/:id/payout-holds',
     'commission-payouts/admin/payout-holds/:id/release',
+    // Delete a buyer's account for them, from a support ticket (customers), behind a two-step code.
+    'customers/admin/buyers/:id/deletion-requests',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -167,6 +175,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/commission-rate',
     // Back to the Market's payout terms; the version and reason code are in the query.
     'commission-payouts/admin/sellers/:id/payout-terms',
+    // Cancel a pending buyer deletion request (customers), behind a two-step code.
+    'customers/admin/deletion-requests/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
@@ -200,6 +210,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
+  'customers/admin/deletion-requests': ['cursor', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -219,6 +230,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'customers/admin/deletion-requests': {
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },

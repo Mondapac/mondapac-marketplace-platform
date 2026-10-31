@@ -24,6 +24,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/customer/session',
     // The customer's own address book (customers package 1).
     'customers/me/addresses',
+    // Whether the customer may delete the account, and their open deletion request, if any
+    // (customers package 5a and 5b; screens: account deletion).
+    'customers/me/account-deletion',
+    'customers/me/deletion-requests/current',
   ]),
   POST: new Set([
     'cart/items',
@@ -35,6 +39,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The customer's own password: the current one and the new one.
     'identity/customer/change-password',
     'customers/me/addresses',
+    // The customer asks to delete the account (the request waits, then the job erases it).
+    'customers/me/deletion-requests',
     // The delivery methods and prices of the basket for a saved address (delivery models, pkg 5).
     'orders/delivery-quotes',
   ]),
@@ -42,6 +48,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The customer's own display name and storefront look (buyer account backend).
     'identity/customer/profile/display-name',
     'identity/customer/profile/appearance',
+  ]),
+  DELETE: new Set([
+    // The customer cancels their own pending deletion request.
+    'customers/me/deletion-requests/current',
   ]),
 };
 

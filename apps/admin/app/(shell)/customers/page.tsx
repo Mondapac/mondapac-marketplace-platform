@@ -1,8 +1,16 @@
 import { LoadError } from '@mondapac/ui';
+import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import {
+  BUYER_DELETE_PERMISSION,
+  SETTINGS_PATH,
+  SETTINGS_VIEW_PERMISSION,
+  type AccountDeletionSettingsAnswer,
+} from '../../../src/account-deletion/types.ts';
 import { CustomerLookup } from '../../../src/customers/customer-lookup.tsx';
 import { DISABLE_PERMISSION, VIEW_PERMISSION } from '../../../src/customers/types.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
+import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
 
 export async function generateMetadata() {
@@ -18,6 +26,18 @@ export default async function CustomersPage() {
   }
   const title = t('customers.title');
   const keys = new Set(gate.session.permissionKeys);
+  // The waiting period is shown in the delete dialog only to an admin who may read the setting;
+  // a failed read shows no number (the dialog says "the waiting period" instead).
+  let buyerDeletion: { readonly waitingPeriodDays: number | null } | null = null;
+  if (keys.has(VIEW_PERMISSION) && keys.has(BUYER_DELETE_PERMISSION)) {
+    const read = keys.has(SETTINGS_VIEW_PERMISSION)
+      ? await serverGet<AccountDeletionSettingsAnswer>(SETTINGS_PATH)
+      : null;
+    if (read?.kind === 'signed-out') redirect('/session-ended');
+    buyerDeletion = {
+      waitingPeriodDays: read?.kind === 'ok' ? read.body.settings.waitingPeriodDays : null,
+    };
+  }
   return (
     <AdminShell session={gate.session} activeId="customers" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
@@ -32,6 +52,7 @@ export default async function CustomersPage() {
                 ? 'view'
                 : null
           }
+          buyerDeletion={buyerDeletion}
           csrfToken={gate.session.csrfToken}
         />
       ) : (

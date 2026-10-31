@@ -147,3 +147,10 @@ describe('admin nav: Payouts', () => {
     });
   });
 });
+
+describe('admin nav: Settings', () => {
+  it('is there for the account deletion setting alone', () => {
+    expect(ids(['customers.account-deletion-settings.view'])).toContain('settings');
+    expect(ids(['customers.account-deletion-settings.manage'])).not.toContain('settings');
+  });
+});

@@ -52,10 +52,34 @@ export const CATALOG_PRODUCT_APPROVE = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read brands, the brand merge queue and seller brand proposals (catalog brand package). Platform
+ * scope; unprotected, so Viewer receives it by identity's seed.
+ */
+export const CATALOG_BRAND_READ = definePermission('catalog', {
+  key: 'catalog.brand.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create, edit, archive and approve brands, merge brands and decide the merge queue (catalog brand
+ * package). Platform scope; unprotected, so a custom role may grant it; no default role lists it
+ * yet: the Platform Administrator holds every key. Brands are public content, but the keys are not
+ * `protected` (R11) because a brand edit moves no money, certification or access.
+ */
+export const CATALOG_BRAND_EDIT = definePermission('catalog', {
+  key: 'catalog.brand.edit',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
   CATALOG_PRODUCT_VIEW,
   CATALOG_PRODUCT_APPROVE,
+  CATALOG_BRAND_READ,
+  CATALOG_BRAND_EDIT,
 ]);
