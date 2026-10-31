@@ -38,6 +38,8 @@ const template: ImportTemplate = {
   limits: { rows: 5000, fileBytes: 10 * 1024 * 1024 },
   filename: 'products-template.csv',
   csv: 'Title,Main category\n',
+  xlsxFilename: 'products-template.xlsx',
+  xlsx: btoa('PK-template'),
 };
 
 const view = (over: Partial<ImportView> = {}): ImportView => ({
@@ -146,9 +148,10 @@ describe('admin import products', () => {
     mount();
     expect(await screen.findByRole('heading', { name: 'Upload a file' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Import products' })).toBeTruthy();
-    expect(screen.getByText('Drag a CSV file here')).toBeTruthy();
+    expect(screen.getByText('Drag a CSV or XLSX file here')).toBeTruthy();
     expect(screen.getByText('One product per row · up to 5,000 rows and 10 MB')).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSV template/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /XLSX template/ })).toBeTruthy();
     expect(screen.getByText('Main category')).toBeTruthy();
     expect(
       screen.getByText(
@@ -160,14 +163,16 @@ describe('admin import products', () => {
     expect(screen.getByText('Upload file').closest('li')?.getAttribute('aria-current')).toBe(
       'step',
     );
-    // The page names a CSV file, never an Excel one.
-    expect(screen.queryByText(/XLSX|Excel/)).toBeNull();
+    // The file picker offers CSV and XLSX.
+    const input = document.querySelector('input[type="file"]')!;
+    expect(input.getAttribute('accept')).toContain('.csv');
+    expect(input.getAttribute('accept')).toContain('.xlsx');
   });
 
   it('sends the chosen file as base64 and shows the check with errors', async () => {
     serve(null, (method, path) => (method === 'POST' && path === BASE ? ok(view()) : undefined));
     const { container } = mount();
-    await screen.findByText('Drag a CSV file here');
+    await screen.findByText('Drag a CSV or XLSX file here');
     pick(container, new File(['Title\nA\n'], 'products-oct.csv', { type: 'text/csv' }));
     expect(await screen.findByText('30 rows have errors')).toBeTruthy();
     const post = call.mock.calls.find((entry) => entry[0] === 'POST' && entry[1] === BASE)!;
@@ -364,6 +369,14 @@ describe('admin import products', () => {
     const cases: readonly [string, number, string, object | undefined, string][] = [
       ['file.unsupported-type', 415, 'wrong', undefined, 'This file type can’t be imported'],
       ['file.too-many-rows', 422, 'rows', { rows: 7820, max: 5000 }, 'The file has 7,820 rows'],
+      ['file.formula-cell', 422, 'formula', { rowNumber: 14 }, 'Row 14 has a formula'],
+      [
+        'file.unpacked-too-large',
+        413,
+        'bomb',
+        { maxBytes: 52428800 },
+        'The file is too large once opened',
+      ],
       [
         'columns.missing',
         422,
@@ -378,7 +391,7 @@ describe('admin import products', () => {
         method === 'POST' && path === BASE ? fail(status, code, details) : undefined,
       );
       const { container, unmount } = mount();
-      await screen.findByText('Drag a CSV file here');
+      await screen.findByText('Drag a CSV or XLSX file here');
       pick(container, new File(['x'], `${name}.csv`, { type: 'text/csv' }));
       expect(await screen.findByText(title)).toBeTruthy();
       expect(screen.getByRole('heading', { name: 'Upload a file' })).toBeTruthy();
@@ -386,10 +399,53 @@ describe('admin import products', () => {
     }
   });
 
+  it('sends an XLSX file as base64 under its own name', async () => {
+    serve(null, (method, path) => (method === 'POST' && path === BASE ? ok(view()) : undefined));
+    const { container } = mount();
+    await screen.findByText('Drag a CSV or XLSX file here');
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    pick(container, new File(['PK\u0003\u0004'], 'products-oct.xlsx', { type }));
+    expect(await screen.findByText('30 rows have errors')).toBeTruthy();
+    const post = call.mock.calls.find((entry) => entry[0] === 'POST' && entry[1] === BASE)!;
+    expect(post[2]).toEqual({ fileName: 'products-oct.xlsx', data: btoa('PK\u0003\u0004') });
+  });
+
+  it('downloads the CSV template and the XLSX template as separate files', async () => {
+    serve(null);
+    const blobs: Blob[] = [];
+    Object.assign(URL, {
+      createObjectURL: vi.fn((made: Blob) => {
+        blobs.push(made);
+        return 'blob:t';
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+    const names: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+    try {
+      mount();
+      await screen.findByText('Drag a CSV or XLSX file here');
+      fireEvent.click(await screen.findByRole('button', { name: /CSV template/ }));
+      fireEvent.click(screen.getByRole('button', { name: /XLSX template/ }));
+      expect(names).toEqual(['products-template.csv', 'products-template.xlsx']);
+      expect(blobs[0]!.type).toContain('text/csv');
+      expect(blobs[1]!.type).toBe(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      expect(new TextDecoder().decode(await blobs[1]!.arrayBuffer())).toBe('PK-template');
+    } finally {
+      click.mockRestore();
+    }
+  });
+
   it('refuses a file over the size limit before sending it', async () => {
     serve(null);
     const { container } = mount();
-    await screen.findByText('Drag a CSV file here');
+    await screen.findByText('Drag a CSV or XLSX file here');
     const big = new File(['x'], 'big.csv', { type: 'text/csv' });
     Object.defineProperty(big, 'size', { value: 11 * 1024 * 1024 });
     pick(container, big);

@@ -7,6 +7,8 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import ExcelJS from 'exceljs';
+import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
 import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
 import { AdminProductPause } from '../../src/modules/catalog/application/use-cases/admin-product-pause.use-case';
 import { AdminProductResume } from '../../src/modules/catalog/application/use-cases/admin-product-resume.use-case';
@@ -296,6 +298,7 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
       adminProductsReader: reader,
       policy,
       sellerNames: { storeNames: () => Promise.resolve(new Map()) },
+      sheetWriter: new ExceljsSheetWriter(),
       clock: base.clock,
     });
     return { pause, resume, withdraw, retire, bulk, exporter, evaluator };
@@ -726,7 +729,9 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
       const answer = await exporter.execute(admin(), input);
       if (!answer.ok) throw new Error(JSON.stringify(answer.error));
       let text = '';
-      for await (const chunk of answer.value.chunks) text += chunk;
+      for await (const chunk of answer.value.chunks) {
+        text += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+      }
       return text;
     }
 
@@ -759,7 +764,53 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
       expect(text).toContain(`"'=HYPERLINK(""http://evil"",""x"")"`);
     });
 
-    it('exports a selector and refuses an id of another Market, and xlsx', async () => {
+    it('streams the same products as an XLSX workbook, every cell a string', async () => {
+      const mine = uuid7();
+      const live = await product('SELLER', { sellerId: mine, name: 'Plain dates' });
+      const evil = await product('SELLER', {
+        sellerId: mine,
+        name: '=HYPERLINK("http://evil","x")',
+      });
+      await offerOn(live.productId);
+      const { exporter } = stack();
+
+      const answer = await exporter.execute(admin(), {
+        format: 'xlsx',
+        ids: `${live.productId},${evil.productId}`,
+        columns: 'offers,scope',
+      });
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      expect(answer.value.contentType).toBe(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      expect(answer.value.filename).toMatch(/^products-\d{4}-\d{2}-\d{2}\.xlsx$/);
+      const parts: Uint8Array[] = [];
+      for await (const chunk of answer.value.chunks) parts.push(chunk as Uint8Array);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(Buffer.concat(parts) as never);
+      const sheet = workbook.worksheets[0]!;
+      const rows: string[][] = [];
+      sheet.eachRow((row) => {
+        const cells: string[] = [];
+        row.eachCell({ includeEmpty: true }, (cell) => cells.push(cell.text));
+        rows.push(cells);
+      });
+      expect(rows[0]).toEqual(['Product', 'Product code', 'Category', 'Status', 'Offers', 'Scope']);
+      expect(rows[1]).toEqual([
+        'Plain dates',
+        expect.stringMatching(/^Z[A-Z0-9]+$/),
+        '',
+        'Active',
+        '1',
+        'Seller',
+      ]);
+      expect(rows[2]![0]).toBe('=HYPERLINK("http://evil","x")');
+      sheet.eachRow((row) =>
+        row.eachCell((cell) => expect(cell.type).toBe(ExcelJS.ValueType.String)),
+      );
+    });
+
+    it('exports a selector and refuses an id of another Market and an unknown format', async () => {
       const mine = uuid7();
       await product('SELLER', { sellerId: mine });
       await product('SELLER', { sellerId: mine });
@@ -768,12 +819,16 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
 
       const text = await fileOf({ view: 'all', sellerId: mine });
       expect(text.replace(/^\uFEFF/, '').split('\r\n')).toHaveLength(4);
-      expect(await exporter.execute(admin(), { ids: foreign.productId })).toEqual({
-        ok: false,
-        error: { code: 'product.not-found' },
-      });
+      for (const format of [undefined, 'csv', 'xlsx']) {
+        expect(
+          await exporter.execute(admin(), {
+            ...(format ? { format } : {}),
+            ids: foreign.productId,
+          }),
+        ).toEqual({ ok: false, error: { code: 'product.not-found' } });
+      }
       expect(
-        await exporter.execute(admin(), { format: 'xlsx', ids: foreign.productId }),
+        await exporter.execute(admin(), { format: 'xls', ids: foreign.productId }),
       ).toMatchObject({
         ok: false,
         error: { code: 'validation.failed' },
