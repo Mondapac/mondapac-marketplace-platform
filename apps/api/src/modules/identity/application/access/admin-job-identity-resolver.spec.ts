@@ -62,6 +62,7 @@ describe.each(TEST_MARKETS)('AdminJobIdentityResolver in market %s', (code) => {
           revokedAt: session.revokedAt,
           revokedReason: session.revokedReason,
         }),
+      sessionsInvalidatedAt: () => Promise.resolve(null),
     } as unknown as SessionRepository;
     const accounts = {
       findById: () => Promise.resolve({ state: { population: 'admin', status: 'active' } }),

@@ -290,76 +290,55 @@ describe.each(TEST_MARKETS)('access decisions in market %s (database, slice 9)',
     });
   });
 
-  it('gives a signed-out session the bulk reason, keeping its revoked_at and the live count (M-585-1)', async () => {
+  it('records a bulk end on the account even when no session was live, and reads it back (M-585-1)', async () => {
     const sellerId = await seller();
-    const account = async (): Promise<Id<'Account'>> => {
-      const id = newId<'Account'>();
-      await sql.query(
-        `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
-         email_normalized, display_name, status, email_verified_at, signed_up_at, version,
-         created_at)
-         VALUES ($1, $2, 'default', 'seller', $3, $3, 'Member', 'active', now(), now(), 1, now())`,
-        [id, code, `signed-out.${id}@seller.example`],
-      );
-      return id;
-    };
-    const open = async (accountId: Id<'Account'>) => {
-      const id = newId<'Session'>();
-      await inUnit(market, () =>
-        sessions.add(
-          market,
-          openSession({
-            id,
-            marketId: market.marketId,
-            accountId,
-            population: 'seller',
-            sellerId,
-            transport: 'cookie',
-            lifetime: LIFETIME,
-            now: Temporal.Now.instant(),
-          }),
-          randomBytes(32),
-        ),
-      );
-      return id;
-    };
-    const reasons = async (accountId: Id<'Account'>) => {
-      const { rows } = await sql.query<{ revoked_reason: string | null; revoked_at: Date | null }>(
-        `SELECT revoked_reason, revoked_at FROM identity.sessions WHERE account_id = $1
-         ORDER BY created_at`,
-        [accountId],
-      );
-      return rows;
-    };
-    const earlier = Temporal.Now.instant().subtract({ seconds: 30 });
-    const later = Temporal.Now.instant();
-
-    const byAccount = await account();
-    const [gone, live] = [await open(byAccount), await open(byAccount)];
-    await inUnit(market, () => sessions.revoke(market, gone, byAccount, 'sign-out', earlier));
-    await expect(
-      inUnit(market, () =>
-        sessions.revokeAllOf(market, byAccount, 'password-changed', later, null),
+    const id = newId<'Account'>();
+    await sql.query(
+      `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+       email_normalized, display_name, status, email_verified_at, signed_up_at, version,
+       created_at)
+       VALUES ($1, $2, 'default', 'seller', $3, $3, 'Member', 'active', now(), now(), 1, now())`,
+      [id, code, `bulk-end.${id}@seller.example`],
+    );
+    const sessionId = newId<'Session'>();
+    await inUnit(market, () =>
+      sessions.add(
+        market,
+        openSession({
+          id: sessionId,
+          marketId: market.marketId,
+          accountId: id,
+          population: 'seller',
+          sellerId,
+          transport: 'cookie',
+          lifetime: LIFETIME,
+          now: Temporal.Now.instant().subtract({ seconds: 60 }),
+        }),
+        randomBytes(32),
       ),
-    ).resolves.toBe(1);
-    const accountRows = await reasons(byAccount);
-    expect(accountRows.map((r) => r.revoked_reason)).toEqual([
-      'password-changed',
-      'password-changed',
-    ]);
-    expect(accountRows[0]!.revoked_at!.getTime()).toBe(new Date(earlier.toString()).getTime());
-    expect(live).not.toBe(gone);
-
-    const bySeller = await account();
-    const [goneToo] = [await open(bySeller), await open(bySeller)];
-    await inUnit(market, () => sessions.revoke(market, goneToo, bySeller, 'sign-out', earlier));
+    );
     await expect(
-      inUnit(market, () => sessions.revokeAllOfSeller(market, sellerId, 'seller-suspended', later)),
-    ).resolves.toBe(1);
-    expect((await reasons(bySeller)).map((r) => r.revoked_reason)).toEqual([
-      'seller-suspended',
-      'seller-suspended',
-    ]);
+      inUnit(market, () => sessions.sessionsInvalidatedAt(market, id)),
+    ).resolves.toBeNull();
+    const signedOutAt = Temporal.Now.instant().subtract({ seconds: 30 });
+    await inUnit(market, () => sessions.revoke(market, sessionId, id, 'sign-out', signedOutAt));
+    const at = Temporal.Now.instant();
+    await expect(
+      inUnit(market, () => sessions.revokeAllOf(market, id, 'password-reset', at, null)),
+    ).resolves.toBe(0);
+    await expect(inUnit(market, () => sessions.sessionsInvalidatedAt(market, id))).resolves.toEqual(
+      Temporal.Instant.fromEpochMilliseconds(at.epochMilliseconds),
+    );
+    // The signed-out session keeps its own reason; the account carries the later bulk end.
+    const { rows } = await sql.query<{ revoked_reason: string }>(
+      `SELECT revoked_reason FROM identity.sessions WHERE id = $1`,
+      [sessionId],
+    );
+    expect(rows[0]!.revoked_reason).toBe('sign-out');
+    // Another account is not marked.
+    await expect(
+      inUnit(market, () => sessions.sessionsInvalidatedAt(market, newId<'Account'>())),
+    ).resolves.toBeNull();
   });
 
   // Round 1 of PR #204 (Sajad 7, 8; Mohammad ask 2).
