@@ -89,14 +89,14 @@ describe('settings navigation', () => {
   });
 
   it('keeps every hub and sub-navigation link tall enough to touch', () => {
-    expect(read('src/settings/settings-hub.tsx')).toContain('min-h-12');
+    expect(read('../../packages/ui/src/settings/settings-hub.tsx')).toContain('min-h-12');
     expect(read('src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
   });
 
-  it('puts the hub cards on one column on phones, two from 640px and three from 1500px', () => {
-    const hub = read('src/settings/settings-hub.tsx');
+  it('puts the hub cards on one column on phones and two from 640px, never three', () => {
+    const hub = read('../../packages/ui/src/settings/settings-hub.tsx');
     expect(hub).toContain('grid-cols-1');
     expect(hub).toContain('sm:grid-cols-2');
-    expect(hub).toContain('min-[1500px]:grid-cols-3');
+    expect(hub).not.toContain('grid-cols-3');
   });
 });
