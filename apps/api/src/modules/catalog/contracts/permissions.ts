@@ -133,6 +133,28 @@ export const CATALOG_BRAND_EDIT = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read business activities (catalog business-activity package; ADR-0040). Platform scope;
+ * unprotected, so a custom role may grant it; no default role lists it yet: the Platform
+ * Administrator holds every key.
+ */
+export const CATALOG_BUSINESS_ACTIVITY_READ = definePermission('catalog', {
+  key: 'catalog.business-activity.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit business activities, their names and the category branches they reach. Platform
+ * scope; unprotected: a definition moves no money and no certification, and the scope it gives a
+ * seller is enforced by a later package that is itself access-checked.
+ */
+export const CATALOG_BUSINESS_ACTIVITY_EDIT = definePermission('catalog', {
+  key: 'catalog.business-activity.edit',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -146,4 +168,6 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_SAVED_FILTER_SHARE,
   CATALOG_BRAND_READ,
   CATALOG_BRAND_EDIT,
+  CATALOG_BUSINESS_ACTIVITY_READ,
+  CATALOG_BUSINESS_ACTIVITY_EDIT,
 ]);

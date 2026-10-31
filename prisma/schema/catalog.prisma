@@ -206,6 +206,7 @@ model CatalogPlatformCategory {
   revisions           CatalogPlatformCategoryRevision[] @relation("CategoryRevisions")
   publishedRevision   CatalogPlatformCategoryRevision?  @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
   productRevisions    CatalogProductRevisionCategory[]
+  businessActivities  CatalogBusinessActivityCategory[]    @relation("ActivityCategory")
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
@@ -1112,5 +1113,64 @@ model CatalogBrandMergeCandidate {
 
   @@index([status, groupKey], map: "brand_merge_candidates_status_group_key_idx")
   @@map("brand_merge_candidates")
+  @@schema("catalog")
+}
+
+/// A business activity of a Market (Grocery, Butcher, ...): the scope that limits which categories
+/// and platform products a seller can reach (catalog business-activity package; ADR-0040). The code
+/// never changes; names live in `catalog.business_activity_names`, one row per locale (the Market's
+/// default locale is required by the use cases). The CHECKs, the name index and the grants are
+/// hand-written in the migration.
+model CatalogBusinessActivity {
+  id          String                         @id @db.Uuid
+  marketId    String                         @map("market_id") @db.VarChar(8)
+  tenantId    String                         @map("tenant_id")
+  /// Lowercase ASCII words joined by hyphens; unique per Market; never updated.
+  code        String
+  description String?
+  /// active | inactive. An inactive activity gives a seller no scope but keeps its links.
+  status      String
+  createdBy   String                         @map("created_by") @db.Uuid
+  createdAt   DateTime                       @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                       @map("updated_at") @db.Timestamptz(6)
+  /// Optimistic version (P 10); 1 at insert.
+  version     Int
+  names       CatalogBusinessActivityName[]
+  categories  CatalogBusinessActivityCategory[]
+
+  @@unique([marketId, id])
+  @@unique([marketId, code])
+  @@index([marketId, status])
+  @@map("business_activities")
+  @@schema("catalog")
+}
+
+/// The name of a business activity in one locale (a row per locale).
+model CatalogBusinessActivityName {
+  marketId   String                  @map("market_id") @db.VarChar(8)
+  tenantId   String                  @map("tenant_id")
+  activityId String                  @map("activity_id") @db.Uuid
+  locale     String
+  name       String
+  activity   CatalogBusinessActivity @relation(fields: [marketId, activityId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, activityId, locale])
+  @@map("business_activity_names")
+  @@schema("catalog")
+}
+
+/// A category branch an activity reaches (level 1 or 2 of the tree; descendants inherit).
+model CatalogBusinessActivityCategory {
+  marketId   String                  @map("market_id") @db.VarChar(8)
+  tenantId   String                  @map("tenant_id")
+  activityId String                  @map("activity_id") @db.Uuid
+  categoryId String                  @map("category_id") @db.Uuid
+  createdAt  DateTime                @map("created_at") @db.Timestamptz(6)
+  activity   CatalogBusinessActivity @relation(fields: [marketId, activityId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+  category   CatalogPlatformCategory @relation("ActivityCategory", fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, activityId, categoryId])
+  @@index([marketId, categoryId])
+  @@map("business_activity_categories")
   @@schema("catalog")
 }
