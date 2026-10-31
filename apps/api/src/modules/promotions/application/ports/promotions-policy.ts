@@ -12,6 +12,14 @@ export interface FirstOrderSettings {
   readonly monthlyBudgetMinor: bigint;
 }
 
+/** Generated single-use codes of the Market (Market config `promotions.batchCodes`). */
+export interface BatchCodeSettings {
+  readonly codeLength: number;
+  readonly alphabet: string;
+  readonly maxPerBatch: number;
+  readonly maxPerPromotion: number;
+}
+
 /** The Market's promotions settings (Market config `promotions`), all in whole units. */
 export interface PromotionsSettings {
   /** The currency of every promotion and cart of the Market. */
@@ -24,6 +32,8 @@ export interface PromotionsSettings {
   readonly wasPrice: { readonly windowDays: number; readonly minDaysAtPrice: number };
   /** The most promotions one seller may have active or waiting for approval at once. */
   readonly maxActivePromotionsPerSeller: number;
+  /** Null: the Market allows no batches of single-use codes. */
+  readonly batchCodes: BatchCodeSettings | null;
   /** The first-order discount until an admin edits it; null when the Market configures none. */
   readonly firstOrderDefaults: FirstOrderSettings | null;
 }

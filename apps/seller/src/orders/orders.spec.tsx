@@ -119,28 +119,49 @@ describe('SellerOrders list', () => {
     expect(screen.queryByRole('navigation', { name: 'Filter orders by fulfilment' })).toBeNull();
   });
 
-  it('filters by fulfilment on the orders loaded', () => {
-    mountList(
-      page([
-        order(),
-        order({ sellerOrderId: '0190a000-0000-7000-8000-0000000000a2', fulfilment: 'shipped' }),
-        order({ sellerOrderId: '0190a000-0000-7000-8000-0000000000a3', fulfilment: 'delivered' }),
-      ]),
-    );
-    expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(3);
+  it('asks the API for the orders in a state, not only the loaded ones', async () => {
+    const shipped = order({
+      sellerOrderId: '0190a000-0000-7000-8000-0000000000a2',
+      fulfilment: 'shipped',
+    });
+    call.mockResolvedValue({ ok: true, status: 200, body: page([shipped]) });
+    mountList(page([order(), shipped], '1.cursor'));
+    expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'Shipped' }));
-    expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(1));
+    expect(call.mock.calls[0]?.[1]).toBe('ordering/seller/orders?limit=20&status=shipped');
     expect(screen.getByRole('link', { name: /000000A2/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'All' }));
-    expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: 'Show more orders' })).toBeNull();
   });
 
-  it('shows an empty state for a filter with no match and offers more orders', () => {
+  it('keeps the state in "Show more" and shows an empty state when a state has no orders', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: page([]) });
     mountList(page([order()], '1.cursor'));
     fireEvent.click(screen.getByRole('button', { name: 'Delivered' }));
-    expect(screen.getByRole('heading', { name: 'No orders in this state' })).toBeTruthy();
-    expect(screen.getByText(/Show more orders to look further back/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Show more orders' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'No orders in this state' })).toBeTruthy();
+    expect(screen.queryByText(/Show more orders to look further back/)).toBeNull();
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: page([order({ fulfilment: 'delivered' })], '2.cursor'),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Shipped' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    await screen.findByRole('button', { name: 'Show more orders' });
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: page([]) });
+    fireEvent.click(screen.getByRole('button', { name: 'Show more orders' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call.mock.calls[2]?.[1]).toBe(
+      'ordering/seller/orders?limit=20&status=shipped&cursor=2.cursor',
+    );
+  });
+
+  it('keeps the list and says so when a state cannot be loaded', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 503, code: 'x' } });
+    mountList(page([order()]));
+    fireEvent.click(screen.getByRole('button', { name: 'Shipped' }));
+    expect(await screen.findByText(/Orders are not available right now/)).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(1);
   });
 
   it('loads the next page by cursor and skips an order it already shows', async () => {

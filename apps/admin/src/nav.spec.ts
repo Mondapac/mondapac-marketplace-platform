@@ -72,6 +72,7 @@ describe('admin nav: daily work only', () => {
       'products',
       'offer-reviews',
       'price-holds',
+      'brands',
       'content',
       'sellers',
       'orders',
@@ -177,5 +178,23 @@ describe('admin nav: Settings', () => {
   it('is there for the account deletion setting alone', () => {
     expect(ids(['customers.account-deletion-settings.view'])).toContain('settings');
     expect(ids(['customers.account-deletion-settings.manage'])).not.toContain('settings');
+  });
+});
+
+describe('admin nav: Brands', () => {
+  it('is there for catalog.brand.read, in its own Catalog group, with the tag icon', () => {
+    expect(ids(['catalog.brand.read'])).toEqual(['home', 'brands']);
+    expect(adminNav.items.find((item) => item.id === 'brands')).toMatchObject({
+      icon: 'tag',
+      href: '/catalog/brands',
+      labelKey: 'nav.brands',
+      group: 'catalog',
+    });
+    expect((adminNav.groups ?? []).map((group) => group.id)).toContain('catalog');
+  });
+
+  it('is hidden without it, also with the edit key alone', () => {
+    expect(ids([])).not.toContain('brands');
+    expect(ids(['catalog.brand.edit'])).not.toContain('brands');
   });
 });

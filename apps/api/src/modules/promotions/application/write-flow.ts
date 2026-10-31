@@ -11,6 +11,7 @@ import {
 } from '../domain/audit';
 import {
   approvalReason,
+  approvalRewardOf,
   checkDraft,
   countsTowardSellerCap,
   needsFreshSecondFactor,
@@ -160,7 +161,7 @@ export async function createPromotion(
   const reason: ApprovalReason | null =
     days === 'platform'
       ? null
-      : approvalReason({ sellerActiveDays: days, reward: draft.reward }, settings.rules);
+      : approvalReason({ sellerActiveDays: days, reward: approvalRewardOf(draft) }, settings.rules);
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
@@ -192,6 +193,14 @@ export async function createPromotion(
       createdAt: now,
       updatedAt: now,
     };
+    // One code per order: a public code cannot be the text of a generated single-use code.
+    if (
+      record.code !== null &&
+      deps.codeCrypto.available &&
+      (await deps.batchCodes.find(context.market, deps.codeCrypto.hash(record.code))) !== null
+    ) {
+      return err({ code: 'promotions.code-taken' });
+    }
     if ((await deps.promotions.insert(context.market, record)) === 'duplicate-code') {
       return err({ code: 'promotions.code-taken' });
     }
@@ -254,7 +263,7 @@ export async function editPromotion(
   const reason: ApprovalReason | null =
     days === 'platform'
       ? null
-      : approvalReason({ sellerActiveDays: days, reward: draft.reward }, settings.rules);
+      : approvalReason({ sellerActiveDays: days, reward: approvalRewardOf(draft) }, settings.rules);
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });

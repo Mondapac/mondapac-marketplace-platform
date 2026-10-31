@@ -1092,6 +1092,14 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'customers/admin/deletion-requests'],
     ['POST', `customers/admin/buyers/${id}/deletion-requests`],
     ['DELETE', `customers/admin/deletion-requests/${id}`],
+    ['GET', 'catalog/admin/brands'],
+    ['GET', 'catalog/admin/brands/merge-queue'],
+    ['POST', 'catalog/admin/brands'],
+    ['PUT', `catalog/admin/brands/${id}`],
+    ['POST', `catalog/admin/brands/${id}/approve`],
+    ['POST', `catalog/admin/brands/${id}/archive`],
+    ['POST', `catalog/admin/brands/${id}/merge`],
+    ['POST', 'catalog/admin/brands/merge-queue/dismiss'],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1121,6 +1129,14 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `customers/admin/deletion-requests/${id}`],
     ['POST', 'customers/admin/buyers/not-a-uuid/deletion-requests'],
     ['DELETE', 'customers/admin/deletion-requests/not-a-uuid'],
+    ['DELETE', `catalog/admin/brands/${id}`],
+    ['GET', `catalog/admin/brands/${id}`],
+    ['PUT', 'catalog/admin/brands'],
+    ['PUT', 'catalog/admin/brands/not-a-uuid'],
+    ['POST', 'catalog/admin/brands/not-a-uuid/approve'],
+    ['POST', `catalog/admin/brands/${id}/delete`],
+    ['POST', 'catalog/admin/brands/merge-queue'],
+    ['GET', 'catalog/admin/brands/merge-queue/dismiss'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1148,6 +1164,23 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/customers/admin/deletion-requests',
     );
+  });
+
+  it('passes only status, search, afterId and limit of the brand list, each in its shape', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/brands?status=draft&search=saffron&afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/brands?status=draft&search=saffron&afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/brands?status=deleted&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands');
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {

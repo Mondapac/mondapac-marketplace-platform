@@ -33,6 +33,7 @@ describe('loadAppConfig', () => {
       stripeWebhookSecrets: {},
       stripeConnectWebhookSecrets: {},
       externalAccountHmac: { keys: {}, currentVersion: null },
+      promotionsCodePepper: null,
       clientAddressTrust: null,
       assistantModels: {
         apiKeys: {},
@@ -45,6 +46,29 @@ describe('loadAppConfig', () => {
       zoom2u: { apiKeys: {} },
       doordashDrive: { developerIds: {}, keyIds: {}, signingSecrets: {} },
       auspost: { apiKeys: {}, apiPasswords: {}, accountNumbers: {} },
+    });
+  });
+
+  describe('the pepper of single-use promotion codes', () => {
+    const PEPPER = 'pepper_0123456789abcdefghijABCDEFGHIJ';
+
+    it('is null when unset and read when set', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).promotionsCodePepper).toBeNull();
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU', PROMOTIONS_CODE_PEPPER: PEPPER })
+          .promotionsCodePepper,
+      ).toBe(PEPPER);
+    });
+
+    it('refuses a short pepper and never echoes it', () => {
+      let message = '';
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', PROMOTIONS_CODE_PEPPER: 'short' });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/PROMOTIONS_CODE_PEPPER: must be 32 to 200/);
+      expect(message).not.toContain('short');
     });
   });
 
