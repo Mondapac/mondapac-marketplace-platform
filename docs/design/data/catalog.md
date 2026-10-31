@@ -866,6 +866,12 @@ naming findings are applied below). `platform_import_rows.product_id` has **no f
 (10.1) would otherwise conflict with the `platform_import_rows_added_check` of a row that remembers it,
 and a row is a record of what the run did, not a reference to keep alive.
 
+A running import stops when the admin who started it changes their own password or signs out elsewhere,
+even though that admin's current session is kept: `identity.accounts.sessions_invalidated_at` (identity.md
+3.x) is then later than the session's start, and `resumeAdmin` refuses the job's next step. This fails
+closed and is intended; the admin starts the import again (Mojtaba S2; test in
+`admin-job-identity-resolver.bulk.spec.ts`).
+
 - `platform_import_jobs`: `id`, `market_id`, `tenant_id`, `started_by_account_id`,
   `started_by_session_id` (the identity the run resumes; no credential), `state` (`checked`,
   `queued`, `running`, `finished`, `stopped`, `discarded`), `format` (`csv`, `xlsx`), `file_label`

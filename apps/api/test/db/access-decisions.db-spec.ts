@@ -341,6 +341,35 @@ describe.each(TEST_MARKETS)('access decisions in market %s (database, slice 9)',
     ).resolves.toBeNull();
   });
 
+  // Hassan I-585-7: the stamp never goes backwards.
+  it('keeps the greater of the stored and the new stamp when a later revocation has an earlier clock', async () => {
+    const id = newId<'Account'>();
+    await sql.query(
+      `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+       email_normalized, display_name, status, email_verified_at, signed_up_at, version,
+       created_at)
+       VALUES ($1, $2, 'default', 'seller', $3, $3, 'Member', 'active', now(), now(), 1, now())`,
+      [id, code, `stamp-max.${id}@seller.example`],
+    );
+    const later = Temporal.Now.instant();
+    const earlier = later.subtract({ seconds: 5 });
+    const evenLater = later.add({ seconds: 5 });
+    const stamp = () => inUnit(market, () => sessions.sessionsInvalidatedAt(market, id));
+    const ms = (i: Temporal.Instant) => Temporal.Instant.fromEpochMilliseconds(i.epochMilliseconds);
+
+    await inUnit(market, () => sessions.revokeAllOf(market, id, 'password-reset', later, null));
+    await expect(stamp()).resolves.toEqual(ms(later));
+    // A revocation stamped by a slower clock leaves the stamp where it was.
+    await inUnit(market, () => sessions.revokeAllOf(market, id, 'password-reset', earlier, null));
+    await expect(stamp()).resolves.toEqual(ms(later));
+    // The same instant again changes nothing.
+    await inUnit(market, () => sessions.revokeAllOf(market, id, 'password-reset', later, null));
+    await expect(stamp()).resolves.toEqual(ms(later));
+    // A later one moves it forward.
+    await inUnit(market, () => sessions.revokeAllOf(market, id, 'password-reset', evenLater, null));
+    await expect(stamp()).resolves.toEqual(ms(evenLater));
+  });
+
   // Round 1 of PR #204 (Sajad 7, 8; Mohammad ask 2).
 
   it('breaks a tie on decided_at by id: the latest is the greatest id', async () => {

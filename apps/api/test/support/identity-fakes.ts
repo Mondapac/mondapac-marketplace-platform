@@ -1310,7 +1310,10 @@ export class IdentityFakes {
           count += 1;
         }
       }
-      this.sessionsInvalidatedAt.set(accountId, now);
+      const stamped = this.sessionsInvalidatedAt.get(accountId);
+      if (stamped === undefined || Temporal.Instant.compare(stamped, now) < 0) {
+        this.sessionsInvalidatedAt.set(accountId, now);
+      }
       return Promise.resolve(count);
     },
     sessionsInvalidatedAt: (_market, accountId) =>

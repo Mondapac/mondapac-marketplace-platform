@@ -17,6 +17,7 @@ import { TOTP } from '../src/modules/identity/domain/totp';
 import { hotp } from '../src/modules/identity/infrastructure/second-factor/totp';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
+import { traceCredentialOrder } from './support/credential-order';
 import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
@@ -336,8 +337,12 @@ describe('seller second factor over HTTP (integration)', () => {
       clock.advance(STEP);
       const wrong = await post('second-factor/remove', code, { code: '000000' }, current);
       expect(wrong.body).toEqual({ statusCode: 400, code: 'second-factor.invalid' });
+      const trace = traceCredentialOrder(fakes);
       const removed = await post('second-factor/remove', code, { code: codeFor(secret) }, current);
+      trace.restore();
       expect(removed.status).toBe(200);
+      // Lock order (Mojtaba S1): the account's credential lock, then the factor, then sessions.
+      expect(trace.calls).toEqual(['account', 'factor', 'sessions']);
       expect(removed.body).toEqual({ code: 'second-factor-removed' });
       expect(fakes.factors.size).toBe(0);
       expect(

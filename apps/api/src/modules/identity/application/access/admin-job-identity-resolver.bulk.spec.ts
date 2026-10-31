@@ -97,6 +97,25 @@ describe.each(TEST_MARKETS)('AdminJobIdentityResolver after a sign-out in market
     expect(await resume()).toBeNull();
   });
 
+  // Mojtaba S2 (intended; fails closed): the admin who changes their own password keeps the session
+  // that started the import (`exceptId`), yet the account's stamp is later than that session's
+  // start, so the running import stops. The admin starts it again.
+  it("stops the admin's own import when the admin changes their own password in the same session", async () => {
+    const { fakes, resume } = await rig();
+    expect(await resume()).not.toBeNull();
+    const revoked = await fakes.sessionRepository.revokeAllOf(
+      market,
+      ACCOUNT_ID,
+      'password-changed',
+      T0.add({ seconds: 120 }),
+      SESSION_ID,
+    );
+    expect(revoked).toBe(0);
+    // The session itself is still live, and the job still stops.
+    expect((await fakes.sessionRepository.findById(market, SESSION_ID))?.revokedAt).toBeNull();
+    expect(await resume()).toBeNull();
+  });
+
   it('keeps a bulk end from before the job began from stopping it', async () => {
     const { fakes, resume } = await rig();
     // A reset an hour before the session was opened is not news to the job.
