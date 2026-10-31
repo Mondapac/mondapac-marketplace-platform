@@ -6,8 +6,10 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
+import { brandValueOf } from '../../domain/brand';
 import { revisionTextsOf } from '../../domain/revision-texts';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
+import type { BrandAssigner } from '../ports/brand-assigner';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
@@ -77,6 +79,8 @@ export interface ProductRevisionApproveDependencies {
   /** The claim facts and queries (design 5.1). */
   readonly claims: ClaimQueryBuilder;
   readonly evaluator: ClaimEvaluator;
+  /** Sets the product's `brand_id` from the published `brand` attribute (catalog brand package). */
+  readonly brandAssigner?: BrandAssigner;
 }
 
 /**
@@ -356,6 +360,11 @@ export class ProductRevisionApprove extends UseCase<
         // above changes nothing. The product row was locked first, at the top of this unit; the
         // Offer is written after it (the lock order of every tag write, slice 11).
         await deps.products.save(market, product);
+        await deps.brandAssigner?.assignFromPublished(
+          market,
+          productId,
+          brandValueOf(revision.content.attributeValues),
+        );
         await deps.revisions.recordDecision(market, {
           revisionId,
           outcome: 'published',

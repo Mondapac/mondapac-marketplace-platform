@@ -10,6 +10,7 @@ import type {
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { CheckClaimText } from '../src/modules/catalog/application/claim-text/check-claim-text.service';
+import { BRAND_ASSIGNER } from '../src/modules/catalog/application/ports/brand-assigner';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
 import { OWN_OFFER_FINDER } from '../src/modules/catalog/application/ports/own-offer-finder';
 import {
@@ -190,6 +191,8 @@ describe('admin product revision review over HTTP (integration)', () => {
           })
           // The owner has no Offer on the product here: the approval asks nothing (the re-ask of
           // tags at publication is covered by the use-case and db specs, slice 11).
+          .overrideProvider(BRAND_ASSIGNER)
+          .useValue({ assignFromPublished: () => Promise.resolve() })
           .overrideProvider(OWN_OFFER_FINDER)
           .useValue({ findOwnOnProduct: () => Promise.resolve(null) })
           .overrideProvider(OWN_CATALOG_READER)

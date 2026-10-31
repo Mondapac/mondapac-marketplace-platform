@@ -1,4 +1,5 @@
 import { formatMoney } from '../format/money.ts';
+import { isBrandSlug } from './brands.ts';
 import { imageIdsOf, type PhotoUrl } from './photos.ts';
 import type { CertificationBadge, Money, ProductDetail, ProductOffer } from './types.ts';
 
@@ -19,6 +20,8 @@ export interface ProductDetailBody {
   readonly shortDescription: string | null;
   readonly description: string | null;
   readonly categoryIds: readonly string[];
+  /** The product's active brand (`slug`, `name`) or null; untrusted, read through {@link brandRefOf}. */
+  readonly brand?: unknown;
   /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
   readonly images?: unknown;
   readonly offers: readonly {
@@ -112,6 +115,16 @@ export function badgesOf(raw: unknown): CertificationBadge[] {
   return out;
 }
 
+/**
+ * The brand of the product from the untrusted body: a slug of the brand page's shape and a name, or
+ * none (absent, null or malformed is no brand, never half a link).
+ */
+export function brandRefOf(raw: unknown): ProductDetail['brand'] {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { slug, name } = raw as Record<string, unknown>;
+  return isBrandSlug(slug) && isText(name) ? { slug, name } : undefined;
+}
+
 /** API money as the page's; null when the amount is not a safe whole number of minor units. */
 function moneyOf(body: MoneyBody): Money | null {
   if (!/^[0-9]{1,15}$/u.test(body.amount)) return null;
@@ -181,6 +194,7 @@ export function productDetailOf(
     category: body.categoryIds[0] ?? '',
     description: body.description ?? body.shortDescription ?? '',
     specifications: [],
+    ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
     photos: shots.map((shot) => shot.large),
     ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),
     offers: [first, ...rest],

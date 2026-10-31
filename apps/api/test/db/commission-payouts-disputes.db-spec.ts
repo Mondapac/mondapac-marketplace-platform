@@ -23,6 +23,7 @@ import type {
   LateBoundOrderPaymentLookup,
 } from '../../src/modules/commission-payouts/infrastructure/late-bound-dispute-ports';
 import { PrismaDisputeRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-dispute.repository';
+import { PrismaPayoutCursorRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-cursor.repository';
 import { PrismaPayoutHoldRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-hold.repository';
 import { PrismaLedgerRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-ledger.repository';
 import { DisputeChanged } from '../../src/modules/payments';
@@ -32,6 +33,8 @@ import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/event
 import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
+import { STEP_UP_CONSUMER } from '../../src/platform/authz';
+import { AllowingStepUp } from '../support/commission-payouts-fakes';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { eventContext } from './outbox-support';
@@ -56,6 +59,7 @@ const CHECK = '23514';
 const NO_PRIVILEGE = '42501';
 const RESTRICT = '23001';
 const UNIQUE = '23505';
+const stepUp = new AllowingStepUp();
 // Generated ids are random hex, so a leak pattern such as /2000/ can match inside one by chance.
 const ANY_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 /** `value` as JSON with every UUID replaced, for leak checks that must not match inside an id. */
@@ -77,6 +81,7 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
   let disputes: PrismaDisputeRepository;
   let ledger: PrismaLedgerRepository;
   let holds: PrismaPayoutHoldRepository;
+  let cursors: PrismaPayoutCursorRepository;
   let admin: CallContext;
   const providerDisputes = new Map<string, ProviderDispute>();
   const intents = new Map<string, string>();
@@ -115,7 +120,13 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
     disputes = new PrismaDisputeRepository(db.service);
     ledger = new PrismaLedgerRepository(db.service);
     holds = new PrismaPayoutHoldRepository(db.service);
-    ({ app } = await createTestApp({ env: { DATABASE_URL: disputesTestDatabaseUrl() } }));
+    cursors = new PrismaPayoutCursorRepository(db.service);
+    // The decision spends the admin's step-up (issue #491); the proof itself is identity's and has
+    // its own suite, so a consumer that always accepts stands in for it here.
+    ({ app } = await createTestApp({
+      env: { DATABASE_URL: disputesTestDatabaseUrl() },
+      override: (builder) => builder.overrideProvider(STEP_UP_CONSUMER).useValue(stepUp),
+    }));
     relay = app.get<OutboxRelay>(OUTBOX_RELAY);
     dispatcher = app.get<EventDispatcher>(EVENT_DISPATCHER);
     // payments and ordering are replaced by the test: the dispute and the order's PaymentIntent.
@@ -827,6 +838,72 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
               ?.recoverableCap.amountMinor
           : undefined;
       expect([capOf(soA), capOf(soB)]).toEqual([450n, 850n]);
+    });
+
+    describe("the seller's money lock", () => {
+      const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      /** A unit that holds the seller's cursor lock the way a payout's write unit does. */
+      const payoutUnit = (sellerId: Id<'Seller'>, whileHeld: () => Promise<void>) =>
+        db.unitOfWork.run(market, async () => {
+          await cursors.lock(market, sellerId);
+          await pause(500);
+          await whileHeld();
+          return ok(undefined);
+        });
+
+      it("places a dispute hold only after the unit that holds the seller's lock has committed", async () => {
+        const sellerId = ids.next<'Seller'>();
+        const orderId = ids.next<'Order'>();
+        const disputeId = ids.next<'Dispute'>();
+        intents.set(orderId, 'pi_lock1');
+        const sellerOrderId = await paid(sellerId, orderId);
+        await value(market, () => cursors.ensure(market, sellerId, T0));
+        publish(disputeId, orderId, {});
+
+        let seenInside = -1;
+        const unit = payoutUnit(sellerId, async () => {
+          seenInside = (await holdsOf(disputeId)).length;
+        });
+        await pause(100);
+        // The sync waits for the lock: the payout unit above cannot have seen the hold.
+        await Promise.all([unit, changed(disputeId, orderId)]);
+        expect(seenInside).toBe(0);
+        expect((await holdsOf(disputeId)).map((row) => row.seller_order_id)).toEqual([
+          sellerOrderId,
+        ]);
+      });
+
+      it("writes a decision's debit only after the unit that holds the seller's lock has committed", async () => {
+        const sellerId = ids.next<'Seller'>();
+        const orderId = ids.next<'Order'>();
+        const disputeId = ids.next<'Dispute'>();
+        intents.set(orderId, 'pi_lock2');
+        const sellerOrderId = await paid(sellerId, orderId);
+        await value(market, () => cursors.ensure(market, sellerId, T0));
+        publish(disputeId, orderId, lostState());
+        await changed(disputeId, orderId);
+        const debits = async () =>
+          (
+            await sql.query(
+              `SELECT 1 FROM commission_payouts.ledger_entries
+                WHERE market_id = $1 AND seller_order_id = $2 AND kind = 'dispute-debit'`,
+              [market.marketId, sellerOrderId],
+            )
+          ).rowCount;
+
+        let seenInside = -1;
+        const unit = payoutUnit(sellerId, async () => {
+          seenInside = (await debits()) ?? -1;
+        });
+        await pause(100);
+        const [, decided] = await Promise.all([
+          unit,
+          decide(disputeId, sellerOrderId, 'seller', '400'),
+        ]);
+        expect(decided.ok).toBe(true);
+        expect(seenInside).toBe(0);
+        expect(await debits()).toBe(1);
+      });
     });
 
     describe('decisions at the same time', () => {

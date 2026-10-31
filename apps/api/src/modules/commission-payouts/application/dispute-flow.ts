@@ -2,7 +2,10 @@ import { Logger } from '@nestjs/common';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDeclaration } from '../../../platform/authz';
-import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../contracts/permissions';
+import {
+  COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
+  COMMISSION_PAYOUTS_EARNINGS_VIEW,
+} from '../contracts/permissions';
 import { DisputeOrderMismatch } from '../../../platform/security-events/security-event-catalogue';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { DisputeDecided, PayoutHoldPlaced, PayoutHoldReleased } from '../domain/audit';
@@ -30,6 +33,7 @@ import {
 import { SellerOrderDisputed } from '../domain/events';
 import type { LedgerEntry } from '../domain/ledger';
 import type { DisputeDependencies } from './dispute-dependencies';
+import { spendStepUp, type StepUpFailure } from './step-up';
 import type { ProviderDispute } from './ports/dispute-source';
 import type { SellerOrderRef } from './ports/dispute.repository';
 
@@ -55,7 +59,8 @@ export type DisputeFailure =
   | { readonly code: 'commission-payouts.dispute.not-decidable' }
   | { readonly code: 'commission-payouts.dispute.already-decided' }
   | { readonly code: 'commission-payouts.dispute.amount-out-of-range' }
-  | { readonly code: 'commission-payouts.unavailable' };
+  | { readonly code: 'commission-payouts.unavailable' }
+  | StepUpFailure;
 
 export type DisputeEventFailure =
   { readonly code: 'validation.failed' } | { readonly code: 'commission-payouts.try-again' };
@@ -167,6 +172,13 @@ export async function syncDispute(
       if (releasable(next, sellerOrderIds, decisions)) {
         await releaseHolds(deps, context, disputeId, null, now);
       } else {
+        // A hold changes what a payout may take: the sellers' cursor locks first, in sellerId
+        // order (the order every unit that locks more than one seller uses), so a payout unit
+        // that planned before this commit cannot commit past it (design 9, L15).
+        const sellerIds = [
+          ...new Set(sellerOrders.map((sellerOrder) => sellerOrder.sellerId)),
+        ].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+        for (const sellerId of sellerIds) await deps.cursors.lock(market, sellerId);
         for (const sellerOrder of sellerOrders) {
           await holdSellerOrder(deps, context, sellerOrder, disputeId, now);
         }
@@ -727,6 +739,13 @@ export async function decideDispute(
     }
     const c = await deps.disputes.find(market, disputeId);
     if (c === null) return err({ code: 'commission-payouts.dispute-not-found' } as const);
+    // The seller's money lock next (the debit changes what a payout may take), then the reads the
+    // decision depends on.
+    const owner = (await deps.ledger.listSellerOrder(market, sellerOrderId))[0];
+    if (owner === undefined || owner.orderId !== c.orderId) {
+      return err({ code: 'commission-payouts.seller-order-not-found' } as const);
+    }
+    await deps.cursors.lock(market, owner.sellerId);
     const entries = await deps.ledger.listSellerOrder(market, sellerOrderId);
     const first = entries[0];
     if (first === undefined || first.orderId !== c.orderId) {
@@ -768,6 +787,8 @@ export async function decideDispute(
       decidedAt: now,
       supersedes: rule.kind === 'reverse' && existing !== undefined ? existing.first.id : null,
     };
+    const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE.key);
+    if (!spent.ok) return err(spent.error);
     if (!(await deps.disputes.insertDecision(market, decision))) {
       // A concurrent decision got in first.
       return err({ code: 'commission-payouts.dispute.already-decided' } as const);

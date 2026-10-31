@@ -17,6 +17,7 @@ import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.re
 import { OFFER_FEED } from './application/ports/offer-feed';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
+import { BRAND_PRODUCTS } from './application/ports/brand-products';
 import { STORE_RESOLVER } from './application/ports/store-resolver';
 import { PERSONAL_SIGNALS } from './application/ports/personal-signals';
 import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
@@ -67,6 +68,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['clock', CLOCK],
   ['shelves', SHELF_DOCUMENTS_READER],
   ['stores', STORE_RESOLVER],
+  ['brands', BRAND_PRODUCTS],
   ['images', PRODUCT_IMAGES],
   ['categories', CATEGORY_SUBTREE_SOURCE],
 ];

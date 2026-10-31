@@ -181,6 +181,7 @@ const PINNED: readonly (readonly [string, string])[] = [
     'platform:catalogue-moderator@9',
     '89204ff35c555d0826d9b042b6c2af71d449987e2df5e4fdbc7f03f7ecd5120b',
   ],
+  ['platform:viewer@24', '9928e2298c660546d2ecb26b76f5540b6fd2838c29d8b2cf2ef26ccfe40382cb'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

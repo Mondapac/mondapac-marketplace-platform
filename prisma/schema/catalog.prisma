@@ -78,6 +78,12 @@ model CatalogProduct {
   status               String
   discardedAt          DateTime?                  @map("discarded_at") @db.Timestamptz(6)
   ownBrand             Boolean                    @map("own_brand")
+  /// The brand entity this product's published `brand` attribute resolved to; null when the value
+  /// names no active brand. A plain column, not a Prisma relation: `catalog.brands` is exempt from
+  /// the market scope and the schema checks forbid relating it to this scoped model, so no foreign
+  /// key exists: a hand-written trigger refuses a value that names no brand, and brands are never
+  /// deleted.
+  brandId              String?                    @map("brand_id") @db.Uuid
   matchedIntoProductId String?                    @map("matched_into_product_id") @db.Uuid
   promotedAt           DateTime?                  @map("promoted_at") @db.Timestamptz(6)
   retiredAt            DateTime?                  @map("retired_at") @db.Timestamptz(6)
@@ -115,6 +121,8 @@ model CatalogProduct {
   @@unique([marketId, productCode])
   /// The seller's own product list (own-products.list): keyset by id within one owner.
   @@index([marketId, ownerSellerId, id], map: "products_market_id_owner_seller_id_id_idx")
+  /// The live product count of a brand page and the merge move (brand package).
+  @@index([marketId, brandId], map: "products_market_id_brand_id_idx")
   @@map("products")
   @@schema("catalog")
 }
@@ -906,5 +914,93 @@ model CatalogOfferOwnerNotice {
   @@unique([marketId, id])
   @@unique([marketId, sourceEventId, sellerId, typeCode])
   @@map("offer_owner_notices")
+  @@schema("catalog")
+}
+
+/// @market-scope none: a brand is shared by every Market (brand package): the same maker and the same
+/// public page serve each Market, and a Market's products point at it through `products.brand_id`.
+/// Only market-scoped aggregates carry `market_id` (CLAUDE.md, Market rules); a brand is reference
+/// content, not a Seller, Offer, Order or other aggregate of one Market. Which products are visible
+/// in a Market is decided by that Market's own product rows, never by the brand.
+/// The brand entity (catalog brand package). Created by an admin (active at once) or proposed by a
+/// seller who sells an own-brand product (draft until an admin approves). The CHECKs, the alias
+/// index and the grants are hand-written in the migration.
+model CatalogBrand {
+  id                 String                       @id @db.Uuid
+  /// Lowercase ASCII words joined by hyphens; unique; the URL of the public page.
+  slug               String                       @unique
+  name               String
+  /// The normalised form of the name (trimmed, lowercase, "&" as "and", letters and digits only):
+  /// two names with the same key are near-duplicates. Not unique: the backfill keeps both.
+  nameKey            String                       @map("name_key")
+  /// Image ids from the brand's own image upload (a later package); no foreign key until it exists.
+  logoImageId        String?                      @map("logo_image_id") @db.Uuid
+  logoAlt            String?                      @map("logo_alt")
+  headerImageId      String?                      @map("header_image_id") @db.Uuid
+  summary            String?
+  /// ISO 3166-1 alpha-2 code, uppercase.
+  originCountry      String?                      @map("origin_country") @db.Char(2)
+  /// draft | active | archived.
+  status             String
+  /// The seller who proposed it; null for an admin-created or backfilled brand.
+  proposedBySellerId String?                      @map("proposed_by_seller_id") @db.Uuid
+  /// The admin account that created or approved it; null for a backfilled brand.
+  approvedBy         String?                      @map("approved_by") @db.Uuid
+  /// Set exactly when the brand was archived by a merge: the brand that took its products.
+  mergedIntoId       String?                      @map("merged_into_id") @db.Uuid
+  createdAt          DateTime                     @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                     @map("updated_at") @db.Timestamptz(6)
+  /// Optimistic version (P 10); 1 at insert.
+  version            Int
+  mergedInto         CatalogBrand?                @relation("BrandMerge", fields: [mergedIntoId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom         CatalogBrand[]               @relation("BrandMerge")
+  aliases            CatalogBrandAlias[]
+  mergeCandidates    CatalogBrandMergeCandidate[]
+
+  /// The admin list filter and the A to Z list.
+  @@index([status, name], map: "brands_status_name_idx")
+  /// The near-duplicate check.
+  @@index([nameKey], map: "brands_name_key_idx")
+  @@map("brands")
+  @@schema("catalog")
+}
+
+/// @market-scope none: aliases belong to a brand, which is shared by every Market.
+/// Another spelling of a brand: a merged old value or a known variant. Resolves a product's brand
+/// text to the brand and feeds the brand search. `lower(alias)` is unique across all brands (a
+/// hand-written index, which Prisma cannot describe).
+model CatalogBrandAlias {
+  id        String       @id @db.Uuid
+  brandId   String       @map("brand_id") @db.Uuid
+  alias     String
+  createdAt DateTime     @map("created_at") @db.Timestamptz(6)
+  brand     CatalogBrand @relation(fields: [brandId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([brandId], map: "brand_aliases_brand_id_idx")
+  @@map("brand_aliases")
+  @@schema("catalog")
+}
+
+/// @market-scope none: the queue lists brands, which are shared by every Market.
+/// The merge queue: brands whose names are near-duplicates of each other (same `name_key`). The
+/// backfill writes one row per brand of each colliding group; nothing is merged by itself. An admin
+/// merges the group into one brand or keeps the brands apart. One row per brand, ever.
+model CatalogBrandMergeCandidate {
+  id         String       @id @db.Uuid
+  /// The shared name key of the group.
+  groupKey   String       @map("group_key")
+  brandId    String       @unique @map("brand_id") @db.Uuid
+  /// open | resolved.
+  status     String
+  /// merged | kept-separate; set exactly when resolved.
+  resolution String?
+  detectedAt DateTime     @map("detected_at") @db.Timestamptz(6)
+  resolvedAt DateTime?    @map("resolved_at") @db.Timestamptz(6)
+  /// The admin account that resolved it.
+  resolvedBy String?      @map("resolved_by") @db.Uuid
+  brand      CatalogBrand @relation(fields: [brandId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([status, groupKey], map: "brand_merge_candidates_status_group_key_idx")
+  @@map("brand_merge_candidates")
   @@schema("catalog")
 }

@@ -58,7 +58,7 @@ export function backTarget(path: string): AccountBack | null {
 
 export interface AccountBack {
   readonly href: string;
-  readonly key: 'account';
+  readonly key: 'account' | 'settings';
 }
 
 /**

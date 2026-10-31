@@ -161,7 +161,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // keeps it harmlessly, as the registry still knows it.
     // Version 23 adds `customers.account-deletion-requests.view`, likewise unprotected (customers
     // package 5c); the protected `customers.buyer-account.delete` is not listed.
-    seedVersion: 23,
+    // Version 24 adds `catalog.brand.read`, likewise unprotected (catalog brand package); the
+    // brand edit key is not a viewer key.
+    seedVersion: 24,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -188,6 +190,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'blog.post.read',
       'promotions.promotion.view',
       'customers.account-deletion-requests.view',
+      'catalog.brand.read',
     ],
   },
   {

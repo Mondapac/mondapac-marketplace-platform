@@ -80,6 +80,7 @@ export class ProductDetailController {
       shortDescription: detail.shortDescription,
       description: detail.description,
       categoryIds: [...detail.categoryIds],
+      brand: detail.brand === null ? null : { slug: detail.brand.slug, name: detail.brand.name },
       images: detail.images.map(({ imageId, width, height, alt }) => ({
         imageId,
         width,

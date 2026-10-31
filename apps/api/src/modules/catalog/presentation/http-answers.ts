@@ -19,6 +19,7 @@ const DETAIL_KEYS = [
   'retryAfterSeconds',
   'max',
   'tags',
+  'brands',
   'total',
   'currentCount',
 ] as const;

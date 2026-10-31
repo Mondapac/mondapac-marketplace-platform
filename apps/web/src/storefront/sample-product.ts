@@ -1,4 +1,5 @@
 import 'server-only';
+import { sampleBrandOf } from './sample-brands.ts';
 import { SAMPLE_CERTIFICATION_NAMES, SAMPLE_PRODUCTS, sampleSellerId } from './sample-catalog.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import type {
@@ -148,6 +149,7 @@ export function sampleProduct(id: string): ProductDetail | undefined {
       extra?.description ??
       `${product.name} from ${product.sellerName}, a local seller in Brisbane. Delivered by the seller in the window shown.`,
     specifications: extra?.specifications ?? [],
+    ...(sampleBrandOf(id) === undefined ? {} : { brand: sampleBrandOf(id)! }),
     photos,
     offers: [featuredOffer(product), ...(extra?.others?.(product) ?? [])],
     similar,

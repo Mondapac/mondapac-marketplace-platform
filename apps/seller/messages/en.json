@@ -1952,6 +1952,105 @@
       "since": "Since {when}"
     }
   },
+  "payouts": {
+    "loading": "Loading payouts",
+    "next": {
+      "title": "Next payout",
+      "unavailable": "Your next payout could not be loaded.",
+      "estimated": "Estimated",
+      "slot": "Scheduled for {when}",
+      "slot-blocked": "Looked at again on {when}",
+      "nothing": "Nothing to pay out yet. Your next payout appears here once an order's holding period has passed.",
+      "manage-account": "Manage payout account",
+      "ready": "Ready for payout",
+      "ready-blocked": "Not on its way",
+      "on-hold": "On hold",
+      "on-hold-value": "{amount} ({count, plural, one {# order} other {# orders}})",
+      "you-owe": "You owe",
+      "owe-value": "{amount}, taken from your next payout",
+      "note": "The amount can change before payout day if an order is refunded or disputed.",
+      "block": {
+        "below-minimum": "Your balance is under the minimum payout, so it moves to next week.",
+        "awaiting-approval": "Your first payout is waiting for a check by MondaPac.",
+        "account-not-ready": "Your payout account is not ready, so nothing can be paid out yet.",
+        "cooling-off": "You changed your bank account recently. Payouts start again once the waiting period ends.",
+        "payouts-paused": "Payouts are paused for your store. Contact support if you need help.",
+        "zone-missing": "Your store's time zone is not set, so payouts cannot be scheduled yet.",
+        "second-factor-required": "The store owner needs two-step sign-in on before payouts can be sent.",
+        "unknown": "Your next payout is not on its way yet."
+      },
+      "block-short": {
+        "below-minimum": "Under the minimum payout",
+        "awaiting-approval": "Waiting for our check",
+        "account-not-ready": "Payout account not ready",
+        "cooling-off": "Bank account changed recently",
+        "payouts-paused": "Payouts paused",
+        "zone-missing": "Store time zone not set",
+        "second-factor-required": "Two-step sign-in needed"
+      }
+    },
+    "held": {
+      "title": "Money on hold",
+      "unavailable": "The money on hold could not be loaded.",
+      "empty": {
+        "title": "No money on hold",
+        "body": "Orders appear here while they wait for delivery, a holding period, a refund or a dispute."
+      },
+      "col": {
+        "order": "Order",
+        "reason": "Status",
+        "why": "Details",
+        "available": "Available from",
+        "share": "Your share"
+      },
+      "order": "Order {id}",
+      "whole-store": "Your store",
+      "reason": {
+        "on-hold": "On hold",
+        "refund-pending": "Refund in progress",
+        "holding-period": "Holding period",
+        "awaiting-delivery": "Not delivered yet"
+      },
+      "explain": {
+        "on-hold": "Contact support if you need help with this one.",
+        "refund-pending": "Held until the refund is finished.",
+        "holding-period": "Paid out after the holding period ends.",
+        "awaiting-delivery": "The holding period starts when the order is delivered."
+      },
+      "after-delivery": "After delivery, plus the holding period"
+    },
+    "history": {
+      "title": "Payout history",
+      "unavailable": "Your payout history could not be loaded.",
+      "empty": {
+        "title": "No payouts yet",
+        "body": "Payouts appear here once your first one is planned."
+      },
+      "col": {
+        "date": "Date",
+        "status": "Status",
+        "note": "Details",
+        "amount": "Amount"
+      },
+      "status": {
+        "scheduled": "Planned",
+        "awaiting-approval": "Waiting for our check",
+        "on-its-way": "Sending",
+        "paid": "Paid",
+        "not-sent": "Not sent",
+        "failed": "Failed",
+        "settled": "Settled against what you owe",
+        "unknown": "Unknown"
+      },
+      "first-note": "First payout, checked by our team.",
+      "not-sent-note": "Nothing was sent. It is proposed again.",
+      "failed-note": "We will contact you.",
+      "settled-note": "{amount} kept against what you owed.",
+      "kept": "{amount} kept against what you owed",
+      "more": "Load more",
+      "more-failed": "More payouts could not be loaded. Try again."
+    }
+  },
   "settings": {
     "title": "Settings",
     "back-home": "Back to Dashboard",

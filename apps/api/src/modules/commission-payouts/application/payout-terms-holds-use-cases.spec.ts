@@ -15,6 +15,11 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import {
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
+  COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
+} from '../contracts/permissions';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
@@ -191,6 +196,19 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
         ],
       ]);
       expect(stores.termsOverrides.rows.size).toBe(1);
+    });
+
+    it('spends the step-up proof exactly once per set and per clear, and none on a refusal', async () => {
+      const spent = stores.stepUp.spent;
+      expect((await set(SELLER_A, { holdDaysCarrier: 9 })).ok).toBe(true);
+      expect(spent).toEqual([COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT.key]);
+      expect((await clear(SELLER_A, 1)).ok).toBe(true);
+      expect(spent).toEqual(Array(2).fill(COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT.key));
+      // Refused before the unit: no reason code, and a caller who is not an admin.
+      expect((await set(SELLER_A, { holdDaysCarrier: 9 }, null, admin, 'because')).ok).toBe(false);
+      expect((await set(SELLER_A, { holdDaysCarrier: 9 }, null, sellerA)).ok).toBe(false);
+      expect((await clear(SELLER_A, 1, sellerA)).ok).toBe(false);
+      expect(spent).toHaveLength(2);
     });
 
     it('requires a reason code from the closed list on a change and a removal, and audits it', async () => {
@@ -383,6 +401,23 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
       ]);
       expect(audit.entries[0]!.before).toBeNull();
       expect(audit.entries[0]!.after).toMatchObject({ sellerId: SELLER_A, reason: 'admin-review' });
+    });
+
+    it('spends the step-up proof exactly once per place and per release, and none on a refusal', async () => {
+      const spent = stores.stepUp.spent;
+      const placed = await place({ sellerId: SELLER_A, reason: 'admin-review' });
+      if (!placed.ok) throw new Error('unreachable');
+      expect(spent).toEqual([COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE.key]);
+      expect((await release(placed.value.holdId, 'review-complete')).ok).toBe(true);
+      expect(spent).toEqual([
+        COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE.key,
+        COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE.key,
+      ]);
+      // Refused before the unit: a bad reason, and a caller who is not an admin.
+      expect((await place({ sellerId: SELLER_A, reason: 'x' })).ok).toBe(false);
+      expect((await place({ sellerId: SELLER_A, reason: 'admin-review' }, sellerA)).ok).toBe(false);
+      expect((await release(placed.value.holdId, 'resolved', sellerA)).ok).toBe(false);
+      expect(spent).toHaveLength(2);
     });
 
     it('requires a reason code from the admin set and a valid, known seller and seller order', async () => {

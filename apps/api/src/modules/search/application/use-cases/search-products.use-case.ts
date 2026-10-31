@@ -48,6 +48,9 @@ export type SearchProductsFailure =
  * then catalog and sellers are asked whether each hit is still sellable now. A hit that fails
  * either check is dropped, so a page can hold fewer than `pageSize` items while `hasMore` is
  * true. If a check cannot be made the answer is `search.unavailable`, never an unchecked list.
+ * With a `brand` (no `q`, no `store`) the route lists the Offers of the brand's live products in the
+ * Market by name (catalog names the product ids; an unknown, draft or archived brand answers an
+ * empty page, a brand read that fails is `search.unavailable`).
  * With a `store` (no `q`) the route lists that store's Offers by name, optionally in one category:
  * sellers resolves the address under the published-store rules, and a store that is unknown,
  * retired or not selling answers an empty page, never an error or a hint of why. Text, categories,
@@ -78,7 +81,7 @@ export class SearchProducts extends UseCase<
     const query = parseSearchQuery(input);
     if (!query.ok) return query;
     const { market } = context;
-    const { text, categoryId, storeSlug, page, pageSize } = query.value;
+    const { text, categoryId, storeSlug, brandSlug, page, pageSize } = query.value;
     const { textSearchConfig } = this.deps.policy.settings(market);
     const offset = (page - 1) * pageSize;
 
@@ -89,6 +92,13 @@ export class SearchProducts extends UseCase<
       if (store.sellerId === null) return ok({ items: [], page, pageSize, hasMore: false });
       storeSellerId = store.sellerId;
     }
+    let brandProductIds: readonly Id<'Product'>[] | null = null;
+    if (brandSlug !== null) {
+      const brand = await this.deps.brands.productIdsOf(context, brandSlug);
+      if (brand === null) return err({ code: 'search.unavailable' });
+      if (brand.productIds.length === 0) return ok({ items: [], page, pageSize, hasMore: false });
+      brandProductIds = brand.productIds;
+    }
     let categoryIds: readonly Id<'Category'>[] | null = null;
     if (categoryId !== null) {
       categoryIds = await this.deps.categories.subtreeOf(context, categoryId);
@@ -98,21 +108,29 @@ export class SearchProducts extends UseCase<
       market,
       async () =>
         ok(
-          storeSellerId !== null
-            ? await this.deps.shelves.browseBySeller(
+          brandProductIds !== null
+            ? await this.deps.shelves.browseByProducts(
                 market,
-                storeSellerId,
+                brandProductIds,
                 categoryIds,
                 pageSize + 1,
                 offset,
               )
-            : await this.deps.reader.search(market, {
-                textSearchConfig,
-                text,
-                categoryIds,
-                limit: pageSize + 1,
-                offset,
-              }),
+            : storeSellerId !== null
+              ? await this.deps.shelves.browseBySeller(
+                  market,
+                  storeSellerId,
+                  categoryIds,
+                  pageSize + 1,
+                  offset,
+                )
+              : await this.deps.reader.search(market, {
+                  textSearchConfig,
+                  text,
+                  categoryIds,
+                  limit: pageSize + 1,
+                  offset,
+                }),
         ),
       { readOnly: true },
     );
