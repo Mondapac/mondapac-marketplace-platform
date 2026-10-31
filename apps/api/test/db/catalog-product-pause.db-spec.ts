@@ -41,7 +41,7 @@ import { ownerTestDatabaseUrl } from './test-database';
 
 // The admin product pause, resume, withdraw and retire, the Bulk action and the export on
 // PostgreSQL, for both Market fixtures (catalog design 4.1, 4.1a, 9.2c; migration
-// 20261030120000_catalog_product_pause): the mark and the stored cause in one unit, the Offers
+// 20261031100000_catalog_product_pause): the mark and the stored cause in one unit, the Offers
 // off sale and back through a fresh ask of every tag, the terminal Delete of a SELLER product
 // (withdraw) and a PLATFORM one (retire, with the confirmed Offer count), per-product units in a
 // bulk, the Market boundary and the file.
