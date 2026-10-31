@@ -174,6 +174,12 @@ import {
   type PublishedImagesReader,
 } from '../application/ports/published-images.reader';
 import { PrismaPublishedImagesReader } from './prisma-published-images.reader';
+import { BRAND_REPOSITORY, type BrandRepository } from '../application/ports/brand.repository';
+import { BRAND_READER, type BrandReader } from '../application/ports/brand.reader';
+import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
+import { PrismaBrandRepository } from './prisma-brand.repository';
+import { PrismaBrandReader } from './prisma-brand.reader';
+import { PrismaBrandAssigner } from './prisma-brand.assigner';
 
 const CATALOG_SECRET = Symbol('CATALOG_SECRET');
 
@@ -199,6 +205,22 @@ export const catalogProviders: readonly Provider[] = [
     provide: PRODUCT_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ProductRepository => new PrismaProductRepository(prisma),
+  },
+  {
+    provide: BRAND_REPOSITORY,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): BrandRepository =>
+      new PrismaBrandRepository(prisma, ids),
+  },
+  {
+    provide: BRAND_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
+  },
+  {
+    provide: BRAND_ASSIGNER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BrandAssigner => new PrismaBrandAssigner(prisma),
   },
   {
     provide: OFFER_REPOSITORY,

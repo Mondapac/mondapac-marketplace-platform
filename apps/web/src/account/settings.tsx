@@ -10,11 +10,13 @@ import { TextSizeToggle } from '../preferences/text-size-toggle.tsx';
 import type { EmailChoices } from '../storefront/types.ts';
 import { AccountFrame } from './account-area.tsx';
 import { useAccount, type PasswordOutcome, type Profile } from './account-state.tsx';
+import { DeletionEntry, useDeletion } from './account-deletion.tsx';
 import { AcField, PasswordField } from './fields.tsx';
 
 /**
  * Settings: Profile, Password (always open), Appearance (saved to the account, john 19 Oct; the
- * browser keeps a copy for first paint), Emails and Privacy. There is no Delete account (john).
+ * browser keeps a copy for first paint), Emails and Privacy. Delete account is in Privacy, and only
+ * while the Market has switched it on (Off by default; otherwise a line pointing to support).
  * Live: the name, password and look go to the API; the email is read-only and the mobile field is
  * hidden (no backend yet). Sample: saving changes this tab's state only.
  */
@@ -321,7 +323,8 @@ function Toggle({
 
 function PrivacyCard() {
   const t = useTranslations('account.settings');
-  const { profile } = useAccount();
+  const { profile, source } = useAccount();
+  const deletion = useDeletion(source.live);
   const [asked, setAsked] = useState(false);
   return (
     <section className="ac-card" aria-labelledby="settings-privacy">
@@ -342,6 +345,7 @@ function PrivacyCard() {
           </p>
         ) : null}
       </div>
+      <DeletionEntry deletion={deletion} />
     </section>
   );
 }

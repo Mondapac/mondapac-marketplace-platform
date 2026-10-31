@@ -14,6 +14,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
+import { BuyerDeletion } from '../account-deletion/buyer-deletion.tsx';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { useCountdown } from '../api/use-countdown.ts';
 import { formatInstant } from '../shared/format.ts';
@@ -43,11 +44,17 @@ function problemOf(failure: ApiFailure): Problem | null {
 export function CustomerLookup({
   canChangeStatus,
   walletLink = null,
+  buyerDeletion = null,
   csrfToken,
 }: {
   readonly canChangeStatus: boolean;
   /** The wallet link on a found account: issue credit (wallet.credit.issue) or view (credit.view). */
   readonly walletLink?: 'issue' | 'view' | null;
+  /**
+   * The delete-account action on a found account (customers.buyer-account.delete); null hides
+   * it. `waitingPeriodDays` is the Market's setting when the actor may read it, else null.
+   */
+  readonly buyerDeletion?: { readonly waitingPeriodDays: number | null } | null;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('customers');
@@ -220,6 +227,14 @@ export function CustomerLookup({
               ) : null}
             </ActionRow>
           ) : null}
+          {buyerDeletion === null ? null : (
+            <BuyerDeletion
+              key={customer.accountId}
+              accountId={customer.accountId}
+              waitingPeriodDays={buyerDeletion.waitingPeriodDays}
+              csrfToken={csrfToken}
+            />
+          )}
         </Card>
       )}
       <Dialog

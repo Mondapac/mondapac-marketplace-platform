@@ -4,6 +4,8 @@ import type { CommissionRate, CommissionRateMap } from '../contracts/commission-
 import { CommissionRateCleared, CommissionRateSet } from '../domain/audit';
 import { parseRateBps } from '../domain/commission';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
+import { spendStepUp, type StepUpFailure } from './step-up';
+import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
 
 // Commission rates (COM-01, COM-02): the Market rate comes from Market config; an admin may set a
 // separate rate for one seller, or remove it to put the seller back on the Market rate. Each
@@ -20,7 +22,8 @@ export type RateFailure =
   /** Removing a seller rate that does not exist. */
   | { readonly code: 'commission-payouts.rate-not-set' }
   | { readonly code: 'commission-payouts.rate-unavailable' }
-  | { readonly code: 'commission-payouts.unavailable' };
+  | { readonly code: 'commission-payouts.unavailable' }
+  | StepUpFailure;
 
 /** What the system read of several rates can refuse. */
 export type RatesFailure = Extract<
@@ -101,6 +104,8 @@ export async function setCommissionRate(
   const now = deps.clock.now();
   return deps.unitOfWork.run<RateView, RateFailure>(context.market, async () => {
     const before = await deps.rates.findForUpdate(context.market, sellerId);
+    const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_RATE_EDIT.key);
+    if (!spent.ok) return err(spent.error);
     await deps.rates.save(context.market, {
       sellerId,
       rateBps: rate.value,
@@ -143,6 +148,8 @@ export async function clearCommissionRate(
     if (before === null || !(await deps.rates.remove(context.market, sellerId))) {
       return err({ code: 'commission-payouts.rate-not-set' } as const);
     }
+    const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_RATE_EDIT.key);
+    if (!spent.ok) return err(spent.error);
     await deps.audit.record(
       context,
       CommissionRateCleared.entry(sellerId, {

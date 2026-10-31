@@ -21,6 +21,7 @@ import {
   ADMIN_NOTICES_PER_MARKET,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PRICE_HOLD_OPENED,
+  ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_SELLER_FILE_SUBMITTED,
@@ -33,6 +34,7 @@ import {
   SELLER_LOW_STOCK,
   SELLER_OFFER_TAG_CHANGED,
   SELLER_ORDER_PAID,
+  SELLER_PAYOUT_TERMS_CHANGED,
   SELLER_PRICE_HOLD_DECIDED,
   type SellerOrderPaidParams,
 } from '../domain/in-app-notice';
@@ -233,6 +235,8 @@ describe('parseNoticeParams', () => {
     ['a fractional count', SELLER_ORDER_PAID, { sellerOrderId: id(1), items: 1.5 }],
     ['null', SELLER_ORDER_PAID, null],
     ['an inherited key as kind', 'constructor', {}],
+    ['a payout terms notice with an unexpected id kept', 'seller.payout-terms-changed', 'x'],
+    ['a reinstated notice without its seller', ADMIN_SELLER_REINSTATED_HOLD_REMAINS, {}],
     ['an admin notice without its id', ADMIN_SELLER_FILE_SUBMITTED, { fileKind: 'onboarding' }],
     [
       'an admin notice with an unknown enum',
@@ -477,6 +481,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         'notifications.see-seller-catalog-notices',
         'notifications.see-seller-price-notices',
         'notifications.see-seller-access-notices',
+        'notifications.see-seller-earnings-notices',
       ]);
       // No customer data reaches the notice.
       expect(JSON.stringify(result)).not.toContain(NOTICE.accountId);
@@ -788,6 +793,21 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       await review(ITEMS.priceHold!, 9);
       expect(await review(ITEMS.priceHold!, 9)).toEqual(ok({ code: 'notices.already-handled' }));
       expect(notices.rows).toHaveLength(1);
+    });
+
+    it('records the reinstated-hold notice with the seller id only, for the hold-release admin', async () => {
+      adminKeys.set(ADMIN_PRICES, ['commission-payouts.payout-hold.release']);
+      expect(
+        await review({ kind: ADMIN_SELLER_REINSTATED_HOLD_REMAINS, sellerId: SELLER_A }),
+      ).toEqual(ok({ code: 'notices.recorded', notices: 1 }));
+      expect(notices.rows).toEqual([
+        expect.objectContaining({
+          audience: 'admin',
+          sellerId: null,
+          kind: ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
+          params: { sellerId: SELLER_A },
+        }),
+      ]);
     });
 
     it('skips a revision that published at once, and a platform revision', async () => {
@@ -1186,6 +1206,18 @@ describe.each([['AU'], ['ZZ']] as const)('seller notices (package 4) in market %
         SELLER_LOW_STOCK,
       ]);
       expect(await kindsSeenBy(member(MEMBER_B, SELLER_B))).toEqual([]);
+    });
+
+    it('shows the payout terms notice only to a member who can view earnings', async () => {
+      await record({
+        kind: SELLER_PAYOUT_TERMS_CHANGED,
+        owner: { by: 'seller', sellerId: SELLER_A },
+        params: {},
+      });
+      keys.set(MEMBER_1, ['commission-payouts.earnings.view']);
+      keys.set(MEMBER_2, ['inventory.stock.view']);
+      expect(await kindsSeenBy(member(MEMBER_1))).toEqual([SELLER_PAYOUT_TERMS_CHANGED]);
+      expect(await kindsSeenBy(member(MEMBER_2))).toEqual([SELLER_LOW_STOCK]);
     });
 
     it('carries the newest unread order for the sound, never a newer notice of another kind', async () => {

@@ -24,7 +24,10 @@ import type {
   DisputeDecision,
 } from '../../src/modules/commission-payouts/domain/dispute';
 import { COMMISSION_PAYOUTS_EVENTS } from '../../src/modules/commission-payouts/domain/events';
-import type { LedgerEntry } from '../../src/modules/commission-payouts/domain/ledger';
+import {
+  netBySellerOrder,
+  type LedgerEntry,
+} from '../../src/modules/commission-payouts/domain/ledger';
 import type { OutboxWriter } from '../../src/platform/events/outbox-writer';
 import type { SecurityEventInput } from '../../src/platform/security-events/security-event-catalogue';
 import type { SecurityEvents } from '../../src/platform/security-events/security-events';
@@ -50,6 +53,9 @@ export class MarketLedger implements LedgerRepository {
   }
   hasSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.of(market).some((r) => r.sellerOrderId === sellerOrderId));
+  }
+  netBySellerOrder(market: MarketContext, sellerId: Id<'Seller'>, currency: string) {
+    return Promise.resolve(netBySellerOrder(this.of(market), sellerId, currency));
   }
   sellerOfSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(
