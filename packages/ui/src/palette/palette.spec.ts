@@ -35,6 +35,7 @@ const text: Record<string, string> = {
   'nav.home': 'Home',
   'nav.orders': 'Orders',
   'nav.sellers': 'Sellers',
+  'nav.settings': 'Settings',
   'page.support': 'Support contact',
   'page.delivery': 'Delivery rules',
   'group.market': 'Marketplace',
@@ -101,7 +102,21 @@ describe('buildPaletteEntries', () => {
     expect(ids(entries)).not.toContain('setting:support-email');
     const fee = entries.find((entry) => entry.id === 'setting:delivery-fee');
     expect(fee?.href).toBe('/settings/delivery#setting-delivery-fee');
-    expect(fee?.context).toBe('Delivery rules');
+    // No root crumb in these sources: the path starts at the group.
+    expect(fee?.context).toBe('Marketplace / Delivery rules');
+  });
+
+  it('builds the path of a page and of a setting from the root, the group and the page', () => {
+    const entries = buildPaletteEntries({
+      ...sources(['del.view']),
+      settingsPages: sources(['del.view']).settingsPages.map((page) => ({
+        ...page,
+        rootLabelKey: 'nav.settings',
+      })),
+    });
+    const context = (id: string) => entries.find((entry) => entry.id === id)?.context;
+    expect(context('page:settings/delivery')).toBe('Settings / Marketplace');
+    expect(context('setting:delivery-fee')).toBe('Settings / Marketplace / Delivery rules');
   });
 });
 
