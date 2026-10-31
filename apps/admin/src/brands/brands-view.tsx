@@ -384,7 +384,7 @@ function BrandLine({
               <p className="text-sm text-fg-muted">
                 {t('proposed-by')}{' '}
                 <a
-                  className="text-link underline"
+                  className="whitespace-nowrap text-link underline"
                   href={`/sellers/${row.proposedBySellerId}`}
                   title={row.proposedBySellerId}
                 >
@@ -401,7 +401,11 @@ function BrandLine({
         </div>
       </td>
       <td className={CARD_TABLE.labelled} data-label={t('col.origin')}>
-        <span>{row.originCountry ?? '-'}</span>
+        {row.originCountry === null ? (
+          <span aria-label={t('not-set')}>{'\u2014'}</span>
+        ) : (
+          <span>{row.originCountry}</span>
+        )}
       </td>
       <td className={CARD_TABLE.corner}>
         <Badge tone={STATUS_TONE[row.status]}>{t(`status.${row.status}`)}</Badge>
@@ -411,7 +415,7 @@ function BrandLine({
       </td>
       {canEdit ? (
         <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-2`}>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             {row.status === 'draft' ? (
               <Button
                 aria-label={t('action.approve-name', { name: row.name })}

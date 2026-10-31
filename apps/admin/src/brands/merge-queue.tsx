@@ -166,7 +166,7 @@ function GroupCard({
                 setConfirming(true);
               }}
             >
-              {t('merge', { count: sources.length })}
+              {t('merge', { count: sources.length, name: target?.name ?? '' })}
             </Button>
             <Button
               variant="secondary"

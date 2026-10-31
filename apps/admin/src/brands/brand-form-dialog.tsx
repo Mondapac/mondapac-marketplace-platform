@@ -150,6 +150,7 @@ export function BrandFormDialog({
           name="summary"
           label={t('summary')}
           optionalLabel={t('optional')}
+          rows={3}
           value={form.summary}
           maxLength={SUMMARY_MAX}
           error={errorOf('summary')}

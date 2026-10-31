@@ -94,10 +94,28 @@ describe('admin brands', () => {
     mount();
     expect(await screen.findByText('Saffron & Co')).toBeTruthy();
     expect(screen.getByText('/brands/brand-1')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Proposed by sellers 1' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Proposed 1' })).toBeTruthy();
     expect(calls('GET', 'catalog/admin/brands?status=active')[0]?.[1]).toBe(
       'catalog/admin/brands?status=active&limit=25',
     );
+  });
+
+  it('shows a dash that screen readers read as "Not set" for an empty origin', async () => {
+    serve(lists([brand(1, { originCountry: null })]));
+    mount();
+    expect((await screen.findByLabelText('Not set')).textContent).toBe('\u2014');
+  });
+
+  it('returns focus to the button that opened a dialog', async () => {
+    serve(lists([brand(1)]));
+    mount();
+    await screen.findByText('Brand 1');
+    const opener = screen.getByRole('button', { name: 'Edit Brand 1' });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('shows brand text as plain text', async () => {
@@ -161,7 +179,7 @@ describe('admin brands', () => {
       expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
       expect(screen.queryByRole('button', { name: /^Archive Brand/ })).toBeNull();
       expect(screen.queryByRole('button', { name: /Merge/ })).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Proposed by sellers 1' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Proposed 1' }));
       expect(await screen.findByText('Brand 2')).toBeTruthy();
       expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
     });
@@ -174,7 +192,7 @@ describe('admin brands', () => {
         }),
       });
       mount(false);
-      fireEvent.click(await screen.findByRole('button', { name: 'Possible duplicates 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates 1' }));
       expect(
         await screen.findByText('Your role can read this list but not merge brands.'),
       ).toBeTruthy();
@@ -275,7 +293,7 @@ describe('admin brands', () => {
         'PUT catalog/admin/brands/': ok({ brand: brand(2) }),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed by sellers 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
       await screen.findByText('Brand 2');
       fireEvent.click(screen.getByRole('button', { name: 'Edit Brand 2' }));
       const slug = screen.getByLabelText('Page address');
@@ -323,7 +341,7 @@ describe('admin brands', () => {
         'POST catalog/admin/brands/': ok({ brand: { ...proposal, status: 'active' } }),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed by sellers 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
       expect(await screen.findByText('Brand 2')).toBeTruthy();
       expect(screen.getByRole('link', { name: 'seller 00000077' }).getAttribute('href')).toBe(
         `/sellers/${id(77)}`,
@@ -345,7 +363,7 @@ describe('admin brands', () => {
     it('turns a proposal down through the archive route', async () => {
       serve({ ...lists([], [proposal]), 'POST catalog/admin/brands/': ok({ brand: proposal }) });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed by sellers 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
       await screen.findByText('Brand 2');
       fireEvent.click(screen.getByRole('button', { name: 'Turn down the proposal Brand 2' }));
       fireEvent.click(screen.getByRole('button', { name: 'Turn down proposal' }));
@@ -364,7 +382,7 @@ describe('admin brands', () => {
         'POST catalog/admin/brands/': refuse(409, 'brand.not-draft'),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed by sellers 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
       await screen.findByText('Brand 2');
       fireEvent.click(screen.getByRole('button', { name: 'Approve Brand 2' }));
       fireEvent.click(screen.getByRole('button', { name: 'Approve brand' }));
@@ -465,10 +483,11 @@ describe('admin brands', () => {
         'POST catalog/admin/brands/': ok({ brand: brand(1), merged: [], aliasesAdded: [] }),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Possible duplicates 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates 1' }));
       expect(await screen.findByText('“Saffron and Co”')).toBeTruthy();
       expect(screen.getByText('11 products')).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'Merge 2 values' }));
+      expect(screen.getByLabelText('Merge into')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Merge 2 into Saffron & Co' }));
       const dialog = screen.getByRole('dialog');
       expect(within(dialog).getByText(/3 products move to Saffron & Co/)).toBeTruthy();
       expect(calls('POST', 'catalog/admin/brands/')).toHaveLength(0);
@@ -485,7 +504,7 @@ describe('admin brands', () => {
     it('keeps the brands apart with "Not the same"', async () => {
       withQueue({ 'POST catalog/admin/brands/merge-queue/dismiss': ok({ resolved: 3 }) });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Possible duplicates 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates 1' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Not the same' }));
       await expectToast('These brands will stay apart.');
       expect(call).toHaveBeenCalledWith(
@@ -499,7 +518,7 @@ describe('admin brands', () => {
     it('says so when nothing looks like a duplicate', async () => {
       serve(lists());
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Possible duplicates' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates' }));
       expect(await screen.findByText(/No possible duplicates/)).toBeTruthy();
     });
   });

@@ -3592,8 +3592,8 @@
     "tabs": "Brand lists",
     "tab": {
       "active": "Active",
-      "draft": "Proposed by sellers",
-      "duplicates": "Possible duplicates",
+      "draft": "Proposed",
+      "duplicates": "Duplicates",
       "archived": "Archived"
     },
     "search": "Search by name, slug or alias",
@@ -3741,7 +3741,7 @@
       "view-only": "Your role can read this list but not merge brands.",
       "no-live": "None of these brands is live yet, so there is nothing to merge into. Approve one first.",
       "target": "Merge into",
-      "merge": "{count, plural, one {Merge # value} other {Merge # values}}",
+      "merge": "Merge {count} into {name}",
       "keep-apart": "Not the same",
       "alias-note": "The old values are kept as aliases so search still finds them.",
       "merged": "{count, plural, one {# value was} other {# values were}} merged into {name}. {moved, plural, one {# product moved.} other {# products moved.}}",
@@ -3750,6 +3750,7 @@
       "confirm-title": "Merge into {name}?",
       "confirm-yes": "{count, plural, one {Merge # value} other {Merge # values}}",
       "confirm-body": "{count, plural, one {# other value is} other {# other values are}} archived and {moved, plural, one {# product moves} other {# products move}} to {name}. The old names stay as aliases."
-    }
+    },
+    "not-set": "Not set"
   }
 }
