@@ -13,6 +13,7 @@ export function panelToolsLabels(text: (key: string) => string): PanelToolsLabel
       placeholder: text('palette.placeholder'),
       close: text('palette.close'),
       results: text('palette.results'),
+      pinned: text('palette.pinned'),
       recent: text('palette.recent'),
       kind: {
         page: text('palette.kind.page'),
@@ -26,6 +27,7 @@ export function panelToolsLabels(text: (key: string) => string): PanelToolsLabel
       hintMove: text('palette.hint-move'),
       hintOpen: text('palette.hint-open'),
       hintClose: text('palette.hint-close'),
+      hintShortcuts: text('palette.hint-shortcuts'),
     },
     pin: {
       pin: text('palette.pin.pin'),

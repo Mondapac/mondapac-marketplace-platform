@@ -14,6 +14,7 @@ export interface CommandPaletteLabels {
   /** Name of the results list. */
   readonly results: string;
   /** Section headings. */
+  readonly pinned: string;
   readonly recent: string;
   readonly kind: Readonly<Record<PaletteKind, string>>;
   /** "No results for “{query}”"; `{query}` is replaced. */
@@ -27,12 +28,16 @@ export interface CommandPaletteLabels {
   readonly hintMove: string;
   readonly hintOpen: string;
   readonly hintClose: string;
+  /** After the "?" key: "for shortcuts". */
+  readonly hintShortcuts: string;
 }
 
 export interface CommandPaletteProps {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly entries: readonly PaletteEntry[];
+  /** The pinned pages, in pin order; shown first while the field is empty. */
+  readonly pinned?: readonly PaletteEntry[];
   /** The recently visited pages, newest first; shown while the field is empty. */
   readonly recent: readonly PaletteEntry[];
   readonly labels: CommandPaletteLabels;
@@ -48,18 +53,21 @@ interface Section {
   readonly items: readonly PaletteEntry[];
 }
 
-const KIND_ORDER: readonly PaletteKind[] = ['page', 'setting', 'action'];
+/** What typing finds, in this order. Actions are only offered before typing. */
+const KIND_ORDER: readonly PaletteKind[] = ['setting', 'page'];
 
 /**
  * The ⌘K palette: a modal dialog holding a combobox (the search field) and a listbox (the
  * results), after the WAI-ARIA combobox pattern. Focus stays in the field; the arrow keys move the
  * active option (`aria-activedescendant`), Enter opens it, Escape closes. With an empty field it
- * lists the recent pages and the actions. A live region announces how many results there are.
+ * lists the pinned pages, the recent pages and the actions; typing lists settings, then pages, with
+ * the count shown under the field and announced.
  */
 export function CommandPalette({
   open,
   onClose,
   entries,
+  pinned = [],
   recent,
   labels,
   onChoose,
@@ -82,8 +90,14 @@ export function CommandPalette({
   const sections = useMemo<readonly Section[]>(() => {
     if (query.trim() === '') {
       const actions = entries.filter((entry) => entry.kind === 'action');
+      const pinnedIds = new Set(pinned.map((entry) => entry.id));
       return [
-        { id: 'recent', heading: labels.recent, items: recent },
+        { id: 'pinned', heading: labels.pinned, items: pinned },
+        {
+          id: 'recent',
+          heading: labels.recent,
+          items: recent.filter((entry) => !pinnedIds.has(entry.id)),
+        },
         { id: 'action', heading: labels.kind.action, items: actions },
       ].filter((section) => section.items.length > 0);
     }
@@ -93,7 +107,7 @@ export function CommandPalette({
       heading: labels.kind[kind],
       items: hits.filter((hit) => hit.kind === kind),
     })).filter((section) => section.items.length > 0);
-  }, [entries, recent, query, labels]);
+  }, [entries, pinned, recent, query, labels]);
 
   const flat = useMemo(() => sections.flatMap((section) => section.items), [sections]);
   const optionId = (index: number) => `${base}-option-${index}`;
@@ -204,6 +218,14 @@ export function CommandPalette({
               <Icon name="x" />
             </button>
           </div>
+          {searching && flat.length > 0 ? (
+            // Seen, not read twice: the live region below announces it.
+            <p aria-hidden="true" className="shrink-0 px-4 pt-2 text-xs text-fg-muted">
+              {flat.length === 1
+                ? labels.countOne
+                : labels.countMany.replace('{count}', String(flat.length))}
+            </p>
+          ) : null}
           <div
             id={flat.length > 0 ? `${base}-list` : undefined}
             role={flat.length > 0 ? 'listbox' : undefined}
@@ -275,6 +297,9 @@ export function CommandPalette({
             </span>
             <span>
               <Kbd>Esc</Kbd> {labels.hintClose}
+            </span>
+            <span className="ms-auto">
+              <Kbd>?</Kbd> {labels.hintShortcuts}
             </span>
           </div>
         </div>

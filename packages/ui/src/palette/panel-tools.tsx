@@ -284,12 +284,14 @@ export function PanelTools({
     [resolve, recent, currentPage],
   );
 
+  const pinnedEntries = useMemo(() => resolve(pins), [resolve, pins]);
+
   const value = useMemo<PanelToolsValue>(
     () => ({
       labels,
       openPalette,
       openHelp,
-      pinnedEntries: resolve(pins),
+      pinnedEntries,
       recentEntries,
       currentPage,
       onPageItself,
@@ -300,7 +302,7 @@ export function PanelTools({
       labels,
       openPalette,
       openHelp,
-      resolve,
+      pinnedEntries,
       pins,
       recentEntries,
       currentPage,
@@ -316,6 +318,7 @@ export function PanelTools({
         open={paletteOpen}
         onClose={closePalette}
         entries={paletteEntries}
+        pinned={pinnedEntries}
         recent={recentEntries}
         labels={labels.palette}
         onChoose={choose}

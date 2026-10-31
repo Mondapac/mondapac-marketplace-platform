@@ -30,6 +30,11 @@ export interface PaletteSettingsPage {
   readonly view?: readonly string[] | undefined;
   readonly groupLabelKey: string;
   readonly groupIcon: IconName;
+  /**
+   * The first crumb of its path ("Settings" for a page of the Settings hub). Absent for a page that
+   * is not under a hub (the account pages): its path starts at the group.
+   */
+  readonly rootLabelKey?: string;
 }
 
 /** One setting on a settings page ("Support email"). Its row anchor is `#setting-<id>`. */
@@ -64,11 +69,32 @@ export interface PaletteSources {
   readonly groupLabelKeys?: Readonly<Record<string, string>>;
 }
 
+/** Between the crumbs of a result's path: "Settings / Delivery / Delivery rules". */
+export const CRUMB_SEPARATOR = ' / ';
+
 /** The row anchor a setting is reached by. */
 export const settingHash = (settingId: string): string => `#setting-${settingId}`;
 
 export const pageEntryId = (navId: string): string => `page:${navId}`;
 export const settingsPageEntryId = (pageId: string): string => `page:settings/${pageId}`;
+
+/**
+ * Where a settings page or one of its settings lives, as a path the reader can follow: the root
+ * (Settings), the group, and for a setting the page too.
+ */
+function crumbs(
+  page: PaletteSettingsPage,
+  label: (key: string) => string,
+  withPage: boolean,
+): string {
+  return [
+    page.rootLabelKey === undefined ? undefined : label(page.rootLabelKey),
+    label(page.groupLabelKey),
+    withPage ? label(page.labelKey) : undefined,
+  ]
+    .filter((crumb): crumb is string => crumb !== undefined)
+    .join(CRUMB_SEPARATOR);
+}
 
 /**
  * Every page, setting and action the caller may open, in a fixed order: menu pages, settings
@@ -98,7 +124,7 @@ export function buildPaletteEntries(sources: PaletteSources): readonly PaletteEn
       id: settingsPageEntryId(page.id),
       kind: 'page',
       label: label(page.labelKey),
-      context: label(page.groupLabelKey),
+      context: crumbs(page, label, false),
       href: page.href,
       icon: page.groupIcon,
     });
@@ -110,7 +136,7 @@ export function buildPaletteEntries(sources: PaletteSources): readonly PaletteEn
       id: `setting:${spec.id}`,
       kind: 'setting',
       label: label(spec.labelKey),
-      context: label(page.labelKey),
+      context: crumbs(page, label, true),
       ...(spec.keywordsKey === undefined ? {} : { keywords: label(spec.keywordsKey) }),
       href: `${page.href}${settingHash(spec.id)}`,
       icon: 'sliders',
