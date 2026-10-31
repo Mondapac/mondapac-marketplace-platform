@@ -48,7 +48,7 @@ describe.each(TEST_MARKETS)('AdminJobIdentityResolver after a sign-out in market
       transport: 'cookie',
       lifetime: LIFETIME,
       now: T0,
-    } as Parameters<typeof openSession>[0]);
+    });
     await fakes.sessionRepository.add(market, job, new Uint8Array([1]));
     const unitOfWork = {
       run: async <T, E>(
