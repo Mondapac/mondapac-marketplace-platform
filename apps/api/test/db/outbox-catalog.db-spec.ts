@@ -65,6 +65,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 3.27 (certification slice 15): the sender job's claim order.
   'catalog.offer_owner_notices_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX offer_owner_notices_market_id_next_attempt_at_pending_idx ON catalog.offer_owner_notices USING btree (market_id, next_attempt_at, id) WHERE (state = 'pending'::text)",
+  // docs/design/data/catalog.md 3.28: a shared filter name is unique per list among the filters
+  // shared with everyone.
+  'catalog.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
   // docs/design/data/catalog.md 3.18 (slice 11): one pending fan-out request per product, one
   // request per published revision, one per consumed event, and the job's claim order.
   'catalog.tag_reevaluation_requests_market_id_created_at_pending_idx':

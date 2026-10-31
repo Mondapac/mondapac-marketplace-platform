@@ -1491,6 +1491,72 @@ describe('relay of the product list', () => {
     });
   });
 
+  describe('the saved filters of the product list', () => {
+    const base = ['catalog', 'admin', 'saved-filters'];
+    const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers,
+        ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+      });
+
+    it('relays the list with its list key, the create, the update and the delete', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        request('GET', 'catalog/admin/saved-filters?listKey=admin.catalog.products&extra=1'),
+        base,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/catalog/admin/saved-filters?listKey=admin.catalog.products',
+      );
+      for (const [method, path] of [
+        ['POST', 'catalog/admin/saved-filters'],
+        ['PUT', `catalog/admin/saved-filters/${id}`],
+        ['DELETE', `catalog/admin/saved-filters/${id}`],
+      ] as const) {
+        const ok = upstreamOk();
+        expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+        expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      }
+    });
+
+    it('drops a list key of the wrong shape and refuses other methods, ids and origins', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        request('GET', 'catalog/admin/saved-filters?listKey=Bad%20Key'),
+        base,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/saved-filters');
+      for (const [method, path] of [
+        ['PUT', 'catalog/admin/saved-filters'],
+        ['DELETE', 'catalog/admin/saved-filters'],
+        ['PUT', 'catalog/admin/saved-filters/not-a-uuid'],
+        ['DELETE', 'catalog/admin/saved-filters/not-a-uuid'],
+        ['POST', `catalog/admin/saved-filters/${id}`],
+        ['GET', `catalog/admin/saved-filters/${id}`],
+        ['DELETE', `catalog/admin/saved-filters/${id}/extra`],
+      ] as const) {
+        const fetchImpl = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        expect(fetchImpl).not.toHaveBeenCalled();
+      }
+      const cross = upstreamOk();
+      const response = await relay(
+        config,
+        request('POST', 'catalog/admin/saved-filters', { host: 'admin.localhost:3002' }),
+        base,
+        cross,
+      );
+      expect(response.status).toBe(403);
+      expect(cross).not.toHaveBeenCalled();
+    });
+  });
+
   it('refuses a write, another photo size, a take-down and a product that is not a UUID', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, post('catalog/admin/products'), path, upstream)).status).toBe(404);
