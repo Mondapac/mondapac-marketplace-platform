@@ -69,6 +69,20 @@ export const COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE = definePermission('commission
   protected: true,
 });
 
+/** See the payouts of the Market: the list, and one payout with its seller orders and the account's readiness. */
+export const COMMISSION_PAYOUTS_PAYOUT_VIEW = definePermission('commission-payouts', {
+  key: 'commission-payouts.payout.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/** Approve a payout that waits for an admin, with the transfer amount the admin saw. */
+export const COMMISSION_PAYOUTS_PAYOUT_APPROVE = definePermission('commission-payouts', {
+  key: 'commission-payouts.payout.approve',
+  scope: 'platform',
+  protected: true,
+});
+
 export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-payouts', [
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
@@ -79,4 +93,6 @@ export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-pay
   COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
   COMMISSION_PAYOUTS_DISPUTE_VIEW,
   COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
+  COMMISSION_PAYOUTS_PAYOUT_VIEW,
+  COMMISSION_PAYOUTS_PAYOUT_APPROVE,
 ]);

@@ -158,6 +158,8 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   // amount the seller repays and the most it could repay (the seller's own share, never Cost).
   'commission-payouts.dispute.decide.after.amount',
   'commission-payouts.dispute.decide.before.capAmount',
+  // Seller payout run package 6d: an approval records the transfer amount the admin saw and bound.
+  'commission-payouts.payout.approve.after.transfer',
   'ordering.refund.requested.after.amount',
   'ordering.refund.requested.after.tax',
   'pricing.price-hold.approved.after.amount',

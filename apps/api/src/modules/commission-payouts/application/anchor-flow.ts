@@ -56,6 +56,8 @@ export async function recordSellerOrderDelivered(
         eligibleAt: eligibleAtOf(input.deliveredAt, holdDays),
         recordedAt: now,
       });
+      // The seller's payout schedule starts with its first anchor: no slot before it is due.
+      await deps.cursors.ensure(context.market, sellerId.value, now);
       return ok(inserted ? ('anchored' as const) : ('already-anchored' as const));
     },
   );

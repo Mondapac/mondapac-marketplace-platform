@@ -13,6 +13,18 @@
       "type": "commission-payouts.dispute.order-mismatch"
     },
     {
+      "type": "commission-payouts.payout.alert",
+      "owner": "commission-payouts",
+      "severity": "s2",
+      "targetType": null,
+      "targetRequired": false,
+      "ip": false,
+      "payload": {
+        "reason": "enumOf(zone-missing|approval-waiting|transfer-refused|transfer-unmatched)",
+        "sellerId": "id"
+      }
+    },
+    {
       "type": "identity.password.changed",
       "owner": "identity",
       "severity": "s3",
