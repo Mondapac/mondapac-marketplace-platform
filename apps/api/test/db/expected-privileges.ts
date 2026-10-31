@@ -753,9 +753,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'paused_by',
         'platform_split_bps',
         'prior_approved',
+        'referee_reward_minor',
         'reward_amount_minor',
         'reward_bps',
         'reward_kind',
+        'segment_kind',
+        'segment_min_days',
         'special_campaign',
         'starts_at',
         'status',
@@ -773,6 +776,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 3: a referral code is insert-only; a referral and a credit change state only and are
+    // never deleted; the inbox of the delivery-credit handlers is appended to.
+    'promotions.referral_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.referrals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'qualifying_order_id',
+        'qualifying_seller_order_id',
+        'reject_reason',
+        'status',
+      ],
+    },
+    'promotions.credit_issuances': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['failure_code', 'settled_at', 'status', 'wallet_journal_id'],
+    },
+    'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['decided_by_account_id', 'opted_in_at', 'withdrawn_at'],

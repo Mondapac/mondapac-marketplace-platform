@@ -25,6 +25,13 @@ export interface QuoteRequest {
   /** The one code the customer typed; null for none. */
   readonly code: string | null;
   readonly isFirstOrder: boolean;
+  /**
+   * The customer's account, for the discounts aimed at a customer segment or at the followers of a
+   * store. Their facts (the last order, the stores they follow) are read on the server from the
+   * modules that own them; a customer that is absent or whose facts cannot be read gets none of
+   * those discounts (fail closed). A browser never states the facts.
+   */
+  readonly customerAccountId?: Id<'Account'> | null;
   /** A test order: test-mode promotions apply to it, and to nothing else. */
   readonly testMode: boolean;
   /** The commission of the order: the platform's share of its discounts is capped by it. */

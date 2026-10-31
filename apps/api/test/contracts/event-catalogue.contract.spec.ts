@@ -167,6 +167,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'ordering.record-delivery-anchor',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
+      'promotions.cashback-on-delivery',
+      'promotions.qualify-referral-on-delivery',
       'search.index-deleted-offer',
       'search.index-moved-offer',
       'search.index-published-offer',
@@ -189,6 +191,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-delivered.v1')).toEqual([
       'ordering.record-delivery-anchor',
+      'promotions.cashback-on-delivery',
+      'promotions.qualify-referral-on-delivery',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'ordering.cancel-carrier-after-refund',

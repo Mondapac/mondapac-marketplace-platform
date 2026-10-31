@@ -21,6 +21,7 @@ import {
   MemoryPromotionsSetting,
   MemoryReviewQueue,
   MemoryThresholds,
+  phase3Fakes,
 } from '../../../../test/support/promotions-fakes';
 import {
   TEST_CODE_PEPPER,
@@ -167,6 +168,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 2 types in market %s'
       flashSales,
       sellerActivity: activity,
       priceHistory: new FakePriceHistory(),
+      ...phase3Fakes(),
       stepUp,
       audit,
       ids: new SequenceIdGenerator(clock),
