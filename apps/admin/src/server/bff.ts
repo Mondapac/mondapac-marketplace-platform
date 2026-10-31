@@ -52,6 +52,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
+    // queue. One brand is not read by the panel: the list rows carry the version a change needs.
+    'catalog/admin/brands',
+    'catalog/admin/brands/merge-queue',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -108,6 +112,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).
     'identity/admin/step-up/verify',
+    // A new brand (catalog), and keeping a group of the merge queue apart.
+    'catalog/admin/brands',
+    'catalog/admin/brands/merge-queue/dismiss',
   ]),
 };
 
@@ -133,6 +140,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
+    // merge other brands into it.
+    'catalog/admin/brands/:id/approve',
+    'catalog/admin/brands/:id/archive',
+    'catalog/admin/brands/:id/merge',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
@@ -169,6 +181,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-terms',
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
+    // The whole content of a brand, with the version seen (catalog).
+    'catalog/admin/brands/:id',
   ],
   DELETE: [
     'identity/admin/roles/:id',
@@ -211,6 +225,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
+  'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -236,6 +251,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'catalog/admin/brands': {
+    status: /^(draft|active|archived)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
   },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {

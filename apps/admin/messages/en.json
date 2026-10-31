@@ -112,12 +112,14 @@
       "content": "Content",
       "sellers": "Sellers",
       "orders": "Orders & customers",
-      "money": "Money"
+      "money": "Money",
+      "catalog": "Catalog"
     },
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
     "disputes": "Disputes",
-    "payouts": "Payouts"
+    "payouts": "Payouts",
+    "brands": "Brands"
   },
   "home": {
     "title": "Dashboard",
@@ -2722,6 +2724,16 @@
       "commission-payouts": {
         "dispute": {
           "attribute": "record a dispute decision"
+        },
+        "payout": {
+          "approve": "approve a payout"
+        },
+        "payout-terms": {
+          "edit": "change a seller's payout terms"
+        },
+        "payout-hold": {
+          "place": "place a payout hold",
+          "release": "release a payout hold"
         }
       },
       "wallet": {
@@ -2741,22 +2753,7 @@
           "delete": "delete a buyer's account or cancel a deletion request"
         }
       },
-      "fallback": "do this",
-      "commission-payouts": {
-        "dispute": {
-          "attribute": "record a dispute decision"
-        },
-        "payout": {
-          "approve": "approve a payout"
-        },
-        "payout-terms": {
-          "edit": "change a seller's payout terms"
-        },
-        "payout-hold": {
-          "place": "place a payout hold",
-          "release": "release a payout hold"
-        }
-      }
+      "fallback": "do this"
     },
     "label": {
       "code": "6-digit code",
@@ -3587,5 +3584,173 @@
       "help": "See your open sessions and sign out of the others.",
       "link": "Open signed-in devices"
     }
+  },
+  "brands": {
+    "title": "Brands",
+    "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
+    "new": "New brand",
+    "tabs": "Brand lists",
+    "tab": {
+      "active": "Active",
+      "draft": "Proposed",
+      "duplicates": "Duplicates",
+      "archived": "Archived"
+    },
+    "search": "Search by name, slug or alias",
+    "search-label": "Search brands",
+    "loading": "Loading brands",
+    "load-error": "The brands could not be loaded. Check your connection and try again.",
+    "error": {
+      "invalid": "Some values were not accepted. Check the fields and try again.",
+      "slug-invalid": "The page address is not valid. Use lower case letters and digits, joined by hyphens.",
+      "slug-taken": "Another brand already uses this page address.",
+      "slug-locked": "The address of a live brand cannot change.",
+      "near-duplicate": "A live brand already has a very similar name. Merge into it instead, or choose another name:",
+      "alias-taken": "One of these spellings already belongs to another brand:",
+      "gone": "This brand no longer exists.",
+      "stale": "The brand changed since you opened it. Reload the lists and try again.",
+      "into-itself": "A brand cannot be merged into itself.",
+      "retry": "Another change was in progress. Try again.",
+      "denied": "Your role cannot do this.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "unavailable": "The service is unavailable. Nothing was saved. Try again in a moment.",
+      "unknown": "Something went wrong. Nothing was saved."
+    },
+    "more": "Load more",
+    "more-error": "More brands could not be loaded. Try again.",
+    "stale": "That brand changed while you were looking at it. The lists are up to date now; nothing was saved.",
+    "no-access": "Your role cannot see brands.",
+    "back-home": "Back to the dashboard",
+    "empty-active": "No active brands yet. Create the first one with New brand.",
+    "empty-draft": "No seller has proposed a brand that is waiting for approval.",
+    "empty-archived": "No brand is archived.",
+    "empty-search": "No brand matches this search.",
+    "col": {
+      "brand": "Brand",
+      "origin": "Origin",
+      "status": "Status",
+      "updated": "Updated",
+      "actions": "Actions"
+    },
+    "status": {
+      "draft": "Proposed",
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "proposed-by": "Proposed by",
+    "seller-fallback": "seller {id}",
+    "merged-into": "Merged into brand {id}",
+    "action": {
+      "approve": "Approve",
+      "approve-name": "Approve {name}",
+      "edit": "Edit",
+      "edit-name": "Edit {name}",
+      "merge": "Merge into this",
+      "merge-name": "Merge other brands into {name}",
+      "archive": "Archive",
+      "archive-name": "Archive {name}",
+      "reject": "Turn down",
+      "reject-name": "Turn down the proposal {name}"
+    },
+    "done": {
+      "created": "{name} was created.",
+      "saved": "{name} was saved.",
+      "approve": "{name} is approved and live.",
+      "reject": "The proposal {name} was turned down.",
+      "archive": "{name} was archived.",
+      "merged": "{count, plural, one {# brand was} other {# brands were}} merged into {name}. {moved, plural, one {# product moved.} other {# products moved.}}"
+    },
+    "form": {
+      "new-title": "New brand",
+      "edit-title": "Edit {name}",
+      "name": "Name",
+      "slug": "Page address",
+      "slug-help": "Lower case words joined by hyphens. Leave empty to build it from the name.",
+      "slug-locked": "The address of a live brand does not change.",
+      "summary": "Short description",
+      "origin": "Country of origin",
+      "origin-help": "Two letters, for example JP.",
+      "logo": "Logo image ID",
+      "header": "Header image ID",
+      "image-help": "The ID of an uploaded image.",
+      "logo-alt": "Logo description",
+      "logo-alt-help": "Read by screen readers. Needed when there is a logo.",
+      "optional": "optional",
+      "cancel": "Cancel",
+      "create": "Create brand",
+      "save": "Save changes",
+      "reload": "Reload the lists",
+      "error": {
+        "name-required": "Enter the brand name.",
+        "name-long": "The name is too long (120 characters at most).",
+        "slug-format": "Use lower case letters and digits, joined by single hyphens.",
+        "summary-long": "The description is too long (1000 characters at most).",
+        "country-format": "Use two letters, for example JP.",
+        "image-format": "This is not an image ID.",
+        "alt-required": "Describe the logo.",
+        "alt-without-logo": "Remove the description or add the logo image ID.",
+        "alt-long": "The description is too long (200 characters at most).",
+        "refused": "The server did not accept this value."
+      }
+    },
+    "confirm": {
+      "approve": {
+        "title": "Approve {name}?",
+        "body": "The brand page goes live, and product values that name {name} resolve to it.",
+        "yes": "Approve brand",
+        "cancel": "Cancel"
+      },
+      "reject": {
+        "title": "Turn down {name}?",
+        "body": "The proposal is archived and its page stays off the site. Products keep the brand they have.",
+        "yes": "Turn down proposal",
+        "cancel": "Keep it"
+      },
+      "archive": {
+        "title": "Archive {name}?",
+        "body": "The brand page stops answering. Products keep their brand. To fold it into another brand, merge instead.",
+        "yes": "Archive brand",
+        "cancel": "Keep it"
+      }
+    },
+    "merge": {
+      "title": "Merge into {name}",
+      "intro": "Pick the brands that are the same as {name}. They are archived and their products move to {name}.",
+      "search": "Find a brand to merge",
+      "sources": "Brands to merge",
+      "loading": "Loading brands",
+      "load-error": "The brands could not be loaded.",
+      "none": "No other active brand matches.",
+      "picked": "Selected: {names}",
+      "too-many": "Pick at most {max} brands at a time.",
+      "aliases": "More spellings",
+      "aliases-help": "One per line. Searching for any of them finds {name}.",
+      "aliases-many": "Add at most 20 spellings.",
+      "optional": "optional",
+      "note": "The old names are kept as aliases so search still finds them.",
+      "cancel": "Cancel",
+      "confirm": "{count, plural, =0 {Merge} one {Merge # brand} other {Merge # brands}}"
+    },
+    "queue": {
+      "error": "The possible duplicates could not be loaded. Check your connection and try again.",
+      "empty": "No possible duplicates. Brand values that look like one brand are listed here.",
+      "title": "Possible duplicate",
+      "intro": "These brand values look like one brand:",
+      "products": "{count, plural, one {# product} other {# products}}",
+      "view-only": "Your role can read this list but not merge brands.",
+      "no-live": "None of these brands is live yet, so there is nothing to merge into. Approve one first.",
+      "target": "Merge into",
+      "merge": "Merge {count} into {name}",
+      "keep-apart": "Not the same",
+      "alias-note": "The old values are kept as aliases so search still finds them.",
+      "merged": "{count, plural, one {# value was} other {# values were}} merged into {name}. {moved, plural, one {# product moved.} other {# products moved.}}",
+      "kept": "These brands will stay apart.",
+      "cancel": "Cancel",
+      "confirm-title": "Merge into {name}?",
+      "confirm-yes": "{count, plural, one {Merge # value} other {Merge # values}}",
+      "confirm-body": "{count, plural, one {# other value is} other {# other values are}} archived and {moved, plural, one {# product moves} other {# products move}} to {name}. The old names stay as aliases."
+    },
+    "not-set": "Not set"
   }
 }
