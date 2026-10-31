@@ -8312,14 +8312,24 @@ function smOverview() {
     podNotes('Admins only. The seller never sees these notes.', [['Asked about adding a frozen range; told them the category opens in December.', 'Layla Haddad · 2 Oct']])],
     [smOwner(), smSnapshot(), podActivity(SM_ACTIVITY)])], { cert: true });
 }
+// Built from basic parts so the frames build on any library version (CheckboxRow and DataRow differ between releases).
+function smCompare(label, mine, reg, flag) {
+  const f = flag === 'Matches' ? bdg('Success', 'Icon', 'Matches', 'check') : bdg('Attention', 'Icon', 'Differs', 'alert-circle');
+  const col = function (k, v) { return frame({ name: k, dir: 'V', sizeH: 'FILL' }, [text(k, 'Caption/Default', 'text/muted'), text(v, 'Body/Default', 'text/primary', { sizeH: 'FILL' })]); };
+  return frame({ name: 'compare · ' + label, dir: 'H', gap: 'space/3', align: 'center', py: 'space/2', stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text(label, 'Body/Strong', 'text/primary', { w: 150 }), col('Seller', mine), col('Register', reg), f]);
+}
+function smCheck(label, on, desc) {
+  return frame({ name: 'check · ' + label, dir: 'H', gap: 'space/3', align: 'start', py: 'space/2', sizeH: 'FILL' }, [inst('Checkbox', { Value: on ? 'Checked' : 'Unchecked', State: 'Default' }, { name: 'box' }),
+    frame({ name: 'text', dir: 'V', sizeH: 'FILL' }, [text(label, 'Body/Default', 'text/primary', { sizeH: 'FILL' }), text(desc, 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]), bdg('Neutral', 'None', 'Required')].concat(on ? [ppLink('Undo', 'undo', 'undo')] : []));
+}
 // Review tab: the existing review page, inside the seller page; after a decision, Next in queue opens the next file.
 function smReview() {
   const compare = podCard('Details against the register', [psBanner('register', 'Info', 'The register lists this ABN as active.', 'Looked up today, 9:41 am.'),
-    saRow({ label: 'Business name', value: 'Sunnybank Spice Market Pty Ltd', compare: 'SUNNYBANK SPICE MARKET PTY LTD', valueLabel: 'Seller', compareLabel: 'Register', flag: FLAG.matches }),
-    saRow({ label: 'Postcode', value: '4109', compare: '4109', valueLabel: 'Seller', compareLabel: 'Register', flag: FLAG.matches }),
-    saRow({ label: 'GST registration', value: 'From 1 Jul 2024', compare: 'Not registered', valueLabel: 'Seller', compareLabel: 'Register', flag: FLAG.differs }),
+    smCompare('Business name', 'Sunnybank Spice Market Pty Ltd', 'SUNNYBANK SPICE MARKET PTY LTD', 'Matches'),
+    smCompare('Postcode', '4109', '4109', 'Matches'),
+    smCompare('GST registration', 'From 1 Jul 2024', 'Not registered', 'Differs'),
     text('A match doesn’t prove the applicant controls the business.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]);
-  const checks = podCard('Checks', [reviewCheck({ label: 'Identity of the owner checked', value: 'Checked', required: true, desc: 'Recorded by Layla Haddad, 9:44 am', undo: true }), reviewCheck({ label: STORE_CHECK, value: 'Checked', required: true, desc: 'Recorded by Layla Haddad, 9:45 am', undo: true }), reviewCheck({ label: 'Food business licence seen', value: 'Unchecked', required: true })]);
+  const checks = podCard('Checks', [smCheck('Identity of the owner checked', true, 'Recorded by Layla Haddad, 9:44 am'), smCheck(STORE_CHECK, true, 'Recorded by Layla Haddad, 9:45 am'), smCheck('Food business licence seen', false, 'Not recorded')]);
   const side = [podCard('Decision', [text('Record 1 required check first.', 'Body/Small', 'status/attention/fg', { sizeH: 'FILL' }), frame({ name: 'buttons', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [btn('Reject…', 'Secondary', 'Md'), btn('Approve', 'Primary', 'Md', { State: 'Disabled' })]), ppLink('Next in queue: Mariam’s Kitchen', 'arrow-right', 'next-in-queue')]),
     podCard('Other sellers with this ABN', [text('None found', 'Body/Default', 'text/muted')]), podActivity([['29 Sep', 'Submitted by the seller', 'Submission 1'], ['27 Sep', 'Signed up', 'Email confirmed']])];
   return smPage('Awaiting review', 'Review', 'Sunnybank Spice Market', [podColumns([compare, checks], side)]);
