@@ -135,6 +135,10 @@ export function uploadProblemOf(failure: {
       };
     case 'file.unpacked-too-large':
       return { tone: 'critical', key: 'unpacked-too-large', values: {} };
+    case 'file.too-complex':
+      return { tone: 'critical', key: 'too-complex', values: {} };
+    case 'file.busy':
+      return { tone: 'attention', key: 'busy', values: {} };
     case 'file.formula-cell':
       return { tone: 'critical', key: 'formula', values: { row: details.rowNumber ?? 0 } };
     case 'file.too-many-rows':

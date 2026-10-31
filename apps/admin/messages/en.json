@@ -2470,6 +2470,14 @@
           "title": "The file is too large once opened",
           "body": "Save the sheet again with fewer rows or less formatting, or split it into smaller files."
         },
+        "too-complex": {
+          "title": "The file is too complex to read",
+          "body": "Copy the sheet into a new file as plain values, with no formatting inside the cells, or split it into smaller files, then upload it again."
+        },
+        "busy": {
+          "title": "Another file is being checked",
+          "body": "Wait a few seconds and upload the file again."
+        },
         "empty": {
           "title": "The file has no product rows",
           "body": "Only the header row was found. Add one product per row below it."

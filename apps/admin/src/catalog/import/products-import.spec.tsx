@@ -384,6 +384,8 @@ describe('admin import products', () => {
         { columns: ['category'] },
         'The column Main category is missing',
       ],
+      ['file.too-complex', 422, 'complex', undefined, 'The file is too complex to read'],
+      ['file.busy', 503, 'busy', { retryAfterSeconds: 5 }, 'Another file is being checked'],
       ['file.empty', 422, 'empty', undefined, 'The file has no product rows'],
     ];
     for (const [code, status, name, details, title] of cases) {

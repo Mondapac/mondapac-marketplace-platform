@@ -83,6 +83,8 @@ export const PLATFORM_IMPORT_STATUS: Readonly<Record<string, number>> = Object.f
   'file.too-many-rows': 422,
   'file.no-rows': 422,
   'file.formula-cell': 422,
+  'file.too-complex': 422,
+  'file.busy': 503,
   'columns.missing': 422,
   'columns.duplicate': 422,
   'request.throttled': 429,
@@ -194,11 +196,15 @@ export class PlatformImportController {
     description:
       'file.empty, file.unreadable, file.too-many-rows (details.rows, details.max), ' +
       'file.too-many-columns, file.cell-too-long, file.no-rows, file.formula-cell ' +
-      '(details.rowNumber), columns.missing and ' +
+      '(details.rowNumber), file.too-complex (a workbook past the time or the string-run limit), ' +
+      'columns.missing and ' +
       'columns.duplicate (details.columns)',
   })
   @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable, or file.busy (Retry-After; another XLSX is being read)',
+  })
   async upload(
     @Call() context: CallContext,
     @Req() request: Request,
