@@ -73,6 +73,7 @@
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
   { "name": "catalog.seller-product-owners", "rule": "system" },
   { "name": "catalog.send-offer-owner-notices", "rule": "system" },
+  { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
