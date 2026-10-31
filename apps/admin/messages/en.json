@@ -2234,6 +2234,243 @@
           "help-share": "Rename, change who can use a filter, or delete it.",
           "help-own": "Rename or delete your filters. Your role can’t share filters."
         }
+      },
+      "import": "Import"
+    },
+    "import": {
+      "title": "Import products",
+      "subtitle": "Add many products to this market’s catalog from one file.",
+      "back": "Products",
+      "cancel": "Cancel",
+      "loading": "Loading the import",
+      "problem-load": "The import page could not be loaded. Try again.",
+      "no-access": "You don’t have access to import products.",
+      "done-toast": "{count, plural, one {# product imported} other {# products imported}} as {startAs, select, active {Active} other {Inactive}}.",
+      "steps": {
+        "label": "Import steps",
+        "upload": "Upload file",
+        "check": "Check file",
+        "import": "Import",
+        "done": "(done)"
+      },
+      "upload": {
+        "title": "Upload a file",
+        "sub": "Nothing is saved until you finish the check and confirm the import.",
+        "drag": "Drag a CSV file here",
+        "or": "or",
+        "choose": "Choose file",
+        "limits": "One product per row · up to {rows} rows and {size} MB"
+      },
+      "template": {
+        "title": "Template",
+        "sub": "Fill in the template by hand or export from your system with the same columns.",
+        "download": "CSV template",
+        "required": "Required",
+        "certification": "Certification tags are not imported: they belong to each seller’s offer, not to the product."
+      },
+      "column": {
+        "title": "Title",
+        "category": "Main category",
+        "type": "Product type",
+        "description": "Description",
+        "brand": "Brand",
+        "gtin": "Barcode (GTIN)",
+        "unitSize": "Unit size",
+        "imageUrl": "Image URL",
+        "taxCategory": "Tax category",
+        "row": "Whole row"
+      },
+      "column-help": {
+        "title": "Up to 120 characters",
+        "category": "A category name as it appears in Catalog > Categories",
+        "type": "The product type this market offers, for example Fresh meat",
+        "description": "Plain text",
+        "brand": "The brand name",
+        "gtin": "8, 12, 13 or 14 digits",
+        "unitSize": "For example 500 g",
+        "imageUrl": "Not fetched: add the photo on the product",
+        "taxCategory": "A tax category code; the market default is used when empty"
+      },
+      "checking": {
+        "title": "Checking your file",
+        "sub": "We read every row and compare it with the catalog. Nothing is saved.",
+        "meter": "Checking the file",
+        "status": "Checking the rows…",
+        "stop": "Choose another file"
+      },
+      "result": {
+        "checked-at": "Checked at {time} · {rows} rows",
+        "choose-another": "Choose another file",
+        "upload-corrected": "Upload a corrected file",
+        "all-ready": "All {count} rows are ready to import",
+        "all-ready-body": "Nothing has been saved yet. Check the settings below, then import.",
+        "has-errors": "{count, plural, one {# row has errors} other {# rows have errors}}",
+        "has-errors-body": "Fix them in your file and upload it again, or import the valid rows now and add the rest later.",
+        "ignored-title": "Some columns are ignored",
+        "ignored-body": "{certification, select, yes {Certification columns are never imported: they belong to each seller’s offer. } other {}}Not imported: {columns}.",
+        "back": "Back",
+        "import": "Import {count} products"
+      },
+      "tiles": {
+        "rows": "Rows in the file",
+        "ready": "Ready to import",
+        "errors": "Errors",
+        "errors-note": "These rows are not imported",
+        "warnings": "Warnings",
+        "warnings-note": "Imported; check them later"
+      },
+      "errors": {
+        "caption": "Rows with errors",
+        "row": "Row",
+        "column": "Column",
+        "value": "Value in the file",
+        "problem": "Problem",
+        "empty": "(empty)",
+        "showing": "Showing {shown} of {total} rows with errors",
+        "download": "Download error report (CSV)"
+      },
+      "problem": {
+        "required": "{column} is required",
+        "too-long": "{column} is too long",
+        "category-unknown": "No category with this name",
+        "category-ambiguous": "More than one category has this name",
+        "product-type-unknown": "No product type with this name",
+        "product-type-needs-variants": "Products with variants can’t be imported from a file yet",
+        "product-type-not-offered": "This product type is not offered in this market",
+        "gtin-length": "Not a valid barcode length",
+        "gtin-check-digit": "Not a valid barcode: the check digit is wrong",
+        "image-url-not-https": "Use an https link",
+        "image-url-not-fetched": "Image links are not fetched: add the photo on the product",
+        "column-not-stored": "Checked, not stored: this catalog has no attribute for it",
+        "tax-category-unknown": "No tax category with this code",
+        "tax-category-default-used": "No tax category given: the market default is used",
+        "duplicate-in-file": "Same title and brand as row {row}",
+        "text-invalid-characters": "Contains a character that can’t be stored",
+        "text-invisible-character": "Contains a character that can’t be stored",
+        "attribute-required": "{column} is required for this catalog",
+        "other": "{column} is not valid"
+      },
+      "preview": {
+        "caption": "The first rows of the file",
+        "first": "Showing the first {shown} of {total} rows",
+        "no-brand": "–"
+      },
+      "settings": {
+        "title": "Before you import",
+        "start-as": "New products start as",
+        "start-as-help": "Inactive is safer: check them in the list, then activate them in bulk.",
+        "start-as-no-pause": "You can’t make products Inactive, so they start Active.",
+        "inactive": "Inactive",
+        "active": "Active",
+        "skip": "{count, plural, one {Skip the # row with errors} other {Skip the # rows with errors}}",
+        "skip-help": "Import button stays off until this is ticked or the file has no errors."
+      },
+      "confirm": {
+        "title": "Import {count} products?",
+        "body": "They are added to this market’s catalog as {startAs, select, active {Active} other {Inactive}} products.{skipped, plural, =0 {} one { The # row with errors is skipped.} other { The # rows with errors are skipped.}} It can take a few minutes, and you can leave this page while it runs.",
+        "action": "Import"
+      },
+      "importing": {
+        "title": "Importing products",
+        "to-add": "{count, plural, one {# product to add} other {# products to add}}",
+        "meter": "Import progress",
+        "progress": "{done} of {total} rows done",
+        "leave-title": "You can leave this page",
+        "leave-body": "The import keeps running. You get a notification when it finishes, and it opens this report.",
+        "back": "Back to products"
+      },
+      "finished": {
+        "title": "{count, plural, one {Import finished: # product added} other {Import finished: # products added}}",
+        "body": "{startAs, select, active {They are Active and visible to buyers once a seller offers them.} other {They are Inactive. Open them in the list to check them, then activate them in bulk.}}",
+        "stopped-title": "The import stopped after {count, plural, one {# product} other {# products}}",
+        "stopped-body": "The {added} products added are kept. {remaining} rows are not imported. {reason, select, rate-limited {The import hit the hourly limit for saving drafts.} access-lost {Your access to import changed.} pause-failed {A product could not be made Inactive.} file-missing {The file is no longer stored.} other {Something went wrong on our side.}} Use Retry the rest to continue, or take the rows from the report.",
+        "added": "Added",
+        "skipped": "Skipped at check",
+        "skipped-note": "Rows with errors",
+        "not-imported": "Not imported",
+        "not-imported-note": "See the list below",
+        "time": "Time",
+        "duration-minutes": "{minutes} min {seconds} s",
+        "duration-seconds": "{seconds} s",
+        "report": "Download full report (CSV)",
+        "view": "View the imported products",
+        "retry": "Retry the rest",
+        "another": "Import another file",
+        "done": "Done"
+      },
+      "failures": {
+        "caption": "Rows that were not imported",
+        "title": "Title",
+        "reason": "Reason"
+      },
+      "failure": {
+        "claim-text-found": "The text mentions a certification. Certification belongs to a seller’s offer, not to the product.",
+        "claim-text-check-unavailable": "The certification-wording check was unavailable",
+        "revision-not-ready": "The product did not pass the catalog checks",
+        "row-changed": "The row no longer passes the check",
+        "product-type-not-offered": "This product type is no longer offered",
+        "access-denied": "You no longer have access to add this product",
+        "other": "The product could not be added"
+      },
+      "stop": {
+        "rate-limited": "Hourly limit reached",
+        "access-lost": "Access changed",
+        "pause-failed": "Could not make a product Inactive",
+        "file-missing": "File no longer stored",
+        "unexpected": "Unexpected error"
+      },
+      "action-error": {
+        "import-pause-not-allowed": "You can’t start products as Inactive. Choose Active, or ask for the right to deactivate products.",
+        "import-errors-not-skipped": "The file has errors. Tick “Skip the rows with errors” to import the rest.",
+        "import-already-running": "Another import of yours is still running. Wait for it to finish.",
+        "import-not-confirmable": "This import can no longer be started. Upload the file again.",
+        "import-not-resumable": "This import can’t be continued. Upload the file again.",
+        "import-not-found": "This import is no longer there. Upload the file again.",
+        "request-throttled": "Too many imports for now. Try again in a while.",
+        "access-denied": "You don’t have access to do this.",
+        "unavailable": "That didn’t work. Try again."
+      },
+      "upload-problem": {
+        "wrong-type": {
+          "title": "This file type can’t be imported",
+          "body": "Choose a CSV file. Other formats, such as PDF, Excel or Numbers, are not read. Export your sheet as CSV first."
+        },
+        "too-large-bytes": {
+          "title": "The file is larger than {size} MB",
+          "body": "Split the file into smaller ones and import them one after the other."
+        },
+        "too-many-rows": {
+          "title": "The file has {rows, number} rows",
+          "body": "Import up to {max, number} rows at a time. Split the file into parts and import them one after the other."
+        },
+        "columns-missing": {
+          "title": "The column {column} is missing",
+          "body": "Use the template, or rename the column in your file. Columns we don’t know are ignored and listed after the check."
+        },
+        "columns-duplicate": {
+          "title": "The column {column} appears twice",
+          "body": "Keep one column of each kind, then upload the file again."
+        },
+        "empty": {
+          "title": "The file has no product rows",
+          "body": "Only the header row was found. Add one product per row below it."
+        },
+        "unreadable": {
+          "title": "The file can’t be read",
+          "body": "Check that it is a CSV file with one product per row and no very long cells, then upload it again."
+        },
+        "throttled": {
+          "title": "Too many files checked",
+          "body": "Try again in {minutes, plural, one {# minute} other {# minutes}}."
+        },
+        "denied": {
+          "title": "You don’t have access to import products",
+          "body": "Ask an administrator for the right to import products."
+        },
+        "unavailable": {
+          "title": "The file could not be checked",
+          "body": "Try again. If it keeps happening, check the status page."
+        }
       }
     }
   },
@@ -2770,7 +3007,8 @@
       "seller-identity-changed": "A seller changed their <strong>business details</strong>",
       "price-hold-opened": "{direction, select, up {A <strong>price increase</strong> is held for approval} down {A <strong>price drop</strong> is held for approval} other {A <strong>price change</strong> is held for approval}}",
       "delivery-fallback-over-cap": "A <strong>different fleet</strong> was booked and its price went over the absorb cap",
-      "other": "Something is waiting for your review"
+      "other": "Something is waiting for your review",
+      "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}"
     },
     "category": {
       "certificates": "Certificates",
