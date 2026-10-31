@@ -7395,14 +7395,14 @@ async function buildProposal(key) {
   progress('Library read');
   let removed = 0, made = 0, drawn = [];
   await onPage(T.sandbox, def.title, function (host) {
-    host.children.filter(function (n) { return n.getPluginData && n.getPluginData('proposal') === key; }).forEach(function (n) { n.remove(); removed++; });
-    removeStrays(figma.currentPage);
-    compactRows(host);
-    // a failed drawing leaves nothing behind: remove the layers it put on the page
+    // Draw first: a failed drawing leaves nothing behind and keeps the earlier frames of this proposal.
     const before = figma.currentPage.children.slice();
     let rows;
     try { rows = def.rows(); } catch (e) { figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0; }).forEach(function (n) { n.remove(); }); throw e; }
     rows.forEach(function (r) { made += r.length; drawn = drawn.concat(r); });
+    host.children.filter(function (n) { return n.getPluginData && n.getPluginData('proposal') === key && drawn.indexOf(n) < 0; }).forEach(function (n) { n.remove(); removed++; });
+    removeStrays(figma.currentPage);
+    compactRows(host);
     placeRows(host, rows, bottomEdge(host) + 240);
     // helpers that build a part a state does not use leave it on the page root: remove what this run added there
     figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0 && drawn.indexOf(n) < 0 && n !== host; }).forEach(function (n) { n.remove(); });
@@ -7966,7 +7966,12 @@ function podPair(label, value, o) {
   return frame({ name: 'pair · ' + label, dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [text(label, o.strong ? 'Body/Strong' : 'Body/Default', o.strong ? 'text/primary' : 'text/secondary', { sizeH: 'FILL' }), text(value, o.strong ? 'Body/Strong' : 'Body/Default', o.tone || 'text/primary')]);
 }
 function podRule() { return rect({ name: 'divider', w: 10, h: 1, fill: 'border/row', sizeH: 'FILL' }); }
+// Owner (31 Oct, 05:24Z): Notes sit at the end of the main column, Activity at the end of the side column, in both panels.
 function podColumns(main, side) {
+  const pick = function (name) { return main.concat(side).filter(function (n) { return n && n.name === name; }); };
+  const rest = function (list) { return list.filter(function (n) { return n && n.name !== 'Notes' && n.name !== 'Activity'; }); };
+  const notes = pick('Notes'), activity = pick('Activity');
+  main = rest(main).concat(notes); side = rest(side).concat(activity);
   return frame({ name: 'Detail layout', dir: 'H', gap: 'space/5', align: 'start', sizeH: 'FILL' }, [frame({ name: 'main', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, main), frame({ name: 'side', dir: 'V', gap: 'space/4', w: 360 }, side)]);
 }
 function podBack(label) { return inst('Button', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Label: label, 'Leading icon': true, Icon: { icon: 'chevron-left' } }, { name: 'back' }); }

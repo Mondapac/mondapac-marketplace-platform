@@ -23,7 +23,12 @@ function podPair(label, value, o) {
   return frame({ name: 'pair · ' + label, dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [text(label, o.strong ? 'Body/Strong' : 'Body/Default', o.strong ? 'text/primary' : 'text/secondary', { sizeH: 'FILL' }), text(value, o.strong ? 'Body/Strong' : 'Body/Default', o.tone || 'text/primary')]);
 }
 function podRule() { return rect({ name: 'divider', w: 10, h: 1, fill: 'border/row', sizeH: 'FILL' }); }
+// Owner (31 Oct, 05:24Z): Notes sit at the end of the main column, Activity at the end of the side column, in both panels.
 function podColumns(main, side) {
+  const pick = function (name) { return main.concat(side).filter(function (n) { return n && n.name === name; }); };
+  const rest = function (list) { return list.filter(function (n) { return n && n.name !== 'Notes' && n.name !== 'Activity'; }); };
+  const notes = pick('Notes'), activity = pick('Activity');
+  main = rest(main).concat(notes); side = rest(side).concat(activity);
   return frame({ name: 'Detail layout', dir: 'H', gap: 'space/5', align: 'start', sizeH: 'FILL' }, [frame({ name: 'main', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, main), frame({ name: 'side', dir: 'V', gap: 'space/4', w: 360 }, side)]);
 }
 function podBack(label) { return inst('Button', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Label: label, 'Leading icon': true, Icon: { icon: 'chevron-left' } }, { name: 'back' }); }

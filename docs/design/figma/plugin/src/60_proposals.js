@@ -1195,14 +1195,14 @@ async function buildProposal(key) {
   progress('Library read');
   let removed = 0, made = 0, drawn = [];
   await onPage(T.sandbox, def.title, function (host) {
-    host.children.filter(function (n) { return n.getPluginData && n.getPluginData('proposal') === key; }).forEach(function (n) { n.remove(); removed++; });
-    removeStrays(figma.currentPage);
-    compactRows(host);
-    // a failed drawing leaves nothing behind: remove the layers it put on the page
+    // Draw first: a failed drawing leaves nothing behind and keeps the earlier frames of this proposal.
     const before = figma.currentPage.children.slice();
     let rows;
     try { rows = def.rows(); } catch (e) { figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0; }).forEach(function (n) { n.remove(); }); throw e; }
     rows.forEach(function (r) { made += r.length; drawn = drawn.concat(r); });
+    host.children.filter(function (n) { return n.getPluginData && n.getPluginData('proposal') === key && drawn.indexOf(n) < 0; }).forEach(function (n) { n.remove(); removed++; });
+    removeStrays(figma.currentPage);
+    compactRows(host);
     placeRows(host, rows, bottomEdge(host) + 240);
     // helpers that build a part a state does not use leave it on the page root: remove what this run added there
     figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0 && drawn.indexOf(n) < 0 && n !== host; }).forEach(function (n) { n.remove(); });
