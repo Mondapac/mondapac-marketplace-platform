@@ -97,6 +97,26 @@ describe.each(TEST_MARKETS)('AdminJobIdentityResolver after a sign-out in market
     expect(await resume()).toBeNull();
   });
 
+  it('keeps a bulk end from before the job began from stopping it', async () => {
+    const { fakes, resume } = await rig();
+    // A reset an hour before the session was opened is not news to the job.
+    fakes.sessionsInvalidatedAt.set(ACCOUNT_ID, T0.subtract({ seconds: 3600 }));
+    expect(await resume()).not.toBeNull();
+  });
+
+  it("keeps another account's bulk end from stopping it", async () => {
+    const { fakes, resume, signOut } = await rig();
+    await signOut();
+    await fakes.sessionRepository.revokeAllOf(
+      market,
+      id<'Account'>('01990000-0000-7000-8000-000000000002'),
+      'password-reset',
+      T0.add({ seconds: 120 }),
+      null,
+    );
+    expect(await resume()).not.toBeNull();
+  });
+
   it.each(ACCOUNT_BULK_REASONS)(
     'stops after: start, sign out, then a bulk revocation for %s',
     async (reason) => {
@@ -109,7 +129,7 @@ describe.each(TEST_MARKETS)('AdminJobIdentityResolver after a sign-out in market
         T0.add({ seconds: 120 }),
         null,
       );
-      expect(ended).toBe(0); // nothing was live: the count is still the live sessions
+      expect(ended).toBe(0); // nothing was live: the count is still the sessions ended
       expect(await resume()).toBeNull();
     },
   );

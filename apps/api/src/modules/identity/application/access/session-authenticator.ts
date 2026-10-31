@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { err, ok } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { AuthenticatedActor, Clock, MarketContext, Result } from '@mondapac/shared-kernel';
 import { authenticatedActor } from '@mondapac/shared-kernel/authenticated-actor';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -135,7 +135,9 @@ export const SESSION_REASONS_THAT_LEAVE_JOBS: ReadonlySet<string> = new Set<Sess
  * read-only unit it reads the kept session and the account: the session must be the account's, of
  * the Market and of the admin population, and the account must be active. The session may have
  * ended by the person signing out, or by its lifetime running out (neither cancels an import the
- * person started); a session that was revoked for any other reason does. Nothing is cached, and the
+ * person started); a session that was revoked for any other reason does, and so does a bulk end of
+ * the account's sessions after the session began, even when the session had signed out first and
+ * the bulk update skipped it (`sessionsInvalidatedAt`; Hassan M-585-1). Nothing is cached, and the
  * actor holds no permission: the gate asks `identity` again for every use case the job calls.
  */
 export class AdminJobIdentityResolver implements JobIdentityResolver {
@@ -148,11 +150,12 @@ export class AdminJobIdentityResolver implements JobIdentityResolver {
         ok({
           session: await this.deps.sessions.findById(market, identity.sessionId),
           account: await this.deps.accounts.findById(market, identity.accountId),
+          invalidatedAt: await this.deps.sessions.sessionsInvalidatedAt(market, identity.accountId),
         }),
       { readOnly: true },
     );
     if (!found.ok) return null;
-    const { session, account } = found.value;
+    const { session, account, invalidatedAt } = found.value;
     if (
       session === null ||
       account === null ||
@@ -163,6 +166,10 @@ export class AdminJobIdentityResolver implements JobIdentityResolver {
       (session.revokedAt !== null &&
         (session.revokedReason === null ||
           !SESSION_REASONS_THAT_LEAVE_JOBS.has(session.revokedReason))) ||
+      // A bulk end of the account's sessions after this one began (a reset, a change, a second
+      // factor change, "sign out elsewhere"), even though this session had signed out first and
+      // was skipped by it (Hassan M-585-1).
+      (invalidatedAt !== null && Temporal.Instant.compare(invalidatedAt, session.createdAt) >= 0) ||
       account.state.population !== 'admin' ||
       account.state.status !== 'active'
     ) {

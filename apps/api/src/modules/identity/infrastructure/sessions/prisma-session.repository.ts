@@ -223,32 +223,24 @@ export class PrismaSessionRepository implements SessionRepository {
       },
       data: { revokedAt: toDate(now), revokedReason: reason },
     });
-    await this.#restampSignedOut(market, { accountId }, reason, exceptId);
+    // Whether or not a session was live: the update above skips a session that is already
+    // revoked (a sign-out), and a job that session started must still learn of this (M-585-1).
+    await this.prisma.tx(market).identityAccount.updateMany({
+      where: { marketId: market.marketId, id: accountId },
+      data: { sessionsInvalidatedAt: toDate(now) },
+    });
     return count;
   }
 
-  /**
-   * Hassan M-585-1: a session the holder (or a hijacker) already signed out is not "not revoked
-   * yet", so the update above skips it, and a background job that session started would never learn
-   * of the account's later reset or change. Gives the rows revoked for `sign-out` the bulk reason,
-   * keeping their `revoked_at`; the count the callers get stays the number of live sessions ended.
-   */
-  async #restampSignedOut(
+  async sessionsInvalidatedAt(
     market: MarketContext,
-    scope: { readonly accountId: Id<'Account'> } | { readonly sellerId: Id<'Seller'> },
-    reason: SessionRevokedReason,
-    exceptId: Id<'Session'> | null,
-  ): Promise<void> {
-    if (reason === 'sign-out') return;
-    await this.prisma.tx(market).identitySession.updateMany({
-      where: {
-        marketId: market.marketId,
-        ...scope,
-        revokedReason: 'sign-out',
-        ...(exceptId === null ? {} : { id: { not: exceptId } }),
-      },
-      data: { revokedReason: reason },
+    accountId: Id<'Account'>,
+  ): Promise<Temporal.Instant | null> {
+    const row = await this.prisma.tx(market).identityAccount.findFirst({
+      where: { marketId: market.marketId, id: accountId },
+      select: { sessionsInvalidatedAt: true },
     });
+    return row?.sessionsInvalidatedAt == null ? null : toInstant(row.sessionsInvalidatedAt);
   }
 
   async revokeAllOfSeller(
@@ -263,7 +255,6 @@ export class PrismaSessionRepository implements SessionRepository {
       where: { marketId: market.marketId, sellerId, revokedAt: null },
       data: { revokedAt: toDate(now), revokedReason: reason },
     });
-    await this.#restampSignedOut(market, { sellerId }, reason, null);
     return count;
   }
 

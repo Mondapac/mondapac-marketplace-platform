@@ -179,6 +179,8 @@ export const fakeHashOf = (password: string): string => `$argon2id$v=19$fake$${p
 export class IdentityFakes {
   readonly accounts = new Map<string, AccountState>();
   readonly sessions = new Map<string, { session: Session; tokenHash: string }>();
+  /** The `sessionsInvalidatedAt` of each account (M-585-1), by account id. */
+  readonly sessionsInvalidatedAt = new Map<string, Temporal.Instant>();
   readonly throttles = new Map<string, ThrottleReservation & { accountKey: string | null }>();
   readonly records: (SignInRecord & { marketId: string })[] = [];
   readonly events: PendingEvent[] = [];
@@ -1306,18 +1308,13 @@ export class IdentityFakes {
         ) {
           found.session = { ...s, revokedAt: now, revokedReason: reason };
           count += 1;
-        } else if (
-          s.marketId === market.marketId &&
-          s.accountId === accountId &&
-          s.revokedReason === 'sign-out' &&
-          s.id !== exceptId
-        ) {
-          // M-585-1: a signed-out session takes the bulk reason; its revokedAt stays.
-          found.session = { ...s, revokedReason: reason };
         }
       }
+      this.sessionsInvalidatedAt.set(accountId, now);
       return Promise.resolve(count);
     },
+    sessionsInvalidatedAt: (_market, accountId) =>
+      Promise.resolve(this.sessionsInvalidatedAt.get(accountId) ?? null),
     revokeAllOfSeller: (market, sellerId, reason, now) => {
       let count = 0;
       for (const found of this.sessions.values()) {
@@ -1325,12 +1322,6 @@ export class IdentityFakes {
         if (s.marketId === market.marketId && s.sellerId === sellerId && s.revokedAt === null) {
           found.session = { ...s, revokedAt: now, revokedReason: reason };
           count += 1;
-        } else if (
-          s.marketId === market.marketId &&
-          s.sellerId === sellerId &&
-          s.revokedReason === 'sign-out'
-        ) {
-          found.session = { ...s, revokedReason: reason };
         }
       }
       return Promise.resolve(count);
