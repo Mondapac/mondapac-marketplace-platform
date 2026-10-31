@@ -4,6 +4,10 @@ import type { Clock } from '@mondapac/shared-kernel';
 import {
   AUTHENTICATOR,
   AUTHORISATION_CHECK,
+  JOB_CALL_CONTEXTS,
+  JOB_IDENTITY_RESOLVER,
+  JobCallContexts,
+  type JobIdentityResolver,
   PermissionRegistry,
   registerPermissions,
   registerStepUpActions,
@@ -31,7 +35,10 @@ import {
   EFFECTIVE_KEY_RESOLVER,
   type EffectiveKeyResolver,
 } from './application/access/effective-keys';
-import { SessionAuthenticator } from './application/access/session-authenticator';
+import {
+  AdminJobIdentityResolver,
+  SessionAuthenticator,
+} from './application/access/session-authenticator';
 import { ACCESS_DECISION_REPOSITORY } from './application/ports/access-decision.repository';
 import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
 import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/account.repository';
@@ -475,6 +482,20 @@ function useCaseProvider<D, U>(
         tokens: SessionTokens,
         clock: Clock,
       ) => new SessionAuthenticator({ unitOfWork, sessions, tokens, clock }),
+    },
+    {
+      provide: JOB_IDENTITY_RESOLVER,
+      inject: [UNIT_OF_WORK, ACCOUNT_REPOSITORY, SESSION_REPOSITORY],
+      useFactory: (
+        unitOfWork: UnitOfWork,
+        accounts: AccountRepository,
+        sessions: SessionRepository,
+      ) => new AdminJobIdentityResolver({ unitOfWork, accounts, sessions }),
+    },
+    {
+      provide: JOB_CALL_CONTEXTS,
+      inject: [JOB_IDENTITY_RESOLVER],
+      useFactory: (resolver: JobIdentityResolver) => new JobCallContexts(resolver),
     },
     {
       provide: AUTHORISATION_CHECK,
@@ -1863,6 +1884,7 @@ function useCaseProvider<D, U>(
   exports: [
     AUTHENTICATOR,
     AUTHORISATION_CHECK,
+    JOB_CALL_CONTEXTS,
     IDENTITY_FACADE,
     SELLER_ACCESS_CONTRACT,
     STEP_UP_SOURCE,

@@ -75,8 +75,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // and their coverage; the protected `.edit` and `.approve` are not listed). Version 9 adds
     // `catalog.product.pause` and `catalog.product.delete` (catalog design 4.1, 4.1a, 8.1: the
     // bulk Deactivate, Activate and Delete of the Products page; both unprotected). The protected
-    // `catalog.platform-product.retire` is not listed.
-    seedVersion: 9,
+    // `catalog.platform-product.retire` is not listed. Version 10 adds `catalog.platform-import.run`
+    // (catalog design 14a: the admin Import products page; unprotected, since every row still needs
+    // `catalog.platform-product.edit`, which this role holds).
+    seedVersion: 10,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -85,6 +87,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.product.approve',
       'catalog.product.pause',
       'catalog.product.delete',
+      'catalog.platform-import.run',
       'sellers.seller.view',
       'pricing.price-hold.view',
       'certification.type.view',

@@ -223,6 +223,25 @@ export const ProductRetired = defineEvent({
   payload: { productId: eventField.id() },
 });
 
+/** How an import run ended: every row it took was tried, or it stopped part way (design 14a). */
+export const PLATFORM_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
+
+/**
+ * An admin platform import ended its turn for good: finished, or stopped part way (catalog design
+ * 14a). Ids, an enum and counts only; the admin who started it is read from the job, not the event.
+ * Consumed by notifications to tell the admins who may import.
+ */
+export const PlatformImportFinished = defineEvent({
+  type: 'catalog.platform-import-finished.v1',
+  aggregateType: 'platform-import',
+  payload: {
+    importId: eventField.id(),
+    outcome: eventField.enumOf(PLATFORM_IMPORT_OUTCOMES),
+    added: eventField.integer(),
+    failed: eventField.integer(),
+  },
+});
+
 /** The reasons a reviewer may give when a photo is taken down (catalog design 10.5). */
 export const IMAGE_TAKEDOWN_REASONS = [
   'certification-mark',
@@ -276,4 +295,5 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductResumed,
   ProductWithdrawn,
   ProductRetired,
+  PlatformImportFinished,
 ];

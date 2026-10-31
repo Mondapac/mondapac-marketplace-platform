@@ -5,6 +5,7 @@ import type { AccessDeclaration, AuthorisationCheck, PermissionKey } from '../..
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   CATALOG_OWN_PRODUCT_VIEW,
+  CATALOG_PLATFORM_IMPORT_RUN,
   CATALOG_PRODUCT_APPROVE,
   type CatalogFacade,
 } from '../../catalog';
@@ -20,6 +21,7 @@ import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../shipping';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
   ADMIN_NOTICE_KINDS,
+  ADMIN_PLATFORM_IMPORT_FINISHED,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -154,6 +156,12 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
   [ADMIN_DELIVERY_FALLBACK_OVER_CAP]: {
     name: 'notifications.see-admin-delivery-fallback-notices',
     rule: { kind: 'permissions', allOf: [SHIPPING_DELIVERY_SETTINGS_VIEW.key] },
+  },
+  // The admins who may start an import see that one finished (not only the one who started it:
+  // a notice is Market-wide, shown to everyone who holds the kind's permission).
+  [ADMIN_PLATFORM_IMPORT_FINISHED]: {
+    name: 'notifications.see-admin-platform-import-notices',
+    rule: { kind: 'permissions', allOf: [CATALOG_PLATFORM_IMPORT_RUN.key] },
   },
 };
 

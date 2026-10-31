@@ -55,6 +55,8 @@
   { "name": "catalog.own-product-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
+  { "name": "catalog.platform-import-purge", "rule": "system" },
+  { "name": "catalog.platform-import-run", "rule": "system" },
   { "name": "catalog.products-for-linking", "rule": "anonymous" },
   { "name": "catalog.published-image-read", "rule": "anonymous" },
   { "name": "catalog.published-offer-ids", "rule": "system" },

@@ -83,6 +83,21 @@ export const CATALOG_PLATFORM_PRODUCT_RETIRE = definePermission('catalog', {
   protected: true,
 });
 
+/**
+ * Import PLATFORM products from a file (catalog design 14a, 8.1; Catalogue > Products > Import).
+ * Platform scope; **unprotected**: every row still goes through the use cases that need
+ * `catalog.platform-product.edit`, which the Catalogue Moderator already holds, so this key adds no
+ * power over what a row may contain, only the volume; the volume is bounded (5,000 rows, one running
+ * import per admin, 10 starts a day) and the default start is Inactive, which the admin can undo in
+ * bulk with the pause. The terminal step (retire) stays protected. Catalogue Moderator receives it
+ * by identity's seed.
+ */
+export const CATALOG_PLATFORM_IMPORT_RUN = definePermission('catalog', {
+  key: 'catalog.platform-import.run',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -92,4 +107,5 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_PRODUCT_PAUSE,
   CATALOG_PRODUCT_DELETE,
   CATALOG_PLATFORM_PRODUCT_RETIRE,
+  CATALOG_PLATFORM_IMPORT_RUN,
 ]);

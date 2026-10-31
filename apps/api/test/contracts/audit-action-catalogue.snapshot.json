@@ -2341,5 +2341,22 @@
       "stepUpSessionId": "id",
       "stepUpVerifiedAt": "instant"
     }
+  },
+  {
+    "action": "catalog.platform-import.started",
+    "targetType": "catalog.platform-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(checked)"
+    },
+    "after": {
+      "errorRows": "integer",
+      "rows": "integer",
+      "skipErrors": "boolean",
+      "startAs": "enumOf(inactive|active)",
+      "state": "enumOf(queued)",
+      "toImport": "integer"
+    }
   }
 ]

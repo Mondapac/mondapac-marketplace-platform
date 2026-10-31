@@ -205,6 +205,16 @@
     }
   },
   {
+    "type": "catalog.platform-import-finished.v1",
+    "aggregateType": "platform-import",
+    "fields": {
+      "importId": "id",
+      "outcome": "enumOf(completed|stopped)",
+      "added": "integer",
+      "failed": "integer"
+    }
+  },
+  {
     "type": "catalog.product-revision-changes-requested.v1",
     "aggregateType": "product",
     "fields": {

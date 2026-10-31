@@ -13,6 +13,8 @@ export const RATE_COUNTER_KINDS = [
   'draft-save.account.minute',
   'import-start.seller.day',
   'photo-upload.seller.day',
+  'platform-import-check.account.hour',
+  'platform-import-start.account.day',
   'reviewer-mail.market.hour',
   'search.account.minute',
   'submit.seller.hour',
@@ -43,6 +45,16 @@ export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
 export const CLAIM_TEXT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'claim-text-check.account.minute', limit: 30, windowMinutes: 1 },
   { kind: 'claim-text-check.account.day', limit: 1000, windowMinutes: DAY },
+]);
+
+/** Uploads of the admin platform import per account (catalog design 14a): 20 an hour. */
+export const PLATFORM_IMPORT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'platform-import-check.account.hour', limit: 20, windowMinutes: 60 },
+]);
+
+/** Confirmed platform imports per account (design 14a): 10 a day. */
+export const PLATFORM_IMPORT_START_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'platform-import-start.account.day', limit: 10, windowMinutes: DAY },
 ]);
 
 /** A counter as the reservation unit left it: this attempt is already counted. */

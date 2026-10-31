@@ -908,3 +908,84 @@ model CatalogOfferOwnerNotice {
   @@map("offer_owner_notices")
   @@schema("catalog")
 }
+
+/// One admin import of PLATFORM products (catalog design 14a; data design 3.28): the file's
+/// check result, the choice made at confirmation and the progress of the run. The uploaded file
+/// is never in the database: `file_key` names it in object storage (ADR-0016) and the purge job
+/// deletes it after the retention. `started_by_*` is the job identity: the account and session of
+/// the admin who started it, from the starting ActorContext. The CHECKs, the partial indexes and
+/// the column grants are hand-written.
+model CatalogPlatformImportJob {
+  id                 String                     @id @db.Uuid
+  marketId           String                     @map("market_id") @db.VarChar(8)
+  tenantId           String                     @map("tenant_id")
+  startedByAccountId String                     @map("started_by_account_id") @db.Uuid
+  startedBySessionId String                     @map("started_by_session_id") @db.Uuid
+  /// checked | queued | running | finished | stopped | discarded.
+  state              String
+  /// csv | xlsx (xlsx has no parser yet).
+  format             String
+  /// The file name as the admin sent it, cleaned to letters, digits and . _ ( ) - and spaces.
+  fileLabel          String                     @map("file_label")
+  /// The object key, built by code from the Market and the job id.
+  fileKey            String                     @map("file_key")
+  fileSha256         Bytes                      @map("file_sha256")
+  fileBytes          Int                        @map("file_bytes")
+  fileDeletedAt      DateTime?                  @map("file_deleted_at") @db.Timestamptz(6)
+  totalRows          Int                        @map("total_rows")
+  readyRows          Int                        @map("ready_rows")
+  errorRows          Int                        @map("error_rows")
+  warningRows        Int                        @map("warning_rows")
+  /// [{header, certification}]: columns the check did not read.
+  ignoredColumns     Json                       @map("ignored_columns") @db.JsonB
+  /// inactive | active; set when the import is confirmed.
+  startAs            String?                    @map("start_as")
+  skipErrors         Boolean?                   @map("skip_errors")
+  /// The rows the run will try: set when confirmed.
+  toImport           Int?                       @map("to_import")
+  addedRows          Int                        @map("added_rows")
+  failedRows         Int                        @map("failed_rows")
+  /// rate-limited | access-lost | pause-failed | file-missing | unexpected; set while stopped.
+  stopReason         String?                    @map("stop_reason")
+  /// The run waits until then (a minute window of the draft limits).
+  notBefore          DateTime?                  @map("not_before") @db.Timestamptz(6)
+  leaseUntil         DateTime?                  @map("lease_until") @db.Timestamptz(6)
+  version            Int
+  createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
+  checkedAt          DateTime                   @map("checked_at") @db.Timestamptz(6)
+  startedAt          DateTime?                  @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime?                  @map("finished_at") @db.Timestamptz(6)
+  rows               CatalogPlatformImportRow[]
+
+  @@unique([marketId, id])
+  @@index([marketId, startedByAccountId, createdAt(sort: Desc)], map: "platform_import_jobs_by_admin_idx")
+  @@map("platform_import_jobs")
+  @@schema("catalog")
+}
+
+/// One data row of an import: its check result and, once run, what happened to it (design 14a).
+/// Cell values are kept only as the shortened, cleaned `value` of an issue and the summary.
+model CatalogPlatformImportRow {
+  marketId    String                   @map("market_id") @db.VarChar(8)
+  tenantId    String                   @map("tenant_id")
+  jobId       String                   @map("job_id") @db.Uuid
+  /// The number a spreadsheet shows (the header is row 1).
+  rowNumber   Int                      @map("row_number")
+  /// ready | error.
+  checkState  String                   @map("check_state")
+  /// [{severity, column, code, value, otherRow?}], at most 12.
+  issues      Json                     @db.JsonB
+  /// {title, category, typeCode, brand}.
+  summary     Json                     @db.JsonB
+  /// pending | added | failed | skipped.
+  runState    String                   @map("run_state")
+  /// The reason code of a failed row.
+  runCode     String?                  @map("run_code")
+  productId   String?                  @map("product_id") @db.Uuid
+  productCode String?                  @map("product_code")
+  job         CatalogPlatformImportJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, jobId, rowNumber])
+  @@map("platform_import_rows")
+  @@schema("catalog")
+}

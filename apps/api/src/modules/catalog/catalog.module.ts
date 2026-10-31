@@ -2,6 +2,8 @@ import { CertificationModule } from '../certification';
 import { CatalogReferencesModule } from './infrastructure/catalog-references.module';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import {
+  AUTHORISATION_CHECK,
+  JOB_CALL_CONTEXTS,
   registerPermissions,
   registerStepUpActions,
   USE_CASE_GATE,
@@ -60,6 +62,20 @@ import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader
 import { AdminProductListController } from './presentation/admin-product-list.controller';
 import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
 import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
+import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
+import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
+import { PlatformImportDiscard } from './application/use-cases/platform-import-discard.use-case';
+import { PlatformImportResume } from './application/use-cases/platform-import-resume.use-case';
+import { PlatformImportStart } from './application/use-cases/platform-import-start.use-case';
+import { PlatformImportCheck } from './application/use-cases/platform-import-check.use-case';
+import { PlatformImportRead } from './application/use-cases/platform-import-read.use-case';
+import { PlatformImportReport } from './application/use-cases/platform-import-report.use-case';
+import { PlatformImportTemplate } from './application/use-cases/platform-import-template.use-case';
+import { PlatformImportPurge } from './application/use-cases/platform-import-purge.use-case';
+import { PlatformImportRun } from './application/use-cases/platform-import-run.use-case';
+import { PlatformImportController } from './presentation/platform-import.controller';
+import { platformImportRunJob } from './presentation/jobs/platform-import-run.job';
+import { purgePlatformImportsJob } from './presentation/jobs/purge-platform-imports.job';
 import { AdminProductResume } from './application/use-cases/admin-product-resume.use-case';
 import { AdminProductWithdraw } from './application/use-cases/admin-product-withdraw.use-case';
 import { PlatformProductRetire } from './application/use-cases/platform-product-retire.use-case';
@@ -254,6 +270,13 @@ const PORT = {
   resume: AdminProductResume,
   withdraw: AdminProductWithdraw,
   retire: PlatformProductRetire,
+  importJobs: PLATFORM_IMPORT_REPOSITORY,
+  importFiles: IMPORT_FILE_STORE,
+  authorisation: AUTHORISATION_CHECK,
+  jobContexts: JOB_CALL_CONTEXTS,
+  platformCreate: PlatformProductCreate,
+  platformSaveDraft: PlatformProductSaveDraft,
+  platformSubmit: PlatformProductSubmit,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -323,6 +346,7 @@ const productTypeProvider: FactoryProvider<string> = {
     OfferReviewController,
     AdminProductListController,
     AdminProductBulkController,
+    PlatformImportController,
     ProductReviewController,
     ProductImageReviewController,
     PublicCategoryController,
@@ -543,6 +567,61 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       sellerNames: true,
     }),
+    useCaseProvider(PlatformImportCheck, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      importJobs: true,
+      importFiles: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(PlatformImportStart, {
+      unitOfWork: true,
+      importJobs: true,
+      authorisation: true,
+      counters: true,
+      counterKeys: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformImportRead, { unitOfWork: true, importJobs: true }),
+    useCaseProvider(PlatformImportReport, { unitOfWork: true, importJobs: true, clock: true }),
+    useCaseProvider(PlatformImportTemplate, { policy: true }),
+    useCaseProvider(PlatformImportDiscard, {
+      unitOfWork: true,
+      importJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformImportResume, { unitOfWork: true, importJobs: true, clock: true }),
+    useCaseProvider(PlatformImportRun, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      importJobs: true,
+      importFiles: true,
+      products: true,
+      outbox: true,
+      clock: true,
+      jobContexts: true,
+      platformCreate: true,
+      platformSaveDraft: true,
+      platformSubmit: true,
+      pause: true,
+    }),
+    useCaseProvider(PlatformImportPurge, {
+      unitOfWork: true,
+      importJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
     useCaseProvider(AdminProductPause, {
       unitOfWork: true,
       products: true,
@@ -760,6 +839,8 @@ const productTypeProvider: FactoryProvider<string> = {
         ReevaluateTags,
         ReconcileTags,
         SendOfferOwnerNotices,
+        PlatformImportRun,
+        PlatformImportPurge,
       ],
       (
         categories: SeedCategoryTree,
@@ -768,6 +849,8 @@ const productTypeProvider: FactoryProvider<string> = {
         reevaluate: ReevaluateTags,
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
+        importRun: PlatformImportRun,
+        importPurge: PlatformImportPurge,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -775,6 +858,8 @@ const productTypeProvider: FactoryProvider<string> = {
         reevaluateTagsJob(reevaluate),
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),
+        platformImportRunJob(importRun),
+        purgePlatformImportsJob(importPurge),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).

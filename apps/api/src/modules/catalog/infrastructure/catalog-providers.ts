@@ -125,7 +125,15 @@ import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
 import { HmacRateCounterKeys, localCatalogSecret } from './hmac-rate-counter-keys';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaProductRevisionRepository } from './prisma-product-revision.repository';
+import { OBJECT_STORE, type ObjectStore } from '../../../platform/storage/object-store';
 import { PrismaWorkingCopyRepository } from './prisma-working-copy.repository';
+import { PrismaPlatformImportRepository } from './prisma-platform-import.repository';
+import { ObjectImportFileStore } from './object-import-file-store';
+import { IMPORT_FILE_STORE, type ImportFileStore } from '../application/ports/import-file-store';
+import {
+  PLATFORM_IMPORT_REPOSITORY,
+  type PlatformImportRepository,
+} from '../application/ports/platform-import.repository';
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
@@ -346,6 +354,17 @@ export const catalogProviders: readonly Provider[] = [
   {
     provide: ATTRIBUTE_SEED,
     useFactory: (): AttributeSeed => new CheckedInAttributeSeed(),
+  },
+  {
+    provide: PLATFORM_IMPORT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PlatformImportRepository =>
+      new PrismaPlatformImportRepository(prisma),
+  },
+  {
+    provide: IMPORT_FILE_STORE,
+    inject: [OBJECT_STORE],
+    useFactory: (store: ObjectStore): ImportFileStore => new ObjectImportFileStore(store),
   },
   {
     provide: WORKING_COPY_REPOSITORY,

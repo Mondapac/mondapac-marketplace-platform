@@ -59,9 +59,33 @@ export const ProductRetiredAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a platform import job. */
+export const CATALOG_PLATFORM_IMPORT_TARGET = 'catalog.platform-import';
+
+/**
+ * An admin confirmed a platform import (design 14a): the file was checked, the choice made and the
+ * run queued. Counts and the choice only; the file's SHA-256 is on the job row (`file_sha256`), which
+ * the audit target id points to, because the audit vocabulary has no text field.
+ */
+export const PlatformImportStartedAudit = defineAuditAction({
+  action: 'catalog.platform-import.started',
+  targetType: CATALOG_PLATFORM_IMPORT_TARGET,
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(['checked'] as const) },
+  after: {
+    state: auditField.enumOf(['queued'] as const),
+    startAs: auditField.enumOf(['inactive', 'active'] as const),
+    skipErrors: auditField.boolean(),
+    rows: auditField.integer(),
+    toImport: auditField.integer(),
+    errorRows: auditField.integer(),
+  },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
   ProductWithdrawnAudit,
   ProductRetiredAudit,
+  PlatformImportStartedAudit,
 ] as const;

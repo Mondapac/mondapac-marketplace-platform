@@ -782,7 +782,7 @@ slice 25 after `platform/ai` part 1.
 `^catalog\.[a-z0-9-]+\.v[1-9][0-9]*$`; `inbox_handler_check` `^catalog\.[a-z0-9-]+$`; unique
 `(market_id, aggregate_id, aggregate_version)`; claim index `(market_id, event_id) WHERE published_at
 IS NULL`). Aggregate types: `product`, `offer`, `platform-category`, `attribute-definition`,
-`attribute-family`, `seller-category`, `category-proposal`, `product-image`, `import-job`. Payloads ids,
+`attribute-family`, `seller-category`, `category-proposal`, `product-image`, `import-job`, `platform-import`. Payloads ids,
 codes, booleans (D 9.4). A unit writing n events for one aggregate raises its `version` by n, one version
 per event in a fixed order; the unique key above is unchanged (Q-K3).
 
@@ -792,7 +792,7 @@ module's rate-counter key, fixed window, `count >= 0`, reserve before the work, 
 `draft-save.account.day`, `claim-text-check.account.minute`, `claim-text-check.account.day` (30 and
 1,000, Hassan L6; D 17.1 item 8), `submit.seller.hour`, `photo-upload.seller.day`,
 `search.account.minute`, `import-start.seller.day`, `ai-suggest.seller.day`,
-`reviewer-mail.market.hour`. The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
+`reviewer-mail.market.hour`, `platform-import-check.account.hour`, `platform-import-start.account.day` (domain 14a). The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
 limits are request validation: **no storage**.
 
 ### 3.27 `offer_owner_notices` (certification slice 15; request C-6; Hassan M1, Mojtaba N2)
@@ -813,6 +813,41 @@ own unit. No address is stored; it is read from `identity` at send time.
 - Grants `SELECT, INSERT, UPDATE (state, outcome, attempts, next_attempt_at, settled_at)`; no DELETE
   until a purge of settled rows lands (as 3.18).
 - Migration `20261018220000_catalog_offer_owner_notices`, with `down.sql`.
+
+### 3.28 `platform_import_jobs`, `platform_import_rows` (admin Import products; domain 14a)
+
+The job of an admin's CSV import of PLATFORM products and one result per data row of its file.
+Migration `20261031020000_catalog_platform_import`, with `down.sql` (needs review: Mojtaba).
+
+- `platform_import_jobs`: `id`, `market_id`, `tenant_id`, `started_by_account_id`,
+  `started_by_session_id` (the identity the run resumes; no credential), `state` (`checked`,
+  `queued`, `running`, `finished`, `stopped`, `discarded`), `format` (`csv`, `xlsx`), `file_label`
+  (1 to 80 characters, cleaned by code, no control character), `file_key` (built from the Market and
+  the id; object storage, ADR-0016: **the file is never in the database**), `file_sha256` (32 bytes;
+  the run checks it before reading), `file_bytes` (1 to 10,485,760), `file_deleted_at`, `total_rows`
+  (1 to 5,000), `ready_rows`, `error_rows`, `warning_rows` (`ready + error = total`),
+  `ignored_columns` (jsonb: header and a certification flag), `start_as`, `skip_errors`, `to_import`
+  (set together at the confirm), `added_rows`, `failed_rows`, `stop_reason` (`rate-limited`,
+  `access-lost`, `pause-failed`, `file-missing`, `unexpected`; set exactly when `stopped`), `not_before`,
+  `lease_until` (set exactly when `running`), `version`, `created_at`, `checked_at`, `started_at`,
+  `finished_at` (set exactly when `finished` or `discarded`).
+- `platform_import_rows`: PK `(market_id, job_id, row_number)` (row 2 to 5,002), `tenant_id`,
+  `check_state` (`ready`, `error`), `issues` (jsonb, at most 12: severity, column, code, the cell
+  shortened and cleaned), `summary` (jsonb: title, category, type, brand), `run_state` (`pending`,
+  `added`, `failed`, `skipped`), `run_code`, `product_id`, `product_code` (set at the moment the
+  product exists, so a retry never creates a second one). Composite FK to the job, `ON DELETE
+  CASCADE`.
+- Indexes: unique `(market_id, id)`; `(market_id, started_by_account_id, created_at DESC)`; partial
+  unique `(market_id, started_by_account_id) WHERE state IN ('queued','running')` (one running import
+  per admin); partial queue index for `queued`/`running`; partial file-purge index
+  `WHERE file_deleted_at IS NULL`; partial index of `pending` rows for the run.
+- Grants (app role): `SELECT, INSERT, DELETE` on both; `UPDATE` only on the columns the flows change
+  (job: state, choice, counts, stop reason, schedule, lease, version, timestamps, file deletion; rows:
+  run state, code, product). Nothing else. No `TRUNCATE`.
+- Retention: the file 7 days after the check, the job and its rows 90 days after creation.
+- `rate_counters` kinds `platform-import-check.account.hour` and `platform-import-start.account.day`
+  join the CHECK; `down.sql` deletes those counter rows before restoring the old CHECK.
+- Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
 
 ## 4. What is never stored
 
