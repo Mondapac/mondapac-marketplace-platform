@@ -6,8 +6,18 @@ export const VIEW_PERMISSION = 'catalog.product.view';
 export const VIEWS = ['active', 'all', 'inactive'] as const;
 export type View = (typeof VIEWS)[number];
 
-/** The statuses a listed product can have (never `draft` or `discarded`). */
-export const STATUSES = ['published', 'unpublished', 'withdrawn', 'retired', 'matched'] as const;
+/**
+ * The statuses a listed product can have (never `draft` or `discarded`). `paused` is a published
+ * product an admin paused (catalog design 4.1a): the Inactive tab holds it.
+ */
+export const STATUSES = [
+  'published',
+  'paused',
+  'unpublished',
+  'withdrawn',
+  'retired',
+  'matched',
+] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const SCOPES = ['PLATFORM', 'SELLER'] as const;
@@ -109,6 +119,14 @@ export function queryString(query: Query): string {
   }
   return params.toString();
 }
+
+/** The keys that gate the Bulk action menu (catalog design 8.1); Export needs only the view key. */
+export const PAUSE_PERMISSION = 'catalog.product.pause';
+export const DELETE_PERMISSION = 'catalog.product.delete';
+export const RETIRE_PERMISSION = 'catalog.platform-product.retire';
+
+/** The most products one request names by id; more is chosen with "Select all in this filter". */
+export const BULK_MAX_IDS = 200;
 
 export function filterCount(filters: Filters): number {
   return FILTER_FIELDS.filter((field) => filters[field] !== undefined).length;

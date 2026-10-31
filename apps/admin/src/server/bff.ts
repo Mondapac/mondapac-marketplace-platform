@@ -52,6 +52,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
     'catalog/categories',
+    // The export of the product list as a file (catalog): the chosen ids or the list's own query.
+    'catalog/admin/products/export',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
@@ -119,6 +121,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // A new brand (catalog), and keeping a group of the merge queue apart.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue/dismiss',
+    // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
+    // the chosen products (at most 200 ids) or the whole filter; the body is capped at 16 KB.
+    'catalog/admin/products/bulk',
   ]),
 };
 
@@ -242,6 +247,18 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'page',
     'pageSize',
   ],
+  'catalog/admin/products/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'q',
+    'scope',
+    'status',
+    'categoryId',
+    'typeCode',
+    'sellerId',
+  ],
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
@@ -263,7 +280,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/products': {
     view: /^(active|all|inactive)$/,
     scope: /^(PLATFORM|SELLER)$/,
-    status: /^(published|unpublished|withdrawn|retired|matched)$/,
+    status: /^(published|paused|unpublished|withdrawn|retired|matched)$/,
     categoryId: UUID,
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
@@ -271,6 +288,19 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'catalog/admin/products/export': {
+    format: /^csv$/,
+    columns:
+      /^(code|offers|updated|type|scope|seller|created)(,(code|offers|updated|type|scope|seller|created)){0,6}$/,
+    // At most 200 product ids, the cap of the bulk action.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(active|all|inactive)$/,
+    scope: /^(PLATFORM|SELLER)$/,
+    status: /^(published|paused|unpublished|withdrawn|retired|matched)$/,
+    categoryId: UUID,
+    typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    sellerId: UUID,
   },
   'commission-payouts/admin/payouts': {
     status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
@@ -311,6 +341,10 @@ const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string,
   },
 };
 const QUERY_VALUE_MAX = 512;
+/** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
+const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
+  'catalog/admin/products/export:ids': 7400,
+};
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, target: string, requestUrl: string): string {
@@ -333,7 +367,12 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   const kept = new URLSearchParams();
   for (const key of keys) {
     const value = source.get(key);
-    if (value === null || value.length > QUERY_VALUE_MAX) continue;
+    if (
+      value === null ||
+      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX)
+    ) {
+      continue;
+    }
     if (shapes?.[key]?.test(value) !== false) kept.set(key, value);
   }
   const text = kept.toString();

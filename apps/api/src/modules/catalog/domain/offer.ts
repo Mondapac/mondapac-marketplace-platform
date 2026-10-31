@@ -48,6 +48,7 @@ export const OFF_SALE_CAUSES = [
   'type-not-allowed',
   'product-retired',
   'product-not-listed',
+  'product-paused',
   'tag-suspended',
   'description-claim-text',
 ] as const;
@@ -1133,6 +1134,38 @@ export class Offer {
     });
   }
 
+  /**
+   * Adds and clears stored off-sale causes decided by a product-level command (design 4.1a, 4.4):
+   * the pause adds `product-paused` and the resume clears it, a retirement swaps it for
+   * `product-retired`. A deleted Offer keeps no cause. The listing flag follows the causes; when it
+   * flips, `catalog.offer-listing-changed.v1` is recorded (once, whatever the number of causes
+   * changed), and the change has one `causes-changed` history row. Answers whether anything
+   * changed. Clearing a cause is an Offer reactivation entry path: the caller has asked every tag
+   * again (ADR-0028 d5; `settleTags` with `offer-reactivated`) before it clears one.
+   */
+  changeCauses(input: {
+    readonly add?: readonly OffSaleCause[];
+    readonly clear?: readonly OffSaleCause[];
+    readonly now: Temporal.Instant;
+  }): boolean {
+    const state = this.#state;
+    if (state.status === 'deleted') return false;
+    const clear = new Set(input.clear ?? []);
+    const add = new Set(input.add ?? []);
+    const causes = OFF_SALE_CAUSES.filter((cause) =>
+      add.has(cause) ? true : clear.has(cause) ? false : state.offSaleCauses.includes(cause),
+    );
+    if (
+      causes.length === state.offSaleCauses.length &&
+      causes.every((cause) => state.offSaleCauses.includes(cause))
+    ) {
+      return false;
+    }
+    this.#setCauses(causes, input.now);
+    this.#touch();
+    return true;
+  }
+
   /** The cause `tag-suspended` is present exactly while a tag is suspended (design 4.4, 5.3). */
   #refreshTagCause(now: Temporal.Instant): void {
     const state = this.#state;
@@ -1141,6 +1174,12 @@ export class Offer {
     const causes = OFF_SALE_CAUSES.filter((cause) =>
       cause === 'tag-suspended' ? suspended : state.offSaleCauses.includes(cause),
     );
+    this.#setCauses(causes, now);
+  }
+
+  /** Stores a new cause set, its listing flag, the history row and the event of a flip. */
+  #setCauses(causes: readonly OffSaleCause[], now: Temporal.Instant): void {
+    const state = this.#state;
     const listed = isListed({ status: state.status, offSaleCauses: causes });
     this.#state = Object.freeze({ ...state, offSaleCauses: causes, listed });
     if (this.#pendingHistory === null) {

@@ -20,7 +20,8 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
   ): Promise<PublishedProduct | null> {
     const tx = this.prisma.tx(market);
     const product = await tx.catalogProduct.findFirst({
-      where: { marketId: market.marketId, id: productId, status: 'published' },
+      // A paused product is not shown (catalog design 4.1a).
+      where: { marketId: market.marketId, id: productId, status: 'published', pausedAt: null },
       select: { publishedRevisionId: true, brandId: true },
     });
     if (product === null || product.publishedRevisionId === null) return null;

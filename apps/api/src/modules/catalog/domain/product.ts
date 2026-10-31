@@ -1,10 +1,14 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
 import {
+  ProductPaused,
+  ProductResumed,
+  ProductRetired,
   ProductRevisionChangesRequested,
   type OfferChangeReason,
   ProductRevisionPublished,
   ProductRevisionSubmitted,
+  ProductWithdrawn,
   VariantAdded,
   VariantRemoved,
 } from './events';
@@ -76,6 +80,16 @@ export interface ProductState {
   readonly productCode: string;
   readonly status: ProductStatus;
   readonly discardedAt: Temporal.Instant | null;
+  /** Set exactly when the status is `withdrawn` (data design 3.1). */
+  readonly withdrawnAt: Temporal.Instant | null;
+  /** Set exactly when the status is `retired`. */
+  readonly retiredAt: Temporal.Instant | null;
+  /**
+   * The reversible admin pause (design 4.1a): a mark, valid only on a `published` product, with
+   * the admin who set it. Both or neither. Cleared by resume, retire and withdraw.
+   */
+  readonly pausedAt: Temporal.Instant | null;
+  readonly pausedByAccountId: Id<'Account'> | null;
   readonly ownBrand: boolean;
   readonly lastChangedAt: Temporal.Instant;
   /** Optimistic version (P 10): every change, and one more per event beyond the first. */
@@ -110,7 +124,12 @@ export type ProductRefusal =
   | { readonly code: 'revision.outcome-not-allowed' }
   | { readonly code: 'revision.base-changed' }
   | { readonly code: 'review.not-current-revision' }
-  | { readonly code: 'product.no-published-revision' };
+  | { readonly code: 'product.no-published-revision' }
+  | { readonly code: 'product.not-published' }
+  | { readonly code: 'product.already-paused' }
+  | { readonly code: 'product.not-paused' }
+  | { readonly code: 'product.not-withdrawable' }
+  | { readonly code: 'product.platform-only' };
 
 /** `P` and eight digits: the case-sensitive, enumerable-but-meaningless code of data design 3.1. */
 export function formatProductCode(sequence: number): string {
@@ -188,6 +207,10 @@ export class Product {
         productCode: input.productCode,
         status: 'draft',
         discardedAt: null,
+        withdrawnAt: null,
+        retiredAt: null,
+        pausedAt: null,
+        pausedByAccountId: null,
         ownBrand: false,
         lastChangedAt: input.now,
         version: 1,
@@ -612,6 +635,78 @@ export class Product {
         ),
       },
       live.map((variant) => ({ definition: VariantRemoved, variantId: variant.id })),
+    );
+    return ok(undefined);
+  }
+
+  /**
+   * The admin pause (catalog design 4.1a): a `published` product that is not paused gets the mark
+   * `pausedAt` with the admin's account id and `catalog.product-paused.v1`. The status stays
+   * `published`; the use case adds the Offer cause `product-paused` in the same unit.
+   */
+  pause(input: {
+    readonly accountId: Id<'Account'>;
+    readonly now: Temporal.Instant;
+  }): Result<void, ProductRefusal> {
+    const state = this.#state;
+    if (state.status !== 'published') return err({ code: 'product.not-published' });
+    if (state.pausedAt !== null) return err({ code: 'product.already-paused' });
+    this.#applyRecords(input.now, { pausedAt: input.now, pausedByAccountId: input.accountId }, [
+      { definition: ProductPaused, payload: { productId: state.id } },
+    ]);
+    return ok(undefined);
+  }
+
+  /** The admin resume (design 4.1a): the mark is cleared and `catalog.product-resumed.v1` recorded. */
+  resume(input: { readonly now: Temporal.Instant }): Result<void, ProductRefusal> {
+    const state = this.#state;
+    if (state.pausedAt === null) return err({ code: 'product.not-paused' });
+    this.#applyRecords(input.now, { pausedAt: null, pausedByAccountId: null }, [
+      { definition: ProductResumed, payload: { productId: state.id } },
+    ]);
+    return ok(undefined);
+  }
+
+  /**
+   * `unpublished` or `published` to `withdrawn` (design 4.1; terminal; SELLER products only; a
+   * paused product can be withdrawn). The pending revision is set aside (its pointer clears, so
+   * a reviewer with the page open gets `review.not-current-revision`), the pause mark clears and
+   * `catalog.product-withdrawn.v1` is recorded. Revisions stay; the use case deletes the Offer.
+   */
+  withdraw(input: { readonly now: Temporal.Instant }): Result<void, ProductRefusal> {
+    const state = this.#state;
+    if (state.scope !== 'SELLER') return err({ code: 'product.seller-only' });
+    if (state.status !== 'unpublished' && state.status !== 'published') {
+      return err({ code: 'product.not-withdrawable' });
+    }
+    this.#applyRecords(
+      input.now,
+      {
+        status: 'withdrawn',
+        withdrawnAt: input.now,
+        pausedAt: null,
+        pausedByAccountId: null,
+        pendingRevisionId: null,
+        pendingSubmittedAt: null,
+      },
+      [{ definition: ProductWithdrawn, payload: { productId: state.id } }],
+    );
+    return ok(undefined);
+  }
+
+  /**
+   * `published` to `retired` (design 4.1; CAT-48; terminal; PLATFORM products only; a paused
+   * product can be retired). The pause mark clears and `catalog.product-retired.v1` is recorded;
+   * the use case gives every Offer the cause `product-retired`.
+   */
+  retire(input: { readonly now: Temporal.Instant }): Result<void, ProductRefusal> {
+    const state = this.#state;
+    if (state.scope !== 'PLATFORM') return err({ code: 'product.platform-only' });
+    if (state.status !== 'published') return err({ code: 'product.not-published' });
+    this.#applyRecords(
+      input.now,
+      { status: 'retired', retiredAt: input.now, pausedAt: null, pausedByAccountId: null },
+      [{ definition: ProductRetired, payload: { productId: state.id } }],
     );
     return ok(undefined);
   }

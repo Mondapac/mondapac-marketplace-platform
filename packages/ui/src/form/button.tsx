@@ -1,6 +1,10 @@
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, Ref } from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'link' | 'destructive';
+/**
+ * `destructive` is the outlined red button (a row action, Delete in a list); `destructive-solid` is
+ * the filled red primary of a confirm dialog for a destructive action (design: Destructive dialog).
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'link' | 'destructive' | 'destructive-solid';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly variant?: ButtonVariant;
@@ -18,6 +22,8 @@ const VARIANT: Record<ButtonVariant, string> = {
     'border border-line-control bg-surface text-fg hover:bg-muted disabled:text-fg-muted disabled:cursor-not-allowed',
   destructive:
     'border border-critical-border bg-surface text-critical-fg hover:bg-critical-bg disabled:border-line-control disabled:text-fg-muted disabled:cursor-not-allowed',
+  'destructive-solid':
+    'bg-critical-solid text-on-accent enabled:hover:brightness-90 disabled:bg-muted disabled:text-fg-muted disabled:cursor-not-allowed',
   link: 'text-link underline-offset-2 hover:underline disabled:text-fg-muted disabled:cursor-not-allowed',
 };
 
