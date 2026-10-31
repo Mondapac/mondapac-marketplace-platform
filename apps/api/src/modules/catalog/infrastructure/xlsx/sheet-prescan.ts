@@ -27,6 +27,41 @@ function rowNumberOf(attributes: string): number | null | 'not-a-number' | 'huge
 }
 
 /**
+ * The 1-based column of a `<c r="...">` start tag (`A` is 1, `AA` is 27), `null` when the tag has
+ * no `r` or it does not begin with letters (exceljs refuses such a cell itself), and
+ * `Infinity` for letters past any sheet column (more than three).
+ */
+function columnOf(attributes: string): number | null {
+  const found = /(?:^|\s)r\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(attributes);
+  if (found === null) return null;
+  const letters = /^[A-Za-z]+/.exec(found[1] ?? found[2] ?? '')?.[0];
+  if (letters === undefined) return null;
+  if (letters.length > 3) return Infinity;
+  let column = 0;
+  for (const letter of letters.toUpperCase()) column = column * 26 + (letter.charCodeAt(0) - 64);
+  return column;
+}
+
+/** The index of the `>` that ends a start tag whose name ended at `from`, or -1 (no end in reach). */
+function tagEndOf(bytes: Buffer, from: number): number {
+  let end = from;
+  let quote = 0;
+  const tagLimit = Math.min(bytes.length, from + MAX_TAG_BYTES);
+  while (end < tagLimit) {
+    const byte = bytes[end]!;
+    if (quote !== 0) {
+      if (byte === quote) quote = 0;
+    } else if (QUOTES.has(byte)) {
+      quote = byte;
+    } else if (byte === GT) {
+      return end;
+    }
+    end += 1;
+  }
+  return -1;
+}
+
+/**
  * A cheap pass over the sheet XML that is already in memory, **before** exceljs sees it (Hassan
  * M-586-1, M-586-4). exceljs turns every SAX event of a chunk into objects, so a sheet that is
  * within the size limits but holds a great many `<row>` or `<c>` elements, or a row whose number is
@@ -35,7 +70,11 @@ function rowNumberOf(attributes: string): number | null | 'not-a-number' | 'huge
  *  - a row (the header included) whose `r` is past `limits.rows + 2`, the last row number the job
  *    table holds, or that is no whole number (`file.too-many-rows` / `file.unreadable`);
  *  - more `<row>` elements than there are such row numbers (`file.too-many-rows`);
- *  - more than twice the column limit of `<c>` elements in one row (`file.too-many-columns`).
+ *  - more than twice the column limit of `<c>` elements in one row (`file.too-many-columns`);
+ *  - a `<c>` whose reference is in a column past twice the column limit (`file.too-many-columns`,
+ *    Hassan L-586-6): exceljs sizes a row's cell array up to its last column and walks it, so a few
+ *    cells in column XFD cost seconds of CPU on the event loop. A column past that limit is
+ *    ignored for data anyway, and a header past it is refused.
  * Start tags are found by their `<` (a `<` cannot appear in an attribute value in well-formed XML,
  * and a tag hidden in a comment or CDATA section is hidden from the SAX parser as well, so the
  * count can be too high, never too low). A name with a namespace prefix counts by its local part.
@@ -78,25 +117,18 @@ export function prescanSheet(xml: Uint8Array, limits: ImportLimits): FileRefusal
     if (local === 'c') {
       cells += 1;
       if (cells > maxCellsInRow) return { code: 'file.too-many-columns', max: limits.columns };
-      at = nameEnd;
+      const cellEnd = tagEndOf(bytes, nameEnd);
+      if (cellEnd === -1) return { code: 'file.unreadable' };
+      const column = columnOf(bytes.toString('latin1', nameEnd, cellEnd));
+      if (column !== null && column > maxCellsInRow) {
+        return { code: 'file.too-many-columns', max: limits.columns };
+      }
+      at = cellEnd + 1;
       continue;
     }
     // A row: its start tag to the closing `>`, outside quotes.
-    let end = nameEnd;
-    let quote = 0;
-    const tagLimit = Math.min(bytes.length, nameEnd + MAX_TAG_BYTES);
-    while (end < tagLimit) {
-      const byte = bytes[end]!;
-      if (quote !== 0) {
-        if (byte === quote) quote = 0;
-      } else if (QUOTES.has(byte)) {
-        quote = byte;
-      } else if (byte === GT) {
-        break;
-      }
-      end += 1;
-    }
-    if (end >= tagLimit) return { code: 'file.unreadable' };
+    const end = tagEndOf(bytes, nameEnd);
+    if (end === -1) return { code: 'file.unreadable' };
     rows += 1;
     if (rows > lastRowNumber) return tooManyRows;
     const number = rowNumberOf(bytes.toString('latin1', nameEnd, end));

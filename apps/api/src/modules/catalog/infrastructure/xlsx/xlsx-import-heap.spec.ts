@@ -11,6 +11,10 @@ import { xlsxParser } from './xlsx-import-parser';
 // old space is capped at 256 MiB, with the whole parse including the Jest runtime inside it. The
 // files that used to reach 0.9 GB of RSS (15 MiB of rows, 700,000 cells in one row) must be
 // refused cleanly, and a big sheet that is within every limit must still be read.
+//
+// Hassan M-586-5: one long shared string that many cells point at must not grow the canonical CSV
+// past the file limit in memory. The file is within every limit; the text it stands for is not,
+// and the parse refuses it as `file.too-large` the moment the running byte count passes the cap.
 
 const HEAP_MIB = 256;
 const CASE = process.env['XLSX_HEAP_CASE'];
@@ -32,8 +36,33 @@ const HEADER_ROW =
     .join('') +
   '</row>';
 
+/** The column name of a zero-based index: A to Z, then AA, AB, ... */
+function columnName(index: number): string {
+  let name = '';
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+  }
+  return name;
+}
+
+/** A header of IMPORT_LIMITS.columns inline-string cells, so a data row can be that wide. */
+const WIDE_HEADER_ROW =
+  '<row r="1">' +
+  Array.from(
+    { length: IMPORT_LIMITS.columns },
+    (_, i) => `<c r="${columnName(i)}1" t="inlineStr"><is><t>Column ${i + 1}</t></is></c>`,
+  ).join('') +
+  '</row>';
+
+/** One shared string of the cell limit's length (10,000 characters). */
+const LONG_STRING = 'x'.repeat(IMPORT_LIMITS.cellChars);
+const SHARED_STRINGS_XML = Buffer.from(
+  '<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1">' +
+    `<si><t>${LONG_STRING}</t></si></sst>`,
+);
+
 /** A workbook whose sheet is STORED (ratio 1), so that size, not compression, is what is tested. */
-function workbook(sheet: Buffer): Buffer {
+function workbook(sheet: Buffer, sharedStrings: Buffer | null = null): Buffer {
   const rels =
     '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
@@ -42,13 +71,16 @@ function workbook(sheet: Buffer): Buffer {
     { name: '[Content_Types].xml', data: contentTypesXml(MAIN_TYPE) },
     { name: 'xl/workbook.xml', data: Buffer.from(WORKBOOK_XML) },
     { name: 'xl/_rels/workbook.xml.rels', data: Buffer.from(rels) },
+    ...(sharedStrings === null
+      ? []
+      : [{ name: 'xl/sharedStrings.xml', data: sharedStrings, method: 0 }]),
     { name: 'xl/worksheets/sheet1.xml', data: sheet, method: 0 },
   ]);
 }
 
 /** Rows built piece by piece into Buffers, so the test itself holds almost nothing on the heap. */
-function sheetOf(pieces: Iterable<string>): Buffer {
-  const parts: Buffer[] = [Buffer.from(SHEET_HEAD + HEADER_ROW)];
+function sheetOf(pieces: Iterable<string>, headerRow: string = HEADER_ROW): Buffer {
+  const parts: Buffer[] = [Buffer.from(SHEET_HEAD + headerRow)];
   let batch = '';
   for (const piece of pieces) {
     batch += piece;
@@ -97,10 +129,27 @@ function* withinLimits(): Generator<string> {
   }
 }
 
+/** `rows` data rows of 64 cells, every one pointing at the shared string (Hassan's file E). */
+function reusedStringRows(rows: number): () => Generator<string> {
+  return function* () {
+    for (let row = 2; row <= rows + 1; row += 1) {
+      let text = `<row r="${row}">`;
+      for (let col = 0; col < IMPORT_LIMITS.columns; col += 1) {
+        text += `<c r="${columnName(col)}${row}" t="s"><v>0</v></c>`;
+      }
+      yield text + '</row>';
+    }
+  };
+}
+
 interface Case {
   readonly name: string;
   readonly pieces: () => Iterable<string>;
   readonly expectRefusal: FileRefusal['code'] | null;
+  /** The case's own header row, and shared strings, when it needs them. */
+  readonly wide?: boolean;
+  /** The refusal must come within this many milliseconds. */
+  readonly maxMillis?: number;
 }
 
 const CASES: readonly Case[] = [
@@ -111,6 +160,20 @@ const CASES: readonly Case[] = [
     expectRefusal: 'file.too-many-columns',
   },
   { name: 'a big sheet within every limit', pieces: withinLimits, expectRefusal: null },
+  {
+    name: 'one 10,000-character shared string in 5,000 rows of 64 cells',
+    pieces: reusedStringRows(5_000),
+    expectRefusal: 'file.too-large',
+    wide: true,
+    maxMillis: 10_000,
+  },
+  {
+    name: 'one 10,000-character shared string in 1,000 rows of 64 cells',
+    pieces: reusedStringRows(1_000),
+    expectRefusal: 'file.too-large',
+    wide: true,
+    maxMillis: 10_000,
+  },
 ];
 
 if (CASE !== undefined) {
@@ -119,8 +182,17 @@ if (CASE !== undefined) {
     it(`parses ${CASE}`, async () => {
       const found = CASES.find((candidate) => candidate.name === CASE);
       if (found === undefined) throw new Error(`no case ${CASE}`);
-      const file = workbook(sheetOf(found.pieces()));
+      const file =
+        found.wide === true
+          ? workbook(sheetOf(found.pieces(), WIDE_HEADER_ROW), SHARED_STRINGS_XML)
+          : workbook(sheetOf(found.pieces()));
+      // The file itself is within the upload limit: the refusal must come from the parse.
+      if (found.wide === true) expect(file.length).toBeLessThanOrEqual(IMPORT_LIMITS.fileBytes);
+      const started = Date.now();
       const result = await xlsxParser.parse(file, IMPORT_LIMITS);
+      if (found.maxMillis !== undefined) {
+        expect(Date.now() - started).toBeLessThan(found.maxMillis);
+      }
       if (found.expectRefusal === null) {
         expect(result.ok).toBe(true);
         if (result.ok) expect(result.value.rowCount).toBe(IMPORT_LIMITS.rows);

@@ -640,6 +640,25 @@ describe('xlsxParser: the table is also given as plain CSV (parsed once)', () =>
     expect(again.value.rows.map((row) => row.rowNumber)).toEqual([2, 3, 4]);
   });
 
+  it('counts the canonical bytes as it reads: refused one byte over the cap, kept at the cap (M-586-5)', async () => {
+    const bytes = await workbookBytes([
+      [],
+      ['Title', 'Description', 'Brand'],
+      ['Plain', 'a, b', 'Farms'],
+      [],
+      ['Quote "x"', 'line one\nline two', ''],
+      ['\uFEFFBom first', 'ünï ✓', '=1+1'],
+      ['', '', ''],
+    ]);
+    const parsed = await xlsxParser.parse(bytes, IMPORT_LIMITS);
+    if (!parsed.ok) throw new Error(parsed.error.code);
+    const size = parsed.value.canonical!.length;
+    const atCap = await xlsxParser.parse(bytes, { ...IMPORT_LIMITS, fileBytes: size });
+    expect(atCap.ok).toBe(true);
+    const over = await xlsxParser.parse(bytes, { ...IMPORT_LIMITS, fileBytes: size - 1 });
+    expect(over).toEqual({ ok: false, error: { code: 'file.too-large', maxBytes: size - 1 } });
+  });
+
   it('is not given for a CSV, which is stored as it came', async () => {
     const parsed = await readImportFile(Buffer.from('Title\nA\n'), IMPORT_LIMITS, PARSERS);
     expect(parsed.ok && parsed.value.canonical).toBeFalsy();
@@ -738,6 +757,40 @@ describe('xlsxParser: the sheet bytes are scanned before exceljs (Hassan M-586-1
       `<row r="1">${cell('A1', 'Title')}</row><row r="2">${cell('A2', 'x')}</row></sheetData></worksheet>`;
     const table = await read(handMade(sheet));
     expect(table.rows.map((r) => r.rowNumber)).toEqual([2]);
+  });
+
+  // Hassan L-586-6: exceljs sizes a row's cell array to its last column (up to 16,384) and walks it.
+  describe('a cell in a column past twice the column limit', () => {
+    const tooManyColumns = { code: 'file.too-many-columns', max: IMPORT_LIMITS.columns };
+
+    it('refuses 5,000 rows of sparse cells in columns A and XFD, quickly', async () => {
+      const rows = Array.from(
+        { length: 5_000 },
+        (_, i) =>
+          `<row r="${i + 2}"><c r="A${i + 2}"><v>1</v></c><c r="XFD${i + 2}"><v>2</v></c></row>`,
+      ).join('');
+      const sheet = sheetOf(`<row r="1">${cell('A1', 'Title')}</row>${rows}`);
+      expect(await refusedFast(sheet)).toEqual(tooManyColumns);
+    });
+
+    it('refuses a header cell far to the right, and a name with a prefix or in single quotes', async () => {
+      expect(await refusedFast(sheetOf(`<row r="1">${cell('XFD1', 'Title')}</row>`))).toEqual(
+        tooManyColumns,
+      );
+      expect(await refusedFast(sheetOf(`<x:row r="1"><x:c r='XFD1'/></x:row>`))).toEqual(
+        tooManyColumns,
+      );
+    });
+
+    it('accepts a cell in the last column the cap allows (DX) and refuses the next (DY)', async () => {
+      const last = 2 * IMPORT_LIMITS.columns; // 128 = DX
+      expect(last).toBe(128);
+      const row = (ref: string): string =>
+        sheetOf(`<row r="1">${cell('A1', 'Title')}</row><row r="2">${cell(ref, 'x')}</row>`);
+      const table = await read(handMade(row('DX2')));
+      expect(table.rowCount).toBe(1);
+      expect(await refusedFast(row('DY2'))).toEqual(tooManyColumns);
+    });
   });
 
   it('fails closed on a row tag hidden in a comment: the count can be too high, never too low', async () => {

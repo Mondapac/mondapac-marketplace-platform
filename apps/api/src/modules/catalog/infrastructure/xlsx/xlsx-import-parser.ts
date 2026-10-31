@@ -149,6 +149,19 @@ function canonicalCell(value: string): string {
   return /[",\r\n\uFEFF]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
+/** The byte order mark the canonical CSV starts with. */
+const BOM_BYTES = 3;
+
+/** The bytes one line takes in the canonical CSV, with its CRLF; `cells` are the line's cells. */
+function canonicalLineBytes(cells: readonly string[]): number {
+  let bytes = 2; // CRLF
+  let inner = Math.max(0, cells.length - 1); // the commas
+  for (const cell of cells) inner += Buffer.byteLength(canonicalCell(cell), 'utf8');
+  // A row whose cells are all empty is written as `""`.
+  bytes += inner === 0 ? 2 : inner;
+  return bytes;
+}
+
 /**
  * The table as plain CSV bytes (a byte order mark, then RFC 4180 text), one line per spreadsheet
  * row so that row numbers read back the same: a skipped blank row is an empty line. This is what
@@ -242,6 +255,18 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
 
       const header: string[] = [];
       const rows: ParsedRow[] = [];
+      // A running count of the bytes the canonical CSV will take (Hassan M-586-5): shared strings
+      // are cached, so many cells can point at one long string and the text would be far larger
+      // than the file. It is checked as each row is kept, before the text is built.
+      let canonicalBytes = BOM_BYTES;
+      let lastKept = 0;
+      const spend = (rowNumber: number, cells: readonly string[]): void => {
+        canonicalBytes += (rowNumber - lastKept - 1) * 2 + canonicalLineBytes(cells);
+        lastKept = rowNumber;
+        if (canonicalBytes > limits.fileBytes) {
+          throw new Refused({ code: 'file.too-large', maxBytes: limits.fileBytes });
+        }
+      };
       let headerRow = 0;
       let rowCount = 0;
       let isHeader = true;
@@ -269,6 +294,7 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
               if (width > limits.columns) {
                 throw new Refused({ code: 'file.too-many-columns', max: limits.columns });
               }
+              spend(row.number, cells);
               header.push(...cells);
               headerRow = row.number;
               isHeader = false;
@@ -282,24 +308,29 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
             }
             const kept = cells.slice(0, header.length);
             while (kept.length < header.length) kept.push('');
+            spend(row.number, kept);
             rows.push({ rowNumber: row.number, cells: kept });
           }
           break; // the first worksheet only
         }
+        if (rowCount > limits.rows) {
+          return ok({ format: 'xlsx', header, rows: [], rowCount });
+        }
+        // Inside the try: nothing thrown while the text is built escapes `parse` (M-586-5).
+        const canonical = canonicalCsv(header, headerRow, rows);
+        if (canonical.length > limits.fileBytes) {
+          return err({ code: 'file.too-large', maxBytes: limits.fileBytes });
+        }
+        return ok({ format: 'xlsx', header, rows, rowCount, canonical });
       } catch (error) {
         if (error instanceof Refused) return err(error.refusal);
+        if (error instanceof RangeError) {
+          return err({ code: 'file.too-large', maxBytes: limits.fileBytes });
+        }
         return err({ code: 'file.unreadable' });
       } finally {
         input.destroy();
       }
-      if (rowCount > limits.rows) {
-        return ok({ format: 'xlsx', header, rows: [], rowCount });
-      }
-      const canonical = canonicalCsv(header, headerRow, rows);
-      if (canonical.length > limits.fileBytes) {
-        return err({ code: 'file.too-large', maxBytes: limits.fileBytes });
-      }
-      return ok({ format: 'xlsx', header, rows, rowCount, canonical });
     },
   } satisfies ImportFileParser);
 }
