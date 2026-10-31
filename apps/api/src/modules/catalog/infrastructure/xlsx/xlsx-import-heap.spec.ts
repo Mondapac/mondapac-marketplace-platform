@@ -73,7 +73,7 @@ function workbook(sheet: Buffer, sharedStrings: Buffer | null = null): Buffer {
     { name: 'xl/_rels/workbook.xml.rels', data: Buffer.from(rels) },
     ...(sharedStrings === null
       ? []
-      : [{ name: 'xl/sharedStrings.xml', data: sharedStrings, method: 0 }]),
+      : [{ name: 'xl/sharedStrings.xml', data: sharedStrings, method: 0 as const }]),
     { name: 'xl/worksheets/sheet1.xml', data: sheet, method: 0 },
   ]);
 }
