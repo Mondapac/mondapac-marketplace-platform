@@ -291,7 +291,8 @@ describe('AssistantSettingsPanel', () => {
     mount(answer());
     touch();
     save();
-    expect(await screen.findByText(/without < or >/)).toBeTruthy();
+    // Under the field and in the summary banner.
+    expect(await screen.findAllByText(/without < or >/)).toHaveLength(2);
     expect(
       screen.getByText('Some settings were refused. Check the fields and try again.'),
     ).toBeTruthy();

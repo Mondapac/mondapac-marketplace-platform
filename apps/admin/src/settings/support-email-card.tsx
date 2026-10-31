@@ -117,7 +117,13 @@ export function SupportEmailCard({
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: 1 })}
-        items={[{ id: EMAIL_ROW, label: t('settings.support.field') }]}
+        items={[
+          {
+            id: EMAIL_ROW,
+            label: t('settings.support.field'),
+            reason: t('settings.support.invalid'),
+          },
+        ]}
         focusSignal={live.attempts}
       />
     ) : null,

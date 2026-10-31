@@ -318,6 +318,8 @@ describe('the delivery settings page', () => {
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
     const summary = screen.getByRole('alert');
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    // The summary names the field and the reason, the same text as under the field.
+    expect(summary.textContent).toContain('Percentage: Enter a percentage from 0 to 100');
     expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
       true,
@@ -364,6 +366,10 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Cut-off time'), { target: { value: '' } });
 
     expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+    // Spec copy: the 12-hour wording, in the field's error and in the summary body.
+    const reason = 'Enter a time between 12:00 am and 11:59 pm, such as 1:00 pm.';
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(`Cut-off time: ${reason}`);
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
       true,
     );
@@ -396,7 +402,7 @@ describe('the delivery settings page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(screen.getByText('Enter a whole number of days from 1 to 30.')).toBeTruthy();
-    expect(screen.getByText(/Enter an amount up to/)).toBeTruthy();
+    expect(screen.getAllByText(/Enter an amount up to/)).toHaveLength(2);
     expect(call).not.toHaveBeenCalled();
   });
 

@@ -260,7 +260,7 @@ export function RoleEditor({
       <SettingsErrorSummary
         key="invalid"
         title={root('settings.errors.title', { count: 1 })}
-        items={[{ id: NAME_ROW, label: t('editor.name') }]}
+        items={[{ id: NAME_ROW, label: t('editor.name'), reason: shownError }]}
         focusSignal={live.attempts + serverNameFails}
       />
     ),

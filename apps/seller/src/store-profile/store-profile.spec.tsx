@@ -82,7 +82,10 @@ describe('StoreProfile live About checks', () => {
     mount(view(), true, terms);
     fireEvent.change(box(), { target: { value: 'Family bakery, Halal Certified.' } });
 
-    expect(screen.getByText(/This text claims a certification/)).toBeTruthy();
+    // Under the field and in the summary banner.
+    expect(
+      screen.getAllByText(/This text claims a certification\. Remove that wording\./),
+    ).toHaveLength(2);
     expect(box().getAttribute('aria-invalid')).toBe('true');
     const bar = screen.getByRole('region', { name: 'Unsaved changes' });
     expect(bar.textContent).toContain('1 unsaved change');
@@ -92,7 +95,7 @@ describe('StoreProfile live About checks', () => {
     expect(call).not.toHaveBeenCalled();
 
     fireEvent.change(box(), { target: { value: 'Family bakery, open daily.' } });
-    expect(screen.queryByText(/This text claims a certification/)).toBeNull();
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
     expect(screen.queryByRole('alert')).toBeNull();
     expect(save().disabled).toBe(false);
   });
@@ -109,7 +112,7 @@ describe('StoreProfile live About checks', () => {
   it('does not warn on a saved text that is fine, and warns nothing without terms', () => {
     mount(view(), true, []);
     fireEvent.change(box(), { target: { value: 'Halal Certified bakery' } });
-    expect(screen.queryByText(/This text claims a certification/)).toBeNull();
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
     expect(save().disabled).toBe(false);
   });
 
@@ -124,7 +127,7 @@ describe('StoreProfile live About checks', () => {
       }),
     );
     fireEvent.click(save());
-    await screen.findByText(/This text claims a certification/);
+    await screen.findAllByText(/This text claims a certification/);
     expect(save().disabled).toBe(true);
   });
 });
@@ -196,6 +199,7 @@ describe('StoreProfile About card', () => {
     // The error summary at the top links to the box.
     const summary = screen.getByRole('alert');
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain(': Use at most 10 characters.');
     fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));
     expect(document.activeElement).toBe(box());
     expect(box().getAttribute('aria-invalid')).toBe('true');
@@ -214,7 +218,7 @@ describe('StoreProfile About card', () => {
     fireEvent.change(box(), { target: { value: 'We are certified bakers' } });
     fireEvent.click(save());
 
-    await screen.findByText(/This text claims a certification/);
+    await screen.findAllByText(/This text claims a certification/);
     // One announcement of the failure: the field's own alert, with no second banner above it.
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(box().getAttribute('aria-invalid')).toBe('true');

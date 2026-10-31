@@ -282,7 +282,11 @@ export function AssistantSettingsPanel({
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: invalid.length })}
-        items={invalid.map((key) => ({ id: rowId(key), label: t(`${P}.${FIELD_LABEL[key]}`) }))}
+        items={invalid.map((key) => ({
+          id: rowId(key),
+          label: t(`${P}.${FIELD_LABEL[key]}`),
+          reason: errorOf(key),
+        }))}
         focusSignal={live.attempts + refusals}
       />
     ),

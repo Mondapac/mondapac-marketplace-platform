@@ -194,7 +194,11 @@ export function DeliverySettingsPanel({
     if (field !== undefined) live.touch(field);
   };
   const errorOf = (field: FormField) =>
-    invalid.includes(field) ? t(`${P}.invalid.${field}`) : undefined;
+    !invalid.includes(field)
+      ? undefined
+      : field === 'marginValue'
+        ? t(`${P}.invalid.margin-${form.marginKind}`, { max: money(1_000_000) })
+        : t(`${P}.invalid.${field}`);
 
   function discard() {
     state.discard();
@@ -267,7 +271,11 @@ export function DeliverySettingsPanel({
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: invalid.length })}
-        items={invalid.map((field) => ({ id: ROW[field], label: summaryLabel(field) }))}
+        items={invalid.map((field) => ({
+          id: ROW[field],
+          label: summaryLabel(field),
+          reason: errorOf(field),
+        }))}
         focusSignal={live.attempts}
       />
     ),
@@ -413,11 +421,7 @@ export function DeliverySettingsPanel({
             }
             changed={changed.marginValue}
             disabled={readOnly}
-            error={
-              invalid.includes('marginValue')
-                ? t(`${P}.invalid.margin-${form.marginKind}`, { max: money(1_000_000) })
-                : undefined
-            }
+            error={errorOf('marginValue')}
           >
             <SettingInput
               name="margin-value"

@@ -154,6 +154,7 @@ export function useAbout({
   const errorItems: SettingsErrorItem[] = invalid.map((locale) => ({
     id: rowId(locale),
     label: label(locale),
+    reason: errorOf(locale),
   }));
 
   /** The conflict, the error summary and the other problems, for the page's banner slot. */

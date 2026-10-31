@@ -83,13 +83,21 @@ export function StockForm({
   const labelOf = (field: { readonly key: string; readonly labelKey: string }) =>
     t.has(field.labelKey) ? t(field.labelKey) : field.key;
   const invalid = [
-    fieldError('name') === undefined ? null : { id: NAME_ROW, label: t('stock.form.name') },
+    fieldError('name') === undefined
+      ? null
+      : { id: NAME_ROW, label: t('stock.form.name'), reason: fieldError('name') },
     ...options.fields.map((field) =>
       fieldError(`address.${field.key}`) === undefined
         ? null
-        : { id: addressRow(field.key), label: labelOf(field) },
+        : {
+            id: addressRow(field.key),
+            label: labelOf(field),
+            reason: fieldError(`address.${field.key}`),
+          },
     ),
-    fieldError('timeZone') === undefined ? null : { id: ZONE_ROW, label: t('stock.form.zone') },
+    fieldError('timeZone') === undefined
+      ? null
+      : { id: ZONE_ROW, label: t('stock.form.zone'), reason: fieldError('timeZone') },
   ].filter((item) => item !== null);
 
   // What differs between the location as saved now and the draft in the boxes.
