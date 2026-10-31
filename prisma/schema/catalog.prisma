@@ -917,6 +917,35 @@ model CatalogOfferOwnerNotice {
   @@schema("catalog")
 }
 
+/// A saved filter (saved view) of an admin list (catalog design 9.2d; data design 3.28): the tab,
+/// search, filters and sort of the list under a name, for one admin ("me") or for every admin of
+/// the Market who can see that list ("everyone"). `list_key` names the list (`admin.catalog.products`
+/// today) so another admin list can reuse the table. The payload is a closed document validated on
+/// write by the application (`v`, `view`, `q`, `filters`, `sort`, `direction`); the CHECKs only
+/// bound its type and size. `owner_account_id` is an identity account id with no foreign key (the
+/// tables of another module are never joined). The CHECKs, the two name uniques (case-insensitive,
+/// expression indexes) and the grants are hand-written in the migration.
+model CatalogSavedFilter {
+  id             String   @id @db.Uuid
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  ownerAccountId String   @map("owner_account_id") @db.Uuid
+  /// me | everyone.
+  visibility     String
+  listKey        String   @map("list_key")
+  /// 1 to 60 characters, trimmed, no control character (CHECK).
+  name           String
+  payload        Json
+  /// The order of the owner's filters in the list (1 and up); set at creation.
+  position       Int
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([marketId, id])
+  @@map("saved_filters")
+  @@schema("catalog")
+}
+
 /// @market-scope none: a brand is shared by every Market (brand package): the same maker and the same
 /// public page serve each Market, and a Market's products point at it through `products.brand_id`.
 /// Only market-scoped aggregates carry `market_id` (CLAUDE.md, Market rules); a brand is reference

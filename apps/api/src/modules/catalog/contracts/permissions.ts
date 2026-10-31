@@ -84,6 +84,19 @@ export const CATALOG_PLATFORM_PRODUCT_RETIRE = definePermission('catalog', {
 });
 
 /**
+ * Share a saved filter with every admin of the Market (catalog design 9.2d): "Everyone" in the
+ * Save filter dialog, and the edit and delete of a filter somebody else shared. Without it an
+ * admin who can see the list still saves and manages filters for themselves only. Platform scope;
+ * unprotected, so Catalogue Moderator receives it by identity's seed (the Platform Administrator
+ * holds every key).
+ */
+export const CATALOG_SAVED_FILTER_SHARE = definePermission('catalog', {
+  key: 'catalog.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read brands, the brand merge queue and seller brand proposals (catalog brand package). Platform
  * scope; unprotected, so Viewer receives it by identity's seed.
  */
@@ -114,6 +127,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_PRODUCT_PAUSE,
   CATALOG_PRODUCT_DELETE,
   CATALOG_PLATFORM_PRODUCT_RETIRE,
+  CATALOG_SAVED_FILTER_SHARE,
   CATALOG_BRAND_READ,
   CATALOG_BRAND_EDIT,
 ]);

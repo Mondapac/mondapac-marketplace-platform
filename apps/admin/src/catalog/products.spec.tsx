@@ -55,11 +55,21 @@ const tree: CategoryTree = {
   ],
 };
 
+/** No saved views: the answer of the saved filters route in the tests of the list itself. */
+const NO_SAVED = {
+  items: [],
+  canShare: false,
+  limits: { perOwner: 50, shared: 20 },
+};
+
 /** The list answers by URL, so the order of the calls does not matter. */
 function serve(answer: (url: string) => ProductsPage | 'fail' | 'denied') {
   call.mockImplementation((_method, path) => {
     if (path === 'catalog/categories') {
       return Promise.resolve({ ok: true, status: 200, body: tree } as never);
+    }
+    if (path.startsWith('catalog/admin/saved-filters')) {
+      return Promise.resolve({ ok: true, status: 200, body: NO_SAVED } as never);
     }
     const result = answer(path);
     if (result === 'fail') {
@@ -72,7 +82,9 @@ function serve(answer: (url: string) => ProductsPage | 'fail' | 'denied') {
   });
 }
 const listCalls = () =>
-  call.mock.calls.map((entry) => entry[1]).filter((path) => path.startsWith('catalog/admin'));
+  call.mock.calls
+    .map((entry) => entry[1])
+    .filter((path) => path.startsWith('catalog/admin') && !path.includes('saved-filters'));
 const lastList = () => listCalls()[listCalls().length - 1]!;
 
 const ALL_KEYS = [
@@ -132,11 +144,12 @@ describe('admin product list', () => {
     expect(screen.getByRole('button', { name: 'Inactive (136)' })).toBeTruthy();
     expect(screen.getByText('Sorted by Last changed: Newest first')).toBeTruthy();
     // No "Products" heading over the tabs (the topbar names the page); the header holds the Bulk
-    // action button and the count of the Market's products, and no Import, Add product or saved views.
+    // action button and the count of the Market's products, and no Import or Add product.
     expect(screen.queryByRole('heading', { name: 'Products' })).toBeNull();
     expect(screen.getByText('1,284 products in the Australia market')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Bulk action' })).toBeTruthy();
-    for (const absent of ['Import', 'Add product', 'Manage filters']) {
+    expect(screen.getByRole('button', { name: 'Manage filters' })).toBeTruthy();
+    for (const absent of ['Import', 'Add product']) {
       expect(screen.queryByText(absent)).toBeNull();
     }
   });
@@ -464,6 +477,9 @@ describe('admin product bulk action', () => {
     call.mockImplementation(((method: string, path: string, body?: unknown, csrf?: unknown) => {
       if (path === 'catalog/categories') {
         return Promise.resolve({ ok: true, status: 200, body: tree });
+      }
+      if (path.startsWith('catalog/admin/saved-filters')) {
+        return Promise.resolve({ ok: true, status: 200, body: NO_SAVED });
       }
       if (method === 'POST') {
         posted.push({ path, body: body as Record<string, unknown>, csrf });
