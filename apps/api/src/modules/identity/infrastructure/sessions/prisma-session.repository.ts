@@ -225,9 +225,17 @@ export class PrismaSessionRepository implements SessionRepository {
     });
     // Whether or not a session was live: the update above skips a session that is already
     // revoked (a sign-out), and a job that session started must still learn of this (M-585-1).
+    // The stamp keeps the greater of the stored and the new instant, so it never goes backwards
+    // when an API instance with a slower clock revokes later (Hassan I-585-7). The `where` makes
+    // that one atomic statement without raw SQL: a stamp that is already later or equal stays.
+    const instant = toDate(now);
     await this.prisma.tx(market).identityAccount.updateMany({
-      where: { marketId: market.marketId, id: accountId },
-      data: { sessionsInvalidatedAt: toDate(now) },
+      where: {
+        marketId: market.marketId,
+        id: accountId,
+        OR: [{ sessionsInvalidatedAt: null }, { sessionsInvalidatedAt: { lt: instant } }],
+      },
+      data: { sessionsInvalidatedAt: instant },
     });
     return count;
   }

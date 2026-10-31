@@ -34,6 +34,7 @@ import { hotp } from '../src/modules/identity/infrastructure/second-factor/totp'
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
+import { traceCredentialOrder } from './support/credential-order';
 import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import {
@@ -467,9 +468,13 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       const { secret } = await acceptedAdmin(code);
       await signedIn(code, secret);
 
+      const trace = traceCredentialOrder(fakes);
       await expect(
         app.get(ResetAdminSecondFactor).execute(systemOf(code), { email: EMAIL }),
       ).resolves.toMatchObject({ ok: true, value: { code: 'second-factor.reset' } });
+      trace.restore();
+      // Lock order (Mojtaba S1): the account's credential lock, then the factor, then sessions.
+      expect(trace.calls).toEqual(['account', 'factor', 'sessions']);
       expect(fakes.factors.get(adminAccount().id)).toBeUndefined();
       expect([...fakes.sessions.values()].every((s) => s.session.revokedAt !== null)).toBe(true);
       expect(fakes.audits.map((a) => a.action)).toContain('identity.second-factor.reset');
@@ -573,6 +578,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
           client: CLIENT,
         }),
       ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
+      const trace = traceCredentialOrder(fakes);
       await expect(
         app.get(ConfirmSecondFactorEnrolment).execute(anonymousOf(code), {
           challengeToken: started.value.challengeToken,
@@ -580,6 +586,10 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
           client: CLIENT,
         }),
       ).resolves.toMatchObject({ ok: true, value: { code: 'second-factor-activated' } });
+      trace.restore();
+      // Lock order (Mojtaba S1): the account's credential lock before the factor and the sessions.
+      expect(trace.accountFirst()).toBe(true);
+      expect(trace.calls.indexOf('factor')).toBeLessThan(trace.calls.indexOf('sessions'));
       expect(
         eventsOf('identity.second-factor-changed.v1').map(
           (event) => (event.payload as { change: string }).change,
@@ -601,10 +611,15 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       expect(fakes.factors.get(adminAccount().id)?.state).toBe('active');
 
       clock.advance(STEP);
+      const trace = traceCredentialOrder(fakes);
       const replaced = await app
         .get(CompleteSecondFactorReplacement)
         .execute(context, { code: codeFor(started.value.secret) });
+      trace.restore();
       expect(replaced).toMatchObject({ ok: true, value: { code: 'second-factor-replaced' } });
+      // Lock order (Mojtaba S1): the account's credential lock before the factor and the sessions.
+      expect(trace.accountFirst()).toBe(true);
+      expect(trace.calls).toContain('sessions');
 
       clock.advance(STEP);
       const regenerated = await app
