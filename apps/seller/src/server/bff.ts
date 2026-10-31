@@ -372,6 +372,8 @@ export async function relay(
     const value = upstream.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
+  // The proxy does not run on the relay (Next would buffer the upload body), so nosniff is set here.
+  headers.set('x-content-type-options', 'nosniff');
   // Session answers must never be cached; the API sets no-store itself, this is the default.
   headers.set('cache-control', upstream.headers.get('cache-control') ?? 'private, no-store');
   for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);

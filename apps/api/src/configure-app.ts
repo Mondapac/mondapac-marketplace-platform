@@ -59,7 +59,10 @@ const STORE_IMAGE_PATH = /^\/sellers\/store-profile\/(?:logo|banner)\/?(?:\?.*)?
 /**
  * The whole-profile save (`PUT /sellers/store-profile`) carries the About text and up to two
  * pictures: two base64 pictures of 4 MiB are 11.2 million characters, and the rest is the JSON
- * around them. The same cookie and CSRF pre-filter applies.
+ * around them. The same cookie and CSRF pre-filter applies. The filter only checks that the cookie
+ * and header are present (Hassan L-599-2): the API is reachable only through the panel BFF, which
+ * caps the body before it relays, so a direct client is outside the deployment model. Keep the API
+ * off the public network.
  */
 const STORE_PROFILE_SAVE_BODY_LIMIT = '11700kb';
 const STORE_PROFILE_SAVE_PATH = /^\/sellers\/store-profile\/?(?:\?.*)?$/;

@@ -341,6 +341,16 @@ describe('relay', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 
+  it('always sets nosniff, because the proxy does not run on the relay', async () => {
+    const response = await relay(
+      config,
+      post('identity/seller/sign-in'),
+      ['identity', 'seller', 'sign-in'],
+      () => Promise.resolve(new Response('{}', { status: 200 })),
+    );
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
   it('answers 503 when the API is unreachable', async () => {
     const response = await relay(
       config,
