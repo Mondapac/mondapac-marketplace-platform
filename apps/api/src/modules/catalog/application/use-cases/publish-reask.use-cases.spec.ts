@@ -282,10 +282,13 @@ describe.each([
     });
 
     it('refuses when the product is paused between the first read and the unit (I-583-6)', async () => {
-      const { run, saved, outbox } = rig(() => tagged(), [
-        { status: 'published', pausedAt: null },
-        { status: 'published', pausedAt: new Date(0) },
-      ]);
+      const { run, saved, outbox } = rig(
+        () => tagged(),
+        [
+          { status: 'published', pausedAt: null },
+          { status: 'published', pausedAt: new Date(0) },
+        ],
+      );
       expect(await run()).toEqual({ ok: false, error: { code: 'offer.product-not-published' } });
       expect(saved).toEqual([]);
       expect(outbox.types).toEqual([]);
