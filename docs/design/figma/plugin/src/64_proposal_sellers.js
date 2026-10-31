@@ -82,17 +82,21 @@ function smColumns() {
 
 // ---- Add seller: a full page; the owner gets an invitation and sets their own password and two-step sign-in
 function smSection(title, sub, kids) { return podCard(title, [text(sub, 'Body/Small', 'text/muted', { sizeH: 'FILL' })].concat(kids)); }
-function smInput(label, value, help, o) { o = o || {}; return podField(label, inst('Input', { Type: 'Text', State: value ? 'Filled' : 'Default', Value: value || o.placeholder || ' ' }, { name: 'input', sizeH: 'FILL' }), help); }
+function smInput(label, value, help, o) { o = o || {}; return podField(label, inst('Input', { Type: 'Text', State: value ? 'Filled' : 'Default', Value: value || o.placeholder || ' ', 'Leading icon': false }, { name: 'input', sizeH: 'FILL' }), help); }
 function smTwo(a, b) { return frame({ name: 'pair', dir: 'H', gap: 'space/4', sizeH: 'FILL' }, [a, b]); }
+// Owner (31 Oct 20:20Z): two columns so no empty space is left; Store and Business activities sit in the side column, and
+// Other activities is a multiple choice field that shows its picks as tags.
 function smAdd() {
-  const form = frame({ name: 'form', dir: 'V', gap: 'space/4', w: 760 }, [
+  const main = frame({ name: 'main', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, [
     smSection('Owner', 'They get an email invitation. Nobody at MondaPac sets or sees their password.', [smTwo(smInput('Full name', 'Hana Yusuf'), smInput('Email', 'hana@kurabyfresh.com.au'))]),
-    smSection('Store', 'What customers see.', [smTwo(smInput('Store name', 'Kuraby Fresh Halal'), smInput('Web address', 'kuraby-fresh-halal', 'mondapac.com.au/store/kuraby-fresh-halal'))]),
-    smSection('Business activities', 'Decide which categories and platform products the seller can use. Each activity can add review checks.', [smTwo(podField('Main activity', smCombo('Butcher')), podField('Other activities (optional)', smMulti(['Grocery', 'Bakery']), 'Choose one or more. Type to search.'))]),
     smSection('Business', 'Checked against the business register when the file is reviewed.', [smTwo(smInput('Legal business name', 'Kuraby Fresh Pty Ltd'), smInput('ABN', '51 824 753 556')), smTwo(smInput('Phone', '07 3341 0000'), smInput('Contact email', 'orders@kurabyfresh.com.au'))]),
-    smSection('Address and area', 'Decides the service area and the shop’s time zone.', [smInput('Operating address', '1520 Beenleigh Rd, Kuraby QLD 4112'), smTwo(podField('Service area', psSelect('Greater Brisbane')), podField('Time zone', psSelect('Brisbane (AEST)')))]),
-    frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('The file joins Awaiting review. Another admin approves it.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), btn('Cancel', 'Secondary', 'Md'), btn('Save draft', 'Secondary', 'Md'), btn('Save and invite owner', 'Primary', 'Md')])]);
-  return smScreen('Add seller', 'Sellers / Add seller', [podHeader('Add seller', [], 'Create the seller’s file and invite the owner.', [], 'Sellers'), form]);
+    smSection('Address and area', 'Decides the service area and the shop’s time zone.', [smInput('Operating address', '1520 Beenleigh Rd, Kuraby QLD 4112'), smTwo(podField('Service area', psSelect('Greater Brisbane')), podField('Time zone', psSelect('Brisbane (AEST)')))])]);
+  const side = frame({ name: 'side', dir: 'V', gap: 'space/4', w: 420 }, [
+    smSection('Store', 'What customers see.', [smInput('Store name', 'Kuraby Fresh Halal'), smInput('Web address', 'kuraby-fresh-halal', 'mondapac.com.au/store/kuraby-fresh-halal')]),
+    smSection('Business activities', 'Decide which categories and platform products the seller can use. Each activity can add review checks.', [podField('Main activity', smCombo('Butcher')), podField('Other activities (optional)', smMulti(['Grocery', 'Bakery', 'Frozen food']), 'Choose one or more. Each pick shows as a tag; remove it with ×. Type to search.')])]);
+  const cols = frame({ name: 'columns', dir: 'H', gap: 'space/5', align: 'start', sizeH: 'FILL' }, [main, side]);
+  const footer = frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('The file joins Awaiting review. Another admin approves it.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), btn('Cancel', 'Secondary', 'Md'), btn('Save draft', 'Secondary', 'Md'), btn('Save and invite owner', 'Primary', 'Md')]);
+  return smScreen('Add seller', 'Sellers / Add seller', [podHeader('Add seller', [], 'Create the seller’s file and invite the owner.', [], 'Sellers'), cols, footer]);
 }
 
 // ---- The seller page: header with the actions for the state, then tabs
