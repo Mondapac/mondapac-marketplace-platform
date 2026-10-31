@@ -451,8 +451,13 @@ describe('settings navigation', () => {
   const read = (file: string) => readFileSync(join(__dirname, '..', file), 'utf8');
   const shell = read('src/server/settings-shell.tsx');
 
+  it('lets the page draw the pin star beside its title, so the top bar has none', () => {
+    expect(shell).toContain('pinInPage');
+    expect(read('src/server/seller-shell.tsx')).toContain('pinInPage ? undefined : <PinButton />');
+  });
+
   it('shows the sub-navigation column from 1180px and the back link only below it', () => {
-    expect(shell).toContain('min-[1180px]:grid-cols-[12.5rem_minmax(0,1fr)]');
+    expect(shell).toContain('min-[1180px]:grid-cols-[13.75rem_minmax(0,1fr)]');
     expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
     expect(shell).toMatch(/min-\[1180px\]:hidden[^]*<BackLink href="\/settings"/);
   });
@@ -464,7 +469,7 @@ describe('settings navigation', () => {
 
   it('keeps every hub and sub-navigation link tall enough to touch', () => {
     expect(read('src/settings/settings-hub.tsx')).toContain('min-h-12');
-    expect(read('src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
+    expect(read('../../packages/ui/src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
   });
 
   it('puts the hub cards on one column on phones and two from 640px', () => {

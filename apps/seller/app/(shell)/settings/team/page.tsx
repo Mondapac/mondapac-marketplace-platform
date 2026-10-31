@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, SettingsTitle } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
@@ -70,7 +70,9 @@ export default async function TeamPageRoute({
   const roles = rolesResult?.kind === 'ok' ? rolesResult.body.items : undefined;
   return (
     <SettingsShell session={session} linkId="team" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <div className="mb-4">
+        <SettingsTitle>{title}</SettingsTitle>
+      </div>
       {result.kind === 'ok' ? (
         <>
           {canInvite && roles !== undefined ? (

@@ -14,6 +14,8 @@ import {
 } from './setting-row.tsx';
 import { SettingsPage } from './settings-page.tsx';
 import { SettingsSection } from './settings-section.tsx';
+import { SettingsSubNav } from './settings-sub-nav.tsx';
+import { SettingsTitle } from './settings-title.tsx';
 import { leavesPage, type ClickInfo } from './unsaved-changes-guard.tsx';
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(node);
@@ -40,14 +42,24 @@ describe('SettingRow', () => {
     expect(out).toContain('border-critical-solid');
   });
 
-  it('is two columns from 760 px and one column below it', () => {
+  it('puts the control in a fixed 360 px column on the end side, and stacks it when the section is narrow', () => {
     const out = html(
       <SettingRow label="Fee">
         <SettingInput />
       </SettingRow>,
     );
-    expect(out).toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]');
+    // 22.5rem is 360 px; the section is the container, so the sidebar cannot squeeze the label.
+    expect(out).toContain('@[39rem]:grid-cols-[minmax(0,1fr)_22.5rem]');
+    expect(out).not.toContain('md:grid-cols');
     expect(out).toContain('grid gap-1.5');
+    const section = html(
+      <SettingsSection title="Fees">
+        <SettingRow label="Fee">
+          <SettingInput />
+        </SettingRow>
+      </SettingsSection>,
+    );
+    expect(section).toContain('@container');
   });
 
   it('marks a changed control with the attention ring, not a critical edge', () => {
@@ -348,5 +360,37 @@ describe('Button disabled state', () => {
       expect(out).not.toContain('accent-disabled');
     }
     expect(html(<Button disabled>Save</Button>)).toContain('disabled:bg-muted');
+  });
+});
+
+describe('SettingsSubNav', () => {
+  const groups = [
+    {
+      id: 'delivery',
+      label: 'Delivery',
+      links: [
+        { id: 'rules', href: '/settings/delivery', label: 'Delivery rules' },
+        { id: 'fleets', href: '/settings/fleets', label: 'Delivery fleets' },
+      ],
+    },
+  ];
+
+  it('marks the current page with the selected background and strong primary text, not link blue', () => {
+    const out = html(<SettingsSubNav label="Settings pages" groups={groups} activeId="fleets" />);
+    const current = /<a[^>]*aria-current="page"[^>]*>/.exec(out)?.[0] ?? '';
+    expect(current).toContain('bg-selected');
+    expect(current).toContain('font-semibold');
+    expect(current).toContain('text-fg');
+    expect(current).not.toContain('text-link');
+    expect(out.match(/aria-current/g)).toHaveLength(1);
+  });
+});
+
+describe('SettingsTitle', () => {
+  it('is the page h1 with room for the pin star beside it', () => {
+    const out = html(<SettingsTitle>Delivery rules</SettingsTitle>);
+    expect(out).toContain('<h1');
+    expect(out).toContain('>Delivery rules</h1>');
+    expect(out).toContain('flex min-w-0 items-center');
   });
 });

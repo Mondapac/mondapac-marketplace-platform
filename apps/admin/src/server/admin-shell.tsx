@@ -42,6 +42,7 @@ export async function AdminShell({
   activeId,
   title,
   trail,
+  pinInPage = false,
   children,
 }: {
   readonly session: AdminSession;
@@ -49,6 +50,10 @@ export async function AdminShell({
   readonly title: string;
   /** The breadcrumb above the page when it is not the one the active menu item gives. */
   readonly trail?: readonly Crumb[];
+  /**
+   * The page draws the pin star beside its own title (settings pages), so the top bar has none.
+   */
+  readonly pinInPage?: boolean;
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
@@ -98,7 +103,7 @@ export async function AdminShell({
               trail={trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
               trailLabel={t('nav.breadcrumb')}
               phoneTitle={<PageTitle fallback={title} />}
-              titleAction={<PinButton />}
+              titleAction={pinInPage ? undefined : <PinButton />}
               actions={
                 <>
                   <ShortcutsButton />

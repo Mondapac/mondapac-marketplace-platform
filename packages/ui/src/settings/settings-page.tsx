@@ -1,6 +1,7 @@
 'use client';
 
 import type { FormEvent, ReactNode } from 'react';
+import { SettingsTitle } from './settings-title.tsx';
 import { useUnsavedChangesGuard, type LeaveLabels } from './unsaved-changes-guard.tsx';
 
 export interface SettingsPageProps {
@@ -14,7 +15,7 @@ export interface SettingsPageProps {
     readonly historyHref?: string;
     readonly historyLabel?: string;
   };
-  /** Buttons at the end of the header (pin, help). */
+  /** Buttons at the end of the header (help). The pin star sits beside the title, not here. */
   readonly actions?: ReactNode;
   /** A read-only, conflict or error-summary `Banner` above the sections. */
   readonly banner?: ReactNode;
@@ -60,7 +61,7 @@ export function SettingsPage({
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold text-fg">{title}</h1>
+          <SettingsTitle>{title}</SettingsTitle>
           {description ? (
             <p className="mt-1 max-w-prose text-sm text-fg-muted">{description}</p>
           ) : null}

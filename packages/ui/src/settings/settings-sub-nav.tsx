@@ -8,8 +8,10 @@ export interface SubNavGroup {
 
 /**
  * The second navigation column inside Settings: the same groups and links as the hub, already
- * filtered to what the caller may open, with the current page marked. It shows from 1180 px (the
- * caller decides where); below that the pages offer a "Back to Settings" link instead.
+ * filtered to what the caller may open, with the current page marked (a selected background and
+ * strong text). It sits in a 220 px column (the shell's grid sets it) and
+ * shows from 1180 px (the caller decides where); below that the pages offer a "Back to Settings"
+ * link instead.
  */
 export function SettingsSubNav({
   label,
@@ -37,7 +39,7 @@ export function SettingsSubNav({
                 aria-current={active ? 'page' : undefined}
                 className={`flex min-h-10 items-center rounded-md px-3 py-1 text-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${
                   active
-                    ? 'bg-selected font-medium text-link'
+                    ? 'bg-selected font-semibold text-fg'
                     : 'text-fg-secondary hover:bg-muted hover:text-fg'
                 }`}
               >

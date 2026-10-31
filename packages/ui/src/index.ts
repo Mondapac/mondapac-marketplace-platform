@@ -80,6 +80,8 @@ export {
   type SettingsErrorSummaryProps,
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
+export { SettingsSubNav, type SubNavGroup } from './settings/settings-sub-nav.tsx';
+export { SettingsTitle } from './settings/settings-title.tsx';
 export {
   SettingsConflictBanner,
   type SettingsConflictBannerProps,

@@ -1,4 +1,4 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError, NoAccess, SettingsTitle } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { AdminShell } from '../server/admin-shell.tsx';
@@ -70,7 +70,9 @@ export async function WalletPage({
   }
   return shell(
     <>
-      <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+      <div className="mb-2">
+        <SettingsTitle>{title}</SettingsTitle>
+      </div>
       {allowed ? (
         <div className="flex flex-col gap-4">
           <div className="flex max-w-(--mp-size-form-max) flex-col gap-1 text-fg-muted">
