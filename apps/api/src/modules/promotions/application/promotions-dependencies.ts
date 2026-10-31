@@ -2,6 +2,9 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { BatchCodeCrypto } from './ports/batch-code-crypto';
+import type { BatchCodeRepository } from './ports/batch-code.repository';
+import type { FlashSales } from './ports/flash-sales';
 import type { MarketSettingRepository } from './ports/market-setting.repository';
 import type { OptInRepository } from './ports/opt-in.repository';
 import type { PriceHistory } from './ports/price-history';
@@ -24,6 +27,9 @@ export interface PromotionsDependencies {
   readonly firstOrder: FirstOrderSettingsRepository;
   readonly thresholds: ShippingThresholdRepository;
   readonly policy: PromotionsPolicy;
+  readonly batchCodes: BatchCodeRepository;
+  readonly codeCrypto: BatchCodeCrypto;
+  readonly flashSales: FlashSales;
   readonly sellerActivity: SellerActivity;
   readonly priceHistory: PriceHistory;
   /** Spends an admin's fresh two-step proof inside the use case's own unit. */

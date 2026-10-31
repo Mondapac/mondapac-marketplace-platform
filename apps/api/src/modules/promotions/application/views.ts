@@ -1,11 +1,13 @@
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { Reward } from '../domain/calculation/types';
 import type {
+  BundleItemDraft,
   Funding,
   PausedBy,
   PromotionRecord,
   PromotionStatus,
   CreatableType,
+  TierDraft,
 } from '../domain/promotion';
 import type { UsageRecord } from './ports/promotion.repository';
 
@@ -32,6 +34,15 @@ interface Common {
   readonly productIds: readonly Id<'Product'>[];
   readonly sellerIds: readonly Id<'Seller'>[];
   readonly zones: readonly string[];
+  /** TIERED_CART: lowest threshold first; empty for any other type. */
+  readonly tiers: readonly TierDraft[];
+  readonly buyQty: number | null;
+  readonly getQty: number | null;
+  readonly groupQty: number | null;
+  readonly bundleItems: readonly BundleItemDraft[];
+  readonly maxRepeatsPerOrder: number | null;
+  /** FLASH_SALE: the limit of units and the zone the window was written in. */
+  readonly flash: { readonly unitLimit: number; readonly timeZone: string } | null;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
 }
@@ -91,6 +102,16 @@ function common(record: PromotionRecord): Common {
     productIds: record.productIds,
     sellerIds: record.sellerIds,
     zones: record.zones,
+    tiers: record.tiers,
+    buyQty: record.buyQty,
+    getQty: record.getQty,
+    groupQty: record.groupQty,
+    bundleItems: record.bundleItems,
+    maxRepeatsPerOrder: record.maxRepeatsPerOrder,
+    flash:
+      record.flashUnitLimit === null || record.flashTimeZone === null
+        ? null
+        : { unitLimit: record.flashUnitLimit, timeZone: record.flashTimeZone },
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

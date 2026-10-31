@@ -22,6 +22,8 @@ import { SetPromotionBudget } from '../../src/modules/promotions/application/use
 import { SetPromotionsStatus } from '../../src/modules/promotions/application/use-cases/set-promotions-status.use-case';
 import { ViewPromotionsSettings } from '../../src/modules/promotions/application/use-cases/view-promotions-settings.use-case';
 import { ConfigPromotionsPolicy } from '../../src/modules/promotions/infrastructure/config-promotions-policy';
+import { CryptoBatchCodeCrypto } from '../../src/modules/promotions/infrastructure/crypto-batch-code-crypto';
+import { PrismaBatchCodeRepository } from '../../src/modules/promotions/infrastructure/prisma-batch-code.repository';
 import { PrismaMarketSettingRepository } from '../../src/modules/promotions/infrastructure/prisma-market-setting.repository';
 import { PrismaOptInRepository } from '../../src/modules/promotions/infrastructure/prisma-opt-in.repository';
 import { PrismaPromotionRepository } from '../../src/modules/promotions/infrastructure/prisma-promotion.repository';
@@ -34,8 +36,18 @@ import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
-import { FakePriceHistory, FakeSellerActivity, FakeStepUp } from '../support/promotions-fakes';
-import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import {
+  FakeFlashSales,
+  FakePriceHistory,
+  FakeSellerActivity,
+  FakeStepUp,
+} from '../support/promotions-fakes';
+import {
+  TEST_CODE_PEPPER,
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_MARKETS,
+} from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
@@ -60,7 +72,28 @@ const TABLES = [
   'first_order_settings',
   'free_shipping_thresholds',
   'market_settings',
+  'promotion_tiers',
+  'promotion_bundle_items',
+  'promotion_batch_codes',
 ] as const;
+
+/**
+ * The state of a TRUNCATE ... CASCADE. TRUNCATE takes exclusive locks on every table it reaches, so
+ * while another spec file uses the same tables it can lose a deadlock (40P01) or time out (55P03);
+ * the statement is then asked again, until the trigger's RESTRICT answers.
+ */
+async function truncateState(client: Client, table: string): Promise<string | undefined> {
+  let last: string | undefined;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    last = await client.query(`TRUNCATE promotions.${table} CASCADE`).then(
+      () => 'allowed',
+      (error: { code?: string }) => error.code,
+    );
+    if (last !== '40P01' && last !== '55P03') return last;
+    await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+  }
+  return last;
+}
 
 describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -122,6 +155,9 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       firstOrder: new PrismaFirstOrderSettingsRepository(db.service),
       thresholds: new PrismaShippingThresholdRepository(db.service),
       policy,
+      batchCodes: new PrismaBatchCodeRepository(db.service),
+      codeCrypto: new CryptoBatchCodeCrypto(TEST_CODE_PEPPER),
+      flashSales: new FakeFlashSales(),
       sellerActivity: activity,
       priceHistory: new FakePriceHistory(),
       stepUp,
@@ -307,9 +343,15 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
         await state(owner.query(`DELETE FROM promotions.promotions WHERE id = $1`, [promotionId])),
       ).toBe(RESTRICT);
       for (const table of TABLES.filter(
-        (t) => !['promotion_targets', 'free_shipping_thresholds'].includes(t),
+        (t) =>
+          ![
+            'promotion_targets',
+            'free_shipping_thresholds',
+            'promotion_tiers',
+            'promotion_bundle_items',
+          ].includes(t),
       )) {
-        expect(await state(owner.query(`TRUNCATE promotions.${table} CASCADE`))).toBe(RESTRICT);
+        expect(await truncateState(owner, table)).toBe(RESTRICT);
       }
       expect(
         await state(

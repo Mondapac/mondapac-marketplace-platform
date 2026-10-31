@@ -20,6 +20,13 @@ export const CREATABLE_TYPES = [
   'CART_CODE',
   'FREE_SHIPPING',
   'CO_FUNDED_CAMPAIGN',
+  // Phase 2.
+  'TIERED_CART',
+  'BUY_X_GET_Y',
+  'MULTI_BUY',
+  'BUNDLE',
+  'FLASH_SALE',
+  'BATCH_CODE',
 ] as const satisfies readonly PromotionType[];
 export type CreatableType = (typeof CREATABLE_TYPES)[number];
 
@@ -39,6 +46,18 @@ export interface PromotionRules {
   readonly newSellerDays: number;
   readonly platformBudgetStepUpMinor: bigint;
   readonly gstRulingConfirmed: boolean;
+}
+
+/** One tier of a tiered cart discount: the goods amount it starts at and its reward. */
+export interface TierDraft {
+  readonly thresholdMinor: bigint;
+  readonly reward: Reward;
+}
+
+/** One item of a bundle: a product and how many units of it make one set. */
+export interface BundleItemDraft {
+  readonly productId: Id<'Product'>;
+  readonly quantity: number;
 }
 
 export interface PromotionDraft {
@@ -65,6 +84,26 @@ export interface PromotionDraft {
   readonly sellerIds: readonly Id<'Seller'>[];
   /** Empty is any delivery zone. */
   readonly zones: readonly string[];
+  // Phase 2 parameters, set for their type only (checkDraft). The reward of a TIERED_CART is its
+  // highest tier; the reward of a MULTI_BUY is FIXED with the price of one group; the reward of a
+  // BUNDLE is FIXED with the amount off one set; the reward of BUY_X_GET_Y and FLASH_SALE is per
+  // unit (PERCENT or FIXED off the unit price).
+  /** TIERED_CART: the tiers, lowest threshold first. */
+  readonly tiers: readonly TierDraft[];
+  /** BUY_X_GET_Y: buy this many units... */
+  readonly buyQty: number | null;
+  /** ...and the cheapest this many more get the reward. */
+  readonly getQty: number | null;
+  /** MULTI_BUY: units in one group. */
+  readonly groupQty: number | null;
+  /** BUNDLE: the items of one set (also the promotion's product targets). */
+  readonly bundleItems: readonly BundleItemDraft[];
+  /** BUY_X_GET_Y, MULTI_BUY, BUNDLE: the most groups or sets in one order; null for no limit. */
+  readonly maxRepeatsPerOrder: number | null;
+  /** FLASH_SALE: the units the sale may sell in all. */
+  readonly flashUnitLimit: number | null;
+  /** FLASH_SALE: the IANA zone of the owning party, in which the window was written. */
+  readonly flashTimeZone: string | null;
 }
 
 /** A stored promotion. */
@@ -90,6 +129,30 @@ export const MAX_PRODUCT_TARGETS = 500;
 export const MAX_SELLER_TARGETS = 100;
 export const MAX_ZONE_TARGETS = 50;
 export const MAX_BPS = 10000;
+export const MAX_TIERS = 10;
+export const MAX_BUNDLE_ITEMS = 20;
+/** The most units a group, a set, a repeat limit or a quantity in a bundle may name. */
+export const MAX_UNITS = 1000;
+/** Types only a seller makes, types only an admin makes (the rest either, with the owner's money). */
+export const SELLER_ONLY_TYPES: readonly CreatableType[] = [
+  'SELLER_SALE',
+  'BUY_X_GET_Y',
+  'MULTI_BUY',
+  'BUNDLE',
+];
+export const ADMIN_ONLY_TYPES: readonly CreatableType[] = [
+  'FREE_SHIPPING',
+  'CO_FUNDED_CAMPAIGN',
+  'TIERED_CART',
+  'BATCH_CODE',
+];
+/** Types an owner must aim at products (a seller's own; the platform's flash sale names them too). */
+const NEEDS_PRODUCTS: readonly CreatableType[] = [
+  'SELLER_SALE',
+  'BUY_X_GET_Y',
+  'MULTI_BUY',
+  'FLASH_SALE',
+];
 const CODE_PATTERN = /^[A-Z0-9][A-Z0-9-]{3,31}$/;
 const ZONE_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_COUNT = 2_000_000_000;
@@ -103,11 +166,17 @@ export function layerOf(
   switch (type) {
     case 'SELLER_SALE':
     case 'CO_FUNDED_CAMPAIGN':
+    case 'BUY_X_GET_Y':
+    case 'MULTI_BUY':
+    case 'BUNDLE':
+    case 'FLASH_SALE':
       return 'ITEM';
     case 'CART_DISCOUNT':
     case 'CART_CODE':
       return kind === 'seller' ? 'SELLER_CART' : 'PLATFORM_CART';
     case 'FIRST_ORDER':
+    case 'TIERED_CART':
+    case 'BATCH_CODE':
       return 'PLATFORM_CART';
     case 'FREE_SHIPPING':
       return 'SHIPPING';
@@ -205,6 +274,121 @@ function idList<K extends string>(
   return out;
 }
 
+function parseReward(raw: unknown, path: string, issues: FieldIssue[]): Reward | null {
+  if (!isRecord(raw) || !isIn(REWARD_KINDS, raw.kind)) {
+    issues.push({ path, code: 'value' });
+    return null;
+  }
+  if (raw.kind === 'PERCENT') {
+    const bps = raw.bps;
+    if (typeof bps !== 'number' || !Number.isInteger(bps) || bps < 1 || bps > MAX_BPS) {
+      issues.push({ path: `${path}.bps`, code: 'value' });
+      return null;
+    }
+    return { kind: 'PERCENT', bps };
+  }
+  const amount = parseMinorUnits(raw.amountMinor);
+  if (!amount.ok || amount.value < 1n) {
+    issues.push({ path: `${path}.amountMinor`, code: 'value' });
+    return null;
+  }
+  return { kind: 'FIXED', amount: amount.value };
+}
+
+function boundedCount(
+  raw: unknown,
+  path: string,
+  issues: FieldIssue[],
+  max: number,
+): number | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > max) {
+    issues.push({ path, code: 'value' });
+    return null;
+  }
+  return raw;
+}
+
+function parseTiers(raw: unknown, issues: FieldIssue[]): TierDraft[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_TIERS) {
+    issues.push({ path: 'tiers', code: Array.isArray(raw) ? 'too-many' : 'type' });
+    return [];
+  }
+  const tiers: TierDraft[] = [];
+  for (const [index, item] of raw.entries()) {
+    const at = `tiers.${index}`;
+    if (!isRecord(item)) {
+      issues.push({ path: at, code: 'type' });
+      continue;
+    }
+    const threshold = parseMinorUnits(item.thresholdMinor);
+    if (!threshold.ok || threshold.value < 1n)
+      issues.push({ path: `${at}.thresholdMinor`, code: 'value' });
+    const reward = parseReward(item.reward, `${at}.reward`, issues);
+    if (threshold.ok && threshold.value >= 1n && reward !== null) {
+      tiers.push({ thresholdMinor: threshold.value, reward });
+    }
+  }
+  return tiers.sort((a, b) =>
+    a.thresholdMinor < b.thresholdMinor ? -1 : a.thresholdMinor > b.thresholdMinor ? 1 : 0,
+  );
+}
+
+function parseBundleItems(raw: unknown, issues: FieldIssue[]): BundleItemDraft[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_BUNDLE_ITEMS) {
+    issues.push({ path: 'bundleItems', code: Array.isArray(raw) ? 'too-many' : 'type' });
+    return [];
+  }
+  const items: BundleItemDraft[] = [];
+  for (const [index, item] of raw.entries()) {
+    const at = `bundleItems.${index}`;
+    if (!isRecord(item)) {
+      issues.push({ path: at, code: 'type' });
+      continue;
+    }
+    const productId =
+      typeof item.productId === 'string' ? parseId<'Product'>(item.productId) : null;
+    if (productId === null || !productId.ok) {
+      issues.push({ path: `${at}.productId`, code: 'value' });
+      continue;
+    }
+    if (items.some((other) => other.productId === productId.value)) {
+      issues.push({ path: `${at}.productId`, code: 'duplicate' });
+      continue;
+    }
+    const quantity = boundedCount(item.quantity ?? 1, `${at}.quantity`, issues, MAX_UNITS);
+    if (quantity !== null) items.push({ productId: productId.value, quantity });
+  }
+  return items.sort((a, b) => (a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0));
+}
+
+/** The IANA zone a flash window is written in: a zone this runtime knows, in its canonical spelling. */
+function zoneOf(raw: unknown): string | null {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 64) return null;
+  try {
+    return Temporal.Instant.fromEpochMilliseconds(0).toZonedDateTimeISO(raw).timeZoneId;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A flash sale's wall-clock time in the owning party's zone, as an instant. A time that does not
+ * exist or happens twice in that zone (a clock change) is refused, never guessed.
+ */
+function localInstant(raw: unknown, zone: string): Temporal.Instant | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    return Temporal.PlainDateTime.from(raw, { overflow: 'reject' })
+      .toZonedDateTime(zone, { disambiguation: 'reject' })
+      .toInstant();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Reads a draft from an untrusted body: types, shapes and sizes only. Amounts arrive as digit
  * strings of minor units (ADR-0007), instants as ISO text. Business rules are
@@ -255,30 +439,75 @@ export function parseDraft(raw: unknown): Result<PromotionDraft, readonly FieldI
     }
   }
 
-  const startsAt = instantOf(raw.startsAt);
-  if (startsAt === null)
+  // A flash sale carries its limit and the zone of the owning party; its window may be written as
+  // wall-clock times in that zone (stored as the instants they are) or as instants.
+  let flashUnitLimit: number | null = null;
+  let flashTimeZone: string | null = null;
+  let flashStart: Temporal.Instant | null = null;
+  let flashEnd: Temporal.Instant | null = null;
+  const rawFlash = raw.flash;
+  if (rawFlash !== undefined && rawFlash !== null) {
+    if (!isRecord(rawFlash)) {
+      issues.push({ path: 'flash', code: 'type' });
+    } else {
+      flashUnitLimit = boundedCount(rawFlash.unitLimit, 'flash.unitLimit', issues, MAX_COUNT);
+      if (flashUnitLimit === null && rawFlash.unitLimit === undefined) {
+        issues.push({ path: 'flash.unitLimit', code: 'required' });
+      }
+      flashTimeZone = zoneOf(rawFlash.timeZone);
+      if (flashTimeZone === null) {
+        issues.push({
+          path: 'flash.timeZone',
+          code: rawFlash.timeZone === undefined ? 'required' : 'value',
+        });
+      }
+      const hasLocal = rawFlash.startsLocal !== undefined || rawFlash.endsLocal !== undefined;
+      if (hasLocal && flashTimeZone !== null) {
+        flashStart = localInstant(rawFlash.startsLocal, flashTimeZone);
+        flashEnd = localInstant(rawFlash.endsLocal, flashTimeZone);
+        if (flashStart === null) issues.push({ path: 'flash.startsLocal', code: 'value' });
+        if (flashEnd === null) issues.push({ path: 'flash.endsLocal', code: 'value' });
+        if (raw.startsAt !== undefined) issues.push({ path: 'startsAt', code: 'not-allowed' });
+        if (raw.endsAt !== undefined && raw.endsAt !== null) {
+          issues.push({ path: 'endsAt', code: 'not-allowed' });
+        }
+      }
+    }
+  }
+
+  const startsAt = flashStart ?? instantOf(raw.startsAt);
+  if (
+    startsAt === null &&
+    flashStart === null &&
+    !issues.some((i) => i.path.startsWith('flash.starts'))
+  ) {
     issues.push({ path: 'startsAt', code: raw.startsAt === undefined ? 'required' : 'value' });
-  let endsAt: Temporal.Instant | null = null;
-  if (raw.endsAt !== undefined && raw.endsAt !== null) {
+  }
+  let endsAt: Temporal.Instant | null = flashEnd;
+  if (flashEnd === null && raw.endsAt !== undefined && raw.endsAt !== null) {
     endsAt = instantOf(raw.endsAt);
     if (endsAt === null) issues.push({ path: 'endsAt', code: 'value' });
   }
 
+  // The reward of a tiered cart and of a multi-buy is derived from their own fields.
+  const tiers = parseTiers(raw.tiers, issues);
+  const groupPrice = optionalMoney(raw.groupPriceMinor, 'groupPriceMinor', issues, { min: 1n });
   let reward: Reward | null = null;
-  const rawReward = raw.reward;
-  if (!isRecord(rawReward) || !isIn(REWARD_KINDS, rawReward.kind)) {
-    issues.push({ path: 'reward', code: 'value' });
-  } else if (rawReward.kind === 'PERCENT') {
-    const bps = rawReward.bps;
-    if (typeof bps !== 'number' || !Number.isInteger(bps) || bps < 1 || bps > MAX_BPS) {
-      issues.push({ path: 'reward.bps', code: 'value' });
-    } else {
-      reward = { kind: 'PERCENT', bps };
+  if (type === 'TIERED_CART' || type === 'MULTI_BUY') {
+    if (raw.reward !== undefined) issues.push({ path: 'reward', code: 'not-allowed' });
+    if (type === 'TIERED_CART') {
+      const top = tiers.at(-1);
+      if (top !== undefined) reward = top.reward;
+      else if (!issues.some((issue) => issue.path.startsWith('tiers'))) {
+        issues.push({ path: 'tiers', code: 'required' });
+      }
+    } else if (groupPrice !== null) {
+      reward = { kind: 'FIXED', amount: groupPrice };
+    } else if (raw.groupPriceMinor === undefined) {
+      issues.push({ path: 'groupPriceMinor', code: 'required' });
     }
   } else {
-    const amount = parseMinorUnits(rawReward.amountMinor);
-    if (!amount.ok || amount.value < 1n) issues.push({ path: 'reward.amountMinor', code: 'value' });
-    else reward = { kind: 'FIXED', amount: amount.value };
+    reward = parseReward(raw.reward, 'reward', issues);
   }
 
   const capMinor = optionalMoney(raw.capMinor, 'capMinor', issues, { min: 1n });
@@ -290,7 +519,27 @@ export function parseDraft(raw: unknown): Result<PromotionDraft, readonly FieldI
   const maxTotalUses = optionalCount(raw.maxTotalUses, 'maxTotalUses', issues);
   const maxUsesPerCustomer = optionalCount(raw.maxUsesPerCustomer, 'maxUsesPerCustomer', issues);
 
-  const productIds = idList<'Product'>(raw.productIds, 'productIds', MAX_PRODUCT_TARGETS, issues);
+  const buyQty = boundedCount(raw.buyQty, 'buyQty', issues, MAX_UNITS);
+  const getQty = boundedCount(raw.getQty, 'getQty', issues, MAX_UNITS);
+  const groupQty = boundedCount(raw.groupQty, 'groupQty', issues, MAX_UNITS);
+  const maxRepeatsPerOrder = boundedCount(
+    raw.maxRepeatsPerOrder,
+    'maxRepeatsPerOrder',
+    issues,
+    MAX_UNITS,
+  );
+  const bundleItems = parseBundleItems(raw.bundleItems, issues);
+  if (type === 'BUNDLE' && raw.bundleItems === undefined) {
+    issues.push({ path: 'bundleItems', code: 'required' });
+  }
+  // The products of a bundle are its items: they cannot be named twice.
+  if (type === 'BUNDLE' && raw.productIds !== undefined && raw.productIds !== null) {
+    issues.push({ path: 'productIds', code: 'not-allowed' });
+  }
+  const productIds =
+    type === 'BUNDLE'
+      ? bundleItems.map((item) => item.productId)
+      : idList<'Product'>(raw.productIds, 'productIds', MAX_PRODUCT_TARGETS, issues);
   const sellerIds = idList<'Seller'>(raw.sellerIds, 'sellerIds', MAX_SELLER_TARGETS, issues);
   const zones: string[] = [];
   if (raw.zones !== undefined && raw.zones !== null) {
@@ -338,7 +587,110 @@ export function parseDraft(raw: unknown): Result<PromotionDraft, readonly FieldI
     productIds,
     sellerIds,
     zones,
+    tiers,
+    buyQty,
+    getQty,
+    groupQty,
+    bundleItems,
+    maxRepeatsPerOrder,
+    flashUnitLimit,
+    flashTimeZone,
   });
+}
+
+/**
+ * The reward the Market's percent limits are read against. A percent off a unit is that percent;
+ * "buy X get Y" at a percent is the share of a full group it takes off (buy 2 get 1 free is
+ * 3333 bps), so the limits mean the same for every type. A fixed amount, a group price and an
+ * amount off a set cannot be compared with a price here: the calculation holds them to the same
+ * limits per line instead.
+ */
+export function approvalRewardOf(
+  draft: Pick<PromotionDraft, 'type' | 'reward' | 'buyQty' | 'getQty'>,
+): Reward {
+  if (
+    draft.type === 'BUY_X_GET_Y' &&
+    draft.reward.kind === 'PERCENT' &&
+    draft.buyQty !== null &&
+    draft.getQty !== null
+  ) {
+    return {
+      kind: 'PERCENT',
+      bps: Math.floor((draft.getQty * draft.reward.bps) / (draft.buyQty + draft.getQty)),
+    };
+  }
+  return draft.reward;
+}
+
+/** The fields each type needs, allows and forbids; the numbers of the type are checked with them. */
+function checkTypeFields(
+  draft: PromotionDraft,
+  bad: (path: string, code: string) => unknown,
+): void {
+  const only = (present: boolean, type: CreatableType | readonly CreatableType[], path: string) => {
+    const types = typeof type === 'string' ? [type] : type;
+    if (present && !types.includes(draft.type)) bad(path, 'not-allowed');
+  };
+  only(draft.tiers.length > 0, 'TIERED_CART', 'tiers');
+  only(draft.buyQty !== null, 'BUY_X_GET_Y', 'buyQty');
+  only(draft.getQty !== null, 'BUY_X_GET_Y', 'getQty');
+  only(draft.groupQty !== null, 'MULTI_BUY', 'groupQty');
+  only(draft.bundleItems.length > 0, 'BUNDLE', 'bundleItems');
+  only(draft.flashUnitLimit !== null, 'FLASH_SALE', 'flash');
+  only(draft.flashTimeZone !== null, 'FLASH_SALE', 'flash');
+  only(
+    draft.maxRepeatsPerOrder !== null,
+    ['BUY_X_GET_Y', 'MULTI_BUY', 'BUNDLE'],
+    'maxRepeatsPerOrder',
+  );
+
+  switch (draft.type) {
+    case 'TIERED_CART': {
+      if (draft.tiers.length === 0) bad('tiers', 'required');
+      if (draft.minSpendMinor !== null) bad('minSpendMinor', 'not-allowed');
+      const kind = draft.tiers[0]?.reward.kind;
+      for (const [index, tier] of draft.tiers.entries()) {
+        const before = draft.tiers[index - 1];
+        if (tier.reward.kind !== kind) bad(`tiers.${index}.reward`, 'mixed-kinds');
+        if (before !== undefined) {
+          if (tier.thresholdMinor <= before.thresholdMinor)
+            bad(`tiers.${index}.thresholdMinor`, 'not-increasing');
+          const more =
+            tier.reward.kind === 'PERCENT' && before.reward.kind === 'PERCENT'
+              ? tier.reward.bps > before.reward.bps
+              : tier.reward.kind === 'FIXED' && before.reward.kind === 'FIXED'
+                ? tier.reward.amount > before.reward.amount
+                : true;
+          if (!more) bad(`tiers.${index}.reward`, 'not-increasing');
+        }
+        // A fixed amount off the goods must be less than the goods it starts at.
+        if (tier.reward.kind === 'FIXED' && tier.reward.amount >= tier.thresholdMinor) {
+          bad(`tiers.${index}.reward.amountMinor`, 'exceeds-threshold');
+        }
+      }
+      break;
+    }
+    case 'BUY_X_GET_Y':
+      if (draft.buyQty === null) bad('buyQty', 'required');
+      if (draft.getQty === null) bad('getQty', 'required');
+      break;
+    case 'MULTI_BUY':
+      if (draft.groupQty === null) bad('groupQty', 'required');
+      else if (draft.groupQty < 2) bad('groupQty', 'value');
+      break;
+    case 'BUNDLE':
+      if (draft.bundleItems.length < 2) bad('bundleItems', 'too-few');
+      if (draft.reward.kind !== 'FIXED') bad('reward.kind', 'value');
+      break;
+    case 'FLASH_SALE':
+      if (draft.flashUnitLimit === null) bad('flash.unitLimit', 'required');
+      if (draft.flashTimeZone === null) bad('flash.timeZone', 'required');
+      // A real end, so a countdown is never faked.
+      if (draft.endsAt === null) bad('endsAt', 'required');
+      break;
+    default:
+      break;
+  }
 }
 
 /**
@@ -368,17 +720,13 @@ export function checkDraft(
 
   // Who may make which type, and with whose money.
   if (seller) {
-    if (draft.type === 'FREE_SHIPPING' || draft.type === 'CO_FUNDED_CAMPAIGN') {
-      bad('type', 'not-allowed');
-    }
+    if (ADMIN_ONLY_TYPES.includes(draft.type)) bad('type', 'not-allowed');
     if (draft.funding !== 'SELLER') bad('funding', 'seller-money-only');
     if (draft.specialCampaign) bad('specialCampaign', 'not-allowed');
     if (draft.testMode) bad('testMode', 'not-allowed');
     if (draft.sellerIds.length > 0) bad('sellerIds', 'not-allowed');
-    if (draft.type === 'SELLER_SALE' && draft.productIds.length === 0)
-      bad('productIds', 'required');
   } else {
-    if (draft.type === 'SELLER_SALE') bad('type', 'not-allowed');
+    if (SELLER_ONLY_TYPES.includes(draft.type)) bad('type', 'not-allowed');
     if (draft.type === 'CO_FUNDED_CAMPAIGN') {
       if (draft.funding !== 'CO_FUNDED') bad('funding', 'value');
     } else if (draft.funding !== 'PLATFORM') {
@@ -386,6 +734,10 @@ export function checkDraft(
     }
     if (draft.budgetMinor === null) bad('budgetMinor', 'required');
   }
+  if (NEEDS_PRODUCTS.includes(draft.type) && draft.productIds.length === 0) {
+    bad('productIds', 'required');
+  }
+  checkTypeFields(draft, bad);
   if (draft.type === 'FREE_SHIPPING' && draft.minSpendMinor === null)
     bad('minSpendMinor', 'required');
   if (draft.type !== 'FREE_SHIPPING' && draft.zones.length > 0) bad('zones', 'not-allowed');
@@ -398,12 +750,13 @@ export function checkDraft(
 
   // The seller maximum: a percent reward is checked here; a fixed amount cannot be compared with a
   // price here, so the calculation holds it to the same maximum per line.
+  const headline = approvalRewardOf(draft);
   if (
     draft.funding === 'SELLER' &&
-    draft.reward.kind === 'PERCENT' &&
-    draft.reward.bps > rules.sellerMaxDiscountBps
+    headline.kind === 'PERCENT' &&
+    headline.bps > rules.sellerMaxDiscountBps
   ) {
-    bad('reward.bps', 'exceeds-seller-maximum');
+    bad(draft.type === 'BUY_X_GET_Y' ? 'getQty' : 'reward.bps', 'exceeds-seller-maximum');
   }
   // A co-funded percent reward: the seller pays what the platform does not, so the seller's share
   // of the discount (reward x (10000 - split)) must stay within the seller maximum too. A fixed

@@ -36,6 +36,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { GenerateBatchCodes } from '../application/use-cases/generate-batch-codes.use-case';
+import { ViewBatchCodeSummary } from '../application/use-cases/view-batch-code-summary.use-case';
 import { CreateOwnPromotion } from '../application/use-cases/create-own-promotion.use-case';
 import { CreatePromotion } from '../application/use-cases/create-promotion.use-case';
 import { DecidePromotionReview } from '../application/use-cases/decide-promotion-review.use-case';
@@ -61,7 +63,9 @@ import { ViewPromotion } from '../application/use-cases/view-promotion.use-case'
 import { ViewPromotionsSettings } from '../application/use-cases/view-promotions-settings.use-case';
 import { closedBody, closedQuery, limitOf, refusal } from './http-answers';
 import {
+  BatchCodeSummaryBody,
   BudgetRequest,
+  GenerateBatchCodesRequest,
   FirstOrderBody,
   firstOrderBody,
   FirstOrderRequest,
@@ -116,6 +120,14 @@ const PROMOTION_FIELDS = [
   'productIds',
   'sellerIds',
   'zones',
+  'tiers',
+  'buyQty',
+  'getQty',
+  'groupQty',
+  'groupPriceMinor',
+  'bundleItems',
+  'maxRepeatsPerOrder',
+  'flash',
 ] as const;
 const LIST_QUERY = ['status', 'limit'] as const;
 
@@ -190,6 +202,8 @@ export class AdminPromotionsController {
     private readonly pause: PausePromotion,
     private readonly resume: ResumePromotion,
     private readonly setBudget: SetPromotionBudget,
+    private readonly generateCodes: GenerateBatchCodes,
+    private readonly codeSummary: ViewBatchCodeSummary,
     private readonly listReviews: ListPromotionReviews,
     private readonly decideReview: DecidePromotionReview,
     private readonly viewFirstOrder: ViewFirstOrderSettings,
@@ -466,6 +480,79 @@ export class AdminPromotionsController {
     const { budgetMinor } = bodyOf(request, requestBody, ['budgetMinor']);
     const result = await this.setBudget.execute(context, { promotionId: id, budgetMinor });
     return promotionBody(settle(this.#logger, 'promotions.budget-route', context, result, 'set'));
+  }
+
+  @Post('promotions/:id/batch-codes')
+  @ApiOperation({
+    summary: 'Generate unique single-use codes for a batch-code promotion (admin manager), as CSV',
+    description:
+      'Needs promotions.promotion.manage; refused in an acting-as session. The answer is a CSV ' +
+      '(`text/csv`, header `code`, one code per line): the only time the plain codes exist, since ' +
+      'only their hashes are stored, so save it. A code is unguessable (cryptographic random, ' +
+      'the Market length and alphabet) and can be redeemed once. A promotion whose platform ' +
+      'budget is above the Market step-up amount needs a fresh two-step code: ' +
+      'second-factor.required (403, details.actionKey) otherwise. Audited with the count, never ' +
+      'the codes.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiBody({ type: GenerateBatchCodesRequest })
+  @ApiCreatedResponse({ description: 'text/csv', type: String })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, request.csrf, second-factor.required or enrolment-required',
+  })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: 'promotions.invalid-state' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async generateBatchCodes(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('id') id: string,
+    @Body() requestBody: unknown,
+  ) {
+    noStore(response);
+    const { count } = bodyOf(request, requestBody, ['count']);
+    const result = await this.generateCodes.execute(context, { promotionId: id, count });
+    const batch = settle(
+      this.#logger,
+      'promotions.generate-batch-codes-route',
+      context,
+      result,
+      'created',
+    );
+    response.status(201);
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="promotion-${batch.promotionId}-codes-${batch.batchId}.csv"`,
+    );
+    return ['code', ...batch.codes].join('\r\n') + '\r\n';
+  }
+
+  @Get('promotions/:id/batch-codes')
+  @ApiOperation({
+    summary: 'How many single-use codes a batch-code promotion holds and how many were used',
+    description: 'Needs promotions.promotion.manage. Counts only; a code is never readable again.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({ type: BatchCodeSummaryBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async batchCodeSummary(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('id') id: string,
+  ) {
+    noStore(response);
+    const result = await this.codeSummary.execute(context, { promotionId: id });
+    return settle(this.#logger, 'promotions.batch-code-summary-route', context, result, 'read');
   }
 
   @Get('reviews')
