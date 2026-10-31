@@ -582,15 +582,17 @@ function pcLangMenu(sel, missing) {
   return frame({ name: 'Language picker (open)', dir: 'V', w: 240, pad: 'space/1-5', gap: 'space/0-5', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' },
     PC_LANGS.map(item).concat([text('A search box appears from 8 languages.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]));
 }
-// A name in one more language: a small language dropdown and the text. Required languages are listed already; others come from "Add a language".
-function pcLangRow(code, v, o) {
+// One field for every language (john 31 Oct): the label row carries the language chip; the chip switches which language the box shows.
+// A wrapping line under the box lists the languages still missing.
+function pcLangField(label, code, v, o) {
   o = o || {};
-  const l = PC_LANGS.filter(function (x) { return x[0] === code; })[0];
-  return frame({ name: 'name · ' + l[2], dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [pcLangPicker(code, null), pcRtl(v, o.st, { ph: o.ph || 'Name in ' + l[2] }),
-    o.removable ? inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' }) : null]);
-}
-function pcOtherNames(rows, help) {
-  return pcField('Name in other languages', frame({ name: 'other languages', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, rows.concat([ppLink('Add a language', 'plus', 'add-language')])), help);
+  const missing = o.missing || [];
+  const names = PC_LANGS.filter(function (l) { return missing.indexOf(l[0]) >= 0; }).map(function (l) { return l[2]; });
+  const ctl = code === 'en' ? pcIn(v, o.st) : pcRtl(v, o.st, { ph: o.ph || label + ' in ' + PC_LANGS.filter(function (l) { return l[0] === code; })[0][2] });
+  return frame({ name: 'field · ' + label, dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
+    frame({ name: 'label row', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text(label, 'Body/Strong'), pcSp(), pcLangPicker(code, missing)]), ctl,
+    names.length ? frame({ name: 'missing line', dir: 'H', gap: 'space/1-5', align: 'center', sizeH: 'FILL' }, [icon('alert-circle', 'status/attention/fg', 14), text('Missing in ' + names.join(', '), 'Caption/Default', 'status/attention/fg', { sizeH: 'FILL' })]) : null,
+    o.help ? text(o.help, 'Caption/Default', 'text/muted', { sizeH: 'FILL' }) : null]);
 }
 function pcDetails(o) {
   const dis = o.viewOnly ? 'Disabled' : null;
@@ -690,7 +692,7 @@ function pcScene(name, dialogs) {
 function pcReason() { return pcField('Reason (for the audit log)', inst('Textarea', { State: 'Default', Value: '' }, { name: 'reason', sizeH: 'FILL' }), '10 to 500 characters.'); }
 function pcDialogsA() {
   const add = pcDialog('Add category', 'Add category', 'It starts Hidden. Show it once the image and search details are ready.', [
-    pcField('Name · English', pcIn('Sella rice'), 'Required.'), pcOtherNames([pcLangRow('fa', 'برنج سلا')], 'Persian is listed because it is live for customers. Add draft languages such as Arabic now or later.'),
+    pcLangField('Name', 'fa', 'برنج سلا', { missing: ['ar'], help: 'English and Persian are required (Persian is live for customers). Arabic is a draft: add it now or later.' }),
     text('Add the short description and keywords per language on the Details tab.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }), pcField('Parent', inst('Select', { State: 'Filled', Value: 'Pantry › Rice and grains › Rice' }, { name: 'parent', sizeH: 'FILL' }), 'Level 4 of 4. A subcategory can’t have children.'),
     pcField('URL name', pcIn('sella-rice'), 'mondapac.com.au/c/sella-rice')], 'Add category');
   const url = pcDialog('Change URL name', 'Change the URL name?', 'The old address keeps working: it sends buyers and search engines to the new one (301). It isn’t given to another category for 12 months.', [
@@ -891,7 +893,7 @@ function paFeatureSets() {
   const editor = card('Feature set editor', [frame({ name: 'editor body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
     frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('Rice and grains', 'Heading/H2'), bdg('Success', 'Dot', 'Active'), pcSp(), btn('Seller form preview', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye' } })]),
     text('Used by Basmati rice, Jasmine rice and Brown rice · 138 products', 'Body/Small', 'text/muted'),
-    frame({ name: 'names', dir: 'V', gap: 'space/3', sizeH: 'FILL' }, [pcField('Name · English', pcIn('Rice and grains')), pcOtherNames([pcLangRow('fa', 'برنج و غلات'), pcLangRow('ar', '', { ph: 'Missing', removable: true })])]),
+    pcLangField('Name', 'en', 'Rice and grains', { missing: ['ar'] }),
     inst('InfoBanner', { Tone: 'Attention', Title: '14 live products are missing required details', Body: 'Grain length became required on 29 Oct. They stay on sale; sellers must fill it in before their next change is accepted.', 'Show action': true, Action: 'View report' }, { name: 'missing', sizeH: 'FILL' }),
     paSetGroup('Core', 'Shared by every feature set. Edit it once in Settings.', [paSetRow('Brand', 'Brand', 'Required', { locked: true }), paSetRow('Country of origin', 'Single choice', 'Required', { locked: true }), paSetRow('Net weight', 'Number with unit', 'Required', { locked: true })], true),
     paSetGroup('Rice details', null, [paSetRow('Pack size', 'Single choice', 'Required', { variant: true }), paSetRow('Grain length', 'Single choice', 'Required'), paSetRow('Variety', 'Text', 'Recommended'), paSetRow('Cooking time', 'Number with unit', 'Optional')]),
@@ -907,12 +909,11 @@ function paBrands() {
     const st = b[5] === 'Active' ? bdg('Success', 'Dot', 'Active') : (b[5] === 'Draft' ? bdg('Neutral', 'Dot', 'Draft') : bdg('Attention', 'None', 'Possible duplicate'));
     return row([[twoLine(b[0], b[1], i === 0 ? 'Body/Strong' : 'Body/Default'), 'fill'], [text(b[2] || '—', 'Body/Small', 'text/muted', { truncate: true, w: 110 }), 130], [text(b[4], 'Body/Small', 'text/muted'), 90], [st, 150]], i === 0, false, 56);
   })));
-  const alias = function (lang, v, rtl) { return frame({ name: 'alias · ' + lang, dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [pcLangPicker({ 'فارسی': 'fa', 'العربية': 'ar', English: 'en' }[lang], null), rtl ? pcRtl(v) : pcIn(v), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]); };
   const panel = card('Brand details', [frame({ name: 'brand body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
     frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [rect({ name: 'logo', w: 40, h: 40, fill: 'bg/muted', radius: 'radius/control' }), text('Tilda', 'Heading/H2'), bdg('Success', 'Dot', 'Active'), pcSp(), btn('Hide', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye-off' } })]),
     inst('InfoBanner', { Tone: 'Attention', Title: '"Tilda Rice" looks like the same brand', Body: '3 products. Merging makes "Tilda Rice" an alias of Tilda and moves its products.', 'Show action': true, Action: 'Merge…' }, { name: 'duplicate', sizeH: 'FILL' }),
     pcField('Name', pcIn('Tilda'), 'Brand names aren’t translated. Add aliases so buyers find it in their language.'), paLock('URL name', '/brands/tilda'), pcField('Country of origin', inst('Select', { State: 'Filled', Value: 'United Kingdom' }, { name: 'country', sizeH: 'FILL' })),
-    text('Aliases for search', 'Caption/Strong', 'text/muted'), alias('فارسی', 'تیلدا', true), alias('العربية', 'تيلدا', true), alias('English', 'Tilda basmati'), ppLink('Add alias', 'plus', 'add-alias'),
+    frame({ name: 'aliases head', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('Aliases for search', 'Caption/Strong', 'text/muted'), pcSp(), pcLangPicker('fa', [])]), frame({ name: 'aliases box', dir: 'H', gap: 'space/1-5', wrap: true, rowGap: 'space/1-5', align: 'center', pad: 8, radius: 'radius/control', stroke: 'border/input', fill: 'bg/surface', sizeH: 'FILL' }, ['تیلدا', 'تیلدای باسماتی'].map(function (v) { return frame({ name: 'alias · ' + v, dir: 'H', gap: 'space/1', align: 'center', pad: [4, 8, 4, 8], radius: 'radius/chip', fill: 'bg/selected' }, [text(v, 'Body/Small', 'text/link'), icon('x', 'icon/muted', 12)]); }).concat([text('Type and press Enter', 'Body/Small', 'text/muted')])), text('Aliases of the chosen language. Switch the chip to see the others: English 1 · Persian 2 · Arabic 1.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }),
     pcField('Summary', pcTa('Basmati rice brand founded in 1970, milling in Essex.')), pcValue('Products', text('41 live', 'Body/Default'), ppLink('Open in Products', 'external-link')),
     paSave()])], { w: 480, sizeH: null });
   return frame({ name: 'Brands layout', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [list, panel]);
@@ -926,7 +927,7 @@ function paWaiting() {
   })));
   const decide = card('Decision', [frame({ name: 'decision body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
     text('Flavour: "Saffron"', 'Heading/H2'), text('Suggested by Kuraby Fresh for Saffron basmati rice 1 kg. The product can be submitted meanwhile; Flavour stays empty until you decide.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
-    paRadio(true, 'Add as a new value', 'Sellers can choose it right away.', [frame({ name: 'names', dir: 'V', gap: 'space/2', pad: ['space/2', 0, 0, 0], sizeH: 'FILL' }, [pcField('English', pcIn('Saffron')), pcOtherNames([pcLangRow('fa', 'زعفرانی')], 'Persian is required. Arabic is optional.')])]),
+    paRadio(true, 'Add as a new value', 'Sellers can choose it right away.', [frame({ name: 'names', dir: 'V', gap: 'space/2', pad: ['space/2', 0, 0, 0], sizeH: 'FILL' }, [pcLangField('Value name', 'fa', 'زعفرانی', { missing: ['ar'], help: 'English and Persian are required. Arabic is optional.' })])]),
     paRadio(false, 'Use an existing value', 'The seller gets an email with the value you chose.'),
     paRadio(false, 'Reject', 'Tell the seller why. They can suggest again.'),
     frame({ name: 'footer', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Add value', 'Primary', 'Sm')])])], { w: 480, sizeH: null });
