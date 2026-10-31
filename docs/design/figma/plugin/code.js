@@ -8204,6 +8204,9 @@ PROPOSALS['order-detail'] = { title: POD, rows: function () {
 // 5 one seller page with tabs, and the cross-seller queues stay and link to it; 6 Add seller is a full page: the admin fills
 // the file and invites the owner, the file joins the queue and another admin approves it; 7 Suspend now (reversible, with a
 // reason), Close for good (SEL-09) after the ordering module and a short review.
+// Business activities (owner, 31 Oct 12:45Z): admins define activities per Market (Catalog › Business activities); each links
+// to level 1–2 category branches and may add review checks; a seller has one main activity and optional extra ones; the
+// server refuses offers outside the seller's branches, and an admin can open extra categories for one seller.
 const SM = 'Proposal · Admin · Sellers';
 function smTag(n) { n.setPluginData('proposal', 'admin-sellers'); return n; }
 function smScreen(state, crumb, kids) { return smTag(screen(SM + ' · ' + state, 'Admin', 'nav-sellers', crumb, kids, { minH: PANEL_MIN_H, gap: 'space/4' })); }
@@ -8255,7 +8258,7 @@ function smTable(o) {
 function smDefault() { return smScreen('List · All (default)', 'Sellers', [smHeader(), poViews(SM_VIEWS, 'All'), poToolbar(SM_SEARCH, 'Sorted by Joined, newest first'), smTable({ attention: [5] })]); }
 function smFilter() {
   const scr = smScreen('List · Filter open', 'Sellers', [smHeader(), poViews(SM_VIEWS, 'All'), poToolbar(SM_SEARCH, 'Sorted by Joined, newest first', { open: 'filter', filters: 2 }), poChips(['Status is Approved', 'Health is At risk or Unhealthy'], '9 sellers match'), smTable({ rows: [SM_ROWS[2]], range: '1–9 of 9 sellers', pager: { pages: ['1'], last: true } })]);
-  ppUnder(scr, 'filter-button', poFilterPanel('Filter sellers', [['Status', 'is any of', 'Approved'], ['Health', 'is any of', 'At risk, Unhealthy'], ['Service area', 'is', 'Greater Brisbane']]));
+  ppUnder(scr, 'filter-button', poFilterPanel('Filter sellers', [['Status', 'is any of', 'Approved'], ['Health', 'is any of', 'At risk, Unhealthy'], ['Activity', 'includes', 'Butcher']]));
   return scr;
 }
 function smAwaitingSelected() {
@@ -8271,7 +8274,7 @@ function smSort() {
 }
 function smColumns() {
   const scr = smScreen('List · Column picker open', 'Sellers', [smHeader(), poViews(SM_VIEWS, 'All'), poToolbar(SM_SEARCH, 'Sorted by Joined, newest first', { open: 'columns' }), smTable({ extra: ['Service area'] })]);
-  ppUnder(scr, 'columns-button', poColumnsPanel(['Seller', 'Status'], [['Certificates', true], ['Health', true], ['Orders, 30 days', true], ['Cancelled', true], ['Joined', true], ['Service area', true], ['Owner', false], ['Origin', false], ['Last changed', false], ['Time zone', false]]));
+  ppUnder(scr, 'columns-button', poColumnsPanel(['Seller', 'Status'], [['Activity', true], ['Certificates', true], ['Health', true], ['Orders, 30 days', true], ['Cancelled', true], ['Joined', true], ['Service area', true], ['Owner', false], ['Origin', false], ['Last changed', false], ['Time zone', false]]));
   return scr;
 }
 
@@ -8283,6 +8286,7 @@ function smAdd() {
   const form = frame({ name: 'form', dir: 'V', gap: 'space/4', w: 760 }, [
     smSection('Owner', 'They get an email invitation. Nobody at MondaPac sets or sees their password.', [smTwo(smInput('Full name', 'Hana Yusuf'), smInput('Email', 'hana@kurabyfresh.com.au'))]),
     smSection('Store', 'What customers see.', [smTwo(smInput('Store name', 'Kuraby Fresh Halal'), smInput('Web address', 'kuraby-fresh-halal', 'mondapac.com.au/store/kuraby-fresh-halal'))]),
+    smSection('Business activities', 'Decide which categories and platform products the seller can use. Each activity can add review checks.', [smTwo(podField('Main activity', psSelect('Butcher')), podField('Other activities (optional)', inst('Input', { Type: 'Text', State: 'Filled', Value: 'Grocery', 'Leading icon': false }, { name: 'extra', sizeH: 'FILL' }), 'Choose one or more.'))]),
     smSection('Business', 'Checked against the business register when the file is reviewed.', [smTwo(smInput('Legal business name', 'Kuraby Fresh Pty Ltd'), smInput('ABN', '51 824 753 556')), smTwo(smInput('Phone', '07 3341 0000'), smInput('Contact email', 'orders@kurabyfresh.com.au'))]),
     smSection('Address and area', 'Decides the service area and the shop’s time zone.', [smInput('Operating address', '1520 Beenleigh Rd, Kuraby QLD 4112'), smTwo(podField('Service area', psSelect('Greater Brisbane')), podField('Time zone', psSelect('Brisbane (AEST)')))]),
     frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('The file joins Awaiting review. Another admin approves it.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), btn('Cancel', 'Secondary', 'Md'), btn('Save draft', 'Secondary', 'Md'), btn('Save and invite owner', 'Primary', 'Md')])]);
@@ -8296,7 +8300,7 @@ function smMore() { const b = btn('More', 'Secondary', 'Md', { 'Trailing icon': 
 function smPageHeader(state, o) {
   o = o || {};
   const right = { Approved: [btn('Suspend…', 'Secondary', 'Md'), smMore()], 'Awaiting review': [btn('Reject…', 'Secondary', 'Md'), btn('Approve', 'Primary', 'Md'), smMore()], Suspended: [btn('Lift suspension', 'Primary', 'Md'), smMore()] }[state];
-  const sub = state === 'Awaiting review' ? 'sunnybank-spice · Greater Brisbane · submitted 29 Sep 2026, 2 days in the queue' : 'kuraby-fresh-halal · Greater Brisbane · joined 12 Mar 2026 · owner Hana Yusuf';
+  const sub = state === 'Awaiting review' ? 'Grocery (main), Butcher · sunnybank-spice · submitted 29 Sep 2026, 2 days in the queue' : 'Butcher (main), Grocery · kuraby-fresh-halal · Greater Brisbane · joined 12 Mar 2026';
   return podHeader(o.name || (state === 'Awaiting review' ? 'Sunnybank Spice Market' : 'Kuraby Fresh Halal'), [saBadge(state)].concat(o.cert ? [inst('CertChip', { Kind: 'Seller' })] : []), sub, right, 'Sellers');
 }
 function smPage(state, tab, crumbName, kids, o) { return smScreen('Seller · ' + tab + (o && o.label ? ' · ' + o.label : ''), 'Sellers / ' + crumbName, [smPageHeader(state, o)].concat(o && o.banner ? [o.banner] : [], [smTabs(tab)], kids)); }
@@ -8329,8 +8333,8 @@ function smReview() {
     smCompare('Postcode', '4109', '4109', 'Matches'),
     smCompare('GST registration', 'From 1 Jul 2024', 'Not registered', 'Differs'),
     text('A match doesn’t prove the applicant controls the business.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]);
-  const checks = podCard('Checks', [smCheck('Identity of the owner checked', true, 'Recorded by Layla Haddad, 9:44 am'), smCheck(STORE_CHECK, true, 'Recorded by Layla Haddad, 9:45 am'), smCheck('Food business licence seen', false, 'Not recorded')]);
-  const side = [podCard('Decision', [text('Record 1 required check first.', 'Body/Small', 'status/attention/fg', { sizeH: 'FILL' }), frame({ name: 'buttons', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [btn('Reject…', 'Secondary', 'Md'), btn('Approve', 'Primary', 'Md', { State: 'Disabled' })]), ppLink('Next in queue: Mariam’s Kitchen', 'arrow-right', 'next-in-queue')]),
+  const checks = podCard('Checks', [smCheck('Identity of the owner checked', true, 'Recorded by Layla Haddad, 9:44 am'), smCheck(STORE_CHECK, true, 'Recorded by Layla Haddad, 9:45 am'), smCheck('Food business licence seen', false, 'Not recorded'), smCheck('Meat retail licence seen · from Butcher', false, 'Not recorded')]);
+  const side = [podCard('Decision', [text('Record 2 required checks first.', 'Body/Small', 'status/attention/fg', { sizeH: 'FILL' }), frame({ name: 'buttons', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [btn('Reject…', 'Secondary', 'Md'), btn('Approve', 'Primary', 'Md', { State: 'Disabled' })]), ppLink('Next in queue: Mariam’s Kitchen', 'arrow-right', 'next-in-queue')]),
     podCard('Other sellers with this ABN', [text('None found', 'Body/Default', 'text/muted')]), podActivity([['29 Sep', 'Submitted by the seller', 'Submission 1'], ['27 Sep', 'Signed up', 'Email confirmed']])];
   return smPage('Awaiting review', 'Review', 'Sunnybank Spice Market', [podColumns([compare, checks], side)]);
 }
@@ -8357,8 +8361,9 @@ function smTeam() {
   return smPage('Approved', 'Team & access', 'Kuraby Fresh Halal', [podColumns([list], [access, inv])], { cert: true });
 }
 function smSettings() {
-  const seg = inst('SegmentedControl', { 'Segment 1': 'All types', 'Segment 2': 'Only selected types' }, { name: 'types' }); const t = seg.findOne(function (n) { return n.name === 'segment-3'; }); if (t) t.visible = false;
-  const rows = [psRow('Allowed product types', 'Offers of a type that’s no longer allowed are taken off sale.', seg), psRow('Category proposals', 'Lets this seller suggest new categories.', inst('Switch', { On: 'False', Size: 'Md' }, { name: 'proposals' })),
+  const acts = frame({ name: 'activities', dir: 'H', gap: 'space/2', align: 'center', wrap: true, rowGap: 'space/2', sizeH: 'FILL' }, [bdg('Info', 'None', 'Butcher · main'), bdg('Neutral', 'None', 'Grocery'), ppLink('Change…', 'pencil', 'change-activities')]);
+  const exc = frame({ name: 'exceptions', dir: 'H', gap: 'space/2', align: 'center', wrap: true, rowGap: 'space/2', sizeH: 'FILL' }, [inst('FilterChip', { Type: 'Applied', Label: 'Bakery › Flatbread' }, { name: 'exception' }), ppLink('Add category…', 'plus', 'add-exception')]);
+  const rows = [psRow('Business activities', 'The seller sees only these categories and platform products. Removing one takes its offers off sale (they’re kept).', acts), psRow('Extra categories', 'Opened for this seller only, outside their activities.', exc), psRow('Category proposals', 'Lets this seller suggest new categories.', inst('Switch', { On: 'False', Size: 'Md' }, { name: 'proposals' })),
     psRow('AI features', 'AI suggestions for this shop. AI never decides approvals, certificates or payments. The owner is emailed when it’s turned on.', inst('Switch', { On: 'False', Size: 'Md' }, { name: 'ai' })), psRow('Blog', 'Lets this seller publish posts on the MondaPac blog.', inst('Switch', { On: 'True', Size: 'Md' }, { name: 'blog' }))];
   return smPage('Approved', 'Settings', 'Kuraby Fresh Halal', [psSection('Admin-only settings', 'The seller can’t change these. Each change saves on its own and is recorded in Activity.', rows)], { cert: true });
 }
@@ -8370,6 +8375,41 @@ function smOrders() {
 function smSuspended() {
   const banner = psBanner('suspended', 'Critical', 'Suspended on 20 Oct 2026 by Layla Haddad', 'Reason: repeated late deliveries and a revoked halal certificate. The seller can’t sign in and their offers are off sale. Open orders continue.', 'View reason');
   return smPage('Suspended', 'Overview', 'Slacks Creek Butchers', [podColumns([smAttention([['alert-circle', 'status/critical/fg', 'Halal certificate revoked on 18 Oct 2026', 'Open certificate'], ['clock', 'status/info/fg', '2 open orders still to deliver', 'Open orders']]), podNotes('Admins only. The seller never sees these notes.', [])], [podActivity([['20 Oct', 'Seller suspended', 'Layla Haddad · reason given'], ['18 Oct', 'Halal certificate revoked', 'Omar Siddiq']])])], { name: 'Slacks Creek Butchers', banner: banner });
+}
+
+// ---- Catalog › Business activities: the Market's list of activities, each linked to level 1–2 category branches
+const SBA = 'Proposal · Admin · Business activities';
+function sbaScreen(state, crumb, kids) { return smTag(screen(SBA + ' · ' + state, 'Admin', 'nav-catalogue', crumb, kids, { minH: PANEL_MIN_H, gap: 'space/4' })); }
+// [name, code, status, branches, checks, sellers, changed]
+const SBA_ROWS = [['Butcher', 'butcher', 'Active', 'Meat & poultry · Frozen › Meat', 'Meat retail licence seen', '14', '28 Oct'], ['Grocery', 'grocery', 'Active', 'Pantry · Drinks · Household · Frozen', '—', '61', '20 Oct'],
+  ['Bakery', 'bakery', 'Active', 'Bakery · Sweets & nuts › Pastries', 'Food business licence seen', '9', '20 Oct'], ['Fruit & veg', 'fruit-veg', 'Active', 'Fresh › Fruit · Fresh › Vegetables', '—', '12', '18 Oct'], ['Fishmonger', 'fishmonger', 'Inactive', 'Seafood', 'Seafood licence seen', '0', '2 Oct']];
+function sbaList() {
+  const rows = SBA_ROWS.map(function (r) { return [twoLine(r[0], r[1]), r[2] === 'Active' ? bdg('Success', 'Dot', 'Active') : bdg('Neutral', 'Dot', 'Inactive'), poText(r[3]), poText(r[4]), poText(r[5]), poText(r[6])]; });
+  return sbaScreen('List', 'Catalog / Business activities', [pageTitle('Business activities', 'What sellers in the Australia market do. Each activity opens its category branches to its sellers.', [btn('Add activity', 'Primary', 'Md', { 'Leading icon': true, Icon: { icon: 'plus' } })]),
+    poViews([['Active', '4'], ['All', '5'], ['Inactive', '1'], ['Requests from sellers', '2']], 'Active'), poToolbar('Search activities', 'Sorted by Name, A to Z'),
+    poTable('Activity list', [['Activity', 220], ['Status', 120], ['Category branches', 'fill'], ['Extra review checks', 220], ['Sellers', 90, false, true], ['Changed', 100]], rows, { range: '1–5 of 5 activities', pager: { pages: ['1'], last: true } })]);
+}
+function sbaEdit() {
+  const name = pcLangField('Name', 'en', 'Butcher', { missing: ['ar'], help: 'Sellers see it when they sign up. Names can’t claim a certification, so “Halal butcher” is refused.' });
+  const branch = function (path, n) { return frame({ name: 'branch · ' + path, dir: 'H', gap: 'space/3', align: 'center', py: 'space/2', stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [icon('package', 'icon/muted', 16), text(path, 'Body/Default', 'text/primary', { sizeH: 'FILL' }), text(n + ' categories below', 'Caption/Default', 'text/muted'), ppLink('Remove', null, 'remove')]); };
+  const form = frame({ name: 'form', dir: 'V', gap: 'space/4', w: 760 }, [
+    podCard('Details', [name, smTwo(smInput('Code', 'butcher', 'Fixed after the activity is created.'), podField('Status', inst('Switch', { On: 'True', Size: 'Md' }, { name: 'active' }), 'Inactive: new sellers can’t choose it; current sellers keep it.')),
+      podField('Short description', psTextarea('Fresh and frozen meat and poultry, cut or packed in the shop.', 'Filled'), 'Helps sellers choose.')]),
+    podCard('Category branches', [text('Choose departments or groups (levels 1 and 2). Every category below them is included, also new ones.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), branch('Meat & poultry', 12), branch('Frozen › Meat', 4), ppLink('Add branch…', 'plus', 'add-branch')]),
+    podCard('Extra review checks', [text('Added to the Review checklist of any seller with this activity.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), smCheck('Meat retail licence seen', false, 'Required'), ppLink('Add check…', 'plus', 'add-check')]),
+    psBanner('impact', 'Attention', 'Removing “Frozen › Meat” takes 23 offers of 6 sellers off sale', 'They are kept and come back if the branch is added again. Sellers get an email.'),
+    frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('Changes are recorded in the audit log.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), btn('Cancel', 'Secondary', 'Md'), btn('Save', 'Primary', 'Md')])]);
+  return sbaScreen('Edit · Butcher', 'Catalog / Business activities / Butcher', [podHeader('Butcher', [bdg('Success', 'Dot', 'Active')], '14 sellers · 2 branches · 16 categories', [], 'Business activities'), form]);
+}
+// The seller panel: the category picker shows only the seller's branches; a request button covers the rest.
+function sbaSellerPicker() {
+  const leaf = function (t, on) { return frame({ name: 'cat · ' + t, dir: 'H', gap: 'space/2', align: 'center', pad: [8, 12, 8, 12], radius: 'radius/control', fill: on ? 'bg/selected' : null, sizeH: 'FILL' }, [text(t, on ? 'Body/Strong' : 'Body/Default', 'text/primary', { sizeH: 'FILL' })]); };
+  const picker = ppPopover('Category picker (open)', 420, [inst('Input', { Type: 'Text', State: 'Default', Value: 'Search categories', 'Leading icon': true }, { name: 'search', sizeH: 'FILL' }), text('Your activities: Butcher, Grocery', 'Caption/Strong', 'text/muted', { sizeH: 'FILL' }),
+    leaf('Meat & poultry › Lamb › Cutlets', true), leaf('Meat & poultry › Chicken › Thigh fillets'), leaf('Pantry › Rice › Basmati'), leaf('Frozen › Meat › Mince'),
+    frame({ name: 'request', dir: 'V', gap: 'space/1', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text('Can’t find your category? It may be outside your activities.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }), ppLink('Ask to add an activity', 'send', 'request-activity')])]);
+  const scr = smTag(screen(SBA + ' · Seller panel · Category picker', 'Seller', 'nav-catalogue', 'Products / New product', [podHeader('New product', [], 'Only categories of your activities are shown.', [], 'Products'), frame({ name: 'form', dir: 'V', gap: 'space/4', w: 760 }, [podCard('Category', [podField('Category', inst('Select', { State: 'Focus', Value: 'Meat & poultry › Lamb › Cutlets' }, { name: 'category-select', sizeH: 'FILL' }))])])], { minH: PANEL_MIN_H, gap: 'space/4' }));
+  ppUnder(scr, 'category-select', picker);
+  return scr;
 }
 
 // ---- Dialogs: approve, reject, suspend, lift suspension, and the More menu
@@ -8406,5 +8446,5 @@ function smStates() {
 
 PROPOSALS['admin-sellers'] = { title: SM, rows: function () {
   return [[smDefault(), smFilter(), smAwaitingSelected()], [smSort(), smColumns(), smAdd()],
-    [smOverview(), smReview(), smDetailsEdit()], [smMoney(), smTeam(), smSettings()], [smOrders(), smSuspended(), smDialogs(), smStates()]];
+    [smOverview(), smReview(), smDetailsEdit()], [smMoney(), smTeam(), smSettings()], [smOrders(), smSuspended(), smDialogs(), smStates()], [sbaList(), sbaEdit(), sbaSellerPicker()]];
 } };
