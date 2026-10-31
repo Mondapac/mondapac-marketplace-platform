@@ -1,5 +1,6 @@
 // Proposal · Admin · Catalog · Add product (john 31 Oct 2026): one long page in the Shopify layout, adapted to a marketplace.
 // The platform product is content only: price, stock, SKU and Cost live on each seller's Offer, so the page has no Price or Inventory card.
+// Also (john 31 Oct 03:08Z): Active switch (reversible pause), Tags from the admin tag list, and Product certifications (manufacturer certificates, ADR-0012).
 // Title and description are entered once in English (translation to published languages happens later, per the buyer i18n decision).
 // "Write with AI" drafts the description (AIS-03, admin and seller) in a modal; the draft goes into the field only on Use text and is saved only with the form.
 const PAP = 'Proposal · Admin · Catalog · Add product';
@@ -107,15 +108,44 @@ function papSide(o) {
     frame({ name: 'state', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [bdg(o.published ? 'Success' : 'Neutral', 'Dot', o.published ? 'Published' : 'Draft'), o.revision ? bdg('Attention', 'None', 'Revision 2 · unpublished changes') : null]),
     text(o.published ? 'Changes are saved as a new revision. Buyers keep seeing revision 1 until you publish.' : 'Sellers can’t find it until you publish. Save draft keeps your work.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
     btn(o.published ? 'Publish revision 2' : 'Publish', 'Primary', 'Md', { State: o.canPublish ? 'Default' : 'Disabled' }),
-    o.canPublish ? null : text(o.blockers || 'To publish: title, category, tax category and one image.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })], { w: 340 });
+    o.canPublish ? null : text(o.blockers || 'To publish: title, category, tax category and one image.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }),
+    frame({ name: 'active row', dir: 'H', gap: 'space/3', align: 'center', pad: ['space/3', 0, 0, 0], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [
+      frame({ name: 'text', dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [text(o.inactive ? 'Inactive' : 'Active', 'Body/Strong'), text(o.inactive ? 'Paused 31 Oct by Sara K. All 7 offers are off sale; sellers keep them. Turn on to sell again.' : 'Turn off to stop all sales at once. Sellers keep their offers and nothing is deleted.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]),
+      inst('Switch', { On: o.inactive ? 'False' : 'True', Size: 'Md' }, { name: 'active' })])], { w: 340 });
+  const tag = function (v) { return frame({ name: 'tag · ' + v, dir: 'H', gap: 'space/1', align: 'center', pad: [4, 8, 4, 8], radius: 'radius/chip', fill: 'bg/selected' }, [text(v, 'Body/Small', 'text/link'), icon('x', 'icon/muted', 12)]); };
+  const tagsBox = frame({ name: 'tags box', dir: 'H', gap: 'space/1-5', wrap: true, rowGap: 'space/1-5', align: 'center', pad: 8, radius: 'radius/control', stroke: o.tagError ? 'status/critical/solid' : 'border/input', fill: 'bg/surface', sizeH: 'FILL' }, (o.noTags ? [] : ['Ramadan', 'Family size', 'Biryani']).map(tag).concat([text('Find a tag', 'Body/Small', 'text/muted')]));
   const org = papCard('Organisation', 'Organisation', [
     pcValue('Market', text('Australia', 'Body/Default')), pcValue('Scope', text('Platform product', 'Body/Default')),
-    text('No tags or collections: categories drive the menu and filters. Certification badges belong to each seller’s offer, never to the product.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })], { w: 340 });
+    pcField('Tags', tagsBox, o.tagError || 'Up to 10, from the tag list. Tags group products for search and shelves.'),
+    o.tagError ? null : ppLink('Manage the tag list', 'external-link', 'manage-tags')], { w: 340 });
   const kids = [status, org];
   if (o.published) kids.push(papCard('Sellers selling it', 'Sellers selling it', [
     frame({ name: 'tiles', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [['Sellers', '3'], ['Offers', '7'], ['From', '$6.20']].map(function (t) { return frame({ name: 'tile · ' + t[0], dir: 'V', gap: 'space/1', pad: 'space/3', fill: 'bg/subtle', radius: 'radius/control', sizeH: 'FILL' }, [text(t[0], 'Caption/Default', 'text/muted'), text(t[1], 'Body/Strong')]); })),
     text('Read only. Each seller sets price and stock on their own offer.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }), ppLink('Open the 7 offers', 'external-link', 'open-offers')], { w: 340 }));
   return frame({ name: 'side', dir: 'V', gap: 'space/4', w: 340 }, kids);
+}
+// Certificates the manufacturer holds for this product (ADR-0012). They never show as a badge on their own:
+// a seller's offer can use one only where the category allows a manufacturer basis, the item is sealed original and the seller confirms it.
+const PAP_CERTS = [['Halal', 'Halal Australia', 'HA-2025-11873', '30 Jun 2027', 'Approved', 'All variants'], ['Vegan', 'Vegan Australia', 'VA-55120', '12 Jan 2027', 'Waiting for review', '1 kg, 5 kg'], ['Kosher', 'Kashrut Authority', 'KA-9921', '2 Nov 2026', 'Expires in 2 days', 'All variants']];
+function papCerts(o) {
+  o = o || {};
+  const list = o.none ? [] : PAP_CERTS;
+  const tone = function (st) { return st === 'Approved' ? 'Success' : (st === 'Waiting for review' ? 'Info' : 'Attention'); };
+  const head = headerRow([['Certificate', 'fill'], ['Number', 130], ['Expires', 110], ['Covers', 110], ['Status', 160], ['', 44]]);
+  const rows = list.map(function (c) { return row([[twoLine(c[0], c[1], 'Body/Strong'), 'fill'], [text(c[2], 'Mono/Small'), 130], [text(c[3], 'Body/Small', c[4].indexOf('Expires') === 0 ? 'status/attention/fg' : 'text/primary'), 110], [text(c[5], 'Body/Small', 'text/secondary'), 110], [bdg(tone(c[4]), 'Dot', c[4]), 160], [rowAction(), 44, { justify: 'center' }]], false, c[4].indexOf('Expires') === 0, 56); });
+  return papCard('Product certifications', 'Product certifications', [
+    text('Certificates the manufacturer holds for this exact product, e.g. Halal, Vegan or Kosher. Each one is checked by a certification reviewer before sellers can use it.', 'Body/Small', 'text/secondary', { sizeH: 'FILL' }),
+    list.length ? card('certificates', [head].concat(rows)) : inst('EmptyState', { Size: 'Card', Title: 'No product certificates yet', Body: 'Add one if the manufacturer certified this product.', Icon: { icon: 'shield-check' } }, { name: 'no-certs', sizeH: 'FILL' }),
+    inst('InfoBanner', { Tone: 'Info', Title: 'Badges stay on seller offers', Body: 'A seller can show the badge only where Basmati rice allows a manufacturer certificate, the item is sealed and original, and the seller confirms it. The product page never shows a badge on its own.', 'Show action': false }, { name: 'how-used', sizeH: 'FILL' })],
+    { right: [btn('Add certificate', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })] });
+}
+function papCertDialog() {
+  return pcDialog('Add product certificate', 'Add product certificate', 'Sella basmati rice · checked by a certification reviewer before use.', [
+    pcField('Certification type', inst('Select', { State: 'Filled', Value: 'Halal' }, { name: 'type', sizeH: 'FILL' }), 'Types come from Certifications › Types. Names show in English; Persian and Arabic names must be added there before those languages go live.'),
+    pcField('Issuer', inst('Select', { State: 'Filled', Value: 'Halal Australia' }, { name: 'issuer', sizeH: 'FILL' }), 'Only approved issuers for Halal in Australia.'),
+    frame({ name: 'row', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [pcField('Certificate number', pcIn('HA-2025-11873')), pcField('Expires', pcIn('30 Jun 2027'))]),
+    pcField('Covers', inst('Select', { State: 'Filled', Value: 'All variants' }, { name: 'covers', sizeH: 'FILL' }), 'Or choose the variants the certificate names.'),
+    pcField('Certificate document', frame({ name: 'file', dir: 'H', gap: 'space/2', align: 'center', pad: 'space/3', radius: 'radius/control', stroke: 'border/input', sizeH: 'FILL' }, [icon('file-text', 'icon/muted', 18), text('HA-2025-11873.pdf · 412 KB', 'Body/Small', 'text/primary', { sizeH: 'FILL' }), ppLink('Replace', null, 'replace')]), 'PDF or image, up to 10 MB. Only reviewers can open it.')], 'Send for review', { w: 520 });
 }
 function papScreen(state, o) {
   o = o || {};
@@ -180,6 +210,13 @@ function papStates() {
     para('Copy is a draft for Jafar (product designer) and Reza (UI/UX).', 820),
     text('Fields', 'Caption/Strong', 'text/muted'), field('claim', 'Halal Sella basmati rice', 'Product text can’t include certification words like "halal". Badges come from seller offers.'),
     field('gtin', '9 300633 01234 5', 'This barcode is already on Sella basmati rice 5 kg. Open that product instead.'),
+    field('tags', 'Halal', 'Tags can’t name a certification. Certificates go under Product certifications.'),
+    text('Product certifications', 'Caption/Strong', 'text/muted'),
+    b('cert-expired', 'Attention', 'The Kosher certificate expired on 2 Nov.', 'Offers that used it lost the Kosher badge. Add the new certificate to restore it.', 'Add certificate'),
+    b('cert-rejected', 'Critical', 'The Vegan certificate was rejected.', 'Reason from the reviewer: the number doesn’t match the issuer’s register.', 'View details'),
+    b('cert-no-words', 'Attention', 'Persian and Arabic names are missing for Halal.', 'Add them in Certifications › Types before Persian or Arabic is published.', 'Open types'),
+    text('Active and inactive', 'Caption/Strong', 'text/muted'),
+    pcDialog('Turn off product', 'Turn off Sella basmati rice?', 'Buyers can’t find it and every offer stops selling at once. Sellers keep their offers and you can turn it on again.', [pcImpact([['Offers that stop selling', '7', true], ['Carts that show it as unavailable', '12', true]]), pcReason()], 'Turn off', { destructive: true, focusCancel: true, w: 480 }),
     text('Page', 'Caption/Strong', 'text/muted'), papBar({ label: '2 fields need fixing', err: true, primary: 'Save draft', saveOff: true }),
     b('stale', 'Attention', 'Someone published a newer revision.', 'Reload to see it. Your changes are kept.', 'Reload'),
     b('published', 'Success', 'Sella basmati rice is published.', 'Sellers can now add their offers.', 'View product'),
@@ -200,6 +237,8 @@ PROPOSALS['admin-add-product'] = { title: PAP, rows: function () {
   const aiIn = papWithModal(papScreen('5 Write with AI, modal', { main: [papMain({ title: 'Sella basmati rice', images: 3 }), papCategory({ cat: 'Pantry › Rice and grains › Rice › Basmati rice' }), papDetails({ on: true })], side: {} }), papAiModal('input'));
   const aiOut = papWithModal(papScreen('5b Write with AI, draft ready', { main: [papMain({ title: 'Sella basmati rice', desc: ['Long grain rice.'], images: 3 }), papCategory({ cat: 'Pantry › Rice and grains › Rice › Basmati rice' }), papDetails({ on: true })], side: {} }), papAiModal('ready'));
   const errors = papScreen('6 Can’t publish yet', { barOpts: { label: '2 fields need fixing', err: true, saveOff: true }, main: [papMain({ title: 'Halal Sella basmati rice', titleError: 'Product text can’t include certification words like "halal". Badges come from seller offers.', desc: desc, images: 3 }), papCategory({ cat: 'Pantry › Rice and grains › Rice › Basmati rice' }), papDetails({ on: true, missing: true }), papVariantsAsk('one')], side: { blockers: 'To publish: fix the title and choose the grain length.' } });
-  const edit = papScreen('7 Edit, published, new revision', { edit: true, barOpts: { label: 'Unsaved changes', primary: 'Save revision' }, main: [papMain({ title: 'Sella basmati rice', desc: desc, images: 4 }), papCategory({ cat: 'Pantry › Rice and grains › Rice › Basmati rice' }), papDetails({ on: true }), papVariants({ two: true })], side: { published: true, revision: true, canPublish: true } });
-  return [[empty, filled, variants], [twoAxes, aiIn, aiOut], [errors, edit, papStates()]];
+  const edit = papScreen('7 Edit, published, new revision', { edit: true, barOpts: { label: 'Unsaved changes', primary: 'Save revision' }, main: [papMain({ title: 'Sella basmati rice', desc: desc, images: 4 }), papCategory({ cat: 'Pantry › Rice and grains › Rice › Basmati rice' }), papDetails({ on: true }), papVariants({ two: true }), papCerts()], side: { published: true, revision: true, canPublish: true } });
+  const inactive = papScreen('8 Edit, inactive (paused)', { edit: true, bar: false, main: [inst('InfoBanner', { Tone: 'Attention', Title: 'This product is inactive', Body: 'Buyers can’t find it and all 7 offers are off sale. Sellers keep their offers.', 'Show action': true, Action: 'Turn on' }, { name: 'inactive', sizeH: 'FILL' }), papMain({ title: 'Sella basmati rice', desc: desc, images: 4 }), papCategory({ cat: 'Pantry › Rice and grains › Rice › Basmati rice' }), papCerts()], side: { published: true, inactive: true, canPublish: true } });
+  const certAdd = papWithModal(papScreen('9 Add product certificate', { edit: true, bar: false, main: [papMain({ title: 'Sella basmati rice', desc: desc, images: 4 }), papCerts()], side: { published: true, canPublish: true } }), papCertDialog());
+  return [[empty, filled, variants], [twoAxes, aiIn, aiOut], [errors, edit, inactive], [certAdd, papStates()]];
 } };
