@@ -300,7 +300,7 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
 
   // The change that won, as the conflict answer names it (the administrator fixture is "Admin").
   const savedFirstBy = {
-    at: expect.any(Temporal.Instant),
+    at: expect.any(Temporal.Instant) as unknown,
     byDisplayName: 'Admin',
     byKind: 'member',
   };
