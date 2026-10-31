@@ -82,12 +82,16 @@ const ALL_KEYS = [
   'catalog.platform-product.retire',
 ];
 
-function mount(permissionKeys: readonly string[] = ALL_KEYS) {
+function mount(
+  permissionKeys: readonly string[] = ALL_KEYS,
+  market: { readonly id: string; readonly name: string } = { id: 'AU', name: 'Australia' },
+) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <ProductsList
         accountId="acc-1"
-        marketId="AU"
+        marketId={market.id}
+        marketName={market.name}
         timeZone="Australia/Brisbane"
         permissionKeys={permissionKeys}
         csrfToken="csrf-1"
@@ -107,6 +111,13 @@ describe('admin product list', () => {
     toast.dismiss();
   });
 
+  it('names the Market by its display name, not its code (second fixture ZZ)', async () => {
+    serve(() => page([row()]));
+    mount(ALL_KEYS, { id: 'ZZ', name: 'Zedland' });
+    expect(await screen.findByText('1,284 products in the Zedland market')).toBeTruthy();
+    expect(screen.queryByText(/ZZ market/)).toBeNull();
+  });
+
   it('loads the Active tab first, newest change first, and shows the tab counts', async () => {
     serve(() => page([row()]));
     mount();
@@ -123,7 +134,7 @@ describe('admin product list', () => {
     // No "Products" heading over the tabs (the topbar names the page); the header holds the Bulk
     // action button and the count of the Market's products, and no Import, Add product or saved views.
     expect(screen.queryByRole('heading', { name: 'Products' })).toBeNull();
-    expect(screen.getByText('1,284 products in the AU market')).toBeTruthy();
+    expect(screen.getByText('1,284 products in the Australia market')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Bulk action' })).toBeTruthy();
     for (const absent of ['Import', 'Add product', 'Manage filters']) {
       expect(screen.queryByText(absent)).toBeNull();
