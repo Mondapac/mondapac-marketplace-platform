@@ -9,6 +9,7 @@ import { PublishedStoreImageRead } from '../src/modules/sellers/application/use-
 import { StoreImageReadOwn } from '../src/modules/sellers/application/use-cases/store-image-read-own.use-case';
 import { StoreImageRemove } from '../src/modules/sellers/application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from '../src/modules/sellers/application/use-cases/store-image-save.use-case';
+import { StoreProfileClaimTerms } from '../src/modules/sellers/application/use-cases/store-profile-claim-terms.use-case';
 import { StoreProfileRead } from '../src/modules/sellers/application/use-cases/store-profile-read.use-case';
 import { StoreProfileSaveAbout } from '../src/modules/sellers/application/use-cases/store-profile-save-about.use-case';
 import { IdentityFakes } from './support/identity-fakes';
@@ -60,6 +61,7 @@ describe('the seller store profile over HTTP (integration)', () => {
   let app: NestExpressApplication;
   const stubs = {
     read: new Stub(),
+    terms: new Stub(),
     about: new Stub(),
     image: new Stub(),
     remove: new Stub(),
@@ -78,6 +80,8 @@ describe('the seller store profile over HTTP (integration)', () => {
           ? faked
               .overrideProvider(StoreProfileRead)
               .useValue(stubs.read)
+              .overrideProvider(StoreProfileClaimTerms)
+              .useValue(stubs.terms)
               .overrideProvider(StoreProfileSaveAbout)
               .useValue(stubs.about)
               .overrideProvider(StoreImageSave)
@@ -177,6 +181,30 @@ describe('the seller store profile over HTTP (integration)', () => {
       expect(response.body).toEqual(ANSWER);
       expect(stubs.read.calls[0]!.context.market.marketId).toBe(code);
       expect(stubs.read.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    it('reads the claim terms with the seller of the session, no-store, as a list', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.terms.next = { ok: true, value: ['halal', 'halal certified'] };
+
+      const response = await http().get('/sellers/store-profile/claim-terms').set(session.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({ terms: ['halal', 'halal certified'] });
+      expect(stubs.terms.calls[0]!.context.market.marketId).toBe(code);
+      expect(stubs.terms.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    it('answers the claim terms as 503 when they cannot be read, never an empty list', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.terms.next = { ok: false, error: { code: 'sellers.unavailable' } };
+
+      const response = await http().get('/sellers/store-profile/claim-terms').set(session.headers);
+
+      expect(response.status).toBe(503);
     });
 
     it('saves the About text: only the two named fields, CSRF required, no-store', async () => {

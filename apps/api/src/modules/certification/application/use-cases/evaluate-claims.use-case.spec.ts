@@ -164,6 +164,7 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   const facade = new CertificationFacadeImplementation({
     evaluateClaims: request,
     evaluateClaimsSystem: jobs,
+    claimTermList: undefined as never,
     matchClaimTerms: undefined as never,
     matchClaimTermsSystem: undefined as never,
     certificationTypes: undefined as never,

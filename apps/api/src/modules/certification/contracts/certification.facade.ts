@@ -86,6 +86,16 @@ export interface CertificationFacade {
   ): Promise<Result<readonly (readonly ClaimTermMatch[])[], Failure>>;
 
   /**
+   * The Market's published claim terms as plain phrases (NFKC, lower case, tokens joined by single spaces),
+   * deduplicated and sorted, for a panel that warns while a user types. Not a decision: the
+   * save-time `matchClaimTerms` stays authoritative. A failed or incomplete read is
+   * `certification.unavailable`, never an empty list. The answer is the same for every caller.
+   */
+  claimTermList(
+    context: CallContext,
+  ): Promise<Result<readonly string[], AccessDenied | CertificationUnavailable>>;
+
+  /**
    * The Market's types with their published revision's form settings and texts, in code order.
    * `status` filters. Same pair of use cases and the same fail-closed read.
    */

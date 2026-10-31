@@ -135,6 +135,7 @@ import { PublishedStoreImageRead } from './application/use-cases/published-store
 import { StoreImageReadOwn } from './application/use-cases/store-image-read-own.use-case';
 import { StoreImageRemove } from './application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from './application/use-cases/store-image-save.use-case';
+import { StoreProfileClaimTerms } from './application/use-cases/store-profile-claim-terms.use-case';
 import { StoreProfileRead } from './application/use-cases/store-profile-read.use-case';
 import { StoreProfileSaveAbout } from './application/use-cases/store-profile-save-about.use-case';
 import { storeProfileProviders } from './infrastructure/store-profile-providers';
@@ -334,6 +335,7 @@ const REVIEW_DECISION_PORTS = {
     // Slice 12 part 2, the seller's own store profile (design 3.7, 6.2) over HTTP through
     // StoreProfileController, under `sellers.store-profile.view` / `.edit`, approved sellers only.
     useCaseProvider(StoreProfileRead, STORE_PROFILE_READ_PORTS),
+    useCaseProvider(StoreProfileClaimTerms, { claimCheck: true }),
     useCaseProvider(StoreProfileSaveAbout, {
       ...STORE_PROFILE_READ_PORTS,
       audit: true,

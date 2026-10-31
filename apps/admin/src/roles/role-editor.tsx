@@ -14,6 +14,7 @@ import {
   SettingsPage,
   SettingsSection,
   toast,
+  useLiveErrors,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -68,7 +69,7 @@ export function RoleEditor({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set(initialKeys));
   const [nameError, setNameError] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [failedSaves, setFailedSaves] = useState(0);
+  const [serverNameFails, setServerNameFails] = useState(0);
   const [done, setDone] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // The version the editor last read; a stale answer moves it to the saved one (draft kept).
@@ -86,7 +87,21 @@ export function RoleEditor({
   const count =
     (nameChanged ? 1 : 0) + catalogue.keys.filter((entry) => keyChanged(entry.key)).length;
 
+  // The name is checked as it is typed or left; `nameError` holds what only the server can say
+  // (a taken name). The save bar counts what shows, so Save stays off until the name is right.
+  const trimmedNow = name.trim();
+  const nameRule =
+    trimmedNow === ''
+      ? 'name-required'
+      : trimmedNow.length > MAX_NAME || CONTROL.test(trimmedNow)
+        ? 'name-invalid'
+        : null;
+  const live = useLiveErrors<'name'>(nameRule === null ? [] : ['name']);
+  const shownError =
+    nameError ?? (live.has('name') && nameRule !== null ? t(`editor.${nameRule}`) : null);
+
   function discard() {
+    live.reset();
     setName(initialName);
     setSelected(new Set(initialKeys));
     setNameError(null);
@@ -156,12 +171,15 @@ export function RoleEditor({
     }
     if (failure.code === 'validation.failed') {
       const fields = failure.details?.fields ?? [];
-      if (fields.some((field) => field.path === 'name')) setNameError(t('editor.name-invalid'));
-      else setProblem(messageFor('unknown'));
+      if (fields.some((field) => field.path === 'name')) {
+        setNameError(t('editor.name-invalid'));
+        setServerNameFails((n) => n + 1);
+      } else setProblem(messageFor('unknown'));
       return;
     }
     if (failure.code === 'role.name-taken') {
       setNameError(t('reason.role.name-taken'));
+      setServerNameFails((n) => n + 1);
       return;
     }
     if (RELOAD.has(failure.code)) router.refresh();
@@ -173,14 +191,8 @@ export function RoleEditor({
     setProblem(null);
     setConflict(null);
     const trimmed = name.trim();
-    if (trimmed === '') {
-      setNameError(t('editor.name-required'));
-      setFailedSaves((n) => n + 1);
-      return;
-    }
-    if (trimmed.length > MAX_NAME || CONTROL.test(trimmed)) {
-      setNameError(t('editor.name-invalid'));
-      setFailedSaves((n) => n + 1);
+    if (nameRule !== null) {
+      live.attempt();
       return;
     }
     if (selected.size > MAX_KEYS) {
@@ -244,12 +256,12 @@ export function RoleEditor({
   const trimmedName = name.trim();
 
   const banners = [
-    nameError === null ? null : (
+    shownError === null ? null : (
       <SettingsErrorSummary
         key="invalid"
         title={root('settings.errors.title', { count: 1 })}
-        items={[{ id: NAME_ROW, label: t('editor.name') }]}
-        focusSignal={failedSaves}
+        items={[{ id: NAME_ROW, label: t('editor.name'), reason: shownError }]}
+        focusSignal={live.attempts + serverNameFails}
       />
     ),
     conflict === null ? null : (
@@ -302,7 +314,7 @@ export function RoleEditor({
             {...chrome.saveBar({
               count,
               showEmpty: !editing,
-              errorCount: nameError === null ? 0 : 1,
+              errorCount: shownError === null ? 0 : 1,
               saving: pending,
               onDiscard: discard,
               saveLabel: editing ? t('editor.save') : t('editor.create'),
@@ -316,7 +328,7 @@ export function RoleEditor({
             label={t('editor.name')}
             help={t('editor.name-help', { max: MAX_NAME })}
             changed={nameChanged}
-            error={nameError ?? undefined}
+            error={shownError ?? undefined}
           >
             <SettingInput
               maxLength={MAX_NAME}
@@ -325,7 +337,9 @@ export function RoleEditor({
                 setName(event.target.value);
                 setDone(false);
                 setNameError(null);
+                live.touch('name');
               }}
+              onBlur={() => live.touch('name')}
             />
           </SettingRow>
         </SettingsSection>
