@@ -26,6 +26,7 @@
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "catalog.brand-product-ids", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.offer-badges", "rule": "anonymous" },
   { "name": "catalog.offer-listings", "rule": "anonymous" },
@@ -55,6 +56,8 @@
   { "name": "catalog.own-product-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
+  { "name": "catalog.platform-import-purge", "rule": "system" },
+  { "name": "catalog.platform-import-run", "rule": "system" },
   { "name": "catalog.products-for-linking", "rule": "anonymous" },
   { "name": "catalog.public-brand", "rule": "anonymous" },
   { "name": "catalog.public-brands-az", "rule": "anonymous" },
@@ -75,6 +78,7 @@
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.certified-categories", "rule": "anonymous" },
+  { "name": "certification.claim-term-list", "rule": "anonymous" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.expire-product-certificates", "rule": "system" },
@@ -240,6 +244,11 @@
   },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
+  {
+    "name": "identity.change-actor-labels",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "identity.change-display-name",
     "rule": "own-resources",

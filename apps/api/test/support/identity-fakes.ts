@@ -179,6 +179,8 @@ export const fakeHashOf = (password: string): string => `$argon2id$v=19$fake$${p
 export class IdentityFakes {
   readonly accounts = new Map<string, AccountState>();
   readonly sessions = new Map<string, { session: Session; tokenHash: string }>();
+  /** The `sessionsInvalidatedAt` of each account (M-585-1), by account id. */
+  readonly sessionsInvalidatedAt = new Map<string, Temporal.Instant>();
   readonly throttles = new Map<string, ThrottleReservation & { accountKey: string | null }>();
   readonly records: (SignInRecord & { marketId: string })[] = [];
   readonly events: PendingEvent[] = [];
@@ -1308,8 +1310,14 @@ export class IdentityFakes {
           count += 1;
         }
       }
+      const stamped = this.sessionsInvalidatedAt.get(accountId);
+      if (stamped === undefined || Temporal.Instant.compare(stamped, now) < 0) {
+        this.sessionsInvalidatedAt.set(accountId, now);
+      }
       return Promise.resolve(count);
     },
+    sessionsInvalidatedAt: (_market, accountId) =>
+      Promise.resolve(this.sessionsInvalidatedAt.get(accountId) ?? null),
     revokeAllOfSeller: (market, sellerId, reason, now) => {
       let count = 0;
       for (const found of this.sessions.values()) {

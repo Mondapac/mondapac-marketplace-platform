@@ -33,6 +33,28 @@ export class RewardBody {
   amountMinor!: string | null;
 }
 
+export class TierBody {
+  @ApiProperty({
+    type: String,
+    description: 'Goods amount, minor units, from which the tier applies.',
+  })
+  thresholdMinor!: string;
+  @ApiProperty({ type: RewardBody }) reward!: RewardBody;
+}
+
+export class BundleItemBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ description: 'Units of the product in one set.' }) quantity!: number;
+}
+
+export class FlashBody {
+  @ApiProperty({ description: 'The units the sale may sell in all.' }) unitLimit!: number;
+  @ApiProperty({
+    description: 'The IANA zone of the owning party, in which the window was written.',
+  })
+  timeZone!: string;
+}
+
 class PromotionCommonBody {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ enum: [...CREATABLE_TYPES] }) type!: string;
@@ -53,6 +75,29 @@ class PromotionCommonBody {
   @ApiProperty({ type: [String], description: 'Empty is any product.' }) productIds!: string[];
   @ApiProperty({ type: [String], description: 'Empty is any seller.' }) sellerIds!: string[];
   @ApiProperty({ type: [String], description: 'Empty is any delivery zone.' }) zones!: string[];
+  @ApiProperty({ type: [TierBody], description: 'TIERED_CART only, lowest threshold first.' })
+  tiers!: TierBody[];
+  @ApiProperty({ nullable: true, type: Number, description: 'BUY_X_GET_Y: units to buy.' })
+  buyQty!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'BUY_X_GET_Y: cheapest units rewarded.',
+  })
+  getQty!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'MULTI_BUY: units in one group; the group price is `reward.amountMinor`.',
+  })
+  groupQty!: number | null;
+  @ApiProperty({
+    type: [BundleItemBody],
+    description: 'BUNDLE: the items of one set; the amount off a set is `reward.amountMinor`.',
+  })
+  bundleItems!: BundleItemBody[];
+  @ApiProperty({ nullable: true, type: Number }) maxRepeatsPerOrder!: number | null;
+  @ApiProperty({ nullable: true, type: FlashBody }) flash!: FlashBody | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
 }
@@ -124,16 +169,60 @@ export class PromotionRequest {
   @ApiProperty({ required: false }) combinable?: boolean;
   @ApiProperty({ required: false, description: 'The public code of a CART_CODE promotion.' })
   code?: string;
-  @ApiProperty({ format: 'date-time' }) startsAt!: string;
+  @ApiProperty({ format: 'date-time', required: false }) startsAt?: string;
   @ApiProperty({ format: 'date-time', required: false }) endsAt?: string;
   @ApiProperty({ required: false }) testMode?: boolean;
   @ApiProperty({ required: false, description: 'Admin only; needs a fresh two-step code.' })
   specialCampaign?: boolean;
   @ApiProperty({
     type: Object,
-    description: '`{ kind: "PERCENT", bps }` or `{ kind: "FIXED", amountMinor }`.',
+    required: false,
+    description:
+      '`{ kind: "PERCENT", bps }` or `{ kind: "FIXED", amountMinor }`. Per unit for BUY_X_GET_Y ' +
+      'and FLASH_SALE; FIXED (the amount off one set) for BUNDLE. Not accepted for TIERED_CART ' +
+      '(its tiers) and MULTI_BUY (its group price).',
   })
-  reward!: object;
+  reward?: object;
+  @ApiProperty({
+    required: false,
+    type: [Object],
+    description:
+      'TIERED_CART: `{ thresholdMinor, reward }` per tier (all PERCENT or all FIXED; higher ' +
+      'tiers give more). The highest tier the goods amount reaches applies.',
+  })
+  tiers?: object[];
+  @ApiProperty({ required: false, description: 'BUY_X_GET_Y: units to buy.' }) buyQty?: number;
+  @ApiProperty({
+    required: false,
+    description: 'BUY_X_GET_Y: the cheapest units that get the reward.',
+  })
+  getQty?: number;
+  @ApiProperty({ required: false, description: 'MULTI_BUY: units in one group (2 or more).' })
+  groupQty?: number;
+  @ApiProperty({ required: false, description: 'MULTI_BUY: the price of one group, minor units.' })
+  groupPriceMinor?: string;
+  @ApiProperty({
+    required: false,
+    type: [Object],
+    description: 'BUNDLE: `{ productId, quantity }` per item of one set (2 or more items).',
+  })
+  bundleItems?: object[];
+  @ApiProperty({
+    required: false,
+    description: 'BUY_X_GET_Y, MULTI_BUY, BUNDLE: the most groups or sets in one order.',
+  })
+  maxRepeatsPerOrder?: number;
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description:
+      'FLASH_SALE: `{ unitLimit, timeZone, startsLocal?, endsLocal? }`. `timeZone` is the IANA ' +
+      'zone of the owning party; with `startsLocal` and `endsLocal` (wall-clock `YYYY-MM-DDTHH:mm`) ' +
+      'the window is written in that zone and stored as UTC instants, and `startsAt` and `endsAt` ' +
+      'are not sent. A local time that does not exist or happens twice is refused. A flash sale ' +
+      'always has an end.',
+  })
+  flash?: object;
   @ApiProperty({ required: false, description: 'Minor units, digits only.' }) capMinor?: string;
   @ApiProperty({ required: false }) maxPerOrderMinor?: string;
   @ApiProperty({ required: false }) maxTotalUses?: number;
@@ -144,6 +233,19 @@ export class PromotionRequest {
   @ApiProperty({ required: false, type: [String] }) productIds?: string[];
   @ApiProperty({ required: false, type: [String] }) sellerIds?: string[];
   @ApiProperty({ required: false, type: [String] }) zones?: string[];
+}
+
+export class GenerateBatchCodesRequest {
+  @ApiProperty({ description: "How many codes to make; at most the Market's `maxPerBatch`." })
+  count!: number;
+}
+
+export class BatchCodeSummaryBody {
+  @ApiProperty({ format: 'uuid' }) promotionId!: string;
+  @ApiProperty() total!: number;
+  @ApiProperty() used!: number;
+  @ApiProperty({ description: 'The most codes the Market lets one promotion hold.' })
+  maxPerPromotion!: number;
 }
 
 export class BudgetRequest {
@@ -298,6 +400,22 @@ function common(view: Common) {
     productIds: [...view.productIds],
     sellerIds: [...view.sellerIds],
     zones: [...view.zones],
+    tiers: view.tiers.map((tier) => ({
+      thresholdMinor: minor(tier.thresholdMinor),
+      reward: rewardBody(tier.reward),
+    })),
+    buyQty: view.buyQty,
+    getQty: view.getQty,
+    groupQty: view.groupQty,
+    bundleItems: view.bundleItems.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    })),
+    maxRepeatsPerOrder: view.maxRepeatsPerOrder,
+    flash:
+      view.flash === null
+        ? null
+        : { unitLimit: view.flash.unitLimit, timeZone: view.flash.timeZone },
     createdAt: iso(view.createdAt),
     updatedAt: iso(view.updatedAt),
   };

@@ -17,7 +17,8 @@ import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
-import { IdentityModule } from '../identity';
+import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
+import { changeTrailProvider, IdentityModule } from '../identity';
 import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-file-revision.repository';
 import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
@@ -135,6 +136,8 @@ import { PublishedStoreImageRead } from './application/use-cases/published-store
 import { StoreImageReadOwn } from './application/use-cases/store-image-read-own.use-case';
 import { StoreImageRemove } from './application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from './application/use-cases/store-image-save.use-case';
+import { StoreProfileClaimTerms } from './application/use-cases/store-profile-claim-terms.use-case';
+import { StoreProfileHistory } from './application/use-cases/store-profile-history.use-case';
 import { StoreProfileRead } from './application/use-cases/store-profile-read.use-case';
 import { StoreProfileSave } from './application/use-cases/store-profile-save.use-case';
 import { StoreProfileSaveAbout } from './application/use-cases/store-profile-save-about.use-case';
@@ -173,6 +176,7 @@ const PORT = {
   audit: AUDIT_WRITER,
   auditTrail: AUDIT_TRAIL_READER,
   teamMembers: TEAM_MEMBER_LABEL_SOURCE,
+  trail: CHANGE_TRAIL,
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
@@ -246,6 +250,7 @@ const STORE_PROFILE_READ_PORTS = {
   storeImages: true,
   contentSealer: true,
   localesPolicy: true,
+  trail: true,
 } as const;
 
 /** The ports of the reviewer's approve and reject (slice 7a-decide). */
@@ -296,6 +301,7 @@ const REVIEW_DECISION_PORTS = {
     PersistenceModule.outboxWriterFor('sellers'),
     PersistenceModule.auditWriterFor('sellers'),
     PersistenceModule.auditTrailReaderFor('sellers'),
+    changeTrailProvider(),
     registerEvents('sellers', SELLERS_EVENTS),
     registerAuditActions('sellers', SELLERS_AUDIT_ACTIONS),
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
@@ -335,6 +341,7 @@ const REVIEW_DECISION_PORTS = {
     // Slice 12 part 2, the seller's own store profile (design 3.7, 6.2) over HTTP through
     // StoreProfileController, under `sellers.store-profile.view` / `.edit`, approved sellers only.
     useCaseProvider(StoreProfileRead, STORE_PROFILE_READ_PORTS),
+    useCaseProvider(StoreProfileClaimTerms, { claimCheck: true }),
     useCaseProvider(StoreProfileSaveAbout, {
       ...STORE_PROFILE_READ_PORTS,
       audit: true,
@@ -357,6 +364,7 @@ const REVIEW_DECISION_PORTS = {
       ids: true,
       clock: true,
     }),
+    useCaseProvider(StoreProfileHistory, { trail: true }),
     useCaseProvider(StoreImageSave, {
       ...STORE_PROFILE_READ_PORTS,
       imageProcessor: true,

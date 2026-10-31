@@ -106,6 +106,14 @@ export const PromotionBudgetChanged = defineAuditAction({
   after: { budget: auditField.optional(auditField.money()), ...stepUp },
 });
 
+/** An admin generated a batch of single-use codes; the codes themselves are never recorded. */
+export const BatchCodesGenerated = defineAuditAction({
+  action: 'promotions.batch-codes.generated',
+  targetType: PROMOTION_TARGET,
+  actors: ['authenticated'],
+  after: { batchId: auditField.id(), count: auditField.integer(), ...stepUp },
+});
+
 /** A seller opted in to, or withdrew from, a co-funded campaign. */
 export const CoFundingOptInChanged = defineAuditAction({
   action: 'promotions.co-funding.changed',
@@ -164,6 +172,7 @@ export const PROMOTIONS_AUDIT_ACTIONS = [
   PromotionPaused,
   PromotionResumed,
   PromotionBudgetChanged,
+  BatchCodesGenerated,
   CoFundingOptInChanged,
   PromotionReviewDecided,
   FirstOrderSettingsChanged,

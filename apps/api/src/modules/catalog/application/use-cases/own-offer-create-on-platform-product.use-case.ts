@@ -218,12 +218,15 @@ export class OwnOfferCreateOnPlatformProduct extends UseCase<
     });
   }
 
-  /** The product's type code when it is a published, non-retired PLATFORM product, else null. */
+  /**
+   * The product's type code when it is a published, non-retired, non-paused PLATFORM product, else
+   * null (a paused product takes no new Offers until it is activated again; design 4.1a).
+   */
   async #productTypeOf(market: MarketContext, productId: Id<'Product'>): Promise<string | null> {
     const product = await this.deps.products.findById(market, productId);
     if (product === null) return null;
-    const { scope, status, typeCode } = product.state;
-    return scope === 'PLATFORM' && status === 'published' ? typeCode : null;
+    const { scope, status, typeCode, pausedAt } = product.state;
+    return scope === 'PLATFORM' && status === 'published' && pausedAt === null ? typeCode : null;
   }
 
   #parse(

@@ -1,3 +1,4 @@
+import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
 import { encodePayload, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
@@ -134,6 +135,7 @@ describe('checkout delivery quotes from the fake_test fleet in market ZZ', () =>
       webhookSignature: undefined as never,
       uberWebhookSignature: undefined as never,
       securityEvents: undefined as never,
+      trail: unusedChangeTrail,
     };
     await settings.saveSettings(
       market,

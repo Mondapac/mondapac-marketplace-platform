@@ -3089,6 +3089,10 @@ svg {
 .pby a {
   color: var(--sf-teal);
   font-weight: 700;
+  /* A 40px tap target without moving the line. */
+  display: inline-block;
+  padding-block: 10px;
+  margin-block: -10px;
 }
 .gal {
   display: grid;
@@ -10132,5 +10136,249 @@ button.login {
   .ac-del .ac-tg {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+/* Brand pages (design B5, design/blog/blog-screens.html): the A to Z index at /brands and the brand
+   page at /brands/<slug>. Logical properties throughout, so the layout mirrors in RTL. */
+.br {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.br-index-head h1 {
+  font-size: calc(26px * var(--fs));
+  line-height: calc(32px * var(--fs));
+  font-weight: 800;
+}
+.br-index-head p {
+  margin-block-start: 4px;
+  color: var(--sf-slate);
+}
+.br-jump ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.br-jump a {
+  display: inline-grid;
+  place-items: center;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+.br-jump a:hover {
+  border-color: var(--sf-teal);
+  color: var(--sf-teal);
+}
+.br-letter {
+  display: grid;
+  gap: 10px;
+  /* In view below the sticky header after a jump from the letter row. */
+  scroll-margin-block-start: calc(var(--sf-header-height) + 16px);
+}
+.br-letter h2 {
+  font-size: calc(20px * var(--fs));
+  line-height: 1.25;
+  font-weight: 800;
+}
+.br-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.br-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  text-decoration: none;
+}
+.br-tile:hover {
+  border-color: color-mix(in srgb, var(--sf-teal) 45%, var(--sf-line));
+  box-shadow: 0 6px 18px var(--sf-shadow-soft);
+}
+.br-name {
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.br-note {
+  color: var(--sf-slate);
+}
+/* The logo tile: a picture, or the capital letters of the name on a mist tile. */
+.br-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+  font-family: var(--sf-font-head);
+  font-weight: 800;
+}
+.br-mark.sm {
+  width: 48px;
+  height: 48px;
+  font-size: calc(16px * var(--fs));
+}
+.br-mark.lg {
+  width: 72px;
+  height: 72px;
+  font-size: calc(22px * var(--fs));
+  border: 4px solid var(--sf-white);
+  box-shadow: 0 2px 8px var(--sf-shadow-pop);
+}
+.br-mark.img {
+  background: var(--sf-white);
+}
+.br-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+/* The brand page's header card: the picture, then the logo on its edge, the name and the facts. */
+.br-head {
+  background: var(--sf-white);
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+}
+.br-cover {
+  position: relative;
+  overflow: hidden;
+  min-height: 160px;
+  border-start-start-radius: calc(var(--sf-radius-tile) - 1px);
+  border-start-end-radius: calc(var(--sf-radius-tile) - 1px);
+  /* Without a picture, the neutral header bar. */
+  background: var(--sf-mist);
+}
+.br-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.br-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 16px;
+  padding: 0 20px 20px;
+}
+.br-body .br-mark.lg {
+  position: relative;
+  z-index: 1;
+  margin-block-start: -36px;
+}
+.br-title {
+  flex: 1 1 240px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-block-start: 12px;
+}
+.br-title h1 {
+  font-size: calc(26px * var(--fs));
+  line-height: calc(32px * var(--fs));
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.br-summary {
+  color: var(--sf-slate);
+  overflow-wrap: anywhere;
+}
+.br-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
+.br-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.br-meta .ico {
+  width: 15px;
+  height: 15px;
+}
+.br-products {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  scroll-margin-block-start: calc(var(--sf-header-height) + 16px);
+}
+.br-sech {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+.br-sech h2 {
+  font-size: calc(20px * var(--fs));
+  line-height: 1.25;
+  font-weight: 800;
+}
+.br-sech a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--sf-teal);
+  font-weight: 700;
+}
+.br-skel-head {
+  min-height: 240px;
+}
+.br-skel-card {
+  aspect-ratio: 3 / 4;
+}
+.br-skel-tile {
+  min-height: 72px;
+}
+.pbrand {
+  color: var(--sf-slate);
+  margin-block-start: 2px;
+}
+.pbrand a {
+  color: var(--sf-teal);
+  font-weight: 700;
+  display: inline-block;
+  padding-block: 10px;
+  margin-block: -10px;
+}
+@media (min-width: 700px) {
+  .br-cover {
+    min-height: 200px;
+  }
+  .br-mark.lg {
+    width: 96px;
+    height: 96px;
+    font-size: calc(28px * var(--fs));
+  }
+  .br-body .br-mark.lg {
+    margin-block-start: -48px;
   }
 }

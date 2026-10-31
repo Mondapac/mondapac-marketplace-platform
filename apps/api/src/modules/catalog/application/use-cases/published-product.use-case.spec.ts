@@ -34,6 +34,7 @@ const published = (id: Id<'Product'>): PublishedProduct => ({
   shortDescription: null,
   description: 'Sweet',
   categoryIds: ['01990000-0000-7000-8000-0000000000ca' as Id<'Category'>],
+  brand: null,
   variants: [
     { variantId: '01990000-0000-7000-8000-0000000000b1' as Id<'Variant'>, position: 0, label: 'S' },
   ],
@@ -71,6 +72,7 @@ describe.each(TEST_MARKETS)('publishedProduct in market %s', (code) => {
     offerListings: undefined as never,
     offerListingsSystem: undefined as never,
     offerBadges: undefined as never,
+    brandProductIds: undefined as never,
     publishedProduct: new PublishedProductQuery(gate, {
       unitOfWork,
       publishedProductReader: reader,

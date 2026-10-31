@@ -1,8 +1,16 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { APP_CONFIG } from '../../../platform/config/config.module';
+import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import { BATCH_CODE_CRYPTO, type BatchCodeCrypto } from '../application/ports/batch-code-crypto';
+import {
+  BATCH_CODE_REPOSITORY,
+  type BatchCodeRepository,
+} from '../application/ports/batch-code.repository';
+import { FLASH_SALES, type FlashSales } from '../application/ports/flash-sales';
 import {
   MARKET_SETTING_REPOSITORY,
   type MarketSettingRepository,
@@ -35,6 +43,9 @@ import {
   PrismaFirstOrderSettingsRepository,
   PrismaShippingThresholdRepository,
 } from './prisma-settings.repository';
+import { CryptoBatchCodeCrypto } from './crypto-batch-code-crypto';
+import { PrismaBatchCodeRepository } from './prisma-batch-code.repository';
+import { UnknownFlashSales } from './unknown-flash-sales';
 
 /** Binds the ports of promotions. Only this layer may reach `PrismaService`. */
 export const promotionsProviders: readonly FactoryProvider[] = [
@@ -77,6 +88,22 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     provide: PROMOTIONS_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): PromotionsPolicy => new ConfigPromotionsPolicy(markets),
+  },
+  {
+    provide: BATCH_CODE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BatchCodeRepository =>
+      new PrismaBatchCodeRepository(prisma),
+  },
+  {
+    provide: BATCH_CODE_CRYPTO,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): BatchCodeCrypto =>
+      new CryptoBatchCodeCrypto(config.promotionsCodePepper),
+  },
+  {
+    provide: FLASH_SALES,
+    useFactory: (): FlashSales => new UnknownFlashSales(),
   },
   {
     provide: SELLER_ACTIVITY,

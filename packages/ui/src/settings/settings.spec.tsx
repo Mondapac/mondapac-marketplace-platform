@@ -317,7 +317,7 @@ describe('SettingsErrorSummary', () => {
       <SettingsErrorSummary
         title="2 settings need fixing before you can save"
         items={[
-          { id: 'cutoff', label: 'Cut-off time' },
+          { id: 'cutoff', label: 'Cut-off time', reason: 'Enter a time such as 1:00 pm.' },
           { id: 'free', label: 'Free delivery from' },
         ]}
       />,
@@ -327,6 +327,10 @@ describe('SettingsErrorSummary', () => {
     expect(out).toContain('2 settings need fixing before you can save');
     expect(out).toContain('<a href="#cutoff"');
     expect(out).toContain('>Free delivery from</a>');
+    // The reason follows its link; an item without one shows the link alone.
+    expect(out).toMatch(
+      />Cut-off time<\/a><span>: (<!-- -->)?Enter a time such as 1:00 pm\.<\/span>/,
+    );
     expect(out).toContain('text-critical-fg');
   });
 
@@ -337,7 +341,13 @@ describe('SettingsErrorSummary', () => {
 
 describe('Button disabled state', () => {
   it('keeps every disabled label in a readable muted text colour, with no opacity fade', () => {
-    for (const variant of ['primary', 'secondary', 'destructive', 'link'] as const) {
+    for (const variant of [
+      'primary',
+      'secondary',
+      'destructive',
+      'destructive-solid',
+      'link',
+    ] as const) {
       const out = html(
         <Button variant={variant} disabled>
           Save
@@ -348,5 +358,11 @@ describe('Button disabled state', () => {
       expect(out).not.toContain('accent-disabled');
     }
     expect(html(<Button disabled>Save</Button>)).toContain('disabled:bg-muted');
+  });
+
+  it('fills the destructive-solid button with the critical colour', () => {
+    const out = html(<Button variant="destructive-solid">Delete</Button>);
+    expect(out).toContain('bg-critical-solid');
+    expect(out).toContain('text-on-accent');
   });
 });

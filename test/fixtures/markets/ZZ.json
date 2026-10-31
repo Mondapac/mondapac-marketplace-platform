@@ -70,7 +70,13 @@
     "priorApprovalDiscountBps": 4000,
     "wasPrice": { "windowDays": 60, "minDaysAtPrice": 20 },
     "gstRulingConfirmed": true,
-    "maxActivePromotionsPerSeller": 20
+    "maxActivePromotionsPerSeller": 20,
+    "batchCodes": {
+      "codeLength": 12,
+      "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      "maxPerBatch": 200,
+      "maxPerPromotion": 1000
+    }
   },
   "tax": {
     "defaultRateBps": 1500,

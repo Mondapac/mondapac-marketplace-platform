@@ -90,6 +90,26 @@ describe('role editor', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('checks the name as it is typed or left, and keeps Save off while it is wrong', () => {
+    mount();
+    const name = screen.getByLabelText('Role name');
+    // Nothing is flagged on a new, untouched form.
+    expect(screen.queryByText('Enter a name for the role.')).toBeNull();
+    fireEvent.blur(name);
+    expect(screen.getByText('Enter a name for the role.')).toBeTruthy();
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Create role' }).disabled).toBe(
+      true,
+    );
+    fireEvent.change(name, { target: { value: 'Night shift' } });
+    expect(screen.queryByText('Enter a name for the role.')).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Create role' }).disabled).toBe(
+      false,
+    );
+    fireEvent.change(name, { target: { value: `Bad\u202Ename` } });
+    expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+  });
+
   it('shows a key the admin may not give as locked, and a protected one with its note', () => {
     mount();
     const locked = screen.getByLabelText<HTMLInputElement>('Manage');

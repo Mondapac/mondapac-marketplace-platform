@@ -6,6 +6,7 @@ import {
   SettingInput,
   SettingRow,
   SettingsErrorSummary,
+  useLiveErrors,
   SettingsPage,
   SettingsSection,
   toast,
@@ -43,8 +44,6 @@ export function SupportEmailCard({
 }) {
   const t = useTranslations();
   const [problem, setProblem] = useState<string | null>(null);
-  const [invalid, setInvalid] = useState(false);
-  const [failedSaves, setFailedSaves] = useState(0);
   const unset = t('settings.conflict.unset');
   const form = useSettingsForm<SupportContact, string>({
     initial,
@@ -65,6 +64,10 @@ export function SupportEmailCard({
   });
   const contact = form.saved;
   const text = form.draft;
+  const emailNow = text.trim().toLowerCase();
+  const failing = emailNow.length > MAX_LENGTH || !SHAPE.test(emailNow);
+  const live = useLiveErrors<'email'>(failing ? ['email'] : []);
+  const invalid = live.has('email');
 
   const dirty = canManage && form.dirty;
   const count = canManage ? form.count : 0;
@@ -72,19 +75,17 @@ export function SupportEmailCard({
 
   function discard() {
     form.discard();
-    setInvalid(false);
+    live.reset();
     setProblem(null);
   }
 
   async function submit() {
     const email = text.trim().toLowerCase();
     setProblem(null);
-    if (email.length > MAX_LENGTH || !SHAPE.test(email)) {
-      setInvalid(true);
-      setFailedSaves((n) => n + 1);
+    if (failing) {
+      live.attempt();
       return;
     }
-    setInvalid(false);
     const result = await form.run(async (expectedVersion): Promise<SaveResult<SupportContact>> => {
       const answer = await callApi<SupportContact>(
         'PUT',
@@ -98,7 +99,10 @@ export function SupportEmailCard({
       else setProblem(supportProblemOf(answer.failure));
       return { status: 'failed' };
     });
-    if (result.status === 'saved') toast.success(t('settings.support.saved'));
+    if (result.status === 'saved') {
+      live.reset();
+      toast.success(t('settings.support.saved'));
+    }
     // The re-read failed too: the plain "reload the page" message is all that is left.
     else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
@@ -113,8 +117,14 @@ export function SupportEmailCard({
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: 1 })}
-        items={[{ id: EMAIL_ROW, label: t('settings.support.field') }]}
-        focusSignal={failedSaves}
+        items={[
+          {
+            id: EMAIL_ROW,
+            label: t('settings.support.field'),
+            reason: t('settings.support.invalid'),
+          },
+        ]}
+        focusSignal={live.attempts}
       />
     ) : null,
     form.theirs !== null ? (
@@ -194,8 +204,9 @@ export function SupportEmailCard({
               value={text}
               onChange={(event) => {
                 form.setDraft(event.target.value);
-                setInvalid(false);
+                live.touch('email');
               }}
+              onBlur={() => live.touch('email')}
             />
           </SettingRow>
         ) : null}

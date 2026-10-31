@@ -1,7 +1,8 @@
-import { err, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { err } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_PLATFORM_PRODUCT_EDIT } from '../../contracts/permissions';
+import { parseSaveDraftInput } from '../working-copy/parse-save-draft-input';
 import type {
   SaveDraft,
   SaveDraftFailure,
@@ -61,35 +62,8 @@ export class PlatformProductSaveDraft extends UseCase<
     if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
       return err({ code: 'access.denied' });
     }
-    const parsed = parseInput(input);
+    const parsed = parseSaveDraftInput(input);
     if (!parsed.ok) return parsed;
     return this.deps.saveDraft.execute(context, parsed.value);
   }
-}
-
-function parseInput(
-  input: PlatformProductSaveDraftInput,
-): Result<
-  { productId: Id<'Product'>; content: unknown; variantIds: (Id<'Variant'> | null)[] },
-  PlatformProductSaveDraftFailure
-> {
-  const fail = (path: string, code: string): Result<never, PlatformProductSaveDraftFailure> =>
-    err({ code: 'validation.failed', fields: [{ path, code }] });
-  if (typeof input !== 'object' || input === null) return fail('body', 'type');
-  const product = typeof input.productId === 'string' ? parseId<'Product'>(input.productId) : null;
-  if (product === null || !product.ok) return fail('productId', 'format');
-  if (!Array.isArray(input.variantIds) || input.variantIds.length > 500) {
-    return fail('variantIds', 'type');
-  }
-  const variantIds: (Id<'Variant'> | null)[] = [];
-  for (const [index, value] of (input.variantIds as readonly unknown[]).entries()) {
-    if (value === null) {
-      variantIds.push(null);
-      continue;
-    }
-    const variant = typeof value === 'string' ? parseId<'Variant'>(value) : null;
-    if (variant === null || !variant.ok) return fail(`variantIds[${index}]`, 'format');
-    variantIds.push(variant.value);
-  }
-  return { ok: true, value: { productId: product.value, content: input.content, variantIds } };
 }

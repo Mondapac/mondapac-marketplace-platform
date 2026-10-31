@@ -14,6 +14,8 @@ import { ListPromotionReviews } from '../src/modules/promotions/application/use-
 import { ListPromotionsFull } from '../src/modules/promotions/application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from '../src/modules/promotions/application/use-cases/list-promotions.use-case';
 import { PauseOwnPromotion } from '../src/modules/promotions/application/use-cases/pause-own-promotion.use-case';
+import { GenerateBatchCodes } from '../src/modules/promotions/application/use-cases/generate-batch-codes.use-case';
+import { ViewBatchCodeSummary } from '../src/modules/promotions/application/use-cases/view-batch-code-summary.use-case';
 import { PausePromotion } from '../src/modules/promotions/application/use-cases/pause-promotion.use-case';
 import { PreviewQuote } from '../src/modules/promotions/application/use-cases/preview-quote.use-case';
 import { ResumeOwnPromotion } from '../src/modules/promotions/application/use-cases/resume-own-promotion.use-case';
@@ -102,6 +104,8 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['pause', PausePromotion],
     ['resume', ResumePromotion],
     ['budget', SetPromotionBudget],
+    ['generate-codes', GenerateBatchCodes],
+    ['code-summary', ViewBatchCodeSummary],
     ['list-reviews', ListPromotionReviews],
     ['decide-review', DecidePromotionReview],
     ['view-first-order', ViewFirstOrderSettings],
@@ -230,6 +234,13 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     productIds: [],
     sellerIds: [],
     zones: [],
+    tiers: [],
+    buyQty: null,
+    getQty: null,
+    groupQty: null,
+    bundleItems: [],
+    maxRepeatsPerOrder: null,
+    flash: null,
     createdAt: START,
     updatedAt: START,
     platformSplitBps: null,
@@ -402,6 +413,176 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     expect(stray.status).toBe(400);
     expect(stray.body).toMatchObject({
       details: { fields: [{ path: 'status', code: 'unknown-field' }] },
+    });
+  });
+
+  it('passes the phase 2 fields through to the use case and refuses any other', async () => {
+    await boot();
+    const tiered = {
+      type: 'TIERED_CART',
+      name: 'Spend more',
+      funding: 'PLATFORM',
+      startsAt: START.toString(),
+      budgetMinor: '100000',
+      tiers: [
+        { thresholdMinor: '5000', reward: { kind: 'FIXED', amountMinor: '500' } },
+        { thresholdMinor: '10000', reward: { kind: 'FIXED', amountMinor: '1500' } },
+      ],
+    };
+    const flash = {
+      type: 'FLASH_SALE',
+      name: 'Tonight',
+      funding: 'SELLER',
+      reward: { kind: 'PERCENT', bps: 3000 },
+      productIds: [id<'Product'>(0x1001)],
+      flash: {
+        unitLimit: 50,
+        timeZone: 'Australia/Brisbane',
+        startsLocal: '2026-11-01T18:00',
+        endsLocal: '2026-11-01T21:00',
+      },
+    };
+    const others = {
+      buyQty: 2,
+      getQty: 1,
+      groupQty: 3,
+      groupPriceMinor: '1000',
+      maxRepeatsPerOrder: 2,
+      bundleItems: [{ productId: id<'Product'>(0x1001), quantity: 1 }],
+    };
+    next = ok(PROMOTION_VIEW);
+    const admin1 = admin();
+    expect(
+      (await call('admin', 'post', '/promotions/admin/promotions', admin1, tiered)).status,
+    ).toBe(201);
+    next = ok(OWN_VIEW);
+    const seller1 = seller();
+    expect(
+      (await call('seller', 'post', '/promotions/seller/promotions', seller1, flash)).status,
+    ).toBe(201);
+    expect(
+      (
+        await call('seller', 'post', '/promotions/seller/promotions', seller1, {
+          ...flash,
+          ...others,
+        })
+      ).status,
+    ).toBe(201);
+    expect(calls.map((c) => c.input)).toEqual([tiered, flash, { ...flash, ...others }]);
+    const stray = await call('admin', 'post', '/promotions/admin/promotions', admin1, {
+      ...tiered,
+      tierBonus: 1,
+    });
+    expect(stray.status).toBe(400);
+    expect(stray.body).toMatchObject({
+      details: { fields: [{ path: 'tierBonus', code: 'unknown-field' }] },
+    });
+  });
+
+  it('answers the phase 2 terms of a promotion in its body', async () => {
+    await boot();
+    next = ok({
+      ...PROMOTION_VIEW,
+      type: 'TIERED_CART',
+      tiers: [{ thresholdMinor: 5000n, reward: { kind: 'FIXED', amount: 500n } }],
+      flash: { unitLimit: 5, timeZone: 'Australia/Brisbane' },
+      bundleItems: [{ productId: id<'Product'>(0x1001), quantity: 2 }],
+      buyQty: 2,
+      getQty: 1,
+      groupQty: 3,
+      maxRepeatsPerOrder: 4,
+    });
+    const read = await call('admin', 'get', `/promotions/admin/promotions/${PROMOTION}`, admin());
+    expect(read.body).toMatchObject({
+      tiers: [{ thresholdMinor: '5000', reward: { kind: 'FIXED', bps: null, amountMinor: '500' } }],
+      flash: { unitLimit: 5, timeZone: 'Australia/Brisbane' },
+      bundleItems: [{ productId: id<'Product'>(0x1001), quantity: 2 }],
+      buyQty: 2,
+      getQty: 1,
+      groupQty: 3,
+      maxRepeatsPerOrder: 4,
+    });
+  });
+
+  describe('single-use batch codes', () => {
+    const URL = `/promotions/admin/promotions/${PROMOTION}/batch-codes`;
+    const BATCH = id<'PromotionBatch'>(0xb001);
+
+    it('returns the generated codes once, as a CSV that is never cached', async () => {
+      await boot();
+      next = ok({
+        promotionId: PROMOTION,
+        batchId: BATCH,
+        codes: ['AAAA2222BBBB', 'CCCC3333DDDD'],
+      });
+      const response = await call('admin', 'post', URL, admin(), { count: 2 });
+      expect(response.status).toBe(201);
+      expect(response.headers['content-type']).toBe('text/csv; charset=utf-8');
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['content-disposition']).toBe(
+        `attachment; filename="promotion-${PROMOTION}-codes-${BATCH}.csv"`,
+      );
+      expect(response.text).toBe('code\r\nAAAA2222BBBB\r\nCCCC3333DDDD\r\n');
+      expect(calls).toEqual([
+        { name: 'generate-codes', input: { promotionId: PROMOTION, count: 2 } },
+      ]);
+    });
+
+    it('needs an admin session with CSRF, a JSON body of count only, and passes the use case’s refusals on', async () => {
+      await boot();
+      const session = admin();
+      expect(
+        (await call('admin', 'post', URL, { cookie: session.cookie }, { count: 2 })).status,
+      ).toBe(403);
+      const stray = await call('admin', 'post', URL, session, { count: 2, prefix: 'X' });
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'prefix', code: 'unknown-field' }] },
+      });
+      const text = await http()
+        .post(URL)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+        .set('content-type', 'text/plain')
+        .send('x');
+      expect(text.status).toBe(415);
+      for (const [error, status, details] of [
+        [
+          { code: 'second-factor.required', actionKey: 'promotions.platform-funding.approve' },
+          403,
+          { actionKey: 'promotions.platform-funding.approve' },
+        ],
+        [
+          { code: 'validation.failed', fields: [{ path: 'count', code: 'too-many' }] },
+          400,
+          { fields: [{ path: 'count', code: 'too-many' }] },
+        ],
+        [{ code: 'promotions.not-found' }, 404, undefined],
+        [{ code: 'promotions.disabled' }, 404, undefined],
+        [{ code: 'promotions.invalid-state' }, 409, undefined],
+        [{ code: 'promotions.unavailable' }, 503, undefined],
+        [{ code: 'access.denied' }, 403, undefined],
+      ] as const) {
+        next = err(error);
+        const refused = await call('admin', 'post', URL, session, { count: 2 });
+        expect(refused.status).toBe(status);
+        expect(refused.headers['content-type']).not.toContain('text/csv');
+        if (details !== undefined) expect(refused.body).toMatchObject({ details });
+      }
+    });
+
+    it('reads the counts of a promotion’s codes, never a code', async () => {
+      await boot();
+      next = ok({ promotionId: PROMOTION, total: 10, used: 2, maxPerPromotion: 1000 });
+      const response = await call('admin', 'get', URL, admin());
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        promotionId: PROMOTION,
+        total: 10,
+        used: 2,
+        maxPerPromotion: 1000,
+      });
+      expect(calls).toEqual([{ name: 'code-summary', input: { promotionId: PROMOTION } }]);
     });
   });
 

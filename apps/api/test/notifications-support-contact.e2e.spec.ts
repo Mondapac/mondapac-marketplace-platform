@@ -9,6 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SetSupportContact } from '../src/modules/notifications/application/use-cases/set-support-contact.use-case';
 import { ViewPublicSupportContact } from '../src/modules/notifications/application/use-cases/view-public-support-contact.use-case';
+import { ViewSupportContactHistory } from '../src/modules/notifications/application/use-cases/view-support-contact-history.use-case';
 import { ViewSupportContact } from '../src/modules/notifications/application/use-cases/view-support-contact.use-case';
 import { NOTIFICATIONS_STATUS } from '../src/modules/notifications/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -35,6 +36,16 @@ const SELLER = id<'Seller'>(0xb020);
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 const PATH = '/notifications/admin/support-contact';
+const LAST_CHANGED = {
+  at: Temporal.Instant.from('2026-10-13T09:30:00Z'),
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
+} as const;
+const LAST_CHANGED_BODY = {
+  at: '2026-10-13T09:30:00Z',
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
+};
 
 it('maps every refusal code of the notifications routes to its exact status', () => {
   expect(NOTIFICATIONS_STATUS).toEqual({
@@ -73,6 +84,8 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
           .useValue(stub('view'))
           .overrideProvider(SetSupportContact)
           .useValue(stub('set'))
+          .overrideProvider(ViewSupportContactHistory)
+          .useValue(stub('history'))
           .overrideProvider(ViewPublicSupportContact)
           .useValue(stub('public')),
     }));
@@ -137,7 +150,7 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
     clock = new FixedClock(START);
     calls = [];
     actorKinds = [];
-    next = ok({ email: 'help@example.com', version: 2 });
+    next = ok({ email: 'help@example.com', version: 2, lastChanged: LAST_CHANGED });
   });
   afterEach(async () => {
     await app?.close();
@@ -150,7 +163,11 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
     const read = await call('get', 'admin', session);
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
-    expect(read.body).toEqual({ email: 'help@example.com', version: 2 });
+    expect(read.body).toEqual({
+      email: 'help@example.com',
+      version: 2,
+      lastChanged: LAST_CHANGED_BODY,
+    });
 
     const set = await call('put', 'admin', session, {
       email: 'care@example.com',
@@ -158,10 +175,65 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
     });
     expect(set.status).toBe(200);
     expect(set.headers['cache-control']).toBe('no-store');
+    expect(set.body).toEqual({
+      email: 'help@example.com',
+      version: 2,
+      lastChanged: LAST_CHANGED_BODY,
+    });
     expect(calls).toEqual([
       { name: 'view', input: {} },
       { name: 'set', input: { email: 'care@example.com', expectedVersion: 2 } },
     ]);
+  });
+
+  it('lists the history for an admin and passes the paging, a seller is refused', async () => {
+    await boot();
+    next = ok({
+      items: [
+        {
+          id: 'row-1',
+          at: LAST_CHANGED.at,
+          byDisplayName: null,
+          byKind: 'system',
+          fields: ['email'],
+        },
+      ],
+      next: null,
+    });
+    const session = sessionOf('admin', 2);
+    const read = await http()
+      .get(`${PATH}/history?limit=5&after=abc`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      items: [
+        {
+          id: 'row-1',
+          at: '2026-10-13T09:30:00Z',
+          byDisplayName: null,
+          byKind: 'system',
+          fields: ['email'],
+        },
+      ],
+      next: null,
+    });
+    expect(calls).toEqual([{ name: 'history', input: { after: 'abc', limit: 5 } }]);
+
+    next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+    const bad = await http()
+      .get(`${PATH}/history?limit=x`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    expect(bad.status).toBe(400);
+    expect(calls.at(-1)).toEqual({ name: 'history', input: { after: null, limit: 'invalid' } });
+
+    // The controller only authenticates; the use case decides (application-layer authorisation).
+    next = err({ code: 'access.denied' });
+    const seller = await http()
+      .get(`${PATH}/history`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...sessionOf('seller', 4) });
+    expect(seller.status).toBe(403);
+    expect(calls.at(-1)).toEqual({ name: 'history', input: { after: null, limit: undefined } });
   });
 
   it.each(['admin', 'seller'] as const)(
@@ -235,6 +307,17 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
     const conflict = await put();
     expect(conflict.status).toBe(409);
     expect(conflict.body).toEqual({ statusCode: 409, code: 'notifications.conflict' });
+    // The winning save: who and when, or null when the trail could not say.
+    next = err({ code: 'notifications.conflict', lastChanged: LAST_CHANGED });
+    const named = await put();
+    expect(named.status).toBe(409);
+    expect(named.body).toEqual({
+      statusCode: 409,
+      code: 'notifications.conflict',
+      details: { lastChanged: LAST_CHANGED_BODY },
+    });
+    next = err({ code: 'notifications.conflict', lastChanged: null });
+    expect((await put()).body).toMatchObject({ details: { lastChanged: null } });
     next = err({ code: 'access.denied' });
     expect((await put()).status).toBe(403);
   });

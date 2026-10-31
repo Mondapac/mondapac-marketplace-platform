@@ -736,10 +736,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
         'budget_minor',
+        'buy_qty',
         'cap_minor',
         'combinable',
         'ends_at',
+        'flash_time_zone',
+        'flash_unit_limit',
+        'get_qty',
+        'group_qty',
         'max_per_order_minor',
+        'max_repeats_per_order',
         'max_total_uses',
         'max_uses_per_customer',
         'min_spend_minor',
@@ -759,6 +765,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'promotions.promotion_targets': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.promotion_usage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 2: tiers and bundle items are replaced as a set; generated codes are insert-only here
+    // (package T2 grants the update of used_at).
+    'promotions.promotion_tiers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.promotion_bundle_items': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['decided_by_account_id', 'opted_in_at', 'withdrawn_at'],
@@ -1124,6 +1138,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'matched_into_product_id',
         'owner_seller_id',
         'own_brand',
+        'paused_at',
+        'paused_by_account_id',
         'pending_revision_id',
         'pending_submitted_at',
         'promoted_at',
@@ -1232,6 +1248,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'listed',
         'off_sale_description_claim_text',
         'off_sale_product_not_listed',
+        'off_sale_product_paused',
         'off_sale_product_retired',
         'off_sale_tag_suspended',
         'off_sale_type_not_allowed',
@@ -1284,6 +1301,37 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.offer_owner_notices': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
+    },
+    // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
+    // the application deletes it; only the name and who can use it change.
+    'catalog.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
+    // docs/design/data/catalog.md 3.29: the admin product import. A job moves through its states by
+    // column and a row records its result as the run goes; DELETE belongs to the purge (old jobs,
+    // and with them their rows).
+    'catalog.platform_import_jobs': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'added_rows',
+        'failed_rows',
+        'file_deleted_at',
+        'finished_at',
+        'lease_until',
+        'not_before',
+        'skip_errors',
+        'start_as',
+        'started_at',
+        'state',
+        'stop_reason',
+        'to_import',
+        'version',
+      ],
+    },
+    'catalog.platform_import_rows': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['product_code', 'product_id', 'run_code', 'run_state'],
     },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller

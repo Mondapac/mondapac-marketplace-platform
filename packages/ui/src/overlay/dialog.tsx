@@ -3,6 +3,19 @@
 import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 
 /**
+ * After the dialog is gone: while it is open the page is inert and cannot take focus. A dialog
+ * that is still open by then (a development re-mount) keeps its focus.
+ */
+function giveFocusBack(element: HTMLElement | null, dialog: HTMLDialogElement | null): void {
+  if (element === null) return;
+  setTimeout(() => {
+    if (element.isConnected && (dialog === null || !dialog.isConnected || !dialog.open)) {
+      element.focus();
+    }
+  }, 0);
+}
+
+/**
  * Opens and closes a native `<dialog>` as a modal with `open`: the browser traps focus, makes the
  * rest of the page inert and closes on Escape, and focus returns to the opener. Shared by the
  * Dialog and the side sheets (the notifications drawer).
@@ -17,16 +30,30 @@ export function useModal(
   open: boolean,
   initialFocus?: RefObject<HTMLElement | null>,
 ): void {
+  const opener = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const dialog = ref.current;
     if (dialog === null) return;
     if (open && !dialog.open) {
+      opener.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       dialog.showModal();
       // The browser focuses the first focusable element; a caller can name a safer one.
       initialFocus?.current?.focus();
     }
     if (!open && dialog.open) dialog.close();
   }, [ref, open, initialFocus]);
+
+  // Focus goes back to the opener when the dialog closes or its owner removes it from the page:
+  // a dialog taken out of the DOM while open does not give focus back by itself.
+  useLayoutEffect(() => {
+    if (open) return;
+    giveFocusBack(opener.current, ref.current);
+  }, [ref, open]);
+  useLayoutEffect(() => {
+    const dialog = ref.current;
+    return () => giveFocusBack(opener.current, dialog);
+  }, [ref]);
 }
 
 export interface DialogProps {
@@ -89,12 +116,15 @@ export function Dialog({
             {title}
           </h2>
           <div className="mt-2 text-fg-secondary">{children}</div>
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
-            {actions}
+          {/* Sticky: on a long form the buttons stay in view at the bottom of the dialog. */}
+          <div className="sticky bottom-0 -mx-4 -mb-4 mt-6 border-t border-line bg-surface px-4 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+              {actions}
+            </div>
+            {actionsNote === undefined || actionsNote === null ? null : (
+              <div className="mt-2 text-sm text-fg-muted sm:text-end">{actionsNote}</div>
+            )}
           </div>
-          {actionsNote === undefined || actionsNote === null ? null : (
-            <div className="mt-2 text-sm text-fg-muted sm:text-end">{actionsNote}</div>
-          )}
         </>
       ) : null}
     </dialog>

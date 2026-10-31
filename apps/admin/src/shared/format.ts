@@ -96,3 +96,16 @@ export function displayZone(zone: string | null): string {
     return 'UTC';
   }
 }
+
+/** A day with its year in an IANA zone ("29 Oct 2026"); a zone this runtime does not know reads in UTC. */
+export function dayInZone(iso: string | null, locale: string, zone: string): string {
+  if (iso === null) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+  try {
+    return dateFormat(locale, { ...options, timeZone: zone }).format(date);
+  } catch {
+    return dateFormat(locale, { ...options, timeZone: 'UTC' }).format(date);
+  }
+}

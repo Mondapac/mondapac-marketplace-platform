@@ -215,6 +215,11 @@ export interface ProductDetail {
   readonly photos: readonly string[];
   /** Small versions of `photos`, same order and length, for the thumbnail strip. */
   readonly photoThumbs?: readonly string[];
+  /**
+   * The product's brand while the brand is active (the name and the slug of its `/brands/<slug>`
+   * page); absent for a product without one.
+   */
+  readonly brand?: { readonly slug: string; readonly name: string };
   /** Never empty: a product without a sellable offer is not shown. */
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
   readonly similar: readonly ProductCard[];
@@ -888,3 +893,48 @@ export type SellerSignUpAnswer =
     }
   | { readonly kind: 'throttled'; readonly retryAfterSeconds: number }
   | { readonly kind: 'failed' };
+
+/** A brand's picture (logo or header) with its pixels, so the page reserves the space. */
+export interface BrandImage {
+  readonly src: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** One brand of the A to Z index: a link to its page, with the logo when it has one. */
+export interface BrandEntry {
+  readonly slug: string;
+  readonly name: string;
+  /** Written as the logo's `alt`; only with a logo. */
+  readonly logo?: BrandImage & { readonly alt: string };
+}
+
+/** The A to Z index (`/brands`): sections by first letter, `#` for any other first character. */
+export interface BrandIndex {
+  readonly sections: readonly { readonly letter: string; readonly brands: readonly BrandEntry[] }[];
+  /** True when the brand list was cut: there are more brands than one answer holds. */
+  readonly truncated: boolean;
+}
+
+/** A brand page's header (`/brands/<slug>`). */
+export interface Brand {
+  readonly slug: string;
+  readonly name: string;
+  readonly summary?: string;
+  /** ISO 3166-1 alpha-2, upper case. */
+  readonly originCountry?: string;
+  readonly logo?: BrandImage & { readonly alt: string };
+  readonly header?: BrandImage;
+  /** Products of the brand live in the buyer's Market. */
+  readonly productCount: number;
+}
+
+/**
+ * The brand page: the brand and a page of its products. `all` is false for the short list under
+ * the header (with its "See all N" link), true for the full list with the numbered pager.
+ */
+export interface BrandPage {
+  readonly brand: Brand;
+  readonly products: StoreProducts;
+  readonly all: boolean;
+}
