@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, SettingsPage } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { SettingsNoAccess } from '../../../../src/settings/settings-no-access.tsx';
 import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
@@ -15,14 +15,28 @@ export default async function StoreProfilePage() {
   const t = await getTranslations();
   const page = await loadStoreProfilePage();
   if (page.kind === 'unavailable') {
+    const error = (
+      <LoadError
+        title={t('store-profile.error.unavailable')}
+        message={t('settings.load-error.body')}
+        retryLabel={t('load.retry')}
+        className="w-full"
+      />
+    );
+    // Only the profile failed: keep the settings layout (sub-navigation, breadcrumb, page title).
+    if (page.session === undefined)
+      return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
     return (
-      <LoadError message={t('store-profile.error.unavailable')} retryLabel={t('load.retry')} />
+      <SettingsShell session={page.session} linkId="store-profile" title={t('store-profile.title')}>
+        <SettingsPage title={t('store-profile.title')}>{error}</SettingsPage>
+      </SettingsShell>
     );
   }
   if (page.kind === 'no-access') {
     return (
       <SettingsShell session={page.session} linkId="store-profile" title={t('store-profile.title')}>
         <SettingsNoAccess
+          pageTitle={t('store-profile.title')}
           permissionKeys={page.session.permissionKeys}
           title={t('store-profile.no-access.title')}
           body={t('store-profile.no-access.body')}

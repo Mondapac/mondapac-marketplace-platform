@@ -8,7 +8,8 @@ import { requireSession, type SellerSession } from './session.ts';
 export type StoreProfilePage =
   | { readonly kind: 'ok'; readonly session: SellerSession; readonly view: StoreProfileView }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
-  | { readonly kind: 'unavailable' };
+  /** `session` is set when only the profile failed to load: the page then keeps its settings shell. */
+  | { readonly kind: 'unavailable'; readonly session?: SellerSession };
 
 /** The session and the store profile for the Store profile settings page. */
 export async function loadStoreProfilePage(): Promise<StoreProfilePage> {
@@ -21,6 +22,6 @@ export async function loadStoreProfilePage(): Promise<StoreProfilePage> {
   }
   const profile = await serverGet<StoreProfileView>('sellers/store-profile');
   if (profile.kind === 'signed-out') redirect('/session-ended');
-  if (profile.kind !== 'ok') return { kind: 'unavailable' };
+  if (profile.kind !== 'ok') return { kind: 'unavailable', session };
   return { kind: 'ok', session, view: profile.body };
 }

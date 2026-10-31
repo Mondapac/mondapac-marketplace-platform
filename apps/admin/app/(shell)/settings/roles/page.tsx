@@ -48,9 +48,10 @@ export default async function RolesPageRoute() {
           <RolesTable roles={result.body.items} members={members} />
         ) : (
           <LoadError
-            message={t('identity.error.unknown')}
+            title={t('settings.load-error.title', { page: title })}
+            message={t('settings.load-error.body')}
             retryLabel={t('load.retry')}
-            className="flex flex-col items-start gap-3"
+            className="w-full"
           />
         )}
       </SettingsPage>

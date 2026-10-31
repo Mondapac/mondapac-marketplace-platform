@@ -345,6 +345,27 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('asks "Leave without saving?" with the count and the page name, and Stay has focus', () => {
+    mount(settings({ version: 1 }));
+    fireEvent.click(screen.getByLabelText('Instant delivery'));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+    const link = document.createElement('a');
+    link.href = '/orders';
+    link.textContent = 'Orders';
+    document.body.append(link);
+
+    fireEvent.click(link);
+
+    const dialog = screen.getByRole('dialog', { name: 'Leave without saving?', hidden: true });
+    expect(flat(dialog.textContent)).toContain(
+      'You have 2 unsaved changes on Delivery rules. If you leave now, they are lost.',
+    );
+    const stay = within(dialog).getByRole('button', { name: 'Stay', hidden: true });
+    expect(within(dialog).getByRole('button', { name: 'Leave', hidden: true })).toBeTruthy();
+    expect(document.activeElement).toBe(stay);
+    link.remove();
+  });
+
   it('flags a bad form without calling the API', () => {
     mount(settings());
 

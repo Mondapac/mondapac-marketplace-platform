@@ -82,7 +82,11 @@ describe('loadStoreProfilePage', () => {
       signedIn();
       mocks.serverGet.mockResolvedValue({ kind });
 
-      expect(await loadStoreProfilePage()).toEqual({ kind: 'unavailable' });
+      // The session is known, so the page keeps its settings shell around the error.
+      expect(await loadStoreProfilePage()).toEqual({
+        kind: 'unavailable',
+        session: expect.objectContaining({ csrfToken: 'csrf' }) as unknown,
+      });
     },
   );
 
@@ -131,7 +135,21 @@ describe('the Store profile page', () => {
 
     const html = await render();
 
-    expect(html).toContain('store-profile.error.unavailable');
+    expect(html).toContain('identity.error.unknown');
+    expect(html).toContain('load.retry');
+    expect(html).not.toContain('data-title');
+  });
+
+  it('keeps the settings shell and shows a titled critical banner when only the read fails', async () => {
+    signedIn();
+    mocks.serverGet.mockResolvedValue({ kind: 'unavailable' });
+
+    const html = await render();
+
+    expect(html).toContain('data-title="store-profile.title"');
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('<p class="font-semibold">store-profile.error.unavailable</p>');
+    expect(html).toContain('settings.load-error.body');
     expect(html).toContain('load.retry');
   });
 });

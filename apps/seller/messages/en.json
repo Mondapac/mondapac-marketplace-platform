@@ -510,7 +510,7 @@
       "next-page": "Next page",
       "no-access": {
         "title": "You don't have access to this page",
-        "body": "Your role doesn't include the team. Ask the shop owner.",
+        "body": "Members needs the permission \"View members\". The store owner can add it.",
         "action": "Go to Dashboard"
       },
       "actions": "Actions",
@@ -1224,7 +1224,7 @@
     },
     "no-access": {
       "title": "You don't have access to this page",
-      "body": "Ask the account owner to give you permission to view stock locations."
+      "body": "Stock locations needs the permission \"View stock locations\". The store owner can add it."
     }
   },
   "orders": {
@@ -1510,7 +1510,7 @@
     "intro": "Your payouts go to the bank account you add on Stripe. MondaPac never sees your bank details.",
     "no-access": {
       "title": "You don't have access to this page",
-      "body": "Only the account owner can manage the payout account."
+      "body": "Payout account needs the permission \"View payouts\". The store owner can add it."
     },
     "back": {
       "return": {
@@ -1860,7 +1860,7 @@
     "loading": "Loading the store profile",
     "view-only": "You can see the store profile but not change it. Ask the store owner for access.",
     "error": {
-      "unavailable": "The store profile is unavailable right now. Try again later."
+      "unavailable": "The store profile could not be loaded"
     },
     "about": {
       "title": "About your store",
@@ -1939,7 +1939,7 @@
     },
     "no-access": {
       "title": "You don't have access to this page",
-      "body": "Ask the account owner to give you permission to view the store profile."
+      "body": "Store profile needs the permission \"View store profile\". The store owner can add it."
     }
   },
   "disputes": {
@@ -1968,9 +1968,9 @@
     },
     "leave": {
       "title": "Leave without saving?",
-      "message": "You have changes that are not saved. If you leave this page, they are lost.",
-      "stay": "Stay on page",
-      "leave": "Leave page"
+      "message": "You have {count, plural, one {# unsaved change} other {# unsaved changes}} on {page}. If you leave now, they are lost.",
+      "stay": "Stay",
+      "leave": "Leave"
     },
     "conflict": {
       "title": "Someone else saved these settings first",
@@ -2000,6 +2000,10 @@
         "payout-account": "Payout account",
         "team": "Members"
       }
+    },
+    "load-error": {
+      "title": "{page} could not be loaded",
+      "body": "Try again. If it keeps happening, check the status page."
     },
     "sub": {
       "label": "Settings pages",
