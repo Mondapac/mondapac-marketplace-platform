@@ -81,6 +81,12 @@ export {
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
 export {
+  SettingsHub,
+  type SettingsHubGroup,
+  type SettingsHubLabels,
+} from './settings/settings-hub.tsx';
+export { SettingsHubHeader } from './settings/settings-hub-header.tsx';
+export {
   SettingsConflictBanner,
   type SettingsConflictBannerProps,
 } from './settings/conflict-banner.tsx';
