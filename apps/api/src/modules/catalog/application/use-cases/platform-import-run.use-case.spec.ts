@@ -249,19 +249,15 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
         );
       },
     };
+    const submitInputs: unknown[] = [];
     const platformSubmit = {
-      execute: () => {
+      execute: (_c: unknown, input: unknown) => {
         calls.push('submit');
+        submitInputs.push(input);
         submitCalls += 1;
         return Promise.resolve(
           options.submit?.(submitCalls) ?? { ok: true, value: { published: true } },
         );
-      },
-    };
-    const pause = {
-      execute: () => {
-        calls.push('pause');
-        return Promise.resolve({ ok: true, value: {} });
       },
     };
     const outbox: OutboxWriter = {
@@ -287,9 +283,8 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
       clock,
       jobContexts,
       platformCreate: platformCreate as never,
-      platformSaveDraft: platformSaveDraft as never,
-      platformSubmit: platformSubmit as never,
-      pause: pause as never,
+      rowSave: platformSaveDraft as never,
+      rowSubmit: platformSubmit as never,
       treeReader,
       attributes,
       policy,
@@ -302,27 +297,24 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
       events,
       calls,
       saves,
+      submitInputs,
       systemContext: systemContext,
       ended: () => end,
     };
   }
 
-  it('creates, saves, submits and pauses each ready row for Inactive; the error row is not tried', async () => {
+  it('creates, saves and submits each ready row, the submit carrying the Inactive start; the error row is not tried', async () => {
     const r = rig();
     const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
     expect(result).toEqual({
       ok: true,
       value: { ran: true, outcome: 'finished', added: 2, failed: 0 },
     });
-    expect(r.calls).toEqual([
-      'create',
-      'save',
-      'submit',
-      'pause',
-      'create',
-      'save',
-      'submit',
-      'pause',
+    // The pause of an Inactive start is part of the submit (one unit): no separate pause call.
+    expect(r.calls).toEqual(['create', 'save', 'submit', 'create', 'save', 'submit']);
+    expect(r.submitInputs).toEqual([
+      expect.objectContaining({ startAs: 'inactive' }),
+      expect.objectContaining({ startAs: 'inactive' }),
     ]);
     expect(r.rows.map((row) => row.runState)).toEqual(['added', 'added', 'skipped']);
     expect(r.ended()).toEqual({ state: 'finished', now: T0 });
@@ -333,10 +325,13 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
     });
   });
 
-  it('leaves products published for Active (no pause)', async () => {
+  it('asks for Active in the same submit, so the product stays published', async () => {
     const r = rig({ startAs: 'active' });
     await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
-    expect(r.calls).not.toContain('pause');
+    expect(r.submitInputs).toEqual([
+      expect.objectContaining({ startAs: 'active' }),
+      expect.objectContaining({ startAs: 'active' }),
+    ]);
     expect(r.rows.filter((row) => row.runState === 'added')).toHaveLength(2);
   });
 
@@ -390,6 +385,13 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
     expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'access-lost' });
     expect(r.rows[0]!.runState).toBe('added');
     expect(r.rows[1]!.runState).toBe('pending');
+  });
+
+  it('stops with pause-failed when the pause of an Inactive start is refused (the publish rolled back)', async () => {
+    const r = rig({ submit: () => ({ ok: false, error: { code: 'product.not-published' } }) });
+    const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(result).toMatchObject({ ok: true, value: { outcome: 'stopped', added: 0 } });
+    expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'pause-failed' });
   });
 
   it('waits out a short rate window and goes back to the queue', async () => {

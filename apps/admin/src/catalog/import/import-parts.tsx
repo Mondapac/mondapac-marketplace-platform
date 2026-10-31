@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Card, Icon } from '@mondapac/ui';
+import { Banner, CARD_TABLE, Card, Icon } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { keyOfCode, type ImportErrorLine, type ImportFailureLine } from './import-types.ts';
@@ -201,9 +201,9 @@ export function ErrorTable({
   return (
     <Card flush>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-xl text-start text-sm">
+        <table className={CARD_TABLE.table}>
           <caption className="sr-only">{t('errors.caption')}</caption>
-          <thead>
+          <thead className={CARD_TABLE.head}>
             <tr className="border-b border-line text-fg-muted">
               <th scope="col" className="w-20 px-4 py-3 text-start font-medium">
                 {t('errors.row')}
@@ -219,20 +219,26 @@ export function ErrorTable({
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={CARD_TABLE.body}>
             {lines.map((line, index) => (
-              <tr
-                key={`${line.rowNumber}-${line.column}-${index}`}
-                className="border-b border-line"
-              >
-                <td className="px-4 py-3 font-semibold tabular-nums text-fg">{line.rowNumber}</td>
-                <td className="px-4 py-3 text-fg">
+              <tr key={`${line.rowNumber}-${line.column}-${index}`} className={CARD_TABLE.row}>
+                <td className={`${CARD_TABLE.cell} font-semibold tabular-nums text-fg`}>
+                  <span className="lg:sr-only">{t('errors.row')} </span>
+                  {line.rowNumber}
+                </td>
+                <td className={`${CARD_TABLE.labelled} text-fg`} data-label={t('errors.column')}>
                   {t.has(`column.${line.column}`) ? t(`column.${line.column}`) : line.column}
                 </td>
-                <td className="min-w-56 break-words px-4 py-3 text-fg-secondary">
+                <td
+                  className={`${CARD_TABLE.labelled} min-w-0 break-all text-fg-secondary lg:min-w-56`}
+                  data-label={t('errors.value')}
+                >
                   {line.value === '' ? t('errors.empty') : line.value}
                 </td>
-                <td className="px-4 py-3 text-critical-fg">
+                <td
+                  className={`${CARD_TABLE.labelled} text-critical-fg`}
+                  data-label={t('errors.problem')}
+                >
                   {t(problemKey(t, line.code), {
                     column: t.has(`column.${line.column}`)
                       ? t(`column.${line.column}`)
@@ -264,9 +270,9 @@ export function FailureTable({ lines }: { readonly lines: readonly ImportFailure
   return (
     <Card flush>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-md text-start text-sm">
+        <table className={CARD_TABLE.table}>
           <caption className="sr-only">{t('failures.caption')}</caption>
-          <thead>
+          <thead className={CARD_TABLE.head}>
             <tr className="border-b border-line text-fg-muted">
               <th scope="col" className="w-20 px-4 py-3 text-start font-medium">
                 {t('errors.row')}
@@ -279,12 +285,23 @@ export function FailureTable({ lines }: { readonly lines: readonly ImportFailure
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={CARD_TABLE.body}>
             {lines.map((line) => (
-              <tr key={line.rowNumber} className="border-b border-line">
-                <td className="px-4 py-3 font-semibold tabular-nums text-fg">{line.rowNumber}</td>
-                <td className="min-w-48 break-words px-4 py-3 text-fg">{line.title}</td>
-                <td className="px-4 py-3 text-fg-secondary">
+              <tr key={line.rowNumber} className={CARD_TABLE.row}>
+                <td className={`${CARD_TABLE.cell} font-semibold tabular-nums text-fg`}>
+                  <span className="lg:sr-only">{t('errors.row')} </span>
+                  {line.rowNumber}
+                </td>
+                <td
+                  className={`${CARD_TABLE.labelled} min-w-0 break-words text-fg lg:min-w-48`}
+                  data-label={t('failures.title')}
+                >
+                  {line.title}
+                </td>
+                <td
+                  className={`${CARD_TABLE.labelled} text-fg-secondary`}
+                  data-label={t('failures.reason')}
+                >
                   {t.has(`failure.${keyOfCode(line.code)}`)
                     ? t(`failure.${keyOfCode(line.code)}`)
                     : t('failure.other')}
@@ -316,9 +333,9 @@ export function PreviewTable({
   return (
     <Card flush>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-xl text-start text-sm">
+        <table className={CARD_TABLE.table}>
           <caption className="sr-only">{t('preview.caption')}</caption>
-          <thead>
+          <thead className={CARD_TABLE.head}>
             <tr className="border-b border-line text-fg-muted">
               <th scope="col" className="px-4 py-3 text-start font-medium">
                 {t('column.title')}
@@ -334,15 +351,30 @@ export function PreviewTable({
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={CARD_TABLE.body}>
             {rows.map((row) => (
-              <tr key={row.rowNumber} className="border-b border-line">
-                <td className="min-w-48 break-words px-4 py-3 font-semibold text-fg">
+              <tr key={row.rowNumber} className={CARD_TABLE.row}>
+                <td
+                  className={`${CARD_TABLE.cell} min-w-0 break-words font-semibold text-fg lg:min-w-48`}
+                >
                   {row.title}
                 </td>
-                <td className="break-words px-4 py-3 text-fg">{row.category}</td>
-                <td className="break-words px-4 py-3 text-fg">{row.typeCode}</td>
-                <td className="break-words px-4 py-3 text-fg">
+                <td
+                  className={`${CARD_TABLE.labelled} break-words text-fg`}
+                  data-label={t('column.category')}
+                >
+                  {row.category}
+                </td>
+                <td
+                  className={`${CARD_TABLE.labelled} break-words text-fg`}
+                  data-label={t('column.type')}
+                >
+                  {row.typeCode}
+                </td>
+                <td
+                  className={`${CARD_TABLE.labelled} break-words text-fg`}
+                  data-label={t('column.brand')}
+                >
                   {row.brand === '' ? t('preview.no-brand') : row.brand}
                 </td>
               </tr>

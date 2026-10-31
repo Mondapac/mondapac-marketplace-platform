@@ -183,6 +183,8 @@ describe('admin import products', () => {
     expect(within(table).getByText('No category with this name')).toBeTruthy();
     expect(within(table).getByText('(empty)')).toBeTruthy();
     expect(within(table).getByText('Title is required')).toBeTruthy();
+    // Below 1024 px each row is a card: every cell names its column (Problem stays visible).
+    expect(within(table).getByText('Title is required').getAttribute('data-label')).toBe('Problem');
     expect(within(table).getByText('Same title and brand as row 129')).toBeTruthy();
     expect(screen.getByText('Showing 4 of 30 rows with errors')).toBeTruthy();
     const download = screen.getByRole('link', { name: 'Download error report (CSV)' });

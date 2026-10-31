@@ -72,6 +72,8 @@ import { PlatformImportRead } from './application/use-cases/platform-import-read
 import { PlatformImportReport } from './application/use-cases/platform-import-report.use-case';
 import { PlatformImportTemplate } from './application/use-cases/platform-import-template.use-case';
 import { PlatformImportPurge } from './application/use-cases/platform-import-purge.use-case';
+import { PlatformImportRowSave } from './application/use-cases/platform-import-row-save.use-case';
+import { PlatformImportRowSubmit } from './application/use-cases/platform-import-row-submit.use-case';
 import { PlatformImportRun } from './application/use-cases/platform-import-run.use-case';
 import { PlatformImportController } from './presentation/platform-import.controller';
 import { platformImportRunJob } from './presentation/jobs/platform-import-run.job';
@@ -282,8 +284,8 @@ const PORT = {
   authorisation: AUTHORISATION_CHECK,
   jobContexts: JOB_CALL_CONTEXTS,
   platformCreate: PlatformProductCreate,
-  platformSaveDraft: PlatformProductSaveDraft,
-  platformSubmit: PlatformProductSubmit,
+  rowSave: PlatformImportRowSave,
+  rowSubmit: PlatformImportRowSubmit,
   savedFilters: SAVED_FILTER_REPOSITORY,
   shareCheck: SavedFilterShareCheck,
 } as const satisfies Record<string, InjectionToken>;
@@ -444,6 +446,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
       offers: true,
       requests: true,
+      audit: true,
     }),
     useCaseProvider(PlatformProductCreate, {
       unitOfWork: true,
@@ -622,10 +625,11 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       jobContexts: true,
       platformCreate: true,
-      platformSaveDraft: true,
-      platformSubmit: true,
-      pause: true,
+      rowSave: true,
+      rowSubmit: true,
     }),
+    useCaseProvider(PlatformImportRowSave, { saveDraft: true }),
+    useCaseProvider(PlatformImportRowSubmit, { submit: true, authorisation: true }),
     useCaseProvider(PlatformImportPurge, {
       unitOfWork: true,
       importJobs: true,

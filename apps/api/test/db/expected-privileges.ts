@@ -1236,6 +1236,31 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['name', 'updated_at', 'visibility'],
     },
+    // docs/design/data/catalog.md 3.29: the admin product import. A job moves through its states by
+    // column and a row records its result as the run goes; DELETE belongs to the purge (old jobs,
+    // and with them their rows).
+    'catalog.platform_import_jobs': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'added_rows',
+        'failed_rows',
+        'file_deleted_at',
+        'finished_at',
+        'lease_until',
+        'not_before',
+        'skip_errors',
+        'start_as',
+        'started_at',
+        'state',
+        'stop_reason',
+        'to_import',
+        'version',
+      ],
+    },
+    'catalog.platform_import_rows': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['product_code', 'product_id', 'run_code', 'run_state'],
+    },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
     // and currency never change; a regular record's content never changes (only its status,

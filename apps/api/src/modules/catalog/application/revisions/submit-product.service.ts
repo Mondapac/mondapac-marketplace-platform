@@ -8,9 +8,11 @@ import type {
   IdGenerator,
   Result,
 } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { ProductPausedAudit, scopeCode } from '../../domain/audit';
 import type { Product, ProductRefusal } from '../../domain/product';
 import { classify, decideOutcome } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
@@ -39,6 +41,12 @@ export interface SubmitProductInput {
   readonly revisionId?: Id<'ProductRevision'>;
   /** A seller's claim asks of this submit (design 4.2 row 1, 5.1a); none for an admin. */
   readonly claims?: SubmitClaims;
+  /**
+   * An admin import that starts products Inactive (design 14a): the product is paused in the same
+   * unit that publishes it, so it is never visible published. Refused for a seller; the caller has
+   * checked the pause permission.
+   */
+  readonly pauseOnPublish?: boolean;
 }
 
 /** The frozen revision being submitted, as the claim steps see it. */
@@ -109,6 +117,8 @@ export interface SubmitProductDependencies {
   readonly offers: OfferRepository;
   /** The fan-out request a PLATFORM publish writes (design 5.4). */
   readonly requests: TagReevaluationRequestRepository;
+  /** The audit of the pause of `pauseOnPublish`; the import wires it. */
+  readonly audit?: AuditWriter;
 }
 
 /** A PLATFORM publish marks every Offer of the product in its unit: room for a large product. */
@@ -158,6 +168,12 @@ export class SubmitProduct {
     }
     const { market } = context;
     const { unitOfWork, products, revisions, freeze, check, policy } = this.deps;
+    if (
+      input.pauseOnPublish === true &&
+      (author.kind !== 'admin' || this.deps.audit === undefined)
+    ) {
+      return err({ code: 'access.denied' });
+    }
 
     let locales: { readonly default: string; readonly supported: readonly string[] };
     let maxVariants: number;
@@ -300,6 +316,12 @@ export class SubmitProduct {
             now,
           });
           if (!submitted.ok) return err(submitted.error);
+          // Inactive start: the pause is part of the publish, in this unit and with its events.
+          const pausedAtPublish = input.pauseOnPublish === true && submitted.value.published;
+          if (pausedAtPublish) {
+            const paused = product.pause({ accountId: actor.accountId, now });
+            if (!paused.ok) return err(paused.error);
+          }
           const revision: StoredRevision = {
             id: revisionId,
             productId: product.state.id,
@@ -338,6 +360,16 @@ export class SubmitProduct {
             });
           }
           await this.deps.outbox.append(context, product.pendingEvents);
+          if (pausedAtPublish) {
+            // A product published in this unit has no Offer yet, so no Offer cause is added.
+            await this.deps.audit!.record(
+              context,
+              ProductPausedAudit.entry(product.state.id, {
+                before: { paused: false },
+                after: { paused: true, scope: scopeCode(product.state.scope), offerCount: 0 },
+              }),
+            );
+          }
           return ok({ revisionId, revisionNo, published: publishedAtOnce });
         },
         author.kind === 'admin' ? { timeoutMs: PLATFORM_PUBLISH_TIMEOUT_MS } : undefined,

@@ -69,6 +69,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // shared with everyone.
   'catalog.saved_filters_shared_name_key':
     "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
+  // docs/design/data/catalog.md 3.29: the admin product import. One queued or running import per
+  // admin, the worker's claim order, and the purge's reach for files still stored.
+  'catalog.platform_import_jobs_market_id_file_purge_idx':
+    'CREATE INDEX platform_import_jobs_market_id_file_purge_idx ON catalog.platform_import_jobs USING btree (market_id, checked_at, id) WHERE (file_deleted_at IS NULL)',
+  'catalog.platform_import_jobs_market_id_queue_idx':
+    "CREATE INDEX platform_import_jobs_market_id_queue_idx ON catalog.platform_import_jobs USING btree (market_id, created_at, id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+  'catalog.platform_import_jobs_one_running_per_admin_idx':
+    "CREATE UNIQUE INDEX platform_import_jobs_one_running_per_admin_idx ON catalog.platform_import_jobs USING btree (market_id, started_by_account_id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
   // docs/design/data/catalog.md 3.18 (slice 11): one pending fan-out request per product, one
   // request per published revision, one per consumed event, and the job's claim order.
   'catalog.tag_reevaluation_requests_market_id_created_at_pending_idx':

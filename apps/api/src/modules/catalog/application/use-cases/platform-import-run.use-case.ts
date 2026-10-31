@@ -26,10 +26,9 @@ import {
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { PlatformImportRepository } from '../ports/platform-import.repository';
 import type { ProductRepository } from '../ports/product.repository';
-import type { AdminProductPause } from './admin-product-pause.use-case';
+import type { PlatformImportRowSave } from './platform-import-row-save.use-case';
+import type { PlatformImportRowSubmit } from './platform-import-row-submit.use-case';
 import type { PlatformProductCreate } from './platform-product-create.use-case';
-import type { PlatformProductSaveDraft } from './platform-product-save-draft.use-case';
-import type { PlatformProductSubmit } from './platform-product-submit.use-case';
 
 export interface PlatformImportRunInput {
   /** How long one turn may take (milliseconds). The job's own bound is 10 minutes. */
@@ -55,9 +54,10 @@ export interface PlatformImportRunDependencies extends CheckEnvironmentDependenc
   readonly clock: Clock;
   readonly jobContexts: JobCallContexts;
   readonly platformCreate: PlatformProductCreate;
-  readonly platformSaveDraft: PlatformProductSaveDraft;
-  readonly platformSubmit: PlatformProductSubmit;
-  readonly pause: AdminProductPause;
+  /** The draft save of an import row: `platform-product.save-draft` without the interactive limit. */
+  readonly rowSave: PlatformImportRowSave;
+  /** The submit of an import row: publishes, and for Inactive pauses in the same unit. */
+  readonly rowSubmit: PlatformImportRowSubmit;
 }
 
 /** How long a runner holds a job before another may take it over (it renews the lease per batch). */
@@ -94,11 +94,12 @@ function reasonOf(code: string): string {
  *
  * Per row, in file order: the row is **checked again** against the facts of now (a category
  * deactivated since the check fails that row, not the import); then `platform-product.create`,
- * `platform-product.save-draft` (the claim-text control and the attribute schema; a text it
- * refuses fails the row) and `platform-product.submit` (publishes a PLATFORM revision at once);
- * for **Inactive** the product is then paused with `admin-product.pause` (a new PLATFORM product has
- * no Offers, so nothing is on sale in between; a paused product refuses new Offers, 4.1a). Active
- * leaves it published. The import writes no handling, attestation or tag: it has no input for them.
+ * `platform-import.row-save` (the draft save with the claim-text control and the attribute schema,
+ * without the interactive draft-save limit; a text it refuses fails the row) and
+ * `platform-import.row-submit` (publishes a PLATFORM revision at once; for **Inactive** it pauses
+ * the product in the same unit, so a product of an import is never visible published; Active
+ * leaves it published). The run's own bounds replace the interactive limits (design 14a, "Limits
+ * of a run"). The import writes no handling, attestation or tag: it has no input for them.
  *
  * A turn ends when the file is done (`finished`), when time is up or a rate window must pass (back
  * to `queued`), or when it cannot go on (`stopped` with a reason; "Retry the rest" resumes it). The
@@ -376,7 +377,7 @@ export class PlatformImportRun extends UseCase<
     }
 
     if (!published) {
-      const saved = await deps.platformSaveDraft.execute(admin, {
+      const saved = await deps.rowSave.execute(admin, {
         productId,
         content: checked.plan.content,
         variantIds,
@@ -389,29 +390,18 @@ export class PlatformImportRun extends UseCase<
           ? { kind: 'transient' }
           : { kind: 'failed', code: 'claim-text.found' };
       }
-      const submitted = await deps.platformSubmit.execute(admin, {
-        productId,
-        replacePending: false,
-      });
+      const submitted = await deps.rowSubmit.execute(admin, { productId, startAs });
       if (!submitted.ok) {
-        return submitted.error.code === 'claim-text.refused'
-          ? { kind: 'failed', code: 'claim-text.found' }
+        if (submitted.error.code === 'claim-text.refused') {
+          return { kind: 'failed', code: 'claim-text.found' };
+        }
+        // The pause of an Inactive start is part of the publish: a refusal of it rolled both back.
+        return submitted.error.code === 'product.not-published' ||
+          submitted.error.code === 'product.already-paused'
+          ? { kind: 'stop', reason: 'pause-failed' }
           : failureOf(submitted.error.code, submitted.error);
       }
       if (!submitted.value.published) return { kind: 'failed', code: 'submit.not-published' };
-    }
-
-    if (startAs === 'inactive') {
-      const paused = await deps.pause.execute(admin, { productId });
-      // Already paused (a retry after the pause succeeded) is fine; anything else stops the import.
-      if (!paused.ok && paused.error.code !== ('product.already-paused' as string)) {
-        return paused.error.code === 'access.unavailable'
-          ? { kind: 'transient' }
-          : {
-              kind: 'stop',
-              reason: paused.error.code === 'access.denied' ? 'access-lost' : 'pause-failed',
-            };
-      }
     }
     return { kind: 'added', productId, productCode: productCode ?? '' };
   }
