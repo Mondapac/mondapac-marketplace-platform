@@ -338,10 +338,15 @@ describe.each(TEST_MARKETS)('access decisions in market %s (database, slice 9)',
     const [gone, live] = [await open(byAccount), await open(byAccount)];
     await inUnit(market, () => sessions.revoke(market, gone, byAccount, 'sign-out', earlier));
     await expect(
-      inUnit(market, () => sessions.revokeAllOf(market, byAccount, 'password-changed', later, null)),
+      inUnit(market, () =>
+        sessions.revokeAllOf(market, byAccount, 'password-changed', later, null),
+      ),
     ).resolves.toBe(1);
     const accountRows = await reasons(byAccount);
-    expect(accountRows.map((r) => r.revoked_reason)).toEqual(['password-changed', 'password-changed']);
+    expect(accountRows.map((r) => r.revoked_reason)).toEqual([
+      'password-changed',
+      'password-changed',
+    ]);
     expect(accountRows[0]!.revoked_at!.getTime()).toBe(new Date(earlier.toString()).getTime());
     expect(live).not.toBe(gone);
 
