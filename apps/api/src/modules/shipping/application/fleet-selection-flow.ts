@@ -1,5 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import { CARRIER_METHODS, type CarrierMethod } from '../domain/booking-service';
 import {
   auditCode,
@@ -40,10 +41,48 @@ export type FleetSelectionFailure =
   | { readonly code: 'validation.failed'; readonly fields: readonly Field[] }
   | { readonly code: 'shipping.fleet-model-not-found' }
   | { readonly code: 'shipping.fleet-model-name-taken' }
-  /** The model changed since the admin read it: read again and retry. */
-  | { readonly code: 'shipping.fleet-model-conflict' }
-  /** The page changed since the admin read it: read again and retry. */
-  | { readonly code: 'shipping.fleet-selection-conflict' };
+  /**
+   * The model changed since the admin read it: read again and retry. `lastChanged` is the
+   * winning save, null when it cannot be read.
+   */
+  | { readonly code: 'shipping.fleet-model-conflict'; readonly lastChanged?: LastChanged | null }
+  /** The page changed since the admin read it: read again and retry. As above. */
+  | {
+      readonly code: 'shipping.fleet-selection-conflict';
+      readonly lastChanged?: LastChanged | null;
+    };
+
+/** The fleets page's read model: the view and the latest change. */
+export interface FleetSelectionPage extends FleetSelectionView {
+  /** Null while no model was made, no model made active and no score set. */
+  readonly lastChanged: LastChanged | null;
+}
+
+/**
+ * The audit rows of the fleets page: the models, the active model per method and the reliability
+ * scores. All are Market-wide admin settings, so every target is read. A created model, an
+ * activation and a score name one field each; an edit names the model fields that changed.
+ */
+export const FLEET_SELECTION_CHANGES: ChangeScope = {
+  actions: [
+    FleetModelCreated.action,
+    FleetModelEdited.action,
+    FleetModelActivated.action,
+    FleetReliabilitySet.action,
+  ],
+  targetId: null,
+  fixedFields: {
+    [FleetModelCreated.action]: ['model'],
+    [FleetModelActivated.action]: ['activeModel'],
+    [FleetReliabilitySet.action]: ['reliability'],
+  },
+};
+
+/** The conflict codes of the fleets page and its models. */
+export const FLEET_SELECTION_CONFLICTS = [
+  'shipping.fleet-model-conflict',
+  'shipping.fleet-selection-conflict',
+] as const;
 
 const adminOf = (context: CallContext): ActorId | null => {
   const actor = context.actor;

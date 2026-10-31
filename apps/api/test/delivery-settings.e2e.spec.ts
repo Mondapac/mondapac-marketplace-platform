@@ -9,6 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SetDeliverySettings } from '../src/modules/shipping/application/use-cases/set-delivery-settings.use-case';
 import { SetSellerDeliveryMethods } from '../src/modules/shipping/application/use-cases/set-seller-delivery-methods.use-case';
+import { ViewDeliverySettingsHistory } from '../src/modules/shipping/application/use-cases/view-delivery-settings-history.use-case';
 import { ViewDeliverySettings } from '../src/modules/shipping/application/use-cases/view-delivery-settings.use-case';
 import { ViewSellerDeliveryMethods } from '../src/modules/shipping/application/use-cases/view-seller-delivery-methods.use-case';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -32,6 +33,16 @@ const id = <T extends string>(n: number): Id<T> => {
 const OWNER = id<'Account'>(0xa101);
 const ADMIN = id<'Account'>(0xa001);
 const SELLER = id<'Seller'>(0xb020);
+const LAST_CHANGED = {
+  at: Temporal.Instant.from('2026-10-13T09:30:00Z'),
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
+} as const;
+const LAST_CHANGED_BODY = {
+  at: '2026-10-13T09:30:00Z',
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
+};
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
@@ -60,6 +71,8 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
           .useValue(clock)
           .overrideProvider(ViewDeliverySettings)
           .useValue(stub('view'))
+          .overrideProvider(ViewDeliverySettingsHistory)
+          .useValue(stub('history'))
           .overrideProvider(SetDeliverySettings)
           .useValue(stub('save'))
           .overrideProvider(ViewSellerDeliveryMethods)
@@ -192,7 +205,7 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
     fakes.reset();
     clock = new FixedClock(START);
     calls = [];
-    next = ok(view);
+    next = ok({ ...view, lastChanged: LAST_CHANGED });
   });
   afterEach(async () => {
     await app?.close();
@@ -216,6 +229,7 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
       currency: view.currency,
       marketZone: view.marketZone,
       roundingSteps: [1, 5, 10, 50, 100],
+      lastChanged: LAST_CHANGED_BODY,
     });
     expect(calls).toEqual([{ name: 'view', input: {} }]);
   });
@@ -228,6 +242,30 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
     expect(calls).toEqual([{ name: 'save', input: request_ }]);
+  });
+
+  it('lists the history for an admin and passes the paging', async () => {
+    await boot();
+    const row = { id: 'row-1', ...LAST_CHANGED, fields: ['sameDayCutoffMinutes'] };
+    next = ok({ items: [row], next: null });
+    const session = admin();
+    const read = await call('get', 'admin', `${SETTINGS_URL}/history?limit=5&after=abc`, session);
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      items: [{ id: 'row-1', ...LAST_CHANGED_BODY, fields: ['sameDayCutoffMinutes'] }],
+      next: null,
+    });
+    expect(calls).toEqual([{ name: 'history', input: { after: 'abc', limit: 5 } }]);
+
+    next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+    const bad = await call('get', 'admin', `${SETTINGS_URL}/history?limit=x`, session);
+    expect(bad.status).toBe(400);
+    expect(calls.at(-1)).toEqual({ name: 'history', input: { after: null, limit: 'invalid' } });
+
+    // The controller only authenticates; the use case decides (application-layer authorisation).
+    next = err({ code: 'access.denied' });
+    expect((await call('get', 'admin', `${SETTINGS_URL}/history`, session)).status).toBe(403);
   });
 
   it('reads and sets the methods of a seller', async () => {
@@ -296,6 +334,13 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
     const stale = await put();
     expect(stale.status).toBe(409);
     expect(stale.body).toEqual({ statusCode: 409, code: 'shipping.delivery-settings-conflict' });
+    // The winning save: who and when.
+    next = err({ code: 'shipping.delivery-settings-conflict', lastChanged: LAST_CHANGED });
+    expect((await put()).body).toEqual({
+      statusCode: 409,
+      code: 'shipping.delivery-settings-conflict',
+      details: { lastChanged: LAST_CHANGED_BODY },
+    });
     next = err({ code: 'access.denied' });
     expect((await put()).status).toBe(403);
     next = err({ code: 'shipping.seller-not-found' });

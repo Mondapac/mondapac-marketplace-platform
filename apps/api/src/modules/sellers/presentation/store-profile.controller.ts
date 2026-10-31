@@ -8,6 +8,7 @@ import {
   Logger,
   Param,
   Put,
+  Query,
   Req,
   Res,
   StreamableFile,
@@ -23,6 +24,7 @@ import {
   ApiOperation,
   ApiPayloadTooLargeResponse,
   ApiProperty,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -32,6 +34,12 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import {
+  changeHistoryBody,
+  changeHistoryInputOf,
+  lastChangedBody,
+} from '../../../platform/audit/change-trail';
+import { ChangeHistoryDto, LastChangedDto } from '../../../platform/audit/change-trail.dto';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -46,6 +54,7 @@ import {
   StoreProfileRead,
   type StoreProfileView,
 } from '../application/use-cases/store-profile-read.use-case';
+import { StoreProfileHistory } from '../application/use-cases/store-profile-history.use-case';
 import { StoreProfileSaveAbout } from '../application/use-cases/store-profile-save-about.use-case';
 import { STORE_ABOUT_MAX_LENGTH } from '../domain/store-about';
 import { STORE_IMAGE_MAX_UPLOAD_BYTES, type StoreImageKind } from '../domain/store-image';
@@ -97,6 +106,15 @@ export class StoreProfileBody {
 
   @ApiProperty({ description: 'The longest About text, in characters.' }) aboutMaxLength!: number;
   @ApiProperty({ description: 'The largest picture upload, in bytes.' }) imageMaxBytes!: number;
+
+  @ApiProperty({
+    type: LastChangedDto,
+    nullable: true,
+    description:
+      'Who saved the texts or a picture last and when: a display name for a member of your team, ' +
+      'null for Mondapac staff or a former member; null while the profile was never saved.',
+  })
+  lastChanged!: LastChangedDto | null;
 }
 
 export class ClaimTermsBody {
@@ -143,6 +161,7 @@ const bodyOf = (view: StoreProfileView): StoreProfileBody => ({
   banner: view.banner === null ? null : { ...view.banner },
   aboutMaxLength: STORE_ABOUT_MAX_LENGTH,
   imageMaxBytes: STORE_IMAGE_MAX_UPLOAD_BYTES,
+  lastChanged: lastChangedBody(view.lastChanged),
 });
 
 /**
@@ -167,6 +186,7 @@ export class StoreProfileController {
     private readonly removeImage: StoreImageRemove,
     private readonly readImage: StoreImageReadOwn,
     private readonly claimTerms: StoreProfileClaimTerms,
+    private readonly history: StoreProfileHistory,
   ) {}
 
   @Get()
@@ -219,6 +239,39 @@ export class StoreProfileController {
     return { terms: [...result.value] };
   }
 
+  @Get('history')
+  @Header('Cache-Control', NO_STORE)
+  @ApiOperation({
+    summary: 'The changes of the store profile',
+    description:
+      'Newest first: when, who (a display name for a member of your team; null for Mondapac ' +
+      'staff, with byKind platform, and for a former member) and the field that changed (about, ' +
+      'logo or banner), never the text or an image. Read from the audit log. Paged with after ' +
+      '(the next of the previous page) and limit (1 to 50, default 20). Needs ' +
+      'sellers.store-profile.view and an approved seller.',
+  })
+  @ApiQuery({ name: 'after', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: ChangeHistoryDto })
+  @ApiBadRequestResponse({ type: SellersErrorBody, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ type: SellersErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async changes(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const msg = 'sellers.store-profile-history';
+    const result = await this.history.execute(context, changeHistoryInputOf(query));
+    this.#log(msg, context, result.ok ? 'read' : result.error.code);
+    if (!result.ok) throw this.#errorOf(result.error, response);
+    return changeHistoryBody(result.value);
+  }
+
   @Put('about')
   @Header('Cache-Control', NO_STORE)
   @HttpCode(200)
@@ -237,7 +290,11 @@ export class StoreProfileController {
   @ApiUnauthorizedResponse({ type: SellersErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
   @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
-  @ApiConflictResponse({ type: SellersErrorBody, description: 'conflict.stale (read and retry)' })
+  @ApiConflictResponse({
+    type: SellersErrorBody,
+    description:
+      'conflict.stale (read and retry; details.lastChanged says who saved first and when)',
+  })
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({
     type: SellersErrorBody,
