@@ -156,6 +156,8 @@ import {
   type ProductImageRepository,
 } from './application/ports/product-image.repository';
 import { IMAGE_PROCESSOR } from './application/ports/image-processor';
+import { IMPORT_FILE_PARSERS } from './application/ports/import-file-parsers';
+import { SHEET_WRITER } from './application/ports/sheet-writer';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { TAG_REEVALUATION_REQUESTS } from './application/ports/tag-reevaluation-requests';
 import { TAG_SELECTION_READER } from './application/ports/tag-selection.reader';
@@ -281,6 +283,8 @@ const PORT = {
   retire: PlatformProductRetire,
   importJobs: PLATFORM_IMPORT_REPOSITORY,
   importFiles: IMPORT_FILE_STORE,
+  importParsers: IMPORT_FILE_PARSERS,
+  sheetWriter: SHEET_WRITER,
   authorisation: AUTHORISATION_CHECK,
   jobContexts: JOB_CALL_CONTEXTS,
   platformCreate: PlatformProductCreate,
@@ -588,6 +592,7 @@ const productTypeProvider: FactoryProvider<string> = {
       productTypes: true,
       importJobs: true,
       importFiles: true,
+      importParsers: true,
       counters: true,
       counterKeys: true,
       clock: true,
@@ -604,7 +609,7 @@ const productTypeProvider: FactoryProvider<string> = {
     }),
     useCaseProvider(PlatformImportRead, { unitOfWork: true, importJobs: true }),
     useCaseProvider(PlatformImportReport, { unitOfWork: true, importJobs: true, clock: true }),
-    useCaseProvider(PlatformImportTemplate, { policy: true }),
+    useCaseProvider(PlatformImportTemplate, { policy: true, sheetWriter: true }),
     useCaseProvider(PlatformImportDiscard, {
       unitOfWork: true,
       importJobs: true,
@@ -620,6 +625,7 @@ const productTypeProvider: FactoryProvider<string> = {
       productTypes: true,
       importJobs: true,
       importFiles: true,
+      importParsers: true,
       products: true,
       outbox: true,
       clock: true,
@@ -717,6 +723,7 @@ const productTypeProvider: FactoryProvider<string> = {
       adminProductsReader: true,
       policy: true,
       sellerNames: true,
+      sheetWriter: true,
       clock: true,
     }),
     useCaseProvider(ProductRevisionApprove, {

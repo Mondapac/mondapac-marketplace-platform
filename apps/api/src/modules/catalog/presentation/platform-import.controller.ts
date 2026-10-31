@@ -58,7 +58,7 @@ import { ApiErrorBody } from './platform-product.dto';
 
 /**
  * The HTTP status of each refusal of the platform import routes (catalog design 14a). A file the
- * check cannot read is a 4xx that says why: too large (413), not a CSV (415) or unreadable, over the
+ * check cannot read is a 4xx that says why: too large (413), unpacking too large (413), not a CSV or XLSX (415) or unreadable, over the
  * row, column or cell limit, empty, or with the wrong columns (422). A job of another admin or Market
  * and an unknown id are the same 404. A step taken in the wrong state is 409.
  */
@@ -74,6 +74,7 @@ export const PLATFORM_IMPORT_STATUS: Readonly<Record<string, number>> = Object.f
   'import.not-discardable': 409,
   'import.report-unavailable': 409,
   'file.too-large': 413,
+  'file.unpacked-too-large': 413,
   'file.unsupported-type': 415,
   'file.empty': 422,
   'file.unreadable': 422,
@@ -81,6 +82,7 @@ export const PLATFORM_IMPORT_STATUS: Readonly<Record<string, number>> = Object.f
   'file.cell-too-long': 422,
   'file.too-many-rows': 422,
   'file.no-rows': 422,
+  'file.formula-cell': 422,
   'columns.missing': 422,
   'columns.duplicate': 422,
   'request.throttled': 429,
@@ -124,7 +126,8 @@ export class PlatformImportController {
   @ReadsSession()
   @ApiOperation({
     summary: 'The import template and column guide',
-    description: 'Needs catalog.platform-import.run. The template is CSV text in `csv`.',
+    description:
+      'Needs catalog.platform-import.run. The template is CSV text in `csv` and an XLSX file as base64 in `xlsx`.',
   })
   @ApiOkResponse({ type: PlatformImportTemplateDto })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -180,7 +183,7 @@ export class PlatformImportController {
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
   @ApiPayloadTooLargeResponse({
     type: ApiErrorBody,
-    description: 'file.too-large (details.maxBytes)',
+    description: 'file.too-large or file.unpacked-too-large (details.maxBytes)',
   })
   @ApiUnsupportedMediaTypeResponse({
     type: ApiErrorBody,
@@ -190,7 +193,8 @@ export class PlatformImportController {
     type: ApiErrorBody,
     description:
       'file.empty, file.unreadable, file.too-many-rows (details.rows, details.max), ' +
-      'file.too-many-columns, file.cell-too-long, file.no-rows, columns.missing and ' +
+      'file.too-many-columns, file.cell-too-long, file.no-rows, file.formula-cell ' +
+      '(details.rowNumber), columns.missing and ' +
       'columns.duplicate (details.columns)',
   })
   @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })

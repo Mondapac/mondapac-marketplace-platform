@@ -2136,8 +2136,18 @@
           "resume": "Activate",
           "pause": "Deactivate",
           "export": "Export",
-          "export-help": "CSV, with the columns shown",
+          "export-help": "CSV or XLSX, with the columns shown",
           "delete": "Delete…"
+        },
+        "export": {
+          "title": "Export {count, plural, one {# product} other {# products}}",
+          "body": "The file has the columns shown in the list.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export"
         },
         "pause": {
           "title": "Deactivate {count, plural, one {# product} other {# products}}?",
@@ -2252,7 +2262,7 @@
       "upload": {
         "title": "Upload a file",
         "sub": "Nothing is saved until you finish the check and confirm the import.",
-        "drag": "Drag a CSV file here",
+        "drag": "Drag a CSV or XLSX file here",
         "or": "or",
         "choose": "Choose file",
         "limits": "One product per row · up to {rows} rows and {size} MB"
@@ -2260,7 +2270,8 @@
       "template": {
         "title": "Template",
         "sub": "Fill in the template by hand or export from your system with the same columns.",
-        "download": "CSV template",
+        "download-csv": "CSV template",
+        "download-xlsx": "XLSX template",
         "required": "Required",
         "certification": "Certification tags are not imported: they belong to each seller’s offer, not to the product."
       },
@@ -2429,7 +2440,7 @@
       "upload-problem": {
         "wrong-type": {
           "title": "This file type can’t be imported",
-          "body": "Choose a CSV file. Other formats, such as PDF, Excel or Numbers, are not read. Export your sheet as CSV first."
+          "body": "Choose a CSV or XLSX file. Other formats, such as PDF or Numbers, and Excel files with macros or links to other files, are not read."
         },
         "too-large-bytes": {
           "title": "The file is larger than {size} MB",
@@ -2447,13 +2458,21 @@
           "title": "The column {column} appears twice",
           "body": "Keep one column of each kind, then upload the file again."
         },
+        "formula": {
+          "title": "Row {row, number} has a formula",
+          "body": "Formulas are not read. Replace each formula with its value (copy, then Paste values), then upload the file again."
+        },
+        "unpacked-too-large": {
+          "title": "The file is too large once opened",
+          "body": "Save the sheet again with fewer rows or less formatting, or split it into smaller files."
+        },
         "empty": {
           "title": "The file has no product rows",
           "body": "Only the header row was found. Add one product per row below it."
         },
         "unreadable": {
           "title": "The file can’t be read",
-          "body": "Check that it is a CSV file with one product per row and no very long cells, then upload it again."
+          "body": "Check that it is a CSV or XLSX file with one product per row and no very long cells, then upload it again. In an XLSX file only the first sheet is read."
         },
         "throttled": {
           "title": "Too many files checked",

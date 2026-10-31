@@ -2,6 +2,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import {
   ADMIN_PRODUCTS_READER,
@@ -55,6 +56,30 @@ it('maps the refusal codes of the bulk action and the export to their statuses',
     'access.unavailable': 503,
   });
 });
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Collects a binary answer for supertest. */
+function binary(
+  res: request.Response,
+  callback: (error: Error | null, body: Buffer) => void,
+): void {
+  const chunks: Buffer[] = [];
+  res.on('data', (chunk: Buffer) => chunks.push(chunk));
+  res.on('end', () => callback(null, Buffer.concat(chunks)));
+}
+
+async function firstSheet(bytes: Buffer): Promise<ExcelJS.Worksheet> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bytes as never);
+  return workbook.worksheets[0]!;
+}
+
+function cellsOf(sheet: ExcelJS.Worksheet, row: number): string[] {
+  const values: string[] = [];
+  sheet.getRow(row).eachCell({ includeEmpty: true }, (cell) => values.push(cell.text));
+  return values;
+}
 
 describe('admin product bulk action and export over HTTP (integration)', () => {
   let app: NestExpressApplication;
@@ -261,6 +286,112 @@ describe('admin product bulk action and export over HTTP (integration)', () => {
       expect(rowRequests).toEqual([[PRODUCT]]);
     });
 
+    it('streams an XLSX with the same columns and header, as a no-store attachment', async () => {
+      await boot(code);
+      await seeded(code);
+
+      const response = await exportOf(
+        code,
+        `?format=xlsx&columns=offers,seller,scope&ids=${PRODUCT}`,
+        sessionOf(code, VIEWER, 1),
+      )
+        .buffer(true)
+        .parse(binary);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toBe(XLSX_TYPE);
+      expect(response.headers['content-disposition']).toBe(
+        'attachment; filename="products-2026-10-30.xlsx"',
+      );
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      const bytes = response.body as Buffer;
+      expect(bytes.subarray(0, 4).toString('hex')).toBe('504b0304');
+      const sheet = await firstSheet(bytes);
+      expect(sheet.name).toBe('Products');
+      expect(sheet.rowCount).toBe(2);
+      expect(cellsOf(sheet, 1)).toEqual([
+        'Product',
+        'Product code',
+        'Category',
+        'Status',
+        'Offers',
+        'Seller',
+        'Scope',
+      ]);
+      expect(cellsOf(sheet, 2)).toEqual([
+        'Lamb cutlets 500 g',
+        `${code}-000184`,
+        'Meat',
+        'Active',
+        '6',
+        'Halal Meats',
+        'Seller',
+      ]);
+      expect(rowRequests).toEqual([[PRODUCT]]);
+    });
+
+    it('has the same header and cells in CSV and XLSX for the same query', async () => {
+      await boot(code);
+      await seeded(code);
+      const query = `columns=offers,type&ids=${PRODUCT}`;
+      const csv = await exportOf(code, `?${query}`, sessionOf(code, VIEWER, 1)).buffer(true);
+      const xlsx = await exportOf(code, `?format=xlsx&${query}`, sessionOf(code, VIEWER, 1))
+        .buffer(true)
+        .parse(binary);
+      const sheet = await firstSheet(xlsx.body as Buffer);
+      const lines = csv.text
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .split('\r\n')
+        .map((line) => line.split(','));
+      expect([cellsOf(sheet, 1), cellsOf(sheet, 2)]).toEqual(lines);
+    });
+
+    it('writes every XLSX cell as a string: a formula-like name stays text, unprefixed', async () => {
+      await boot(code, '=HYPERLINK("http://evil.example","x")');
+      await seeded(code);
+
+      const response = await exportOf(
+        code,
+        `?format=xlsx&ids=${PRODUCT}`,
+        sessionOf(code, VIEWER, 1),
+      )
+        .buffer(true)
+        .parse(binary);
+
+      expect(response.status).toBe(200);
+      const sheet = await firstSheet(response.body as Buffer);
+      expect(sheet.getCell('A2').value).toBe('=HYPERLINK("http://evil.example","x")');
+      expect(sheet.getCell('A2').type).toBe(ExcelJS.ValueType.String);
+      sheet.eachRow((row) =>
+        row.eachCell((cell) => expect(cell.type).toBe(ExcelJS.ValueType.String)),
+      );
+      // No formula element anywhere in the sheet part of the package.
+      const raw = new ExcelJS.Workbook();
+      await raw.xlsx.load(response.body as never);
+      expect(raw.worksheets[0]!.getCell('A2').formula).toBeUndefined();
+    });
+
+    it('keeps the 10,000 row cap for XLSX', async () => {
+      await boot(code);
+      await seeded(code);
+      const reader = app.get<{
+        ids: () => Promise<string[]>;
+        counts: () => Promise<number[]>;
+      }>(ADMIN_PRODUCTS_READER);
+      reader.ids = () => Promise.resolve(Array.from({ length: 10_001 }, () => PRODUCT));
+      reader.counts = () => Promise.resolve([12_345]);
+
+      const response = await exportOf(code, '?format=xlsx', sessionOf(code, VIEWER, 1));
+
+      expect(response.status).toBe(413);
+      expect(response.body).toMatchObject({
+        code: 'batch.too-large',
+        details: { max: 10_000, total: 12_345 },
+      });
+    });
+
     it('writes a name that starts with a formula character with a leading quote', async () => {
       await boot(code, '=HYPERLINK("http://evil.example")');
       await seeded(code);
@@ -274,13 +405,14 @@ describe('admin product bulk action and export over HTTP (integration)', () => {
       expect(response.text).not.toMatch(/(^|,)"?=HYPERLINK/m);
     });
 
-    it('answers 400 for xlsx, an unknown column and a malformed id', async () => {
+    it('answers 400 for an unknown format, an unknown column and a malformed id', async () => {
       await boot(code);
       await seeded(code);
       const session = sessionOf(code, VIEWER, 1);
 
       for (const [query, path] of [
-        ['?format=xlsx', 'format'],
+        ['?format=xls', 'format'],
+        ['?format=XLSX', 'format'],
         ['?columns=price', 'columns'],
         ['?ids=nope', 'ids'],
         ['?price=1', 'price'],

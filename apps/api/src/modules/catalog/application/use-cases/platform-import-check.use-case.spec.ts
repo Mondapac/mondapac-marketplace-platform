@@ -24,6 +24,9 @@ import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import type { ImportRowRecord } from '../../domain/platform-import/platform-import-job';
 import type { RateReservation } from '../../domain/rate-limits';
 import { configurableProductType } from '../../domain/product-types/configurable';
+import { csvParser, type ImportFileParser } from '../../domain/platform-import/import-file';
+import { xlsxParser } from '../../infrastructure/xlsx/xlsx-import-parser';
+import { workbookBytes } from '../../../../../test/support/zip-fixtures';
 import { simpleProductType } from '../../domain/product-types/simple';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { AttributeRepository } from '../ports/attribute.repository';
@@ -71,7 +74,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
   const market: MarketContext = testMarketContext(code, 'default');
   const locale = policy.locales(market).default;
 
-  function rig(options: { counts?: number } = {}) {
+  function rig(options: { counts?: number; parsers?: readonly ImportFileParser[] } = {}) {
     const clock = new FixedClock(T0);
     const ids = new SequenceIdGenerator(clock);
     const jobs: NewImportJob[] = [];
@@ -141,6 +144,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
       unitOfWork,
       importJobs,
       importFiles,
+      importParsers: options.parsers ?? [csvParser],
       counters,
       counterKeys: { keyOf: () => new Uint8Array(32) },
       clock,
@@ -189,6 +193,40 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
     expect([...r.files.keys()]).toEqual([r.jobs[0]!.fileKey]);
     expect(r.jobs[0]!.fileKey).toContain(`catalog/imports/${code}/`);
     expect(r.reserved.length).toBeGreaterThan(0);
+  });
+
+  it('checks an XLSX file like a CSV, with the same rows, and records its format', async () => {
+    const r = rig({ parsers: [csvParser, xlsxParser] });
+    const bytes = await workbookBytes([
+      ['Title', 'Main category', 'Product type', 'Description', 'Brand'],
+      ['Lamb', 'Meat', 'simple', 'Shoulder', 'Farms'],
+      ['', 'Meat', 'simple', '', 'Farms'],
+      ['Beef', 'Nowhere', 'simple', '', 'Farms'],
+    ]);
+    const result = await r.useCase.execute(contextOf('admin', r.ids), {
+      fileName: 'products.xlsx',
+      data: bytes.toString('base64'),
+    });
+    if (!result.ok) throw new Error(result.error.code);
+    expect(result.value).toMatchObject({ rows: 3, ready: 1, errors: 2, state: 'checked' });
+    expect(r.jobs[0]!.format).toBe('xlsx');
+    expect(r.rows.map((row) => row.rowNumber)).toEqual([2, 3, 4]);
+    expect(r.files.get(r.jobs[0]!.fileKey)?.equals(bytes)).toBe(true);
+  });
+
+  it('refuses an XLSX with a formula and stores nothing', async () => {
+    const r = rig({ parsers: [csvParser, xlsxParser] });
+    const bytes = await workbookBytes([
+      ['Title', 'Main category', 'Product type'],
+      ['Lamb', { formula: '"Meat"', result: 'Meat' }, 'simple'],
+    ]);
+    const result = await r.useCase.execute(contextOf('admin', r.ids), {
+      fileName: 'products.xlsx',
+      data: bytes.toString('base64'),
+    });
+    expect(result).toEqual({ ok: false, error: { code: 'file.formula-cell', rowNumber: 2 } });
+    expect(r.jobs).toHaveLength(0);
+    expect(r.files.size).toBe(0);
   });
 
   it('lists a certification column as ignored and stores nothing of it', async () => {

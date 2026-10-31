@@ -2,7 +2,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import { IMPORT_LIMITS, type ImportLimits } from './limits';
 
-/** The formats a parser may read. Only `csv` has a parser today; the repository has no spreadsheet library. */
+/** The formats a parser may read. `csv` is parsed in the domain; `xlsx` by the infrastructure parser (exceljs). */
 export const IMPORT_FORMATS = ['csv', 'xlsx'] as const;
 export type ImportFormat = (typeof IMPORT_FORMATS)[number];
 
@@ -14,6 +14,8 @@ export interface ParsedRow {
 }
 
 export interface ParsedTable {
+  /** The format the table was read from (the job records it). */
+  readonly format: ImportFormat;
   readonly header: readonly string[];
   readonly rows: readonly ParsedRow[];
   /** Every non-blank data row of the file, also those past the row limit. */
@@ -24,24 +26,32 @@ export interface ParsedTable {
 export type FileRefusal =
   | { readonly code: 'file.empty' }
   | { readonly code: 'file.too-large'; readonly maxBytes: number }
+  /** A container that would unpack past the limit, or by a suspicious ratio (zip bomb guard). */
+  | { readonly code: 'file.unpacked-too-large'; readonly maxBytes: number }
   | { readonly code: 'file.unsupported-type'; readonly detected: ImportFormat | 'other' }
   | { readonly code: 'file.unreadable' }
   | { readonly code: 'file.too-many-columns'; readonly max: number }
   | { readonly code: 'file.cell-too-long'; readonly rowNumber: number; readonly max: number }
   | { readonly code: 'file.too-many-rows'; readonly rows: number; readonly max: number }
+  /** A spreadsheet cell that holds a formula: formulas are refused, never read or evaluated. */
+  | { readonly code: 'file.formula-cell'; readonly rowNumber: number }
   | { readonly code: 'file.no-rows' };
 
 /**
  * The seam for a file format (design 14a: pluggable). A parser answers whether the bytes are its
  * format from their content alone (never from the file name or the declared type) and reads them
- * into a table within the limits. A second parser (XLSX, once a library is approved) joins
- * {@link IMPORT_PARSERS}; nothing else changes: the checks read a {@link ParsedTable}.
+ * into a table within the limits. The XLSX parser (infrastructure, exceljs) joins the list the
+ * use cases are given; nothing else changes: the checks read a {@link ParsedTable}. A parser may
+ * be asynchronous.
  */
 export interface ImportFileParser {
   readonly format: ImportFormat;
   /** True when the first bytes look like this format. A cheap look, no decode. */
   sniff(bytes: Uint8Array): boolean;
-  parse(bytes: Uint8Array, limits: ImportLimits): Result<ParsedTable, FileRefusal>;
+  parse(
+    bytes: Uint8Array,
+    limits: ImportLimits,
+  ): Result<ParsedTable, FileRefusal> | Promise<Result<ParsedTable, FileRefusal>>;
 }
 
 function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
@@ -153,7 +163,7 @@ function tokenise(text: string, limits: ImportLimits): Result<ParsedTable, FileR
     const ended = endRecord();
     if (!ended.ok) return ended;
   }
-  return ok({ header, rows, rowCount });
+  return ok({ format: 'csv', header, rows, rowCount });
 }
 
 /** The CSV parser: UTF-8 text, a comma between cells, a header row. A byte order mark is allowed. */
@@ -172,19 +182,22 @@ export const csvParser: ImportFileParser = Object.freeze({
   },
 } satisfies ImportFileParser);
 
-/** The parsers that read a format today. An XLSX parser is added here, behind the same interface. */
+/**
+ * The parsers the domain itself provides: CSV. The XLSX parser needs a library, so it lives in
+ * infrastructure and the module hands the use cases `[csvParser, xlsxParser]` (token `IMPORT_PARSERS`).
+ */
 export const IMPORT_PARSERS: readonly ImportFileParser[] = Object.freeze([csvParser]);
 
 /**
  * Reads an uploaded file: the size first, then the content sniff, then the parser's own limits.
  * The file name and the declared content type are never inputs. A file that is a format without a
- * parser (an XLSX today) is `file.unsupported-type`, so the page can say what to choose instead.
+ * parser (a ZIP container when no XLSX parser is given) is `file.unsupported-type`, so the page can say what to choose instead.
  */
-export function readImportFile(
+export async function readImportFile(
   bytes: Uint8Array,
   limits: ImportLimits = IMPORT_LIMITS,
   parsers: readonly ImportFileParser[] = IMPORT_PARSERS,
-): Result<ParsedTable, FileRefusal> {
+): Promise<Result<ParsedTable, FileRefusal>> {
   if (bytes.length === 0) return err({ code: 'file.empty' });
   if (bytes.length > limits.fileBytes) {
     return err({ code: 'file.too-large', maxBytes: limits.fileBytes });
@@ -196,7 +209,7 @@ export function readImportFile(
       detected: isZipContainer(bytes) ? 'xlsx' : 'other',
     });
   }
-  const table = parser.parse(bytes, limits);
+  const table = await parser.parse(bytes, limits);
   if (!table.ok) return table;
   if (table.value.rowCount > limits.rows) {
     return err({ code: 'file.too-many-rows', rows: table.value.rowCount, max: limits.rows });

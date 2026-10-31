@@ -136,13 +136,14 @@ export class AdminProductBulkController {
   @ApiOperation({
     summary: 'Export the products of the list as a file',
     description:
-      'Needs catalog.product.view. `format` is csv (xlsx is not supported yet). `columns` is the ' +
+      'Needs catalog.product.view. `format` is csv (the default) or xlsx, with the same columns and ' +
+      'header row. `columns` is the ' +
       'comma-separated optional columns in the order shown (code, offers, updated, type, scope, ' +
       'seller, created); product, product code, category and status are always there. The ' +
       `products are \`ids\` (comma-separated, at most 200) or the selector keys of the list ` +
       `(view, q, scope, status, categoryId, typeCode, sellerId), at most ${EXPORT_MAX_ROWS}. ` +
-      'The file streams as an attachment. A text cell that starts with = + - @ is written with a ' +
-      'leading quote, so a spreadsheet never runs it as a formula.',
+      'The file streams as an attachment. CSV: a text cell that starts with = + - @ is written with a ' +
+      'leading quote. XLSX: every cell is a string value, never a formula, so nothing is prefixed.',
   })
   @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
   @ApiQuery({
@@ -158,7 +159,11 @@ export class AdminProductBulkController {
   @ApiQuery({ name: 'categoryId', required: false })
   @ApiQuery({ name: 'typeCode', required: false })
   @ApiQuery({ name: 'sellerId', required: false })
-  @ApiOkResponse({ description: 'text/csv; charset=utf-8, as an attachment' })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (products-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (products-<date>.xlsx), as an attachment',
+  })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })

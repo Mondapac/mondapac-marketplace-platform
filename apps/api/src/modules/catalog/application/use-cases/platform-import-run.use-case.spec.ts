@@ -23,6 +23,7 @@ import type {
   StopReason,
 } from '../../domain/platform-import/platform-import-job';
 import { configurableProductType } from '../../domain/product-types/configurable';
+import { csvParser } from '../../domain/platform-import/import-file';
 import { simpleProductType } from '../../domain/product-types/simple';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { AttributeRepository } from '../ports/attribute.repository';
@@ -278,6 +279,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
       unitOfWork,
       importJobs,
       importFiles,
+      importParsers: [csvParser],
       products: { findById: () => Promise.resolve(null) } as never,
       outbox,
       clock,

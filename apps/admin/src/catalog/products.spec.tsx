@@ -539,7 +539,7 @@ describe('admin product bulk action', () => {
     ).toEqual([
       'Activate',
       'Deactivate',
-      'ExportCSV, with the columns shown',
+      'ExportCSV or XLSX, with the columns shown',
       'Delete…',
       'Select all 26 products in this filter',
       'Clear selection',
@@ -851,6 +851,13 @@ describe('admin product bulk action', () => {
       fireEvent.click(rowBox('Beef mince'));
 
       fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: /^Export/ }));
+      // The format is asked first; CSV is the default and nothing is fetched yet.
+      const dialog = await screen.findByRole('dialog', { name: 'Export 2 products' });
+      expect(fetched).toEqual([]);
+      expect(within(dialog).getByRole<HTMLInputElement>('radio', { name: /^CSV/ }).checked).toBe(
+        true,
+      );
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
 
       expect(await screen.findByText('2 products exported.')).toBeTruthy();
       expect(fetched).toEqual([
@@ -868,6 +875,71 @@ describe('admin product bulk action', () => {
     }
   });
 
+  it('exports as an XLSX workbook when that format is chosen, with the file name and type', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    const fetched: string[] = [];
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(new Response(bytes, { status: 200 }));
+      }),
+    );
+    let blob: Blob | null = null;
+    const create = vi.fn((made: Blob) => {
+      blob = made;
+      return 'blob:xlsx';
+    });
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
+    const names: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+    try {
+      mount();
+      await screen.findByText('Beef mince');
+      fireEvent.click(rowBox('Lamb cutlets 500 g'));
+      fireEvent.click(rowBox('Beef mince'));
+
+      fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: /^Export/ }));
+      const dialog = await screen.findByRole('dialog', { name: 'Export 2 products' });
+      fireEvent.click(within(dialog).getByRole('radio', { name: /^XLSX/ }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+
+      expect(await screen.findByText('2 products exported.')).toBeTruthy();
+      expect(fetched).toHaveLength(1);
+      expect(new URL(fetched[0]!, 'http://x').searchParams.get('format')).toBe('xlsx');
+      expect(names).toEqual([`products-${new Date().toISOString().slice(0, 10)}.xlsx`]);
+      const made = blob as unknown as Blob;
+      expect(made.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      expect(new Uint8Array(await made.arrayBuffer())).toEqual(bytes);
+    } finally {
+      vi.unstubAllGlobals();
+      click.mockRestore();
+    }
+  });
+
+  it('closes the export dialog without fetching when it is cancelled', async () => {
+    serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      mount();
+      await screen.findByText('Beef mince');
+      fireEvent.click(rowBox('Beef mince'));
+      fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: /^Export/ }));
+      const dialog = await screen.findByRole('dialog', { name: 'Export 1 product' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('says so when the export fails', async () => {
     serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
     vi.stubGlobal(
@@ -879,6 +951,12 @@ describe('admin product bulk action', () => {
       await screen.findByText('Beef mince');
       fireEvent.click(rowBox('Beef mince'));
       fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: /^Export/ }));
+      fireEvent.click(
+        within(await screen.findByRole('dialog', { name: 'Export 1 product' })).getByRole(
+          'button',
+          { name: 'Export' },
+        ),
+      );
       expect(await screen.findByText('That didn’t work. Try again.')).toBeTruthy();
     } finally {
       vi.unstubAllGlobals();
@@ -896,7 +974,7 @@ describe('admin product bulk action', () => {
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
     ).toEqual([
-      'ExportCSV, with the columns shown',
+      'ExportCSV or XLSX, with the columns shown',
       'Select all 26 products in this filter',
       'Clear selection',
     ]);

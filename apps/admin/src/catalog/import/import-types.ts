@@ -68,6 +68,9 @@ export interface ImportTemplate {
   readonly limits: { readonly rows: number; readonly fileBytes: number };
   readonly filename: string;
   readonly csv: string;
+  /** The same template as an XLSX file (standard base64) and its file name. */
+  readonly xlsxFilename: string;
+  readonly xlsx: string;
 }
 
 /** The step of the bar a state belongs to (1 Upload file, 2 Check file, 3 Import). */
@@ -116,6 +119,7 @@ export function uploadProblemOf(failure: {
     readonly rows?: number;
     readonly max?: number;
     readonly maxBytes?: number;
+    readonly rowNumber?: number;
     readonly fields?: readonly { readonly path: string; readonly code: string }[];
   };
 }): UploadProblem {
@@ -129,6 +133,10 @@ export function uploadProblemOf(failure: {
         key: 'too-large-bytes',
         values: { size: Math.round((details.maxBytes ?? 10 * 1024 * 1024) / (1024 * 1024)) },
       };
+    case 'file.unpacked-too-large':
+      return { tone: 'critical', key: 'unpacked-too-large', values: {} };
+    case 'file.formula-cell':
+      return { tone: 'critical', key: 'formula', values: { row: details.rowNumber ?? 0 } };
     case 'file.too-many-rows':
       return {
         tone: 'critical',

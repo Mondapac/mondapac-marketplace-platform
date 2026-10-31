@@ -15,10 +15,11 @@ import { invalid, type ValidationFailure } from '../own-reads/own-reads.shared';
 import type { AdminProductRow, AdminProductsReader } from '../ports/admin-products.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
+import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
 import { BULK_MAX_IDS } from './admin-products-bulk.use-case';
 import { filterOfSelector, parseSelector } from './admin-products-list.use-case';
 
-export const EXPORT_FORMATS = ['csv'] as const;
+export const EXPORT_FORMATS = ['csv', 'xlsx'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 /** Products one export may hold; more is refused whole and the admin narrows the filter. */
@@ -39,8 +40,11 @@ export interface AdminProductsExportInput {
 export interface AdminProductsExportOutput {
   readonly filename: string;
   readonly contentType: string;
-  /** The file, in chunks: the first holds the header. Each chunk reads its own page of products. */
-  readonly chunks: AsyncIterable<string>;
+  /**
+   * The file, in chunks: the first holds the header. Each chunk reads its own page of products.
+   * Text for a CSV, bytes for an XLSX.
+   */
+  readonly chunks: AsyncIterable<string | Uint8Array>;
 }
 
 export type AdminProductsExportFailure =
@@ -55,8 +59,12 @@ export interface AdminProductsExportDependencies {
   readonly adminProductsReader: AdminProductsReader;
   readonly policy: CatalogMarketPolicy;
   readonly sellerNames: SellerNamesReader;
+  readonly sheetWriter: SheetWriter;
   readonly clock: Clock;
 }
+
+/** One cell of a row before it is written: text, a count or nothing. */
+type Cell = string | number | null;
 
 const OWN_KEYS = new Set(['format', 'columns', 'ids']);
 const SELECTOR_KEYS = new Set([
@@ -88,9 +96,11 @@ const STATUS_LABELS: Readonly<Record<string, string>> = Object.freeze({
  * {@link EXPORT_MAX_ROWS}, newest change first. Rule: the key `catalog.product.view` and the admin
  * population. The answer is a stream: the use case resolves and checks the ids, then each chunk of
  * {@link CHUNK} products reads its own page (a read-only unit) and its store names, so no export
- * holds the whole file. Text cells that a spreadsheet would run as a formula (`=`, `+`, `-`, `@`,
- * tab, carriage return at the start) get a leading quote. Only `csv` is supported: no XLSX
- * writer is a dependency of this repository, so `xlsx` is refused as `validation.failed`.
+ * holds the whole file. The same rows leave as `csv` (default) or `xlsx`. CSV: text cells that a
+ * spreadsheet would run as a formula (`=`, `+`, `-`, `@`, tab, carriage return at the start) get a
+ * leading quote. XLSX: **every cell is written as a string value**, never a formula (the
+ * {@link SheetWriter} contract), so nothing is prefixed and the text is exactly the product's.
+ * Any other format is `validation.failed`.
  */
 export class AdminProductsExport extends UseCase<
   AdminProductsExportInput,
@@ -124,7 +134,7 @@ export class AdminProductsExport extends UseCase<
       if (!OWN_KEYS.has(key) && !SELECTOR_KEYS.has(key)) return invalid(key, 'unknown');
     }
     const format = input.format ?? 'csv';
-    if (format !== 'csv') return invalid('format', format === 'xlsx' ? 'unsupported' : 'value');
+    if (format !== 'csv' && format !== 'xlsx') return invalid('format', 'value');
     const columns = this.#columns(input.columns);
     if (!columns.ok) return columns;
 
@@ -178,10 +188,18 @@ export class AdminProductsExport extends UseCase<
     }
 
     const day = deps.clock.now().toString().slice(0, 10);
+    const rows = this.#rows(context, ids, columns.value, locale);
+    if (format === 'xlsx') {
+      return ok({
+        filename: `products-${day}.xlsx`,
+        contentType: XLSX_CONTENT_TYPE,
+        chunks: deps.sheetWriter.xlsx('Products', textRows(rows)),
+      });
+    }
     return ok({
       filename: `products-${day}.csv`,
       contentType: 'text/csv; charset=utf-8',
-      chunks: this.#stream(context, ids, columns.value, locale),
+      chunks: csvChunks(rows),
     });
   }
 
@@ -196,23 +214,25 @@ export class AdminProductsExport extends UseCase<
     return ok([...seen]);
   }
 
-  async *#stream(
+  /** The rows of the file, a group per page of products: the header group first. */
+  async *#rows(
     context: CallContext,
     ids: readonly Id<'Product'>[],
     columns: readonly ExportColumn[],
     locale: string,
-  ): AsyncGenerator<string> {
+  ): AsyncGenerator<readonly (readonly Cell[])[]> {
     const { market } = context;
     const { deps } = this;
     const optional = columns.filter((column) => column !== 'code');
-    yield CSV_BOM +
-      csvLine([
+    yield [
+      [
         EXPORT_HEADERS.name,
         EXPORT_HEADERS.code,
         EXPORT_HEADERS.category,
         EXPORT_HEADERS.status,
         ...optional.map((column) => EXPORT_HEADERS[column]),
-      ]);
+      ],
+    ];
     for (let start = 0; start < ids.length; start += CHUNK) {
       const chunk = ids.slice(start, start + CHUNK);
       const read = await deps.unitOfWork.run(
@@ -233,18 +253,35 @@ export class AdminProductsExport extends UseCase<
         owners.length === 0
           ? new Map<string, string>()
           : await deps.sellerNames.storeNames(context, owners);
-      let text = '';
-      for (const row of rows) {
-        text += csvLine([
-          row.name ?? '',
-          row.productCode,
-          row.categoryName ?? '',
-          STATUS_LABELS[row.status] ?? row.status,
-          ...optional.map((column) => cellOf(column, row, names)),
-        ]);
-      }
-      yield text;
+      yield rows.map((row) => [
+        row.name ?? '',
+        row.productCode,
+        row.categoryName ?? '',
+        STATUS_LABELS[row.status] ?? row.status,
+        ...optional.map((column) => cellOf(column, row, names)),
+      ]);
     }
+  }
+}
+
+/** CSV: the byte order mark before the header, then each group of rows as one chunk of lines. */
+async function* csvChunks(
+  groups: AsyncIterable<readonly (readonly Cell[])[]>,
+): AsyncGenerator<string> {
+  let first = true;
+  for await (const group of groups) {
+    const text = group.map((row) => csvLine(row)).join('');
+    yield first ? CSV_BOM + text : text;
+    first = false;
+  }
+}
+
+/** XLSX: every cell as text; a count is written as the digits, nothing is a number or formula. */
+async function* textRows(
+  groups: AsyncIterable<readonly (readonly Cell[])[]>,
+): AsyncGenerator<readonly string[]> {
+  for await (const group of groups) {
+    for (const row of group) yield row.map((cell) => (cell === null ? '' : String(cell)));
   }
 }
 
@@ -252,7 +289,7 @@ function cellOf(
   column: ExportColumn,
   row: AdminProductRow,
   names: ReadonlyMap<string, string>,
-): string | number | null {
+): Cell {
   switch (column) {
     case 'code':
       return row.productCode;

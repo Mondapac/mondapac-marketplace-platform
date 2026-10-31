@@ -34,6 +34,7 @@ import {
   type ImportView,
 } from '../platform-import/import-view';
 import { reserveForAccount, type ReserveFailure } from '../platform-import/reserve';
+import type { ImportFileParsers } from '../ports/import-file-parsers';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { PlatformImportRepository } from '../ports/platform-import.repository';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
@@ -60,6 +61,7 @@ export interface PlatformImportCheckDependencies extends CheckEnvironmentDepende
   readonly unitOfWork: UnitOfWork;
   readonly importJobs: PlatformImportRepository;
   readonly importFiles: ImportFileStore;
+  readonly importParsers: ImportFileParsers;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
   readonly clock: Clock;
@@ -155,7 +157,7 @@ export class PlatformImportCheck extends UseCase<
     if (throttled !== null) return err(throttled);
 
     const bytes = Buffer.from(input.data, 'base64');
-    const table = readImportFile(bytes);
+    const table = await readImportFile(bytes, IMPORT_LIMITS, deps.importParsers);
     if (!table.ok) return table;
     const columns = mapColumns(table.value.header);
     if (!columns.ok) return err(columns.error);
@@ -187,7 +189,7 @@ export class PlatformImportCheck extends UseCase<
       id,
       startedByAccountId: actor.accountId,
       startedBySessionId: actor.sessionId,
-      format: 'csv' as const,
+      format: table.value.format,
       fileLabel: fileLabelOf(input.fileName),
       fileKey,
       fileSha256: createHash('sha256').update(bytes).digest('hex'),
