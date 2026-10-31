@@ -6750,30 +6750,43 @@ function pcRtl(v, st, o) {
 // The trigger shows the chosen language; a summary next to it says which languages still miss text.
 function pcLangLabel(l) { return l[0] === 'en' ? 'English' : l[1] + ' · ' + l[2]; }
 function pcLangPicker(sel, missing, errLang) {
+  // A compact chip: language code, name and a chevron; a dot shows whether this language still misses text.
+  const L = PC_LANGS.filter(function (l) { return l[0] === sel; })[0];
+  const miss = (missing || []).indexOf(sel) >= 0;
+  return frame({ name: 'language chip', dir: 'H', gap: 'space/1-5', align: 'center', pad: [5, 10, 5, 10], radius: 'radius/pill', fill: 'bg/surface', stroke: errLang === sel ? 'status/critical/solid' : 'border/input' }, [
+    missing ? frame({ name: 'dot', w: 6, h: 6, radius: 'radius/pill', fill: miss ? 'status/attention/solid' : 'status/success/fg' }) : null,
+    text(sel.toUpperCase(), 'Body/Small Strong', 'text/primary'), text(L[2], 'Body/Small', 'text/secondary'), icon('chevron-down', 'icon/muted', 14)]);
+}
+// The head of a per-language block: what is being edited on the left, the chip on the right, missing languages as one wrapping line.
+function pcLangHead(sel, missing, errLang) {
   missing = missing || ['ar'];
   const L = PC_LANGS.filter(function (l) { return l[0] === sel; })[0];
   const names = PC_LANGS.filter(function (l) { return missing.indexOf(l[0]) >= 0; }).map(function (l) { return l[2]; });
   const err = errLang && missing.indexOf(errLang) >= 0;
-  return frame({ name: 'language picker', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [
-    text('Language', 'Body/Strong'), inst('Select', { State: errLang === sel ? 'Error' : 'Filled', Value: pcLangLabel(L) }, { name: 'language', w: 220 }), pcSp(),
-    names.length ? bdg(err ? 'Critical' : 'Attention', 'None', 'Missing: ' + names.join(', ')) : bdg('Success', 'Dot', 'All languages done')]);
+  return frame({ name: 'language head', dir: 'V', gap: 'space/1-5', sizeH: 'FILL' }, [
+    frame({ name: 'head row', dir: 'H', gap: 'space/3', align: 'center', sizeH: 'FILL' }, [
+      frame({ name: 'what', dir: 'V', gap: 'space/0-5', sizeH: 'FILL' }, [text('Text in ' + L[2], 'Body/Strong', 'text/primary', { sizeH: 'FILL' }), text(L[3] + (sel !== 'en' ? ' · right to left' : ''), 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]),
+      pcLangPicker(sel, missing, errLang)]),
+    names.length ? frame({ name: 'missing line', dir: 'H', gap: 'space/1-5', align: 'center', sizeH: 'FILL' }, [icon('alert-circle', err ? 'status/critical/fg' : 'status/attention/fg', 14), text('Missing in ' + names.join(', '), 'Caption/Default', err ? 'status/critical/fg' : 'status/attention/fg', { sizeH: 'FILL' })]) : null]);
 }
 // The picker open: every language from Settings, required ones first, each with its status; search shows from 8 languages.
 function pcLangMenu(sel, missing) {
   missing = missing || ['ar'];
   const item = function (l) {
-    const st = (l[0] === 'en' ? 'Default · required' : l[3]) + (missing.indexOf(l[0]) >= 0 ? ' · Missing' : ' · Done');
-    return inst('MenuItem', { State: l[0] === sel ? 'Selected' : 'Default', Label: pcLangLabel(l), 'Leading icon': false, 'Show description': true, Description: st }, { name: 'lang · ' + l[2], sizeH: 'FILL' });
+    const miss = missing.indexOf(l[0]) >= 0, on = l[0] === sel;
+    return frame({ name: 'lang · ' + l[2], dir: 'H', gap: 'space/2', align: 'center', pad: [7, 10, 7, 10], radius: 'radius/control', fill: on ? 'bg/selected' : null, sizeH: 'FILL' }, [
+      frame({ name: 'dot', w: 6, h: 6, radius: 'radius/pill', fill: miss ? 'status/attention/solid' : 'status/success/fg' }),
+      text(l[0].toUpperCase(), 'Body/Small Strong', 'text/primary', { w: 24 }), text(l[2], on ? 'Body/Strong' : 'Body/Default', 'text/primary', { sizeH: 'FILL' }),
+      text(miss ? 'Missing' : (l[0] === 'en' ? 'Default' : 'Done'), 'Caption/Default', miss ? 'status/attention/fg' : 'text/muted'), on ? icon('check', 'text/link', 14) : null]);
   };
-  return ppPopover('Language picker (open)', 300, [inst('Input', { Type: 'Text', State: 'Default', Value: 'Find a language', 'Leading icon': true }, { name: 'find', sizeH: 'FILL' }),
-    frame({ name: 'languages', dir: 'V', sizeH: 'FILL' }, PC_LANGS.map(item)),
-    text('Search shows when there are 8 or more languages. Languages come from Settings › Languages.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]);
+  return frame({ name: 'Language picker (open)', dir: 'V', w: 240, pad: 'space/1-5', gap: 'space/0-5', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' },
+    PC_LANGS.map(item).concat([text('A search box appears from 8 languages.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]));
 }
 // A name in one more language: a small language dropdown and the text. Required languages are listed already; others come from "Add a language".
 function pcLangRow(code, v, o) {
   o = o || {};
   const l = PC_LANGS.filter(function (x) { return x[0] === code; })[0];
-  return frame({ name: 'name · ' + l[2], dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: l[1] }, { name: 'language', w: 120 }), pcRtl(v, o.st, { ph: o.ph || 'Name in ' + l[2] }),
+  return frame({ name: 'name · ' + l[2], dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [pcLangPicker(code, null), pcRtl(v, o.st, { ph: o.ph || 'Name in ' + l[2] }),
     o.removable ? inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' }) : null]);
 }
 function pcOtherNames(rows, help) {
@@ -6790,7 +6803,7 @@ function pcDetails(o) {
   const descCtl = rtl ? pcRtl(tx.desc, dis, { multi: true, ph: 'Short description in ' + L[2] }) : pcTa(tx.desc, dis);
   const kwCtl = rtl ? pcRtl(tx.keywords, dis, { ph: 'Search words in ' + L[2] }) : pcIn(tx.keywords, dis);
   const langBlock = frame({ name: 'language text', dir: 'V', gap: 'space/4', pad: 'space/4', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangPicker(lang, o.missing, o.errLang), text(L[2] + ' · ' + L[3] + (rtl ? ' · right to left' : ''), 'Caption/Default', 'text/muted')]),
+    pcLangHead(lang, o.missing, o.errLang),
     nameField, pcField('Short description', descCtl), pcField('Search keywords', kwCtl, 'Other words buyers type for this category.')]);
   return [langBlock,
     text('For all languages', 'Caption/Strong', 'text/muted'),
@@ -7007,7 +7020,7 @@ function paPanel(o) {
 function paLangBlock(o, fields) {
   const lang = o.lang || 'en', L = PC_LANGS.filter(function (l) { return l[0] === lang; })[0];
   return frame({ name: 'language text', dir: 'V', gap: 'space/4', pad: 'space/4', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
-    frame({ name: 'language head', dir: 'V', gap: 'space/2', sizeH: 'FILL' }, [pcLangPicker(lang, o.missing || ['ar'], o.errLang), text(L[2] + ' · ' + L[3] + (lang !== 'en' ? ' · right to left' : ''), 'Caption/Default', 'text/muted')])].concat(fields));
+    pcLangHead(lang, o.missing || ['ar'], o.errLang)].concat(fields));
 }
 function paDetails(o) {
   const dis = o.viewOnly ? 'Disabled' : null, cd = o.viewOnly ? 'Disabled' : 'Default';
@@ -7035,7 +7048,7 @@ function paValues() {
     const name = frame({ name: 'value', dir: 'V', sizeH: 'FILL' }, [frame({ name: 'name-row', dir: 'H', gap: 'space/1-5', align: 'center' }, [text(v[0], 'Body/Default', st ? 'text/muted' : 'text/primary'), st ? bdg('Neutral', 'None', st) : null]), text('Net weight ' + v[4], 'Caption/Default', 'text/muted')]);
     return row([[name, 'fill'], [text(v[1], 'Body/Small', 'text/primary', { align: 'right', sizeH: 'FILL' }), 150], [text(v[3], 'Body/Small', 'text/muted'), 80], [rowAction(), 44, { justify: 'center' }]], false, false, 56);
   });
-  return [frame({ name: 'values tools', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Order: Manual (drag rows)' }, { name: 'order', w: 220 }), inst('Select', { State: 'Filled', Value: 'Show next to English: فارسی' }, { name: 'language', w: 250 }), bdg('Attention', 'None', 'Missing in Arabic: 5'), pcSp(), btn('Merge values…', 'Secondary', 'Sm'), btn('Add value', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })]),
+  return [frame({ name: 'values tools', dir: 'H', gap: 'space/2', wrap: true, rowGap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Order: Manual (drag rows)' }, { name: 'order', w: 220 }), text('Next to English', 'Body/Small', 'text/muted'), pcLangPicker('fa', ['ar']), pcSp(), btn('Merge values…', 'Secondary', 'Sm'), btn('Add value', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'plus' } })]),
     card('values', [head].concat(rows)),
     text('Choose which language shows next to English and type in that column. Missing names show in the dropdown and the badge. Values in use can’t be deleted, only made inactive: products keep them and stay in the filter. A merged value counts under its target.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' }),
     inst('InfoBanner', { Tone: 'Info', Title: 'Variant attribute', Body: '412 live sizes use Pack size. It can’t be archived, merged or converted. A product can have 2 variant attributes at most.', 'Show action': false }, { name: 'variant', sizeH: 'FILL' })];
@@ -7094,7 +7107,7 @@ function paBrands() {
     const st = b[5] === 'Active' ? bdg('Success', 'Dot', 'Active') : (b[5] === 'Draft' ? bdg('Neutral', 'Dot', 'Draft') : bdg('Attention', 'None', 'Possible duplicate'));
     return row([[twoLine(b[0], b[1], i === 0 ? 'Body/Strong' : 'Body/Default'), 'fill'], [text(b[2] || '—', 'Body/Small', 'text/muted', { truncate: true, w: 110 }), 130], [text(b[4], 'Body/Small', 'text/muted'), 90], [st, 150]], i === 0, false, 56);
   })));
-  const alias = function (lang, v, rtl) { return frame({ name: 'alias · ' + lang, dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: lang }, { name: 'language', w: 120 }), rtl ? pcRtl(v) : pcIn(v), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]); };
+  const alias = function (lang, v, rtl) { return frame({ name: 'alias · ' + lang, dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [pcLangPicker({ 'فارسی': 'fa', 'العربية': 'ar', English: 'en' }[lang], null), rtl ? pcRtl(v) : pcIn(v), inst('IconButton', { Variant: 'Ghost', Size: 'Sm', State: 'Default', Icon: { icon: 'x' } }, { name: 'remove' })]); };
   const panel = card('Brand details', [frame({ name: 'brand body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
     frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [rect({ name: 'logo', w: 40, h: 40, fill: 'bg/muted', radius: 'radius/control' }), text('Tilda', 'Heading/H2'), bdg('Success', 'Dot', 'Active'), pcSp(), btn('Hide', 'Secondary', 'Sm', { 'Leading icon': true, Icon: { icon: 'eye-off' } })]),
     inst('InfoBanner', { Tone: 'Attention', Title: '"Tilda Rice" looks like the same brand', Body: '3 products. Merging makes "Tilda Rice" an alias of Tilda and moves its products.', 'Show action': true, Action: 'Merge…' }, { name: 'duplicate', sizeH: 'FILL' }),
