@@ -7,7 +7,12 @@ import {
   S3Client,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
-import { assertObjectKey, ObjectStoreUnavailableError, type ObjectStore } from './object-store';
+import {
+  assertObjectKey,
+  ObjectAlreadyExistsError,
+  ObjectStoreUnavailableError,
+  type ObjectStore,
+} from './object-store';
 
 export interface S3ObjectStoreOptions {
   readonly bucket: string;
@@ -23,7 +28,7 @@ export class ObjectStoreMisconfiguredError extends Error {
 
 /**
  * The Amazon S3 adapter (file storage pilot F2). Only this file imports the AWS client. A
- * write replaces any object under the key, as the disk adapter does; objects are encrypted at
+ * write never replaces an object (`If-None-Match: *`); objects are encrypted at
  * rest (SSE-S3). Every failure but "no such key" answers `ObjectStoreUnavailableError`.
  */
 export class S3ObjectStore implements ObjectStore {
@@ -95,9 +100,18 @@ export class S3ObjectStore implements ObjectStore {
           Body: bytes,
           ContentLength: bytes.length,
           ServerSideEncryption: 'AES256',
+          // Writes only when the key is free: S3 answers 412 for an existing object.
+          IfNoneMatch: '*',
         }),
       );
-    } catch {
+    } catch (error) {
+      // 409 is a concurrent write to the same key racing this one: the key is taken either way.
+      if (
+        error instanceof S3ServiceException &&
+        (error.$metadata.httpStatusCode === 412 || error.$metadata.httpStatusCode === 409)
+      ) {
+        throw new ObjectAlreadyExistsError();
+      }
       throw new ObjectStoreUnavailableError();
     }
   }

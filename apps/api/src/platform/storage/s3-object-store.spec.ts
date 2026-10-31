@@ -3,8 +3,10 @@ import {
   HeadBucketCommand,
   PutObjectCommand,
   S3Client,
+  S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
+import { ObjectAlreadyExistsError } from './object-store';
 import { ObjectStoreMisconfiguredError, S3ObjectStore } from './s3-object-store';
 
 const REGION = 'ap-southeast-2';
@@ -61,13 +63,28 @@ describe('S3ObjectStore.verify', () => {
 });
 
 describe('S3ObjectStore.put', () => {
+  it.each([412, 409])('answers "already exists" for HTTP %i', async (status) => {
+    const mock = mockClient(S3Client);
+    mock.on(PutObjectCommand).rejects(
+      new S3ServiceException({
+        name: 'X',
+        $fault: 'client',
+        $metadata: { httpStatusCode: status },
+      }),
+    );
+    await expect(make().put('a', Buffer.from('x'))).rejects.toBeInstanceOf(
+      ObjectAlreadyExistsError,
+    );
+    mock.restore();
+  });
+
   it('asks for encryption at rest', async () => {
     const mock = mockClient(S3Client);
     mock.on(PutObjectCommand).resolves({});
     await make().put('a', Buffer.from('x'));
-    expect(mock.commandCalls(PutObjectCommand)[0]?.args[0].input.ServerSideEncryption).toBe(
-      'AES256',
-    );
+    const input = mock.commandCalls(PutObjectCommand)[0]?.args[0].input;
+    expect(input?.ServerSideEncryption).toBe('AES256');
+    expect(input?.IfNoneMatch).toBe('*');
     mock.restore();
   });
 });
