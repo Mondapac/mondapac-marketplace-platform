@@ -7361,6 +7361,25 @@ PROPOSALS['variants'] = { title: PV, rows: function () {
     [pvBuyerDesktop(), pvBuyerPhone('Phone · 5 kg', 1), pvBuyerPhone('Phone · 20 kg out of stock', 3), pvBuyerPhone('Phone · Persian', 1, true), pvStates()]];
 } };
 
+// Sandbox upkeep (owner, 31 Oct): a rebuilt proposal is drawn at the bottom, so the rows it replaced left empty bands. Rows
+// (frames sharing a top edge) move up so 240 px separate them, in their order; nothing changes side to side.
+function compactRows(host) {
+  const kids = host.children.slice().sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+  if (!kids.length) return;
+  let y = kids[0].y, i = 0;
+  while (i < kids.length) {
+    const top = kids[i].y; const rowK = [];
+    while (i < kids.length && Math.abs(kids[i].y - top) < 1) { rowK.push(kids[i]); i++; }
+    let bottom = y;
+    rowK.forEach(function (n) { n.y = y; bottom = Math.max(bottom, y + n.height); });
+    y = bottom + 240;
+  }
+}
+// Parts left on the page root by earlier proposal builds (Add product AI modal, before 31 Oct): untagged frames at 0,0.
+const STRAY_NAMES = ['also used', 'field · Keywords', 'field · Short note', 'opts'];
+function removeStrays(page) {
+  page.children.filter(function (n) { return n.type === 'FRAME' && n.x === 0 && n.y === 0 && STRAY_NAMES.indexOf(n.name) >= 0 && !n.getPluginData(PLUGIN_TAG) && !n.getPluginData('proposal'); }).forEach(function (n) { n.remove(); });
+}
 async function buildProposal(key) {
   STEP = 0; STEPS = 3; S.report = [];
   const def = PROPOSALS[key];
@@ -7377,12 +7396,16 @@ async function buildProposal(key) {
   let removed = 0, made = 0, drawn = [];
   await onPage(T.sandbox, def.title, function (host) {
     host.children.filter(function (n) { return n.getPluginData && n.getPluginData('proposal') === key; }).forEach(function (n) { n.remove(); removed++; });
+    removeStrays(figma.currentPage);
+    compactRows(host);
     // a failed drawing leaves nothing behind: remove the layers it put on the page
     const before = figma.currentPage.children.slice();
     let rows;
     try { rows = def.rows(); } catch (e) { figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0; }).forEach(function (n) { n.remove(); }); throw e; }
     rows.forEach(function (r) { made += r.length; drawn = drawn.concat(r); });
     placeRows(host, rows, bottomEdge(host) + 240);
+    // helpers that build a part a state does not use leave it on the page root: remove what this run added there
+    figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0 && drawn.indexOf(n) < 0 && n !== host; }).forEach(function (n) { n.remove(); });
     fitSection(host);
   });
   await flush();
