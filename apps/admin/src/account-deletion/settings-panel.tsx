@@ -112,6 +112,16 @@ export function AccountDeletionSettingsPanel({
   const dirty = canManage && form.dirty;
   const count = canManage ? form.count : 0;
   const knownPending = pending.state === 'ok' ? pending : null;
+  const pendingText =
+    pending.state === 'hidden'
+      ? ''
+      : pending.state === 'unavailable'
+        ? t(`${P}.settings.pending.unavailable`)
+        : pending.count === 0
+          ? t(`${P}.settings.pending.none`)
+          : pending.more
+            ? t(`${P}.settings.pending.more`, { count: formatCount(pending.count, true, locale) })
+            : t(`${P}.settings.pending.some`, { count: pending.count });
 
   const choices = WAITING_PERIOD_CHOICES.includes(days as (typeof WAITING_PERIOD_CHOICES)[number])
     ? [...WAITING_PERIOD_CHOICES]
@@ -270,24 +280,11 @@ export function AccountDeletionSettingsPanel({
       </SettingsSection>
       {pending.state === 'hidden' ? null : (
         <SettingsSection title={t(`${P}.settings.pending.title`)}>
-          <div className="flex flex-col items-start gap-3 px-5 py-4">
-            {pending.state === 'unavailable' ? (
-              <p>{t(`${P}.settings.pending.unavailable`)}</p>
-            ) : pending.count === 0 ? (
-              <p>{t(`${P}.settings.pending.none`)}</p>
-            ) : pending.more ? (
-              <p>
-                {t(`${P}.settings.pending.more`, {
-                  count: formatCount(pending.count, true, locale),
-                })}
-              </p>
-            ) : (
-              <p>{t(`${P}.settings.pending.some`, { count: pending.count })}</p>
-            )}
+          <SettingRow label={pendingText} plain>
             <LinkButton variant="secondary" href={REQUESTS_HREF}>
               {t(`${P}.settings.pending.view`)}
             </LinkButton>
-          </div>
+          </SettingRow>
         </SettingsSection>
       )}
       <ReasonDialog

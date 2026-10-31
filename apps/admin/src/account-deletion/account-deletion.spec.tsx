@@ -7,7 +7,7 @@ import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
-import { toast } from '@mondapac/ui';
+import { Toaster, toast } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
 import { CustomerLookup } from '../customers/customer-lookup.tsx';
 import { settingsLink, settingsViewKeys, visibleSettings } from '../settings/settings-nav.ts';
@@ -220,6 +220,47 @@ describe('AccountDeletionSettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
     expect(call.mock.calls[1]?.[2]).toMatchObject({ expectedVersion: 4 });
+  });
+
+  it('announces the saved toast politely, through the toast host', async () => {
+    call.mockResolvedValue(ok(answer(true, 30, 4)));
+    render(
+      wrap(
+        <>
+          <AccountDeletionSettingsPanel
+            initial={answer(false)}
+            canManage
+            pending={none}
+            csrfToken="csrf"
+          />
+          <Toaster labels={{ region: 'Notifications', close: 'Close' }} />
+        </>,
+      ),
+    );
+    choose(true);
+    fireEvent.click(save());
+    typeReason(dialogNamed('Turn on account deletion for all buyers?'));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    const saved = await screen.findByText('Saved. Buyers see the change within a minute.');
+    expect(saved.closest('[role="status"]')).toBeTruthy();
+    expect(saved.closest('[role="region"]')?.getAttribute('aria-label')).toBe('Notifications');
+  });
+
+  it('names the On/Off change in the confirm title when the days change too', () => {
+    mount(answer(false, 30));
+    choose(true);
+    fireEvent.change(daysSelect(), { target: { value: '60' } });
+    fireEvent.click(save());
+    // The days are in the body for On, not in the title.
+    const on = dialogNamed('Turn on account deletion for all buyers?');
+    expect(within(on).getByText(/after a 60-day wait/)).toBeTruthy();
+    cleanup();
+    mount(answer(true, 30));
+    choose(false);
+    fireEvent.change(daysSelect(), { target: { value: '60' } });
+    fireEvent.click(save());
+    expect(dialogNamed('Turn off account deletion?')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: /waiting period/ })).toBeNull();
   });
 
   it('needs a valid reason: empty, too long or with < or > sends nothing', () => {
