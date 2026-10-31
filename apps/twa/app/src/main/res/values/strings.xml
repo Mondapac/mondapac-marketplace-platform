@@ -1,0 +1,4 @@
+<resources>
+    <!-- Placeholder: the brand name is not final (see apps/web messages "store.title"). -->
+    <string name="app_name">MondaPac</string>
+</resources>
