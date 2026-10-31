@@ -298,6 +298,13 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
     expect((await switchOf()).status).toBe('active');
   });
 
+  // The change that won, as the conflict answer names it (the administrator fixture is "Admin").
+  const savedFirstBy = {
+    at: expect.any(Temporal.Instant),
+    byDisplayName: 'Admin',
+    byKind: 'member',
+  };
+
   it('a stale save answers wallet.settings-conflict and leaves the proof unspent', async () => {
     const { accountId } = await administrator();
     const context = await sessionOf(accountId);
@@ -320,7 +327,11 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
       await app
         .get(SetWalletStatus)
         .execute(context, { status: 'paused', reasonCode: 'maintenance', expectedVersion: stale }),
-    ).toEqual({ ok: false, error: { code: 'wallet.settings-conflict' } });
+    ).toEqual({
+      ok: false,
+      // The conflict names who saved first, for the "Someone saved first" banner.
+      error: { code: 'wallet.settings-conflict', lastChanged: savedFirstBy },
+    });
     expect(await proofRows(context)).toBe(1);
     expect((await switchOf()).status).toBe('active');
 
@@ -355,7 +366,7 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
     // answers a conflict before it reaches the proof (the proof was spent once, by the winner).
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results.filter((result) => !result.ok)).toEqual([
-      { ok: false, error: { code: 'wallet.settings-conflict' } },
+      { ok: false, error: { code: 'wallet.settings-conflict', lastChanged: savedFirstBy } },
     ]);
     expect(await proofRows(context)).toBe(0);
     const changes = (await auditsBy(accountId)).filter(
