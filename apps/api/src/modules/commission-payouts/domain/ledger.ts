@@ -117,3 +117,21 @@ export function totalsOf(sums: Readonly<Partial<Record<LedgerKind, bigint>>>): L
       disputeReinstated,
   };
 }
+
+/**
+ * What each seller order of one seller is worth now in `currency`: its credits less its debits.
+ * The pure form of `LedgerRepository.netBySellerOrder` (the repository sums in the database).
+ */
+export function netBySellerOrder(
+  entries: readonly LedgerEntry[],
+  sellerId: Id<'Seller'>,
+  currency: string,
+): readonly { readonly sellerOrderId: Id<'SellerOrder'>; readonly net: bigint }[] {
+  const nets = new Map<Id<'SellerOrder'>, bigint>();
+  for (const entry of entries) {
+    if (entry.sellerId !== sellerId || entry.amount.currency !== currency) continue;
+    const signed = isCredit(entry.kind) ? entry.amount.amount : -entry.amount.amount;
+    nets.set(entry.sellerOrderId, (nets.get(entry.sellerOrderId) ?? 0n) + signed);
+  }
+  return [...nets].map(([sellerOrderId, net]) => ({ sellerOrderId, net }));
+}

@@ -58,6 +58,7 @@ import { AdminNoticesController } from './presentation/admin-notices.controller'
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
 import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
+import { payoutNoticeSubscriptions } from './presentation/subscribers/payout-notice.subscriptions';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
 import { orderMailSubscriptions } from './presentation/subscribers/order-mail.subscriptions';
 import { AdminSupportContactController } from './presentation/support-contact.controller';
@@ -262,6 +263,13 @@ function inAppNoticeProvider<U>(
       [RecordSellerNotice, SendSellerOrderDisputedMail],
       (notice: RecordSellerNotice, mail: SendSellerOrderDisputedMail) =>
         disputeNoticeSubscriptions(notice, mail),
+    ),
+    // Package 6d: a change of payout terms, a reinstated seller whose payouts stay on hold.
+    registerSubscriptionsFrom(
+      'notifications',
+      [RecordSellerNotice, RecordAdminReviewNotice],
+      (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
+        payoutNoticeSubscriptions(sellerNotice, adminNotice),
     ),
     registerJobsFrom(
       'notifications',

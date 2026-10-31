@@ -10,7 +10,7 @@ interface Input {
   readonly decisionId: string;
 }
 
-/** `commission-payouts.note-seller-reinstated`, from the subscription of the same name on `identity.seller-access-reinstated.v1`: releases nothing; raises an admin notice (a structured warn log for now). Rule `system`. */
+/** `commission-payouts.note-seller-reinstated`, from the subscription of the same name on `identity.seller-access-reinstated.v1`: releases nothing; when a seller-suspended hold remains, appends `commission-payouts.seller-reinstated-hold-remains.v1` (notifications turns it into an admin notice). Rule `system`. */
 export class NoteSellerReinstated extends UseCase<
   Input,
   'noted' | 'already-noted',
