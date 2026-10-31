@@ -7,6 +7,7 @@ import { templateRows } from '../../domain/platform-import/columns';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import { templateCsv } from '../platform-import/import-report';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { SheetWriter } from '../ports/sheet-writer';
 
 export interface PlatformImportTemplateOutput {
   readonly columns: readonly Pick<ImportColumn, 'key' | 'header' | 'required'>[];
@@ -15,15 +16,19 @@ export interface PlatformImportTemplateOutput {
   readonly limits: { readonly rows: number; readonly fileBytes: number };
   readonly filename: string;
   readonly csv: string;
+  /** The same template as an `.xlsx` file (every cell text), standard base64. */
+  readonly xlsxFilename: string;
+  readonly xlsx: string;
 }
 
 export interface PlatformImportTemplateDependencies {
   readonly policy: CatalogMarketPolicy;
+  readonly sheetWriter: SheetWriter;
 }
 
 /**
- * `platform-import.template` (design 14a): the template CSV and the column guide of the page's
- * first step, and the limits. Rule: the key `catalog.platform-import.run`. The example row names a
+ * `platform-import.template` (design 14a): the template as CSV and as XLSX and the column guide of
+ * the page's first step, and the limits. Rule: the key `catalog.platform-import.run`. The example row names a
  * type the Market offers. No file is stored and nothing is read from a database.
  */
 export class PlatformImportTemplate extends UseCase<
@@ -43,7 +48,7 @@ export class PlatformImportTemplate extends UseCase<
     super(gate);
   }
 
-  protected handle(
+  protected async handle(
     context: CallContext,
   ): Promise<
     Result<
@@ -53,24 +58,36 @@ export class PlatformImportTemplate extends UseCase<
   > {
     const { actor, market } = context;
     if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
-      return Promise.resolve(err({ code: 'access.denied' }));
+      return err({ code: 'access.denied' });
     }
     let types: readonly string[];
     try {
       types = this.deps.policy.productTypes(market);
     } catch {
-      return Promise.resolve(err({ code: 'access.unavailable' }));
+      return err({ code: 'access.unavailable' });
     }
-    return Promise.resolve(
-      ok({
-        columns: IMPORT_COLUMNS.map(({ key, header, required }) => ({ key, header, required })),
-        typesOffered: types,
-        limits: { rows: IMPORT_LIMITS.rows, fileBytes: IMPORT_LIMITS.fileBytes },
-        filename: 'products-template.csv',
-        csv: templateCsv(
-          templateRows(types.includes('simple') ? 'simple' : (types[0] ?? 'simple')),
-        ),
-      }),
-    );
+    const rows = templateRows(types.includes('simple') ? 'simple' : (types[0] ?? 'simple'));
+    const parts: Uint8Array[] = [];
+    try {
+      for await (const chunk of this.deps.sheetWriter.xlsx('Products', asyncRows(rows))) {
+        parts.push(chunk);
+      }
+    } catch {
+      return err({ code: 'access.unavailable' });
+    }
+    return ok({
+      columns: IMPORT_COLUMNS.map(({ key, header, required }) => ({ key, header, required })),
+      typesOffered: types,
+      limits: { rows: IMPORT_LIMITS.rows, fileBytes: IMPORT_LIMITS.fileBytes },
+      filename: 'products-template.csv',
+      csv: templateCsv(rows),
+      xlsxFilename: 'products-template.xlsx',
+      xlsx: Buffer.concat(parts).toString('base64'),
+    });
   }
+}
+
+async function* asyncRows(rows: readonly (readonly string[])[]): AsyncGenerator<readonly string[]> {
+  await Promise.resolve();
+  for (const row of rows) yield row;
 }

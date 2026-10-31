@@ -12,6 +12,7 @@ import {
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { mapColumns, type ColumnMap } from '../../domain/platform-import/columns';
 import { readImportFile, type ParsedRow } from '../../domain/platform-import/import-file';
+import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import {
   type ImportJob,
   type ImportRowRecord,
@@ -23,6 +24,7 @@ import {
   readCheckEnvironment,
   type CheckEnvironmentDependencies,
 } from '../platform-import/check-environment';
+import type { ImportFileParsers } from '../ports/import-file-parsers';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { PlatformImportRepository } from '../ports/platform-import.repository';
 import type { ProductRepository } from '../ports/product.repository';
@@ -49,6 +51,7 @@ export type PlatformImportRunFailure = { readonly code: 'access.denied' };
 export interface PlatformImportRunDependencies extends CheckEnvironmentDependencies {
   readonly importJobs: PlatformImportRepository;
   readonly importFiles: ImportFileStore;
+  readonly importParsers: ImportFileParsers;
   readonly products: ProductRepository;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
@@ -259,7 +262,7 @@ export class PlatformImportRun extends UseCase<
     if (bytes === null || createHash('sha256').update(bytes).digest('hex') !== job.fileSha256) {
       return stop('file-missing');
     }
-    const table = readImportFile(bytes);
+    const table = await readImportFile(bytes, IMPORT_LIMITS, deps.importParsers);
     if (!table.ok) return stop('file-missing');
     const columns = mapColumns(table.value.header);
     if (!columns.ok) return stop('file-missing');

@@ -1473,7 +1473,19 @@ describe('relay of the product list', () => {
       );
     });
 
-    it('passes 200 ids and drops a list of 201, a bad column and the xlsx format', async () => {
+    it('relays the xlsx format and drops any other', async () => {
+      const upstream = upstreamOk();
+      await relay(config, get('catalog/admin/products/export?format=xlsx'), exportPath, upstream);
+      await relay(config, get('catalog/admin/products/export?format=xls'), exportPath, upstream);
+      await relay(config, get('catalog/admin/products/export?format=XLSX'), exportPath, upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/catalog/admin/products/export?format=xlsx',
+      );
+      expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products/export');
+      expect(upstream.mock.calls[2]?.[0]).toBe('http://api.test/catalog/admin/products/export');
+    });
+
+    it('passes 200 ids and drops a list of 201 and a bad column', async () => {
       const upstream = upstreamOk();
       const ids = (n: number) =>
         Array.from(
@@ -1494,13 +1506,40 @@ describe('relay of the product list', () => {
       );
       await relay(
         config,
-        get('catalog/admin/products/export?columns=code,secret&format=xlsx'),
+        get('catalog/admin/products/export?columns=code,secret'),
         exportPath,
         upstream,
       );
       expect(upstream.mock.calls[0]?.[0]).toContain(encodeURIComponent(ids(200)));
       expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products/export');
       expect(upstream.mock.calls[2]?.[0]).toBe('http://api.test/catalog/admin/products/export');
+    });
+
+    it('relays an xlsx export byte for byte, with its type and attachment name', async () => {
+      const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0x80, 0x7f]);
+      const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const upstream = vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(bytes, {
+            status: 200,
+            headers: {
+              'content-type': type,
+              'content-disposition': 'attachment; filename="products-2026-10-31.xlsx"',
+            },
+          }),
+        ),
+      );
+      const response = await relay(
+        config,
+        get('catalog/admin/products/export?format=xlsx'),
+        exportPath,
+        upstream,
+      );
+      expect(response.headers.get('content-type')).toBe(type);
+      expect(response.headers.get('content-disposition')).toBe(
+        'attachment; filename="products-2026-10-31.xlsx"',
+      );
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
     });
 
     it('does not relay an export as a write', async () => {
