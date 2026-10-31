@@ -1198,6 +1198,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['resolution', 'resolved_at', 'resolved_by', 'status'],
     },
+    // Catalog business-activity package: the code and creator never change; names and category links
+    // are replaced as a set, so they may be deleted (as the activity itself, while unused).
+    'catalog.business_activities': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['description', 'status', 'updated_at', 'version'],
+    },
+    'catalog.business_activity_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'catalog.business_activity_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['published_at', 'retired_at', 'state'],
