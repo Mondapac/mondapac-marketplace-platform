@@ -814,6 +814,47 @@ own unit. No address is stored; it is read from `identity` at send time.
   until a purge of settled rows lands (as 3.18).
 - Migration `20261018220000_catalog_offer_owner_notices`, with `down.sql`.
 
+### 3.28 `saved_filters` (Catalogue > Products saved views; domain 9.2d)
+
+A named saved view of an admin list: the tab, search, filters and sort, for one admin (`me`) or for
+every admin of the Market who can see the list (`everyone`). Catalog owns the table because the
+first list is the product list; `list_key` (`admin.catalog.products` today) lets another admin list
+keep its views here without a migration (the application holds the list of known keys and each
+list's document vocabulary). It is a preference, so a delete is physical and there is no history;
+only filters shared with everyone are audited (domain 9.2d). The platform has no per-user
+preference store to reuse (the command palette's pins and recents live in the browser), and a
+filter shared with a whole Market needs a server-side home, so this is a new table.
+
+- Columns: `id` (uuid, PK), `market_id`, `tenant_id`, `owner_account_id` (an identity account id,
+  no foreign key: no cross-module reference), `visibility` (`me`, `everyone`), `list_key`, `name`,
+  `payload` (jsonb), `position` (>= 1, per owner and list, set at insert), `created_at`,
+  `updated_at` (>= `created_at`).
+- CHECKs: Market and tenant code shapes; `visibility`; `list_key` is a dotted lower-case key of
+  at most 64 characters; `name` is trimmed, 1 to 60 characters, no control character; `payload` is a
+  JSON object of at most 2 KB. The payload's keys are **not** a CHECK: the application validates
+  them on write against the list's closed document (`v`, `view`, optional `q`, `filters`, `sort`,
+  `direction` for the product list) and reads them back through the same validation, so a document
+  the vocabulary no longer accepts is left out of the list rather than served.
+- Unique `(market_id, id)` (the Prisma target). Unique expression indexes, both case-insensitive:
+  `saved_filters_owner_name_key (market_id, list_key, owner_account_id, lower(name))` (one name per
+  owner and list, whatever the visibility; also the access path of "my filters") and
+  `saved_filters_shared_name_key (market_id, list_key, lower(name)) WHERE visibility = 'everyone'`
+  (the tabs of a list never repeat a shared name; also the access path of "the shared filters"). Two
+  admins may keep the same private name.
+- Caps are the application's, under `SERIALIZABLE` (the invariant spans rows, P 3.1 row 6): 50
+  filters per owner and list, 20 shared with everyone per list and Market. Counts are over this
+  table with the Market in `where`; both are well under one index page.
+- Read path: `WHERE market_id = $1 AND list_key = $2 AND (owner_account_id = $3 OR visibility =
+  'everyone')`, at most 140 rows, one statement per list read. The Prisma `OR` is two index
+  ranges (the two uniques above).
+- Grants as in section 7: no column grant on `payload`, `owner_account_id`, `list_key`,
+  `position` or `market_id`; a different view is a new filter.
+- Retention: none; a filter lives until its owner (or a holder of the share key, for a shared one)
+  deletes it. An admin account's erasure leaves the id in the owner column (an identity id, not
+  personal data on its own); a sweep of filters owned by erased accounts is open (14, O8).
+- Migration `20261031010000_catalog_saved_filters` (Mojtaba to review), with `down.sql`. A new,
+  empty table; no lock beyond `CREATE TABLE`.
+
 ## 4. What is never stored
 
 | Never | Instead |
@@ -1117,6 +1158,7 @@ No sequence; no function gets a grant.
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
 | `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at)` | Purge (10.3) | |
 | `offer_owner_notices` | `SELECT, INSERT`, `UPDATE (state, outcome, attempts, next_attempt_at, settled_at)` | Purge (open) | Certification slice 15 (3.27) |
+| `saved_filters` | `SELECT, INSERT`, `UPDATE (visibility, name, updated_at)` | The application (a filter is a preference, not a record to keep) | Saved filters (3.28); the document, owner, list and position never change after the insert |
 | `product_images` | `SELECT, INSERT, DELETE`, `UPDATE (state, refusal_code, raw_object_key, master_object_key, master_sha256, media_type, pixel_width, pixel_height, taken_down_at, taken_down_by_account_id, takedown_reason_code, version)` | 13 (draft images of a discarded draft; master retention); the delete guard limits it to `received`, `scanning`, `clean`, `refused` | Hassan L3 |
 | `claim_text_rescans` | `SELECT, INSERT, UPDATE` | Never | |
 | `seller_categories`, `category_proposals` | `SELECT, INSERT, UPDATE` | Never | |
@@ -1538,6 +1580,7 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | O4 | The rate-counter key (HKDF split as SL-data 4.4) | Kazem, Hassan |
 | O6 | Closed: Q-K15 confirmed in D 2.1 (Mohammad, 2026-10-07) | — |
 | O7 | Storage lifecycle rule expiring the intake prefix within 24 h, required by ADR-0029 (Proposed 2026-10-07, decision 3): the backstop if both the delete and the sweep of 10.2 fail (Hassan M3) | Ali (ADR-0029), Kazem |
+| O8 | A sweep of saved filters owned by erased admin accounts (3.28): the table keeps an identity id only, which is not personal data alone; the sweep joins the erasure job when identity publishes the event it needs | Mojtaba, Hossein |
 
 ## 15. Follow-up changes
 

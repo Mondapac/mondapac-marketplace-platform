@@ -344,7 +344,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
-  it('upgrades catalogue-moderator from version 1 to 9: adds the catalog keys (view, edit, approve, pause, delete), certification.claim-policy.view, certification.product-certificate.view, certification.type.view, pricing.price-hold.view and sellers.seller.view only, one seed-applied row, other roles untouched (I-1a)', async () => {
+  it('upgrades catalogue-moderator from version 1 to 10: adds the catalog keys (view, edit, approve, pause, delete, saved-filter share), certification.claim-policy.view, certification.product-certificate.view, certification.type.view, pricing.price-hold.view and sellers.seller.view only, one seed-applied row, other roles untouched (I-1a)', async () => {
     const EDIT = 'catalog.platform-product.edit';
     // The previous build's definition: version 1 with the identity key only.
     const v1 = seedWith((role) =>
@@ -372,13 +372,14 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'catalogue-moderator')).toMatchObject({
       id: before.id,
-      seedVersion: 9,
+      seedVersion: 10,
       permissionKeys: [
         EDIT,
         'catalog.product.approve',
         'catalog.product.delete',
         'catalog.product.pause',
         'catalog.product.view',
+        'catalog.saved-filter.share',
         'certification.claim-policy.view',
         'certification.product-certificate.view',
         'certification.type.view',
@@ -394,13 +395,14 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 9,
+            seedVersion: 10,
             addedKeys: [
               EDIT,
               'catalog.product.approve',
               'catalog.product.delete',
               'catalog.product.pause',
               'catalog.product.view',
+              'catalog.saved-filter.share',
               'certification.claim-policy.view',
               'certification.product-certificate.view',
               'certification.type.view',

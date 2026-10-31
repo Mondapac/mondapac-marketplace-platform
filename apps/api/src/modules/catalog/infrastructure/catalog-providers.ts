@@ -72,6 +72,11 @@ import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.rea
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
 import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import {
+  SAVED_FILTER_REPOSITORY,
+  type SavedFilterRepository,
+} from '../application/ports/saved-filter.repository';
 import {
   ADMIN_PRODUCTS_READER,
   type AdminProductsReader,
@@ -256,6 +261,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminProductsReader =>
       new PrismaAdminProductsReader(prisma),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(prisma),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,

@@ -178,6 +178,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },
   RateVerdict: { noCustomerText: 'numbers' },
+  SavedFilter: {
+    noCustomerText:
+      "an admin's own saved view; its name is shown to admins only and never to a customer",
+  },
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },

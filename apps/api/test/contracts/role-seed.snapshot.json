@@ -863,5 +863,23 @@
       "pricing.price-hold.view",
       "sellers.seller.view"
     ]
+  },
+  {
+    "entry": "platform:catalogue-moderator@10",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.platform-product.edit",
+      "catalog.product.approve",
+      "catalog.product.delete",
+      "catalog.product.pause",
+      "catalog.product.view",
+      "catalog.saved-filter.share",
+      "certification.claim-policy.view",
+      "certification.product-certificate.view",
+      "certification.type.view",
+      "identity.seller-access.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view"
+    ]
   }
 ]
