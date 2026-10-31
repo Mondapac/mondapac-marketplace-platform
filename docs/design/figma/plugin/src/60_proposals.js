@@ -976,6 +976,151 @@ PROPOSALS['admin-attributes'] = { title: PA, rows: function () {
     [paDialogsA(), paDialogsB()]];
 } };
 
+// ── Catalog · Variants (variants management plan v2, sections 9 to 11 and 16; decisions 1 to 14 of 31 Oct 2026)
+const PV = 'Proposal · Catalog · Variants';
+function pvTag(n) { n.setPluginData('proposal', 'variants'); return n; }
+function pvChip(label, on, check) { return frame({ name: 'chip · ' + label, dir: 'H', gap: 'space/1-5', align: 'center', pad: [6, 12, 6, 12], radius: 'radius/pill', fill: on ? 'bg/selected' : 'bg/surface', stroke: on ? 'action/primary' : 'border/default' }, [check && on ? icon('check', 'text/link', 14) : null, text(label, on ? 'Body/Strong' : 'Body/Small', on ? 'text/link' : 'text/secondary')]); }
+function pvSwitch(on) { return inst('Switch', { On: on ? 'True' : 'False', Size: 'Md' }, { name: 'selling' }); }
+function pvTick(on, off) { return frame({ name: on ? 'tick on' : 'tick off', dir: 'H', w: 20, h: 20, align: 'center', justify: 'center', radius: 'radius/chip', fill: on ? 'action/primary' : 'bg/surface', stroke: on ? 'action/primary' : (off ? 'border/default' : 'border/input') }, on ? [icon('check', 'text/on-accent', 14)] : []); }
+function pvScreen(state, o) {
+  o = o || {};
+  const head = pageTitle('Variants', 'Sizes, flavours and colours across the Australia market', [btn('Export', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'download' } }), btn('Edit in Attributes', 'Secondary', 'Md', { 'Leading icon': true, Icon: { icon: 'external-link' } })]);
+  const tabs = tabsBar([['Variant types', '4', (o.tab || 'Variant types') === 'Variant types'], ['Variants', '1,284', o.tab === 'Variants'], ['Waiting for you', '6', o.tab === 'Waiting for you']]);
+  return pvTag(screen(PV + ' · Admin · ' + state, 'Admin', 'nav-catalogue', 'Catalog / Variants', [head, tabs].concat(o.banner ? [o.banner] : [], [o.body]), { minH: PANEL_MIN_H, gap: 'space/4' }));
+}
+function pvTypes() {
+  const types = [['Pack size', 'Buttons', '18', '412', '1,031', 'ar missing 2'], ['Flavour', 'Buttons', '27', '96', '214', 'ar missing 9'], ['Colour', 'Swatches', '12', '8', '22', 'All'], ['Grind', 'Dropdown', '5', '31', '58', 'All']];
+  const head = headerRow([['Variant type', 'fill'], ['Display', 110], ['Options', 80], ['Products', 90], ['Live variants', 110]]);
+  const list = card('Variant type list', [head].concat(types.map(function (t, i) { return row([[twoLine(t[0], t[5] === 'All' ? 'All languages' : t[5], i === 0 ? 'Body/Strong' : 'Body/Default'), 'fill'], [text(t[1], 'Body/Small'), 110], [text(t[2], 'Body/Small', 'text/muted'), 80], [text(t[3], 'Body/Small', 'text/muted'), 90], [text(t[4], 'Body/Small', 'text/muted'), 110]], i === 0, false, 56); }), [
+    frame({ name: 'foot', dir: 'H', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [text('A variant type is an attribute marked Variant in a feature set. Add one in Attributes.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })])]));
+  const opt = function (en, fa, ar, sw, n) { return frame({ name: 'option · ' + en, dir: 'H', gap: 'space/2', align: 'center', pad: [8, 12, 8, 12], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [icon('menu', 'icon/muted', 14), text(en, 'Body/Default', 'text/primary', { w: 80 }), text(fa, 'Body/Small', 'text/secondary', { w: 90, align: 'right' }), ar ? text(ar, 'Body/Small', 'text/secondary', { w: 70, align: 'right' }) : text('Missing', 'Caption/Default', 'status/attention/fg', { w: 70 }), pcSp(), text(n + ' products', 'Caption/Default', 'text/muted')]); };
+  const panel = card('Variant type details', [frame({ name: 'body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
+    frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('Pack size', 'Heading/H2'), bdg('Info', 'None', 'Variant'), pcSp(), ppLink('Edit in Attributes', 'external-link', 'edit-attr')]),
+    text('Names and labels are edited in Attributes, so there is one place for them. Here you set how buyers choose.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
+    pcField('How buyers choose', inst('SegmentedControl', { 'Segment 1': 'Buttons', 'Segment 2': 'Swatches', 'Segment 3': 'Dropdown' }, { name: 'display' }), 'Swatches use a colour or small picture per option.'),
+    pcField('Option order', inst('Select', { State: 'Filled', Value: 'By size (from the unit)' }, { name: 'order', sizeH: 'FILL' }), 'Manual, alphabetical in each language, or by size for Number-with-unit options.'),
+    pcField('Help for sellers', pcIn('Choose every pack size you sell. Each one gets its own price and stock.'), 'One sentence above the variant grid.'),
+    text('Options', 'Caption/Strong', 'text/muted'), card('options', [opt('250 g', '۲۵۰ گرم', '', 0, 96), opt('500 g', '۵۰۰ گرم', '', 0, 141), opt('1 kg', '۱ کیلوگرم', '١ كغ', 0, 122), opt('5 kg', '۵ کیلوگرم', '', 0, 41)]),
+    paSave()])], { w: 520, sizeH: null });
+  return frame({ name: 'Variant types layout', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [list, panel]);
+}
+function pvAll() {
+  const rows = [['Sella basmati rice', '5 kg', 'MP-004127-02', '9 300633 01234 5', '4', '$18.50', '212', ''], ['Sella basmati rice', '10 kg', 'MP-004127-03', '9 300633 01235 2', '3', '$34.00', '88', ''], ['Sella basmati rice', '20 kg', 'MP-004127-04', '—', '0', '—', '0', 'No seller selling'], ['Mango juice', '1 L · Mango', 'MP-002210-01', '9 312345 67890 1', '2', '$4.20', '0', 'Out of stock everywhere'], ['Mango juice', '1 L · Guava', 'MP-002210-02', '9 312345 67890 1', '1', '$4.40', '36', 'Duplicate GTIN'], ['Ground cumin', 'Fine · 100 g', 'MP-003318-05', '—', '2', '$3.10', '54', 'Missing GTIN']];
+  const head = headerRow([['Product · variant', 'fill'], ['Code', 140], ['GTIN', 150], ['Sellers', 80], ['From', 80], ['Stock', 70], ['Issues', 190]]);
+  const tbl = card('Variant list', [frame({ name: 'tools', dir: 'H', gap: 'space/2', align: 'center', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [inst('Input', { Type: 'Text', State: 'Default', Value: 'Search product, variant code, GTIN or SKU', 'Leading icon': true }, { name: 'search', w: 380 }), inst('Select', { State: 'Filled', Value: 'Variant type: All' }, { name: 'type', w: 180 }), pcSp(), text('Click a row to open the product on that variant', 'Caption/Default', 'text/muted')]),
+    frame({ name: 'issue chips', dir: 'H', gap: 'space/2', wrap: true, rowGap: 'space/2', pad: [0, 16, 12, 16], sizeH: 'FILL' }, [['No seller selling', '17'], ['Out of stock everywhere', '42'], ['Missing GTIN', '388'], ['Duplicate GTIN', '3'], ['No image', '61'], ['Missing language', '24']].map(function (c) { return pvChip(c[0] + ' · ' + c[1], false); })), head].concat(rows.map(function (r) {
+    return row([[twoLine(r[0], r[1]), 'fill'], [text(r[2], 'Mono/Small'), 140], [text(r[3], 'Mono/Small', r[3] === '—' ? 'text/muted' : 'text/primary'), 150], [text(r[4], 'Body/Small'), 80], [text(r[5], 'Body/Small'), 80], [text(r[6], 'Body/Small', 'text/muted'), 70], [r[7] ? bdg(r[7] === 'Duplicate GTIN' ? 'Critical' : 'Attention', 'None', r[7]) : text('—', 'Body/Small', 'text/muted'), 190]], false, false, 56);
+  }), [inst('Pagination', { Range: '1–25 of 1,284 variants' }, { name: 'Pagination', sizeH: 'FILL' })]));
+  return tbl;
+}
+function pvWaiting() {
+  const items = [['New variant', 'Sella basmati rice: 2 kg', 'Kuraby Fresh wants to sell a size the product doesn’t have', '1 h ago', true], ['New option', 'Flavour: "Lychee"', 'Logan Halal Grocer · Mango juice', '3 h ago'], ['New variant', 'Ground cumin: Coarse · 250 g', 'Sunnybank Pantry', '1 day ago']];
+  const list = card('Waiting list', [frame({ name: 'tools', dir: 'H', pad: [12, 16, 12, 16], sizeH: 'FILL' }, [inst('Select', { State: 'Filled', Value: 'Kind: All' }, { name: 'kind', w: 170 })])].concat(items.map(function (it) {
+    return frame({ name: 'request · ' + it[1], dir: 'V', gap: 'space/1', pad: [12, 16, 12, 16], fill: it[4] ? 'bg/row-selected' : null, stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [frame({ name: 'kind', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [bdg('Info', 'None', it[0]), pcSp(), text(it[3], 'Caption/Default', 'text/muted')]), text(it[1], 'Body/Strong'), text(it[2], 'Body/Small', 'text/muted', { sizeH: 'FILL' })]);
+  })));
+  const decide = card('Decision', [frame({ name: 'body', dir: 'V', gap: 'space/4', pad: 20, sizeH: 'FILL' }, [
+    text('Add 2 kg to Sella basmati rice?', 'Heading/H2'), text('A platform product. Kuraby Fresh sells 5 kg and 10 kg on it and asks for a 2 kg size. The option 2 kg already exists in Pack size.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
+    pcImpact([['Variants after this', '5 of 100'], ['Barcode given', '9 300633 01233 8'], ['Same barcode elsewhere', 'None']]),
+    paRadio(true, 'Approve', 'The 2 kg variant is created and the seller can price it.'), paRadio(false, 'Use an existing variant', 'Point the seller to a variant the product already has.'), paRadio(false, 'Decline', 'Tell the seller why. They get an email.'),
+    frame({ name: 'footer', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Approve', 'Primary', 'Sm')])])], { w: 480, sizeH: null });
+  return frame({ name: 'Waiting layout', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [list, decide]);
+}
+// The variant grid in the product form (the same for a seller's own product and an admin's platform product).
+const PV_GRID = [['1 L', 'Mango', true, '9 312345 67890 1', '1.1 kg', '$4.20', '36', true, 'M1'], ['1 L', 'Guava', true, '9 312345 67891 8', '1.1 kg', '$4.40', '12', true, 'G1'], ['1 L', 'Lychee', false], ['2 L', 'Mango', true, '', '2.2 kg', '$7.50', '0', true, 'M2'], ['2 L', 'Guava', true, '', '2.2 kg', '$7.80', '8', false, ''], ['2 L', 'Lychee', false]];
+function pvAxis(name, opts, locked) {
+  return frame({ name: 'axis · ' + name, dir: 'V', gap: 'space/2', pad: 'space/3', stroke: 'border/default', radius: 'radius/control', sizeH: 'FILL' }, [
+    frame({ name: 'axis head', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text(name, 'Body/Strong'), locked ? icon('lock', 'icon/muted', 14) : null, pcSp(), ppLink('Suggest a new option', null, 'suggest')]),
+    frame({ name: 'options', dir: 'H', gap: 'space/2', wrap: true, rowGap: 'space/2', sizeH: 'FILL' }, opts.map(function (o) { return pvChip(o[0], o[1], true); }))]);
+}
+function pvGrid(o) {
+  o = o || {};
+  const head = headerRow([['', 52], ['Variant', 'fill'], ['Barcode (GTIN)', 170], ['Ship weight', 110], ['Image', 80], ['SKU', 90], ['Price', 90], ['Stock', 80], ['Selling', 90]]);
+  const rows = PV_GRID.map(function (r) {
+    if (!r[2]) return row([[pvTick(false), 52, { justify: 'center' }], [text(r[0] + ' · ' + r[1], 'Body/Default', 'text/muted'), 'fill'], [text('Tick to add', 'Caption/Default', 'text/muted'), 170], [text('', 'Caption/Default'), 110], [text('', 'Caption/Default'), 80], [text('', 'Caption/Default'), 90], [text('', 'Caption/Default'), 90], [text('', 'Caption/Default'), 80], [text('', 'Caption/Default'), 90]], false, false, 52);
+    const img = rect({ name: 'thumb', w: 32, h: 32, fill: 'bg/muted', radius: 'radius/chip' });
+    return row([[pvTick(true), 52, { justify: 'center' }], [twoLine(r[0] + ' · ' + r[1], 'MP-002210-0' + (PV_GRID.indexOf(r) + 1), 'Body/Default'), 'fill'], [text(r[3] || 'Add barcode', 'Mono/Small', r[3] ? 'text/primary' : 'text/muted'), 170], [text(r[4], 'Body/Small'), 110], [img, 80], [text(r[8] || '—', 'Mono/Small', r[8] ? 'text/primary' : 'text/muted'), 90], [text(r[5], 'Body/Small'), 90], [text(r[6], 'Body/Small', r[6] === '0' ? 'status/attention/fg' : 'text/primary'), 80], [pvSwitch(r[7]), 90]], false, !r[7], 52);
+  });
+  const bulk = frame({ name: 'bulk', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('4 of 100 variants', 'Body/Small Strong', 'text/secondary'), pcSp(), btn('Set price for selected', 'Secondary', 'Sm'), btn('Increase by %', 'Secondary', 'Sm'), btn('Set stock', 'Secondary', 'Sm')]);
+  return [frame({ name: 'axes', dir: 'H', gap: 'space/3', sizeH: 'FILL' }, [pvAxis('Pack size', [['1 L', true], ['2 L', true], ['500 ml', false]], o.locked), pvAxis('Flavour', [['Mango', true], ['Guava', true], ['Lychee', true], ['Apple', false]], o.locked)]),
+    text('Every combination is listed. Tick the ones you have; the rest stay out. Labels come from the option names in each language.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), bulk, card('variant grid', [head].concat(rows)),
+    text('Product side: barcode, ship weight and image (from the product gallery). Your side: SKU, price, stock and Selling. Turning Selling off keeps the variant; turn it on again any time.', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })];
+}
+function pvForm(state, kids, ws) {
+  ws = ws || 'Seller';
+  const head = pageTitle('Mango juice', ws === 'Seller' ? 'Your product · Draft changes not yet submitted' : 'Platform product · Australia', [btn('Discard', 'Secondary', 'Md'), btn(ws === 'Seller' ? 'Submit for review' : 'Publish', 'Primary', 'Md')]);
+  const tabs = tabsBar([['Details', null, false], ['Images', null, false], ['Variants', '4', true], ['Certifications', null, false]]);
+  return pvTag(screen(PV + ' · Product form · ' + state, ws, 'nav-catalogue', (ws === 'Seller' ? 'Products' : 'Catalog / Products') + ' / Mango juice', [head, tabs].concat(kids), { minH: PANEL_MIN_H, gap: 'space/4' }));
+}
+function pvSimple() {
+  const card1 = card('Simple product', [frame({ name: 'body', dir: 'V', gap: 'space/3', pad: 24, sizeH: 'FILL' }, [
+    text('This product has one size', 'Heading/H2'), text('Sella basmati rice 5 kg sells as one item. Add sizes to sell 1 kg, 10 kg and more on the same page. Your 5 kg price, stock and SKU stay as the first size.', 'Body/Default', 'text/secondary', { sizeH: 'FILL' }),
+    pcField('Variant type', inst('Select', { State: 'Filled', Value: 'Pack size' }, { name: 'type', w: 280 }), 'From the Rice and grains feature set. You can add a second type once, later.'),
+    frame({ name: 'act', dir: 'H', gap: 'space/2', sizeH: 'FILL' }, [btn('Add sizes', 'Primary', 'Md', { 'Leading icon': true, Icon: { icon: 'plus' } })])])]);
+  const second = card('Add a second type', [frame({ name: 'body', dir: 'V', gap: 'space/3', pad: 24, sizeH: 'FILL' }, [
+    frame({ name: 'title', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('Add a second variant type', 'Heading/H2'), bdg('Neutral', 'None', 'Once')]),
+    text('Variant types can’t change after the first publish. You can add a second type once. Every variant you have gets one value of it; prices and stock stay.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }),
+    pcField('Second type', inst('Select', { State: 'Filled', Value: 'Grain' }, { name: 'type2', w: 280 })), pcField('Value for your 3 sizes now', inst('Select', { State: 'Filled', Value: 'White' }, { name: 'fill', w: 280 })),
+    frame({ name: 'act', dir: 'H', gap: 'space/2', justify: 'end', sizeH: 'FILL' }, [btn('Cancel', 'Secondary', 'Sm'), btn('Add type', 'Primary', 'Sm')])])]);
+  return [frame({ name: 'two', dir: 'H', gap: 'space/4', align: 'start', sizeH: 'FILL' }, [card1, second])];
+}
+// Buyer product page: a sketch of the picker; the storefront page layout itself comes from the storefront design.
+function pvBuyerOpt(label, st) {
+  const on = st === 'on', out = st === 'out', na = st === 'na';
+  return frame({ name: 'opt · ' + label, dir: 'V', gap: 0, align: 'center', pad: [8, 14, 8, 14], radius: 'radius/control', stroke: on ? 'action/primary' : 'border/default', fill: on ? 'bg/selected' : 'bg/surface', strokeW: on ? 2 : 1 }, [text(label, on ? 'Body/Strong' : 'Body/Default', out || na ? 'text/muted' : 'text/primary', { strike: na }), out ? text('Out of stock', 'Caption/Default', 'text/muted') : null]);
+}
+function pvBuyerDesktop() {
+  const gallery = frame({ name: 'gallery', dir: 'V', gap: 'space/2', w: 520 }, [rect({ name: 'image 5 kg', w: 520, h: 420, fill: 'bg/muted', radius: 'radius/card' }), frame({ name: 'thumbs', dir: 'H', gap: 'space/2' }, [0, 1, 2, 3].map(function (i) { return rect({ name: 'thumb', w: 72, h: 72, fill: 'bg/muted', radius: 'radius/control', stroke: i === 0 ? 'action/primary' : null }); }))]);
+  const seller = function (n, p, on) { return frame({ name: 'seller · ' + n, dir: 'H', gap: 'space/2', align: 'center', pad: [10, 12, 10, 12], stroke: 'border/row', sides: ['top'], sizeH: 'FILL' }, [text(n, 'Body/Default', 'text/primary', { sizeH: 'FILL' }), text(p, 'Body/Strong'), btn('Add', on ? 'Primary' : 'Secondary', 'Sm')]); };
+  const info = frame({ name: 'info', dir: 'V', gap: 'space/4', sizeH: 'FILL' }, [
+    text('Tilda', 'Body/Small', 'text/link'), text('Sella basmati rice', 'Heading/H1'),
+    frame({ name: 'price', dir: 'H', gap: 'space/2', align: 'end' }, [text('$18.50', 'Heading/H1'), text('$3.70 / kg', 'Body/Small', 'text/muted')]),
+    text('Pack size: 5 kg', 'Body/Strong'), frame({ name: 'options', dir: 'H', gap: 'space/2', wrap: true }, [pvBuyerOpt('1 kg'), pvBuyerOpt('5 kg', 'on'), pvBuyerOpt('10 kg'), pvBuyerOpt('20 kg', 'out')]),
+    text('3 sellers have this size · from $18.50', 'Body/Small', 'text/secondary'),
+    card('sellers', [seller('Kuraby Fresh · today', '$18.50', true), seller('Logan Halal Grocer · tomorrow', '$19.20'), seller('Sunnybank Pantry · tomorrow', '$19.90')]),
+    text('Address bar: /p/sella-basmati-rice?v=02 · canonical without ?v · first in-stock size is chosen when there is no ?v', 'Caption/Default', 'text/muted', { sizeH: 'FILL' })]);
+  const scr = frame({ name: PV + ' · Buyer · Product page (sketch)', dir: 'V', w: 1280, pad: 40, gap: 'space/6', fill: 'bg/page' }, [
+    text('Buyer product page · variant picker (sketch, storefront layout comes from the storefront design)', 'Caption/Strong', 'text/muted'),
+    frame({ name: 'layout', dir: 'H', gap: 'space/8', align: 'start', sizeH: 'FILL' }, [gallery, info]),
+    text('On a product card in lists', 'Caption/Strong', 'text/muted'),
+    frame({ name: 'card', dir: 'V', gap: 'space/1', pad: 'space/3', w: 240, fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card' }, [rect({ name: 'img', w: 216, h: 160, fill: 'bg/muted', radius: 'radius/control' }), text('Sella basmati rice', 'Body/Strong'), text('From $6.20 · 4 sizes', 'Body/Small', 'text/secondary')])]);
+  tag(scr); return pvTag(scr);
+}
+function pvBuyerPhone(name, sel, rtl) {
+  const opts = rtl ? [['۱ کیلوگرم'], ['۵ کیلوگرم'], ['۱۰ کیلوگرم'], ['۲۰ کیلوگرم', 'out']] : [['1 kg'], ['5 kg'], ['10 kg'], ['20 kg', 'out']];
+  const row1 = frame({ name: 'options', dir: 'H', gap: 'space/2', sizeH: 'FILL', clip: true }, opts.map(function (o, i) { return pvBuyerOpt(o[0], i === sel ? (o[1] === 'out' ? 'out' : 'on') : o[1]); }));
+  if (rtl) row1.counterAxisAlignItems = 'CENTER';
+  const out = opts[sel][1] === 'out';
+  const t = function (str, st, c, o) { return text(str, st, c, Object.assign({ sizeH: 'FILL' }, rtl ? { align: 'right' } : {}, o || {})); };
+  const body = frame({ name: 'body', dir: 'V', gap: 'space/3', pad: 16, sizeH: 'FILL' }, [rect({ name: 'image', w: 328, h: 240, fill: 'bg/muted', radius: 'radius/card' }),
+    t(rtl ? 'برنج باسماتی سلا' : 'Sella basmati rice', 'Heading/H2'), t(out ? (rtl ? 'ناموجود' : 'Out of stock') : (rtl ? '$18.50 · $3.70 / kg' : '$18.50 · $3.70 / kg'), 'Body/Strong', out ? 'text/muted' : 'text/primary'),
+    t(rtl ? 'اندازهٔ بسته: ' + opts[sel][0] : 'Pack size: ' + opts[sel][0], 'Body/Strong'), row1, t(rtl ? 'گزینه‌ها افقی اسکرول می‌شوند' : 'Options scroll sideways', 'Caption/Default', 'text/muted')]);
+  const bar = frame({ name: 'sticky add to cart', dir: 'H', gap: 'space/2', align: 'center', pad: 12, fill: 'bg/surface', stroke: 'border/default', sides: ['top'], sizeH: 'FILL' }, [btn(out ? (rtl ? 'ناموجود' : 'Out of stock') : (rtl ? 'افزودن ۵ کیلوگرم به سبد' : 'Add 5 kg to cart'), 'Primary', 'Md', out ? { State: 'Disabled' } : {})]);
+  bar.children[0].layoutSizingHorizontal = 'FILL';
+  const scr = frame({ name: PV + ' · Buyer · ' + name, dir: 'V', w: 360, h: 780, fill: 'bg/page', clip: true }, [frame({ name: 'spacer', dir: 'V', sizeH: 'FILL', sizeV: 'FILL' }, [body]), bar]);
+  tag(scr); return pvTag(scr);
+}
+function pvStates() {
+  const b = function (n, tone, t, body, act) { return inst('InfoBanner', Object.assign({ Tone: tone, Title: t, Body: body, 'Show action': !!act }, act ? { Action: act } : {}), { name: n, sizeH: 'FILL' }); };
+  const field = function (n, v, msg) { return frame({ name: n, dir: 'V', gap: 'space/1', sizeH: 'FILL' }, [pcIn(v, 'Error'), text(msg, 'Body/Small', 'status/critical/fg', { sizeH: 'FILL' })]); };
+  const remove = pcDialog('Remove variant', 'Remove 2 L · Guava?', 'This size has live prices and stock. Removing it ends them. Adding it again later starts from empty.', [pcImpact([['Your stock that stops selling', '8'], ['Carts that show it as unavailable', '3', true]])], 'Remove variant', { destructive: true, focusCancel: true, w: 480 });
+  const scr = frame({ name: PV + ' · States and messages', dir: 'V', w: 900, pad: 40, gap: 'space/4', fill: 'bg/page' }, [text('Variants: states and messages', 'Heading/H1'),
+    para('Plan section 16. Copy is a draft for Jafar (product designer) and Reza (UI/UX).', 820),
+    text('Variant grid', 'Caption/Strong', 'text/muted'), b('limit', 'Critical', 'You’ve reached 100 variants.', 'Remove one before adding another.'), b('near', 'Attention', '96 of 100 variants', 'Ticking all 12 would go over the limit.'),
+    b('locked', 'Info', 'Variant types can’t change after the first publish.', 'You can add a second type once.'), b('move', 'Critical', 'Move needs the same variant types.', 'The new category’s feature set has no Pack size. Ask an admin to add it.'),
+    field('gtin-dup', '9 312345 67890 1', 'This barcode is already on a product in the catalogue. You can sell on that product instead.'), field('gtin-bad', '9 312345 67890 2', 'Check the barcode. The last digit doesn’t match.'),
+    text('Removing a published variant', 'Caption/Strong', 'text/muted'), remove,
+    text('Buyer', 'Caption/Strong', 'text/muted'), frame({ name: 'buyer', dir: 'H', gap: 'space/2' }, [pvBuyerOpt('20 kg', 'out'), pvBuyerOpt('2 L', 'na')]), text('Out of stock: shown, can’t be added. No such combination with the current choice: faded and struck through.', 'Caption/Default', 'text/muted'),
+    b('cart', 'Attention', 'This size is no longer available.', 'In the cart, for a removed variant.'),
+    text('Admin', 'Caption/Strong', 'text/muted'), b('view-only', 'Info', 'View only', 'You can view variants. Ask a Platform Administrator to change them.'),
+    inst('EmptyState', { Size: 'Card', Title: 'No requests are waiting for you', Body: 'Seller requests for new variants and options show here.', Icon: { icon: 'inbox' } }, { name: 'queue-empty', sizeH: 'FILL' })]);
+  tag(scr); return pvTag(scr);
+}
+PROPOSALS['variants'] = { title: PV, rows: function () {
+  return [[pvScreen('Variant types', { body: pvTypes() }), pvScreen('Variants', { tab: 'Variants', body: pvAll() }), pvScreen('Waiting for you', { tab: 'Waiting for you', body: pvWaiting() })],
+    [pvForm('Seller · Variant grid', pvGrid()), pvForm('Admin · Platform product, published', pvGrid({ locked: true }), 'Admin'), pvForm('Seller · Simple product, Add sizes', pvSimple())],
+    [pvBuyerDesktop(), pvBuyerPhone('Phone · 5 kg', 1), pvBuyerPhone('Phone · 20 kg out of stock', 3), pvBuyerPhone('Phone · Persian', 1, true), pvStates()]];
+} };
+
 async function buildProposal(key) {
   STEP = 0; STEPS = 3; S.report = [];
   const def = PROPOSALS[key];
