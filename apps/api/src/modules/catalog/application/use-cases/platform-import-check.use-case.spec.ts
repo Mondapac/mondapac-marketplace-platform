@@ -31,7 +31,7 @@ import {
   readImportFile,
   type ImportFileParser,
 } from '../../domain/platform-import/import-file';
-import { xlsxParser } from '../../infrastructure/xlsx/xlsx-import-parser';
+import { xlsxParser } from '../../infrastructure/xlsx/isolated-xlsx-parser';
 import { workbookBytes } from '../../../../../test/support/zip-fixtures';
 import { simpleProductType } from '../../domain/product-types/simple';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';

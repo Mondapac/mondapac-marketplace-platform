@@ -41,7 +41,14 @@ export type FileRefusal =
   | { readonly code: 'file.too-many-rows'; readonly rows: number; readonly max: number }
   /** A spreadsheet cell that holds a formula: formulas are refused, never read or evaluated. */
   | { readonly code: 'file.formula-cell'; readonly rowNumber: number }
-  | { readonly code: 'file.no-rows' };
+  | { readonly code: 'file.no-rows' }
+  /**
+   * A workbook the parse could not finish within its time or its strings' run limit (Hassan
+   * M-586-8): nothing is wrong with the bytes, the file asks for more work than one import may take.
+   */
+  | { readonly code: 'file.too-complex' }
+  /** Another XLSX is being read in this process right now; the same upload will go through shortly. */
+  | { readonly code: 'file.busy'; readonly retryAfterSeconds: number };
 
 /**
  * The seam for a file format (design 14a: pluggable). A parser answers whether the bytes are its

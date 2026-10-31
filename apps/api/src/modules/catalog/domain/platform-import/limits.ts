@@ -35,6 +35,11 @@ export const IMPORT_LIMITS = Object.freeze({
   cellChars: 10_000,
   /** Columns in the header row. */
   columns: 64,
+  /**
+   * Runs (`<r>`, empty ones counted) in one rich string of a workbook, shared or inline (Hassan
+   * M-586-8). A real cell holds a handful; the per-cell work grows with the runs.
+   */
+  runsPerString: 1000,
 });
 
 export type ImportLimits = typeof IMPORT_LIMITS;

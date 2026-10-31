@@ -95,7 +95,7 @@ import {
 } from '../application/ports/import-file-parsers';
 import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
 import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
-import { xlsxParser } from './xlsx/xlsx-import-parser';
+import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
 import {

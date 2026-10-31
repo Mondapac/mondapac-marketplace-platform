@@ -16,9 +16,11 @@ import {
 } from '../../domain/platform-import/import-file';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import { ExceljsSheetWriter } from './exceljs-sheet-writer';
-import { createXlsxParser, dateText, numberText, xlsxParser } from './xlsx-import-parser';
+import { createXlsxParser, dateText, numberText } from './xlsx-import-parser';
 import { inspectXlsxContainer } from './zip-inspection';
 
+// The parse itself, in this thread (the worker that production runs it in has its own spec).
+const xlsxParser = createXlsxParser();
 const PARSERS = [csvParser, xlsxParser];
 
 async function read(bytes: Uint8Array): Promise<ParsedTable> {
@@ -443,7 +445,10 @@ function sheetXml(rows: readonly (readonly [number, readonly string[]])[]): stri
   return `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
 }
 
-function handMade(sheet: string, extra: { name: string; data: Buffer }[] = []): Buffer {
+function handMade(
+  sheet: string,
+  extra: { name: string; data: Buffer; method?: 0 | 8 }[] = [],
+): Buffer {
   return zipOf([
     // The sheet before the workbook parts: the streaming read must not depend on the order.
     { name: 'xl/worksheets/sheet1.xml', data: Buffer.from(sheet) },
@@ -725,7 +730,10 @@ describe('xlsxParser: the sheet bytes are scanned before exceljs (Hassan M-586-1
   });
 
   it('refuses a single row of far too many cells, before the reader sees them', async () => {
-    const wide = Array.from({ length: 2 * IMPORT_LIMITS.columns + 1 }, (_, i) => `<c r="A${i}"/>`);
+    const wide = Array.from(
+      { length: 2 * IMPORT_LIMITS.columns + 1 },
+      (_, i) => `<c r="A${i + 1}"/>`,
+    );
     const sheet = sheetOf(
       `<row r="1">${cell('A1', 'Title')}</row><row r="2">${wide.join('')}</row>`,
     );
@@ -793,10 +801,133 @@ describe('xlsxParser: the sheet bytes are scanned before exceljs (Hassan M-586-1
     });
   });
 
+  // Hassan L-586-6 (round 4): exceljs skips every character that is not a letter or a digit in a
+  // reference, so a prefix hides column XFD from a prescan that reads only a leading run of letters.
+  describe('a cell reference that is not exactly capital letters then a number', () => {
+    it.each([
+      '$XFD$2',
+      ' XFD2',
+      '-XFD2',
+      '$A$2',
+      'xfd2',
+      'A0',
+      'A02',
+      'A-2',
+      'AAAA2',
+      '2A',
+      'A',
+      '',
+    ])('refuses r="%s" as unreadable', async (ref) => {
+      const sheet = sheetOf(
+        `<row r="1">${cell('A1', 'Title')}</row><row r="2">${cell(ref, 'x')}</row>`,
+      );
+      expect([ref, await refusedFast(sheet)]).toEqual([ref, { code: 'file.unreadable' }]);
+    });
+
+    it('refuses 5,000 rows of cells in A and $XFD$n, quickly (the file that cost 6.5 s)', async () => {
+      const rows = Array.from(
+        { length: 5_000 },
+        (_, i) =>
+          `<row r="${i + 2}"><c r="$A$${i + 2}"><v>1</v></c><c r="$XFD$${i + 2}"><v>2</v></c></row>`,
+      ).join('');
+      const sheet = sheetOf(`<row r="1">${cell('A1', 'Title')}</row>${rows}`);
+      expect(await refusedFast(sheet)).toEqual({ code: 'file.unreadable' });
+    });
+
+    it('still reads plain references, up to the last column the cap allows', async () => {
+      const sheet = sheetOf(
+        `<row r="1">${cell('A1', 'Title')}</row><row r="2">${cell('A2', 'x')}${cell('DX2', 'y')}</row>`,
+      );
+      expect((await read(handMade(sheet))).rowCount).toBe(1);
+    });
+  });
+
   it('fails closed on a row tag hidden in a comment: the count can be too high, never too low', async () => {
     const sheet = sheetOf(
       `<!-- <row r="999999999"> --><row r="1">${cell('A1', 'Title')}</row><row r="2">${cell('A2', 'x')}</row>`,
     );
     expect(await refusedFast(sheet)).toEqual(tooManyRows);
   });
+});
+
+// Hassan M-586-8: a rich string is cached by exceljs as one object that every cell points at, and an
+// empty run (`<r/>`) is four bytes, so per-cell work and the runs of a string were unbounded.
+describe('xlsxParser: rich strings are bounded and read once (Hassan M-586-8)', () => {
+  const SST = (inner: string): Buffer =>
+    Buffer.from(
+      `<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1">${inner}</sst>`,
+    );
+  const sheetOf = (body: string): string =>
+    `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+  /** A one-cell header, then `rows` rows of `perRow` cells that all point at shared string 0. */
+  const reusing = (rows: number, perRow: number): string => {
+    const ref = (n: number, c: number): string => {
+      let name = '';
+      for (let k = c + 1; k > 0; k = Math.floor((k - 1) / 26)) {
+        name = String.fromCharCode(65 + ((k - 1) % 26)) + name;
+      }
+      return `${name}${n}`;
+    };
+    const body = Array.from({ length: rows }, (_, i) => {
+      const n = i + 2;
+      return `<row r="${n}">${Array.from({ length: perRow }, (_x, c) => `<c r="${ref(n, c)}" t="s"><v>0</v></c>`).join('')}</row>`;
+    }).join('');
+    return sheetOf(`<row r="1"><c r="A1" t="inlineStr"><is><t>Title</t></is></c></row>${body}`);
+  };
+  // Stored, so that the compression ratio guard (which would refuse a part of repeated bytes)
+  // is not what is tested.
+  const file = (sheet: string, strings: Buffer): Buffer =>
+    handMade(sheet, [{ name: 'xl/sharedStrings.xml', data: strings, method: 0 }]);
+
+  it('refuses the shared string of 1,000,000 empty runs in 60 x 128 cells quickly (170 s before)', async () => {
+    const strings = SST(`<si>${'<r/>'.repeat(1_000_000)}</si>`);
+    const bytes = file(reusing(60, 128), strings);
+    const started = Date.now();
+    const result = await createXlsxParser().parse(bytes, IMPORT_LIMITS);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(result).toEqual({ ok: false, error: { code: 'file.too-complex' } });
+  });
+
+  it('counts empty runs: 1,001 are too many, 1,000 are not', async () => {
+    const run = (n: number): Buffer => SST(`<si>${'<r><t></t></r>'.repeat(n)}</si>`);
+    const sheet = reusing(2, 3);
+    const parser = createXlsxParser();
+    expect(
+      await parser.parse(file(sheet, run(IMPORT_LIMITS.runsPerString + 1)), IMPORT_LIMITS),
+    ).toEqual({ ok: false, error: { code: 'file.too-complex' } });
+    expect(
+      (await parser.parse(file(sheet, run(IMPORT_LIMITS.runsPerString)), IMPORT_LIMITS)).ok,
+    ).toBe(true);
+  });
+
+  it('counts the runs of each string, not of the whole part', async () => {
+    const half = '<r><t>a</t></r>'.repeat(IMPORT_LIMITS.runsPerString);
+    const strings = SST(`<si>${half}</si><si>${half}</si>`);
+    const result = await createXlsxParser().parse(file(reusing(2, 3), strings), IMPORT_LIMITS);
+    expect(result.ok).toBe(true);
+  });
+
+  it('refuses an inline string with too many runs', async () => {
+    const runs = '<r><t>a</t></r>'.repeat(IMPORT_LIMITS.runsPerString + 1);
+    const sheet = sheetOf(
+      `<row r="1"><c r="A1" t="inlineStr"><is><t>Title</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is>${runs}</is></c></row>`,
+    );
+    expect(await createXlsxParser().parse(handMade(sheet), IMPORT_LIMITS)).toEqual({
+      ok: false,
+      error: { code: 'file.too-complex' },
+    });
+  });
+
+  it('turns a shared string into text once: 1,000 runs in 3,800 x 128 cells finish quickly', async () => {
+    // Before: the 1,000 runs were joined for each of 486,000 cells. The cells are in columns the
+    // header does not have, so they are ignored once read. The sheet is under the part limit.
+    const strings = SST(`<si>${'<r><t>x</t></r>'.repeat(IMPORT_LIMITS.runsPerString)}</si>`);
+    const sheet = reusing(1_800, 128);
+    expect(sheet.length).toBeLessThan(IMPORT_LIMITS.worksheetPartBytes);
+    const started = Date.now();
+    const result = await createXlsxParser().parse(file(sheet, strings), IMPORT_LIMITS);
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.rowCount).toBe(1_800);
+  }, 60_000);
 });

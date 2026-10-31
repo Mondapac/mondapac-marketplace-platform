@@ -4,7 +4,9 @@ import path from 'node:path';
 import { contentTypesXml, MAIN_TYPE, zipOf } from '../../../../../test/support/zip-fixtures';
 import type { FileRefusal } from '../../domain/platform-import/import-file';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
-import { xlsxParser } from './xlsx-import-parser';
+import { createXlsxParser } from './xlsx-import-parser';
+
+const xlsxParser = createXlsxParser();
 
 // Hassan M-586-1: an XLSX within the size limits must not cost memory out of proportion to its
 // bytes. Each case runs the parse in a child process (a Jest run of this same file) whose V8

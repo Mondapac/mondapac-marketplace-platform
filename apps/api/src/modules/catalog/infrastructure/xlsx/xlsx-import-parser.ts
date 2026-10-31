@@ -11,7 +11,7 @@ import {
   type ParsedTable,
 } from '../../domain/platform-import/import-file';
 import type { ImportLimits } from '../../domain/platform-import/limits';
-import { prescanSheet } from './sheet-prescan';
+import { prescanSharedStrings, prescanSheet } from './sheet-prescan';
 import { storedZip, type StoredPart } from './stored-zip';
 import { inspectXlsxContainer } from './zip-inspection';
 
@@ -41,6 +41,9 @@ export function numberText(value: number): string {
   return Object.is(value, -0) ? '0' : String(value);
 }
 
+/** The text of each rich-text value already turned into text (keyed by the cached object). */
+const RICH_TEXT = new WeakMap<object, string>();
+
 /**
  * One cell as text. A formula (`formula`, `sharedFormula`) is refused: only values that sit in the
  * file are read, so what the admin checks is what the file holds, never the result of a calculation.
@@ -64,9 +67,15 @@ function textOf(value: CellValue, rowNumber: number): string {
     throw new Refused({ code: 'file.formula-cell', rowNumber });
   }
   if (Array.isArray(object['richText'])) {
-    return (object['richText'] as { text?: unknown }[])
+    // exceljs hands out the same cached object for every cell that points at one shared string:
+    // the text is built once per string, not once per cell (Hassan M-586-8).
+    const known = RICH_TEXT.get(object);
+    if (known !== undefined) return known;
+    const text = (object['richText'] as { text?: unknown }[])
       .map((part) => (typeof part.text === 'string' ? part.text : ''))
       .join('');
+    RICH_TEXT.set(object, text);
+    return text;
   }
   if ('hyperlink' in object) {
     const shown = object['text'];
@@ -210,6 +219,10 @@ export type RowObserver = (rowNumber: number) => void;
  * are refused as for CSV. Row numbers are the numbers the spreadsheet shows. exceljs makes no
  * network call. The table comes with its {@link ParsedTable.canonical} CSV, which the check stores
  * instead of the workbook.
+ *
+ * This parser runs **where it is called**. The use cases are given the isolated one
+ * (`isolated-xlsx-parser.ts`), which runs this one in a worker thread with a heap limit and a
+ * time limit, so that no file can block or exhaust the API process (Hassan M-586-8, round 4).
  */
 export function createXlsxParser(observe?: RowObserver): ImportFileParser {
   return Object.freeze({
@@ -231,6 +244,11 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
       // limits is refused from the bytes already in memory (Hassan M-586-1, M-586-4).
       const refused = prescanSheet(sheet, limits);
       if (refused !== null) return err(refused);
+      // The same for the strings: a string of a million empty runs is four megabytes (M-586-8).
+      const sharedStrings = parts.get(SHARED_STRINGS);
+      const tooComplex =
+        sharedStrings === undefined ? null : prescanSharedStrings(sharedStrings, limits);
+      if (tooComplex !== null) return err(tooComplex);
 
       // The parts in the order the reader needs: shared strings and styles before the sheet.
       const ordered: StoredPart[] = [
@@ -334,6 +352,3 @@ export function createXlsxParser(observe?: RowObserver): ImportFileParser {
     },
   } satisfies ImportFileParser);
 }
-
-/** The parser the use cases are given. */
-export const xlsxParser: ImportFileParser = createXlsxParser();
