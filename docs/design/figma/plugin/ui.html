@@ -69,6 +69,7 @@
   <div class="row"><button id="proposal-lists-orders">Build proposal: Lists and Orders</button></div>
   <div class="row"><button id="proposal-order-detail">Build proposal: Order detail</button></div>
   <div class="row"><button id="proposal-admin-sellers">Build proposal: Admin Sellers</button></div>
+  <div class="row"><button id="proposal-seller-health">Build proposal: Seller health</button></div>
   <div class="muted" style="margin-top:6px">Audit lists unbound colours, text without styles, overflowing layers and missing docs. Upgrade to modes: after moving to a paid plan, merges "Color · Dark" and "Dimension · Touch" into modes and splits sections into pages.</div>
 </section>
 
@@ -99,6 +100,7 @@
   $('proposal-lists-orders').onclick = () => { busy(true); logLines(['Building proposal…']); send({ type: 'proposal', key: 'lists-orders' }); };
   $('proposal-order-detail').onclick = () => { busy(true); logLines(['Building proposal…']); send({ type: 'proposal', key: 'order-detail' }); };
   $('proposal-admin-sellers').onclick = () => { busy(true); logLines(['Building proposal…']); send({ type: 'proposal', key: 'admin-sellers' }); };
+  $('proposal-seller-health').onclick = () => { busy(true); logLines(['Building proposal…']); send({ type: 'proposal', key: 'seller-health' }); };
   $('audit').onclick = () => { busy(true); logLines(['Auditing…']); send({ type: 'audit' }); };
 
   onmessage = (e) => {
