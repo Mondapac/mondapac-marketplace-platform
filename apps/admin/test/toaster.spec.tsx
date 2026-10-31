@@ -18,6 +18,25 @@ describe('Toaster', () => {
     expect(region.children).toHaveLength(0);
   });
 
+  it('has no close button on a loading toast, and gives one back with its result', async () => {
+    render(<Toaster labels={labels} />);
+    let finish: (value: string) => void = () => undefined;
+    const work = new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+    act(() => {
+      void toast.promise(work, { pending: 'Saving…', success: 'Saved.', error: 'Failed.' });
+    });
+    expect(screen.getByText('Saving…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Close notification' })).toBeNull();
+    await act(async () => {
+      finish('done');
+      await work;
+    });
+    expect(screen.getByText('Saved.')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Close notification' })).toHaveLength(1);
+  });
+
   it('announces an error as an alert and the other types as status', () => {
     render(<Toaster labels={labels} />);
     act(() => {
