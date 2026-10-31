@@ -665,8 +665,8 @@ describe('xlsxParser: the sheet bytes are scanned before exceljs (Hassan M-586-1
     return found;
   }
 
-  it.each([5_003, 100_000_000, 1_000_000_000, 99_999_999_999_999_999_999])(
-    'refuses a file whose only row, the header, is numbered %d',
+  it.each(['5003', '100000000', '1000000000', '99999999999999999999'])(
+    'refuses a file whose only row, the header, is numbered %s',
     async (number) => {
       const sheet = sheetOf(`<row r="${number}">${cell(`A${number}`, 'Title')}</row>`);
       expect(await refusedFast(sheet)).toEqual(tooManyRows);
