@@ -88,7 +88,7 @@ function smAdd() {
   const form = frame({ name: 'form', dir: 'V', gap: 'space/4', w: 760 }, [
     smSection('Owner', 'They get an email invitation. Nobody at MondaPac sets or sees their password.', [smTwo(smInput('Full name', 'Hana Yusuf'), smInput('Email', 'hana@kurabyfresh.com.au'))]),
     smSection('Store', 'What customers see.', [smTwo(smInput('Store name', 'Kuraby Fresh Halal'), smInput('Web address', 'kuraby-fresh-halal', 'mondapac.com.au/store/kuraby-fresh-halal'))]),
-    smSection('Business activities', 'Decide which categories and platform products the seller can use. Each activity can add review checks.', [smTwo(podField('Main activity', psSelect('Butcher')), podField('Other activities (optional)', inst('Input', { Type: 'Text', State: 'Filled', Value: 'Grocery', 'Leading icon': false }, { name: 'extra', sizeH: 'FILL' }), 'Choose one or more.'))]),
+    smSection('Business activities', 'Decide which categories and platform products the seller can use. Each activity can add review checks.', [smTwo(podField('Main activity', smCombo('Butcher')), podField('Other activities (optional)', smMulti(['Grocery', 'Bakery']), 'Choose one or more. Type to search.'))]),
     smSection('Business', 'Checked against the business register when the file is reviewed.', [smTwo(smInput('Legal business name', 'Kuraby Fresh Pty Ltd'), smInput('ABN', '51 824 753 556')), smTwo(smInput('Phone', '07 3341 0000'), smInput('Contact email', 'orders@kurabyfresh.com.au'))]),
     smSection('Address and area', 'Decides the service area and the shop’s time zone.', [smInput('Operating address', '1520 Beenleigh Rd, Kuraby QLD 4112'), smTwo(podField('Service area', psSelect('Greater Brisbane')), podField('Time zone', psSelect('Brisbane (AEST)')))]),
     frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('The file joins Awaiting review. Another admin approves it.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), btn('Cancel', 'Secondary', 'Md'), btn('Save draft', 'Secondary', 'Md'), btn('Save and invite owner', 'Primary', 'Md')])]);
@@ -214,6 +214,36 @@ function sbaSellerPicker() {
   return scr;
 }
 
+// ---- Searchable dropdowns (owner, 31 Oct 13:18Z): every single or multiple choice list that can hold many items (activities,
+// categories, sellers, brands, service areas…) can be searched. Multiple choice shows the picks as removable chips in the field.
+function smCombo(value, open) {
+  return frame({ name: 'combobox' + (open ? ' (open)' : ''), dir: 'H', gap: 'space/2', align: 'center', h: 'size/control', px: 'space/3', stroke: open ? 'focus/ring' : 'border/control', strokeW: open ? 2 : 1, radius: 'radius/control', fill: 'bg/surface', sizeH: 'FILL' },
+    [text(value, 'Body/Default', 'text/primary', { sizeH: 'FILL', truncate: true }), icon('search', 'icon/muted', 16), icon('chevron-down', 'icon/muted', 16)]);
+}
+function smMulti(picks, open) {
+  const chips = picks.map(function (p) { return frame({ name: 'pick · ' + p, dir: 'H', gap: 'space/1', align: 'center', pad: [2, 6, 2, 8], radius: 'radius/pill', fill: 'bg/selected' }, [text(p, 'Body/Small Strong', 'text/link'), icon('x', 'text/link', 12)]); });
+  return frame({ name: 'multi-select' + (open ? ' (open)' : ''), dir: 'H', gap: 'space/1-5', align: 'center', wrap: true, rowGap: 'space/1', pad: [6, 12, 6, 8], stroke: open ? 'focus/ring' : 'border/control', strokeW: open ? 2 : 1, radius: 'radius/control', fill: 'bg/surface', sizeH: 'FILL' },
+    chips.concat([text(open ? 'gro' : 'Search…', 'Body/Default', open ? 'text/primary' : 'text/muted', { name: 'query', sizeH: 'FILL' }), icon('chevron-down', 'icon/muted', 16)]));
+}
+function smOptions(multi, items, footer) {
+  const row = function (i) {
+    const lead = multi ? inst('Checkbox', { Value: i[1] ? 'Checked' : 'Unchecked', State: 'Default' }, { name: 'box' }) : null;
+    return frame({ name: 'option · ' + i[0], dir: 'H', gap: 'space/2', align: 'center', pad: [7, 10, 7, 10], radius: 'radius/control', fill: !multi && i[1] ? 'bg/selected' : null, sizeH: 'FILL' }, [lead, text(i[0], i[1] ? 'Body/Strong' : 'Body/Default', 'text/primary', { sizeH: 'FILL' }), i[2] ? text(i[2], 'Caption/Default', 'text/muted') : null, !multi && i[1] ? icon('check', 'text/link', 14) : null]);
+  };
+  return frame({ name: 'options', dir: 'V', w: 360, pad: 'space/1-5', gap: 'space/0-5', fill: 'bg/surface', stroke: 'border/default', radius: 'radius/card', effect: 'Elevation/Floating' }, items.map(row).concat(footer ? [text(footer, 'Caption/Default', 'text/muted', { sizeH: 'FILL' })] : []));
+}
+function smDropdowns() {
+  const lbl = function (s) { return text(s, 'Caption/Strong', 'text/muted'); };
+  const col = function (title, field, list) { return frame({ name: title, dir: 'V', gap: 'space/2', w: 360 }, [lbl(title), field, list]); };
+  const single = col('Single choice, searchable (Main activity)', smCombo('butch', true), smOptions(false, [['Butcher', true, '14 sellers'], ['Butcher · frozen only', false]], 'Type to filter. ↑ ↓ to move, Enter to choose.'));
+  const multi = col('Multiple choice, searchable (Other activities)', smMulti(['Bakery'], true), smOptions(true, [['Grocery', true], ['Greengrocer', false]], '2 of 12 match · Selected stay at the top.'));
+  const tree = col('Long tree (Category)', smCombo('lamb', true), smOptions(false, [['Meat & poultry › Lamb › Cutlets', true], ['Meat & poultry › Lamb › Mince', false], ['Frozen › Meat › Lamb shanks', false]], 'Shows the path. Results load as you type (server search).'));
+  const scr = frame({ name: SM + ' · Searchable dropdowns', dir: 'V', w: 1240, pad: 40, gap: 'space/5', fill: 'bg/page' }, [text('Dropdowns with many items: always searchable', 'Heading/H1'),
+    para('Rule for both panels: any dropdown that can hold many items (more than about 10, or a list that grows: activities, categories, sellers, brands, attributes, service areas, roles) has a search box. Multiple choice shows each pick as a removable chip and keeps picks at the top. Long lists search on the server. Short fixed lists (status, yes or no) stay plain selects.', 1100),
+    frame({ name: 'examples', dir: 'H', gap: 'space/6', align: 'start', sizeH: 'FILL' }, [single, multi, tree])]);
+  tag(scr); return smTag(scr);
+}
+
 // ---- Dialogs: approve, reject, suspend, lift suspension, and the More menu
 function smDialogs() {
   const approve = podDialog('Approve seller', 'Approve Sunnybank Spice Market?', [text('All 3 required checks are recorded and the register lists the ABN as active. We’ll email the owner, and they can start listing offers.', 'Body/Default', 'text/secondary', { sizeH: 'FILL' })], 'Approve');
@@ -248,5 +278,5 @@ function smStates() {
 
 PROPOSALS['admin-sellers'] = { title: SM, rows: function () {
   return [[smDefault(), smFilter(), smAwaitingSelected()], [smSort(), smColumns(), smAdd()],
-    [smOverview(), smReview(), smDetailsEdit()], [smMoney(), smTeam(), smSettings()], [smOrders(), smSuspended(), smDialogs(), smStates()], [sbaList(), sbaEdit(), sbaSellerPicker()]];
+    [smOverview(), smReview(), smDetailsEdit()], [smMoney(), smTeam(), smSettings()], [smOrders(), smSuspended(), smDialogs(), smStates()], [sbaList(), sbaEdit(), sbaSellerPicker(), smDropdowns()]];
 } };
