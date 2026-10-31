@@ -110,6 +110,27 @@ describe('storefront session relay: what may cross', () => {
     expect(isSessionPathAllowed('DELETE', ['cart', 'saved'])).toBe(false);
   });
 
+  it("allows only the buyer's own account deletion routes, each with its own method", () => {
+    const own = ['customers', 'me'];
+    expect(isSessionPathAllowed('GET', [...own, 'account-deletion'])).toBe(true);
+    expect(isSessionPathAllowed('GET', [...own, 'deletion-requests', 'current'])).toBe(true);
+    expect(isSessionPathAllowed('POST', [...own, 'deletion-requests'])).toBe(true);
+    expect(isSessionPathAllowed('DELETE', [...own, 'deletion-requests', 'current'])).toBe(true);
+
+    expect(isSessionPathAllowed('POST', [...own, 'account-deletion'])).toBe(false);
+    expect(isSessionPathAllowed('PUT', [...own, 'account-deletion'])).toBe(false);
+    expect(isSessionPathAllowed('GET', [...own, 'deletion-requests'])).toBe(false);
+    expect(isSessionPathAllowed('POST', [...own, 'deletion-requests', 'current'])).toBe(false);
+    expect(isSessionPathAllowed('DELETE', [...own, 'deletion-requests'])).toBe(false);
+    expect(isSessionPathAllowed('DELETE', [...own, 'account-deletion'])).toBe(false);
+    expect(
+      isSessionPathAllowed('DELETE', ['customers', 'admin', 'account-deletion-settings']),
+    ).toBe(false);
+    expect(isSessionPathAllowed('GET', ['customers', 'admin', 'account-deletion-requests'])).toBe(
+      false,
+    );
+  });
+
   it.each(MARKETS)(
     'answers 404 for a path off the list, without calling the API ($marketId)',
     async (market) => {
