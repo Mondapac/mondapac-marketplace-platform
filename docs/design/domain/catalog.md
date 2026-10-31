@@ -819,6 +819,7 @@ approved at identity G2 (ID 5.6); the mapping is the identity mini-review of req
 | `catalog.product.match` | platform | no | CAT-45 at first approval | Catalogue Moderator |
 | `catalog.product.pause` | platform | no | Deactivate and Activate: the reversible admin pause of a product (4.1a), one or many (9.2c) | Catalogue Moderator |
 | `catalog.product.delete` | platform | no | Withdraw a seller product or delete an Offer as admin; photo takedown (CAT-37 "Delete"; 10.5). The Products page's Delete of a SELLER product, single and bulk | Catalogue Moderator |
+| `catalog.saved-filter.share` | platform | no | Save a filter of an admin list for every admin of the Market, and manage a filter another admin shared (9.2d). Without it an admin keeps filters for themselves only | Catalogue Moderator; Platform Administrator (holds every key) |
 | `catalog.product.promote` | platform | yes | CAT-44 (irreversible) | Platform Administrator |
 | `catalog.platform-product.edit` | platform | no | Create, edit, submit, revert PLATFORM products (CAT-41) | Catalogue Moderator |
 | `catalog.platform-product.retire` | platform | yes | CAT-48 | Platform Administrator |
@@ -864,6 +865,7 @@ session (and when the context cannot say, CD M5).
 | `admin-product.pause`, `admin-product.resume` | `permissions [catalog.product.pause]` | — | 4.1a |
 | `admin-products.bulk` (`POST catalog/admin/products/bulk`) | `permissions [catalog.product.view]` at the gate; **each product** then needs the key of its action (`pause`, `resume`: `catalog.product.pause`; `delete`: `catalog.product.delete` for a SELLER product, `catalog.platform-product.retire` for a PLATFORM product), checked per product; a product the admin may not act on is skipped as `access.denied`, and all of them denied refuses the request | refused | 9.2c |
 | `admin-products.export` (`GET catalog/admin/products/export`) | `permissions [catalog.product.view]` | — | 9.2c |
+| `saved-filters.list`, `saved-filter.create`, `.update`, `.delete` (`catalog/admin/saved-filters`) | `permissions [catalog.product.view]` | — | 9.2d. Sharing and managing a shared filter need `catalog.saved-filter.share`, asked through `saved-filter.share-check` (`permissions [catalog.saved-filter.share]`), a use case that reads nothing |
 | `platform-product.*` (create, save-draft, submit, revert, upload) | `permissions [catalog.platform-product.edit]` | — | CAT-41 |
 | `platform-product.retire` | `permissions [catalog.platform-product.retire]` | — | Confirm carries the count shown |
 | `tax-category.override` | `permissions [catalog.tax-category.override]` | — | 4.3 |
@@ -1135,6 +1137,58 @@ order given. The file streams in chunks as a `text/csv; charset=utf-8` attachmen
 (`products-<date>.csv`, UTF-8 BOM, `no-store`, `nosniff`). **Formula-injection guard:** a text cell
 that starts with `=`, `+`, `-`, `@`, tab or carriage return is written with a leading `'`. A paused
 product shows the status label **Inactive**. Neither route reads a price or stock.
+
+### 9.2d Saved filters (`saved-filters.list`, `saved-filter.create`, `.update`, `.delete`)
+Saved views of the Products page (Figma "Save filter", "Manage filters"; the lists are keyed, so
+another admin list can reuse them: `listKey` `admin.catalog.products`). A saved filter is a name, a
+visibility and a **closed document** read by the list's own vocabulary: `{v: 1, view, q?, filters:
+{scope?, status?, categoryId?, typeCode?, sellerId?}, sort, direction}`. Saved columns are **not**
+part of it: the column picker is a per-viewer setting in the browser and stays one (the Figma shows
+no columns choice in the dialog). An unknown key, an unknown value or a value the list would refuse
+(a search over 100 characters) is `validation.failed` naming the field (`payload.filters.scope`).
+The document never changes after saving; a different view is a new filter.
+
+**Routes** (admin session; the writes need the CSRF token): `GET catalog/admin/saved-filters?listKey=`,
+`POST catalog/admin/saved-filters` (`listKey`, `name`, `visibility`, `payload`),
+`PUT catalog/admin/saved-filters/:id` (`name` and `visibility`, both), `DELETE
+catalog/admin/saved-filters/:id`. Bodies are closed.
+
+**Visibility.** `me` is for the owner only. `everyone` is every admin of the Market who holds
+`catalog.product.view`: it shows as a tab for each of them. Another admin's `me` filter does not
+exist for the caller (`saved-filter.not-found`, the same answer as an unknown id or another
+Market's).
+
+**Who may do what.** One key is new, `catalog.saved-filter.share` (platform, not protected;
+Platform Administrator, who holds every key, and Catalogue Moderator by seed version 10; the Viewer
+has `catalog.product.view` only).
+
+| Action | Needs |
+|---|---|
+| List; save a filter for yourself (`me`); rename, unshare or delete your own filter | `catalog.product.view` |
+| Save a filter for `everyone`; make a filter `everyone` (own or not) | `catalog.product.view` and `catalog.saved-filter.share` (else `access.denied`, nothing written) |
+| Rename, unshare or delete **another admin's** `everyone` filter | `catalog.product.view` and `catalog.saved-filter.share` |
+| Rename, unshare or delete your own `everyone` filter after losing the share key | `catalog.product.view` (the owner always manages their own; they cannot share it again) |
+
+An admin without the share key therefore keeps filters for themselves only, and the dialog says
+"Saved for you only. Your role can't share filters." A filter someone else shared and the caller may
+not manage is visible and read-only (`canManage: false` in the list; a write is `access.denied`).
+
+**Caps and names.** At most **50** filters per admin and list, and **20** shared with everyone per
+list (each is a tab for every admin): `saved-filter.limit-reached`,
+`saved-filter.shared-limit-reached` (both 409, `details.max`). A name is trimmed, 1 to 60
+characters, no control character, one per owner and list whatever its case, and one per list among
+the shared filters (`saved-filter.name-taken`, 409). The caps and the uniqueness hold under
+`SERIALIZABLE`.
+
+**Audit.** A filter that is or was shared with everyone is audited: `catalog.saved-filter.shared`
+(created for everyone), `.changed` (renamed, or moved between `me` and `everyone`; `ownedByActor`
+is false when a holder of the key changed someone else's), `.removed`. Ids, list code and
+booleans only; **never the name** (audit rows carry no free text). Private filters are not audited.
+
+**Counts.** `GET` answers `count` (the products the saved view matches now, by the list's own
+reader) for the first 12 filters in tab order and `null` for the rest, so a page load costs at most
+12 count statements, not one per tab; the page shows a count where there is one. Create and update
+answer `count: null`.
 
 ### 9.3 Ports
 | Port | Declared in | Implemented by | Notes |

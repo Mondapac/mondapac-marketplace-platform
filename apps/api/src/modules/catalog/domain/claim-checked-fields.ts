@@ -187,6 +187,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   BrandContent: { noCustomerText: 'the editable text of a brand; see BrandState' },
   BrandFieldProblem: { noCustomerText: 'field path and a problem code' },
   RateVerdict: { noCustomerText: 'numbers' },
+  SavedFilter: {
+    noCustomerText:
+      "an admin's own saved view; its name is shown to admins only and never to a customer",
+  },
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
