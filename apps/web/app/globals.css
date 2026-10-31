@@ -3089,6 +3089,10 @@ svg {
 .pby a {
   color: var(--sf-teal);
   font-weight: 700;
+  /* A 40px tap target without moving the line. */
+  display: inline-block;
+  padding-block: 10px;
+  margin-block: -10px;
 }
 .gal {
   display: grid;
@@ -10180,7 +10184,7 @@ button.login {
   display: grid;
   gap: 10px;
   /* In view below the sticky header after a jump from the letter row. */
-  scroll-margin-block-start: 96px;
+  scroll-margin-block-start: calc(var(--sf-header-height) + 16px);
 }
 .br-letter h2 {
   font-size: calc(20px * var(--fs));
@@ -10324,7 +10328,7 @@ button.login {
   display: grid;
   gap: 12px;
   min-width: 0;
-  scroll-margin-block-start: 96px;
+  scroll-margin-block-start: calc(var(--sf-header-height) + 16px);
 }
 .br-sech {
   display: flex;
@@ -10361,6 +10365,9 @@ button.login {
 .pbrand a {
   color: var(--sf-teal);
   font-weight: 700;
+  display: inline-block;
+  padding-block: 10px;
+  margin-block: -10px;
 }
 @media (min-width: 700px) {
   .br-cover {

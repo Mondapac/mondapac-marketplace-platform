@@ -1017,11 +1017,11 @@
     "none-title": "No brands yet",
     "none-body": "Brands appear here as local sellers list their products. You can still browse products.",
     "browse-products": "Browse products",
+    "all-brands": "All brands",
     "loading": "Loading brands",
     "loading-brand": "Loading brand",
     "error-title": "We could not load the brands",
     "error-body": "Check your connection and try again. Nothing was changed.",
-    "retry": "Try again",
     "made-in": "Made in {country}",
     "product-count": "{count, plural, one {# product} other {# products}}",
     "products": "Products",
@@ -1072,6 +1072,8 @@
     "retry": "Try again"
   },
   "errors": {
+    "brand-not-found-title": "We cannot find that brand",
+    "brand-not-found-message": "The brand may have moved or may no longer be sold here. See all brands, or keep browsing.",
     "not-found-title": "We cannot find that page",
     "not-found-message": "The link may be old or the page may have moved. Try searching, or go to one of these pages.",
     "search-label": "Search",

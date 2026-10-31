@@ -14,7 +14,7 @@ export default function BrandsError({ reset }: { readonly reset: () => void }) {
         <h2>{t('error-title')}</h2>
         <p>{t('error-body')}</p>
         <button className="btn" type="button" onClick={reset}>
-          {t('retry')}
+          {t('try-again')}
         </button>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { BrowseCrumb } from '../catalog/browse-crumb.tsx';
 import { Crumbs } from '../catalog/results.tsx';
 import { ProductCard } from '../home/product-card.tsx';
 import { Icon } from '../icons/icon.tsx';
@@ -109,6 +110,7 @@ function Products({ page }: { readonly page: BrandPageData }) {
         <Icon name="box" />
         <h3>{t('no-products')}</h3>
         <p>{t('no-products-body', { name: brand.name })}</p>
+        <BrowseCrumb className="btn" label={t('browse-products')} />
       </div>
     );
   if (items.length === 0)
@@ -139,7 +141,7 @@ function Products({ page }: { readonly page: BrandPageData }) {
               <Icon name="chevl" />
             </Link>
           ) : (
-            <span aria-disabled="true" aria-label={t('previous-page')} role="link">
+            <span aria-disabled="true" aria-label={t('previous-page')}>
               <Icon name="chevl" />
             </span>
           )}
@@ -160,7 +162,7 @@ function Products({ page }: { readonly page: BrandPageData }) {
               <Icon name="chevr" />
             </Link>
           ) : (
-            <span aria-disabled="true" aria-label={t('next-page')} role="link">
+            <span aria-disabled="true" aria-label={t('next-page')}>
               <Icon name="chevr" />
             </span>
           )}

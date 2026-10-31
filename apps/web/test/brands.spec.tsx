@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { BrandLogo, monogramOf } from '../src/brands/brand-pictures.tsx';
 import { BrandLoading, BrandPage } from '../src/brands/brand-page.tsx';
+import BrandNotFound from '../app/brands/[slug]/not-found.tsx';
 import { BrandsLoading, BrandsPage } from '../src/brands/brands-page.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { sampleBrandIndex, sampleBrandPage } from '../src/storefront/sample-brands.ts';
@@ -337,6 +338,7 @@ describe('the brand page', () => {
       screen.getByRole('heading', { level: 3, name: 'No products from this brand right now' }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Saffron & Co products appear here/u)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Browse products' })).toBeInTheDocument();
     cleanup();
     renderIn(<BrandPage page={pageOf({ all: true, products: ok(0, 9) })} />);
     expect(
@@ -371,5 +373,15 @@ describe('the brand page', () => {
       }
     renderIn(<BrandLoading label="Loading brand" />);
     expect(screen.getByRole('status', { name: 'Loading brand' })).toBeInTheDocument();
+  });
+});
+
+describe('the brand 404', () => {
+  it('says the brand cannot be found and links to all brands', () => {
+    renderIn(<BrandNotFound />);
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'We cannot find that brand' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'All brands' })).toHaveAttribute('href', '/brands');
   });
 });
