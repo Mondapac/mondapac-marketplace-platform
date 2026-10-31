@@ -14,6 +14,9 @@ import { ListPromotionReviews } from '../src/modules/promotions/application/use-
 import { ListPromotionsFull } from '../src/modules/promotions/application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from '../src/modules/promotions/application/use-cases/list-promotions.use-case';
 import { PauseOwnPromotion } from '../src/modules/promotions/application/use-cases/pause-own-promotion.use-case';
+import { ApplyReferralCode } from '../src/modules/promotions/application/use-cases/apply-referral-code.use-case';
+import { ListPromotionCredits } from '../src/modules/promotions/application/use-cases/list-promotion-credits.use-case';
+import { ViewMyReferral } from '../src/modules/promotions/application/use-cases/view-my-referral.use-case';
 import { GenerateBatchCodes } from '../src/modules/promotions/application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../src/modules/promotions/application/use-cases/view-batch-code-summary.use-case';
 import { PausePromotion } from '../src/modules/promotions/application/use-cases/pause-promotion.use-case';
@@ -70,6 +73,7 @@ it('maps every refusal code of the promotions routes to its exact status', () =>
     'promotions.invalid-state': 409,
     'promotions.not-editable': 409,
     'promotions.too-many-active': 409,
+    'promotions.referral-not-eligible': 409,
     'access.unavailable': 503,
     'promotions.unavailable': 503,
   });
@@ -119,6 +123,9 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['resume-own', ResumeOwnPromotion],
     ['list-own', ListOwnPromotions],
     ['opt-in', SetCoFundingOptIn],
+    ['credits', ListPromotionCredits],
+    ['my-referral', ViewMyReferral],
+    ['apply-referral', ApplyReferralCode],
   ] as const;
 
   async function boot() {
@@ -241,6 +248,8 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     bundleItems: [],
     maxRepeatsPerOrder: null,
     flash: null,
+    segment: null,
+    refereeRewardMinor: null,
     createdAt: START,
     updatedAt: START,
     platformSplitBps: null,
@@ -733,6 +742,114 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     expect(answer.status).toBe(200);
     expect(answer.body).toMatchObject({ enabled: true, totals: { payableMinor: '0' } });
     expect(calls.at(-1)).toEqual({ name: 'preview', input: body });
+  });
+
+  describe('phase 3: referral and credits', () => {
+    const CREDIT = id<'PromotionCredit'>(0xc001);
+
+    it('reads the customer’s own referral code, never cached, with amounts as digit strings', async () => {
+      await boot();
+      next = ok({
+        code: 'ABCDEFGH2345',
+        referrerRewardMinor: 1000n,
+        refereeRewardMinor: 1000n,
+        currency: 'AUD',
+        maxRewarded: 10,
+        pending: 1,
+        qualified: 2,
+      });
+      const response = await http()
+        .get('/promotions/referral/me')
+        .set({ 'x-market-id': code, ...customer() });
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        code: 'ABCDEFGH2345',
+        referrerRewardMinor: '1000',
+        refereeRewardMinor: '1000',
+        currency: 'AUD',
+        maxRewarded: 10,
+        pending: 1,
+        qualified: 2,
+      });
+      expect(actors).toEqual(['customer']);
+      // Without a session the use case sees an anonymous actor and refuses it (access declaration).
+      await http().get('/promotions/referral/me').set({ 'x-market-id': code });
+      expect(actors).toEqual(['customer', 'anonymous']);
+    });
+
+    it('applies a code with CSRF, a closed JSON body and the use case’s refusals', async () => {
+      await boot();
+      const session = customer();
+      const URL = '/promotions/referral/apply';
+      const send = (headers: Record<string, string>, payload: object) =>
+        http()
+          .post(URL)
+          .set({ 'x-market-id': code, ...headers })
+          .send(payload);
+      next = ok({ status: 'PENDING', expiresAt: START.add({ hours: 24 }) });
+      const applied = await send(session, { code: 'ABCDEFGH2345' });
+      expect(applied.status).toBe(200);
+      expect(applied.body).toEqual({
+        status: 'PENDING',
+        expiresAt: START.add({ hours: 24 }).toString(),
+      });
+      expect(calls.at(-1)).toEqual({ name: 'apply-referral', input: { code: 'ABCDEFGH2345' } });
+      expect((await send({ cookie: session.cookie }, { code: 'X' })).status).toBe(403);
+      const stray = await send(session, { code: 'X', accountId: CUSTOMER });
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'accountId', code: 'unknown-field' }] },
+      });
+      for (const [error, status] of [
+        [{ code: 'promotions.referral-not-eligible' }, 409],
+        [{ code: 'promotions.not-found' }, 404],
+        [{ code: 'promotions.disabled' }, 404],
+        [{ code: 'promotions.unavailable' }, 503],
+      ] as const) {
+        next = err(error);
+        expect((await send(session, { code: 'ABCDEFGH2345' })).status).toBe(status);
+      }
+    });
+
+    it('lists the credits of a promotion for an admin, closed query, digits for amounts', async () => {
+      await boot();
+      const URL = `/promotions/admin/promotions/${PROMOTION}/credits`;
+      next = ok([
+        {
+          id: CREDIT,
+          promotionId: PROMOTION,
+          kind: 'CASHBACK',
+          recipientAccountId: CUSTOMER,
+          orderId: null,
+          sourceKind: 'SELLER_ORDER',
+          sourceId: 'x',
+          amountMinor: 250n,
+          currency: 'AUD',
+          status: 'RECORDED',
+          failureCode: null,
+          walletJournalId: null,
+          idempotencyKey: 'promotions:cashback:x',
+          createdAt: START,
+          settledAt: START,
+        },
+      ]);
+      const response = await call('admin', 'get', `${URL}?limit=5`, admin());
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(itemsOf(response)[0]).toMatchObject({
+        id: CREDIT,
+        amountMinor: '250',
+        status: 'RECORDED',
+      });
+      expect(itemsOf(response)[0]).not.toHaveProperty('idempotencyKey');
+      expect(calls.at(-1)).toEqual({
+        name: 'credits',
+        input: { promotionId: PROMOTION, limit: 5 },
+      });
+      const stray = await call('admin', 'get', `${URL}?cursor=1`, admin());
+      expect(stray.status).toBe(400);
+    });
   });
 
   it('lets a seller list, create, edit, pause, resume and opt in, and takes no seller id from the request', async () => {

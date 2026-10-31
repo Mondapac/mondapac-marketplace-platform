@@ -76,7 +76,16 @@
       "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
       "maxPerBatch": 200,
       "maxPerPromotion": 1000
-    }
+    },
+    "customerGroup": { "defaultReturningDays": 45 },
+    "referral": {
+      "maxRewardMinor": 1500,
+      "maxRewardedPerReferrer": 5,
+      "qualifyWithinDays": 14,
+      "codeLength": 12,
+      "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    },
+    "cashback": { "maxBps": 500, "maxCapMinor": 3000 }
   },
   "tax": {
     "defaultRateBps": 1500,

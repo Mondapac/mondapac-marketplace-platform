@@ -1727,7 +1727,7 @@
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)",
       "testMode": "boolean",
-      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code)"
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code|customer-group|store-follower|referral|cashback)"
     }
   },
   {
@@ -1750,7 +1750,7 @@
       "startsAt": "instant",
       "status": "enumOf(pending-approval|active|paused|rejected)",
       "testMode": "boolean",
-      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code)"
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code|customer-group|store-follower|referral|cashback)"
     },
     "after": {
       "budget": "optional(money)",
@@ -1769,7 +1769,7 @@
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)",
       "testMode": "boolean",
-      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code)"
+      "type": "enumOf(seller-sale|cart-discount|cart-code|free-shipping|co-funded-campaign|tiered-cart|buy-x-get-y|multi-buy|bundle|flash-sale|batch-code|customer-group|store-follower|referral|cashback)"
     }
   },
   {

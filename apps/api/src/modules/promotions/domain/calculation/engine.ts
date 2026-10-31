@@ -581,8 +581,27 @@ const validReward = (reward: Reward): boolean =>
     ? Number.isInteger(reward.bps) && reward.bps >= 1 && reward.bps <= 10000
     : reward.amount >= 1n;
 
-/** The path of the first wrong phase 2 field of a promotion, or null. */
+/** The path of the first wrong phase 2 or phase 3 field of a promotion, or null. */
 export function validatePhase2(promotion: CalculationPromotion): string | null {
+  const audience = promotion.audience ?? null;
+  if (audience !== null) {
+    if (
+      audience.kind === 'RETURNING_CUSTOMER' &&
+      (!Number.isInteger(audience.minDaysSinceLastOrder) || audience.minDaysSinceLastOrder < 1)
+    ) {
+      return 'promotions.audience';
+    }
+    if (
+      audience.kind === 'DELIVERY_ZONE' &&
+      (audience.zones.length === 0 || audience.zones.some((zone) => zone === ''))
+    ) {
+      return 'promotions.audience';
+    }
+    // A store follower offer belongs to a store.
+    if (audience.kind === 'STORE_FOLLOWER' && promotion.sellerId === null) {
+      return 'promotions.audience';
+    }
+  }
   const tiers = promotion.tiers ?? null;
   if (tiers !== null) {
     if (tiers.length === 0 || tiers.length > 50) return 'promotions.tiers';
@@ -691,6 +710,29 @@ function validate(input: CalculationInput): CalculationError | null {
 }
 
 /**
+ * Whether the customer is in the audience of the promotion. Fail closed: a fact that is unknown
+ * (no customer, no read, a customer who never ordered) never lets an audience promotion apply.
+ */
+function audienceAllows(promotion: CalculationPromotion, input: CalculationInput): boolean {
+  const audience = promotion.audience ?? null;
+  if (audience === null) return true;
+  switch (audience.kind) {
+    case 'RETURNING_CUSTOMER': {
+      const days = input.customer?.daysSinceLastOrder ?? null;
+      return days !== null && Number.isInteger(days) && days >= audience.minDaysSinceLastOrder;
+    }
+    case 'DELIVERY_ZONE':
+      return input.shipping.some((charge) => audience.zones.includes(charge.zoneCode));
+    case 'STORE_FOLLOWER': {
+      const followed = input.customer?.followedSellerIds ?? null;
+      return (
+        promotion.sellerId !== null && followed !== null && followed.includes(promotion.sellerId)
+      );
+    }
+  }
+}
+
+/**
  * Calculates every discount of one order. Pure and deterministic: the same input, in any order of
  * its lines, charges and promotions, gives the same output.
  */
@@ -716,6 +758,7 @@ export function calculateDiscounts(
           (!batchMatch || promotion.type === 'BATCH_CODE')),
     )
     .filter((promotion) => !promotion.firstOrderOnly || input.isFirstOrder)
+    .filter((promotion) => audienceAllows(promotion, input))
     .sort((a, b) => compareText(a.id, b.id));
   const stack = candidates.filter((promotion) => promotion.combinable);
   const alone = candidates.filter((promotion) => !promotion.combinable);

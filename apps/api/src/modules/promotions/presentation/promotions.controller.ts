@@ -36,6 +36,9 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { ApplyReferralCode } from '../application/use-cases/apply-referral-code.use-case';
+import { ListPromotionCredits } from '../application/use-cases/list-promotion-credits.use-case';
+import { ViewMyReferral } from '../application/use-cases/view-my-referral.use-case';
 import { GenerateBatchCodes } from '../application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../application/use-cases/view-batch-code-summary.use-case';
 import { CreateOwnPromotion } from '../application/use-cases/create-own-promotion.use-case';
@@ -63,6 +66,13 @@ import { ViewPromotion } from '../application/use-cases/view-promotion.use-case'
 import { ViewPromotionsSettings } from '../application/use-cases/view-promotions-settings.use-case';
 import { closedBody, closedQuery, limitOf, refusal } from './http-answers';
 import {
+  AppliedReferralBody,
+  appliedReferralBody,
+  ApplyReferralRequest,
+  CreditsBody,
+  creditsBody,
+  MyReferralBody,
+  myReferralBody,
   BatchCodeSummaryBody,
   BudgetRequest,
   GenerateBatchCodesRequest,
@@ -128,6 +138,8 @@ const PROMOTION_FIELDS = [
   'bundleItems',
   'maxRepeatsPerOrder',
   'flash',
+  'segment',
+  'refereeRewardMinor',
 ] as const;
 const LIST_QUERY = ['status', 'limit'] as const;
 
@@ -211,6 +223,7 @@ export class AdminPromotionsController {
     private readonly listThresholds: ListFreeShippingThresholds,
     private readonly setThreshold: SetFreeShippingThreshold,
     private readonly preview: PreviewQuote,
+    private readonly listCredits: ListPromotionCredits,
   ) {}
 
   @Get('settings')
@@ -555,6 +568,39 @@ export class AdminPromotionsController {
     return settle(this.#logger, 'promotions.batch-code-summary-route', context, result, 'read');
   }
 
+  @Get('promotions/:id/credits')
+  @ApiOperation({
+    summary: 'The wallet credits a referral or cashback promotion has made (admin manager)',
+    description:
+      'Needs promotions.promotion.manage. Newest first. A RECORDED credit was only noted (GST test ' +
+      'mode), never paid.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 50.' })
+  @ApiOkResponse({ type: CreditsBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async credits(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('id') id: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    noStore(response);
+    const unknown = closedQuery(query, ['limit']);
+    if (unknown !== null) throw unknown;
+    const result = await this.listCredits.execute(context, {
+      promotionId: id,
+      limit: limitOf(query.limit),
+    });
+    return creditsBody(
+      settle(this.#logger, 'promotions.list-credits-route', context, result, 'read'),
+    );
+  }
+
   @Get('reviews')
   @ApiOperation({
     summary: 'Seller promotions waiting for an admin (admin manager)',
@@ -752,6 +798,7 @@ export class AdminPromotionsController {
       'isFirstOrder',
       'testMode',
       'orderCommissionMinor',
+      'customer',
     ]);
     const result = await this.preview.execute(context, body);
     return quoteBody(settle(this.#logger, 'promotions.preview-route', context, result, 'read'));
@@ -937,5 +984,73 @@ export class SellerPromotionsController {
     const result = await this.optIn.execute(context, { promotionId: id, optIn });
     const value = settle(this.#logger, 'promotions.opt-in-route', context, result, 'set');
     return { promotionId: value.promotionId, optedIn: value.optedIn };
+  }
+}
+
+/**
+ * The signed-in customer's referral code and the code of a friend. The account comes from the
+ * session, never from the request. Every answer is `Cache-Control: no-store`.
+ */
+@ApiTags('promotions')
+@RoutePopulation('customer')
+@ReadsSession()
+@Controller('promotions/referral')
+export class CustomerReferralController {
+  readonly #logger = new Logger('CustomerReferralController');
+
+  constructor(
+    private readonly viewMine: ViewMyReferral,
+    private readonly apply: ApplyReferralCode,
+  ) {}
+
+  @Get('me')
+  @ApiOperation({
+    summary: "The customer's own referral code with the program's terms",
+    description: 'Answers promotions.not-found while no referral program is live in the Market.',
+  })
+  @ApiOkResponse({ type: MyReferralBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async mine(@Call() context: CallContext, @Res({ passthrough: true }) response: Response) {
+    noStore(response);
+    const result = await this.viewMine.execute(context, {});
+    return myReferralBody(
+      settle(this.#logger, 'promotions.view-my-referral-route', context, result, 'read'),
+    );
+  }
+
+  @Post('apply')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Apply a friend's referral code (a new customer, before the first order)",
+    description:
+      'An unknown code, or a Market with no live program, is promotions.not-found. The own code, ' +
+      'an earlier order (or an unreadable order history) and an earlier referral are all ' +
+      'promotions.referral-not-eligible (409). The reward is paid after the first qualifying ' +
+      'order is delivered.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ApplyReferralRequest })
+  @ApiOkResponse({ type: AppliedReferralBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: 'promotions.referral-not-eligible' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async applyCode(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    noStore(response);
+    const { code } = bodyOf(request, requestBody, ['code']);
+    const result = await this.apply.execute(context, { code });
+    return appliedReferralBody(
+      settle(this.#logger, 'promotions.apply-referral-route', context, result, 'applied'),
+    );
   }
 }

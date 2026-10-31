@@ -517,8 +517,20 @@
   { "name": "pricing.retire-series-for-removed-offer", "rule": "system" },
   { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
   { "name": "pricing.specials-in-force", "rule": "anonymous" },
+  {
+    "name": "promotions.apply-referral-code",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
+  { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
+  {
+    "name": "promotions.view-my-referral",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "reviews.delete-product-review",
     "rule": "own-resources",

@@ -1,5 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { CalculationOutput } from '../domain/calculation/types';
+import type { CreditRecord } from '../domain/credit';
+import type { AppliedReferral } from '../application/use-cases/apply-referral-code.use-case';
+import type { MyReferralView } from '../application/use-cases/view-my-referral.use-case';
 import { PROMOTIONS_STATUSES } from '../domain/market-status';
 import { CREATABLE_TYPES, FUNDINGS, PROMOTION_STATUSES } from '../domain/promotion';
 import type { FirstOrderView } from '../application/use-cases/view-first-order-settings.use-case';
@@ -55,6 +58,16 @@ export class FlashBody {
   timeZone!: string;
 }
 
+export class SegmentBody {
+  @ApiProperty({ enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE'] }) kind!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'RETURNING_CUSTOMER: whole days since the last order.',
+  })
+  minDaysSinceLastOrder!: number | null;
+}
+
 class PromotionCommonBody {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ enum: [...CREATABLE_TYPES] }) type!: string;
@@ -98,6 +111,20 @@ class PromotionCommonBody {
   bundleItems!: BundleItemBody[];
   @ApiProperty({ nullable: true, type: Number }) maxRepeatsPerOrder!: number | null;
   @ApiProperty({ nullable: true, type: FlashBody }) flash!: FlashBody | null;
+  @ApiProperty({
+    nullable: true,
+    type: SegmentBody,
+    description: 'CUSTOMER_GROUP: the segment; a DELIVERY_ZONE segment uses `zones`.',
+  })
+  segment!: SegmentBody | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'REFERRAL: the credit of the new customer, minor units; `reward.amountMinor` is the ' +
+      "referrer's. CASHBACK: `reward` is the percent of the goods paid.",
+  })
+  refereeRewardMinor!: string | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
 }
@@ -223,6 +250,22 @@ export class PromotionRequest {
       'always has an end.',
   })
   flash?: object;
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description:
+      'CUSTOMER_GROUP (admin): `{ kind: "RETURNING_CUSTOMER", minDaysSinceLastOrder? }` (the ' +
+      'Market\'s default days when left out) or `{ kind: "DELIVERY_ZONE" }` with `zones`.',
+  })
+  segment?: object;
+  @ApiProperty({
+    required: false,
+    description:
+      'REFERRAL (admin): the wallet credit of the new customer, minor units. `reward` (FIXED) is ' +
+      "the referrer's credit and `maxUsesPerCustomer` the most rewarded referrals of one referrer. " +
+      'CASHBACK (admin): `reward` PERCENT of the goods paid, `capMinor` the most one order is credited.',
+  })
+  refereeRewardMinor?: string;
   @ApiProperty({ required: false, description: 'Minor units, digits only.' }) capMinor?: string;
   @ApiProperty({ required: false }) maxPerOrderMinor?: string;
   @ApiProperty({ required: false }) maxTotalUses?: number;
@@ -361,6 +404,15 @@ export class QuoteRequestBody {
   @ApiProperty({ required: false, description: 'Defaults to true for the preview.' })
   testMode?: boolean;
   @ApiProperty({ required: false }) orderCommissionMinor?: string;
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description:
+      'Customer facts to try a customer-group or store-follower promotion with: ' +
+      '`{ daysSinceLastOrder?, followedSellerIds? }`. A field left out is unknown, so the ' +
+      'promotions that need it do not apply.',
+  })
+  customer?: object;
 }
 
 export class QuoteBody {
@@ -416,6 +468,11 @@ function common(view: Common) {
       view.flash === null
         ? null
         : { unitLimit: view.flash.unitLimit, timeZone: view.flash.timeZone },
+    segment:
+      view.segment === null
+        ? null
+        : { kind: view.segment.kind, minDaysSinceLastOrder: view.segment.minDaysSinceLastOrder },
+    refereeRewardMinor: minorOrNull(view.refereeRewardMinor),
     createdAt: iso(view.createdAt),
     updatedAt: iso(view.updatedAt),
   };
@@ -542,3 +599,76 @@ export const quoteBody = (result: CalculationOutput & { enabled: boolean }): Quo
     payableMinor: minor(result.totals.payable),
   },
 });
+
+export class MyReferralBody {
+  @ApiProperty({ description: "The customer's own referral code (made on the first ask)." })
+  code!: string;
+  @ApiProperty({ description: 'Minor units, digits only.' }) referrerRewardMinor!: string;
+  @ApiProperty({ description: 'Minor units, digits only.' }) refereeRewardMinor!: string;
+  @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
+  @ApiProperty() maxRewarded!: number;
+  @ApiProperty() pending!: number;
+  @ApiProperty() qualified!: number;
+}
+
+export function myReferralBody(view: MyReferralView): MyReferralBody {
+  return {
+    code: view.code,
+    referrerRewardMinor: minor(view.referrerRewardMinor),
+    refereeRewardMinor: minor(view.refereeRewardMinor),
+    currency: view.currency,
+    maxRewarded: view.maxRewarded,
+    pending: view.pending,
+    qualified: view.qualified,
+  };
+}
+
+export class ApplyReferralRequest {
+  @ApiProperty({ description: "The referrer's code." }) code!: string;
+}
+
+export class AppliedReferralBody {
+  @ApiProperty({ enum: ['PENDING'] }) status!: 'PENDING';
+  @ApiProperty({ description: 'The instant by which the qualifying order must be delivered.' })
+  expiresAt!: string;
+}
+
+export function appliedReferralBody(applied: AppliedReferral): AppliedReferralBody {
+  return { status: applied.status, expiresAt: iso(applied.expiresAt) };
+}
+
+export class CreditBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) promotionId!: string;
+  @ApiProperty({ enum: ['CASHBACK', 'REFERRER_REWARD', 'REFEREE_REWARD'] }) kind!: string;
+  @ApiProperty({ format: 'uuid' }) recipientAccountId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true }) orderId!: string | null;
+  @ApiProperty({ description: 'Minor units, digits only.' }) amountMinor!: string;
+  @ApiProperty() currency!: string;
+  @ApiProperty({ enum: ['PENDING', 'GRANTED', 'RECORDED', 'FAILED'] }) status!: string;
+  @ApiProperty({ nullable: true }) failureCode!: string | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty({ nullable: true }) settledAt!: string | null;
+}
+
+export class CreditsBody {
+  @ApiProperty({ type: [CreditBody] }) items!: CreditBody[];
+}
+
+export function creditsBody(credits: readonly CreditRecord[]): CreditsBody {
+  return {
+    items: credits.map((credit) => ({
+      id: credit.id,
+      promotionId: credit.promotionId,
+      kind: credit.kind,
+      recipientAccountId: credit.recipientAccountId,
+      orderId: credit.orderId,
+      amountMinor: minor(credit.amountMinor),
+      currency: credit.currency,
+      status: credit.status,
+      failureCode: credit.failureCode,
+      createdAt: iso(credit.createdAt),
+      settledAt: credit.settledAt === null ? null : iso(credit.settledAt),
+    })),
+  };
+}
