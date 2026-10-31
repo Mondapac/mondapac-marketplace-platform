@@ -136,7 +136,7 @@ export class OfferApprove extends UseCase<
           version: offer.state.version,
           sellerId: offer.state.sellerId,
           description: offer.state.description,
-          productPublished: product?.state.status === 'published',
+          productPublished: product?.state.status === 'published' && product.state.pausedAt === null,
           typeCode: product?.state.typeCode ?? null,
         });
       },
@@ -230,9 +230,10 @@ export class OfferApprove extends UseCase<
         const offer = await deps.offers.findById(market, offerId);
         if (offer === null) return err({ code: 'offer.not-found' } as const);
         if (offer.state.version !== version) return err({ code: 'conflict.stale' } as const);
-        // Read again in the unit: the product may have left `published` since the first read.
+        // Read again in the unit: the product may have left `published`, or been paused (an admin
+        // pause, 4.1a), since the first read. Same rule as submit: a paused product is not on sale.
         const product = await deps.products.findById(market, offer.state.productId);
-        if (product?.state.status !== 'published') {
+        if (product?.state.status !== 'published' || product.state.pausedAt !== null) {
           return err({ code: 'offer.product-not-published' } as const);
         }
         // The product locked at the version asked about, then its published facts again: a
