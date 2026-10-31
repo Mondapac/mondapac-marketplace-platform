@@ -182,21 +182,20 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
-  it('names bad fields before calling the API', () => {
+  it('names bad fields as they are typed, before calling the API', () => {
     mount(answer());
     fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '61' } });
     fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '300' } });
-    save();
+    // No Save click: the errors, the count and the summary are already there.
     expect(screen.getByText('Enter a whole number from 5 to 60.')).toBeTruthy();
     expect(
       screen.getByText(/no more than the monthly cap/, { selector: 'p[id$="-error"]' }),
     ).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
-    // The bar counts the errors and Save waits until they are fixed.
+    // The bar counts the errors and Save is off until they are fixed.
     expect(screen.getByText(/2 need fixing/)).toBeTruthy();
     const summary = screen.getByRole('alert');
     expect(summary.textContent).toContain('2 settings need fixing before you can save');
-    expect(document.activeElement).toBe(summary);
     fireEvent.click(screen.getByRole('link', { name: 'Messages per guest' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Messages per guest'));
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
@@ -205,6 +204,11 @@ describe('AssistantSettingsPanel', () => {
     fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '30' } });
     expect(screen.queryByText('Enter a whole number from 5 to 60.')).toBeNull();
     expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '3' } });
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      false,
+    );
   });
 
   it('marks changed fields, counts them and discards them', () => {

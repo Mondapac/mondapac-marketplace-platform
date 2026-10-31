@@ -13,6 +13,7 @@ import {
   SettingsPage,
   SettingsSection,
   toast,
+  useLiveErrors,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -62,7 +63,6 @@ export function FleetSelectionPanel({
   const [formProblem, setFormProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<'reloaded' | null>(null);
   const [scores, setScores] = useState<Record<FleetCode, string>>(() => scoresOf(initial));
-  const [invalidScores, setInvalidScores] = useState<readonly FleetCode[]>([]);
   const [conflict, setConflict] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [pending, setPending] = useState<'page' | 'model' | null>(null);
@@ -95,7 +95,7 @@ export function FleetSelectionPanel({
     setSelection(next);
     setChoice(choiceOf(next));
     setScores(scoresOf(next));
-    setInvalidScores([]);
+    live.reset();
     setConflict(false);
     setComparing(false);
   }
@@ -126,6 +126,17 @@ export function FleetSelectionPanel({
   );
   const count = changes.length + changedFleets.length;
 
+  // A blank score is only fine for a fleet that has none; a score cannot be taken back. Which
+  // fleets fail is worked out from the draft; a score shows its error once typed in or left.
+  const failingScores = selection.fleets
+    .filter((row) => {
+      const text = scores[row.fleet].trim();
+      return text === '' ? row.reliability !== null : scoreOf(text) === null;
+    })
+    .map((row) => row.fleet);
+  const live = useLiveErrors<FleetCode>(failingScores);
+  const invalidScores = live.shown;
+
   /** What differs between the page as stored now and the admin's draft, as plain text. */
   const differences = [
     ...changes.map((change) => ({
@@ -145,15 +156,10 @@ export function FleetSelectionPanel({
   function askSave(event: FormEvent) {
     event.preventDefault();
     if (busy.current || count === 0) return;
-    // A blank score is only fine for a fleet that has none; a score cannot be taken back.
-    const bad = selection.fleets
-      .filter((row) => {
-        const text = scores[row.fleet].trim();
-        return text === '' ? row.reliability !== null : scoreOf(text) === null;
-      })
-      .map((row) => row.fleet);
-    setInvalidScores(bad);
-    if (bad.length > 0) return;
+    if (failingScores.length > 0) {
+      live.attempt();
+      return;
+    }
     if (changes.length > 0) setConfirm({ kind: 'page' });
     else void savePage();
   }
@@ -161,7 +167,7 @@ export function FleetSelectionPanel({
   function discard() {
     setChoice(choiceOf(selection));
     setScores(scoresOf(selection));
-    setInvalidScores([]);
+    live.reset();
     setProblem(null);
     setConflict(false);
     setComparing(false);
@@ -350,8 +356,9 @@ export function FleetSelectionPanel({
           invalid={invalidScores}
           onText={(fleet, value) => {
             setScores((current) => ({ ...current, [fleet]: value }));
-            setInvalidScores((current) => current.filter((name) => name !== fleet));
+            live.touch(fleet);
           }}
+          onLeave={(fleet) => live.touch(fleet)}
         />
         {canManage ? (
           <SaveBar

@@ -17,6 +17,7 @@ import type { CertificationTypeView } from '../../contracts/certification.facade
 import type { PublishedTypesReader } from '../ports/published-types.reader';
 import { CertificationTypesSystem } from './certification-types-system.use-case';
 import { CertificationTypes } from './certification-types.use-case';
+import { ClaimTermList } from './claim-term-list.use-case';
 import { MatchClaimTermsSystem } from './match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './match-claim-terms.use-case';
 
@@ -89,6 +90,7 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
   const facade = new CertificationFacadeImplementation({
     evaluateClaims: undefined as never,
     evaluateClaimsSystem: undefined as never,
+    claimTermList: new ClaimTermList(gate, reader),
     matchClaimTerms: new MatchClaimTerms(gate, reader),
     matchClaimTermsSystem: new MatchClaimTermsSystem(gate, reader),
     certificationTypes: new CertificationTypes(gate, reader),
@@ -117,6 +119,43 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
     emptyVocabulary = 'none';
     leakyTypes = false;
     typesCalls.length = 0;
+  });
+
+  it('lists the Market claim terms as normalised phrases, sorted, for every kind of caller', async () => {
+    const expected = marketCode === 'AU' ? ['halal', 'حلال'] : ['zedpure', 'зед чисто'];
+    for (const actor of ['anonymous', person('seller'), person('admin')] as const) {
+      const answer = await facade.claimTermList(testCallContext(market(), actor));
+      expect(answer).toEqual({ ok: true, value: [...expected].sort() });
+    }
+    // The other Market's words never appear.
+    const list = await facade.claimTermList(anonymous());
+    expect(JSON.stringify(list)).not.toContain(marketCode === 'AU' ? 'zedpure' : 'halal');
+  });
+
+  it('answers the claim term list as unavailable, never empty, when the vocabulary is missing, unusable or unreadable', async () => {
+    for (const set of [
+      () => (failing = true),
+      () => (unusableVocabulary = true),
+      () => (emptyVocabulary = 'no-entries'),
+      () => (emptyVocabulary = 'no-terms'),
+      () => (emptyVocabulary = 'one-empty'),
+    ]) {
+      failing = false;
+      unusableVocabulary = false;
+      emptyVocabulary = 'none';
+      set();
+      expect(await facade.claimTermList(anonymous())).toEqual({
+        ok: false,
+        error: { code: 'certification.unavailable' },
+      });
+    }
+  });
+
+  it('refuses the system actor on the claim term list (the request use case is for request actors)', async () => {
+    expect(await facade.claimTermList(system())).toEqual({
+      ok: false,
+      error: { code: 'access.denied' },
+    });
   });
 
   it('gates the pair: the system use cases refuse every other actor, the request ones serve every kind', async () => {

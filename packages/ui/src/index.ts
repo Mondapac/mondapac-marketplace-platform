@@ -97,6 +97,7 @@ export {
   type SettingsForm,
   type UseSettingsFormOptions,
 } from './settings/use-settings-form.ts';
+export { useLiveErrors, type LiveErrors } from './settings/use-live-errors.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';

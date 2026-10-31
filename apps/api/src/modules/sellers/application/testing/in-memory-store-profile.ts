@@ -203,6 +203,11 @@ export class FakeClaimCheck implements StoreTextClaimCheck {
       ok(texts.map(({ text }) => this.words.some((word) => text.toLowerCase().includes(word)))),
     );
   }
+
+  terms(): Promise<Result<readonly string[], ClaimCheckUnavailable>> {
+    if (this.unavailable) return Promise.resolve(err({ code: 'claim-text.check-unavailable' }));
+    return Promise.resolve(ok([...this.words]));
+  }
 }
 
 /** An object store in a map. */

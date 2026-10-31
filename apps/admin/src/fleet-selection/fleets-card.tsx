@@ -13,12 +13,14 @@ function FleetItem({
   text,
   invalid,
   onText,
+  onLeave,
 }: {
   readonly row: FleetRow;
   readonly canManage: boolean;
   readonly text: string;
   readonly invalid: boolean;
   readonly onText: (value: string) => void;
+  readonly onLeave: () => void;
 }) {
   const t = useTranslations();
   return (
@@ -52,6 +54,7 @@ function FleetItem({
             value={text}
             error={invalid ? t(`${P}.invalid.score`) : undefined}
             onChange={(event) => onText(event.target.value)}
+            onBlur={onLeave}
           />
         </div>
       ) : (
@@ -71,12 +74,14 @@ export function FleetsCard({
   texts,
   invalid,
   onText,
+  onLeave,
 }: {
   readonly fleets: readonly FleetRow[];
   readonly canManage: boolean;
   readonly texts: Readonly<Record<FleetCode, string>>;
   readonly invalid: readonly FleetCode[];
   readonly onText: (fleet: FleetCode, value: string) => void;
+  readonly onLeave: (fleet: FleetCode) => void;
 }) {
   const t = useTranslations();
   return (
@@ -90,6 +95,7 @@ export function FleetsCard({
             text={texts[row.fleet]}
             invalid={invalid.includes(row.fleet)}
             onText={(value) => onText(row.fleet, value)}
+            onLeave={() => onLeave(row.fleet)}
           />
         ))}
       </ul>

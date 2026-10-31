@@ -305,26 +305,68 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('puts the error on the field, lists it in the summary and moves focus to the summary', () => {
+  it('puts the error on the field as it is typed, lists it in the summary and keeps Save off', () => {
     mount(settings());
 
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    // The amount is empty but was not typed in: no error yet, and Save can still be tried.
+    expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '250' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     const field = screen.getByLabelText<HTMLInputElement>('Percentage');
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
     const summary = screen.getByRole('alert');
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
-    expect(document.activeElement).toBe(summary);
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
     fireEvent.click(within(summary).getByRole('link', { name: 'Percentage' }));
     expect(document.activeElement).toBe(field);
-    // Typing in the field takes its error away.
+    // Typing a right value takes the error and the count away at once.
     fireEvent.change(field, { target: { value: '12' } });
     expect(field.getAttribute('aria-invalid')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      false,
+    );
     expect(call).not.toHaveBeenCalled();
+  });
+
+  it('flags a field the user never touched when Save is tried, and moves focus to the summary', () => {
+    mount(settings());
+
+    fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const field = screen.getByLabelText<HTMLInputElement>('Percentage');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    const summary = screen.getByRole('alert');
+    expect(document.activeElement).toBe(summary);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('checks a field when it is left, even with no keystroke', () => {
+    mount(settings());
+
+    fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    fireEvent.blur(screen.getByLabelText('Percentage'));
+
+    expect(screen.getByLabelText('Percentage').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+  });
+
+  it('flags the cut-off time as soon as it is cleared', () => {
+    mount(settings());
+
+    fireEvent.change(screen.getByLabelText('Cut-off time'), { target: { value: '' } });
+
+    expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
   });
 
   it('marks each changed field, counts them in the save bar and discards them', () => {
