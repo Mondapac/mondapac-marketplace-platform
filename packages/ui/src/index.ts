@@ -17,9 +17,11 @@ export {
   sidebarCollapsed,
   navTrail,
   navSections,
+  splitNavPlacement,
   navOpenGroups,
   NAV_OPEN_COOKIE,
   visibleNavItems,
+  permits,
   type NavConfig,
   type NavGroup,
   type NavSection,
@@ -50,6 +52,51 @@ export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
+export { SettingsPage, type SettingsPageProps } from './settings/settings-page.tsx';
+export { SettingsSection, type SettingsSectionProps } from './settings/settings-section.tsx';
+export {
+  SettingRow,
+  SettingInput,
+  SettingSelect,
+  SettingCheckbox,
+  SettingTextArea,
+  useSettingField,
+  type SettingRowProps,
+  type SettingInputProps,
+  type SettingSelectProps,
+  type SettingCheckboxProps,
+  type SettingTextAreaProps,
+} from './settings/setting-row.tsx';
+export { SaveBar, SAVE_BAR_OFFSET_VAR, type SaveBarProps } from './settings/save-bar.tsx';
+export {
+  useUnsavedChangesGuard,
+  leavesPage,
+  type ClickInfo,
+  type LeaveLabels,
+} from './settings/unsaved-changes-guard.tsx';
+export {
+  SettingsErrorSummary,
+  type SettingsErrorItem,
+  type SettingsErrorSummaryProps,
+} from './settings/error-summary.tsx';
+export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
+export {
+  SettingsConflictBanner,
+  type SettingsConflictBannerProps,
+} from './settings/conflict-banner.tsx';
+export {
+  SettingsConflictCompare,
+  type ConflictCompareRow,
+  type SettingsConflictCompareProps,
+} from './settings/conflict-compare.tsx';
+export {
+  useSettingsForm,
+  type FieldChange,
+  type RunResult,
+  type SaveResult,
+  type SettingsForm,
+  type UseSettingsFormOptions,
+} from './settings/use-settings-form.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
@@ -107,3 +154,40 @@ export {
   type NoticeFeedPage,
 } from './notifications/use-notice-feed.ts';
 export { NoticeCenter, type NoticeCenterProps } from './notifications/notice-center.tsx';
+export { Toaster, type ToasterProps } from './feedback/toaster.tsx';
+export {
+  toast,
+  consumeFlash,
+  flashToast,
+  TOAST_FLASH_KEY,
+  type ToastAction,
+  type ToastOptions,
+  type ToastPromiseMessages,
+  type ToastType,
+} from './feedback/toast-store.ts';
+export {
+  buildPaletteEntries,
+  matchPage,
+  searchPalette,
+  settingHash,
+  type PaletteActionSpec,
+  type PaletteEntry,
+  type PaletteKind,
+  type PaletteSettingSpec,
+  type PaletteSettingsPage,
+  type PaletteSources,
+} from './palette/palette-index.ts';
+export {
+  PanelTools,
+  PageTitle,
+  PaletteSearchButton,
+  PinButton,
+  ShortcutsButton,
+  PinnedSection,
+  RecentPages,
+  type GoShortcut,
+  type PanelToolsLabels,
+  type PanelToolsProps,
+} from './palette/panel-tools.tsx';
+export { PIN_LIMIT, RECENT_LIMIT } from './palette/panel-prefs.ts';
+export { panelToolsLabels } from './palette/palette-labels.ts';

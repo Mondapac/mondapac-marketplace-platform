@@ -2,7 +2,7 @@ import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { LedgerPage, LedgerRepository } from '../application/ports/ledger.repository';
-import { LEDGER_KINDS, type LedgerEntry, type LedgerKind } from '../domain/ledger';
+import { isCredit, LEDGER_KINDS, type LedgerEntry, type LedgerKind } from '../domain/ledger';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -128,5 +128,22 @@ export class PrismaLedgerRepository implements LedgerRepository {
         kind: group.kind as LedgerKind,
         amount: group._sum.amount ?? 0n,
       }));
+  }
+
+  async netBySellerOrder(market: MarketContext, sellerId: Id<'Seller'>, currency: string) {
+    const groups = await this.prisma.tx(market).commissionPayoutsLedgerEntry.groupBy({
+      by: ['sellerOrderId', 'kind'],
+      where: { marketId: market.marketId, sellerId, currency },
+      _sum: { amount: true },
+    });
+    const nets = new Map<Id<'SellerOrder'>, bigint>();
+    for (const group of groups) {
+      if (!(LEDGER_KINDS as readonly string[]).includes(group.kind)) continue;
+      const amount = group._sum.amount ?? 0n;
+      const signed = isCredit(group.kind as LedgerKind) ? amount : -amount;
+      const key = group.sellerOrderId as Id<'SellerOrder'>;
+      nets.set(key, (nets.get(key) ?? 0n) + signed);
+    }
+    return [...nets].map(([sellerOrderId, net]) => ({ sellerOrderId, net }));
   }
 }

@@ -254,6 +254,29 @@ export const DisputeOrderMismatch = defineSecurityEvent({
 });
 
 /**
+ * A payout that needs a person (package 6d): a seller whose operating zone is missing or still a
+ * draft (no payout is made, the Market's zone is never used instead), a payout waiting for an
+ * admin's approval for a long time, a transfer payments refused for a reason only the platform can
+ * fix, or a transfer event that does not match the payout it names.
+ * The seller id only; amounts and codes stay in the payout.
+ */
+export const PayoutAlert = defineSecurityEvent({
+  type: 'commission-payouts.payout.alert',
+  severity: 's2',
+  targetType: null,
+  ip: false,
+  payload: {
+    sellerId: eventField.id(),
+    reason: eventField.enumOf([
+      'zone-missing',
+      'approval-waiting',
+      'transfer-refused',
+      'transfer-unmatched',
+    ] as const),
+  },
+});
+
+/**
  * The live read of a connected account before a transfer failed (package 6c, HP-1 condition 2):
  * the transfer was not made and nothing else changed. This is the counter behind
  * `payments_live_check_failures_total{market}`: Kazem's rule counts these per Market.
@@ -293,6 +316,7 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       TransferAlert,
       LiveCheckFailed,
       DisputeOrderMismatch,
+      PayoutAlert,
       CarrierWebhookSignatureFailed,
     ] as readonly SecurityEventDefinition[]
   ).map((definition) => [definition.type, definition]),

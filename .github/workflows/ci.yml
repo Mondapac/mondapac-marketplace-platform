@@ -91,16 +91,14 @@ jobs:
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
 
-      # Typecheck, lint, architecture boundaries, tests, database tests and the
-      # up -> down -> up migration check: the same command developers run locally.
+      # Typecheck, lint, architecture boundaries, tests and the up -> down -> up migration
+      # check. The database tests run in the db-tests job below, split in two parts: together
+      # with them this is `pnpm verify`, the command developers run locally. One job running
+      # all of it reached the 30-minute limit (owner decision 2026-10-29: split the tests).
       - name: Verify
-        run: pnpm verify
+        run: pnpm verify:without-test-db
         env:
           MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
-          # Fewer database spec files at once than Jest's default (cores - 1): under the full
-          # parallel load a unit sometimes could not start its transaction in time (owner
-          # decision 2026-10-20). Local runs keep the default.
-          TEST_DB_MAX_WORKERS: '2'
 
       - name: Build
         run: pnpm build
@@ -168,3 +166,75 @@ jobs:
         run: |
           if [ "${{ job.status }}" != "success" ]; then docker compose logs postgres || true; fi
           docker compose down -v
+
+  # The database tests (`pnpm test:db`), split by spec file into two parts that run in parallel
+  # (Jest --shard). Every spec file runs in exactly one part; each part migrates its own
+  # throwaway database in its own PostgreSQL service.
+  db-tests:
+    name: Database tests (region ${{ matrix.region.name }}, Node ${{ matrix.node.label }}, part ${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same region and Node entries as the verify job.
+        region:
+          - name: au
+            hosted_markets: AU
+        node:
+          - label: minimum
+            version: 24.20.0
+          - label: .nvmrc
+            version-file: .nvmrc
+        shard: [1, 2]
+
+    services:
+      # Same service as the verify job.
+      postgres:
+        image: mirror.gcr.io/library/postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mondapac
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d mondapac"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
+      HOSTED_MARKETS: ${{ matrix.region.hosted_markets }}
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create database roles (cluster bootstrap)
+        run: docker exec -i "${{ job.services.postgres.id }}" psql -U postgres -d mondapac < scripts/db/bootstrap-dev.sql
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node.version }}
+          node-version-file: ${{ matrix.node.version-file }}
+          cache: pnpm
+
+      - name: Show the Node.js version
+        run: node --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Database tests (part ${{ matrix.shard }} of 2)
+        run: pnpm db:generate && pnpm test:db --shard=${{ matrix.shard }}/2
+        env:
+          MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
+          # Fewer database spec files at once than Jest's default (cores - 1): under the full
+          # parallel load a unit sometimes could not start its transaction in time (owner
+          # decision 2026-10-20). Local runs keep the default.
+          TEST_DB_MAX_WORKERS: '2'

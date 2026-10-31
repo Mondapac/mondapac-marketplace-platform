@@ -8,6 +8,7 @@ import {
   LinkButton,
   LoadError,
   SkeletonRows,
+  toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -142,7 +143,8 @@ export function SlideOrderView({
       if (result.ok) {
         // The list is read again, so what is shown is what buyers get, over-limit marks included.
         setBaseline(entries);
-        setMessage(t('saved'));
+        setMessage('');
+        toast.success(t('saved'));
         await fetchOrder(true);
         return;
       }
@@ -241,6 +243,7 @@ export function SlideOrderView({
                   <FormActionBar
                     status={
                       <>
+                        {/* Announces a move for screen readers; the save result is a toast. */}
                         <span role="status" aria-live="polite" className="block">
                           {message}
                         </span>

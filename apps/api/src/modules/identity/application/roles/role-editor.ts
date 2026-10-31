@@ -4,6 +4,7 @@ import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shar
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { RoleCreatedAudit, RoleDeletedAudit, RoleUpdatedAudit } from '../../domain/audit';
 import { parseRoleName, Role, normalizeRoleName, type RoleScope } from '../../domain/role';
@@ -59,11 +60,19 @@ export interface CreateRoleInput {
 
 export interface EditRoleInput extends CreateRoleInput {
   readonly roleId: Id<'Role'>;
+  /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
+  readonly expectedVersion: number;
 }
 
 export interface DeleteRoleInput {
   readonly roleId: Id<'Role'>;
+  /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
+  readonly expectedVersion: number;
 }
+
+/** A missing or non-positive-integer version is a validation failure, not a stale write. */
+const isVersion = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
 
 export type RoleEditorFailure =
   | { readonly code: 'access.denied' }
@@ -103,6 +112,25 @@ function subjectOf(context: CallContext, editor: RoleEditorScope): GrantSubject 
 
 const invalidName = (rule: string): Outcome =>
   err({ code: 'validation.failed', fields: [{ path: 'name', code: rule }] });
+
+const invalidVersion = (): Outcome =>
+  err({ code: 'validation.failed', fields: [{ path: 'expectedVersion', code: 'type' }] });
+
+/** A stale throw skips `finish`: log its outcome code, then let the conflict filter answer 409. */
+async function loggingStale<T>(
+  logger: Logger,
+  msg: string,
+  context: CallContext,
+  work: Promise<T>,
+): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    if (error instanceof StaleAggregateError)
+      log(logger, msg, context, { outcome: 'conflict.stale' });
+    throw error;
+  }
+}
 
 function log(
   logger: Logger,
@@ -211,79 +239,90 @@ export async function editCustomRole(
   if (!name.ok) return finish(invalidName(name.error.rule));
   const keys = parseRoleKeys(input.permissionKeys, editor.scope, deps.permissions);
   if (!keys.ok) return finish(err(keys.error));
+  if (!isVersion(input.expectedVersion)) return finish(invalidVersion());
   const isDeclared = (key: string): boolean => deps.permissions.get(key) !== undefined;
   return finish(
-    await deps.unitOfWork.run(
-      market,
-      async (): Promise<Outcome> => {
-        const acting = await readActingGrants(deps, market, self, [], [editor.editKey]);
-        if (acting === null) return err({ code: 'access.denied' });
-        const role = await deps.roles.findById(market, input.roleId);
-        if (role === null || !roleIsInActorsReach(role, self)) return err({ code: 'role.unknown' });
-        // The actor must dominate the role as it stands (R1, R11), then as it will be.
-        const editable = roleEditVerdict(acting.actor, role, deps);
-        if (!editable.ok) {
-          if (editable.error.code === 'role.not-grantable') {
-            log(logger, `identity.edit-${editor.scope}-role.not-grantable`, context, {
-              reason: editable.error.reason,
-            });
+    await loggingStale(
+      logger,
+      `identity.edit-${editor.scope}-role`,
+      context,
+      deps.unitOfWork.run(
+        market,
+        async (): Promise<Outcome> => {
+          const acting = await readActingGrants(deps, market, self, [], [editor.editKey]);
+          if (acting === null) return err({ code: 'access.denied' });
+          const role = await deps.roles.findById(market, input.roleId);
+          if (role === null || !roleIsInActorsReach(role, self))
+            return err({ code: 'role.unknown' });
+          // After the reach check, so a role outside it stays "not found" whatever the version.
+          if (role.state.version !== input.expectedVersion) {
+            throw new StaleAggregateError('role', role.state.id);
           }
-          return err({ code: editable.error.code as 'role.read-only' | 'role.not-grantable' });
-        }
-        const granted = customRoleGrantVerdict(
-          acting.actor,
-          editor.scope,
-          keys.value,
-          deps,
-          role.state.id,
-        );
-        if (!granted.ok) {
-          log(logger, `identity.edit-${editor.scope}-role.not-grantable`, context, {
-            reason: granted.error.reason,
-          });
-          return err({ code: 'role.not-grantable' });
-        }
-        const sameKeys =
-          role.state.permissionKeys.length === keys.value.length &&
-          role.state.permissionKeys.every((key, index) => key === keys.value[index]);
-        if (sameKeys && role.state.name === name.value) {
-          return ok({ code: 'role.unchanged', roleId: role.state.id });
-        }
-        if (
-          role.nameNormalized !== normalizeRoleName(name.value) &&
-          (await deps.roles.nameTaken(
-            market,
+          // The actor must dominate the role as it stands (R1, R11), then as it will be.
+          const editable = roleEditVerdict(acting.actor, role, deps);
+          if (!editable.ok) {
+            if (editable.error.code === 'role.not-grantable') {
+              log(logger, `identity.edit-${editor.scope}-role.not-grantable`, context, {
+                reason: editable.error.reason,
+              });
+            }
+            return err({ code: editable.error.code as 'role.read-only' | 'role.not-grantable' });
+          }
+          const granted = customRoleGrantVerdict(
+            acting.actor,
             editor.scope,
-            self.sellerId,
-            normalizeRoleName(name.value),
+            keys.value,
+            deps,
             role.state.id,
-          ))
-        ) {
-          return err({ code: 'role.name-taken' });
-        }
-        const edit = role.edit({
-          name: name.value,
-          permissionKeys: keys.value,
-          isDeclared,
-          now: deps.clock.now(),
-        });
-        await deps.roles.saveCustom(market, edit);
-        await deps.outbox.append(context, edit.role.pendingEvents);
-        await deps.audit.record(
-          context,
-          RoleUpdatedAudit.entry(role.state.id, {
-            after: {
-              scope: editor.scope,
-              sellerId: role.state.sellerId,
-              addedKeys: [...edit.addedKeys],
-              removedKeys: [...edit.removedKeys],
-              renamed: edit.renamed,
-            },
-          }),
-        );
-        return ok({ code: 'role.updated', roleId: role.state.id });
-      },
-      { isolation: 'serializable' },
+          );
+          if (!granted.ok) {
+            log(logger, `identity.edit-${editor.scope}-role.not-grantable`, context, {
+              reason: granted.error.reason,
+            });
+            return err({ code: 'role.not-grantable' });
+          }
+          const sameKeys =
+            role.state.permissionKeys.length === keys.value.length &&
+            role.state.permissionKeys.every((key, index) => key === keys.value[index]);
+          if (sameKeys && role.state.name === name.value) {
+            return ok({ code: 'role.unchanged', roleId: role.state.id });
+          }
+          if (
+            role.nameNormalized !== normalizeRoleName(name.value) &&
+            (await deps.roles.nameTaken(
+              market,
+              editor.scope,
+              self.sellerId,
+              normalizeRoleName(name.value),
+              role.state.id,
+            ))
+          ) {
+            return err({ code: 'role.name-taken' });
+          }
+          const edit = role.edit({
+            name: name.value,
+            permissionKeys: keys.value,
+            isDeclared,
+            now: deps.clock.now(),
+          });
+          await deps.roles.saveCustom(market, edit);
+          await deps.outbox.append(context, edit.role.pendingEvents);
+          await deps.audit.record(
+            context,
+            RoleUpdatedAudit.entry(role.state.id, {
+              after: {
+                scope: editor.scope,
+                sellerId: role.state.sellerId,
+                addedKeys: [...edit.addedKeys],
+                removedKeys: [...edit.removedKeys],
+                renamed: edit.renamed,
+              },
+            }),
+          );
+          return ok({ code: 'role.updated', roleId: role.state.id });
+        },
+        { isolation: 'serializable' },
+      ),
     ),
   );
 }
@@ -305,41 +344,53 @@ export async function deleteCustomRole(
     return result;
   };
   if (self === null) return finish(err({ code: 'access.denied' }));
+  if (!isVersion(input?.expectedVersion)) return finish(invalidVersion());
   const isDeclared = (key: string): boolean => deps.permissions.get(key) !== undefined;
   return finish(
-    await deps.unitOfWork.run(
-      market,
-      async (): Promise<Outcome> => {
-        const acting = await readActingGrants(deps, market, self, [], [editor.deleteKey]);
-        if (acting === null) return err({ code: 'access.denied' });
-        const role = await deps.roles.findById(market, input.roleId);
-        if (role === null || !roleIsInActorsReach(role, self)) return err({ code: 'role.unknown' });
-        const held = (await deps.assignments.heldRoles(market, [role.state.id])).has(role.state.id);
-        const deletable = roleDeleteVerdict(acting.actor, role, held, deps);
-        if (!deletable.ok) {
-          if (deletable.error.code === 'role.not-grantable') {
-            log(logger, `identity.delete-${editor.scope}-role.not-grantable`, context, {
-              reason: deletable.error.reason,
-            });
+    await loggingStale(
+      logger,
+      `identity.delete-${editor.scope}-role`,
+      context,
+      deps.unitOfWork.run(
+        market,
+        async (): Promise<Outcome> => {
+          const acting = await readActingGrants(deps, market, self, [], [editor.deleteKey]);
+          if (acting === null) return err({ code: 'access.denied' });
+          const role = await deps.roles.findById(market, input.roleId);
+          if (role === null || !roleIsInActorsReach(role, self))
+            return err({ code: 'role.unknown' });
+          if (role.state.version !== input.expectedVersion) {
+            throw new StaleAggregateError('role', role.state.id);
           }
-          return err({ code: deletable.error.code });
-        }
-        const removed = role.remove({ isDeclared, now: deps.clock.now() });
-        await deps.roles.deleteCustom(market, removed);
-        await deps.outbox.append(context, removed.pendingEvents);
-        await deps.audit.record(
-          context,
-          RoleDeletedAudit.entry(role.state.id, {
-            before: {
-              scope: editor.scope,
-              sellerId: role.state.sellerId,
-              removedKeys: role.state.permissionKeys.filter(isDeclared),
-            },
-          }),
-        );
-        return ok({ code: 'role.deleted', roleId: role.state.id });
-      },
-      { isolation: 'serializable' },
+          const held = (await deps.assignments.heldRoles(market, [role.state.id])).has(
+            role.state.id,
+          );
+          const deletable = roleDeleteVerdict(acting.actor, role, held, deps);
+          if (!deletable.ok) {
+            if (deletable.error.code === 'role.not-grantable') {
+              log(logger, `identity.delete-${editor.scope}-role.not-grantable`, context, {
+                reason: deletable.error.reason,
+              });
+            }
+            return err({ code: deletable.error.code });
+          }
+          const removed = role.remove({ isDeclared, now: deps.clock.now() });
+          await deps.roles.deleteCustom(market, removed);
+          await deps.outbox.append(context, removed.pendingEvents);
+          await deps.audit.record(
+            context,
+            RoleDeletedAudit.entry(role.state.id, {
+              before: {
+                scope: editor.scope,
+                sellerId: role.state.sellerId,
+                removedKeys: role.state.permissionKeys.filter(isDeclared),
+              },
+            }),
+          );
+          return ok({ code: 'role.deleted', roleId: role.state.id });
+        },
+        { isolation: 'serializable' },
+      ),
     ),
   );
 }

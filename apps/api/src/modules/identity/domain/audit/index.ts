@@ -511,7 +511,8 @@ export const AccountErasedAudit = defineAuditAction({
 export const AccountSessionsEndedForErasureAudit = defineAuditAction({
   action: 'identity.account.sessions-ended-for-erasure',
   targetType: 'identity.account',
-  actors: ['system'],
+  // The system (the deletion job) or an admin who asked for the deletion (customers package 5c).
+  actors: ['system', 'authenticated'],
   after: {
     requestId: auditField.id(),
     revokedSessions: auditField.integer(),

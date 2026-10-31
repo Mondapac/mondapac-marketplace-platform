@@ -16,6 +16,7 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'customers.account-deletion-already-requested': 409,
   'customers.account-deletion-request-not-found': 404,
   'customers.account-deletion-in-progress': 409,
+  'customers.buyer-account-not-found': 404,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
   'customers.unavailable': 503,
@@ -24,6 +25,14 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
 export function fail(status: number, code: string, details?: object): HttpException {
   return new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
 }
+
+/** A `limit` query value: absent stays absent, a string of 1 to 6 digits is its number, anything else -1 (range error). */
+export const parseLimit = (value: unknown): number | undefined =>
+  value === undefined
+    ? undefined
+    : typeof value === 'string' && /^[0-9]{1,6}$/.test(value)
+      ? Number(value)
+      : -1;
 
 /** The JSON-only check and the closed object of a body: no key outside `allowed`, no array, no scalar. */
 export function closedBody(

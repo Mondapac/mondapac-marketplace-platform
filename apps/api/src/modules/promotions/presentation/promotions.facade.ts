@@ -32,10 +32,15 @@ export class PromotionsFacadeImplementation implements PromotionsFacade {
     return this.quoteDiscounts.execute(context, request).then(outward);
   }
 
-  wasPriceEligible(context: CallContext, productId: Id<'Product'>, price: Money) {
+  wasPriceEligible(
+    context: CallContext,
+    unit: { readonly offerId: Id<'Offer'>; readonly variantId: Id<'Variant'> },
+    price: Money,
+  ) {
     return this.wasPrice
       .execute(context, {
-        productId,
+        offerId: unit?.offerId,
+        variantId: unit?.variantId,
         price: { amountMinor: price.amount, currency: price.currency },
       })
       .then(outward);

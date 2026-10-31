@@ -75,6 +75,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'ORDERING_REFUNDS');
   await createCopy(name, 'PAYOUT_HOLDS');
   await createCopy(name, 'DISPUTES');
+  await createCopy(name, 'PAYOUT_RUN');
   await createCopy(name, 'SELLERS_LIST');
   await createCopy(name, 'ORDERING_ORDERS');
 }
@@ -138,6 +139,9 @@ export default async function globalSetup(): Promise<void> {
  * - `payout_holds`: commission-payouts-terms-holds.db-spec.ts relays and dispatches identity's
  *   seller-access events to the commission-payouts handlers, and the relay and the dispatcher claim
  *   every due row of a Market.
+ * - `payout_run`: commission-payouts-payouts.db-spec.ts runs the payout run over a whole Market
+ *   (it reads every due cursor and every payout in a state of it), so no other file's cursors or
+ *   payouts live there.
  * - `sellers_list`: sellers-list.db-spec.ts compares the tab counts of a whole Market before and
  *   after making its own seller files, so no other file makes or submits a seller file in that
  *   Market between the two reads.
@@ -176,6 +180,7 @@ async function createCopy(
     | 'ORDERING_REFUNDS'
     | 'PAYOUT_HOLDS'
     | 'DISPUTES'
+    | 'PAYOUT_RUN'
     | 'SELLERS_LIST'
     | 'ORDERING_ORDERS',
 ): Promise<void> {

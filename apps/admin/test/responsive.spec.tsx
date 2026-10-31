@@ -74,3 +74,29 @@ describe('sellers without an owner', () => {
     expect(dialog).toContain('flex-col-reverse');
   });
 });
+
+describe('settings navigation', () => {
+  const shell = read('src/server/settings-shell.tsx');
+
+  it('shows the sub-navigation column from 1180px and the back link only below it', () => {
+    expect(shell).toContain('min-[1180px]:grid-cols-[12.5rem_minmax(0,1fr)]');
+    expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
+    expect(shell).toMatch(/min-\[1180px\]:hidden[^]*<BackLink href="\/settings"/);
+  });
+
+  it('lets the content column shrink, so a wide table never widens the page', () => {
+    expect(shell).toContain('min-w-0');
+  });
+
+  it('keeps every hub and sub-navigation link tall enough to touch', () => {
+    expect(read('src/settings/settings-hub.tsx')).toContain('min-h-12');
+    expect(read('src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
+  });
+
+  it('puts the hub cards on one column on phones, two from 640px and three from 1500px', () => {
+    const hub = read('src/settings/settings-hub.tsx');
+    expect(hub).toContain('grid-cols-1');
+    expect(hub).toContain('sm:grid-cols-2');
+    expect(hub).toContain('min-[1500px]:grid-cols-3');
+  });
+});

@@ -17,6 +17,10 @@ import {
   CARRIER_WEBHOOK_SIGNATURE,
   type CarrierWebhookSignature,
 } from '../application/ports/carrier-webhook-signature';
+import {
+  UBER_WEBHOOK_SIGNATURE,
+  type FleetWebhookSignature,
+} from '../application/ports/fleet-webhook-signature';
 import { FLEET_REGISTRY, type FleetRegistry } from '../application/ports/fleet-registry';
 import {
   DELIVERY_SETTINGS_REPOSITORY,
@@ -41,6 +45,7 @@ import { CircuitBreaker } from './circuit-breaker';
 import { ConfigCarrierPolicy } from './config-carrier-policy';
 import { ConfigShippingPolicy } from './config-shipping-policy';
 import { ConfigUberDirectPolicy } from './config-uber-direct-policy';
+import { ConfigDoorDashDrivePolicy } from './config-doordash-drive-policy';
 import { ConfigZoom2uPolicy } from './config-zoom2u-policy';
 import { ConfigAusPostPolicy } from './config-auspost-policy';
 import { AusPostCarrier } from './auspost-carrier';
@@ -49,6 +54,7 @@ import { DriveHttpClient } from './drive-http-client';
 import { FakeTestCarrier } from './fake-test-carrier';
 import { capabilitiesOf } from './fleet-config';
 import { StaticFleetRegistry } from './fleet-registry';
+import { UberWebhookSignature } from './uber-webhook-signature';
 import { DriveWebhookSignature } from './drive-webhook-signature';
 import { MondapacDriveCarrier } from './mondapac-drive-carrier';
 import { PrismaCarrierBookingRepository } from './prisma-carrier-booking.repository';
@@ -60,6 +66,8 @@ import { SellersPickupDirectory } from './sellers-pickup-directory';
 import { SellersSellerDirectory } from './sellers-seller-directory';
 import { UberDirectCarrier } from './uber-direct-carrier';
 import { UberDirectHttpClient } from './uber-direct-http-client';
+import { DoorDashDriveCarrier } from './doordash-drive-carrier';
+import { DoorDashDriveHttpClient } from './doordash-drive-http-client';
 import { Zoom2uCarrier } from './zoom2u-carrier';
 import { Zoom2uHttpClient } from './zoom2u-http-client';
 
@@ -116,7 +124,7 @@ export const shippingProviders: readonly FactoryProvider[] = [
       new PrismaDeliverySettingsRepository(prisma),
   },
   {
-    // One gateway per fleet. Mondapac Drive, Uber Direct, Zoom2u and Australia Post are registered
+    // One gateway per fleet. Mondapac Drive, Uber Direct, Zoom2u, DoorDash Drive and Australia Post are registered
     // here. The fake is for tests and development: it is
     // never registered in production and is on only where a Market's `shipping.fleets` lists it.
     provide: FLEET_REGISTRY,
@@ -148,6 +156,13 @@ export const shippingProviders: readonly FactoryProvider[] = [
           new Zoom2uHttpClient(new CircuitBreaker(clock)),
           clock,
         ),
+        // Off unless the Market's `shipping.doordashDrive.enabled` is true AND the Region Stack
+        // holds its developer id, key id and signing secret.
+        new DoorDashDriveCarrier(
+          new ConfigDoorDashDrivePolicy(markets, config.doordashDrive),
+          new DoorDashDriveHttpClient(new CircuitBreaker(clock), clock),
+          clock,
+        ),
         // Off unless the Market's `shipping.auspost.enabled` is true AND the Region Stack holds
         // its API key, password and account number.
         new AusPostCarrier(
@@ -177,6 +192,12 @@ export const shippingProviders: readonly FactoryProvider[] = [
     inject: [APP_CONFIG, CLOCK],
     useFactory: (config: AppConfig, clock: Clock): CarrierWebhookSignature =>
       new DriveWebhookSignature(config.mondapacDrive.webhookSecrets, clock),
+  },
+  {
+    provide: UBER_WEBHOOK_SIGNATURE,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): FleetWebhookSignature =>
+      new UberWebhookSignature(config.uberDirect.webhookSecrets),
   },
   {
     provide: PICKUP_DIRECTORY,

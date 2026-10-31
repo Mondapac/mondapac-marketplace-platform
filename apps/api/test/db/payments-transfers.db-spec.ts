@@ -629,4 +629,21 @@ describe.each(TEST_MARKETS)('transfer executions in market %s (database)', (code
       ).toBe(true);
     }
   });
+
+  it('keeps a payout-settings event of a connected account by its account id', async () => {
+    const eventId = next('evt_test');
+    expect(
+      await value(market, () =>
+        inbox.record(market, {
+          eventId,
+          type: 'balance_settings.updated',
+          objectId: next('acct_test'),
+          receivedAt: T0,
+        }),
+      ),
+    ).toBe('recorded');
+    expect(await value(market, () => inbox.finish(market, eventId, 'account-updated', T0))).toBe(
+      true,
+    );
+  });
 });

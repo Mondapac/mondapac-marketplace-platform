@@ -2,6 +2,8 @@ import type { FactoryProvider } from '@nestjs/common';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { PRICING_FACADE, type PricingFacade } from '../../pricing';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { BATCH_CODE_CRYPTO, type BatchCodeCrypto } from '../application/ports/batch-code-crypto';
 import {
@@ -32,6 +34,7 @@ import {
   type ShippingThresholdRepository,
 } from '../application/ports/settings.repository';
 import { ConfigPromotionsPolicy } from './config-promotions-policy';
+import { FacadePriceHistory, FacadeSellerActivity } from './facade-seller-price-reads';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaOptInRepository } from './prisma-opt-in.repository';
 import { PrismaPromotionRepository } from './prisma-promotion.repository';
@@ -42,11 +45,7 @@ import {
 } from './prisma-settings.repository';
 import { CryptoBatchCodeCrypto } from './crypto-batch-code-crypto';
 import { PrismaBatchCodeRepository } from './prisma-batch-code.repository';
-import {
-  UnknownFlashSales,
-  UnknownPriceHistory,
-  UnknownSellerActivity,
-} from './unavailable-adapters';
+import { UnknownFlashSales } from './unknown-flash-sales';
 
 /** Binds the ports of promotions. Only this layer may reach `PrismaService`. */
 export const promotionsProviders: readonly FactoryProvider[] = [
@@ -108,10 +107,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SELLER_ACTIVITY,
-    useFactory: (): SellerActivity => new UnknownSellerActivity(),
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerActivity => new FacadeSellerActivity(sellers),
   },
   {
     provide: PRICE_HISTORY,
-    useFactory: (): PriceHistory => new UnknownPriceHistory(),
+    inject: [PRICING_FACADE],
+    useFactory: (pricing: PricingFacade): PriceHistory => new FacadePriceHistory(pricing),
   },
 ];

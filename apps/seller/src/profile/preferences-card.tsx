@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, Select } from '@mondapac/ui';
+import { Banner, Button, Card, Select, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -27,13 +27,11 @@ export function PreferencesCard({
   const [language, setLanguage] = useState(locale ?? '');
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [saved, setSaved] = useState<'changed' | 'same' | null>(null);
   const busy = useRef(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current) return;
-    setSaved(null);
     setProblem(null);
     busy.current = true;
     setPending(true);
@@ -46,7 +44,8 @@ export function PreferencesCard({
     busy.current = false;
     setPending(false);
     if (result.ok) {
-      setSaved(result.body.changed ? 'changed' : 'same');
+      if (result.body.changed) toast.success(t('prefs-saved'));
+      else toast.info(t('prefs-same'));
       // The details card reads the choice on the server.
       if (result.body.changed) router.refresh();
       return;
@@ -63,9 +62,6 @@ export function PreferencesCard({
         noValidate
       >
         <p className="text-sm text-fg-muted">{t('prefs-intro-seller')}</p>
-        {saved === null ? null : (
-          <Banner tone="success">{t(saved === 'changed' ? 'prefs-saved' : 'prefs-same')}</Banner>
-        )}
         {problem === null ? null : <Banner tone="critical">{t(`error.${problem.key}`)}</Banner>}
         <Select
           name="timezone"
@@ -78,7 +74,6 @@ export function PreferencesCard({
           ]}
           onChange={(event) => {
             setZone(event.target.value);
-            setSaved(null);
           }}
         />
         <Select
@@ -92,7 +87,6 @@ export function PreferencesCard({
           ]}
           onChange={(event) => {
             setLanguage(event.target.value);
-            setSaved(null);
           }}
         />
         <div>

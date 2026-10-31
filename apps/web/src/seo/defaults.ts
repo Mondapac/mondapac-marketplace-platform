@@ -42,6 +42,7 @@ export const DESCRIPTION_KEYS = {
   'account-addresses': 'account-addresses',
   'account-lists': 'account-lists',
   'account-settings': 'account-settings',
+  'account-delete': 'account-delete',
   personalization: 'personalization',
   'coming-soon': 'coming-soon',
   cookies: 'cookies',

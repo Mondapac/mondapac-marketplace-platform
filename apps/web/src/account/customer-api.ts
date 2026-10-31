@@ -22,7 +22,7 @@ export interface FieldProblem {
 /** How a call ended; every call maps the API's answer to one of these. */
 export type ApiResult<T> =
   | { readonly kind: 'ok'; readonly value: T }
-  /** The API refused the request (400, 403, 404, 422): its error `code`, the fields and details. */
+  /** The API refused the request (400, 403, 404, 422; and 409 on the deletion request): its error `code`, the fields and details. */
   | {
       readonly kind: 'invalid';
       readonly code: string;
@@ -152,7 +152,12 @@ async function callOnce<T>(
         retryAfterSeconds: typeof after === 'number' ? after : undefined,
       };
     }
-    if ([400, 403, 404, 422].includes(response.status)) {
+    // A 409 is a refusal to show only for the deletion request (its blockers and states); every
+    // other route keeps answering `failed` for it, as before.
+    const refusals = path.startsWith('customers/me/deletion-requests')
+      ? [400, 403, 404, 409, 422]
+      : [400, 403, 404, 422];
+    if (refusals.includes(response.status)) {
       const fields = Array.isArray(details.fields)
         ? details.fields.flatMap((f: unknown) =>
             isRecord(f) && typeof f.path === 'string' && typeof f.code === 'string'
@@ -477,4 +482,74 @@ export function moveSavedToCart(savedId: string): Promise<ApiResult<true>> {
 /** `DELETE cart/saved/:savedId`. */
 export function removeSavedItem(savedId: string): Promise<ApiResult<true>> {
   return call('DELETE', `cart/saved/${savedId}`, undefined, () => true as const);
+}
+
+// Account deletion (customers package 5a and 5b). The buyer site only shows these answers; every
+// rule (the setting, the blockers, the waiting period) is the API's.
+
+/** `GET customers/me/account-deletion`: the Market's switch and the wait of a request. */
+export interface DeletionAvailability {
+  readonly canDeleteAccount: boolean;
+  readonly waitingPeriodDays: number;
+}
+
+/** The buyer's open deletion request: `pending` can be cancelled, `executing` cannot. */
+export interface DeletionRequest {
+  readonly status: 'pending' | 'executing';
+  /** When the account will be erased (a UTC instant). */
+  readonly scheduledFor: string;
+  readonly waitingPeriodDays: number;
+}
+
+/** What stops a deletion until it is settled; `count` is given for orders and refunds. */
+export interface DeletionBlocker {
+  readonly code: 'open-orders' | 'pending-refunds' | 'wallet-balance';
+  readonly count: number | null;
+}
+
+export function readDeletionAvailability(): Promise<ApiResult<DeletionAvailability>> {
+  return call('GET', 'customers/me/account-deletion', undefined, (json) => {
+    const days = json.waitingPeriodDays;
+    if (typeof json.canDeleteAccount !== 'boolean') return undefined;
+    if (typeof days !== 'number' || !Number.isSafeInteger(days) || days < 1) return undefined;
+    return { canDeleteAccount: json.canDeleteAccount, waitingPeriodDays: days };
+  });
+}
+
+function deletionRequestOf(json: Record<string, unknown>): DeletionRequest | undefined {
+  const status = json.status;
+  const when = text(json.scheduledFor);
+  const days = json.waitingPeriodDays;
+  if (status !== 'pending' && status !== 'executing') return undefined;
+  if (when === undefined || Number.isNaN(Date.parse(when))) return undefined;
+  if (typeof days !== 'number' || !Number.isSafeInteger(days)) return undefined;
+  return { status, scheduledFor: when, waitingPeriodDays: days };
+}
+
+/** `GET customers/me/deletion-requests/current`: 404 (`invalid`) when there is no open request. */
+export function readDeletionRequest(): Promise<ApiResult<DeletionRequest>> {
+  return call('GET', 'customers/me/deletion-requests/current', undefined, deletionRequestOf);
+}
+
+/** `POST customers/me/deletion-requests`: the buyer confirms; the request starts to wait. */
+export function requestDeletion(): Promise<ApiResult<DeletionRequest>> {
+  return call('POST', 'customers/me/deletion-requests', { confirm: true }, deletionRequestOf);
+}
+
+/** `DELETE customers/me/deletion-requests/current`: 204 while the request is still pending. */
+export function cancelDeletion(): Promise<ApiResult<true>> {
+  return call('DELETE', 'customers/me/deletion-requests/current', undefined, () => true as const);
+}
+
+/** The blockers of a 409 `customers.account-deletion-blocked`, in the order the API gave them. */
+export function blockersOf(details: Readonly<Record<string, unknown>>): readonly DeletionBlocker[] {
+  if (!Array.isArray(details.blockers)) return [];
+  return details.blockers.flatMap((item: unknown): DeletionBlocker[] => {
+    if (!isRecord(item)) return [];
+    const code = item.code;
+    if (code !== 'open-orders' && code !== 'pending-refunds' && code !== 'wallet-balance')
+      return [];
+    const count = item.count;
+    return [{ code, count: typeof count === 'number' ? count : null }];
+  });
 }

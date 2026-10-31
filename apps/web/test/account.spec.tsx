@@ -10,7 +10,7 @@ import { AuthForms } from '../src/account/auth-forms.tsx';
 import { AccountAddresses } from '../src/account/addresses.tsx';
 import { AccountLists } from '../src/account/lists.tsx';
 import { LoginModal } from '../src/account/login-modal.tsx';
-import { OrderDetails } from '../src/account/order-details.tsx';
+import { OrderDetails, safeTrackingHref } from '../src/account/order-details.tsx';
 import { AccountOrders } from '../src/account/orders.tsx';
 import { AccountOverview } from '../src/account/overview.tsx';
 import { AccountSettings } from '../src/account/settings.tsx';
@@ -22,6 +22,7 @@ import { TabBar } from '../src/shell/tab-bar.tsx';
 import { SAMPLE_CART_SOURCE } from '../src/storefront/sample-cart.ts';
 import { SOCIAL_SIGN_IN_SHOWN, TAX_INVOICE_SHOWN } from '../src/storefront/features.ts';
 import { loadAccount } from '../src/storefront/source.ts';
+import type { OrderPart } from '../src/storefront/types.ts';
 
 const nav = vi.hoisted(() => ({ path: '/', push: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -49,7 +50,7 @@ function CartCount() {
   return <output data-testid="cart">{summarise(cart).count}</output>;
 }
 
-function renderStore(children: ReactNode, signedIn = true) {
+function renderStore(children: ReactNode, signedIn = true, source = account) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
       <StoreProvider
@@ -62,7 +63,7 @@ function renderStore(children: ReactNode, signedIn = true) {
         <LoginModal customer={account.customer} />
         <AccountDrawer />
         <main>
-          <AccountArea source={account}>{children}</AccountArea>
+          <AccountArea source={source}>{children}</AccountArea>
         </main>
         <CartCount />
       </StoreProvider>
@@ -381,6 +382,60 @@ describe('order details', () => {
     );
     expect(within(page).queryByRole('img', { name: '0 4 2 7' })).toBeNull();
     expect(within(page).getByRole('img', { name: '7 3 1 9' }).textContent).toBe('7319');
+  });
+
+  it('links the delivery partner tracking page as an inert https link', () => {
+    renderStore(<OrderDetails reference="MP-20481" />);
+    const links = within(main()).getAllByRole('link', { name: /Track delivery/ });
+    expect(links).toHaveLength(1);
+    expect(links[0]!.getAttribute('href')).toBe('https://track.example.com/d/sample');
+    expect(links[0]!.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(links[0]!.getAttribute('target')).toBe('_blank');
+    // The truck and the trailing external-link arrow are decoration.
+    const icons = [...links[0]!.querySelectorAll('svg')];
+    expect(icons).toHaveLength(2);
+    for (const icon of icons) expect(icon.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('shows the tracking link only while the part is confirmed or out for delivery', () => {
+    const withStatus = (status: OrderPart['status']) => ({
+      ...account,
+      orders: account.orders.map((o) => ({
+        ...o,
+        parts: o.parts.map((p) => ({
+          ...p,
+          status,
+          trackingUrl: 'https://track.example.com/d/x',
+        })) as unknown as typeof o.parts,
+      })),
+    });
+    const shown = (status: OrderPart['status']) => {
+      cleanup();
+      renderStore(<OrderDetails reference="MP-20481" />, true, withStatus(status));
+      return within(main()).queryAllByRole('link', { name: /Track delivery/ }).length > 0;
+    };
+    expect(shown('confirmed')).toBe(true);
+    expect(shown('out-for-delivery')).toBe(true);
+    expect(shown('delivered')).toBe(false);
+    expect(shown('cancelled')).toBe(false);
+    expect(shown('waiting')).toBe(false);
+  });
+
+  it('shows no tracking link for a part whose link is not https', () => {
+    const unsafe = (url: string) => ({
+      ...account,
+      orders: account.orders.map((o) => ({
+        ...o,
+        parts: o.parts.map((p) => ({ ...p, trackingUrl: url })) as unknown as typeof o.parts,
+      })),
+    });
+    renderStore(<OrderDetails reference="MP-20481" />, true, unsafe('javascript:alert(1)'));
+    expect(within(main()).queryByRole('link', { name: /Track delivery/ })).toBeNull();
+    cleanup();
+    renderStore(<OrderDetails reference="MP-20481" />, true, unsafe('http://track.example.com/x'));
+    expect(within(main()).queryByRole('link', { name: /Track delivery/ })).toBeNull();
+    expect(safeTrackingHref('https://u:p@x.example/')).toBeNull();
+    expect(safeTrackingHref(undefined)).toBeNull();
   });
 
   it('shows no pickup code on an order that is not collected in person', () => {

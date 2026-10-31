@@ -7,6 +7,12 @@ import { ClearCommissionRate } from '../src/modules/commission-payouts/applicati
 import { SetCommissionRate } from '../src/modules/commission-payouts/application/use-cases/set-commission-rate.use-case';
 import { ClearSellerPayoutTerms } from '../src/modules/commission-payouts/application/use-cases/clear-seller-payout-terms.use-case';
 import { ListSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-seller-payout-holds.use-case';
+import { ApprovePayout } from '../src/modules/commission-payouts/application/use-cases/approve-payout.use-case';
+import { ListOwnPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-own-payout-holds.use-case';
+import { ListOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/list-own-payouts.use-case';
+import { ListPayouts } from '../src/modules/commission-payouts/application/use-cases/list-payouts.use-case';
+import { ViewNextPayout } from '../src/modules/commission-payouts/application/use-cases/view-next-payout.use-case';
+import { ViewPayout } from '../src/modules/commission-payouts/application/use-cases/view-payout.use-case';
 import { PlacePayoutHold } from '../src/modules/commission-payouts/application/use-cases/place-payout-hold.use-case';
 import { ReleasePayoutHold } from '../src/modules/commission-payouts/application/use-cases/release-payout-hold.use-case';
 import { SetSellerPayoutTerms } from '../src/modules/commission-payouts/application/use-cases/set-seller-payout-terms.use-case';
@@ -17,9 +23,11 @@ import {
   COMMISSION_PAYOUTS_DISPUTE_VIEW,
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
+  COMMISSION_PAYOUTS_PAYOUT_APPROVE,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
+  COMMISSION_PAYOUTS_PAYOUT_VIEW,
 } from '../src/modules/commission-payouts/contracts/permissions';
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
@@ -105,6 +113,11 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.dispute.already-decided': 409,
     'commission-payouts.dispute.amount-out-of-range': 400,
     'commission-payouts.unavailable': 503,
+    'commission-payouts.payout-not-found': 404,
+    'commission-payouts.payout.not-awaiting-approval': 409,
+    'commission-payouts.payout.amount-changed': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
   });
 });
 
@@ -121,6 +134,8 @@ it('declares the payout terms view as unprotected and every change (the commissi
       COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
       COMMISSION_PAYOUTS_DISPUTE_VIEW,
       COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
+      COMMISSION_PAYOUTS_PAYOUT_VIEW,
+      COMMISSION_PAYOUTS_PAYOUT_APPROVE,
     ].map((p) => [p.key, p.scope, p.protected]),
   ).toEqual([
     ['commission-payouts.commission-rate.edit', 'platform', true],
@@ -130,6 +145,8 @@ it('declares the payout terms view as unprotected and every change (the commissi
     ['commission-payouts.payout-hold.release', 'platform', true],
     ['commission-payouts.dispute.view', 'platform', false],
     ['commission-payouts.dispute.attribute', 'platform', true],
+    ['commission-payouts.payout.view', 'platform', false],
+    ['commission-payouts.payout.approve', 'platform', true],
   ]);
   expect(COMMISSION_PAYOUTS_STEP_UP_ACTIONS).toEqual([
     {
@@ -162,6 +179,12 @@ it('declares the payout terms view as unprotected and every change (the commissi
       locked: true,
       audience: 'admin',
     },
+    {
+      key: 'commission-payouts.payout.approve',
+      defaultRequired: true,
+      locked: true,
+      audience: 'admin',
+    },
   ]);
 });
 
@@ -174,8 +197,14 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   const http = () => request(app!.getHttpServer());
   const marketId = code as AccountState['marketId'];
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
+  let actors: string[];
   const stub = (name: string) => ({
-    execute: (_c: unknown, input: unknown) => {
+    execute: (context: { actor: unknown }, input: unknown) => {
+      actors.push(
+        typeof context.actor === 'string'
+          ? context.actor
+          : (context.actor as { kind: string }).kind,
+      );
       calls.push({ name, input });
       return Promise.resolve(next);
     },
@@ -210,7 +239,19 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .overrideProvider(PlacePayoutHold)
           .useValue(stub('place-hold'))
           .overrideProvider(ReleasePayoutHold)
-          .useValue(stub('release-hold')),
+          .useValue(stub('release-hold'))
+          .overrideProvider(ListPayouts)
+          .useValue(stub('list-payouts'))
+          .overrideProvider(ViewPayout)
+          .useValue(stub('view-payout'))
+          .overrideProvider(ApprovePayout)
+          .useValue(stub('approve-payout'))
+          .overrideProvider(ViewNextPayout)
+          .useValue(stub('next-payout'))
+          .overrideProvider(ListOwnPayouts)
+          .useValue(stub('own-payouts'))
+          .overrideProvider(ListOwnPayoutHolds)
+          .useValue(stub('own-payout-holds')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'cp-seed-0001'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -314,6 +355,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       'commission-payouts.payout-terms.edit',
       'commission-payouts.payout-hold.place',
       'commission-payouts.payout-hold.release',
+      'commission-payouts.payout.approve',
     ].forEach(prove);
   const seller = () => sessionOf('seller', 1);
   const admin = () => sessionOf('admin', 2);
@@ -333,12 +375,40 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   const RATE = `/commission-payouts/admin/sellers/${SELLER}/commission-rate`;
   const LEDGER = `/commission-payouts/admin/sellers/${SELLER}/ledger`;
   const OWN = '/commission-payouts/seller/ledger';
+  const PAYOUT = id<'Payout'>(0xc900);
+  const PAYOUTS = '/commission-payouts/admin/payouts';
+  const APPROVE = `${PAYOUTS}/${PAYOUT}/approve`;
   const rate = { sellerId: SELLER, rateBps: 1200, source: 'seller', marketRateBps: 1500 };
+
+  const money = (amountMinor: bigint) => ({ amountMinor, currency });
+  const row = {
+    payoutId: PAYOUT,
+    sellerId: SELLER,
+    storeName: 'Store',
+    state: 'awaiting-approval',
+    gross: money(12500n),
+    netted: money(0n),
+    transfer: money(12500n),
+    approvalMode: 'MANUAL',
+    approvalReason: 'first-payout',
+    slotAt: START,
+    outcomeCode: null,
+    createdAt: START,
+    stateChangedAt: START,
+  };
+  const approved = {
+    payoutId: PAYOUT,
+    state: 'approved',
+    transfer: money(12500n),
+    approvedBy: ADMIN,
+    approvedAt: START,
+  };
 
   beforeEach(() => {
     fakes.reset();
     clock = new FixedClock(START);
     calls = [];
+    actors = [];
     next = ok(rate);
   });
   afterEach(async () => {
@@ -678,13 +748,20 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       ],
       ['commission-payouts.payout-hold.place', 'post', () => HOLDS, { reason: 'admin-review' }],
       ['commission-payouts.payout-hold.release', 'post', () => RELEASE, { reason: 'resolved' }],
+      ['commission-payouts.payout.approve', 'post', () => APPROVE, { amountMinor: '12500' }],
     ];
 
     it.each(GUARDED)(
       'answers second-factor.required to %s (%s) without a fresh proof, and a proof of another action does not do',
       async (action, method, path, body) => {
         await boot();
-        next = action.includes('rate') ? ok(rate) : action.includes('terms') ? ok(terms) : ok(hold);
+        next = action.includes('rate')
+          ? ok(rate)
+          : action.includes('terms')
+            ? ok(terms)
+            : action.includes('payout.approve')
+              ? ok(approved)
+              : ok(hold);
         const session = admin();
         const refused = await call(method, 'admin', path(), session, body);
         expect(refused.status).toBe(403);
@@ -723,8 +800,9 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         });
         try {
           const refused = await call(method, 'admin', path(), session, body);
-          expect([401, 403]).toContain(refused.status);
-          expect(refused.status).toBeGreaterThanOrEqual(401);
+          // An acting-as session is not an admin session on an admin route: the exact answer.
+          expect(refused.status).toBe(401);
+          expect(refused.body).toEqual({ statusCode: 401, code: 'session.invalid' });
         } finally {
           spy.mockRestore();
         }
@@ -732,5 +810,240 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         expect(action).toBeDefined();
       },
     );
+  });
+
+  describe('payouts', () => {
+    const rowBody = {
+      ...row,
+      gross: { amountMinor: '12500', currency },
+      netted: { amountMinor: '0', currency },
+      transfer: { amountMinor: '12500', currency },
+      slotAt: START.toString(),
+      createdAt: START.toString(),
+      stateChangedAt: START.toString(),
+    };
+
+    it('lists and reads payouts for an admin, with money as strings and no-store', async () => {
+      await boot();
+      const session = admin();
+      next = ok({ payouts: [row], nextCursor: 'c1' });
+      const listed = await call(
+        'get',
+        'admin',
+        `${PAYOUTS}?status=awaiting-approval&limit=5&cursor=abc`,
+        session,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toBe('no-store');
+      expect(listed.body).toEqual({ payouts: [rowBody], nextCursor: 'c1' });
+
+      next = ok({
+        ...row,
+        approval: null,
+        items: [{ sellerOrderId: id<'SellerOrder'>(0xc020), amount: money(12500n) }],
+        accountReadiness: 'ready',
+        lastBankChangeAt: null,
+        limits: {
+          perTransfer: money(500000n),
+          todayTotal: money(0n),
+          dailyAlertLevel: money(2000000n),
+          overDailyAlertLevel: false,
+          transferAboveLimit: false,
+        },
+      });
+      const read = await call('get', 'admin', `${PAYOUTS}/${PAYOUT}`, session);
+      expect(read.status).toBe(200);
+      expect(read.body).toMatchObject({
+        ...rowBody,
+        approval: null,
+        items: [{ amount: { amountMinor: '12500' } }],
+        accountReadiness: 'ready',
+        lastBankChangeAt: null,
+        limits: { perTransfer: { amountMinor: '500000', currency } },
+      });
+      expect(calls.map((c) => c.name)).toEqual(['list-payouts', 'view-payout']);
+      expect(calls[0]!.input).toMatchObject({ status: 'awaiting-approval', cursor: 'abc' });
+      expect(calls[1]!.input).toEqual({ payoutId: PAYOUT });
+    });
+
+    it('approves with the echoed amount, answers 200 and passes the id and amount through', async () => {
+      await boot();
+      const session = admin();
+      prove('commission-payouts.payout.approve');
+      next = ok(approved);
+      const response = await call('post', 'admin', APPROVE, session, { amountMinor: '12500' });
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        payoutId: PAYOUT,
+        state: 'approved',
+        transfer: { amountMinor: '12500', currency },
+        approvedBy: ADMIN,
+        approvedAt: START.toString(),
+      });
+      expect(calls).toEqual([
+        { name: 'approve-payout', input: { payoutId: PAYOUT, amountMinor: '12500' } },
+      ]);
+    });
+
+    it('refuses an approval without CSRF, with a stray field or as text', async () => {
+      await boot();
+      const session = admin();
+      proveAll();
+      next = ok(approved);
+      expect(
+        (await call('post', 'admin', APPROVE, { cookie: session.cookie }, { amountMinor: '1' }))
+          .status,
+      ).toBe(403);
+      const stray = await call('post', 'admin', APPROVE, session, {
+        amountMinor: '1',
+        approvedBy: 'x',
+      });
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'approvedBy', code: 'unknown-field' }] },
+      });
+      const text = await http()
+        .post(APPROVE)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+        .set('content-type', 'text/plain')
+        .send('x');
+      expect(text.status).toBe(415);
+      expect(calls).toEqual([]);
+    });
+
+    it('maps the refusals of the payout routes to their exact status and code', async () => {
+      await boot();
+      const session = admin();
+      proveAll();
+      const approve = () => call('post', 'admin', APPROVE, session, { amountMinor: '12500' });
+      const cases: [string, number][] = [
+        ['commission-payouts.payout.amount-changed', 409],
+        ['commission-payouts.payout.not-awaiting-approval', 409],
+        ['commission-payouts.payout-not-found', 404],
+        ['access.denied', 403],
+      ];
+      for (const [errorCode, status] of cases) {
+        next = err({ code: errorCode });
+        const response = await approve();
+        expect([errorCode, response.status]).toEqual([errorCode, status]);
+        expect((response.body as { code: string }).code).toBe(errorCode);
+      }
+      next = err({ code: 'commission-payouts.payout-not-found' });
+      expect((await call('get', 'admin', `${PAYOUTS}/${PAYOUT}`, session)).status).toBe(404);
+      next = err({ code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] });
+      const invalid = await call('get', 'admin', `${PAYOUTS}?status=nope`, session);
+      expect(invalid.status).toBe(400);
+      expect(invalid.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'status', code: 'value' }] },
+      });
+    });
+
+    it('treats a seller session on the admin payout routes as not signed in', async () => {
+      await boot();
+      next = ok({ payouts: [], nextCursor: null });
+      // The seller's cookie on the admin panel: the use case sees no one (its gate then refuses).
+      const response = await call('get', 'admin', PAYOUTS, seller());
+      expect(response.status).toBe(200);
+      expect(actors).toEqual(['anonymous']);
+    });
+
+    it('serves the seller its next payout, history and holds, without internal fields', async () => {
+      await boot();
+      const session = seller();
+      next = ok({
+        slotAt: START,
+        zone: 'Australia/Sydney',
+        estimatedAmount: money(12500n),
+        blockReason: 'below-minimum',
+      });
+      const nextResponse = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/next',
+        session,
+      );
+      expect(nextResponse.status).toBe(200);
+      expect(nextResponse.headers['cache-control']).toBe('no-store');
+      expect(nextResponse.body).toEqual({
+        slotAt: START.toString(),
+        zone: 'Australia/Sydney',
+        estimatedAmount: { amountMinor: '12500', currency },
+        blockReason: 'below-minimum',
+      });
+
+      next = ok({
+        payouts: [
+          {
+            payoutId: PAYOUT,
+            status: 'not-sent',
+            gross: money(12500n),
+            netted: money(0n),
+            transfer: money(12500n),
+            slotAt: START,
+            createdAt: START,
+            updatedAt: START,
+            reason: 'cooling-off',
+          },
+        ],
+        nextCursor: null,
+      });
+      const history = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts?limit=5',
+        session,
+      );
+      expect(history.status).toBe(200);
+      expect(history.body).toMatchObject({
+        payouts: [{ payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off' }],
+        nextCursor: null,
+      });
+      expect(Object.keys((history.body as { payouts: object[] }).payouts[0]!).sort()).toEqual([
+        'createdAt',
+        'gross',
+        'netted',
+        'payoutId',
+        'reason',
+        'slotAt',
+        'status',
+        'transfer',
+        'updatedAt',
+      ]);
+
+      next = ok([
+        {
+          sellerOrderId: id<'SellerOrder'>(0xc020),
+          amount: money(900n),
+          reason: 'on-hold',
+          availableFrom: null,
+        },
+      ]);
+      const holds = await call('get', 'seller', '/commission-payouts/seller/payout-holds', session);
+      expect(holds.status).toBe(200);
+      expect(holds.body).toEqual({
+        holds: [
+          {
+            sellerOrderId: id<'SellerOrder'>(0xc020),
+            amount: { amountMinor: '900', currency },
+            reason: 'on-hold',
+            availableFrom: null,
+          },
+        ],
+      });
+      expect(calls.map((c) => c.name)).toEqual(['next-payout', 'own-payouts', 'own-payout-holds']);
+    });
+
+    it('treats an admin session on the seller payout routes as not signed in', async () => {
+      await boot();
+      next = err({ code: 'access.denied' });
+      for (const path of ['payouts/next', 'payouts', 'payout-holds']) {
+        const response = await call('get', 'seller', `/commission-payouts/seller/${path}`, admin());
+        expect(response.status).toBe(403);
+      }
+      expect(actors).toEqual(['anonymous', 'anonymous', 'anonymous']);
+    });
   });
 });

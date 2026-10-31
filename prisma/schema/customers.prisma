@@ -62,7 +62,7 @@ model CustomersAccountDeletionRequest {
   accountId         String    @map("account_id") @db.Uuid
   /// pending, executing, cancelled or completed (CHECK). pending to executing (the job's claim),
   /// executing back to pending (a blocker found after the claim) or to completed; pending to
-  /// cancelled. Trigger-free: the grant lets the application update only the state columns, and
+  /// cancelled. The grant lets the application update only the state columns, and
   /// every update is conditional on the status it moves from.
   status            String
   /// The waiting period in force when the request was made; the request keeps it.
@@ -71,12 +71,27 @@ model CustomersAccountDeletionRequest {
   /// requestedAt plus waitingPeriodDays (UTC instants; the Clock, not Date arithmetic).
   scheduledFor      DateTime  @map("scheduled_for") @db.Timestamptz(6)
   cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(6)
-  /// customer (the buyer cancelled) or sign-in (the buyer signed in during the wait); CHECK.
+  /// customer (the buyer cancelled), sign-in (the buyer signed in during the wait) or admin (an
+  /// admin cancelled, package 5c); CHECK.
   cancelReason      String?   @map("cancel_reason")
   completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
   /// When the job claimed it (status executing, and kept once completed); null while pending and
   /// on a cancelled request. A claim older than 15 minutes is taken again by the next run.
   claimedAt         DateTime? @map("claimed_at") @db.Timestamptz(6)
+  /// customer (the buyer asked) or admin (an admin asked for the buyer, package 5c); CHECK.
+  requestedBy       String    @default("customer") @map("requested_by")
+  /// The admin who made an admin request (identity account id, no foreign key); null for a buyer's.
+  adminAccountId    String?   @map("admin_account_id") @db.Uuid
+  /// The support ticket of an admin request: admin-entered text, kept here and out of events and audit.
+  ticketRef         String?   @map("ticket_ref") @db.VarChar(64)
+  /// Why an admin made the request: admin-entered free text, 1 to 500 characters, possible personal
+  /// data. Set to null (with redactedAt) when the request is closed; the ticket reference stays.
+  reason            String?   @db.VarChar(500)
+  /// The admin who cancelled the request (cancelReason admin); null otherwise.
+  cancelledByAdminId String?  @map("cancelled_by_admin_id") @db.Uuid
+  /// When the reason was redacted (the request closed, cancelled or completed); null for a buyer's
+  /// request and while an admin's is open. CHECK: set if and only if an admin request has no reason.
+  redactedAt        DateTime? @map("redacted_at") @db.Timestamptz(6)
 
   // Hand-written partial indexes (the migration): one open request per account, the due query
   // (pending, by date) and the stale-claim query (executing, by claim time).

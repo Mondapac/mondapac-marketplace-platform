@@ -1,8 +1,9 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, NoAccess } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { AdminShell } from '../server/admin-shell.tsx';
 import { requireSession, type AdminSession } from '../server/session.ts';
+import { SettingsShell } from '../server/settings-shell.tsx';
 
 /**
  * The frame of a wallet page: session gate, shell, title and the intro lines, and the no-access
@@ -14,13 +15,20 @@ export async function WalletPage({
   title,
   intro,
   anyOf,
+  permissionLabel,
   stepUpNote,
+  settingsLinkId,
   body,
 }: {
+  /** The menu item the page belongs to (ignored when the page is a settings page). */
   readonly activeId: string;
+  /** Set for a page under Settings (the wallet switch): it then uses the settings shell. */
+  readonly settingsLinkId?: string;
   readonly title: string;
   readonly intro: string;
   readonly anyOf: readonly string[];
+  /** The permission named in the no-access block of a settings page (what the caller needs). */
+  readonly permissionLabel?: string;
   /** Show the "wait for a new code" help line (the page has a button that asks for a code). */
   readonly stepUpNote: boolean;
   readonly body: (session: AdminSession, keys: ReadonlySet<string>) => ReactNode;
@@ -32,8 +40,36 @@ export async function WalletPage({
   }
   const keys = new Set(gate.session.permissionKeys);
   const allowed = anyOf.some((key) => keys.has(key));
-  return (
-    <AdminShell session={gate.session} activeId={activeId} title={title}>
+  const shell = (children: ReactNode) =>
+    settingsLinkId === undefined ? (
+      <AdminShell session={gate.session} activeId={activeId} title={title}>
+        {children}
+      </AdminShell>
+    ) : (
+      <SettingsShell session={gate.session} linkId={settingsLinkId} title={title}>
+        {children}
+      </SettingsShell>
+    );
+  if (settingsLinkId !== undefined) {
+    // A settings page draws its own header: the body is a `SettingsPage` (title, intro, rows).
+    return shell(
+      allowed ? (
+        body(gate.session, keys)
+      ) : (
+        <NoAccess
+          title={t('settings.no-access-title')}
+          body={t('settings.no-access-needs', {
+            page: title,
+            permission: permissionLabel ?? anyOf.join(', '),
+          })}
+          backHref="/"
+          backLabel={t('settings.back-home')}
+        />
+      ),
+    );
+  }
+  return shell(
+    <>
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
       {allowed ? (
         <div className="flex flex-col gap-4">
@@ -53,6 +89,6 @@ export async function WalletPage({
           </p>
         </>
       )}
-    </AdminShell>
+    </>,
   );
 }

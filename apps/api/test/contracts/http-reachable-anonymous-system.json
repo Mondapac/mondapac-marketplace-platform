@@ -55,6 +55,16 @@
     "reason": "The buyer site's left menu and Browse drawer for a visitor with no session: the live platform category tree (ids, slugs, names, order); no seller category, no count, nothing unpublished."
   },
   {
+    "name": "catalog.public-brand",
+    "rule": "anonymous",
+    "reason": "The public page of a brand (/brands/<slug>) for a visitor with no session: an ACTIVE brand's name, summary, origin country and image ids, with the count of its products that are published and on sale in the request's Market; a draft, an archived or an unknown slug answers the same not-found; no seller, account or version; no-store; rate limited per origin."
+  },
+  {
+    "name": "catalog.public-brands-az",
+    "rule": "anonymous",
+    "reason": "The public brands A to Z index (/brands) for a visitor with no session: the slug, name and logo image id of every ACTIVE brand, grouped by first letter; nothing about drafts, proposals or sellers; no-store; rate limited per origin."
+  },
+  {
     "name": "catalog.published-image-read",
     "rule": "anonymous",
     "reason": "The buyer site shows product photos to a visitor with no session: one rendition (thumb, medium or large) of a photo that is in the current published revision of a published product and is not taken down; every other case answers the same not-found. JPEG written by the server, sandboxed, nosniff, never a cookie."
@@ -278,6 +288,11 @@
     "name": "shipping.receive-carrier-webhook",
     "rule": "anonymous",
     "reason": "Mondapac Drive's status webhook: the caller is the carrier, which holds no session. The use case refuses anything without a valid HMAC-SHA256 signature of the timestamp and the raw body under the Market's webhook secret, within a 300-second replay window; each event is taken once by its id, and it only moves a seller order's carrier delivery forward."
+  },
+  {
+    "name": "shipping.receive-uber-webhook",
+    "rule": "anonymous",
+    "reason": "Uber Direct's status webhook: the caller is Uber, which holds no session. The use case answers not-found while the fleet is off for the Market or has no webhook secret there (the same answer, so an unsigned caller cannot tell the configuration apart) and refuses anything without a valid hex HMAC-SHA256 of the raw body (x-uber-signature) under the Market's webhook secret; each event is taken once by its id, the booking is found by Uber's delivery id within the Market and fleet, and it only moves a seller order's carrier delivery forward."
   },
   {
     "name": "storefront.view-published-landing-page",

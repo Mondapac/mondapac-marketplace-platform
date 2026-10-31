@@ -56,6 +56,8 @@
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.products-for-linking", "rule": "anonymous" },
+  { "name": "catalog.public-brand", "rule": "anonymous" },
+  { "name": "catalog.public-brands-az", "rule": "anonymous" },
   { "name": "catalog.published-image-read", "rule": "anonymous" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.published-product", "rule": "anonymous" },
@@ -144,6 +146,7 @@
   { "name": "certification.send-derecognition-mail", "rule": "system" },
   { "name": "certification.send-expiry-mail", "rule": "system" },
   { "name": "certification.send-issuer-request-mail", "rule": "system" },
+  { "name": "commission-payouts.apply-transfer-change", "rule": "system" },
   {
     "name": "commission-payouts.commission-rates",
     "rule": "own-resources",
@@ -154,12 +157,29 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "commission-payouts.list-own-payout-holds",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "commission-payouts.list-own-payouts",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "commission-payouts.note-seller-reinstated", "rule": "system" },
   { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
+  { "name": "commission-payouts.reconcile-instructions", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
+  { "name": "commission-payouts.run-payouts", "rule": "system" },
   { "name": "commission-payouts.sync-dispute", "rule": "system" },
+  {
+    "name": "commission-payouts.view-next-payout",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   {
     "name": "commission-payouts.view-own-ledger",
     "rule": "permissions",
@@ -487,6 +507,8 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "pricing.days-at-price", "rule": "anonymous" },
+  { "name": "pricing.days-at-price-system", "rule": "system" },
   { "name": "pricing.effective-prices", "rule": "anonymous" },
   { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.publish-special-price-boundaries", "rule": "system" },
@@ -534,6 +556,8 @@
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
+  { "name": "sellers.active-since", "rule": "anonymous" },
+  { "name": "sellers.active-since-system", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },
@@ -592,6 +616,11 @@
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },
+  {
+    "name": "shipping.carrier-tracking-links",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "shipping.charge-delivery", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.delivery-availability", "rule": "anonymous" },
@@ -601,6 +630,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "shipping.poll-fleet-status", "rule": "system" },
   {
     "name": "shipping.price-delivery",
     "rule": "own-resources",
@@ -608,6 +638,7 @@
   },
   { "name": "shipping.quote-deliveries", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
+  { "name": "shipping.receive-uber-webhook", "rule": "anonymous" },
   { "name": "shipping.record-fleet-fee", "rule": "system" },
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },

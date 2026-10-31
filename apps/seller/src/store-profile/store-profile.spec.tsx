@@ -13,6 +13,7 @@ import { preparePhoto } from '../catalog/photo-prepare.ts';
 import { aboutProblemOf, imageProblemOf } from './errors.ts';
 import { StoreProfile } from './store-profile.tsx';
 import type { StoreProfileView } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const prepare = vi.mocked(preparePhoto);
@@ -42,17 +43,36 @@ const done = (body: StoreProfileView) => ({ ok: true as const, status: 200, body
 
 const mount = (initial = view(), canEdit = true) =>
   render(wrap(<StoreProfile initial={initial} csrfToken="csrf" canEdit={canEdit} />));
-const box = () => screen.getByLabelText(/About your store/);
+const box = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: /About your store/ });
+const save = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' });
+
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe('StoreProfile About card', () => {
-  it('shows the saved text, a counter and a Save that waits for a change', () => {
+  it('shows the saved text and a counter, and the save bar only once something changed', () => {
     mount();
-    expect((box() as HTMLTextAreaElement).value).toBe('Family bakery.');
+    expect(box().value).toBe('Family bakery.');
     expect(screen.getByText('14 of 2000 characters')).toBeTruthy();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save' }).disabled).toBe(true);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.change(box(), { target: { value: 'Family bakery, open daily.' } });
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      '1 unsaved change',
+    );
+    expect(box().className).toContain('ring-attention-border');
+    expect(save().disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(box().value).toBe('Family bakery.');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('saves with the version it loaded, shows the saved line and takes the server text', async () => {
@@ -62,17 +82,18 @@ describe('StoreProfile About card', () => {
     );
 
     fireEvent.change(box(), { target: { value: '  Family bakery, since 1990.  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(save());
 
-    await screen.findByText('Saved. Buyers can see it now.');
+    await expectToast('Saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'sellers/store-profile/about',
       { expectedVersion: 2, about: { 'en-AU': '  Family bakery, since 1990.  ' } },
       'csrf',
     );
-    expect((box() as HTMLTextAreaElement).value).toBe('Family bakery, since 1990.');
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save' }).disabled).toBe(true);
+    expect(box().value).toBe('Family bakery, since 1990.');
+    // Nothing is unsaved any more: the bar is gone.
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('shows Saving… and ignores a second click while the save runs', async () => {
@@ -81,12 +102,12 @@ describe('StoreProfile About card', () => {
     call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
 
     fireEvent.change(box(), { target: { value: 'New text' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(save());
     const saving = await screen.findByRole('button', { name: 'Saving…' });
     fireEvent.click(saving);
     finish(done(view({ version: 3, about: { 'en-AU': 'New text' } })));
 
-    await screen.findByText('Saved. Buyers can see it now.');
+    await expectToast('Saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledTimes(1);
   });
 
@@ -96,7 +117,16 @@ describe('StoreProfile About card', () => {
 
     expect(screen.getByText('11 of 10 characters')).toBeTruthy();
     expect(screen.getByText('Use at most 10 characters.')).toBeTruthy();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save' }).disabled).toBe(true);
+    expect(save().disabled).toBe(true);
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      '1 needs fixing',
+    );
+    // The error summary at the top links to the box.
+    const summary = screen.getByRole('alert');
+    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));
+    expect(document.activeElement).toBe(box());
+    expect(box().getAttribute('aria-invalid')).toBe('true');
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -110,7 +140,7 @@ describe('StoreProfile About card', () => {
     );
 
     fireEvent.change(box(), { target: { value: 'We are certified bakers' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(save());
 
     await screen.findByText(/This text claims a certification/);
     // One announcement of the failure: the field's own alert, with no second banner above it.
@@ -119,32 +149,66 @@ describe('StoreProfile About card', () => {
     expect(call).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the stale conflict, keeps the text, and loads the latest on request', async () => {
-    mount();
-    call.mockResolvedValueOnce(failure({ status: 409, code: 'conflict.stale' }));
-    fireEvent.change(box(), { target: { value: 'My edit' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  it('keeps the drafts on a stale save, compares per locale, and sends the new version next', async () => {
+    mount(
+      view({
+        locales: ['en-AU', 'ja'],
+        about: { 'en-AU': 'Family bakery.', ja: '' },
+      }),
+    );
+    const boxFor = (name: RegExp) => screen.getByRole<HTMLTextAreaElement>('textbox', { name });
+    call
+      .mockResolvedValueOnce(failure({ status: 409, code: 'conflict.stale' }))
+      .mockResolvedValueOnce(
+        done(
+          view({
+            version: 5,
+            locales: ['en-AU', 'ja'],
+            about: { 'en-AU': '<b>Their</b> text', ja: '' },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        done(
+          view({
+            version: 6,
+            locales: ['en-AU', 'ja'],
+            about: { 'en-AU': 'My edit', ja: 'Mine' },
+          }),
+        ),
+      );
+    fireEvent.change(boxFor(/English/), { target: { value: 'My edit' } });
+    fireEvent.click(save());
 
-    await screen.findByText(/Someone else saved a newer version first/);
-    expect((box() as HTMLTextAreaElement).value).toBe('My edit');
+    await screen.findByText('Someone else saved these settings first');
+    expect(call).toHaveBeenNthCalledWith(2, 'GET', 'sellers/store-profile');
+    // Both drafts stay in the boxes.
+    expect(boxFor(/English/).value).toBe('My edit');
+    fireEvent.change(boxFor(/Japanese/), { target: { value: 'Mine' } });
 
-    call.mockResolvedValueOnce(done(view({ version: 5, about: { 'en-AU': 'Their text' } })));
-    fireEvent.click(screen.getByRole('button', { name: 'Show the latest version' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    const english = compared(/^About your store \(.*English.*\)$/);
+    expect(english).toMatchObject({ saved: '<b>Their</b> text', yours: 'My edit' });
+    expect(english.item.querySelector('b')).toBeNull();
+    expect(compared('About your store (Japanese)')).toMatchObject({
+      saved: 'empty',
+      yours: 'Mine',
+    });
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      '2 unsaved changes',
+    );
 
-    await waitFor(() => expect((box() as HTMLTextAreaElement).value).toBe('Their text'));
-    expect(call).toHaveBeenLastCalledWith('GET', 'sellers/store-profile');
-    expect(screen.queryByText(/Someone else saved/)).toBeNull();
-
-    // The next save names the version that was loaded.
-    call.mockResolvedValueOnce(done(view({ version: 6, about: { 'en-AU': 'Merged' } })));
-    fireEvent.change(box(), { target: { value: 'Merged' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await screen.findByText('Saved. Buyers can see it now.');
-    expect(call).toHaveBeenLastCalledWith(
+    fireEvent.click(save());
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
       'PUT',
       'sellers/store-profile/about',
-      { expectedVersion: 5, about: { 'en-AU': 'Merged' } },
+      { expectedVersion: 5, about: { 'en-AU': 'My edit', ja: 'Mine' } },
       'csrf',
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Someone else saved these settings first')).toBeNull(),
     );
   });
 
@@ -154,7 +218,7 @@ describe('StoreProfile About card', () => {
       failure({ status: 429, code: 'request.throttled', details: { retryAfterSeconds: 12 } }),
     );
     fireEvent.change(box(), { target: { value: 'x' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(save());
 
     await screen.findByText('Too many saves. Wait 12 seconds and try again.');
   });
@@ -163,10 +227,10 @@ describe('StoreProfile About card', () => {
     mount();
     call.mockResolvedValueOnce(failure({ status: 503, code: 'sellers.unavailable' }));
     fireEvent.change(box(), { target: { value: 'Kept' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(save());
 
     await screen.findByText('The store profile is unavailable right now. Try again later.');
-    expect((box() as HTMLTextAreaElement).value).toBe('Kept');
+    expect(box().value).toBe('Kept');
   });
 
   it('sends a signed-out seller to the session-ended page', async () => {
@@ -175,7 +239,7 @@ describe('StoreProfile About card', () => {
     mount();
     call.mockResolvedValueOnce(failure({ status: 401, code: 'session.invalid' }));
     fireEvent.change(box(), { target: { value: 'x' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(save());
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
     vi.unstubAllGlobals();
@@ -184,8 +248,10 @@ describe('StoreProfile About card', () => {
   it('offers one box per locale of the Market, named by language', () => {
     mount(view({ locales: ['ja-JP', 'en-US'], about: { 'ja-JP': 'こんにちは', 'en-US': '' } }));
 
-    expect(screen.getByLabelText(/About your store \(Japanese/)).toBeTruthy();
-    expect(screen.getByLabelText(/About your store \(United States English/)).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: /About your store \(Japanese/ })).toBeTruthy();
+    expect(
+      screen.getByRole('textbox', { name: /About your store \(United States English/ }),
+    ).toBeTruthy();
   });
 });
 
@@ -224,7 +290,7 @@ describe('StoreProfile images', () => {
 
     fireEvent.change(chooseIn(bannerCard()), { target: { files: [file()] } });
 
-    await screen.findByText('Banner saved. Buyers can see it now.');
+    await expectToast('Banner saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'sellers/store-profile/banner',
@@ -252,7 +318,7 @@ describe('StoreProfile images', () => {
     // "Uploading…" is said once, in the status line, not on the button as well.
     expect(within(logoCard()).getAllByText('Uploading…')).toHaveLength(1);
     finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
-    await screen.findByText('Logo saved. Buyers can see it now.');
+    await expectToast('Logo saved. Buyers can see it now.');
     // The picker was disabled while the picture went up: focus comes back to it.
     await waitFor(() => expect(document.activeElement).toBe(chooseIn(logoCard())));
   });
@@ -314,7 +380,7 @@ describe('StoreProfile images', () => {
     expect(call).not.toHaveBeenCalled();
     fireEvent.click(within(logoCard()).getByRole('button', { name: 'Yes, remove' }));
 
-    await screen.findByText('Logo removed.');
+    await expectToast('Logo removed.');
     expect(call).toHaveBeenCalledWith('DELETE', 'sellers/store-profile/logo', undefined, 'csrf');
     expect(screen.getByText('No logo yet.')).toBeTruthy();
   });
@@ -332,7 +398,7 @@ describe('StoreProfile images', () => {
 
     fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
     fireEvent.click(within(logoCard()).getByRole('button', { name: 'Yes, remove' }));
-    await screen.findByText('Logo removed.');
+    await expectToast('Logo removed.');
     expect(document.activeElement).toBe(chooseIn(logoCard()));
     expect(within(logoCard()).getByText('Choose a picture')).toBeTruthy();
   });
@@ -357,7 +423,7 @@ describe('StoreProfile images', () => {
       expect(within(logoCard()).getByRole('img').className).toContain('opacity-50'),
     );
     finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
-    await screen.findByText('Logo saved. Buyers can see it now.');
+    await expectToast('Logo saved. Buyers can see it now.');
     expect(within(logoCard()).getByRole('img').className).not.toContain('opacity-50');
   });
 
@@ -410,9 +476,9 @@ describe('StoreProfile without the edit permission', () => {
     mount(view({ logo: { id: IMAGE, width: 512, height: 512 }, banner: null }), false);
 
     expect(screen.getByText(/You can see the store profile but not change it/)).toBeTruthy();
-    expect((box() as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((box() as HTMLTextAreaElement).value).toBe('Family bakery.');
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(box().disabled).toBe(true);
+    expect(box().value).toBe('Family bakery.');
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
     expect(document.querySelector('input[type=file]')).toBeNull();
     expect(screen.getByRole('img', { name: 'Your store logo' })).toBeTruthy();

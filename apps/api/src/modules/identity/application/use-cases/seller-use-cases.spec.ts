@@ -291,7 +291,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'catalogue-moderator', 9],
       ['platform', 'default', 'operations-support', 6],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 23],
+      ['platform', 'default', 'viewer', 25],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
@@ -314,8 +314,15 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // business details in clear), and `certification.issuer.view` (certification slice 6: the
     // issuer request read decrypts the seller's typed issuer name). The blog names its read key
     // `blog.post.read` and the Viewer holds it too (blog package 1).
-    const DECRYPTING_VIEW_KEYS = ['sellers.business-details.view', 'certification.issuer.view'];
-    const READ_KEYS_OF_THE_VIEWER = ['blog.post.read'];
+    // `commission-payouts.payout.view` is also left out: the payouts of the sellers are finance
+    // data and the Viewer sees none (commission-payouts design 5.3; the brief of package 6d).
+    const DECRYPTING_VIEW_KEYS = [
+      'sellers.business-details.view',
+      'certification.issuer.view',
+      'commission-payouts.payout.view',
+    ];
+    // The brand read key is named `.read` too (catalog brand package).
+    const READ_KEYS_OF_THE_VIEWER = ['blog.post.read', 'catalog.brand.read'];
     expect(keysOf('viewer')).toEqual(
       [
         ...registry

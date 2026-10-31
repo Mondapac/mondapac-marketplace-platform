@@ -24,11 +24,18 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
     'sellers/my-file/form-descriptors',
+    // The stock locations, read again after a stale write (the list and its version).
+    'inventory/seller/sources',
     // The store's settings (delivery terms; the minimum order is in the same answer).
     'sellers/store-settings',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     'commission-payouts/seller/ledger',
+    // The estimated next payout, the payout history (query: `limit`, `cursor`) and the money on
+    // hold (commission-payouts, package 6d). The seller id is the session's, never a parameter.
+    'commission-payouts/seller/payouts/next',
+    'commission-payouts/seller/payouts',
+    'commission-payouts/seller/payout-holds',
     // The topbar bell (in-app notifications package 2): the list (query: `show`, `before`) and
     // the unread count it polls.
     'notifications/seller/notices',
@@ -122,6 +129,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
   'ordering/seller/orders': { limit: null, cursor: null },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
+  // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
+  'commission-payouts/seller/payouts': {
+    limit: /^[0-9]{1,3}$/,
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
   'identity/seller/team': { after: UUID },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
 };

@@ -252,6 +252,56 @@ describe('relay', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  describe('role delete carries its version in the body', () => {
+    const id = '0190a000-0000-7000-8000-000000000001';
+    const path = ['identity', 'admin', 'roles', id];
+    const del = (headers: Record<string, string>, body: string) =>
+      new Request(`http://admin.localhost:3002/api/${path.join('/')}`, {
+        method: 'DELETE',
+        headers,
+        body,
+      });
+
+    it('forwards the JSON body and its content type', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del(sameOrigin, '{"expectedVersion":1}'),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(200);
+      const init = fetchImpl.mock.calls[0]?.[1];
+      expect(init?.method).toBe('DELETE');
+      expect(init?.body).toBe('{"expectedVersion":1}');
+      expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
+    });
+
+    it('refuses a cross-site delete without calling the API', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del({ ...sameOrigin, 'sec-fetch-site': 'cross-site' }, '{"expectedVersion":1}'),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(403);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('refuses a delete body over 16 KB', async () => {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        del(sameOrigin, 'x'.repeat(16 * 1024 + 1)),
+        path,
+        fetchImpl,
+      );
+      expect(response.status).toBe(413);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+  });
+
   it('refuses a body over 16 KB', async () => {
     const fetchImpl = upstreamOk();
     const response = await relay(
@@ -468,8 +518,13 @@ describe('relay allowlist for seller decisions', () => {
       vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
     );
 
-  it('relays the support email write on its exact path and method only', async () => {
+  it('relays the support email read and write on their exact path and method only', async () => {
     const path = 'notifications/admin/support-contact';
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    const extra = new Request(`http://admin.localhost:3002/api/${path}/x`, { headers: sameOrigin });
+    expect((await relay(config, extra, [...path.split('/'), 'x'], fetchImpl)).status).toBe(404);
     expect((await call('PUT', path)).status).toBe(200);
     expect((await call('POST', path)).status).toBe(404);
     expect((await call('DELETE', path)).status).toBe(404);
@@ -497,6 +552,20 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', password)).status).toBe(404);
   });
 
+  it('relays the own authenticator replacement (POST) on its two exact paths only', async () => {
+    for (const path of [
+      'identity/admin/second-factor/replacement',
+      'identity/admin/second-factor/replacement/confirm',
+    ]) {
+      expect((await call('POST', path)).status, path).toBe(200);
+      expect((await call('PUT', path)).status, path).toBe(404);
+      expect((await call('DELETE', path)).status, path).toBe(404);
+      expect((await call('POST', `${path}/extra`)).status, path).toBe(404);
+    }
+    // Recovery codes are not part of this page.
+    expect((await call('POST', 'identity/admin/second-factor/recovery-codes')).status).toBe(404);
+  });
+
   it('no longer relays the retired flat delivery fee route', async () => {
     expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
     expect((await call('PUT', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(200);
@@ -510,10 +579,10 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `${base}/models`)).status).toBe(200);
     expect((await call('PUT', `${base}/models/${ID}`)).status).toBe(200);
     expect((await call('PUT', `${base}/models/nope`)).status).toBe(404);
-    expect((await call('PUT', `${base}/active/same_day`)).status).toBe(200);
-    expect((await call('PUT', `${base}/active/weekly`)).status).toBe(404);
-    expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(200);
-    expect((await call('PUT', `${base}/fleets/other/reliability`)).status).toBe(404);
+    // The page is saved in one batch; the per-method and per-fleet routes are gone.
+    expect((await call('PUT', base)).status).toBe(200);
+    expect((await call('PUT', `${base}/active/same_day`)).status).toBe(404);
+    expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(404);
     expect((await call('DELETE', `${base}/models/${ID}`)).status).toBe(404);
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
   });
@@ -1018,6 +1087,11 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `wallet/admin/customers/${id}`],
     ['POST', `wallet/admin/credit-requests/${id}/approve`],
     ['POST', `wallet/admin/credit-requests/${id}/reject`],
+    ['GET', 'customers/admin/account-deletion-settings'],
+    ['PUT', 'customers/admin/account-deletion-settings'],
+    ['GET', 'customers/admin/deletion-requests'],
+    ['POST', `customers/admin/buyers/${id}/deletion-requests`],
+    ['DELETE', `customers/admin/deletion-requests/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1041,6 +1115,12 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `wallet/admin/credit-requests/${id}/delete`],
     ['GET', `wallet/admin/customers/${id}/extra`],
     ['GET', 'wallet/me'],
+    ['DELETE', 'customers/admin/account-deletion-settings'],
+    ['POST', 'customers/admin/account-deletion-settings'],
+    ['POST', 'customers/admin/deletion-requests'],
+    ['GET', `customers/admin/deletion-requests/${id}`],
+    ['POST', 'customers/admin/buyers/not-a-uuid/deletion-requests'],
+    ['DELETE', 'customers/admin/deletion-requests/not-a-uuid'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1049,6 +1129,25 @@ describe('relay of the wallet and step-up routes', () => {
     );
     expect(response.status).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes only limit and a well-formed cursor of the deletion request list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `customers/admin/deletion-requests?limit=50&cursor=1792000000000.${id}&status=executing&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests?cursor=1792000000000.${id}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      'customers/admin/deletion-requests?cursor=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/customers/admin/deletion-requests',
+    );
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {
@@ -1119,6 +1218,85 @@ describe('relay of the wallet and step-up routes', () => {
       expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
         'http://api.test/commission-payouts/admin/disputes?filter=closed',
       );
+    }
+  });
+
+  it.each([
+    ['GET', 'commission-payouts/admin/payouts'],
+    ['GET', `commission-payouts/admin/payouts/${id}`],
+    ['POST', `commission-payouts/admin/payouts/${id}/approve`],
+    ['GET', `commission-payouts/admin/sellers/${id}/payout-terms`],
+    ['PUT', `commission-payouts/admin/sellers/${id}/payout-terms`],
+    ['GET', `commission-payouts/admin/sellers/${id}/payout-holds`],
+    ['POST', `commission-payouts/admin/sellers/${id}/payout-holds`],
+    ['POST', `commission-payouts/admin/payout-holds/${id}/release`],
+  ])('relays the payout route %s %s', async (method, path) => {
+    const { response, upstream } = await run(
+      method,
+      path,
+      method === 'GET' ? readHeaders : undefined,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+  });
+
+  it('passes a payout list query only in the shape the API issues', async () => {
+    const cursor = `1790000000000.${id}`;
+    const ok = await run(
+      'GET',
+      `commission-payouts/admin/payouts?status=awaiting-approval&limit=50&cursor=${cursor}&x=1`,
+      readHeaders,
+    );
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?status=awaiting-approval&cursor=${encodeURIComponent(cursor)}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      'commission-payouts/admin/payouts?status=all&limit=100000&cursor=a%20b',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts',
+    );
+    // Only the states a tab shows cross; the API's other states are not relayed.
+    for (const state of ['pending', 'voided', 'settled-by-netting']) {
+      const other = await run(
+        'GET',
+        `commission-payouts/admin/payouts?status=${state}`,
+        readHeaders,
+      );
+      expect(other.upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/commission-payouts/admin/payouts',
+      );
+    }
+  });
+
+  it('passes the version and reason of removing payout terms, and nothing else', async () => {
+    const ok = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy&x=1`,
+    );
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy`,
+    );
+    const bad = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3.5&reasonCode=because`,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms`,
+    );
+  });
+
+  it('does not relay a payout write the panel has no screen for', async () => {
+    for (const [method, path] of [
+      ['DELETE', `commission-payouts/admin/payouts/${id}`],
+      ['PUT', `commission-payouts/admin/payouts/${id}`],
+      ['POST', `commission-payouts/admin/payouts/${id}/void`],
+    ] as const) {
+      const { response, upstream } = await run(method, path);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
     }
   });
 });

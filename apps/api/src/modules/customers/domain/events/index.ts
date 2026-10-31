@@ -54,9 +54,32 @@ export const AccountDeletionCompletedEvent = defineEvent({
   },
 });
 
+// Package 5c (admin manual deletion). Same aggregate and the same rules: ids and numbers only. The
+// admin, the ticket reference and the reason are free text or identify a person; they stay in the
+// request row and the audit row, never in an event.
+
+/** An admin asked for a buyer's account to be deleted; it will be carried out at `scheduledFor`. */
+export const AccountDeletionRequestedByAdminEvent = defineEvent({
+  type: 'customers.account-deletion-requested-by-admin.v1',
+  aggregateType: 'account-deletion-request',
+  payload: {
+    waitingPeriodDays: eventField.integer(),
+    scheduledFor: eventField.instant(),
+  },
+});
+
+/** An admin cancelled a pending request during the wait. Version 2 of the request aggregate. */
+export const AccountDeletionCancelledByAdminEvent = defineEvent({
+  type: 'customers.account-deletion-cancelled-by-admin.v1',
+  aggregateType: 'account-deletion-request',
+  payload: {},
+});
+
 export const CUSTOMERS_EVENTS: readonly EventDefinition[] = [
   AccountDeletionSettingsChangedEvent,
   AccountDeletionRequestedEvent,
   AccountDeletionCancelledEvent,
   AccountDeletionCompletedEvent,
+  AccountDeletionRequestedByAdminEvent,
+  AccountDeletionCancelledByAdminEvent,
 ];

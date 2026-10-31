@@ -268,3 +268,105 @@ model CommissionPayoutsOutbox {
   @@map("outbox")
   @@schema("commission_payouts")
 }
+
+/// A seller's payout (package 6d; G2 3.6, 4.7): one transfer of the money of several delivered seller
+/// orders to the seller's connected account. The id is the instruction key sent to payments, stored
+/// before any call. Money is immutable once created (gross = netted + transfer, CHECKs); only the
+/// state, the approval, payments' transfer id and the outcome change, by a guard trigger that allows
+/// the transitions of the state machine and nothing else. One live payout per seller (partial
+/// unique index), so a seller is never paid by two payouts at once. The CHECKs, the triggers, the
+/// partial indexes and the grants are hand-written in the migration.
+model CommissionPayoutsPayout {
+  id                    String    @id @db.Uuid
+  marketId              String    @map("market_id") @db.VarChar(8)
+  tenantId              String    @map("tenant_id")
+  sellerId              String    @map("seller_id") @db.Uuid
+  currency              String    @db.Char(3)
+  /// E: the sum of the items; netted + transfer (CHECK).
+  grossMinor            BigInt    @map("gross_minor")
+  /// N = min(E, the seller's receivable): kept by the platform against what the seller owes.
+  nettedMinor           BigInt    @map("netted_minor")
+  /// T = E - N: what payments transfers; zero only for a payout settled by netting.
+  transferMinor         BigInt    @map("transfer_minor")
+  /// AUTO or MANUAL, from the terms at run time (CHECK).
+  approvalMode          String    @map("approval_mode")
+  /// Why a MANUAL payout waits for an admin: the seller's first payout, or the terms (CHECK).
+  approvalReason        String?   @map("approval_reason")
+  /// The terms' minimum when the payout was planned.
+  minimumMinor          BigInt    @map("minimum_minor")
+  /// The schedule slot this payout answers (several missed slots give one payout).
+  slotAt                DateTime  @map("slot_at") @db.Timestamptz(6)
+  state                 String
+  approvedBy            String?   @map("approved_by") @db.Uuid
+  approvedAt            DateTime? @map("approved_at") @db.Timestamptz(6)
+  /// The amount the admin saw and echoed; equals `transfer_minor` (CHECK): approval binds the amount.
+  approvedTransferMinor BigInt?   @map("approved_transfer_minor")
+  /// payments' transfer id, written once when the transfer exists.
+  transferExecutionId   String?   @map("transfer_execution_id") @db.Uuid
+  /// Why a payout ended without paying (payments' refusal code as given, or one of ours).
+  outcomeCode           String?   @map("outcome_code")
+  /// When the payout became INSTRUCTING (the clock of the send timeout).
+  instructingAt         DateTime? @map("instructing_at") @db.Timestamptz(6)
+  /// When payments' fence abandoned the key (the clock of the quarantine pass).
+  abandonedAt           DateTime? @map("abandoned_at") @db.Timestamptz(6)
+  createdAt             DateTime  @map("created_at") @db.Timestamptz(6)
+  stateChangedAt        DateTime  @map("state_changed_at") @db.Timestamptz(6)
+  version               Int
+
+  items CommissionPayoutsPayoutItem[]
+
+  @@unique([marketId, id, sellerId, currency], map: "payouts_market_id_id_seller_id_currency_key")
+  @@index([marketId, state, createdAt(sort: Desc), id(sort: Desc)], map: "payouts_market_id_state_created_at_id_idx")
+  @@index([marketId, sellerId, createdAt(sort: Desc), id(sort: Desc)], map: "payouts_market_id_seller_id_created_at_id_idx")
+  @@index([marketId, createdAt(sort: Desc), id(sort: Desc)], map: "payouts_market_id_created_at_id_idx")
+  @@index([marketId, instructingAt], map: "payouts_market_id_instructing_at_idx")
+  @@map("payouts")
+  @@schema("commission_payouts")
+}
+
+/// A seller order in a payout, with its amount when taken. Written with the payout; `freed_at` is
+/// set once, by the payout's guard trigger, when the payout ends without paying (voided, not sent
+/// or failed), and a partial unique index lets a seller order be in one unfreed item only.
+model CommissionPayoutsPayoutItem {
+  marketId      String    @map("market_id") @db.VarChar(8)
+  payoutId      String    @map("payout_id") @db.Uuid
+  sellerOrderId String    @map("seller_order_id") @db.Uuid
+  tenantId      String    @map("tenant_id")
+  sellerId      String    @map("seller_id") @db.Uuid
+  currency      String    @db.Char(3)
+  /// At least 1 (CHECK).
+  amountMinor   BigInt    @map("amount_minor")
+  freedAt       DateTime? @map("freed_at") @db.Timestamptz(6)
+
+  payout CommissionPayoutsPayout @relation(fields: [marketId, payoutId, sellerId, currency], references: [marketId, id, sellerId, currency], onDelete: NoAction, onUpdate: NoAction, map: "payout_items_payout_fkey")
+
+  @@id([marketId, payoutId, sellerOrderId])
+  @@map("payout_items")
+  @@schema("commission_payouts")
+}
+
+/// One row per seller (package 6d; G2 3.6, 4.7): where the seller is in the payout schedule, and
+/// the seller's money lock. Every unit that can move a seller's money locks this row first (a
+/// version bump), so a payout and a hold placement run one after the other. Created with the
+/// seller's first eligibility anchor. `next_slot_at` is empty until the payout run first works out
+/// the seller's next slot; `zone` is the seller's zone it used; `block_reason` is why the last run
+/// did not pay (shown to the seller), empty when nothing blocked.
+model CommissionPayoutsPayoutScheduleCursor {
+  marketId    String    @map("market_id") @db.VarChar(8)
+  sellerId    String    @map("seller_id") @db.Uuid
+  tenantId    String    @map("tenant_id")
+  /// The last slot a payout (or a decision not to pay) answered; only moves forward (trigger).
+  lastSlotAt  DateTime  @map("last_slot_at") @db.Timestamptz(6)
+  nextSlotAt  DateTime? @map("next_slot_at") @db.Timestamptz(6)
+  zone        String?
+  /// A code from the closed list in the CHECK.
+  blockReason String?   @map("block_reason")
+  evaluatedAt DateTime? @map("evaluated_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @map("updated_at") @db.Timestamptz(6)
+  version     Int
+
+  @@id([marketId, sellerId])
+  @@index([marketId, nextSlotAt(sort: Asc, nulls: First), sellerId], map: "payout_schedule_cursors_market_id_next_slot_at_idx")
+  @@map("payout_schedule_cursors")
+  @@schema("commission_payouts")
+}

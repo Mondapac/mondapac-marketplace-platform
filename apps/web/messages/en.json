@@ -166,6 +166,7 @@
     "log-out": "Log out",
     "back": {
       "account": "Account",
+      "settings": "Settings",
       "aria": "Back to {to}"
     },
     "titles": {
@@ -174,7 +175,8 @@
       "order": "Order details",
       "addresses": "Addresses",
       "lists": "Saved lists",
-      "settings": "Settings"
+      "settings": "Settings",
+      "delete": "Delete account"
     },
     "auth": {
       "log-in": "Log in",
@@ -262,6 +264,8 @@
       "delivered-on": "Delivered {date}",
       "cancelled-part": "Cancelled",
       "progress": "Delivery progress",
+      "track": "Track delivery",
+      "track-new-tab": "(opens the delivery partner's page in a new tab)",
       "steps": {
         "placed": "Placed",
         "confirmed": "Confirmed",
@@ -403,7 +407,43 @@
       "rejected": "That password is not allowed. Choose a different one.",
       "password-invalid": "Check the passwords and try again.",
       "password-throttled": "Too many attempts. Wait a few minutes and try again.",
-      "password-failed": "We could not update your password. Try again in a moment."
+      "password-failed": "We could not update your password. Try again in a moment.",
+      "delete-account": "Delete account"
+    },
+    "delete": {
+      "title": "Delete account",
+      "loading": "Loading",
+      "summary": "Your account and personal details will be removed after {days} days. Order records stay for legal reasons but are no longer linked to you.",
+      "support-hint": "To close your account, contact support.",
+      "intro": "After you confirm, your account is deleted in {days} days. You can cancel until then.",
+      "removed-title": "What is removed",
+      "removed-name": "Your name",
+      "removed-email": "Your email address",
+      "removed-phone": "Your phone number",
+      "removed-addresses": "Your saved addresses",
+      "removed-saved": "Your saved items",
+      "stays-title": "What stays",
+      "stays-orders": "Orders and tax invoices are kept for as long as the law requires. They are no longer linked to you.",
+      "stays-reviews": "Reviews and ratings stay and show as \"Former customer\".",
+      "other-devices": "Other devices are signed out when you confirm.",
+      "understand": "I understand this can't be undone.",
+      "confirm": "Delete my account",
+      "back": "Back to Settings",
+      "blocked": "You can't delete your account while you have an open order, refund or wallet balance.",
+      "blocked-orders": "{count, plural, one {# open order} other {# open orders}}",
+      "blocked-refunds": "{count, plural, one {# refund waiting} other {# refunds waiting}}",
+      "blocked-wallet": "Your wallet balance isn't zero. Use it first, or contact support.",
+      "view-orders": "View orders",
+      "failed": "We could not send your request. Try again in a moment.",
+      "unavailable": "This option isn't available right now.",
+      "state-title": "Your deletion request",
+      "pending": "Your account will be deleted on {date}.",
+      "pending-cancel": "You can cancel until then.",
+      "executing": "Your account is being deleted now. It can't be cancelled.",
+      "cancel": "Cancel deletion",
+      "cancelled": "Deletion cancelled. Your account stays open.",
+      "cancel-retry": "Please try again.",
+      "cancel-failed": "We could not cancel the deletion. Try again in a moment."
     }
   },
   "personalization": {
@@ -1222,6 +1262,7 @@
       "account-addresses": "Your saved delivery addresses on {store}.",
       "account-lists": "Products you saved on {store}.",
       "account-settings": "Your {store} account settings and email choices.",
+      "account-delete": "Delete your {store} account: what is removed, what stays and how to cancel.",
       "personalization": "Choose the colours and text size of {store} on this device.",
       "coming-soon": "{name}: coming soon to {store}.",
       "cookies": "The cookies {store} uses and the optional ones you can switch on or off.",

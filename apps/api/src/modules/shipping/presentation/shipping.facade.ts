@@ -2,6 +2,7 @@ import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { BookCarrierDelivery } from '../application/use-cases/book-carrier-delivery.use-case';
 import type { CancelCarrierDelivery } from '../application/use-cases/cancel-carrier-delivery.use-case';
 import type { CarrierShipmentQuery } from '../application/use-cases/carrier-shipment.use-case';
+import type { CarrierTrackingLinks } from '../application/use-cases/carrier-tracking-links.use-case';
 import type { DeliveryAvailability } from '../application/use-cases/delivery-availability.use-case';
 import type { DeliveryChoice } from '../application/use-cases/delivery-choice.use-case';
 import type { PriceDelivery } from '../application/use-cases/price-delivery.use-case';
@@ -25,6 +26,7 @@ export interface ShippingFacadeUseCases {
   readonly book: BookCarrierDelivery;
   readonly shipment: CarrierShipmentQuery;
   readonly cancel: CancelCarrierDelivery;
+  readonly trackingLinks: CarrierTrackingLinks;
   readonly availability: DeliveryAvailability;
   readonly choice: DeliveryChoice;
   readonly price: PriceDelivery;
@@ -131,6 +133,25 @@ export class ShippingFacadeImplementation implements ShippingFacade {
 
   carrierShipment(context: CallContext, sellerOrderId: string) {
     return this.useCases.shipment.execute(context, { sellerOrderId });
+  }
+
+  async carrierTrackingLinks(
+    context: CallContext,
+    orderId: string,
+    sellerOrderIds: readonly string[],
+  ) {
+    const result = await this.useCases.trackingLinks.execute(context, { orderId, sellerOrderIds });
+    return result.ok
+      ? result
+      : ({
+          ok: false,
+          error:
+            result.error.code === 'access.denied'
+              ? result.error
+              : result.error.code === 'validation.failed'
+                ? ({ code: 'validation.failed' } as const)
+                : ({ code: 'shipping.unavailable' } as const),
+        } as const);
   }
 
   cancelCarrierDelivery(context: CallContext, sellerOrderId: string) {

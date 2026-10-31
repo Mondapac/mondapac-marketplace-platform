@@ -1,11 +1,10 @@
 'use client';
 
-import { Banner, Button, Dialog, Select, TextField } from '@mondapac/ui';
+import { Banner, Button, Dialog, Select, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
-import { useNotice } from './notice.tsx';
 import { grantableOptions, roleLabel } from './role-label.ts';
 import type { SellerRole } from './types.ts';
 import { useFailureMessage, useSingleFlight } from './use-team.ts';
@@ -38,7 +37,6 @@ export function ChangeRoleDialog({
   const t = useTranslations('identity.team');
   const root = useTranslations();
   const router = useRouter();
-  const notify = useNotice();
   const messageFor = useFailureMessage();
   const flight = useSingleFlight();
   const callGuarded = useGuardedCall();
@@ -75,7 +73,7 @@ export function ChangeRoleDialog({
       if (isStepUpCancelled(result)) return;
       if (result.ok) {
         onClose();
-        notify({ tone: 'success', text: t('toast.change-role', { name }) });
+        toast.success(t('toast.change-role', { name }));
         router.refresh();
         return;
       }
@@ -86,7 +84,7 @@ export function ChangeRoleDialog({
       }
       if (CHANGED_MEANWHILE.has(failure.code)) {
         onClose();
-        notify({ tone: 'critical', text: messageFor(failure) });
+        toast.error(messageFor(failure));
         router.refresh();
         return;
       }
@@ -146,7 +144,6 @@ export function InviteMemberDialog({
   const t = useTranslations('identity.team');
   const root = useTranslations();
   const router = useRouter();
-  const notify = useNotice();
   const messageFor = useFailureMessage();
   const flight = useSingleFlight();
   const callGuarded = useGuardedCall();
@@ -191,7 +188,7 @@ export function InviteMemberDialog({
       if (isStepUpCancelled(result)) return;
       if (result.ok) {
         onClose();
-        notify({ tone: 'success', text: t('dialog.invite.toast-sent', { email: address }) });
+        toast.success(t('dialog.invite.toast-sent', { email: address }));
         router.refresh();
         return;
       }

@@ -1,4 +1,4 @@
-import { navSections, type NavGroup, type NavItem } from './nav.ts';
+import { navSections, splitNavPlacement, type NavGroup, type NavItem } from './nav.ts';
 import { SidebarNav, type SidebarEntry } from './sidebar-nav.tsx';
 
 export interface SidebarProps {
@@ -37,7 +37,8 @@ export function Sidebar({
     label: label(item.labelKey),
   });
   // Resolved here, on the server: the client tree gets plain text, not the label function.
-  const entries: SidebarEntry[] = navSections(groups, items).map((section) =>
+  const { menu, footer } = splitNavPlacement(items);
+  const entries: SidebarEntry[] = navSections(groups, menu).map((section) =>
     section.kind === 'item'
       ? { kind: 'item', ...link(section.item) }
       : {
@@ -62,6 +63,7 @@ export function Sidebar({
       <SidebarNav
         panelName={panelName}
         entries={entries}
+        footer={footer.map(link)}
         activeId={activeId}
         openGroups={openGroups}
         expandAll={expandAll}

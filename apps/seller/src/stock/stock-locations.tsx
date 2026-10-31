@@ -1,6 +1,15 @@
 'use client';
 
-import { addressLines, Badge, Banner, Button, DataList } from '@mondapac/ui';
+import {
+  addressLines,
+  Badge,
+  Banner,
+  Button,
+  DataList,
+  SettingsPage,
+  SettingsSection,
+  toast,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -10,6 +19,10 @@ import type { SourceView, SourcesView, StockFormOptions } from './types.ts';
 
 type Mode = { readonly kind: 'add' } | { readonly kind: 'edit'; readonly id: string } | null;
 
+/**
+ * The seller's stock locations: a list with its own actions (add, edit, move), not a form with
+ * one save. The add and edit form is an editor of one entry and keeps its own Save and Cancel.
+ */
 export function StockLocations({
   initial,
   options,
@@ -26,7 +39,9 @@ export function StockLocations({
   const [mode, setMode] = useState<Mode>(null);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<StockProblem | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [failedWrites, setFailedWrites] = useState(0);
+  // Counts the conflicts of this page; the open editor lists what differs from the saved location.
+  const [conflictId, setConflictId] = useState<number | null>(null);
   const busy = useRef(false);
 
   /** One write at a time; the answer is the new list, which replaces the screen's copy. */
@@ -35,17 +50,32 @@ export function StockLocations({
     busy.current = true;
     setPending(true);
     setProblem(null);
-    setSaved(false);
+    setConflictId(null);
     const result = await callApi<SourcesView>(method, path, body, csrfToken);
-    busy.current = false;
-    setPending(false);
     if (result.ok) {
+      busy.current = false;
+      setPending(false);
       setView(result.body);
-      setSaved(true);
+      toast.success(t('stock.saved'));
       return true;
     }
     if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setProblem(problemOf(result.failure));
+    else if (result.failure.code === 'conflict.stale') {
+      // Someone saved first: take the list as it is saved now (so the next write carries its
+      // version) and keep the editor's draft; the editor shows the saved location next to it.
+      const fresh = await callApi<SourcesView>('GET', 'inventory/seller/sources');
+      if (fresh.ok) {
+        setView(fresh.body);
+        setConflictId((n) => (n ?? 0) + 1);
+      } else {
+        setProblem(problemOf(result.failure));
+      }
+    } else {
+      setProblem(problemOf(result.failure));
+      setFailedWrites((n) => n + 1);
+    }
+    busy.current = false;
+    setPending(false);
     return false;
   }
 
@@ -71,7 +101,7 @@ export function StockLocations({
 
   function open(next: Mode) {
     setProblem(null);
-    setSaved(false);
+    setConflictId(null);
     setMode(next);
   }
 
@@ -79,12 +109,32 @@ export function StockLocations({
     mode?.kind === 'edit' ? (view.sources.find((source) => source.id === mode.id) ?? null) : null;
   const full = view.sources.length >= view.max;
 
+  const banners = [
+    canEdit ? null : (
+      <Banner key="view-only" tone="info">
+        {t('stock.view-only')}
+      </Banner>
+    ),
+    // A conflict while no editor is open (a move): the list is already up to date.
+    mode === null && conflictId !== null ? (
+      <Banner key="list-changed" tone="attention">
+        {t('stock.error.list-changed')}
+      </Banner>
+    ) : null,
+    mode === null && problem !== null ? (
+      <Banner key="problem" tone="critical">
+        {t(problem.form.key, problem.form.values)}
+      </Banner>
+    ) : null,
+  ].filter((node) => node !== null);
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <p className="min-w-0 flex-1 text-fg-muted">{t('stock.intro', { max: view.max })}</p>
-        {canEdit && mode === null ? (
-          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+    <SettingsPage
+      title={t('stock.title')}
+      description={t('stock.intro', { max: view.max })}
+      actions={
+        canEdit && mode === null ? (
+          <div className="flex flex-col gap-2 sm:items-end">
             <Button onClick={() => open({ kind: 'add' })} disabled={full}>
               {t('stock.add')}
             </Button>
@@ -92,36 +142,28 @@ export function StockLocations({
               <p className="text-sm text-fg-muted">{t('stock.full', { max: view.max })}</p>
             ) : null}
           </div>
-        ) : null}
-      </div>
-      {saved ? <Banner tone="success">{t('stock.saved')}</Banner> : null}
-      {mode === null && problem !== null ? (
-        <Banner tone="critical">
-          {t(problem.form.key, problem.form.values)}
-          {problem.form.key === 'stock.error.stale' ? (
-            <>
-              {' '}
-              <Button variant="link" onClick={() => window.location.reload()}>
-                {t('stock.reload')}
-              </Button>
-            </>
-          ) : null}
-        </Banner>
-      ) : null}
-      <ul className="flex flex-col gap-3">
-        {view.sources.map((source, index) => (
-          <SourceRow
-            key={source.id}
-            source={source}
-            index={index}
-            last={index === view.sources.length - 1}
-            canEdit={canEdit}
-            busy={pending}
-            onEdit={() => open({ kind: 'edit', id: source.id })}
-            onMove={(by) => void move(index, by)}
-          />
-        ))}
-      </ul>
+        ) : null
+      }
+      banner={
+        banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
+      }
+    >
+      <SettingsSection title={t('stock.section')}>
+        <ul className="flex flex-col">
+          {view.sources.map((source, index) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              index={index}
+              last={index === view.sources.length - 1}
+              canEdit={canEdit}
+              busy={pending}
+              onEdit={() => open({ kind: 'edit', id: source.id })}
+              onMove={(by) => void move(index, by)}
+            />
+          ))}
+        </ul>
+      </SettingsSection>
       {mode !== null && (mode.kind === 'add' || editing !== null) ? (
         <StockForm
           key={mode.kind === 'edit' ? mode.id : 'new'}
@@ -129,11 +171,13 @@ export function StockLocations({
           options={options}
           pending={pending}
           problem={problem}
+          failedWrites={failedWrites}
+          conflictId={conflictId}
           onSubmit={(input) => void submit(input)}
           onCancel={() => open(null)}
         />
       ) : null}
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -156,10 +200,10 @@ function SourceRow({
 }) {
   const t = useTranslations();
   return (
-    <li className="rounded-lg border border-line bg-surface p-4">
+    <li className="border-b border-line-row px-5 py-4 last:border-b-0">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-fg-muted">{index + 1}.</span>
-        <h2 className="text-base font-semibold">{source.name}</h2>
+        <h3 className="text-base font-semibold">{source.name}</h3>
         {source.isDefault ? <Badge tone="info">{t('stock.default')}</Badge> : null}
       </div>
       <div className="mt-3 text-sm">

@@ -461,6 +461,26 @@ describe('relay allowlist for stock locations', () => {
     });
   const ID = '0190a000-0000-7000-8000-0000000000a1';
 
+  it('relays the list read (GET) so a page can re-read it after a stale write', async () => {
+    const read = new Request('http://seller.localhost:3001/api/inventory/seller/sources', {
+      headers: sameOrigin,
+    });
+    expect(
+      (await relay(config, read, ['inventory', 'seller', 'sources'], upstreamOk())).status,
+    ).toBe(200);
+    for (const tail of ['extra', ID]) {
+      const other = new Request(
+        `http://seller.localhost:3001/api/inventory/seller/sources/${tail}`,
+        {
+          headers: sameOrigin,
+        },
+      );
+      expect(
+        (await relay(config, other, ['inventory', 'seller', 'sources', tail], upstreamOk())).status,
+      ).toBe(404);
+    }
+  });
+
   it('relays a location edit by UUID and the order, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, put(`inventory/seller/sources/${ID}`), [], upstream)).status).toBe(
@@ -738,6 +758,72 @@ describe('relay of the seller ledger route', () => {
     expect((await relay(config, request('POST'), path, upstreamOk())).status).toBe(404);
     const other = [...path, 'x'];
     expect((await relay(config, request('GET'), other, upstreamOk())).status).toBe(404);
+  });
+});
+
+describe('relay of the seller payout routes', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const read = (route: string, query = '') =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/commission-payouts/seller/${route}${query}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      }),
+      ['commission-payouts', 'seller', ...route.split('/')],
+      upstreamOk(),
+    );
+
+  it.each(['payouts/next', 'payouts', 'payout-holds'])('reads %s', async (route) => {
+    expect((await read(route)).status).toBe(200);
+  });
+
+  it('forwards the history limit and a cursor in the API shape, and nothing else', async () => {
+    const upstream = upstreamOk();
+    const cursor = `1790000000000.${ID}`;
+    await relay(
+      config,
+      new Request(
+        `http://seller.localhost:3001/api/commission-payouts/seller/payouts?limit=20&cursor=${cursor}&sellerId=x`,
+        { method: 'GET', headers: { host: 'seller.localhost:3001' } },
+      ),
+      ['commission-payouts', 'seller', 'payouts'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/seller/payouts?limit=20&cursor=${encodeURIComponent(cursor)}`,
+    );
+    const bad = upstreamOk();
+    await relay(
+      config,
+      new Request(
+        'http://seller.localhost:3001/api/commission-payouts/seller/payouts?limit=99999&cursor=a%20b',
+        { method: 'GET', headers: { host: 'seller.localhost:3001' } },
+      ),
+      ['commission-payouts', 'seller', 'payouts'],
+      bad,
+    );
+    expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/commission-payouts/seller/payouts');
+  });
+
+  it('does not relay the admin routes, a write or any other path under it', async () => {
+    for (const path of [
+      ['commission-payouts', 'admin', 'payouts'],
+      ['commission-payouts', 'seller', 'payouts', ID],
+      ['commission-payouts', 'seller', 'payouts', 'next', 'x'],
+    ]) {
+      const upstream = upstreamOk();
+      const request = new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+    const upstream = upstreamOk();
+    const path = ['commission-payouts', 'seller', 'payouts'];
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
   });
 });
 

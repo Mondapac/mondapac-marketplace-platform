@@ -68,16 +68,21 @@ describe.each(TEST_MARKETS)('buyer deletion request routes over HTTP in market %
         bound!.endAllCustomerSessions(context, accountId, requestId),
       customerAccountExists: (context, accountId) =>
         bound!.customerAccountExists(context, accountId),
+      customerAccountOf: (context, accountId) => bound!.customerAccountOf(context, accountId),
+      endCustomerSessionsForAdmin: (context, accountId, requestId) =>
+        bound!.endCustomerSessionsForAdmin(context, accountId, requestId),
       eraseCustomerAccount: (context, accountId, requestId) =>
         bound!.eraseCustomerAccount(context, accountId, requestId),
     },
     ordering: {
       ownOpenObligations: () => Promise.resolve(ok({ openOrders, pendingRefunds: 0 })),
       openObligationsOf: () => Promise.resolve(ok({ openOrders, pendingRefunds: 0 })),
+      adminOpenObligationsOf: () => Promise.resolve(ok({ openOrders, pendingRefunds: 0 })),
     },
     wallet: {
       ownBalanceOf: () => Promise.resolve(ok({ available: zero, held: zero })),
       balanceOf: () => Promise.resolve(ok({ available: zero, held: zero })),
+      adminBalanceOf: () => Promise.resolve(ok({ available: zero, held: zero })),
     },
     engagement: { forgetAccount: () => Promise.resolve(ok({})) },
     reviews: { detachAuthor: () => Promise.resolve(ok({})) },

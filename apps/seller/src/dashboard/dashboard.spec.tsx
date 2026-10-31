@@ -261,10 +261,10 @@ describe('seller dashboard', () => {
     };
     render(wrap(<SellerDashboard data={data} permissionKeys={KEYS} />));
     expect(screen.getByRole('link', { name: 'Set up payouts' }).getAttribute('href')).toBe(
-      '/payout-account',
+      '/settings/payout-account',
     );
     expect(screen.getByRole('link', { name: 'Add a location' }).getAttribute('href')).toBe(
-      '/stock-locations',
+      '/settings/stock-locations',
     );
   });
 

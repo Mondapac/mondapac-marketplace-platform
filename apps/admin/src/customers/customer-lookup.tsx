@@ -10,9 +10,11 @@ import {
   FieldAction,
   LinkButton,
   TextField,
+  toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
+import { BuyerDeletion } from '../account-deletion/buyer-deletion.tsx';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { useCountdown } from '../api/use-countdown.ts';
 import { formatInstant } from '../shared/format.ts';
@@ -42,11 +44,17 @@ function problemOf(failure: ApiFailure): Problem | null {
 export function CustomerLookup({
   canChangeStatus,
   walletLink = null,
+  buyerDeletion = null,
   csrfToken,
 }: {
   readonly canChangeStatus: boolean;
   /** The wallet link on a found account: issue credit (wallet.credit.issue) or view (credit.view). */
   readonly walletLink?: 'issue' | 'view' | null;
+  /**
+   * The delete-account action on a found account (customers.buyer-account.delete); null hides
+   * it. `waitingPeriodDays` is the Market's setting when the actor may read it, else null.
+   */
+  readonly buyerDeletion?: { readonly waitingPeriodDays: number | null } | null;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('customers');
@@ -59,7 +67,6 @@ export function CustomerLookup({
   const [confirming, setConfirming] = useState(false);
   const [changing, setChanging] = useState(false);
   const [changeProblem, setChangeProblem] = useState<Problem | null>(null);
-  const [changed, setChanged] = useState<'disabled' | 'enabled' | null>(null);
   const [wait, setWait] = useCountdown();
   const busy = useRef(false);
 
@@ -68,7 +75,6 @@ export function CustomerLookup({
     if (busy.current || wait > 0) return;
     const address = email.trim();
     setProblem(null);
-    setChanged(null);
     setChangeProblem(null);
     if (address === '' || address.length > EMAIL_MAX || !address.includes('@')) {
       setInvalid(true);
@@ -115,7 +121,7 @@ export function CustomerLookup({
     if (result.ok) {
       const status = action === 'disable' ? 'disabled' : 'active';
       setCustomer({ ...customer, status });
-      setChanged(action === 'disable' ? 'disabled' : 'enabled');
+      toast.success(t(action === 'disable' ? 'changed.disabled' : 'changed.enabled'));
       return;
     }
     const next = problemOf(result.failure);
@@ -159,7 +165,6 @@ export function CustomerLookup({
               setEmail(event.target.value);
               // The card always belongs to the address in the field: a new address clears it.
               setCustomer(null);
-              setChanged(null);
               setChangeProblem(null);
             }}
           />
@@ -186,7 +191,6 @@ export function CustomerLookup({
           <div>
             <Badge tone={active ? 'success' : 'critical'}>{t(`status.${customer.status}`)}</Badge>
           </div>
-          {changed === null ? null : <Banner tone="success">{t(`changed.${changed}`)}</Banner>}
           {changeProblem === null ? null : (
             <Banner tone={changeProblem.key === 'throttled' ? 'attention' : 'critical'}>
               {t(`error.${changeProblem.key}`)}
@@ -214,7 +218,6 @@ export function CustomerLookup({
                 <Button
                   variant={active ? 'destructive' : 'secondary'}
                   onClick={() => {
-                    setChanged(null);
                     setChangeProblem(null);
                     setConfirming(true);
                   }}
@@ -224,6 +227,14 @@ export function CustomerLookup({
               ) : null}
             </ActionRow>
           ) : null}
+          {buyerDeletion === null ? null : (
+            <BuyerDeletion
+              key={customer.accountId}
+              accountId={customer.accountId}
+              waitingPeriodDays={buyerDeletion.waitingPeriodDays}
+              csrfToken={csrfToken}
+            />
+          )}
         </Card>
       )}
       <Dialog

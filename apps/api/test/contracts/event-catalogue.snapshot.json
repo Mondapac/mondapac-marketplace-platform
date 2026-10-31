@@ -461,6 +461,22 @@
     }
   },
   {
+    "type": "commission-payouts.payout-terms-changed.v1",
+    "aggregateType": "payout-terms-change",
+    "fields": {
+      "changeId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "commission-payouts.seller-reinstated-hold-remains.v1",
+    "aggregateType": "seller-access-decision",
+    "fields": {
+      "decisionId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "customers.account-deletion-settings-changed.v1",
     "aggregateType": "account-deletion-settings",
     "fields": {
@@ -491,6 +507,19 @@
     "fields": {
       "waitingPeriodDays": "integer"
     }
+  },
+  {
+    "type": "customers.account-deletion-requested-by-admin.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {
+      "waitingPeriodDays": "integer",
+      "scheduledFor": "instant"
+    }
+  },
+  {
+    "type": "customers.account-deletion-cancelled-by-admin.v1",
+    "aggregateType": "account-deletion-request",
+    "fields": {}
   },
   {
     "type": "identity.account-disabled.v1",

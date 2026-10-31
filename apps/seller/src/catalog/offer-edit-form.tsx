@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, Select, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, Select, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -36,7 +36,6 @@ export function OfferEditForm({
     Object.fromEntries(locales.map((locale) => [locale, offer.description[locale] ?? ''])),
   );
   const [pending, setPending] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [problem, setProblem] = useState<ReturnType<typeof offerEditProblemOf> | null>(null);
   const busy = useRef(false);
 
@@ -51,7 +50,6 @@ export function OfferEditForm({
     busy.current = true;
     setPending(true);
     setProblem(null);
-    setSaved(false);
     const result = await callApi<{ changedFields: readonly string[] }>(
       'PUT',
       `catalog/seller/offers/${offer.offerId}`,
@@ -64,7 +62,7 @@ export function OfferEditForm({
     );
     busy.current = false;
     setPending(false);
-    if (result.ok) setSaved(true);
+    if (result.ok) toast.success(t('catalog.offer-edit.saved'));
     else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setProblem(offerEditProblemOf(result.failure));
   }
@@ -75,7 +73,6 @@ export function OfferEditForm({
   return (
     <Card>
       <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)} noValidate>
-        {saved ? <Banner tone="success">{t('catalog.offer-edit.saved')}</Banner> : null}
         {problem === null ? null : <Banner tone="critical">{t(problem.form)}</Banner>}
         <Select
           name="conditionCode"

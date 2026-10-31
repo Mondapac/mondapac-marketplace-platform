@@ -60,6 +60,23 @@ export function sellerNewOrderMail(input: {
   return { subject, text };
 }
 
+/**
+ * A link as it may go into a mail: an absolute `https` URL with no credentials, no space or
+ * control character and at most 500 characters, re-serialised; anything else is null. A mail is
+ * plain text, so the link is inert; the scheme check keeps `javascript:` and `http:` out anyway.
+ */
+export function httpsLink(value: string | null | undefined): string | null {
+  if (typeof value !== 'string' || value.length > 500) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return null;
+    const text = url.toString();
+    return [...text].some((c) => c <= ' ' || c === '\u007f') ? null : text;
+  } catch {
+    return null;
+  }
+}
+
 /** The seller's "Payment dispute" notice: the order reference only. No reason, amount or buyer data. */
 export function sellerOrderDisputedMail(input: {
   readonly orderId: string;
@@ -76,14 +93,18 @@ export function orderShippedMail(input: {
   readonly orderId: string;
   readonly carrier: string;
   readonly trackingRef: string | null;
+  /** The fleet's tracking page; used only if it is a plain https URL ({@link httpsLink}). */
+  readonly trackingUrl?: string | null;
   readonly orderUrl: string;
   readonly locale?: string;
 }): ComposedMail {
+  const link = httpsLink(input.trackingUrl);
   const { subject, text } = renderTemplate('order-shipped', input.locale ?? 'en', {
     orderId: input.orderId,
     carrier: plainLine(input.carrier),
     tracking:
-      input.trackingRef === null ? '' : `\nTracking number: ${plainLine(input.trackingRef)}`,
+      (input.trackingRef === null ? '' : `\nTracking number: ${plainLine(input.trackingRef)}`) +
+      (link === null ? '' : `\nTrack your delivery: ${link}`),
     orderUrl: input.orderUrl,
   });
   return { subject, text };

@@ -117,7 +117,7 @@ shipping. Wallet credit is payment, not a discount, and is not here.
 
 ## Phase 2 discount types
 
-Six types on top of the core (migration `20261029090000_promotions_phase2_types`). Rules as built:
+Six types on top of the core (migration `20261031090000_promotions_phase2_types`). Rules as built:
 
 - **Tiered cart** (platform, cart layer): tiers are rows (`promotion_tiers`); the highest tier whose
   threshold the goods amount (after the earlier layers) reaches applies. Thresholds strictly increase,

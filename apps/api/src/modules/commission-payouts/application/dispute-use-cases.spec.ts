@@ -1,3 +1,4 @@
+import { AllowingStepUp } from '../../../../test/support/commission-payouts-fakes';
 import { money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -7,7 +8,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
-import { MemoryHolds } from '../../../../test/support/commission-payouts-fakes';
+import { MemoryCursors, MemoryHolds } from '../../../../test/support/commission-payouts-fakes';
 import {
   FakeDisputeSource,
   FakeOrderLookup,
@@ -24,6 +25,7 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE } from '../contracts/permissions';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import type { LedgerEntry, LedgerKind } from '../domain/ledger';
 import type { DisputeDependencies } from './dispute-dependencies';
@@ -100,6 +102,8 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
   let ledger: MarketLedger;
   let disputes: MemoryDisputes;
   let holds: MemoryHolds;
+  let cursors: MemoryCursors;
+  let stepUp: AllowingStepUp;
   let source: FakeDisputeSource;
   let orders: FakeOrderLookup;
   let names: FakeSellerNames;
@@ -185,6 +189,10 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
     ledger = new MarketLedger();
     disputes = new MemoryDisputes(ledger);
     holds = new MemoryHolds();
+    cursors = new MemoryCursors();
+    stepUp = new AllowingStepUp();
+    await cursors.ensure(market, SELLER_A, T0);
+    await cursors.ensure(market, SELLER_B, T0);
     source = new FakeDisputeSource();
     orders = new FakeOrderLookup();
     names = new FakeSellerNames();
@@ -198,12 +206,14 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       disputes,
       ledger,
       holds,
+      cursors,
       source,
       orders,
       sellerNames: names,
       outbox,
       securityEvents,
       authorisation: { check: () => Promise.resolve({ allowed: true }) },
+      stepUp,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -269,6 +279,31 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       expect(disputes.cases.get(`${market.marketId}:${DISPUTE}`)?.bucket).toBe('closed');
     });
 
+    it('spends the step-up proof exactly once per decision, and none on a refusal', async () => {
+      publish({ version: 1 });
+      await sync();
+      lost();
+      await sync();
+      expect((await decide(SO_A, 'seller', '100')).ok).toBe(true);
+      expect(stepUp.spent).toEqual([COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE.key]);
+      // Already decided, a bad amount, a bad bearer and a non-admin caller spend nothing.
+      expect((await decide(SO_A, 'seller', '100')).ok).toBe(false);
+      expect((await decide(SO_A, 'seller', 'x')).ok).toBe(false);
+      expect((await decide(SO_A, 'nobody')).ok).toBe(false);
+      expect((await decide(SO_A, 'platform', undefined, 'other', sellerA)).ok).toBe(false);
+      expect(stepUp.spent).toHaveLength(1);
+    });
+
+    it("takes the seller's cursor lock for a decision", async () => {
+      publish({ version: 1 });
+      await sync();
+      lost();
+      await sync();
+      cursors.lockLog.length = 0;
+      expect((await decide(SO_A, 'platform')).ok).toBe(true);
+      expect(cursors.lockLog).toContain(SELLER_A);
+    });
+
     it('keeps the hold on a lost chargeback until every seller order is decided', async () => {
       await seed(SO_B, SELLER_B, 500n, 75n);
       publish({ version: 1 });
@@ -285,6 +320,24 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       expect(last).toMatchObject({ ok: true, value: { holdsReleased: true, bucket: 'closed' } });
       expect(activeHolds()).toHaveLength(0);
       expect(outbox.events).toHaveLength(2);
+    });
+
+    it("takes the sellers' cursor locks, in sellerId order, before it places the holds", async () => {
+      await seed(SO_B, SELLER_B, 500n, 75n);
+      publish({ version: 1 });
+      cursors.lockLog.length = 0;
+      expect(await sync()).toEqual(ok('synced'));
+      expect(cursors.lockLog).toEqual([SELLER_A, SELLER_B]);
+    });
+
+    it('takes no cursor lock when it releases', async () => {
+      publish({ version: 1 });
+      await sync();
+      cursors.lockLog.length = 0;
+      publish({ version: 2, status: 'won', closed: true, outcome: 'won' });
+      await sync();
+      expect(activeHolds()).toHaveLength(0);
+      expect(cursors.lockLog).toEqual([]);
     });
 
     it('holds nothing when the order has no ledger rows yet, and still keeps the case', async () => {

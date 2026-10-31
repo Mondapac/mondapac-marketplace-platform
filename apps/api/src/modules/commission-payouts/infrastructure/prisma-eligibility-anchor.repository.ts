@@ -11,6 +11,28 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
+interface AnchorRow {
+  readonly sellerOrderId: string;
+  readonly orderId: string;
+  readonly sellerId: string;
+  readonly deliveredAt: Date;
+  readonly anchorSource: string;
+  readonly holdDaysApplied: number;
+  readonly eligibleAt: Date;
+  readonly recordedAt: Date;
+}
+
+const toAnchor = (row: AnchorRow): EligibilityAnchor => ({
+  sellerOrderId: row.sellerOrderId as Id<'SellerOrder'>,
+  orderId: row.orderId as Id<'Order'>,
+  sellerId: row.sellerId as Id<'Seller'>,
+  deliveredAt: toInstant(row.deliveredAt),
+  source: row.anchorSource as AnchorSource,
+  holdDaysApplied: row.holdDaysApplied,
+  eligibleAt: toInstant(row.eligibleAt),
+  recordedAt: toInstant(row.recordedAt),
+});
+
 /**
  * {@link EligibilityAnchorRepository} on `commission_payouts.eligibility_anchors`, scoped by
  * `marketId` in every `where`. It only reads and inserts; the table refuses anything else.
@@ -43,16 +65,14 @@ export class PrismaEligibilityAnchorRepository implements EligibilityAnchorRepos
     const row = await this.prisma.tx(market).commissionPayoutsEligibilityAnchor.findFirst({
       where: { marketId: market.marketId, sellerOrderId },
     });
-    if (row === null) return null;
-    return {
-      sellerOrderId: row.sellerOrderId as Id<'SellerOrder'>,
-      orderId: row.orderId as Id<'Order'>,
-      sellerId: row.sellerId as Id<'Seller'>,
-      deliveredAt: toInstant(row.deliveredAt),
-      source: row.anchorSource as AnchorSource,
-      holdDaysApplied: row.holdDaysApplied,
-      eligibleAt: toInstant(row.eligibleAt),
-      recordedAt: toInstant(row.recordedAt),
-    };
+    return row === null ? null : toAnchor(row);
+  }
+
+  async findMany(market: MarketContext, sellerOrderIds: readonly Id<'SellerOrder'>[]) {
+    if (sellerOrderIds.length === 0) return [];
+    const rows = await this.prisma.tx(market).commissionPayoutsEligibilityAnchor.findMany({
+      where: { marketId: market.marketId, sellerOrderId: { in: [...sellerOrderIds] } },
+    });
+    return rows.map(toAnchor);
   }
 }

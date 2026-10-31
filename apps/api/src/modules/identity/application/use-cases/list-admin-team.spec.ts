@@ -85,6 +85,7 @@ const PARTIAL_ROLE = id<'Role'>('01990000-0000-7000-8000-00000000c0dd');
 
 /** A platform custom role with protected keys but not the system role (as in 8a-2's spec). */
 const LEAD_KEYS = [
+  'catalog.brand.read',
   'catalog.product.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
@@ -103,6 +104,7 @@ const LEAD_KEYS = [
   'notifications.support-contact.view',
   'assistant.settings.view',
   'customers.account-deletion-settings.view',
+  'customers.account-deletion-requests.view',
   'shipping.fleet-selection.view',
   'shipping.delivery-settings.view',
   'blog.post.read',

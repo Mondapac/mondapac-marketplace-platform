@@ -17,8 +17,10 @@ import type { PaidSellerOrder, RefundedSellerOrder } from '../contracts';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { commissionBase, commissionOn, parseRateBps } from '../domain/commission';
 import { reversedAmount } from '../domain/reversal';
-import type { LedgerEntry, LedgerKind } from '../domain/ledger';
+import { netBySellerOrder, type LedgerEntry, type LedgerKind } from '../domain/ledger';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import type { AllowingStepUp } from '../../../../test/support/commission-payouts-fakes';
+import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
@@ -103,6 +105,9 @@ class MemoryLedger implements LedgerRepository {
   }
   hasSellerOrder(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.some((row) => row.sellerOrderId === sellerOrderId));
+  }
+  netBySellerOrder(_m: MarketContext, sellerId: Id<'Seller'>, currency: string) {
+    return Promise.resolve(netBySellerOrder(this.rows, sellerId, currency));
   }
   append(_m: MarketContext, entries: readonly LedgerEntry[]) {
     let count = 0;
@@ -317,6 +322,23 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         before: { rateBps: 900 },
         after: { marketRateBps: marketRate },
       });
+    });
+
+    it('spends the step-up proof exactly once per set and per clear, and none on a refusal', async () => {
+      const spent = (deps.stepUp as AllowingStepUp).spent;
+      const clear = (sellerId: unknown, context: CallContext = admin) =>
+        new ClearCommissionRate(gate, deps).execute(context, { sellerId });
+      expect((await setRate(SELLER_A, 1000)).ok).toBe(true);
+      expect(spent).toEqual([COMMISSION_PAYOUTS_RATE_EDIT.key]);
+      expect((await setRate(SELLER_A, 1200)).ok).toBe(true);
+      expect(spent).toHaveLength(2);
+      expect((await clear(SELLER_A)).ok).toBe(true);
+      expect(spent).toEqual(Array(3).fill(COMMISSION_PAYOUTS_RATE_EDIT.key));
+      // Refused before the unit: a bad rate, and a caller who is not an admin.
+      expect((await setRate(SELLER_A, 'x')).ok).toBe(false);
+      expect((await setRate(SELLER_A, 1000, sellerA)).ok).toBe(false);
+      expect((await clear(SELLER_A, sellerA)).ok).toBe(false);
+      expect(spent).toHaveLength(3);
     });
 
     it('refuses a bad id or rate, an unknown seller, and every caller but an admin', async () => {

@@ -4,6 +4,7 @@ import type { CallContext, Id, MarketContext, PendingEvent, Result } from '@mond
 import {
   FixedClock,
   SequenceIdGenerator,
+  testAuthenticatedActor,
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
@@ -38,6 +39,7 @@ import type {
 import type { ShippingDependencies } from './shipping-dependencies';
 import { BookCarrierDelivery } from './use-cases/book-carrier-delivery.use-case';
 import { CancelCarrierDelivery } from './use-cases/cancel-carrier-delivery.use-case';
+import { CarrierTrackingLinks } from './use-cases/carrier-tracking-links.use-case';
 import { CarrierShipmentQuery } from './use-cases/carrier-shipment.use-case';
 import { ReceiveCarrierWebhook } from './use-cases/receive-carrier-webhook.use-case';
 import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
@@ -190,6 +192,7 @@ describe.each([
       ledger: undefined as never,
       pickups,
       webhookSignature: undefined as never,
+      uberWebhookSignature: undefined as never,
       securityEvents,
     };
     withSecrets(true);
@@ -393,6 +396,7 @@ describe.each([
           sellerOrderId: SELLER_ORDER,
           carrierName: displayName,
           trackingRef: DELIVERY,
+          trackingUrl: null,
           progress: 'delivered',
         }),
       );
@@ -470,6 +474,117 @@ describe.each([
       const [key, row] = [...bookings.rows.entries()][0]!;
       bookings.rows.set(key, { ...row, progress: 'picked-up' });
       expect(await cancel()).toEqual(ok('not-cancellable'));
+    });
+  });
+  describe('tracking link', () => {
+    const customer = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'customer',
+        accountId: id<'Account'>(0x61),
+        sessionId: id<'Session'>(0x62),
+        sellerId: null,
+      }),
+      'carrier-0004-abcd',
+    );
+    const links = (ids: unknown[], context = customer, orderId: unknown = ORDER) =>
+      new CarrierTrackingLinks(gate, deps).execute(context, { orderId, sellerOrderIds: ids });
+
+    it('stores the https link the fleet gave and reads it back for ordering and the buyer', async () => {
+      carrier.bookAnswer = ok({
+        carrierReference: DELIVERY,
+        carrierStatus: 'SCHEDULED',
+        trackingUrl: 'https://track.example.com/d/abc',
+      });
+      expect(await book()).toEqual(ok('booked'));
+
+      expect([...bookings.rows.values()][0]!.trackingUrl).toBe('https://track.example.com/d/abc');
+      const shipment = await new CarrierShipmentQuery(gate, deps).execute(system, {
+        sellerOrderId: SELLER_ORDER,
+      });
+      expect(shipment.ok && shipment.value.trackingUrl).toBe('https://track.example.com/d/abc');
+      expect(await links([SELLER_ORDER, SELLER_ORDER_2])).toEqual(
+        ok(new Map([[SELLER_ORDER, 'https://track.example.com/d/abc']])),
+      );
+    });
+
+    it.each([
+      'http://track.example.com/d/abc',
+      'javascript:alert(1)',
+      'https://u:p@x.example/a',
+      '/relative',
+    ])('stores no link for %s', async (url) => {
+      carrier.bookAnswer = ok({
+        carrierReference: DELIVERY,
+        carrierStatus: 'SCHEDULED',
+        trackingUrl: url,
+      });
+      expect(await book()).toEqual(ok('booked'));
+      expect([...bookings.rows.values()][0]!.trackingUrl).toBeNull();
+      expect(await links([SELLER_ORDER])).toEqual(ok(new Map()));
+    });
+
+    it('re-checks a stored link on the way out', async () => {
+      expect(await book()).toEqual(ok('booked'));
+      const [row] = [...bookings.rows.entries()];
+      bookings.rows.set(row![0], { ...row![1], trackingUrl: 'http://old.example.com/x' });
+      const shipment = await new CarrierShipmentQuery(gate, deps).execute(system, {
+        sellerOrderId: SELLER_ORDER,
+      });
+      expect(shipment.ok && shipment.value.trackingUrl).toBeNull();
+      expect(await links([SELLER_ORDER])).toEqual(ok(new Map()));
+    });
+
+    it("answers no link for another order's id and refuses an actor that is not a customer", async () => {
+      carrier.bookAnswer = ok({
+        carrierReference: DELIVERY,
+        carrierStatus: 'SCHEDULED',
+        trackingUrl: 'https://track.example.com/d/abc',
+      });
+      expect(await book()).toEqual(ok('booked'));
+
+      // The booking belongs to ORDER: asked under any other order id, nothing leaves.
+      expect(await links([SELLER_ORDER], customer, id<'Order'>(0x0b))).toEqual(ok(new Map()));
+      expect(await links([SELLER_ORDER], customer, 'nope')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      // A seller, an admin and the system are not the buyer of an order.
+      for (const population of ['seller', 'admin'] as const) {
+        const other = testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population,
+            accountId: id<'Account'>(0x63),
+            sessionId: id<'Session'>(0x64),
+            sellerId: population === 'seller' ? SELLER : null,
+          }),
+          'carrier-0005-abcd',
+        );
+        expect(await links([SELLER_ORDER], other)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      }
+      expect(await links([SELLER_ORDER], system)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('refuses malformed ids, too many ids and a caller with no session, and reads one Market only', async () => {
+      expect(await links(['nope'])).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await links(Array.from({ length: 51 }, () => SELLER_ORDER))).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await links([SELLER_ORDER], anonymous)).toMatchObject({
+        ok: false,
+        error: { code: 'access.unauthenticated' },
+      });
     });
   });
 });
