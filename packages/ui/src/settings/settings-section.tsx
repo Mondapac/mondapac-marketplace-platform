@@ -13,7 +13,10 @@ export interface SettingsSectionProps {
   readonly children: ReactNode;
 }
 
-/** A card of settings: a heading (h2), one line of description, then rows. */
+/**
+ * A card of settings: a heading (h2), one line of description, then rows. It is the size
+ * container its rows lay out against.
+ */
 export function SettingsSection({
   title,
   description,
@@ -26,7 +29,7 @@ export function SettingsSection({
     <section
       aria-labelledby={headingId}
       data-variant={variant}
-      className={`min-w-0 rounded-lg border bg-surface ${danger ? 'border-critical-border' : 'border-line'}`}
+      className={`@container min-w-0 rounded-lg border bg-surface ${danger ? 'border-critical-border' : 'border-line'}`}
     >
       <header className="border-b border-line-row px-5 py-4">
         <h2
