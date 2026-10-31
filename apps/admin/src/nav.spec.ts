@@ -131,3 +131,10 @@ describe('admin nav: Disputes', () => {
     expect(ids(['commission-payouts.dispute.attribute'])).not.toContain('disputes');
   });
 });
+
+describe('admin nav: Settings', () => {
+  it('is there for the account deletion setting alone', () => {
+    expect(ids(['customers.account-deletion-settings.view'])).toContain('settings');
+    expect(ids(['customers.account-deletion-settings.manage'])).not.toContain('settings');
+  });
+});

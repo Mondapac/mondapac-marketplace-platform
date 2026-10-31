@@ -26,6 +26,9 @@ const files = [
   ...readdirSync(path.join(src, 'disputes'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'disputes', name)),
+  ...readdirSync(path.join(src, 'account-deletion'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'account-deletion', name)),
   path.join(src, 'step-up', 'step-up.tsx'),
 ];
 const CALL = /(?:callApi|guarded)(?:<[^>]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
@@ -51,7 +54,7 @@ function calls(): { method: string; target: string }[] {
   return found;
 }
 
-describe('every path the wallet, dispute and step-up client code calls passes the relay allowlist', () => {
+describe('every path the wallet, dispute, account deletion and step-up client code calls passes the relay allowlist', () => {
   const found = calls();
 
   it('finds the calls it is meant to check', () => {
@@ -69,6 +72,11 @@ describe('every path the wallet, dispute and step-up client code calls passes th
         'GET commission-payouts/admin/disputes/:id',
         'POST commission-payouts/admin/disputes/:id/seller-orders/:id/decision',
         'POST identity/admin/step-up/verify',
+        'GET customers/admin/account-deletion-settings',
+        'PUT customers/admin/account-deletion-settings',
+        'GET customers/admin/deletion-requests',
+        'DELETE customers/admin/deletion-requests/:id',
+        'POST customers/admin/buyers/:id/deletion-requests',
       ]),
     );
   });
