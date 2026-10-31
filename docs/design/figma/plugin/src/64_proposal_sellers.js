@@ -239,7 +239,7 @@ function smDropdowns() {
   const multi = col('Multiple choice, searchable (Other activities)', smMulti(['Bakery'], true), smOptions(true, [['Grocery', true], ['Greengrocer', false]], '2 of 12 match · Selected stay at the top.'));
   const tree = col('Long tree (Category)', smCombo('lamb', true), smOptions(false, [['Meat & poultry › Lamb › Cutlets', true], ['Meat & poultry › Lamb › Mince', false], ['Frozen › Meat › Lamb shanks', false]], 'Shows the path. Results load as you type (server search).'));
   const scr = frame({ name: SM + ' · Searchable dropdowns', dir: 'V', w: 1240, pad: 40, gap: 'space/5', fill: 'bg/page' }, [text('Dropdowns with many items: always searchable', 'Heading/H1'),
-    para('Rule for both panels: any dropdown that can hold many items (more than about 10, or a list that grows: activities, categories, sellers, brands, attributes, service areas, roles) has a search box. Multiple choice shows each pick as a removable chip and keeps picks at the top. Long lists search on the server. Short fixed lists (status, yes or no) stay plain selects.', 1100),
+    para('Rule for both panels: any dropdown that can hold many items (8 or more, or a list that grows: activities, categories, sellers, brands, attributes, service areas, roles) has a search box. Multiple choice shows each pick as a removable chip and keeps picks at the top. Long lists search on the server. Short fixed lists (status, yes or no) stay plain selects.', 1100),
     frame({ name: 'examples', dir: 'H', gap: 'space/6', align: 'start', sizeH: 'FILL' }, [single, multi, tree])]);
   tag(scr); return smTag(scr);
 }
