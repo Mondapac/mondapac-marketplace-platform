@@ -18,6 +18,9 @@ const config: NextConfig = {
   poweredByHeader: false,
   // `next dev` writes an AGENTS.md into the app folder; the repository keeps its agent rules elsewhere.
   agentRules: false,
+  // No proxyClientMaxBodySize here: the proxy does not match `/api/` (see proxy.ts), so the relay
+  // body (up to about 11.6 MB for the combined store-profile save) is never cloned by Next and
+  // only the relay's own size cap buffers it.
   redirects: () => Promise.resolve(settingsRedirects),
 };
 

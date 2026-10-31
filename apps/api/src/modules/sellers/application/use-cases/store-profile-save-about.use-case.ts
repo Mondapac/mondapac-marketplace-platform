@@ -8,8 +8,8 @@ import { StoreProfileSaved } from '../../domain/audit';
 import { StoreProfilePublished } from '../../domain/events';
 import { SAVE_LIMITS } from '../../domain/rate-limits';
 import { derivedId } from '../../../../platform/hashing/derived-id';
-import { parseAboutText } from '../../domain/store-about';
 import { contentOf } from '../../domain/store-profile-content';
+import { claimFieldsOf, parseAboutTexts } from '../store-profile/about-input';
 import { logDraftOutcome, reserveRateLimits, sellerActorOf } from '../draft/draft-support';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
@@ -40,9 +40,6 @@ export interface StoreProfileSaveAboutDependencies extends StoreProfileReadDepen
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
  * `store-profile.save-about` (sellers design 3.7, 6.2 `my-store-profile.save`; slice 12 part 2):
@@ -117,11 +114,11 @@ export class StoreProfileSaveAbout extends UseCase<
     } catch {
       return err({ code: 'sellers.unavailable' });
     }
-    const checked = this.parseTexts(input.about, locales.supportedLocales);
+    const checked = parseAboutTexts(input.about, locales.supportedLocales);
     if (!checked.ok) return checked;
     const texts = checked.value;
 
-    const flagged = await this.claimFields(context, texts);
+    const flagged = await claimFieldsOf(deps.claimCheck, context, texts);
     if (!flagged.ok) return flagged;
     if (flagged.value.length > 0) {
       return err({ code: 'validation.failed', fields: flagged.value });
@@ -204,50 +201,5 @@ export class StoreProfileSaveAbout extends UseCase<
       return err({ code: 'sellers.unavailable' });
     }
     return loadStoreProfileView(deps, context, owner);
-  }
-
-  /**
-   * The texts by locale, each parsed. A shape or locale problem names its path; a text problem
-   * names the locale path and the rule. The locale keys are the Market's, so a path never echoes
-   * the client's own spelling.
-   */
-  private parseTexts(
-    about: unknown,
-    supported: readonly string[],
-  ): Result<ReadonlyMap<string, string>, StoreProfileWriteFailure> {
-    if (!isRecord(about)) {
-      return err({ code: 'validation.failed', fields: [{ path: 'about', code: 'type' }] });
-    }
-    const fields: { path: string; code: string }[] = [];
-    const texts = new Map<string, string>();
-    if (Object.keys(about).some((locale) => !supported.includes(locale))) {
-      fields.push({ path: 'about', code: 'locale' });
-    }
-    for (const locale of supported) {
-      if (!Object.hasOwn(about, locale)) continue;
-      const parsed = parseAboutText(about[locale]);
-      if (!parsed.ok) {
-        fields.push({ path: `about.${locale}`, code: parsed.error.rule });
-        continue;
-      }
-      if (parsed.value !== '') texts.set(locale, parsed.value);
-    }
-    return fields.length > 0 ? err({ code: 'validation.failed', fields }) : ok(texts);
-  }
-
-  /** The locales whose text asserts a certification: `about.<locale>` with `claim-term`. */
-  private async claimFields(
-    context: CallContext,
-    texts: ReadonlyMap<string, string>,
-  ): Promise<Result<{ path: string; code: string }[], StoreProfileWriteFailure>> {
-    const entries = [...texts].map(([locale, text]) => ({ locale, text }));
-    if (entries.length === 0) return ok([]);
-    const flags = await this.deps.claimCheck.flagged(context, entries);
-    if (!flags.ok) return err({ code: 'sellers.unavailable' });
-    return ok(
-      entries.flatMap((entry, index) =>
-        flags.value[index] === true ? [{ path: `about.${entry.locale}`, code: 'claim-term' }] : [],
-      ),
-    );
   }
 }

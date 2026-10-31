@@ -1855,20 +1855,17 @@
   },
   "store-profile": {
     "title": "Store profile",
-    "intro": "What buyers see on your store page: a few words about your store, a logo and a banner. Changes are public as soon as you save them.",
+    "intro": "What buyers see on your store page. Changes are public as soon as you save them.",
     "loading": "Loading the store profile",
     "view-only": "You can see the store profile but not change it. Ask the store owner for access.",
     "error": {
       "unavailable": "The store profile is unavailable right now. Try again later."
     },
     "about": {
-      "title": "About your store",
-      "help": "Plain text, up to {max} characters. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
+      "title": "About",
+      "help": "Plain text. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
       "field": "About your store ({language})",
       "counter": "{count} of {max} characters",
-      "save": "Save",
-      "saving": "Saving…",
-      "saved": "Saved. Buyers can see it now.",
       "error": {
         "stale": "Someone else saved a newer version first. Your changes are still in the box. Reload the page to see the latest version, then save again.",
         "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
@@ -1882,43 +1879,27 @@
         "length": "Use at most {max} characters.",
         "characters": "This text has characters that are not allowed.",
         "url": "Remove web addresses and links, or add a space after a full stop. Buyers contact you through the platform.",
-        "claim-term": "This text claims a certification. Remove that wording. Certificates are shown as verified badges after our team checks them.",
+        "claim-term": "This text claims a certification. Remove that wording.",
         "invalid": "This text is not valid."
-      }
+      },
+      "description": "A few words about your store, in each language you sell in."
     },
     "logo": {
       "title": "Logo",
-      "help": "Shown next to your store name. A square picture works best. At least 128 × 128 px.",
-      "none": "No logo yet.",
-      "alt": "Your store logo",
-      "confirm": "Remove the logo?",
-      "saved": "Logo saved. Buyers can see it now.",
-      "removed": "Logo removed."
+      "help": "Shown next to your store name. A square picture, at least 128 × 128 px.",
+      "none": "No logo",
+      "alt": "Your store logo"
     },
     "banner": {
       "title": "Banner",
-      "help": "A wide picture at the top of your store page. Keep the important part in the middle: the edges are cropped on phones and wide screens. The Share button covers the top right, and your logo the lower left from tablet width up. Use 1200 × 300 px or larger.",
-      "none": "No banner yet.",
-      "alt": "Your store banner",
-      "preview": {
-        "label": "Preview",
-        "phone": "Phone",
-        "desktop": "Desktop",
-        "logo-note": "The dashed square is where your logo sits on a computer."
-      },
-      "confirm": "Remove the banner?",
-      "saved": "Banner saved. Buyers can see it now.",
-      "removed": "Banner removed."
+      "help": "A wide picture at the top of your store page, 1200 × 300 px or larger. The edges are cropped on phones.",
+      "none": "No banner",
+      "alt": "Your store banner"
     },
     "image": {
       "choose": "Choose a picture",
       "replace": "Replace",
-      "uploading": "Uploading…",
       "remove": "Remove",
-      "removing": "Removing…",
-      "remove-yes": "Yes, remove",
-      "cancel": "Cancel",
-      "formats": "JPEG, PNG or WebP.",
       "error": {
         "too-large": "That picture is too large. Choose one under 25 MB.",
         "unsupported": "That file is not a JPEG, PNG or WebP picture.",
@@ -1934,11 +1915,20 @@
         "not-ready": "Your store is not ready yet. Try again in a moment.",
         "unavailable": "The store profile is unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again."
-      }
+      },
+      "preparing": "Preparing the picture…"
     },
     "no-access": {
       "title": "You don't have access to this page",
       "body": "Ask the account owner to give you permission to view the store profile."
+    },
+    "saved": "Saved. Buyers can see it now.",
+    "pictures": {
+      "title": "Pictures",
+      "help": "JPEG, PNG or WebP, under 25 MB.",
+      "current": "Current picture",
+      "new": "New picture",
+      "removed": "Removed"
     }
   },
   "disputes": {
