@@ -59,6 +59,8 @@ export const SELLER_PRICE_HOLD_DECIDED = 'seller.price-hold-decided';
 export const SELLER_ACCESS_CHANGED = 'seller.access-changed';
 /** A payment of the seller's order was disputed; its money is on hold (package 8b). Ids only. */
 export const SELLER_ORDER_DISPUTED = 'seller.order-disputed';
+/** The seller's payout terms were set or cleared by an admin (package 6d). No ids, no amounts. */
+export const SELLER_PAYOUT_TERMS_CHANGED = 'seller.payout-terms-changed';
 
 export const CERTIFICATE_OUTCOMES = ['approved', 'changes-requested', 'declined'] as const;
 export const CERTIFICATE_END_CAUSES = ['expired', 'revoked'] as const;
@@ -98,7 +100,8 @@ export type SellerNoticeKind =
   | typeof SELLER_IMAGE_TAKEN_DOWN
   | typeof SELLER_PRICE_HOLD_DECIDED
   | typeof SELLER_ACCESS_CHANGED
-  | typeof SELLER_ORDER_DISPUTED;
+  | typeof SELLER_ORDER_DISPUTED
+  | typeof SELLER_PAYOUT_TERMS_CHANGED;
 export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_ORDER_PAID,
   SELLER_LOW_STOCK,
@@ -115,6 +118,7 @@ export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_PRICE_HOLD_DECIDED,
   SELLER_ACCESS_CHANGED,
   SELLER_ORDER_DISPUTED,
+  SELLER_PAYOUT_TERMS_CHANGED,
 ];
 
 /** The seller kinds that ring the new-order sound (plan 6b): orders only. */
@@ -131,6 +135,8 @@ export const ADMIN_PRODUCT_REVISION_SUBMITTED = 'admin.product-revision-submitte
 export const ADMIN_SELLER_FILE_SUBMITTED = 'admin.seller-file-submitted';
 /** A price was held for approval. */
 export const ADMIN_PRICE_HOLD_OPENED = 'admin.price-hold-opened';
+/** A seller was reinstated but a hold on its payouts remains (package 6d). */
+export const ADMIN_SELLER_REINSTATED_HOLD_REMAINS = 'admin.seller-reinstated-hold-remains';
 /**
  * A seller order was booked with another courier than the one the buyer was charged for and the
  * platform's extra cost passed the Market's cap, or could not be worked out (delivery models,
@@ -175,12 +181,14 @@ export type AdminNoticeKind =
   | typeof ADMIN_PRODUCT_REVISION_SUBMITTED
   | typeof ADMIN_SELLER_FILE_SUBMITTED
   | typeof ADMIN_PRICE_HOLD_OPENED
+  | typeof ADMIN_SELLER_REINSTATED_HOLD_REMAINS
   | typeof ADMIN_DELIVERY_FALLBACK_OVER_CAP;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_FILE_SUBMITTED,
   ADMIN_PRICE_HOLD_OPENED,
+  ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
 ];
 
@@ -252,6 +260,8 @@ const PARAM_SHAPES: Readonly<
   },
   [SELLER_ACCESS_CHANGED]: { ids: [], enums: { change: ACCESS_CHANGES } },
   [SELLER_ORDER_DISPUTED]: { ids: ['sellerOrderId', 'orderId'], enums: {} },
+  [SELLER_PAYOUT_TERMS_CHANGED]: { ids: [], enums: {} },
+  [ADMIN_SELLER_REINSTATED_HOLD_REMAINS]: { ids: ['sellerId'], enums: {} },
   [ADMIN_SELLER_CERTIFICATE_SUBMITTED]: {
     ids: ['sellerId', 'sellerCertificationId'],
     enums: { submission: CERTIFICATE_SUBMISSIONS },

@@ -109,7 +109,7 @@ export function noindexMetadata(): Metadata {
   return robotsOf(true);
 }
 
-type AccountPage = 'overview' | 'orders' | 'addresses' | 'lists' | 'settings';
+type AccountPage = 'overview' | 'orders' | 'addresses' | 'lists' | 'settings' | 'delete';
 
 /** An account page's head tags: its menu title and description; never indexed. */
 export async function accountMetadata(page: AccountPage, path: string): Promise<Metadata> {

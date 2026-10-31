@@ -48,6 +48,22 @@ export interface LedgerRepository {
   ): Promise<readonly LedgerEntry[]>;
 
   sums(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly LedgerSum[]>;
+
+  /**
+   * What each of the seller's seller orders is worth now in `currency`: its credits less its
+   * debits (a refund or a dispute can take it below zero). The payout run's source of items and
+   * of the receivable.
+   */
+  netBySellerOrder(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    currency: string,
+  ): Promise<readonly SellerOrderNet[]>;
+}
+
+export interface SellerOrderNet {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly net: bigint;
 }
 
 export const LEDGER_REPOSITORY = Symbol('LEDGER_REPOSITORY');

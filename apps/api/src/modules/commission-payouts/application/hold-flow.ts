@@ -1,23 +1,26 @@
-import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { PayoutHoldPlaced, PayoutHoldReleased } from '../domain/audit';
+import { SellerReinstatedHoldRemains } from '../domain/events';
 import {
   ADMIN_HOLD_REASONS,
   RELEASE_REASONS,
   type AdminHoldReason,
   type ReleaseReason,
 } from '../domain/payout-hold';
+import {
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
+  COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
+} from '../contracts/permissions';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
+import { spendStepUp, type StepUpFailure } from './step-up';
 import type { PayoutHoldRecord } from './ports/payout-hold.repository';
 import { sellerIdOf } from './rate-flow';
 
 // Payout holds (package 6b; G2 3.5): an admin places and releases holds (protected keys); the
 // system places a `seller-suspended` hold from identity's event and never releases it. A hold is
 // inserted and released, never edited or deleted (a database trigger also refuses it).
-
-const logger = new Logger('CommissionPayoutsHolds');
 
 export type HoldFailure =
   | { readonly code: 'access.denied' }
@@ -32,7 +35,8 @@ export type HoldFailure =
   /** Unknown, or another Market's, hold: byte-identical. */
   | { readonly code: 'commission-payouts.hold-not-found' }
   | { readonly code: 'commission-payouts.hold-already-released' }
-  | { readonly code: 'commission-payouts.unavailable' };
+  | { readonly code: 'commission-payouts.unavailable' }
+  | StepUpFailure;
 
 export interface PayoutHoldView {
   readonly holdId: Id<'PayoutHold'>;
@@ -95,6 +99,8 @@ export async function placePayoutHold(
 
   const now = deps.clock.now();
   return deps.unitOfWork.run<PayoutHoldView, HoldFailure>(context.market, async () => {
+    // The seller's money lock first (a payout and a hold placement run one after the other).
+    await deps.cursors.lock(context.market, sellerId);
     if (sellerOrderId !== null) {
       // The seller order is checked against this module's own ledger of the context's Market.
       const owner = await deps.ledger.sellerOfSellerOrder(context.market, sellerOrderId);
@@ -102,6 +108,8 @@ export async function placePayoutHold(
         return err({ code: 'commission-payouts.seller-order-not-found' } as const);
       }
     }
+    const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE.key);
+    if (!spent.ok) return err(spent.error);
     const id = deps.ids.next<'PayoutHold'>();
     const hold: PayoutHoldRecord = {
       id,
@@ -151,6 +159,8 @@ export async function releasePayoutHold(
     if (hold.releasedAt !== null) {
       return err({ code: 'commission-payouts.hold-already-released' } as const);
     }
+    const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE.key);
+    if (!spent.ok) return err(spent.error);
     const released = await deps.holds.release(context.market, holdId.value, {
       releasedAt: now,
       releasedBy: actor.accountId,
@@ -231,6 +241,7 @@ export async function placeSellerSuspendedHold(
     context.market,
     input.delivery,
     async () => {
+      await deps.cursors.lock(context.market, sellerId);
       const id = deps.ids.next<'PayoutHold'>();
       const placed = await deps.holds.insertIfAbsent(context.market, {
         id,
@@ -267,9 +278,8 @@ export async function placeSellerSuspendedHold(
 
 /**
  * `identity.seller-access-reinstated.v1`: releases nothing. The hold stays until an admin decides;
- * the only effect is an admin notice. TODO(notifications): there is no admin-notice port for this
- * module yet, so the notice is a structured warn log with ids only (an operator alert reads it);
- * replace it with a notifications admin notice when that port exists.
+ * the only effect is an admin notice, sent through notifications (an event with ids only) when a
+ * `seller-suspended` hold remains.
  */
 export async function noteSellerReinstated(
   deps: CommissionPayoutsDependencies,
@@ -283,7 +293,8 @@ export async function noteSellerReinstated(
   const sellerId = idOf<'Seller'>(input?.sellerId);
   const decisionId = idOf<'SellerAccessDecision'>(input?.decisionId);
   if (sellerId === null || decisionId === null) return err({ code: 'validation.failed' });
-  const done = await deps.unitOfWork.runOnce<number, HoldEventFailure>(
+  const now = deps.clock.now();
+  const done = await deps.unitOfWork.runOnce<'noted', HoldEventFailure>(
     context.market,
     input.delivery,
     async () => {
@@ -291,22 +302,19 @@ export async function noteSellerReinstated(
         activeOnly: true,
         limit: HOLD_LIST_LIMIT,
       });
-      return ok(holds.filter((hold) => hold.reason === 'seller-suspended').length);
+      if (holds.some((hold) => hold.reason === 'seller-suspended')) {
+        await deps.outbox.append(context, [
+          SellerReinstatedHoldRemains.record({
+            aggregateId: decisionId,
+            aggregateVersion: 1,
+            occurredAt: now,
+            payload: { decisionId, sellerId },
+          }),
+        ]);
+      }
+      return ok('noted' as const);
     },
   );
   if (!done.ok) return done;
-  if (!done.value.handled) return ok('already-noted');
-  const remaining = done.value.value;
-  const notice = {
-    msg: 'commission-payouts.seller-reinstated-hold-remains',
-    sellerId,
-    decisionId,
-    activeSuspensionHolds: remaining,
-    action: 'an admin must review and release the seller-suspended hold before payouts resume',
-    marketId: context.market.marketId,
-    correlationId: context.correlationId,
-  };
-  if (remaining > 0) logger.warn(notice);
-  else logger.log(notice);
-  return ok('noted');
+  return ok(done.value.handled ? 'noted' : 'already-noted');
 }

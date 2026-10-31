@@ -49,6 +49,8 @@ export interface ProductDetail {
   readonly shortDescription: string | null;
   readonly description: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
+  /** The product's active brand (the brand page's slug and name), or null. */
+  readonly brand: { readonly slug: string; readonly name: string } | null;
   /** The product's public photos in the published revision's order, at most 8; may be empty. */
   readonly images: readonly ImageRef[];
   readonly offers: readonly [ProductDetailOffer, ...ProductDetailOffer[]];
@@ -205,6 +207,7 @@ export class ViewProductDetail extends UseCase<
       shortDescription: product.shortDescription,
       description: product.description,
       categoryIds: product.categoryIds,
+      brand: product.brand,
       images: imageRefs.get(productId) ?? [],
       offers: [first, ...rest],
     });

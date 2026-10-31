@@ -400,7 +400,9 @@ describe.each(TEST_MARKETS)('disputes over HTTP in market %s', (code) => {
     });
     try {
       const refused = await call('post', 'admin', DECISION, session, body);
-      expect([401, 403]).toContain(refused.status);
+      // An acting-as session is not an admin session on an admin route: the exact answer.
+      expect(refused.status).toBe(401);
+      expect(refused.body).toEqual({ statusCode: 401, code: 'session.invalid' });
     } finally {
       spy.mockRestore();
     }

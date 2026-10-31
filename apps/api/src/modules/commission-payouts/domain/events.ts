@@ -18,5 +18,38 @@ export const SellerOrderDisputed = defineEvent({
   },
 });
 
+/**
+ * An admin set or removed a seller's own payout terms (package 6d, carried over from 6b). One event
+ * per change; the aggregate is the change itself (a fresh id, version 1), so a seller can have any
+ * number of them. Ids only: no schedule, minimum or approval mode reaches the event, and a
+ * subscriber reads nothing back (the seller's notice says the terms changed and where to look).
+ */
+export const PayoutTermsChanged = defineEvent({
+  type: 'commission-payouts.payout-terms-changed.v1',
+  aggregateType: 'payout-terms-change',
+  payload: {
+    changeId: eventField.id(),
+    sellerId: eventField.id(),
+  },
+});
+
+/**
+ * A seller whose access was suspended is reinstated (identity), but the `seller-suspended` hold on
+ * its payouts stays until an admin releases it (package 6d, carried over from 6b): the admin is
+ * told so. Once per access decision (the aggregate is the decision). Ids only.
+ */
+export const SellerReinstatedHoldRemains = defineEvent({
+  type: 'commission-payouts.seller-reinstated-hold-remains.v1',
+  aggregateType: 'seller-access-decision',
+  payload: {
+    decisionId: eventField.id(),
+    sellerId: eventField.id(),
+  },
+});
+
 /** Every event type commission-payouts publishes, registered with the event catalogue at boot. */
-export const COMMISSION_PAYOUTS_EVENTS: readonly EventDefinition[] = [SellerOrderDisputed];
+export const COMMISSION_PAYOUTS_EVENTS: readonly EventDefinition[] = [
+  SellerOrderDisputed,
+  PayoutTermsChanged,
+  SellerReinstatedHoldRemains,
+];

@@ -78,6 +78,8 @@ function exported(
     | 'TEST_ORDERING_REFUNDS_DATABASE_URL'
     | 'TEST_PAYOUT_HOLDS_DATABASE_URL'
     | 'TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL'
+    | 'TEST_PAYOUT_RUN_DATABASE_URL'
+    | 'TEST_PAYOUT_RUN_OWNER_DATABASE_URL'
     | 'TEST_DISPUTES_DATABASE_URL'
     | 'TEST_DISPUTES_OWNER_DATABASE_URL'
     | 'TEST_SELLERS_LIST_DATABASE_URL'
@@ -364,6 +366,18 @@ export function payoutHoldsTestDatabaseUrl(): string {
 
 export function payoutHoldsOwnerTestDatabaseUrl(): string {
   return exported('TEST_PAYOUT_HOLDS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that commission-payouts-payouts.db-spec.ts runs on (global-setup.ts), as the
+ * application login and as its owner: the payout run reads every due cursor of a Market there.
+ */
+export function payoutRunTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_RUN_DATABASE_URL');
+}
+
+export function payoutRunOwnerTestDatabaseUrl(): string {
+  return exported('TEST_PAYOUT_RUN_OWNER_DATABASE_URL');
 }
 
 /**

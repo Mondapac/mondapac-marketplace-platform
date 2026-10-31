@@ -13,6 +13,8 @@ export interface DetailProduct {
   readonly description: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
   readonly variants: readonly DetailVariant[];
+  /** The product's active brand (page slug and name), or null. */
+  readonly brand: { readonly slug: string; readonly name: string } | null;
 }
 
 /** One (Offer, Variant) a price or a stock state is asked for. */

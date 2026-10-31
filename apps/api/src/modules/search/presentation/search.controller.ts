@@ -16,7 +16,7 @@ import type { SearchProductsRequest } from '../domain/search-query';
 import { SearchProducts } from '../application/use-cases/search-products.use-case';
 import { ProductSearchPageBody } from './search.dto';
 
-const ALLOWED = ['q', 'category', 'store', 'page', 'pageSize'] as const;
+const ALLOWED = ['q', 'category', 'store', 'brand', 'page', 'pageSize'] as const;
 const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
 
 const fail = (status: number, code: string, details?: object): HttpException =>
@@ -58,6 +58,7 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
     q: text('q'),
     category: text('category'),
     store: text('store'),
+    brand: text('brand'),
     page: whole('page'),
     pageSize: whole('pageSize'),
   };
@@ -95,6 +96,14 @@ export class SearchController {
     name: 'store',
     required: false,
     description: 'A store address (slug), 3 to 50 characters. Not with `q`.',
+  })
+  @ApiQuery({
+    name: 'brand',
+    required: false,
+    description:
+      'A brand address (slug), at most 80 characters. Lists the Offers of that brand by name ' +
+      '(up to its first 1000 live products); not with `q` or `store`; may combine with ' +
+      '`category`. An unknown, draft or archived brand answers an empty page.',
   })
   @ApiQuery({ name: 'page', required: false, description: '1 to 100, default 1.' })
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 48, default 24.' })

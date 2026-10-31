@@ -177,6 +177,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
   PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },
+  Brand: { noCustomerText: 'aggregate class around BrandState' },
+  // A brand's name and summary are read on its public page, but only an admin makes a brand public
+  // (a seller's proposal is a draft until approved), and no certification claim is put in a
+  // brand: the claim-text control covers product revisions, offers and category names only.
+  BrandState: {
+    noCustomerText: 'admin-approved brand text, outside the claim-text control (brand package)',
+  },
+  BrandContent: { noCustomerText: 'the editable text of a brand; see BrandState' },
+  BrandFieldProblem: { noCustomerText: 'field path and a problem code' },
   RateVerdict: { noCustomerText: 'numbers' },
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
@@ -227,8 +236,9 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   PublishedProduct: {
     noCustomerText:
-      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids',
+      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
   },
+  BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
   },

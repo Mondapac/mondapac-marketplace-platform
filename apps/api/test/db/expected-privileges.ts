@@ -526,6 +526,37 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'commission_payouts.dispute_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'commission_payouts.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // Package 6d: a payout is inserted and moves through its states (a guard trigger allows the
+    // transitions of the state machine and nothing else); an item is inserted and released once; a
+    // cursor is inserted and moved. No table of the payout run is ever deleted from.
+    'commission_payouts.payouts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'abandoned_at',
+        'approved_at',
+        'approved_by',
+        'approved_transfer_minor',
+        'instructing_at',
+        'outcome_code',
+        'state',
+        'state_changed_at',
+        'transfer_execution_id',
+        'version',
+      ],
+    },
+    'commission_payouts.payout_items': { table: ['INSERT', 'SELECT'], columnUpdate: ['freed_at'] },
+    'commission_payouts.payout_schedule_cursors': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'block_reason',
+        'evaluated_at',
+        'last_slot_at',
+        'next_slot_at',
+        'updated_at',
+        'version',
+        'zone',
+      ],
+    },
     // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
     // (triggers refuse more for every role); the rest change only the columns named and are never
     // deleted (a trigger refuses DELETE and TRUNCATE for every role).
@@ -1087,6 +1118,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.products': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
+        'brand_id',
         'discarded_at',
         'last_changed_at',
         'matched_into_product_id',
@@ -1102,6 +1134,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'version',
         'withdrawn_at',
       ],
+    },
+    // Catalog brand package: a brand is never deleted (a trigger refuses it); identity, origin and
+    // creation columns never change; an alias only moves to another brand (a merge); a queue row
+    // only gets its outcome.
+    'catalog.brands': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'approved_by',
+        'header_image_id',
+        'logo_alt',
+        'logo_image_id',
+        'merged_into_id',
+        'name',
+        'name_key',
+        'origin_country',
+        'slug',
+        'status',
+        'summary',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.brand_aliases': { table: ['INSERT', 'SELECT'], columnUpdate: ['brand_id'] },
+    'catalog.brand_merge_candidates': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['resolution', 'resolved_at', 'resolved_by', 'status'],
     },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],
