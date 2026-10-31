@@ -279,7 +279,11 @@ export function useStoreProfile({
 
   const banner = problem?.banner ?? null;
   const errorItems: SettingsErrorItem[] = [
-    ...invalid.map((locale) => ({ id: rowId(locale), label: label(locale), reason: errorOf(locale) })),
+    ...invalid.map((locale) => ({
+      id: rowId(locale),
+      label: label(locale),
+      reason: errorOf(locale),
+    })),
     ...invalidPictures.map((kind) => ({
       id: pictureRowId(kind),
       label: t(`store-profile.${kind}.title`),
