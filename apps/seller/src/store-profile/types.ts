@@ -1,3 +1,5 @@
+import type { LastChangedValue } from '@mondapac/ui';
+
 export const STORE_PROFILE_VIEW_PERMISSION = 'sellers.store-profile.view';
 export const STORE_PROFILE_EDIT_PERMISSION = 'sellers.store-profile.edit';
 
@@ -12,6 +14,8 @@ export interface StoreImageRef {
 
 /** `GET sellers/store-profile` and the answer of every save. */
 export interface StoreProfileView {
+  /** The newest change, from the audit log; null while it was never changed. */
+  readonly lastChanged?: LastChangedValue | null;
   /** Names the version a text save was made against (0: never saved). */
   readonly version: number;
   /** The About text by locale; an empty string where none is written. */

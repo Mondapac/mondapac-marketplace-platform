@@ -1,6 +1,14 @@
 'use client';
 
-import { Banner, Button, FileButton, ImageSlot, SettingsSection, toast } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  FileButton,
+  ImageSlot,
+  SettingsSection,
+  toast,
+  type LastChangedValue,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -36,7 +44,8 @@ export function ImageCard({
 }: {
   readonly kind: ImageKind;
   readonly image: StoreImageRef | null;
-  readonly onImage: (image: StoreImageRef | null) => void;
+  /** The picture now stored, and the change the answer reports (for the page's last-changed line). */
+  readonly onImage: (image: StoreImageRef | null, lastChanged: LastChangedValue | null) => void;
   readonly csrfToken: string;
   readonly canEdit: boolean;
 }) {
@@ -94,7 +103,7 @@ export function ImageCard({
         csrfToken,
       );
       if (result.ok) {
-        onImage(result.body[kind]);
+        onImage(result.body[kind], result.body.lastChanged ?? null);
         setStatus('idle');
         toast.success(t(`store-profile.${kind}.saved`));
       } else if (result.failure.status === 401) {
@@ -116,7 +125,7 @@ export function ImageCard({
     const result = await callApi<StoreProfileView>('DELETE', path, undefined, csrfToken);
     busy.current = false;
     if (result.ok) {
-      onImage(result.body[kind]);
+      onImage(result.body[kind], result.body.lastChanged ?? null);
       // The Remove button is gone with the picture: focus moves to the way to choose another.
       focusNext.current = 'choose';
       setStatus('idle');

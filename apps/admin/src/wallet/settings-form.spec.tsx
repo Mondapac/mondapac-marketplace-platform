@@ -329,4 +329,60 @@ describe('SettingsForm: unusual data from the server', () => {
     mount();
     expect(await screen.findByText('Reason: a.b')).toBeTruthy();
   });
+
+  it('shows who changed the switch last under the title, and names the winner in the conflict', async () => {
+    const at = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    call.mockResolvedValue(
+      ok(
+        settings({
+          status: 'paused',
+          reason: 'maintenance',
+          version: 3,
+          lastChanged: { at, byDisplayName: 'Sara K.', byKind: 'member' },
+        }),
+      ),
+    );
+    mount();
+    expect((await screen.findByTestId('last-changed')).textContent).toBe(
+      'Last changed by Sara K. · 2 days ago · View history',
+    );
+    // The history opens on this page's own route.
+    call.mockResolvedValueOnce(ok({ items: [], next: null }));
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith('GET', 'wallet/admin/settings/history?limit=20'),
+    );
+    expect(await screen.findByText('No changes yet')).toBeTruthy();
+  });
+
+  it('names who saved first in the conflict banner when the re-read says so', async () => {
+    call.mockResolvedValueOnce(
+      ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z', version: 3 })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    choose('paused');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'maintenance' } });
+    review();
+    await confirmDialog('Pause the wallet?');
+    call.mockResolvedValueOnce(refused(409, 'wallet.settings-conflict'));
+    call.mockResolvedValueOnce(
+      ok(
+        settings({
+          status: 'frozen',
+          reason: 'legal-hold',
+          updatedAt: '2026-10-02T00:00:00.000Z',
+          version: 4,
+          lastChanged: {
+            at: new Date(Date.now() - 60_000).toISOString(),
+            byDisplayName: 'Amir R.',
+            byKind: 'member',
+          },
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
+
+    expect(await screen.findByText('Amir R. saved these settings 1 minute ago')).toBeTruthy();
+  });
 });

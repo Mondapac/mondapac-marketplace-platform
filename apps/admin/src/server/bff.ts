@@ -52,6 +52,13 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    // "View history" of a settings page (query: `after`, `limit`): when, who by display name and
+    // which fields changed, from the audit log.
+    'assistant/admin/settings/history',
+    'notifications/admin/support-contact/history',
+    'shipping/admin/delivery-settings/history',
+    'shipping/admin/fleet-selection/history',
+    'wallet/admin/settings/history',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([

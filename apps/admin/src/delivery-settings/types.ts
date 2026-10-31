@@ -1,3 +1,4 @@
+import type { LastChangedValue } from '@mondapac/ui';
 // Answers of the admin delivery-settings routes (apps/api delivery-settings.controller.ts).
 
 export const DELIVERY_VIEW_PERMISSION = 'shipping.delivery-settings.view';
@@ -21,6 +22,8 @@ export interface Margin {
 }
 
 export interface DeliverySettings {
+  /** The newest change, from the audit log; null while it was never changed. */
+  readonly lastChanged?: LastChangedValue | null;
   readonly enabled: Readonly<Record<Method, boolean>>;
   /** HH:MM, local time. */
   readonly sameDayCutoff: string;

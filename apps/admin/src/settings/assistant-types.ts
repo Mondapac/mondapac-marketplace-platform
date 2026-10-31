@@ -1,3 +1,5 @@
+import type { LastChangedValue } from '@mondapac/ui';
+
 // Answers of the buyer assistant settings routes (apps/api admin-assistant-settings.controller.ts).
 
 export const ASSISTANT_VIEW_PERMISSION = 'assistant.settings.view';
@@ -41,6 +43,8 @@ export interface AssistantSettings {
 }
 
 export interface AssistantSettingsAnswer {
+  /** The newest change, from the audit log; null while it was never changed. */
+  readonly lastChanged?: LastChangedValue | null;
   /** 0 while the built-in defaults are in force, then 1, 2, ... per change. */
   readonly version: number;
   readonly settings: AssistantSettings;

@@ -607,7 +607,7 @@
       "conflict": {
         "title": "Someone saved this role first",
         "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
-        "compare": "Compare",
+        "compare": "Show what changed",
         "hide": "Hide comparison",
         "name": "Saved name: {saved}. Your name: {yours}.",
         "saved-only": "In the saved role but not in yours: {keys}.",
@@ -1539,15 +1539,19 @@
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
       "yours-label": "Yours:",
       "same": "Your draft now matches what is saved.",
-      "unset": "not set"
+      "unset": "not set",
+      "saved-by-named": "{name} saved {subject} {when}",
+      "saved-by-platform": "Mondapac saved {subject} {when}",
+      "subject-settings": "these settings",
+      "subject-store-profile": "the store profile"
     },
     "support": {
       "title": "Support contact",
@@ -1732,6 +1736,27 @@
       },
       "not-configured-option": "{option} (not configured on the server)",
       "version-defaults": "Built-in defaults, never saved"
+    },
+    "last-changed": {
+      "named": "Last changed by {name} · {when}",
+      "platform": "Last changed by Mondapac · {when}",
+      "unnamed": "Last changed {when}",
+      "view-history": "View history"
+    },
+    "history": {
+      "title": "History",
+      "close": "Close history",
+      "loading": "Loading history",
+      "empty-title": "No changes yet",
+      "empty-body": "When someone saves this page, the change shows up here.",
+      "error": "The history could not be loaded.",
+      "retry": "Try again",
+      "load-more": "Show older changes",
+      "more-failed": "Older changes could not be loaded.",
+      "who-platform": "Mondapac",
+      "who-unnamed": "Someone",
+      "changed": "Changed: {fields}",
+      "saved": "Saved"
     }
   },
   "fleets": {
@@ -1864,7 +1889,7 @@
       "title": "Someone else saved the fleet settings first",
       "model-title": "This page changed while you were editing",
       "body": "{count, plural, one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
-      "compare": "Compare",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "same": "Your draft now matches what is saved.",
       "line": "{field}: saved now {saved}, yours {yours}"
@@ -2722,6 +2747,16 @@
       "commission-payouts": {
         "dispute": {
           "attribute": "record a dispute decision"
+        },
+        "payout": {
+          "approve": "approve a payout"
+        },
+        "payout-terms": {
+          "edit": "change a seller's payout terms"
+        },
+        "payout-hold": {
+          "place": "place a payout hold",
+          "release": "release a payout hold"
         }
       },
       "wallet": {
@@ -2741,22 +2776,7 @@
           "delete": "delete a buyer's account or cancel a deletion request"
         }
       },
-      "fallback": "do this",
-      "commission-payouts": {
-        "dispute": {
-          "attribute": "record a dispute decision"
-        },
-        "payout": {
-          "approve": "approve a payout"
-        },
-        "payout-terms": {
-          "edit": "change a seller's payout terms"
-        },
-        "payout-hold": {
-          "place": "place a payout hold",
-          "release": "release a payout hold"
-        }
-      }
+      "fallback": "do this"
     },
     "label": {
       "code": "6-digit code",

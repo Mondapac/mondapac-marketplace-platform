@@ -2073,15 +2073,19 @@
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
       "yours-label": "Yours:",
       "same": "Your draft now matches what is saved.",
-      "unset": "empty"
+      "unset": "empty",
+      "saved-by-named": "{name} saved {subject} {when}",
+      "saved-by-platform": "Mondapac saved {subject} {when}",
+      "subject-settings": "these settings",
+      "subject-store-profile": "the store profile"
     },
     "hub": {
       "description": "Set up how your store works. Changes here apply to your whole store.",
@@ -2103,6 +2107,27 @@
     "sub": {
       "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "last-changed": {
+      "named": "Last changed by {name} · {when}",
+      "platform": "Last changed by Mondapac · {when}",
+      "unnamed": "Last changed {when}",
+      "view-history": "View history"
+    },
+    "history": {
+      "title": "History",
+      "close": "Close history",
+      "loading": "Loading history",
+      "empty-title": "No changes yet",
+      "empty-body": "When someone saves this page, the change shows up here.",
+      "error": "The history could not be loaded.",
+      "retry": "Try again",
+      "load-more": "Show older changes",
+      "more-failed": "Older changes could not be loaded.",
+      "who-platform": "Mondapac",
+      "who-unnamed": "Someone",
+      "changed": "Changed: {fields}",
+      "saved": "Saved"
     }
   }
 }
