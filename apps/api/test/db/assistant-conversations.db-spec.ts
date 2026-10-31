@@ -1,3 +1,4 @@
+import { unusedChangeTrail } from '../support/change-trail-fakes';
 import { createHash } from 'node:crypto';
 import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
@@ -306,6 +307,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         limits: new MemoryLimits(),
         guestTokens: new SequenceGuestTokens(),
         calendar: new RegistryMarketCalendar(markets),
+        trail: unusedChangeTrail,
       },
     );
     const conversationId: string = ids.next<'Conversation'>();

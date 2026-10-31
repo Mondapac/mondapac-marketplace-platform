@@ -59,6 +59,8 @@ function setUp() {
       }
       return Promise.resolve(ok(newest.slice(from, from + query.limit)));
     },
+    // The minimum-order history reads one action of one seller through `history`.
+    historyOf: () => Promise.reject(new Error('historyOf is not used by this history')),
   };
   const labels = new Map<Id<'Account'>, TeamMemberLabel>();
   const labelCalls: (readonly Id<'Account'>[])[] = [];

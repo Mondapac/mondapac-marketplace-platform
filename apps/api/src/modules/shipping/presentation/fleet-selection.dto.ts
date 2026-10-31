@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { FleetSelectionModel, FleetSelectionView } from '../domain/fleet-selection';
+import { lastChangedBody } from '../../../platform/audit/change-trail';
+import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
+import type { FleetSelectionPage } from '../application/use-cases/view-fleet-selection.use-case';
+import type { FleetSelectionModel } from '../domain/fleet-selection';
 
 // Bodies of the fleet-selection routes (delivery models, package 3). Ids, names, whole numbers
 // and fleet codes only.
@@ -84,6 +87,12 @@ export class FleetSelectionBody {
   @ApiProperty({ enum: FLEETS, isArray: true, description: 'The built-in default order.' })
   defaultOrder!: string[];
   @ApiProperty({ type: [FleetStatusBody] }) fleets!: FleetStatusBody[];
+  @ApiProperty({
+    type: LastChangedDto,
+    nullable: true,
+    description: 'Who changed this page last and when; null while nothing was ever changed.',
+  })
+  lastChanged!: LastChangedDto | null;
 }
 
 export class FleetModelRequest {
@@ -136,10 +145,11 @@ export const modelBody = (model: FleetSelectionModel): FleetModelBody => {
   };
 };
 
-export const selectionBody = (view: FleetSelectionView): FleetSelectionBody => ({
+export const selectionBody = (view: FleetSelectionPage): FleetSelectionBody => ({
   version: view.version,
   models: view.models.map(modelBody),
   active: { ...view.active },
   defaultOrder: [...view.defaultOrder],
   fleets: view.fleets.map((fleet) => ({ ...fleet, methods: [...fleet.methods] })),
+  lastChanged: lastChangedBody(view.lastChanged),
 });

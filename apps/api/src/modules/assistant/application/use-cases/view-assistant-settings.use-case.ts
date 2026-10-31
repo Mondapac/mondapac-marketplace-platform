@@ -1,17 +1,19 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import { ok } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { ASSISTANT_SETTINGS_VIEW } from '../../contracts/permissions';
 import type { AssistantDependencies } from '../assistant-dependencies';
 import {
+  ASSISTANT_SETTINGS_CHANGES,
   viewAssistantSettings,
   type AssistantSettingsFailure,
-  type AssistantSettingsView,
+  type AssistantSettingsPage,
 } from '../settings-flow';
 
 /** `assistant.view-assistant-settings`: an admin reads the Market's buyer assistant settings. */
 export class ViewAssistantSettings extends UseCase<
   Record<string, never>,
-  AssistantSettingsView,
+  AssistantSettingsPage,
   AssistantSettingsFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -26,7 +28,12 @@ export class ViewAssistantSettings extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext) {
-    return viewAssistantSettings(this.deps, context);
+  protected async handle(
+    context: CallContext,
+  ): Promise<Result<AssistantSettingsPage, AssistantSettingsFailure>> {
+    const view = await viewAssistantSettings(this.deps, context);
+    if (!view.ok) return view;
+    const lastChanged = await this.deps.trail.lastChanged(context, ASSISTANT_SETTINGS_CHANGES);
+    return ok({ ...view.value, lastChanged });
   }
 }
