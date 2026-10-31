@@ -1333,3 +1333,62 @@ describe('relay of the wallet and step-up routes', () => {
     }
   });
 });
+
+describe('relay of the product list', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['catalog', 'admin', 'products'];
+
+  it('forwards the list query keys whose value has the right shape, and drops the rest', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        `catalog/admin/products?view=all&q=lamb%20cutlets&scope=SELLER&status=withdrawn&categoryId=${id}&sort=name&direction=asc&page=2&pageSize=25&extra=1`,
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/products?view=all&q=lamb+cutlets&scope=SELLER&status=withdrawn&categoryId=${id}&sort=name&direction=asc&page=2&pageSize=25`,
+    );
+    await relay(
+      config,
+      get(
+        'catalog/admin/products?view=draft&scope=ALL&categoryId=nope&sort=price&page=-1&pageSize=999',
+      ),
+      path,
+      upstream,
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products');
+  });
+
+  it('relays the public category tree and the thumbnail of one product photo, GET only', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, get('catalog/categories?x=1'), ['catalog', 'categories'], upstream))
+        .status,
+    ).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/categories');
+    const photo = ['catalog', 'admin', 'products', id, 'images', id, 'thumb'];
+    expect((await relay(config, get(photo.join('/')), photo, upstream)).status).toBe(200);
+    expect(upstream.mock.calls[1]?.[0]).toBe(`http://api.test/${photo.join('/')}`);
+  });
+
+  it('refuses a write, another photo size, a take-down and a product that is not a UUID', async () => {
+    const upstream = upstreamOk();
+    expect((await relay(config, post('catalog/admin/products'), path, upstream)).status).toBe(404);
+    for (const tail of ['large', 'medium', 'take-down']) {
+      const other = ['catalog', 'admin', 'products', id, 'images', id, tail];
+      expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
+    }
+    const bad = ['catalog', 'admin', 'products', 'nope', 'images', id, 'thumb'];
+    expect((await relay(config, get(bad.join('/')), bad, upstream)).status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});

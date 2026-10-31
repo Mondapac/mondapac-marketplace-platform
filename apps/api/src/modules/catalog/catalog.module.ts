@@ -53,6 +53,9 @@ import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handl
 import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
+import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
+import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
+import { AdminProductListController } from './presentation/admin-product-list.controller';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
@@ -242,6 +245,7 @@ const PORT = {
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
+  adminProductsReader: ADMIN_PRODUCTS_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
   objectStore: OBJECT_STORE,
@@ -324,6 +328,7 @@ const productTypeProvider: FactoryProvider<string> = {
     OwnProductController,
     ProductImageController,
     OfferReviewController,
+    AdminProductListController,
     ProductReviewController,
     ProductImageReviewController,
     PublicCategoryController,
@@ -557,6 +562,12 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       offers: true,
       ownReader: true,
+      policy: true,
+      sellerNames: true,
+    }),
+    useCaseProvider(AdminProductsList, {
+      unitOfWork: true,
+      adminProductsReader: true,
       policy: true,
       sellerNames: true,
     }),

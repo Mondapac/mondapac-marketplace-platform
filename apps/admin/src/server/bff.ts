@@ -48,6 +48,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'commission-payouts/admin/payouts',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
+    // The marketplace product list (catalog), read-only (query: `view`, `q`, the filters, `sort`,
+    // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
+    'catalog/admin/products',
+    'catalog/categories',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
@@ -194,6 +198,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // The primary photo of a listed product, thumbnail size only (catalog).
+    'catalog/admin/products/:id/images/:id/thumb',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -223,6 +229,19 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
+  'catalog/admin/products': [
+    'view',
+    'q',
+    'scope',
+    'status',
+    'categoryId',
+    'typeCode',
+    'sellerId',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+  ],
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
@@ -240,6 +259,18 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the opening, a dot and the dispute id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'catalog/admin/products': {
+    view: /^(active|all|inactive)$/,
+    scope: /^(PLATFORM|SELLER)$/,
+    status: /^(published|unpublished|withdrawn|retired|matched)$/,
+    categoryId: UUID,
+    typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    sellerId: UUID,
+    sort: /^(name|updated|created)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
   },
   'commission-payouts/admin/payouts': {
     status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,

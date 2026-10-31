@@ -812,7 +812,8 @@ session (and when the context cannot say, CD M5).
 | `own-category.propose`, `.cancel` | `permissions [catalog.own-category.propose]` | — | `mayProposeCategories` at the command |
 | `own-import.*` | `permissions [catalog.own-import.run]` | refused (identity kept by the job; brief s5) | 14 |
 | `own-listing.suggest-text` (AIS-03) | `permissions [catalog.own-product.edit]` | refused (R3) | 13 |
-| `review-queue.list`, `revision.review-read`, `offer.review-read`, `revision.similar-products`, `admin-products.list`, `admin-product.read`, `admin-products.search` | `permissions [catalog.product.view]` | — | Store name through `sellerSummaries` per page (≤ 100 ids); AIA-03 flag on the review page (13); similar products and `matchable` (9.2) |
+| `review-queue.list`, `revision.review-read`, `offer.review-read`, `revision.similar-products`, `admin-product.read`, `admin-products.search` | `permissions [catalog.product.view]` | — | Store name through `sellerSummaries` per page (≤ 100 ids); AIA-03 flag on the review page (13); similar products and `matchable` (9.2) |
+| `admin-products.list` (`GET catalog/admin/products`) | `permissions [catalog.product.view]` | — | The Catalogue > Products page: tabs, search, filters, sort, page; owner store name through `sellerSummaries` per page (≤ 100 ids); catalog tables only, no price or stock (9.2b) |
 | `product-revision.approve`, `.request-changes`, `.bulk-approve`; `offer.approve`, `.request-changes` | `permissions [catalog.product.approve]` | — | 4.2, 4.4 |
 | `product.match` | `permissions [catalog.product.match]` | — | 4.5 |
 | `product.promote` | `permissions [catalog.product.promote]` | — | 4.5 |
@@ -1044,6 +1045,24 @@ cookieless origin), pixel width and height, bytes, `isPrimary`, `position`, `alt
 exactly the working copy's image set (else `photos.order-mismatch`, nothing changed); it changes the
 working copy only (the first is primary; a primary change is sensitive at submit, 4.3). Admins
 reorder PLATFORM photos through `platform-product.save-draft`.
+
+### 9.2b Admin product list (`admin-products.list`)
+`GET catalog/admin/products` (`catalog.product.view`, admin population) lists the products of the
+caller's Market, PLATFORM and SELLER scope, for the Catalogue > Products page. `view` is a tab:
+`active` is `published`, `inactive` is `unpublished` and `withdrawn`, `all` is every status but
+`draft` and `discarded`. Free text `q` (up to 100 characters) matches a part of the name in the
+Market's default locale or of `productCode`, ignoring case; the name is the published revision's,
+else the pending one's (a never-published product). Filters: `scope`, `status`, `categoryId`
+(any category of that revision), `typeCode`, `sellerId`. `sort` is `name`, `updated` or `created`,
+`direction` `asc` or `desc`; paged by `page` (1 to 1000) and `pageSize` (1 to 100, default 25).
+The answer carries `total` and `counts` `{active, all, inactive}` for the same search and filters
+(the status filter included). A row: id, `productCode`, name, `primaryImageId` (position 1 of that
+revision, not taken down; served by the admin image route), scope, owner seller id and store name
+(through `sellerSummaries`, absent when `sellers` cannot say), first category name, `typeCode`,
+status, `offerCount` (Offers not deleted, any seller), `updatedAt`, `createdAt`. No price and no
+stock: catalog imports neither `pricing` nor `inventory`. Sorting by name is made in memory over
+the matching products (the name is a revision text per locale); more than 5000 matches refuse
+that sort with `validation.failed` (`sort`, `too-broad`) and the admin narrows the search.
 
 ### 9.3 Ports
 | Port | Declared in | Implemented by | Notes |
