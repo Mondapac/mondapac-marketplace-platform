@@ -489,6 +489,22 @@
     }
   },
   {
+    "type": "commission-payouts.payout-terms-changed.v1",
+    "aggregateType": "payout-terms-change",
+    "fields": {
+      "changeId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "commission-payouts.seller-reinstated-hold-remains.v1",
+    "aggregateType": "seller-access-decision",
+    "fields": {
+      "decisionId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "customers.account-deletion-settings-changed.v1",
     "aggregateType": "account-deletion-settings",
     "fields": {

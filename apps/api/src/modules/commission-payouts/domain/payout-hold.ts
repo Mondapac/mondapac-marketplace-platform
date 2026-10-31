@@ -24,3 +24,13 @@ export const RELEASE_REASONS = [
 export type ReleaseReason = (typeof RELEASE_REASONS)[number];
 
 export type HoldOrigin = 'admin' | 'system';
+
+/**
+ * What a seller is told about a hold on its money (design 5.4, Q-S4): `refund-pending` as such,
+ * every other reason (a suspension, a dispute, an admin review, a bank change) only as the generic
+ * `on-hold`, so the seller contacts support. One mapping, used by every seller-facing read.
+ */
+export type SellerVisibleHoldReason = 'on-hold' | 'refund-pending';
+
+export const sellerVisibleHoldReason = (reason: HoldReason): SellerVisibleHoldReason =>
+  reason === 'refund-pending' ? 'refund-pending' : 'on-hold';

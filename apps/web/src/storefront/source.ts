@@ -18,6 +18,18 @@ import { photoUrls } from './photo-source.ts';
 import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
+import {
+  BRAND_PAGE_SIZE,
+  BRAND_PREVIEW_SIZE,
+  NO_BRAND_IMAGES,
+  brandIndexOf,
+  brandOf,
+  brandPageOf,
+  brandProductsOf,
+  brandProductsPath,
+  isBrandSlug,
+} from './brands.ts';
+import { sampleBrandIndex, sampleBrandPage } from './sample-brands.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { sampleDeliveryOptions } from './sample-delivery-options.ts';
@@ -34,6 +46,8 @@ import { accountOrderOf, accountOrdersOf, isOrderId, shipToLine } from '../accou
 import type {
   AccountOrder,
   AccountSource,
+  BrandIndex,
+  BrandPage,
   CartSource,
   CheckoutSource,
   ClosedStore,
@@ -286,6 +300,74 @@ export async function loadSeller(slug: string, page = 1): Promise<SellerShop | u
     ...shopOf(store, areaName(store.serviceAreaCode)),
     storeProducts,
   };
+}
+
+/** The API answered something other than the expected status and shape. */
+class BrandReadFailed extends Error {
+  constructor(what: string) {
+    super(`the ${what} read failed`);
+  }
+}
+
+/**
+ * The brands A to Z (`GET catalog/brands`, active brands only). Sample brands while the API is
+ * off. Any failure throws, so the page shows its error state rather than "no brands".
+ */
+export async function loadBrands(): Promise<BrandIndex> {
+  const answer = await apiGet<unknown>('catalog/brands');
+  if (answer.kind === 'off') return sampleBrandIndex();
+  const index = answer.kind === 'ok' ? brandIndexOf(answer.body, NO_BRAND_IMAGES) : null;
+  if (index === null) throw new BrandReadFailed('brands');
+  return index;
+}
+
+/**
+ * A brand page's read, or undefined when there is no such active brand. `GET catalog/brands/:slug`
+ * gives the brand and its live product count in the buyer's Market, and `GET
+ * search/products?brand=<slug>` one page of its products: the short list of 8 under the header, or,
+ * with `all`, page `page` of 24. Only the catalog module's own not-found means "no such brand"; a
+ * bare 404 is a missing route and throws like any other failure. A failed products read does not
+ * throw: the products section says so and the rest of the page stays. Sample brands while the API
+ * is off.
+ */
+export async function loadBrand(
+  slug: string,
+  page = 1,
+  all = false,
+): Promise<BrandPage | undefined> {
+  // No brand has any other slug; nothing else reaches the API path.
+  if (!isBrandSlug(slug)) return undefined;
+  const size = all ? BRAND_PAGE_SIZE : BRAND_PREVIEW_SIZE;
+  const shown = all ? page : 1;
+  const [answer, products] = await Promise.all([
+    apiGet<unknown>(`catalog/brands/${encodeURIComponent(slug)}`),
+    loadBrandProducts(slug, shown, size),
+  ]);
+  if (answer.kind === 'off') return sampleBrandPage(slug, shown, size, all);
+  if (answer.kind === 'failed') {
+    if (answer.status === 404 && answer.code === 'brand.not-found') return undefined;
+    throw new BrandReadFailed('brand');
+  }
+  const brand = brandOf(answer.body, NO_BRAND_IMAGES);
+  if (brand === null) throw new BrandReadFailed('brand');
+  return brandPageOf(brand, products, all);
+}
+
+/** One page of a brand's products; any failure is `failed`, never an exception. */
+async function loadBrandProducts(
+  slug: string,
+  page: number,
+  pageSize: number,
+): Promise<StoreProducts> {
+  const [answer, tree, photo] = await Promise.all([
+    apiGet<unknown>(brandProductsPath(slug, page, pageSize)),
+    // Only for the illustration of a card without a photo; a failed tree gives plain cards.
+    apiGet<unknown>('catalog/categories'),
+    photoUrls(),
+  ]);
+  if (answer.kind !== 'ok') return { kind: 'failed', page };
+  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).slugs;
+  return brandProductsOf(answer.body, page, slugs, photo);
 }
 
 /** One page of a store's products; any failure is `failed`, never an exception. */

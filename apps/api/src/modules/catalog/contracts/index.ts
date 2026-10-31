@@ -30,6 +30,8 @@ export {
 export { buildOfferMovedMapping } from '../domain/events/offer-moved-payload';
 export type { OfferMovedPayloadRefused } from '../domain/events/offer-moved-payload';
 export {
+  CATALOG_BRAND_EDIT,
+  CATALOG_BRAND_READ,
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PERMISSIONS,
   CATALOG_PLATFORM_PRODUCT_EDIT,

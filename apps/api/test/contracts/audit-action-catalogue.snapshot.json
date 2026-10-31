@@ -919,6 +919,21 @@
     }
   },
   {
+    "action": "commission-payouts.payout.approve",
+    "targetType": "commission-payouts.payout",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(awaiting-approval)"
+    },
+    "after": {
+      "approvalReason": "enumOf(first-payout|terms)",
+      "sellerId": "id",
+      "state": "enumOf(approved)",
+      "transfer": "money"
+    }
+  },
+  {
     "action": "customers.account-deletion-settings.changed",
     "targetType": "customers.account-deletion-settings",
     "targetId": "enumOf(account-deletion-settings)",

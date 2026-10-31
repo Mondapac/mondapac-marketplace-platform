@@ -22,6 +22,11 @@ export const COMMISSION_PAYOUTS_STATUS: Readonly<Record<string, number>> = Objec
   'commission-payouts.dispute.already-decided': 409,
   'commission-payouts.dispute.amount-out-of-range': 400,
   'commission-payouts.unavailable': 503,
+  'commission-payouts.payout-not-found': 404,
+  'commission-payouts.payout.not-awaiting-approval': 409,
+  'commission-payouts.payout.amount-changed': 409,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -78,5 +83,9 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  // A refused step-up says which action the panel must present a code for.
+  if (typeof error.actionKey === 'string') {
+    return fail(status, error.code, { actionKey: error.actionKey });
+  }
   return fail(status, error.code);
 }

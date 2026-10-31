@@ -110,6 +110,27 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     expect(calls.every((call) => call.actor === 'anonymous')).toBe(true);
   });
 
+  it('passes a brand address, alone or with a category', async () => {
+    const alone = await get('?brand=saffron-co&page=2');
+    const combined = await get(`?brand=saffron-co&category=${CATEGORY}`);
+
+    expect(alone.status).toBe(200);
+    expect(combined.status).toBe(200);
+    expect(calls.map((call) => call.input)).toEqual([
+      { brand: 'saffron-co', page: 2 },
+      { brand: 'saffron-co', category: CATEGORY },
+    ]);
+    expect(calls.every((call) => call.actor === 'anonymous')).toBe(true);
+  });
+
+  it('refuses a repeated or bracketed brand before the use case', async () => {
+    for (const query of ['?brand=a-b&brand=c-d', '?brand[a]=1']) {
+      const response = await get(query);
+      expect(response.status).toBe(400);
+    }
+    expect(calls).toEqual([]);
+  });
+
   it('refuses a repeated or bracketed store before the use case', async () => {
     for (const query of ['?store=a-b&store=c-d', '?store[a]=1']) {
       const response = await get(query);
@@ -207,5 +228,24 @@ describe.each(TEST_MARKETS)('product search with the real use case in market %s'
       details: { fields: [{ path: 'store', code: 'with-text' }] },
     });
     expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('refuses a brand together with a store or a text query as 400 validation.failed, before any read', async () => {
+    for (const [query, path, reason] of [
+      ['?q=tea&brand=saffron-co', 'brand', 'with-text'],
+      ['?store=kedron-halal&brand=saffron-co', 'brand', 'with-store'],
+      ['?brand=Not_A_Slug', 'brand', 'format'],
+    ] as const) {
+      const response = await request(app.getHttpServer())
+        .get(`/search/products${query}`)
+        .set({ 'x-market-id': code });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path, code: reason }] },
+      });
+    }
   });
 });
