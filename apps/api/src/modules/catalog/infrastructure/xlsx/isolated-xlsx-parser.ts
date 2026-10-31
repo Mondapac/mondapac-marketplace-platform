@@ -145,6 +145,9 @@ function parseInWorker(
       clearTimeout(timer);
       clearInterval(watcher);
       worker.removeAllListeners();
+      // An error the thread raises before terminate() takes hold would otherwise be an 'error'
+      // event with no listener, which crashes the process (L-586-9). The answer is settled already.
+      worker.on('error', () => undefined);
       // A message may already be posted; the thread has nothing more to do either way.
       void worker.terminate();
       resolve(result);

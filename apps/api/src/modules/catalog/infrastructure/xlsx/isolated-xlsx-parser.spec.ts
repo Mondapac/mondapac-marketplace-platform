@@ -223,6 +223,24 @@ describe('isolated xlsx parser (a real worker thread)', () => {
       expect(xlsxParseRunning()).toBe(false);
     });
 
+    it('an error the thread raises after the time limit does not escape (L-586-9)', async () => {
+      const late = createIsolatedXlsxParser({
+        timeoutMs: 20,
+        entry: path.resolve(__dirname, '../../../../../test/support/late-throwing-xlsx-worker.ts'),
+      });
+      const parsing = late.parse(await workbookBytes([['Title']]), IMPORT_LIMITS);
+      // Hold this thread past both the time limit and the thread's throw (its start-up included),
+      // so the timeout settles first and the error event comes after the listeners are gone.
+      const until = Date.now() + 3000;
+      while (Date.now() < until) {
+        // Busy on purpose.
+      }
+      expect(await parsing).toEqual({ ok: false, error: { code: 'file.too-complex' } });
+      // Give a late 'error' event the chance to surface as an uncaught exception.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(xlsxParseRunning()).toBe(false);
+    }, 30_000);
+
     it('a thread that cannot be started is file.unreadable', async () => {
       const missing = createIsolatedXlsxParser({
         entry: '/nonexistent/xlsx-worker.ts',
