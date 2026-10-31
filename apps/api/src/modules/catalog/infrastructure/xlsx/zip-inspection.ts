@@ -21,6 +21,15 @@ const MAX_COMMENT = 0xffff;
 /** The content-types part is read in full; it is a small list, never more than this. */
 const MAX_CONTENT_TYPES_BYTES = 256 * 1024;
 
+/** The role of a part decides its size limit (`ImportLimits`, per-part limits). */
+function partLimit(name: string, limits: ImportLimits): number {
+  const lower = name.toLowerCase();
+  if (/^xl\/worksheets\/[^/]+\.xml$/.test(lower)) return limits.worksheetPartBytes;
+  if (lower === 'xl/sharedstrings.xml') return limits.sharedStringsPartBytes;
+  if (/\.(xml|rels)$/.test(lower)) return limits.xmlPartBytes;
+  return limits.decompressedBytes;
+}
+
 const OTHER: FileRefusal = { code: 'file.unsupported-type', detected: 'other' };
 const UNREADABLE: FileRefusal = { code: 'file.unreadable' };
 
@@ -31,6 +40,13 @@ interface Entry {
   readonly compressed: number;
   readonly uncompressed: number;
   readonly localOffset: number;
+}
+
+/** What an inspected container gives back: its part names, and the content of the parts asked for. */
+export interface InspectedContainer {
+  readonly names: readonly string[];
+  /** The unpacked parts `keep` named, already length- and CRC-checked. */
+  readonly parts: ReadonlyMap<string, Uint8Array>;
 }
 
 /** Parts a plain workbook never needs and that carry code, other files or links to other places. */
@@ -62,12 +78,15 @@ const FORBIDDEN_PARTS: readonly RegExp[] = [
  *    check, so a header that lies about its size cannot get past step 3;
  * 6. the structure: `[Content_Types].xml` and `xl/workbook.xml` exist, the workbook part is the
  *    plain spreadsheet type (a macro-enabled, template or binary workbook is refused), and no part is
- *    a macro project, an external link, an embedded object or ActiveX control; no XML part opens a DTD.
+ *    a macro project, an external link, an embedded object or ActiveX control; no XML part opens a DTD
+ *    (the whole part is scanned) or is UTF-16. Each part is also held to its own size limit (sheet,
+ *    shared strings and other XML parts), on the declared size, before it is unpacked.
  */
 export async function inspectXlsxContainer(
   bytes: Uint8Array,
   limits: ImportLimits,
-): Promise<Result<readonly string[], FileRefusal>> {
+  keep: (name: string) => boolean = () => false,
+): Promise<Result<InspectedContainer, FileRefusal>> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const size = bytes.byteLength;
 
@@ -141,6 +160,9 @@ export async function inspectXlsxContainer(
     ) {
       return err({ code: 'file.unpacked-too-large', maxBytes: limits.decompressedBytes });
     }
+    if (uncompressed > partLimit(name, limits)) {
+      return err({ code: 'file.unpacked-too-large', maxBytes: partLimit(name, limits) });
+    }
     entries.push({ name, method, crc, compressed, uncompressed, localOffset });
     at = next;
   }
@@ -190,6 +212,7 @@ export async function inspectXlsxContainer(
 
   // 5 and 6b. A real, bounded inflate of every entry; the content types and the workbook are read.
   let contentTypes = '';
+  const kept = new Map<string, Uint8Array>();
   for (const entry of entries) {
     const start = dataStart.get(entry)!;
     const packed = bytes.subarray(start, start + entry.compressed);
@@ -207,17 +230,15 @@ export async function inspectXlsxContainer(
     if (content.byteLength !== entry.uncompressed || crc32(content) !== entry.crc) {
       return err(UNREADABLE);
     }
-    if (/\.(xml|rels)$/i.test(entry.name)) {
-      const head = Buffer.from(content.subarray(0, 4096)).toString('latin1');
-      if (/<!(DOCTYPE|ENTITY)/i.test(head)) return err(OTHER);
-    }
+    if (/\.(xml|rels)$/i.test(entry.name) && xmlPartIsRisky(content)) return err(OTHER);
+    if (keep(entry.name)) kept.set(entry.name, content);
     if (entry.name.toLowerCase() === '[content_types].xml') {
       if (entry.uncompressed > MAX_CONTENT_TYPES_BYTES) return err(UNREADABLE);
       contentTypes = Buffer.from(content).toString('utf8');
     }
   }
   if (!workbookIsPlain(contentTypes)) return err(OTHER);
-  return ok(names);
+  return ok({ names, parts: kept });
 }
 
 /** True when the content types name `/xl/workbook.xml` as the plain workbook and nothing macro-enabled. */
@@ -237,4 +258,22 @@ function cleanName(name: string): boolean {
   if (name.length === 0 || name.length > 255) return false;
   if (name.startsWith('/') || name.includes('\\') || name.includes('\0')) return false;
   return !name.split('/').some((part) => part === '..' || part === '.');
+}
+
+/**
+ * True when an XML part could declare entities or a document type, or is not plain UTF-8. The
+ * **whole** part is scanned (it is already unpacked, checked against its declared size and
+ * bounded by the per-part limit), after a byte order mark or a NUL byte (UTF-16, which a Latin-1
+ * scan would not see) has refused the part. A comment ahead of `<!DOCTYPE` therefore hides nothing
+ * (Hassan L-586-2). Real workbooks are UTF-8 without a document type.
+ */
+export function xmlPartIsRisky(content: Uint8Array): boolean {
+  if (
+    content.length >= 2 &&
+    ((content[0] === 0xff && content[1] === 0xfe) || (content[0] === 0xfe && content[1] === 0xff))
+  ) {
+    return true;
+  }
+  if (content.includes(0)) return true;
+  return /<!(DOCTYPE|ENTITY)/i.test(Buffer.from(content).toString('latin1'));
 }

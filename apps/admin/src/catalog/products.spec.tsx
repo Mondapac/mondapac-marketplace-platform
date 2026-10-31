@@ -161,6 +161,13 @@ describe('admin product list', () => {
     expect(screen.getByRole('link', { name: 'Import' }).getAttribute('href')).toBe(
       '/catalog/products/import',
     );
+    // Order (Reza): Bulk action, then Import, which leads with the file icon.
+    const bulk = screen.getByRole('button', { name: 'Bulk action' });
+    const importLink = screen.getByRole('link', { name: 'Import' });
+    expect(
+      bulk.compareDocumentPosition(importLink) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(importLink.firstElementChild?.tagName.toLowerCase()).toBe('svg');
     first.unmount();
     mount();
     await screen.findByText('Lamb cutlets 500 g');

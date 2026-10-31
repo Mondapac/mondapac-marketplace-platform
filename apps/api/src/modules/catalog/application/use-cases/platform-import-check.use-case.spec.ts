@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type {
   AttributeField,
@@ -24,7 +25,12 @@ import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import type { ImportRowRecord } from '../../domain/platform-import/platform-import-job';
 import type { RateReservation } from '../../domain/rate-limits';
 import { configurableProductType } from '../../domain/product-types/configurable';
-import { csvParser, type ImportFileParser } from '../../domain/platform-import/import-file';
+import {
+  csvParser,
+  isZipContainer,
+  readImportFile,
+  type ImportFileParser,
+} from '../../domain/platform-import/import-file';
 import { xlsxParser } from '../../infrastructure/xlsx/xlsx-import-parser';
 import { workbookBytes } from '../../../../../test/support/zip-fixtures';
 import { simpleProductType } from '../../domain/product-types/simple';
@@ -218,7 +224,19 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
     expect(result.value).toMatchObject({ rows: 3, ready: 1, errors: 2, state: 'checked' });
     expect(r.jobs[0]!.format).toBe('xlsx');
     expect(r.rows.map((row) => row.rowNumber)).toEqual([2, 3, 4]);
-    expect(r.files.get(r.jobs[0]!.fileKey)?.equals(bytes)).toBe(true);
+    // The workbook is opened once, here. What is stored is its table as plain CSV (Hassan
+    // M-586-1): the worker reads that text, never the container, and gets the same rows and the same
+    // row numbers.
+    const storedBytes = r.files.get(r.jobs[0]!.fileKey)!;
+    expect(isZipContainer(storedBytes)).toBe(false);
+    expect(storedBytes.equals(bytes)).toBe(false);
+    expect(r.jobs[0]!.fileBytes).toBe(storedBytes.length);
+    expect(r.jobs[0]!.fileSha256).toBe(createHash('sha256').update(storedBytes).digest('hex'));
+    const again = await readImportFile(storedBytes, IMPORT_LIMITS, [csvParser]);
+    if (!again.ok) throw new Error(again.error.code);
+    expect(again.value.format).toBe('csv');
+    expect(again.value.rows.map((row) => row.rowNumber)).toEqual([2, 3, 4]);
+    expect(again.value.rows[0]!.cells).toEqual(['Lamb', 'Meat', 'simple', 'Shoulder', 'Farms']);
   });
 
   it('refuses an XLSX with a formula and stores nothing', async () => {

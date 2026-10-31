@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import {
   contentTypesXml,
@@ -15,7 +16,7 @@ import {
 } from '../../domain/platform-import/import-file';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import { ExceljsSheetWriter } from './exceljs-sheet-writer';
-import { dateText, numberText, xlsxParser } from './xlsx-import-parser';
+import { createXlsxParser, dateText, numberText, xlsxParser } from './xlsx-import-parser';
 import { inspectXlsxContainer } from './zip-inspection';
 
 const PARSERS = [csvParser, xlsxParser];
@@ -361,6 +362,32 @@ describe('ExceljsSheetWriter', () => {
     return Buffer.concat(parts);
   }
 
+  it('stops reading its rows when the reader leaves, instead of writing a whole sheet nobody reads (Hassan L-583-2)', async () => {
+    let pulled = 0;
+    let closed = false;
+    async function* source(): AsyncGenerator<readonly string[]> {
+      try {
+        for (let n = 0; n < 200_000; n += 1) {
+          // Rows that do not compress away: the buffer fills and the writer must wait.
+          await Promise.resolve();
+          pulled += 1;
+          yield [`${n}-${randomBytes(48).toString('hex')}`, randomBytes(48).toString('hex')];
+        }
+      } finally {
+        closed = true;
+      }
+    }
+    const out = new ExceljsSheetWriter().xlsx('Products', source());
+    let chunks = 0;
+    for await (const chunk of out) {
+      if (chunk.length > 0) chunks += 1;
+      if (chunks === 2) break; // the client closed the tab
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(closed).toBe(true);
+    expect(pulled).toBeLessThan(20_000);
+  }, 30_000);
+
   it('writes every cell as a string, never a formula, and reads back with the importer', async () => {
     const rows = [
       ['Product', 'Offers'],
@@ -385,5 +412,217 @@ describe('ExceljsSheetWriter', () => {
     // The importer reads the same text back, with no formula cell.
     const table = await read(file);
     expect(table.rows[0]!.cells).toEqual(['=HYPERLINK("http://x.invalid","click")', '3']);
+  });
+});
+
+// A workbook made by hand around one sheet's XML, so a test controls the size and the order of
+// its parts (the parts exceljs writes are in a fixed order and small).
+const WORKBOOK_XML =
+  '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+  'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+  '<sheets><sheet name="Products" sheetId="1" r:id="rId1"/></sheets></workbook>';
+const RELS_XML =
+  '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+  '</Relationships>';
+
+function sheetXml(rows: readonly (readonly [number, readonly string[]])[]): string {
+  const body = rows
+    .map(
+      ([number, cells]) =>
+        `<row r="${number}">` +
+        cells
+          .map(
+            (text, index) =>
+              `<c r="${String.fromCharCode(65 + index)}${number}" t="inlineStr"><is><t>${text}</t></is></c>`,
+          )
+          .join('') +
+        '</row>',
+    )
+    .join('');
+  return `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+}
+
+function handMade(sheet: string, extra: { name: string; data: Buffer }[] = []): Buffer {
+  return zipOf([
+    // The sheet before the workbook parts: the streaming read must not depend on the order.
+    { name: 'xl/worksheets/sheet1.xml', data: Buffer.from(sheet) },
+    { name: '[Content_Types].xml', data: contentTypesXml(MAIN_TYPE) },
+    { name: 'xl/workbook.xml', data: Buffer.from(WORKBOOK_XML) },
+    { name: 'xl/_rels/workbook.xml.rels', data: Buffer.from(RELS_XML) },
+    ...extra,
+  ]);
+}
+
+describe('xlsxParser: the read is streaming and bounded (Hassan M-586-1)', () => {
+  it('stops at the first row past the limit of a very large sheet, and refuses it', async () => {
+    // 60,000 rows of 3 cells (about 10 MB of XML, under every size limit).
+    const rows: [number, string[]][] = [[1, ['Title', 'Brand', 'Code']]];
+    for (let n = 2; n <= 60_000; n += 1) rows.push([n, [`P${n}`, 'Farms', `C${n}`]]);
+    const file = handMade(sheetXml(rows));
+    expect(file.length).toBeLessThan(IMPORT_LIMITS.fileBytes);
+
+    const seen: number[] = [];
+    const parser = createXlsxParser((rowNumber) => seen.push(rowNumber));
+    const result = await readImportFile(file, IMPORT_LIMITS, [csvParser, parser]);
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'file.too-many-rows', rows: IMPORT_LIMITS.rows + 1, max: IMPORT_LIMITS.rows },
+    });
+    // Parsing stopped a chunk after row 5,001: nowhere near the 60,000 rows of the sheet.
+    expect(Math.max(...seen)).toBeGreaterThan(IMPORT_LIMITS.rows);
+    expect(seen.length).toBeLessThan(IMPORT_LIMITS.rows + 2500);
+  });
+
+  it('reads a good sheet that has no shared strings and no styles part', async () => {
+    const table = await read(
+      handMade(
+        sheetXml([
+          [1, ['Title', 'Brand']],
+          [2, ['Dates', 'Farms']],
+        ]),
+      ),
+    );
+    expect(table.header).toEqual(['Title', 'Brand']);
+    expect(table.rows).toEqual([{ rowNumber: 2, cells: ['Dates', 'Farms'] }]);
+  });
+
+  it('refuses a sheet part over its size limit, whatever the total and the ratio', async () => {
+    // About 16 MiB of XML that packs only 3 to 4 times: under the 50 MiB total, over the 15 MiB part.
+    const filler = randomBytes(24).toString('hex');
+    const rows: [number, string[]][] = [[1, ['Title']]];
+    let size = 0;
+    for (let n = 2; size < IMPORT_LIMITS.worksheetPartBytes * 1.1; n += 1) {
+      const text = `${randomBytes(20).toString('hex')}${filler}`;
+      rows.push([n, [text]]);
+      size += text.length + 60;
+    }
+    const file = handMade(sheetXml(rows));
+    expect(file.length).toBeLessThan(IMPORT_LIMITS.fileBytes);
+    expect(await refusal(file)).toEqual({
+      code: 'file.unpacked-too-large',
+      maxBytes: IMPORT_LIMITS.worksheetPartBytes,
+    });
+  }, 60_000);
+
+  it('refuses a shared-strings part and another XML part over their limits', async () => {
+    const big = (bytes: number): Buffer => Buffer.from(randomBytes(bytes / 2).toString('hex'));
+    const sheet = sheetXml([
+      [1, ['Title']],
+      [2, ['A']],
+    ]);
+    const strings = handMade(sheet, [
+      { name: 'xl/sharedStrings.xml', data: big(IMPORT_LIMITS.sharedStringsPartBytes + 2048) },
+    ]);
+    expect(await refusal(strings)).toEqual({
+      code: 'file.unpacked-too-large',
+      maxBytes: IMPORT_LIMITS.sharedStringsPartBytes,
+    });
+    const styles = handMade(sheet, [
+      { name: 'xl/styles.xml', data: big(IMPORT_LIMITS.xmlPartBytes + 2048) },
+    ]);
+    expect(await refusal(styles)).toEqual({
+      code: 'file.unpacked-too-large',
+      maxBytes: IMPORT_LIMITS.xmlPartBytes,
+    });
+  }, 60_000);
+
+  it('refuses a data row past the last row number the job table can hold', async () => {
+    const file = handMade(
+      sheetXml([
+        [1, ['Title']],
+        [2, ['A']],
+        [IMPORT_LIMITS.rows + 3, ['Z']],
+      ]),
+    );
+    expect(await refusal(file)).toEqual({
+      code: 'file.too-many-rows',
+      rows: IMPORT_LIMITS.rows + 1,
+      max: IMPORT_LIMITS.rows,
+    });
+    const atLimit = handMade(
+      sheetXml([
+        [1, ['Title']],
+        [2, ['A']],
+        [IMPORT_LIMITS.rows + 2, ['Z']],
+      ]),
+    );
+    expect((await read(atLimit)).rows.map((row) => row.rowNumber)).toEqual([2, 5002]);
+  });
+});
+
+describe('xlsxParser: no entity or document type hides in an XML part (Hassan L-586-2)', () => {
+  const doctype = '<!DOCTYPE x [<!ENTITY a "b">]>';
+
+  it('finds a DOCTYPE after a long comment, in any XML part', async () => {
+    const comment = `<!--${'x'.repeat(8192)}-->`;
+    const sheet = sheetXml([
+      [1, ['Title']],
+      [2, ['A']],
+    ]);
+    const hidden = `<?xml version="1.0"?>${comment}${doctype}<root/>`;
+    for (const name of ['xl/styles.xml', 'xl/theme/theme1.xml', 'xl/_rels/other.rels', 'x/y.xml']) {
+      const file = handMade(sheet, [{ name, data: Buffer.from(hidden) }]);
+      expect(await refusal(file)).toEqual({ code: 'file.unsupported-type', detected: 'other' });
+    }
+    // The same text inside the sheet itself.
+    const inSheet = handMade(sheet.replace('<sheetData>', `${comment}${doctype}<sheetData>`));
+    expect(await refusal(inSheet)).toEqual({ code: 'file.unsupported-type', detected: 'other' });
+  });
+
+  it('refuses an XML part in UTF-16, which a Latin-1 scan cannot see into', async () => {
+    const utf16 = Buffer.from(`\uFEFF<?xml version="1.0"?>${doctype}<root/>`, 'utf16le');
+    const noBom = Buffer.from(`<?xml version="1.0"?>${doctype}<root/>`, 'utf16le');
+    const sheet = sheetXml([
+      [1, ['Title']],
+      [2, ['A']],
+    ]);
+    for (const data of [utf16, noBom]) {
+      const file = handMade(sheet, [{ name: 'xl/styles.xml', data }]);
+      expect(await refusal(file)).toEqual({ code: 'file.unsupported-type', detected: 'other' });
+    }
+  });
+});
+
+describe('xlsxParser: the table is also given as plain CSV (parsed once)', () => {
+  it('reads back to the same header, rows, row numbers and cells', async () => {
+    const bytes = await workbookBytes([
+      [],
+      ['Title', 'Description', 'Brand'],
+      ['Plain', 'a, b', 'Farms'],
+      [],
+      ['Quote "x"', 'line one\nline two', ''],
+      ['\uFEFFBom first', '  padded  ', '=1+1'],
+      ['only title'],
+    ]);
+    const parsed = await readImportFile(bytes, IMPORT_LIMITS, PARSERS);
+    if (!parsed.ok) throw new Error(parsed.error.code);
+    const canonical = parsed.value.canonical;
+    expect(canonical).toBeDefined();
+    const again = await readImportFile(canonical!, IMPORT_LIMITS, PARSERS);
+    if (!again.ok) throw new Error(again.error.code);
+    expect(again.value.format).toBe('csv');
+    expect(again.value.header).toEqual(parsed.value.header);
+    expect(again.value.rows).toEqual(parsed.value.rows);
+    expect(again.value.rowCount).toBe(parsed.value.rowCount);
+    expect(again.value.rows.map((row) => row.rowNumber)).toEqual([3, 5, 6, 7]);
+  });
+
+  it('keeps a row whose own cells are all empty (cells only past the header) as a row', async () => {
+    const parsed = await readImportFile(
+      await workbookBytes([['Title'], ['A'], ['', 'beyond the header'], ['B']]),
+      IMPORT_LIMITS,
+      PARSERS,
+    );
+    if (!parsed.ok) throw new Error(parsed.error.code);
+    const again = await readImportFile(parsed.value.canonical!, IMPORT_LIMITS, PARSERS);
+    if (!again.ok) throw new Error(again.error.code);
+    expect(again.value.rows).toEqual(parsed.value.rows);
+    expect(again.value.rows.map((row) => row.rowNumber)).toEqual([2, 3, 4]);
+  });
+
+  it('is not given for a CSV, which is stored as it came', async () => {
+    const parsed = await readImportFile(Buffer.from('Title\nA\n'), IMPORT_LIMITS, PARSERS);
+    expect(parsed.ok && parsed.value.canonical).toBeFalsy();
   });
 });

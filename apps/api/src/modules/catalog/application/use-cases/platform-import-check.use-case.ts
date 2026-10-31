@@ -183,6 +183,10 @@ export class PlatformImportCheck extends UseCase<
       productCode: null,
     }));
 
+    // A workbook is opened once, here: what is stored is its table as plain CSV, so the worker's
+    // turns never open the container again (Hassan M-586-1). A CSV is stored as it came.
+    const storedBytes: Uint8Array = table.value.canonical ?? bytes;
+
     const id = deps.ids.next<'PlatformImport'>();
     const fileKey = deps.importFiles.keyOf(market, id);
     const now = deps.clock.now();
@@ -193,8 +197,8 @@ export class PlatformImportCheck extends UseCase<
       format: table.value.format,
       fileLabel: fileLabelOf(input.fileName),
       fileKey,
-      fileSha256: createHash('sha256').update(bytes).digest('hex'),
-      fileBytes: bytes.length,
+      fileSha256: createHash('sha256').update(storedBytes).digest('hex'),
+      fileBytes: storedBytes.length,
       totalRows: counts.rows,
       readyRows: counts.ready,
       errorRows: counts.errors,
@@ -205,7 +209,7 @@ export class PlatformImportCheck extends UseCase<
     };
 
     try {
-      await deps.importFiles.put(fileKey, bytes);
+      await deps.importFiles.put(fileKey, Buffer.from(storedBytes));
     } catch {
       return err({ code: 'access.unavailable' });
     }

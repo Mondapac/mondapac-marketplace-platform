@@ -20,6 +20,12 @@ export interface ParsedTable {
   readonly rows: readonly ParsedRow[];
   /** Every non-blank data row of the file, also those past the row limit. */
   readonly rowCount: number;
+  /**
+   * The table as CSV bytes, when the parser had to open a container to read it. The check stores
+   * these instead of the upload, so later reads (the worker's turns) parse plain text and never
+   * open the container again (Hassan M-586-1). Absent for a CSV, which is stored as it came.
+   */
+  readonly canonical?: Uint8Array;
 }
 
 /** Why a file was refused before any row was looked at. Codes and numbers only, never a value. */

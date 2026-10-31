@@ -1,4 +1,5 @@
-import { Workbook } from 'exceljs';
+import { Readable } from 'node:stream';
+import { stream as excel } from 'exceljs';
 import type { CellValue, Row } from 'exceljs';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
@@ -10,6 +11,7 @@ import {
   type ParsedTable,
 } from '../../domain/platform-import/import-file';
 import type { ImportLimits } from '../../domain/platform-import/limits';
+import { storedZip, type StoredPart } from './stored-zip';
 import { inspectXlsxContainer } from './zip-inspection';
 
 /** A cell that cannot be turned into text, or a formula; the parse stops at the first one. */
@@ -102,61 +104,180 @@ function cellsOf(row: Row, limits: ImportLimits): { cells: string[]; width: numb
   return { cells, width: last };
 }
 
+const EMPTY_SHARED_STRINGS = Buffer.from(
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"/>',
+);
+const EMPTY_RELATIONSHIPS = Buffer.from(
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>',
+);
+
+const WORKBOOK = 'xl/workbook.xml';
+const WORKBOOK_RELS = 'xl/_rels/workbook.xml.rels';
+const SHARED_STRINGS = 'xl/sharedStrings.xml';
+const STYLES = 'xl/styles.xml';
+const WORKSHEET = /^xl\/worksheets\/[^/]+\.xml$/;
+
+/** The parts the streaming read needs; the others were checked and are let go. */
+const wanted = (name: string): boolean =>
+  name === WORKBOOK ||
+  name === WORKBOOK_RELS ||
+  name === SHARED_STRINGS ||
+  name === STYLES ||
+  WORKSHEET.test(name);
+
+/** The part name of the first sheet of the workbook, in the order the workbook lists them. */
+function firstSheetPart(workbookXml: string, relsXml: string): string | null {
+  const sheet = /<sheet\b[^>]*>/i.exec(workbookXml)?.[0];
+  if (sheet === undefined) return null;
+  const rid = /\s[\w.-]+:id\s*=\s*"([^"]*)"/i.exec(sheet)?.[1];
+  if (rid === undefined) return null;
+  for (const tag of relsXml.match(/<Relationship\b[^>]*>/gi) ?? []) {
+    if (/\bId\s*=\s*"([^"]*)"/i.exec(tag)?.[1] !== rid) continue;
+    const target = /\bTarget\s*=\s*"([^"]*)"/i.exec(tag)?.[1];
+    if (target === undefined) return null;
+    const path = target.startsWith('/') ? target.slice(1) : `xl/${target}`;
+    return WORKSHEET.test(path) ? path : null;
+  }
+  return null;
+}
+
+/** A cell for the canonical CSV: RFC 4180 quoting; nothing is trimmed, prefixed or evaluated. */
+function canonicalCell(value: string): string {
+  return /[",\r\n\uFEFF]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/**
+ * The table as plain CSV bytes (a byte order mark, then RFC 4180 text), one line per spreadsheet
+ * row so that row numbers read back the same: a skipped blank row is an empty line. This is what
+ * the import stores for an XLSX: the workbook is opened **once**, at the check, and every worker
+ * turn reads this text, never the container again.
+ */
+function canonicalCsv(header: readonly string[], headerRow: number, rows: readonly ParsedRow[]) {
+  const lines: string[] = [];
+  let last = 0;
+  const add = (rowNumber: number, cells: readonly string[]): void => {
+    for (let gap = last + 1; gap < rowNumber; gap += 1) lines.push('');
+    const line = cells.map(canonicalCell).join(',');
+    // A row whose cells are all empty must not read back as a blank line.
+    lines.push(line === '' ? '""' : line);
+    last = rowNumber;
+  };
+  add(headerRow, header);
+  for (const row of rows) add(row.rowNumber, row.cells);
+  return Buffer.from(`\uFEFF${lines.join('\r\n')}\r\n`, 'utf8');
+}
+
+/** Called with the number of each sheet row the reader hands over (a test sees where it stopped). */
+export type RowObserver = (rowNumber: number) => void;
+
 /**
  * The XLSX parser (catalog design 14a), behind the same seam as CSV. It never sees a file the
- * container checks refused ({@link inspectXlsxContainer}: sizes, ratio, structure, type). Then:
- * the **first worksheet** only; **no formula** (a formula cell is `file.formula-cell`, nothing is
- * calculated or taken from a cached result); links give their text and are never followed; every
- * value becomes text deterministically (numbers shortest round-trip, dates as UTC ISO, booleans
- * `TRUE`/`FALSE`); a cell over the character limit, a header over the column limit and rows over the
- * row limit are refused as for CSV. Row numbers are the numbers the spreadsheet shows. exceljs reads
- * the already bounded container (at most 50 MiB unpacked) into memory; it makes no network call.
+ * container checks refused ({@link inspectXlsxContainer}: sizes per part and in total, ratio,
+ * structure, type, no DTD anywhere in an XML part). Then, **streaming** (Hassan M-586-1):
+ * exceljs's `WorkbookReader` is given a small ZIP of only the workbook, the shared strings, the
+ * styles and the **first worksheet** (the first the workbook lists), and the rows are read as they
+ * come, so memory holds a row, not the sheet. Reading **stops** at the first data row past the
+ * row limit (5,001 data rows, or a row past number 5,002, which the job table cannot hold), and
+ * the file is refused as too many rows. **No formula** (a formula cell is `file.formula-cell`,
+ * nothing is calculated or taken from a cached result); links give their text and are never
+ * followed; every value becomes text deterministically (numbers shortest round-trip, dates as UTC
+ * ISO, booleans `TRUE`/`FALSE`); a cell over the character limit and a header over the column limit
+ * are refused as for CSV. Row numbers are the numbers the spreadsheet shows. exceljs makes no
+ * network call. The table comes with its {@link ParsedTable.canonical} CSV, which the check stores
+ * instead of the workbook.
  */
-export const xlsxParser: ImportFileParser = Object.freeze({
-  format: 'xlsx',
-  sniff: isZipContainer,
-  async parse(bytes: Uint8Array, limits: ImportLimits): Promise<Result<ParsedTable, FileRefusal>> {
-    const inspected = await inspectXlsxContainer(bytes, limits);
-    if (!inspected.ok) return inspected;
+export function createXlsxParser(observe?: RowObserver): ImportFileParser {
+  return Object.freeze({
+    format: 'xlsx',
+    sniff: isZipContainer,
+    async parse(
+      bytes: Uint8Array,
+      limits: ImportLimits,
+    ): Promise<Result<ParsedTable, FileRefusal>> {
+      const inspected = await inspectXlsxContainer(bytes, limits, wanted);
+      if (!inspected.ok) return inspected;
+      const { parts } = inspected.value;
 
-    const workbook = new Workbook();
-    try {
-      await workbook.xlsx.load(
-        Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength) as never,
-      );
-    } catch {
-      return err({ code: 'file.unreadable' });
-    }
-    const sheet = workbook.worksheets[0];
-    if (sheet === undefined) return err({ code: 'file.unreadable' });
+      const decode = (name: string): string => Buffer.from(parts.get(name) ?? []).toString('utf8');
+      const sheetName = firstSheetPart(decode(WORKBOOK), decode(WORKBOOK_RELS));
+      const sheet = sheetName === null ? undefined : parts.get(sheetName);
+      if (sheet === undefined) return err({ code: 'file.unreadable' });
 
-    const header: string[] = [];
-    const rows: ParsedRow[] = [];
-    let rowCount = 0;
-    let isHeader = true;
-    try {
-      sheet.eachRow({ includeEmpty: false }, (row) => {
-        const { cells, width } = cellsOf(row, limits);
-        if (width === 0) return; // a blank row is skipped, as in a CSV
-        if (isHeader) {
-          if (width > limits.columns) {
-            throw new Refused({ code: 'file.too-many-columns', max: limits.columns });
-          }
-          header.push(...cells);
-          isHeader = false;
-          return;
-        }
-        rowCount += 1;
-        if (rows.length < limits.rows) {
-          const kept = cells.slice(0, header.length);
-          while (kept.length < header.length) kept.push('');
-          rows.push({ rowNumber: row.number, cells: kept });
-        }
+      // The parts in the order the reader needs: shared strings and styles before the sheet.
+      const ordered: StoredPart[] = [
+        { name: WORKBOOK_RELS, data: EMPTY_RELATIONSHIPS },
+        { name: WORKBOOK, data: parts.get(WORKBOOK) ?? Buffer.alloc(0) },
+        { name: SHARED_STRINGS, data: parts.get(SHARED_STRINGS) ?? EMPTY_SHARED_STRINGS },
+        ...(parts.has(STYLES)
+          ? [{ name: STYLES, data: parts.get(STYLES) ?? Buffer.alloc(0) }]
+          : []),
+        { name: 'xl/worksheets/sheet1.xml', data: sheet },
+      ];
+      const input = Readable.from([storedZip(ordered)]);
+      const reader = new excel.xlsx.WorkbookReader(input, {
+        worksheets: 'emit',
+        sharedStrings: 'cache',
+        hyperlinks: 'ignore',
+        styles: 'cache',
+        entries: 'ignore',
       });
-    } catch (error) {
-      if (error instanceof Refused) return err(error.refusal);
-      return err({ code: 'file.unreadable' });
-    }
-    return ok({ format: 'xlsx', header, rows, rowCount });
-  },
-} satisfies ImportFileParser);
+
+      const header: string[] = [];
+      const rows: ParsedRow[] = [];
+      let headerRow = 0;
+      let rowCount = 0;
+      let isHeader = true;
+      // The job table holds rows 2 to 5,002; a data row past that is more than it can take.
+      const lastRowNumber = limits.rows + 2;
+      try {
+        for await (const worksheet of reader) {
+          for await (const row of worksheet) {
+            if (!Number.isSafeInteger(row.number) || row.number < 1) {
+              return err({ code: 'file.unreadable' });
+            }
+            observe?.(row.number);
+            const { cells, width } = cellsOf(row, limits);
+            if (width === 0) continue; // a blank row is skipped, as in a CSV
+            if (isHeader) {
+              if (width > limits.columns) {
+                throw new Refused({ code: 'file.too-many-columns', max: limits.columns });
+              }
+              header.push(...cells);
+              headerRow = row.number;
+              isHeader = false;
+              continue;
+            }
+            rowCount += 1;
+            if (rowCount > limits.rows || row.number > lastRowNumber) {
+              // Stop here: the rest of the sheet is neither read nor counted.
+              rowCount = limits.rows + 1;
+              break;
+            }
+            const kept = cells.slice(0, header.length);
+            while (kept.length < header.length) kept.push('');
+            rows.push({ rowNumber: row.number, cells: kept });
+          }
+          break; // the first worksheet only
+        }
+      } catch (error) {
+        if (error instanceof Refused) return err(error.refusal);
+        return err({ code: 'file.unreadable' });
+      } finally {
+        input.destroy();
+      }
+      if (rowCount > limits.rows) {
+        return ok({ format: 'xlsx', header, rows: [], rowCount });
+      }
+      const canonical = canonicalCsv(header, headerRow, rows);
+      if (canonical.length > limits.fileBytes) {
+        return err({ code: 'file.too-large', maxBytes: limits.fileBytes });
+      }
+      return ok({ format: 'xlsx', header, rows, rowCount, canonical });
+    },
+  } satisfies ImportFileParser);
+}
+
+/** The parser the use cases are given. */
+export const xlsxParser: ImportFileParser = createXlsxParser();
