@@ -93,7 +93,7 @@ function smAdd() {
     smSection('Address and area', 'Decides the service area and the shop’s time zone.', [smInput('Operating address', '1520 Beenleigh Rd, Kuraby QLD 4112'), smTwo(podField('Service area', psSelect('Greater Brisbane')), podField('Time zone', psSelect('Brisbane (AEST)')))])]);
   const side = frame({ name: 'side', dir: 'V', gap: 'space/4', w: 420 }, [
     smSection('Store', 'What customers see.', [smInput('Store name', 'Kuraby Fresh Halal'), smInput('Web address', 'kuraby-fresh-halal', 'mondapac.com.au/store/kuraby-fresh-halal')]),
-    smSection('Business activities', 'Decide which categories and platform products the seller can use. Each activity can add review checks.', [podField('Main activity', smCombo('Butcher')), podField('Other activities (optional)', smMulti(['Grocery', 'Bakery', 'Frozen food']), 'Choose one or more. Each pick shows as a tag; remove it with ×. Type to search.')])]);
+    smSection('Business activities', 'Decide which categories and platform products the seller can use. Each activity can add review checks.', [podField('Main activity', smCombo('Butcher')), podField('Other activities (optional)', smMulti(['Grocery', 'Bakery', 'Frozen food']), 'Choose one or more. Each pick shows as a tag; remove it with ×.')])]);
   const cols = frame({ name: 'columns', dir: 'H', gap: 'space/5', align: 'start', sizeH: 'FILL' }, [main, side]);
   const footer = frame({ name: 'footer', dir: 'H', gap: 'space/2', align: 'center', sizeH: 'FILL' }, [text('The file joins Awaiting review. Another admin approves it.', 'Body/Small', 'text/muted', { sizeH: 'FILL' }), btn('Cancel', 'Secondary', 'Md'), btn('Save draft', 'Secondary', 'Md'), btn('Save and invite owner', 'Primary', 'Md')]);
   return smScreen('Add seller', 'Sellers / Add seller', [podHeader('Add seller', [], 'Create the seller’s file and invite the owner.', [], 'Sellers'), cols, footer]);
@@ -227,7 +227,7 @@ function smCombo(value, open) {
 function smMulti(picks, open) {
   const chips = picks.map(function (p) { return frame({ name: 'pick · ' + p, dir: 'H', gap: 'space/1', align: 'center', pad: [2, 6, 2, 8], radius: 'radius/pill', fill: 'bg/selected' }, [text(p, 'Body/Small Strong', 'text/link'), icon('x', 'text/link', 12)]); });
   return frame({ name: 'multi-select' + (open ? ' (open)' : ''), dir: 'H', gap: 'space/1-5', align: 'center', wrap: true, rowGap: 'space/1', pad: [6, 12, 6, 8], stroke: open ? 'focus/ring' : 'border/control', strokeW: open ? 2 : 1, radius: 'radius/control', fill: 'bg/surface', sizeH: 'FILL' },
-    chips.concat([text(open ? 'gro' : 'Search…', 'Body/Default', open ? 'text/primary' : 'text/muted', { name: 'query', sizeH: 'FILL' }), icon('chevron-down', 'icon/muted', 16)]));
+    chips.concat([open ? text('gro', 'Body/Default', 'text/primary', { name: 'query', sizeH: 'FILL' }) : smSp(), icon('chevron-down', 'icon/muted', 16)]));
 }
 function smOptions(multi, items, footer) {
   const row = function (i) {
