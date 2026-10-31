@@ -27,7 +27,7 @@ describe('loadAppConfig', () => {
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
       mailCatcherUrl: null,
-      objectStoreDir: null,
+      objectStore: null,
       stripeSecretKey: null,
       stripePaymentMethodConfiguration: null,
       stripeWebhookSecrets: {},
@@ -740,4 +740,81 @@ describe('loadAppConfig', () => {
       }
     },
   );
+
+  describe('object store settings', () => {
+    const s3 = {
+      OBJECT_STORE_DRIVER: 's3',
+      OBJECT_STORE_S3_BUCKET: 'mondapac-pilot-files',
+      OBJECT_STORE_S3_REGION: 'ap-southeast-2',
+    };
+
+    it('keeps the earlier behaviour: a directory alone means disk', () => {
+      const config = loadAppConfig({ HOSTED_MARKETS: 'AU', OBJECT_STORE_DIR: './files' });
+      expect(config.objectStore).toEqual({ driver: 'disk', dir: path.resolve('./files') });
+    });
+
+    it('accepts s3 with the default credential chain', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', ...s3 }).objectStore).toEqual({
+        driver: 's3',
+        bucket: 'mondapac-pilot-files',
+        region: 'ap-southeast-2',
+        endpoint: null,
+        credentials: null,
+      });
+    });
+
+    it('accepts s3 with a key pair and an S3-compatible endpoint', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        ...s3,
+        OBJECT_STORE_S3_ENDPOINT: 'http://localhost:8333',
+        OBJECT_STORE_S3_ACCESS_KEY_ID: 'id',
+        OBJECT_STORE_S3_SECRET_ACCESS_KEY: 'secret',
+      });
+      expect(config.objectStore).toMatchObject({
+        endpoint: 'http://localhost:8333',
+        credentials: { accessKeyId: 'id', secretAccessKey: 'secret' },
+      });
+    });
+
+    it('lets s3 keep OBJECT_STORE_DIR for the migration command', () => {
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ...s3, OBJECT_STORE_DIR: './files' }).objectStore,
+      ).toMatchObject({ driver: 's3' });
+    });
+
+    it.each([
+      [{ OBJECT_STORE_DRIVER: 'disk' }, 'OBJECT_STORE_DIR: required'],
+      [{ OBJECT_STORE_DRIVER: 's3' }, 'OBJECT_STORE_S3_BUCKET: required'],
+      [
+        { OBJECT_STORE_DRIVER: 's3', OBJECT_STORE_S3_BUCKET: 'mondapac-pilot-files' },
+        'OBJECT_STORE_S3_REGION: required',
+      ],
+      [{ ...s3, OBJECT_STORE_S3_ACCESS_KEY_ID: 'id' }, 'set both or neither'],
+      [
+        {
+          OBJECT_STORE_DRIVER: 'disk',
+          OBJECT_STORE_DIR: './f',
+          OBJECT_STORE_S3_BUCKET: 'mondapac-pilot-files',
+        },
+        'only valid when OBJECT_STORE_DRIVER is s3',
+      ],
+      [{ ...s3, OBJECT_STORE_DRIVER: 'gcs' }, 'OBJECT_STORE_DRIVER'],
+    ])('refuses to start with %p', (env, message) => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', ...env })).toThrow(message);
+    });
+
+    it('never puts the secret key in the error', () => {
+      try {
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          ...s3,
+          OBJECT_STORE_S3_SECRET_ACCESS_KEY: 'topsecretvalue',
+        });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect(String(error)).not.toContain('topsecretvalue');
+      }
+    });
+  });
 });

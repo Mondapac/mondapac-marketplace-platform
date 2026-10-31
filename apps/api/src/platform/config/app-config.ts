@@ -79,9 +79,27 @@ const envSchema = z.object({
   MAIL_CATCHER_URL: z
     .url({ protocol: /^https?$/, error: 'must be an http(s) URL such as http://localhost:8025' })
     .optional(),
-  // Catalog slice 13: the directory of the local object store (product photos). Unset: photo
-  // uploads answer "unavailable". An S3-compatible adapter replaces it for production.
+  // Object storage (file storage pilot F2). OBJECT_STORE_DRIVER picks the backend: `disk` (a
+  // folder on the server, OBJECT_STORE_DIR) or `s3` (Amazon S3 or an S3-compatible server). Unset
+  // with OBJECT_STORE_DIR set means `disk` (the earlier behaviour); unset with no directory means
+  // uploads answer "unavailable". With `s3`, OBJECT_STORE_DIR is read only by the migration command.
+  OBJECT_STORE_DRIVER: z.enum(['disk', 's3']).optional(),
   OBJECT_STORE_DIR: z.string().min(1).max(500).optional(),
+  OBJECT_STORE_S3_BUCKET: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'must be a valid S3 bucket name')
+    .optional(),
+  OBJECT_STORE_S3_REGION: z
+    .string()
+    .regex(/^[a-z]{2}(-[a-z]+)+-\d$/, 'must be an AWS region such as ap-southeast-2')
+    .optional(),
+  // Only for an S3-compatible server (SeaweedFS in CI or staging). Unset for Amazon S3.
+  OBJECT_STORE_S3_ENDPOINT: z
+    .url({ protocol: /^https?$/, error: 'must be an http(s) URL' })
+    .optional(),
+  // Both or neither: with neither, the AWS default credential chain applies (an instance role).
+  OBJECT_STORE_S3_ACCESS_KEY_ID: z.string().min(1).max(256).optional(),
+  OBJECT_STORE_S3_SECRET_ACCESS_KEY: z.string().min(1).max(512).optional(),
   // Phase 5: the Stripe secret key for hosted Checkout. Test mode only until the live gates
   // (pen test, tax agent) are passed: a live key is refused at boot. The value is never echoed.
   STRIPE_SECRET_KEY: z
@@ -384,10 +402,11 @@ export interface AppConfig {
    */
   readonly mailCatcherUrl: string | null;
   /**
-   * The directory of the local object store (`OBJECT_STORE_DIR`), resolved to an absolute path,
-   * or null: then storing a file fails with "unavailable" (`platform/storage/`).
+   * The chosen object store backend (`OBJECT_STORE_DRIVER`), or null: then storing a file fails
+   * with "unavailable". The `s3` variant holds a secret when keys are set: never log this object
+   * whole; read by `platform/storage/` alone.
    */
-  readonly objectStoreDir: string | null;
+  readonly objectStore: ObjectStoreConfig | null;
   /**
    * The Stripe secret key (`STRIPE_SECRET_KEY`, test mode only), or null: then ordering cannot
    * open a payment page and a checkout answers "payment unavailable". Holds a secret: never log
@@ -524,6 +543,90 @@ function parseExternalAccountHmac(env: {
   }
   const currentVersion = named ?? (set.length === 0 ? null : Math.max(...set));
   return { value: { keys, currentVersion }, issues };
+}
+
+export type ObjectStoreConfig =
+  | { readonly driver: 'disk'; readonly dir: string }
+  | {
+      readonly driver: 's3';
+      readonly bucket: string;
+      readonly region: string;
+      readonly endpoint: string | null;
+      readonly credentials: {
+        readonly accessKeyId: string;
+        readonly secretAccessKey: string;
+      } | null;
+    };
+
+/** The object store settings; an incomplete set is refused at start-up. Issues hold no secret. */
+function objectStoreSettings(data: {
+  OBJECT_STORE_DRIVER?: 'disk' | 's3' | undefined;
+  OBJECT_STORE_DIR?: string | undefined;
+  OBJECT_STORE_S3_BUCKET?: string | undefined;
+  OBJECT_STORE_S3_REGION?: string | undefined;
+  OBJECT_STORE_S3_ENDPOINT?: string | undefined;
+  OBJECT_STORE_S3_ACCESS_KEY_ID?: string | undefined;
+  OBJECT_STORE_S3_SECRET_ACCESS_KEY?: string | undefined;
+}): { config: ObjectStoreConfig | null; issues: string[] } {
+  const driver = data.OBJECT_STORE_DRIVER ?? (data.OBJECT_STORE_DIR === undefined ? null : 'disk');
+  const s3Names = [
+    'OBJECT_STORE_S3_BUCKET',
+    'OBJECT_STORE_S3_REGION',
+    'OBJECT_STORE_S3_ENDPOINT',
+    'OBJECT_STORE_S3_ACCESS_KEY_ID',
+    'OBJECT_STORE_S3_SECRET_ACCESS_KEY',
+  ] as const;
+  if (driver === null) return { config: null, issues: [] };
+  if (driver === 'disk') {
+    const stray = s3Names.filter((name) => data[name] !== undefined);
+    const issues = [
+      ...(data.OBJECT_STORE_DIR === undefined
+        ? ['OBJECT_STORE_DIR: required when OBJECT_STORE_DRIVER is disk']
+        : []),
+      ...stray.map((name) => `${name}: only valid when OBJECT_STORE_DRIVER is s3`),
+    ];
+    return {
+      config:
+        issues.length === 0 && data.OBJECT_STORE_DIR !== undefined
+          ? { driver: 'disk', dir: path.resolve(data.OBJECT_STORE_DIR) }
+          : null,
+      issues,
+    };
+  }
+  const issues: string[] = [];
+  if (data.OBJECT_STORE_S3_BUCKET === undefined) {
+    issues.push('OBJECT_STORE_S3_BUCKET: required when OBJECT_STORE_DRIVER is s3');
+  }
+  if (data.OBJECT_STORE_S3_REGION === undefined) {
+    issues.push('OBJECT_STORE_S3_REGION: required when OBJECT_STORE_DRIVER is s3');
+  }
+  const keyId = data.OBJECT_STORE_S3_ACCESS_KEY_ID;
+  const secret = data.OBJECT_STORE_S3_SECRET_ACCESS_KEY;
+  if ((keyId === undefined) !== (secret === undefined)) {
+    issues.push(
+      'OBJECT_STORE_S3_ACCESS_KEY_ID and OBJECT_STORE_S3_SECRET_ACCESS_KEY: set both or neither',
+    );
+  }
+  if (
+    issues.length > 0 ||
+    data.OBJECT_STORE_S3_BUCKET === undefined ||
+    data.OBJECT_STORE_S3_REGION === undefined
+  ) {
+    return { config: null, issues };
+  }
+  return {
+    config: {
+      driver: 's3',
+      bucket: data.OBJECT_STORE_S3_BUCKET,
+      region: data.OBJECT_STORE_S3_REGION,
+      endpoint: data.OBJECT_STORE_S3_ENDPOINT ?? null,
+      credentials:
+        keyId !== undefined && secret !== undefined
+          ? { accessKeyId: keyId, secretAccessKey: secret }
+          : null,
+    },
+    issues,
+  };
 }
 
 /** The log levels a worker may run at: every one that still writes info lines. */
@@ -771,6 +874,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     ? assistantModelConfig(parsed.data)
     : { config: null, issues: [] };
   issues.push(...assistant.issues);
+  const objectStore = parsed.success
+    ? objectStoreSettings(parsed.data)
+    : { config: null, issues: [] };
+  issues.push(...objectStore.issues);
   if (!parsed.success || issues.length > 0 || assistant.config === null) {
     throw new InvalidConfigError(issues);
   }
@@ -790,10 +897,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     databaseUrl: parsed.data.DATABASE_URL,
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
-    objectStoreDir:
-      parsed.data.OBJECT_STORE_DIR === undefined
-        ? null
-        : path.resolve(parsed.data.OBJECT_STORE_DIR),
+    objectStore: objectStore.config,
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
     stripePaymentMethodConfiguration: parsed.data.STRIPE_PAYMENT_METHOD_CONFIGURATION ?? null,
     stripeWebhookSecrets: webhookSecrets.secrets,
