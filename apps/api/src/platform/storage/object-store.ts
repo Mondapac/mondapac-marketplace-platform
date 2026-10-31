@@ -9,6 +9,14 @@ export class ObjectStoreUnavailableError extends Error {
   }
 }
 
+/** The key already holds an object: a write never replaces one (file storage pilot F2b). */
+export class ObjectAlreadyExistsError extends Error {
+  override readonly name = 'ObjectAlreadyExistsError';
+  constructor(message = 'an object already exists under this key') {
+    super(message);
+  }
+}
+
 /**
  * A key is built by code, never taken from a request: `/`-separated segments of letters,
  * digits, `_` and `-`. No dot, no empty segment, so a key can never climb out of its root.
@@ -26,7 +34,10 @@ export function assertObjectKey(key: string): void {
 }
 
 export interface ObjectStore {
-  /** Writes the bytes under the key, replacing any object there. */
+  /**
+   * Writes the bytes under the key. Never replaces: a key that holds an object rejects with
+   * `ObjectAlreadyExistsError`, and the old object is untouched. Callers build a fresh key per write.
+   */
   put(key: string, bytes: Buffer): Promise<void>;
   /** The bytes, or null when the key holds nothing. */
   get(key: string): Promise<Buffer | null>;
