@@ -18,8 +18,9 @@ export class PlatformImportCheckRequest {
 
   @ApiProperty({
     description:
-      'The file as standard base64 text: a CSV file (UTF-8, comma-separated, a header row), at most ' +
-      '10 MiB and 5,000 rows, at most 10,000 characters a cell.',
+      'The file as standard base64 text: a CSV file (UTF-8, comma-separated, a header row) or an XLSX ' +
+      'workbook (first worksheet, header in the first non-empty row, no formulas, no macros), at ' +
+      'most 10 MiB (50 MiB unpacked for an XLSX) and 5,000 rows, at most 10,000 characters a cell.',
   })
   data!: string;
 }
@@ -47,6 +48,9 @@ export class PlatformImportTemplateDto {
   @ApiProperty({ type: Object }) limits!: { rows: number; fileBytes: number };
   @ApiProperty() filename!: string;
   @ApiProperty({ description: 'The template file as CSV text.' }) csv!: string;
+  @ApiProperty() xlsxFilename!: string;
+  @ApiProperty({ description: 'The same template as an XLSX file, standard base64.' })
+  xlsx!: string;
 }
 
 export class ImportErrorLineDto {

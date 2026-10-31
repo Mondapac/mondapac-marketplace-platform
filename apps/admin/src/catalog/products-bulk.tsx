@@ -1,6 +1,6 @@
 'use client';
 
-import { ActionMenu, Button, Dialog, toast, type ActionMenuItem } from '@mondapac/ui';
+import { ActionMenu, Button, Dialog, RadioGroup, toast, type ActionMenuItem } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -14,6 +14,10 @@ import {
 } from './products-types.ts';
 
 export type BulkAction = 'pause' | 'resume' | 'delete';
+
+/** The file formats of the export. */
+type ExportFormat = 'csv' | 'xlsx';
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /** The answer of POST catalog/admin/products/bulk (catalog design 9.2c). */
 interface BulkAnswer {
@@ -80,7 +84,8 @@ function bulkFailure(
  * all N products in this filter", over every product the filter matches. The button sits with the
  * page's header actions and is disabled until a row is selected; the count shows only in the open
  * menu. Deactivate and Delete ask first (Delete shows how many Offers end, from a dry run, and
- * sends that number back as its confirmation); Activate and Export run at once. Each outcome is a
+ * sends that number back as its confirmation); Export asks for the file format (CSV or XLSX) and then
+ * downloads at once; Activate runs at once. Each outcome is a
  * toast with the skipped and failed counts.
  */
 export function ProductsBulk({
@@ -105,7 +110,8 @@ export function ProductsBulk({
 }) {
   const t = useTranslations('catalog.products.bulk');
   const locale = useLocale();
-  const [dialog, setDialog] = useState<'pause' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<'pause' | 'delete' | 'export' | null>(null);
+  const [format, setFormat] = useState<ExportFormat>('csv');
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<
     | { readonly state: 'loading' }
@@ -214,9 +220,9 @@ export function ProductsBulk({
     }
   }
 
-  async function exportFile() {
+  async function exportFile(chosen: ExportFormat) {
     setBusy(true);
-    const params = new URLSearchParams({ format: 'csv' });
+    const params = new URLSearchParams({ format: chosen });
     if (columns.length > 0) params.set('columns', columns.join(','));
     if (selection.allMatching) {
       const { selector } = target() as { selector: Record<string, string> };
@@ -241,15 +247,24 @@ export function ProductsBulk({
         } | null;
         throw bulkFailure(response.status, body?.code ?? 'unknown', body?.details);
       }
+      const day = new Date().toISOString().slice(0, 10);
+      const save = (blob: Blob, extension: string) => {
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.download = `products-${day}.${extension}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      };
+      if (chosen === 'xlsx') {
+        save(new Blob([await response.arrayBuffer()], { type: XLSX_TYPE }), 'xlsx');
+        // The file is a workbook, not text: the count is the number of products asked for.
+        return count;
+      }
       const text = await response.text();
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-      link.href = url;
-      link.download = `products-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      save(new Blob([text], { type: 'text/csv;charset=utf-8' }), 'csv');
       // One line of the file per product, after the header.
       return Math.max(
         text
@@ -319,7 +334,7 @@ export function ProductsBulk({
       label: t('menu.export'),
       description: t('menu.export-help'),
       icon: 'download' as const,
-      onSelect: () => void exportFile(),
+      onSelect: () => setDialog('export'),
     },
     ...(canDelete
       ? [
@@ -379,6 +394,41 @@ export function ProductsBulk({
         }
       >
         <p>{t('pause.body')}</p>
+      </Dialog>
+      <Dialog
+        open={dialog === 'export'}
+        title={t('export.title', { count })}
+        onClose={() => setDialog(null)}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setDialog(null)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setDialog(null);
+                void exportFile(format);
+              }}
+            >
+              {t('export.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p>{t('export.body')}</p>
+          <RadioGroup
+            legend={t('export.legend')}
+            name="products-export-format"
+            value={format}
+            onChange={(next) => setFormat(next === 'xlsx' ? 'xlsx' : 'csv')}
+            options={[
+              { value: 'csv', label: t('export.csv'), help: t('export.csv-help') },
+              { value: 'xlsx', label: t('export.xlsx'), help: t('export.xlsx-help') },
+            ]}
+          />
+        </div>
       </Dialog>
       <Dialog
         open={dialog === 'delete'}

@@ -2,6 +2,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { RATE_COUNTER_REPOSITORY } from '../src/modules/catalog/application/ports/rate-counter.repository';
 import { PLATFORM_IMPORT_STATUS } from '../src/modules/catalog/presentation/platform-import.controller';
@@ -16,6 +17,7 @@ import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { FakeUnitOfWork } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
+import { workbookBytes, workbookSkeleton, zipOf } from './support/zip-fixtures';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // The admin platform import over HTTP (catalog design 14a): the real guards, controller, gates and
@@ -222,10 +224,21 @@ describe('admin platform import over HTTP (integration)', () => {
       const body = response.body as {
         limits: unknown;
         csv: string;
+        xlsx: string;
+        xlsxFilename: string;
         columns: { key: string }[];
       };
       expect(body.limits).toEqual({ rows: 5000, fileBytes: 10 * 1024 * 1024 });
       expect(body.csv).toContain('Title');
+      // The XLSX template has the same header and example row, and reads back as an import file.
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(Buffer.from(body.xlsx, 'base64') as never);
+      expect(body.xlsxFilename).toBe('products-template.xlsx');
+      const sheet = workbook.worksheets[0]!;
+      expect(sheet.getRow(1).values).toEqual(
+        expect.arrayContaining(['Title', 'Main category', 'Product type']),
+      );
+      expect(sheet.getCell('A2').value).toBe('Lamb shoulder 1 kg');
       expect(body.columns.map((c) => c.key)).toEqual(
         expect.arrayContaining(['title', 'category', 'type']),
       );
@@ -260,7 +273,7 @@ describe('admin platform import over HTTP (integration)', () => {
       }
     });
 
-    it('reads the file type from the content: an XLSX named .csv is 415, a PDF too', async () => {
+    it('reads the file type from the content: a zip that is no workbook is 415, a PDF too', async () => {
       await boot();
       await seeded(code);
       const session = sessionOf(code, MODERATOR, 2);
@@ -273,11 +286,70 @@ describe('admin platform import over HTTP (integration)', () => {
       expect(zip.status).toBe(415);
       expect(zip.body).toMatchObject({
         code: 'file.unsupported-type',
-        details: { detected: 'xlsx' },
+        details: { detected: 'other' },
       });
+      const macro = await upload(
+        code,
+        asData(zipOf(workbookSkeleton('application/vnd.ms-excel.sheet.macroEnabled.main+xml'))),
+        session,
+      );
+      expect(macro.status).toBe(415);
+      expect(macro.body).toMatchObject({ code: 'file.unsupported-type' });
       const pdf = await upload(code, asData(Buffer.from('%PDF-1.7 not a csv')), session);
       expect(pdf.status).toBe(415);
       expect(pdf.body).toMatchObject({ details: { detected: 'other' } });
+    });
+
+    it('reads an XLSX workbook: wrong columns are 422, a formula is 422 with its row', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code, MODERATOR, 2);
+
+      const wrong = await upload(
+        code,
+        asData(
+          await workbookBytes([
+            ['Name', 'Colour'],
+            ['A', 'B'],
+          ]),
+        ),
+        session,
+      );
+      expect(wrong.status).toBe(422);
+      expect(wrong.body).toMatchObject({ code: 'columns.missing' });
+
+      const formula = await upload(
+        code,
+        asData(
+          await workbookBytes([
+            ['Title', 'Main category', 'Product type'],
+            ['A', { formula: '"Meat"', result: 'Meat' }, 'simple'],
+          ]),
+        ),
+        session,
+      );
+      expect(formula.status).toBe(422);
+      expect(formula.body).toMatchObject({
+        code: 'file.formula-cell',
+        details: { rowNumber: 2 },
+      });
+    });
+
+    it('answers 413 for a workbook that would unpack past the limit (zip bomb)', async () => {
+      await boot();
+      await seeded(code);
+
+      const bomb = zipOf([
+        ...workbookSkeleton(),
+        { name: 'xl/worksheets/sheet1.xml', data: Buffer.alloc(60 * 1024 * 1024) },
+      ]);
+      const response = await upload(code, asData(bomb), sessionOf(code, MODERATOR, 2));
+
+      expect(response.status).toBe(413);
+      expect(response.body).toMatchObject({
+        code: 'file.unpacked-too-large',
+        details: { maxBytes: 50 * 1024 * 1024 },
+      });
     });
 
     it('answers 422 for an empty-of-rows file and for the wrong columns', async () => {

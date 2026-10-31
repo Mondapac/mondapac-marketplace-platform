@@ -54,7 +54,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/categories',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
-    // Import products (catalog): the CSV template and the admin's current import.
+    // Import products (catalog): the CSV and XLSX templates and the admin's current import.
     'catalog/admin/platform-imports/template',
     'catalog/admin/platform-imports/current',
     // The saved views of the product list (catalog), read-only (query: `listKey`).
@@ -312,7 +312,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
   },
   'catalog/admin/products/export': {
-    format: /^csv$/,
+    format: /^(csv|xlsx)$/,
     columns:
       /^(code|offers|updated|type|scope|seller|created)(,(code|offers|updated|type|scope|seller|created)){0,6}$/,
     // At most 200 product ids, the cap of the bulk action.
@@ -432,7 +432,7 @@ const FORWARDED_REQUEST_HEADERS = [
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
-  // The import report CSV arrives as an attachment with a file name the API made.
+  // The product export (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
   'content-disposition',
 ] as const;
 

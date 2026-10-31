@@ -53,6 +53,10 @@ type Phase =
   | { readonly kind: 'job'; readonly view: ImportView }
   | { readonly kind: 'broken' };
 
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** What the file picker offers: CSV and XLSX. The API reads the type from the content, not the name. */
+const IMPORT_ACCEPT = `.csv,.xlsx,text/csv,${XLSX_TYPE}`;
+
 /** The file as base64 text, read in the browser; null when it cannot be read. */
 function readAsBase64(file: File): Promise<string | null> {
   return new Promise((resolve) => {
@@ -268,13 +272,18 @@ export function ProductsImport({
     goToList();
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = (format: 'csv' | 'xlsx') => {
     if (template === null) return;
-    const blob = new Blob([template.csv], { type: 'text/csv;charset=utf-8' });
+    const blob =
+      format === 'csv'
+        ? new Blob([template.csv], { type: 'text/csv;charset=utf-8' })
+        : new Blob([Uint8Array.from(atob(template.xlsx), (char) => char.charCodeAt(0))], {
+            type: XLSX_TYPE,
+          });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = template.filename;
+    link.download = format === 'csv' ? template.filename : template.xlsxFilename;
     document.body.append(link);
     link.click();
     link.remove();
@@ -343,7 +352,7 @@ export function ProductsImport({
                 <Icon name="clipboard" className="size-8 text-fg-muted" />
                 <p className="text-sm font-semibold text-fg">{t('upload.drag')}</p>
                 <p className="text-sm text-fg-muted">{t('upload.or')}</p>
-                <FileButton accept=".csv,text/csv" onFiles={onFiles}>
+                <FileButton accept={IMPORT_ACCEPT} onFiles={onFiles}>
                   {t('upload.choose')}
                 </FileButton>
                 <p className="text-xs text-fg-muted">
@@ -356,10 +365,24 @@ export function ProductsImport({
             </ImportSection>
             <ImportSection title={t('template.title')} sub={t('template.sub')}>
               <div>
-                <Button variant="secondary" disabled={template === null} onClick={downloadTemplate}>
-                  <Icon name="download" className="me-2 size-4" />
-                  {t('template.download')}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    disabled={template === null}
+                    onClick={() => downloadTemplate('csv')}
+                  >
+                    <Icon name="download" className="me-2 size-4" />
+                    {t('template.download-csv')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={template === null}
+                    onClick={() => downloadTemplate('xlsx')}
+                  >
+                    <Icon name="download" className="me-2 size-4" />
+                    {t('template.download-xlsx')}
+                  </Button>
+                </div>
               </div>
               <dl className="flex flex-col">
                 {(template?.columns ?? []).map((column) => (
@@ -599,7 +622,7 @@ function CheckResult({
         name={view.fileLabel}
         meta={t('result.checked-at', { time: checked, rows: number(view.rows) })}
         action={
-          <FileButton accept=".csv,text/csv" onFiles={onReplace} disabled={busy}>
+          <FileButton accept={IMPORT_ACCEPT} onFiles={onReplace} disabled={busy}>
             {clean ? t('result.choose-another') : t('result.upload-corrected')}
           </FileButton>
         }

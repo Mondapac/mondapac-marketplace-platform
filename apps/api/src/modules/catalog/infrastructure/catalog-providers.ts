@@ -88,6 +88,14 @@ import {
 import { IMAGE_PROCESSOR, type ImageProcessor } from '../application/ports/image-processor';
 import { PrismaProductImageRepository } from './prisma-product-image.repository';
 import { SharpImageProcessor } from './sharp-image-processor';
+import { csvParser } from '../domain/platform-import/import-file';
+import {
+  IMPORT_FILE_PARSERS,
+  type ImportFileParsers,
+} from '../application/ports/import-file-parsers';
+import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
+import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
+import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
 import {
@@ -416,6 +424,15 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ProductImageRepository =>
       new PrismaProductImageRepository(prisma),
+  },
+  {
+    // CSV is read by the domain; XLSX by exceljs, behind the container checks (catalog 14a).
+    provide: IMPORT_FILE_PARSERS,
+    useFactory: (): ImportFileParsers => [csvParser, xlsxParser],
+  },
+  {
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
   },
   {
     provide: IMAGE_PROCESSOR,

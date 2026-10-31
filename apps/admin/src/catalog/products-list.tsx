@@ -309,11 +309,6 @@ export function ProductsList({
           {counts === null ? '' : t('subtitle', { count: counts.all, market: marketName })}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {permissionKeys.includes('catalog.platform-import.run') ? (
-            <LinkButton variant="secondary" href="/catalog/products/import">
-              {t('import')}
-            </LinkButton>
-          ) : null}
           <ProductsBulk
             selection={{ ids: [...selected], allMatching, total: answer?.total ?? 0 }}
             query={query}
@@ -328,6 +323,12 @@ export function ProductsList({
               void loadSaved();
             }}
           />
+          {permissionKeys.includes('catalog.platform-import.run') ? (
+            <LinkButton variant="secondary" href="/catalog/products/import" className="gap-2">
+              <Icon name="file" />
+              {t('import')}
+            </LinkButton>
+          ) : null}
         </div>
       </div>
       <div className="flex items-stretch">
