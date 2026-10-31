@@ -1,6 +1,6 @@
--- Admin Import products (catalog design 14a; docs/design/data/catalog.md 3.28): the import job of
--- PLATFORM products and one row of result per data row of its file; two admin counter kinds for the
--- upload and the confirm. New, empty tables; the only change to an existing table is the wider
+-- Admin Import products (catalog design 14a; docs/design/data/catalog.md 3.29): the import job of
+-- PLATFORM products and one row of result per data row of its file; three admin counter kinds for the
+-- upload (per hour and per day) and the confirm. New, empty tables; the only change to an existing table is the wider
 -- kind list of `rate_counters`. The uploaded file is never stored here (ADR-0016).
 
 -- Safety (docs/design/data/catalog.md 8.2): a blocked statement fails instead of queueing.
@@ -63,13 +63,13 @@ CREATE TABLE "catalog"."platform_import_rows" (
 CREATE UNIQUE INDEX "platform_import_jobs_market_id_id_key" ON "catalog"."platform_import_jobs"("market_id", "id");
 
 -- CreateIndex
-CREATE INDEX "platform_import_jobs_by_admin_idx" ON "catalog"."platform_import_jobs"("market_id", "started_by_account_id", "created_at" DESC);
+CREATE INDEX "platform_import_jobs_market_id_account_created_at_idx" ON "catalog"."platform_import_jobs"("market_id", "started_by_account_id", "created_at" DESC);
 
 -- AddForeignKey
 ALTER TABLE "catalog"."platform_import_rows" ADD CONSTRAINT "platform_import_rows_market_id_job_id_fkey" FOREIGN KEY ("market_id", "job_id") REFERENCES "catalog"."platform_import_jobs"("market_id", "id") ON DELETE CASCADE ON UPDATE RESTRICT;
 
 
--- Hand-written: docs/design/data/catalog.md 3.28, 7.
+-- Hand-written: docs/design/data/catalog.md 3.29, 7.
 
 ALTER TABLE "catalog"."platform_import_jobs"
   ADD CONSTRAINT "platform_import_jobs_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
@@ -112,6 +112,12 @@ ALTER TABLE "catalog"."platform_import_jobs"
   -- Finished and discarded jobs have an end time; no other job has.
   ADD CONSTRAINT "platform_import_jobs_finished_check" CHECK (
     ("state" IN ('finished', 'discarded')) = ("finished_at" IS NOT NULL)),
+  -- The lease is held exactly while a turn runs; a delayed start (`not_before`) belongs to a queued
+  -- job only. Every write of the repository keeps both (claim, end of turn, resume, discard).
+  ADD CONSTRAINT "platform_import_jobs_lease_check" CHECK (
+    ("state" = 'running') = ("lease_until" IS NOT NULL)),
+  ADD CONSTRAINT "platform_import_jobs_not_before_check" CHECK (
+    "not_before" IS NULL OR "state" = 'queued'),
   ADD CONSTRAINT "platform_import_jobs_version_check" CHECK ("version" >= 1);
 
 ALTER TABLE "catalog"."platform_import_rows"
@@ -137,7 +143,7 @@ ALTER TABLE "catalog"."platform_import_rows"
 
 -- At most one running import per admin (design 14a, as the seller import's one running job): a
 -- second confirm while one is queued or running is refused by this index.
-CREATE UNIQUE INDEX "platform_import_jobs_one_running_per_admin_idx"
+CREATE UNIQUE INDEX "platform_import_jobs_market_id_account_running_key"
   ON "catalog"."platform_import_jobs" ("market_id", "started_by_account_id")
   WHERE "state" IN ('queued', 'running');
 
@@ -152,7 +158,7 @@ CREATE INDEX "platform_import_jobs_market_id_file_purge_idx"
   ON "catalog"."platform_import_jobs" ("market_id", "checked_at", "id")
   WHERE "file_deleted_at" IS NULL;
 
--- The admin counters of the upload (checks per hour) and the confirm (starts per day): the kind
+-- The admin counters of the upload (checks per hour and per day) and the confirm (starts per day): the kind
 -- list of the counters is a CHECK, so a new kind is this widening (data design 3.26).
 ALTER TABLE "catalog"."rate_counters" DROP CONSTRAINT "rate_counters_kind_check";
 ALTER TABLE "catalog"."rate_counters"
@@ -161,7 +167,8 @@ ALTER TABLE "catalog"."rate_counters"
     'claim-text-check.account.minute', 'claim-text-check.account.day',
     'submit.seller.hour', 'photo-upload.seller.day', 'search.account.minute',
     'import-start.seller.day', 'ai-suggest.seller.day', 'reviewer-mail.market.hour',
-    'platform-import-check.account.hour', 'platform-import-start.account.day'));
+    'platform-import-check.account.hour', 'platform-import-check.account.day',
+    'platform-import-start.account.day'));
 
 -- Grants (section 7). The job row moves through its states by column; the rows' results are set
 -- as the run goes. DELETE belongs to the purge of 10.4 (old jobs and, with them, their rows).

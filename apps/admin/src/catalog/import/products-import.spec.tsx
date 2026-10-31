@@ -318,7 +318,10 @@ describe('admin import products', () => {
       undefined,
     );
     mount(ALL, ID);
-    expect(await screen.findByText('Import finished: 1,196 products added')).toBeTruthy();
+    const finishedBanner = await screen.findByText('Import finished: 1,196 products added');
+    expect(finishedBanner).toBeTruthy();
+    // The Success tone (piDone), also when some rows were not imported: the tile carries the warning.
+    expect(finishedBanner.closest('[role="status"]')?.className).toContain('bg-success-bg');
     expect(screen.getByText('Skipped at check').closest('li')!.textContent).toContain('42');
     expect(screen.getByText('Not imported').closest('li')!.textContent).toContain('2');
     expect(screen.getByText('Time').closest('li')!.textContent).toContain('2 min 10 s');

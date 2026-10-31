@@ -444,14 +444,30 @@ export function panelHostFor(config: PanelConfig, rawHost: string | null): Panel
   return host === null ? undefined : config.hosts.find((entry) => entry.host === host);
 }
 
+/**
+ * Set on every answer of the relay itself. The panel's `proxy.ts` does not run for `/api/` (its
+ * body buffer would cut a large upload), so the one header a file download needs, `nosniff`, is
+ * set here: a CSV or workbook from the API is never read as another type.
+ */
+const withSafetyHeaders = (headers: Record<string, string>): Record<string, string> => ({
+  ...headers,
+  'x-content-type-options': 'nosniff',
+});
+
 const jsonError = (status: number, code: string): Response =>
   new Response(JSON.stringify({ statusCode: status, code }), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: withSafetyHeaders({
+      'content-type': 'application/json',
+      'cache-control': 'no-store',
+    }),
   });
 
 const notFound = (): Response =>
-  new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
+  new Response(null, {
+    status: 404,
+    headers: withSafetyHeaders({ 'cache-control': 'no-store' }),
+  });
 
 /**
  * Headers for a request to the API: the allowlist plus the Market of the host, and, when this
@@ -584,6 +600,7 @@ export async function relay(
   }
   // Session answers must never be cached; the API sets no-store itself, this is the default.
   headers.set('cache-control', upstream.headers.get('cache-control') ?? 'private, no-store');
+  headers.set('x-content-type-options', 'nosniff');
   for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);
   return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {
     status: upstream.status,

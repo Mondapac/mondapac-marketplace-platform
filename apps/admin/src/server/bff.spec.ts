@@ -94,6 +94,27 @@ describe('relay', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('sets nosniff on every answer itself, because the panel proxy does not run for /api/', async () => {
+    const ok = await relay(
+      config,
+      post('identity/admin/sign-in'),
+      ['identity', 'admin', 'sign-in'],
+      upstreamOk(),
+    );
+    expect(ok.headers.get('x-content-type-options')).toBe('nosniff');
+    const refused = await relay(
+      config,
+      post('identity/admin/sign-in', { ...sameOrigin, origin: 'http://evil.test' }),
+      ['identity', 'admin', 'sign-in'],
+      upstreamOk(),
+    );
+    expect(refused.status).toBe(403);
+    expect(refused.headers.get('x-content-type-options')).toBe('nosniff');
+    const unlisted = await relay(config, post('nothing/here'), ['nothing', 'here'], upstreamOk());
+    expect(unlisted.status).toBe(404);
+    expect(unlisted.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
   it('answers 404 for a path outside the allowlist', async () => {
     const fetchImpl = upstreamOk();
     const response = await relay(

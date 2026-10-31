@@ -966,7 +966,7 @@ model CatalogPlatformImportJob {
   rows               CatalogPlatformImportRow[]
 
   @@unique([marketId, id])
-  @@index([marketId, startedByAccountId, createdAt(sort: Desc)], map: "platform_import_jobs_by_admin_idx")
+  @@index([marketId, startedByAccountId, createdAt(sort: Desc)], map: "platform_import_jobs_market_id_account_created_at_idx")
   @@map("platform_import_jobs")
   @@schema("catalog")
 }

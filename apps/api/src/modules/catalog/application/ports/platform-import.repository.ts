@@ -143,7 +143,10 @@ export interface PlatformImportRepository {
       | { readonly state: 'stopped'; readonly reason: StopReason },
   ): Promise<number | null>;
 
-  /** The files still stored of jobs checked before `before`, for the purge. */
+  /**
+   * The files still stored of jobs checked before `before`, for the purge; the files of discarded
+   * jobs are due at once, whatever their age.
+   */
   filesDue(
     market: MarketContext,
     before: Temporal.Instant,
@@ -156,11 +159,24 @@ export interface PlatformImportRepository {
     now: Temporal.Instant,
   ): Promise<void>;
 
-  /** Deletes the jobs created before `before` that are finished, stopped or discarded, with their rows; answers how many. */
+  /**
+   * Deletes up to `limit` jobs created before `before` that are finished or stopped, with their
+   * rows; answers how many. A discarded job is not kept for this long: see `deleteDiscarded`.
+   */
   deleteSettledBefore(
     market: MarketContext,
     before: Temporal.Instant,
     limit: number,
+  ): Promise<number>;
+
+  /**
+   * Deletes discarded jobs, with their rows, whose file is gone (an unconfirmed check that nobody
+   * will read again): the named `ids`, or, without ids, up to `limit` of them found by the purge.
+   * Answers how many. A job whose file is still stored is never deleted (the purge needs its key).
+   */
+  deleteDiscarded(
+    market: MarketContext,
+    scope: { readonly ids: readonly Id<'PlatformImport'>[] } | { readonly limit: number },
   ): Promise<number>;
 }
 

@@ -425,9 +425,10 @@ export class PrismaPlatformImportRepository implements PlatformImportRepository 
       where: {
         marketId: market.marketId,
         fileDeletedAt: null,
-        checkedAt: { lt: toDate(before) },
         // A job still queued or running needs its file.
         state: { notIn: ['queued', 'running'] },
+        // A discarded job will never be read again: its file is due at once.
+        OR: [{ checkedAt: { lt: toDate(before) } }, { state: 'discarded' }],
       },
       orderBy: [{ checkedAt: 'asc' }, { id: 'asc' }],
       take: limit,
@@ -468,7 +469,7 @@ export class PrismaPlatformImportRepository implements PlatformImportRepository 
       where: {
         marketId: market.marketId,
         createdAt: { lt: toDate(before) },
-        state: { in: ['finished', 'stopped', 'discarded'] },
+        state: { in: ['finished', 'stopped'] },
         // The file goes first (the purge job); a job is deleted only without its file.
         fileDeletedAt: { not: null },
       },
@@ -479,6 +480,37 @@ export class PrismaPlatformImportRepository implements PlatformImportRepository 
     if (old.length === 0) return 0;
     const { count } = await tx.catalogPlatformImportJob.deleteMany({
       where: { marketId: market.marketId, id: { in: old.map((job) => job.id) } },
+    });
+    return count;
+  }
+
+  async deleteDiscarded(
+    market: MarketContext,
+    scope: { readonly ids: readonly Id<'PlatformImport'>[] } | { readonly limit: number },
+  ): Promise<number> {
+    const tx = this.prisma.tx(market);
+    const base = {
+      marketId: market.marketId,
+      state: 'discarded',
+      // The file goes first; a job is deleted only without its file.
+      fileDeletedAt: { not: null },
+    } as const;
+    if ('ids' in scope) {
+      if (scope.ids.length === 0) return 0;
+      const { count } = await tx.catalogPlatformImportJob.deleteMany({
+        where: { ...base, id: { in: [...scope.ids] } },
+      });
+      return count;
+    }
+    const found = await tx.catalogPlatformImportJob.findMany({
+      where: base,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: scope.limit,
+      select: { id: true },
+    });
+    if (found.length === 0) return 0;
+    const { count } = await tx.catalogPlatformImportJob.deleteMany({
+      where: { ...base, id: { in: found.map((job) => job.id) } },
     });
     return count;
   }

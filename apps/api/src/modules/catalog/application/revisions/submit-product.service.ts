@@ -46,7 +46,8 @@ export interface SubmitProductInput {
   /**
    * An admin import that starts products Inactive (design 14a): the product is paused in the same
    * unit that publishes it, so it is never visible published. Refused for a seller; the caller has
-   * checked the pause permission.
+   * checked the pause permission. A submit that would not publish (the revision policy asks for a
+   * review) is refused with `product.not-published` before any write, never skipped silently.
    */
   readonly pauseOnPublish?: boolean;
 }
@@ -325,6 +326,12 @@ export class SubmitProduct {
           if (!submitted.ok) return err(submitted.error);
           // Inactive start: the pause is part of the publish, in this unit and with its events.
           const pausedAtPublish = input.pauseOnPublish === true && submitted.value.published;
+          // Fail closed (Hassan L-585-2): an Inactive start that does not publish would leave a
+          // pending revision that a later approval publishes active, unpaused. Nothing is written
+          // yet, so the refusal leaves no trace.
+          if (input.pauseOnPublish === true && !submitted.value.published) {
+            return err({ code: 'product.not-published' });
+          }
           if (pausedAtPublish) {
             const paused = product.pause({ accountId: actor.accountId, now });
             if (!paused.ok) return err(paused.error);

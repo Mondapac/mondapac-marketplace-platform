@@ -34,6 +34,7 @@ import {
   type ImportView,
 } from '../platform-import/import-view';
 import { reserveForAccount, type ReserveFailure } from '../platform-import/reserve';
+import { dropDiscardedJobs } from '../platform-import/common';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { PlatformImportRepository } from '../ports/platform-import.repository';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
@@ -77,7 +78,7 @@ const MAX_BASE64_LENGTH = Math.ceil((IMPORT_LIMITS.fileBytes * 4) / 3) + 4;
  * `catalog.platform-product.edit` (every row later goes through the use cases that need the second).
  *
  * The order is the order of Hassan's limits: the request is typed; the size of the text is
- * checked before it is decoded; the admin's hourly count is spent before the file is read; the
+ * checked before it is decoded; the admin's hourly and daily counts are spent before the file is read; the
  * bytes are sniffed and tokenised within the limits (10 MiB, 5,000 rows, 10,000 characters a cell);
  * the columns are read; then each row is checked against the Market's categories, types and
  * attribute schema, and rows with the same title and brand are marked. The file goes to object
@@ -223,8 +224,9 @@ export class PlatformImportCheck extends UseCase<
       await deps.importFiles.delete(fileKey).catch(() => undefined);
       return err({ code: 'access.unavailable' });
     }
-    // The admin's earlier unconfirmed files go now; the purge job is the net for any that stay.
-    for (const old of replaced) await deps.importFiles.delete(old.fileKey).catch(() => undefined);
+    // The admin's earlier unconfirmed checks go now, file, job and rows; the purge job is the net
+    // for any that stay.
+    await dropDiscardedJobs(deps, market, replaced, now);
 
     return ok(
       viewOf(

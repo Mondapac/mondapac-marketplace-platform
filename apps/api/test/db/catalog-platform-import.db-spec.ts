@@ -254,7 +254,7 @@ describe.each(TEST_MARKETS)('platform import store in market %s (database integr
     expect(await inUnit(market, () => repository.resume(market, job.id))).toBe(false);
   });
 
-  it('discards a checked job and purges files and settled jobs by age', async () => {
+  it('purges files by age, deletes a discarded check as soon as its file is gone, settled jobs by age', async () => {
     const admin = uuid7() as Id<'Account'>;
     const old = jobOf(admin, T0.subtract({ hours: 24 * 100 }));
     await inUnit(market, () => repository.add(market, old, rowsOf()));
@@ -263,22 +263,100 @@ describe.each(TEST_MARKETS)('platform import store in market %s (database integr
       repository.filesDue(market, T0.subtract({ hours: 24 * 7 }), 100),
     );
     expect(due.map((entry) => entry.id)).toContain(old.id);
+    // An unconfirmed check whose file is gone cannot be imported: it is discarded, and then deleted
+    // at once, with its rows, whatever its age (Mojtaba B2).
     await inUnit(market, () => repository.markFileDeleted(market, old.id, T0));
     const after = await inUnit(market, () =>
       repository.filesDue(market, T0.subtract({ hours: 24 * 7 }), 100),
     );
     expect(after.map((entry) => entry.id)).not.toContain(old.id);
+    expect(await inUnit(market, () => repository.find(market, old.id))).toMatchObject({
+      state: 'discarded',
+    });
+    await inUnit(market, () => repository.deleteDiscarded(market, { limit: 100 }));
+    expect(await inUnit(market, () => repository.find(market, old.id))).toBeNull();
+    expect(await inUnit(market, () => repository.pendingRows(market, old.id, 10))).toEqual([]);
 
+    // A fresh discard: its file is due at once, and the job stays until the file is gone.
     const fresh = jobOf(admin);
     await inUnit(market, () => repository.add(market, fresh, rowsOf()));
     const dropped = await inUnit(market, () => repository.discard(market, fresh.id, T0));
     expect(dropped).toEqual({ fileKey: fresh.fileKey });
     expect(await inUnit(market, () => repository.discard(market, fresh.id, T0))).toBeNull();
-
-    await inUnit(market, () =>
-      repository.deleteSettledBefore(market, T0.subtract({ hours: 24 * 90 }), 100),
+    const dueNow = await inUnit(market, () =>
+      repository.filesDue(market, T0.subtract({ hours: 24 * 7 }), 100),
     );
-    expect(await inUnit(market, () => repository.find(market, old.id))).toBeNull();
+    expect(dueNow.map((entry) => entry.id)).toContain(fresh.id);
+    expect(
+      await inUnit(market, () => repository.deleteDiscarded(market, { ids: [fresh.id] })),
+    ).toBe(0);
     expect(await inUnit(market, () => repository.find(market, fresh.id))).not.toBeNull();
+    await inUnit(market, () => repository.markFileDeleted(market, fresh.id, T0));
+    expect(
+      await inUnit(market, () => repository.deleteDiscarded(market, { ids: [fresh.id] })),
+    ).toBe(1);
+    expect(await inUnit(market, () => repository.find(market, fresh.id))).toBeNull();
+    // The rows went with the job (cascade).
+    const left = await owner.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM catalog.platform_import_rows WHERE job_id = $1',
+      [fresh.id],
+    );
+    expect(left.rows[0]?.n).toBe(0);
+
+    // A finished import is kept for 90 days, a discarded one is not part of that rule.
+    const finished = jobOf(admin, T0.subtract({ hours: 24 * 100 }));
+    await inUnit(market, async () => {
+      await repository.add(market, finished, rowsOf());
+      await repository.confirm(market, finished.id, {
+        startAs: 'inactive',
+        skipErrors: true,
+        toImport: 2,
+        now: T0.subtract({ hours: 24 * 100 }),
+      });
+    });
+    const claimed = await inUnit(market, () =>
+      repository.claim(market, T0, T0.add({ seconds: 120 })),
+    );
+    expect(claimed?.id).toBe(finished.id);
+    await inUnit(market, () =>
+      repository.endTurn(market, finished.id, { state: 'finished', now: T0 }),
+    );
+    // Its file is still stored: kept. Once gone, the 90 days apply.
+    expect(
+      await inUnit(market, () =>
+        repository.deleteSettledBefore(market, T0.subtract({ hours: 24 * 90 }), 5),
+      ),
+    ).toBe(0);
+    await inUnit(market, () => repository.markFileDeleted(market, finished.id, T0));
+    expect(
+      await inUnit(market, () =>
+        repository.deleteSettledBefore(market, T0.subtract({ hours: 24 * 90 }), 5),
+      ),
+    ).toBe(1);
+    expect(await inUnit(market, () => repository.find(market, finished.id))).toBeNull();
+  });
+
+  it('refuses a lease on a job that is not running and a delayed start on a job that is not queued', async () => {
+    const admin = uuid7() as Id<'Account'>;
+    const job = jobOf(admin);
+    await inUnit(market, () => repository.add(market, job, rowsOf()));
+    await expect(
+      owner.query(
+        "UPDATE catalog.platform_import_jobs SET lease_until = now() WHERE id = $1 AND state = 'checked'",
+        [job.id],
+      ),
+    ).rejects.toThrow(/platform_import_jobs_lease_check/);
+    await expect(
+      owner.query(
+        "UPDATE catalog.platform_import_jobs SET not_before = now() WHERE id = $1 AND state = 'checked'",
+        [job.id],
+      ),
+    ).rejects.toThrow(/platform_import_jobs_not_before_check/);
+    await expect(
+      owner.query(
+        "UPDATE catalog.platform_import_jobs SET state = 'running' WHERE id = $1 AND state = 'checked'",
+        [job.id],
+      ),
+    ).rejects.toThrow(/platform_import_jobs_(lease|confirmed)_check/);
   });
 });

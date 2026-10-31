@@ -730,10 +730,7 @@ function Finished({
           </p>
         </Banner>
       ) : (
-        <Banner
-          tone={view.failed > 0 ? 'attention' : 'success'}
-          title={t('finished.title', { count: view.added })}
-        >
+        <Banner tone="success" title={t('finished.title', { count: view.added })}>
           <p>{t('finished.body', { startAs: view.startAs ?? 'inactive' })}</p>
         </Banner>
       )}

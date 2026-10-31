@@ -12,10 +12,11 @@ REVOKE SELECT, INSERT, DELETE,
     "failed_rows", "stop_reason", "not_before", "lease_until", "version", "started_at", "finished_at")
   ON TABLE "catalog"."platform_import_jobs" FROM "mondapac_app";
 
--- The two admin counter kinds go back out of the list: their counters are deleted first, so the
+-- The three admin counter kinds go back out of the list: their counters are deleted first, so the
 -- older CHECK holds for every remaining row.
 DELETE FROM "catalog"."rate_counters"
-  WHERE "kind" IN ('platform-import-check.account.hour', 'platform-import-start.account.day');
+  WHERE "kind" IN ('platform-import-check.account.hour', 'platform-import-check.account.day',
+    'platform-import-start.account.day');
 ALTER TABLE "catalog"."rate_counters" DROP CONSTRAINT "rate_counters_kind_check";
 ALTER TABLE "catalog"."rate_counters"
   ADD CONSTRAINT "rate_counters_kind_check" CHECK ("kind" IN (
