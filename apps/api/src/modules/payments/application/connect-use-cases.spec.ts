@@ -378,6 +378,29 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       expect(inbox.get(code, 'evt_test_cap_0001')).toMatchObject({ objectId: ACCOUNT });
     });
 
+    it('stores a payout-settings change by the account id, and refuses one that is not balance settings', async () => {
+      const event = accountEvent({ id: 'evt_test_bal_0001', type: 'balance_settings.updated' });
+      expect(await receive(event)).toEqual(ok('recorded'));
+      expect(inbox.get(code, 'evt_test_bal_0001')).toMatchObject({
+        type: 'balance_settings.updated',
+        objectId: ACCOUNT,
+      });
+
+      const wrong = accountEvent({ id: 'evt_test_bal_0002', type: 'balance_settings.updated' });
+      (wrong.data as { object: Record<string, unknown> }).object = { object: 'account' };
+      expect(await receive(wrong)).toEqual(err({ code: 'validation.failed' }));
+      expect(
+        await receive(
+          accountEvent({
+            id: 'evt_test_bal_0003',
+            type: 'balance_settings.updated',
+            account: null,
+          }),
+        ),
+      ).toEqual(err({ code: 'payments.event-refused' }));
+      expect(inbox.get(code, 'evt_test_bal_0002')).toBeUndefined();
+    });
+
     it('refuses an event of the wrong endpoint kind, live mode, or no account, and drops another Market', async () => {
       const refused = err({ code: 'payments.event-refused' });
       expect(await receive(accountEvent({ marketId: code }), TEST_WEBHOOK_SECRET)).toEqual(refused);

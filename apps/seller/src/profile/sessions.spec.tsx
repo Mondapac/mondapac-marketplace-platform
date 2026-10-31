@@ -13,6 +13,7 @@ import { createTranslator } from 'next-intl';
 import { callApi } from '../api/client.ts';
 import { deviceLabel } from './device-label.ts';
 import { SessionsCard, type SessionRow } from './sessions-card.tsx';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -105,7 +106,22 @@ describe('SessionsCard', () => {
       {},
       'csrf',
     );
-    expect(screen.getByText('Signed out of 1 other device.')).toBeTruthy();
+    await expectToast('Signed out of 1 other device.');
+  });
+
+  it('says so as information when no other session was left to end', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { revokedSessions: 0 } });
+    render(
+      wrap(
+        <SessionsCard
+          rows={[row('Chrome on Windows', true), row('Safari on macOS', false)]}
+          csrfToken="csrf"
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out of all other devices' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out others' }));
+    await expectToast('No other device was signed in.', 'info');
   });
 
   it('keeps the dialog open with the reason when it fails', async () => {

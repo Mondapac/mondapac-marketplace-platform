@@ -12,6 +12,7 @@ import { callApi } from '../api/client.ts';
 import { decisionProblemOf } from './decision-errors.ts';
 import { DecisionPanel } from './decision-panel.tsx';
 import type { ReviewRegister } from './review-types.ts';
+import { expectNoToast, expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-0000000000a1';
@@ -65,7 +66,7 @@ describe('DecisionPanel', () => {
       { revisionId: REVISION },
       'csrf',
     );
-    expect(screen.getByText('Application approved.')).toBeTruthy();
+    await expectToast('Application approved.');
   });
 
   it('says the decision is settling on a 202', async () => {
@@ -73,7 +74,10 @@ describe('DecisionPanel', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, approve' }));
+    // A receipt with an instruction stays in the page; no toast repeats it.
     expect(await screen.findByText(/being settled/)).toBeTruthy();
+    expectNoToast();
+    expectNoToast('info');
   });
 
   it('turns Approve off while the register blocks it, and explains why', () => {
@@ -122,7 +126,7 @@ describe('DecisionPanel', () => {
       { revisionId: REVISION, observedOutcome: 'active' },
       'csrf',
     );
-    expect(await screen.findByText('Manual check recorded.')).toBeTruthy();
+    await expectToast('Manual check recorded.');
   });
 
   it('shows the recorded manual check', () => {

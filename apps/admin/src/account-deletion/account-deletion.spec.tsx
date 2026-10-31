@@ -7,9 +7,10 @@ import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
+import { toast } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
 import { CustomerLookup } from '../customers/customer-lookup.tsx';
-import { settingsTabLabels } from '../settings/settings-tabs.tsx';
+import { settingsLink, settingsViewKeys, visibleSettings } from '../settings/settings-nav.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
 import { BuyerDeletion } from './buyer-deletion.tsx';
 import { blockersOf, deletionProblemOf } from './errors.ts';
@@ -89,26 +90,33 @@ describe('error mapping', () => {
   });
 });
 
-describe('settings tabs', () => {
-  const t = (key: string) => key;
-  it('adds the account deletion tab for its view key', () => {
-    const labels = settingsTabLabels(t, [
-      'notifications.support-contact.view',
-      'customers.account-deletion-settings.view',
-    ]);
-    expect(labels?.tabs.map((tab) => tab.id)).toEqual(['general', 'account-deletion']);
+describe('settings map entry', () => {
+  it('puts Account deletion in the Marketplace group, gated by its view and manage keys', () => {
+    const found = settingsLink('account-deletion');
+    expect(found?.group.id).toBe('marketplace');
+    expect(found?.link).toMatchObject({
+      href: '/settings/account-deletion',
+      view: ['customers.account-deletion-settings.view'],
+      manage: ['customers.account-deletion-settings.manage'],
+    });
+    expect(settingsViewKeys).toContain('customers.account-deletion-settings.view');
   });
 
-  it('shows all three, and no tab row for one', () => {
+  it('shows it for the view key, view only without manage, and not without the view key', () => {
+    const links = (keys: string[]) =>
+      visibleSettings(keys).flatMap(({ links: inGroup }) =>
+        inGroup.map(({ link, viewOnly }) => [link.id, viewOnly] as const),
+      );
+    expect(links(['customers.account-deletion-settings.view'])).toEqual([
+      ['account-deletion', true],
+    ]);
     expect(
-      settingsTabLabels(t, [
-        'notifications.support-contact.view',
-        'assistant.settings.view',
+      links([
         'customers.account-deletion-settings.view',
-      ])?.tabs.map((tab) => tab.id),
-    ).toEqual(['general', 'assistant', 'account-deletion']);
-    expect(settingsTabLabels(t, ['customers.account-deletion-settings.view'])).toBeNull();
-    expect(settingsTabLabels(t, [])).toBeNull();
+        'customers.account-deletion-settings.manage',
+      ]),
+    ).toEqual([['account-deletion', false]]);
+    expect(links(['customers.account-deletion-settings.manage'])).toEqual([]);
   });
 });
 
@@ -130,28 +138,32 @@ describe('AccountDeletionSettingsPanel', () => {
       ),
     );
   const save = () => screen.getByRole('button', { name: 'Save changes' });
-  const choose = (name: string) => fireEvent.click(screen.getByRole('radio', { name }));
+  const enabledBox = () =>
+    screen.getByRole<HTMLInputElement>('checkbox', {
+      name: /Allow buyers to delete their account/,
+    });
+  const daysSelect = () =>
+    screen.getByLabelText<HTMLSelectElement>(/Waiting period before deletion/);
+  const choose = (on: boolean) => {
+    if (enabledBox().checked !== on) fireEvent.click(enabledBox());
+  };
+  const success = () => vi.spyOn(toast, 'success').mockReturnValue('toast');
 
-  it('shows the values in force, with the save button off until something differs', () => {
+  it('shows the values in force, and the save bar only once something differs', () => {
     mount(answer(true, 14));
-    expect(
-      screen.getByRole('group', { name: 'Allow buyers to delete their account' }),
-    ).toBeTruthy();
-    expect(screen.getByRole<HTMLInputElement>('radio', { name: 'On' }).checked).toBe(true);
-    expect(screen.getByLabelText<HTMLSelectElement>('Waiting period before deletion').value).toBe(
-      '14',
-    );
-    expect((save() as HTMLButtonElement).disabled).toBe(true);
-    choose('Off');
-    expect((save() as HTMLButtonElement).disabled).toBe(false);
-    choose('On');
-    expect((save() as HTMLButtonElement).disabled).toBe(true);
+    expect(enabledBox().checked).toBe(true);
+    expect(daysSelect().value).toBe('14');
+    expect(screen.getByText('Saved version 3')).toBeTruthy();
+    expect(screen.queryByText(/unsaved change/)).toBeNull();
+    choose(false);
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    choose(true);
+    expect(screen.queryByText(/unsaved change/)).toBeNull();
   });
 
   it('offers 7, 14, 30, 60 and 90 days, and the value in force when it is another', () => {
     mount(answer(false, 45));
-    const select = screen.getByLabelText<HTMLSelectElement>('Waiting period before deletion');
-    expect([...select.options].map((option) => option.value)).toEqual([
+    expect([...daysSelect().options].map((option) => option.value)).toEqual([
       '7',
       '14',
       '30',
@@ -161,20 +173,19 @@ describe('AccountDeletionSettingsPanel', () => {
     ]);
   });
 
-  it('is read-only without the manage permission: disabled fields, a note and no save button', () => {
+  it('is read-only without the manage permission: disabled fields, a note and no save bar', () => {
     mount(answer(true), none, false);
     expect(screen.getByText('You can view this setting but not change it.')).toBeTruthy();
-    expect(screen.getByRole<HTMLInputElement>('radio', { name: 'Off' }).disabled).toBe(true);
-    expect(
-      screen.getByLabelText<HTMLSelectElement>('Waiting period before deletion').disabled,
-    ).toBe(true);
+    expect(enabledBox().disabled).toBe(true);
+    expect(daysSelect().disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
   });
 
-  it('turns it on: confirm, reason, then PUT with the version, and shows the saved status', async () => {
+  it('turns it on: confirm, reason, then PUT with the version, and shows the saved toast', async () => {
+    const toasted = success();
     call.mockResolvedValue(ok(answer(true, 30, 4)));
     mount(answer(false, 30, 3));
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     const dialog = dialogNamed('Turn on account deletion for all buyers?');
     expect(within(dialog).getByText(/after a 30-day wait/)).toBeTruthy();
@@ -194,13 +205,17 @@ describe('AccountDeletionSettingsPanel', () => {
       },
       'csrf',
     );
-    const status = await screen.findByText('Saved. Buyers see the change within a minute.');
-    expect(status.closest('[role="status"]')).toBeTruthy();
-    expect((save() as HTMLButtonElement).disabled).toBe(true);
-    // The next change carries the new version.
-    choose('Off');
+    await waitFor(() =>
+      expect(toasted).toHaveBeenCalledWith('Saved. Buyers see the change within a minute.'),
+    );
+    expect(screen.queryByText(/unsaved change/)).toBeNull();
+    expect(screen.getByText('Saved version 4')).toBeTruthy();
+    // The next change carries the new version, and starts with an empty reason.
+    choose(false);
     fireEvent.click(save());
-    typeReason(dialogNamed('Turn off account deletion?'));
+    const off = dialogNamed('Turn off account deletion?');
+    expect(within(off).getByLabelText<HTMLTextAreaElement>('Reason').value).toBe('');
+    typeReason(off);
     call.mockResolvedValue(ok(answer(false, 30, 5)));
     fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
@@ -209,7 +224,7 @@ describe('AccountDeletionSettingsPanel', () => {
 
   it('needs a valid reason: empty, too long or with < or > sends nothing', () => {
     mount();
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     const dialog = dialogNamed('Turn on account deletion for all buyers?');
     for (const bad of ['', '   ', 'x'.repeat(501), 'a <b> c']) {
@@ -224,7 +239,7 @@ describe('AccountDeletionSettingsPanel', () => {
 
   it('Enter in the Reason neither adds a line nor confirms', () => {
     mount();
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     const dialog = dialogNamed('Turn on account deletion for all buyers?');
     typeReason(dialog);
@@ -233,38 +248,20 @@ describe('AccountDeletionSettingsPanel', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('says how many requests continue when turning it off, and "100 or more", and when unknown', () => {
-    const { unmount } = mount(answer(true), { state: 'ok', count: 3, more: false });
-    choose('Off');
+  it.each<[PendingCount, RegExp]>([
+    [{ state: 'ok', count: 3, more: false }, /3 pending requests continue/],
+    [{ state: 'ok', count: 100, more: true }, /100 or more pending requests continue/],
+    [{ state: 'unavailable' }, /Pending requests continue/],
+  ])('says how many requests continue when turning it off (%j)', (pending, text) => {
+    mount(answer(true), pending);
+    choose(false);
     fireEvent.click(save());
-    expect(
-      within(dialogNamed('Turn off account deletion?')).getByText(/3 pending requests continue/),
-    ).toBeTruthy();
-    unmount();
-    cleanup();
-    const more = mount(answer(true), { state: 'ok', count: 100, more: true });
-    choose('Off');
-    fireEvent.click(save());
-    expect(
-      within(dialogNamed('Turn off account deletion?')).getByText(
-        /100 or more pending requests continue/,
-      ),
-    ).toBeTruthy();
-    more.unmount();
-    cleanup();
-    mount(answer(true), { state: 'unavailable' });
-    choose('Off');
-    fireEvent.click(save());
-    expect(
-      within(dialogNamed('Turn off account deletion?')).getByText(/Pending requests continue/),
-    ).toBeTruthy();
+    expect(within(dialogNamed('Turn off account deletion?')).getByText(text)).toBeTruthy();
   });
 
   it('asks about the days alone with its own title and note', () => {
     mount(answer(true, 30));
-    fireEvent.change(screen.getByLabelText('Waiting period before deletion'), {
-      target: { value: '60' },
-    });
+    fireEvent.change(daysSelect(), { target: { value: '60' } });
     fireEvent.click(save());
     const dialog = dialogNamed('Change the waiting period to 60 days?');
     expect(within(dialog).getByText('Applies to new requests only.')).toBeTruthy();
@@ -273,7 +270,7 @@ describe('AccountDeletionSettingsPanel', () => {
 
   it('cancelling the confirm sends nothing', () => {
     mount();
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     fireEvent.click(
       within(dialogNamed('Turn on account deletion for all buyers?')).getByRole('button', {
@@ -283,14 +280,15 @@ describe('AccountDeletionSettingsPanel', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('asks for the two-step code, repeats the save after it, and a cancelled code changes nothing', async () => {
+  it('a cancelled code changes nothing: no message, the draft is kept', async () => {
+    const toasted = success();
     call.mockImplementation((_method, path) =>
       Promise.resolve(
         path === SETTINGS ? stepUpRequired('customers.account-deletion-settings.change') : ok({}),
       ),
     );
     mount();
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     typeReason(dialogNamed('Turn on account deletion for all buyers?'));
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
@@ -302,14 +300,14 @@ describe('AccountDeletionSettingsPanel', () => {
     ).toBeNull();
     fireEvent.click(within(code).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    // No message, the choice is kept, and focus is back on the save button.
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByText(/Saved\./)).toBeNull();
-    expect(screen.getByRole<HTMLInputElement>('radio', { name: 'On' }).checked).toBe(true);
-    await waitFor(() => expect(document.activeElement).toBe(save()));
+    expect(toasted).not.toHaveBeenCalled();
+    expect(enabledBox().checked).toBe(true);
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
   });
 
   it('sends the code to the step-up route, then repeats the save', async () => {
+    const toasted = success();
     let proven = false;
     call.mockImplementation((_method, path) => {
       if (path === 'identity/admin/step-up/verify') {
@@ -323,7 +321,7 @@ describe('AccountDeletionSettingsPanel', () => {
       );
     });
     mount();
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     typeReason(dialogNamed('Turn on account deletion for all buyers?'));
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
@@ -332,7 +330,7 @@ describe('AccountDeletionSettingsPanel', () => {
     act(() => {
       fireEvent.paste(first, { clipboardData: { getData: () => '123456' } });
     });
-    expect(await screen.findByText('Saved. Buyers see the change within a minute.')).toBeTruthy();
+    await waitFor(() => expect(toasted).toHaveBeenCalled());
   });
 
   it('sends an admin without a second factor to set one up (handled by the shared dialog)', async () => {
@@ -342,51 +340,51 @@ describe('AccountDeletionSettingsPanel', () => {
       }),
     );
     mount();
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     typeReason(dialogNamed('Turn on account deletion for all buyers?'));
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(await screen.findByRole('link', { name: 'Set up two-step' })).toBeTruthy();
   });
 
-  it('shows a stale version as a conflict with Reload, which reads the current value', async () => {
+  it('keeps the draft on a stale version, compares it with what is saved, and the next save carries the new version', async () => {
     call.mockResolvedValueOnce(refused(409, 'customers.conflict'));
+    call.mockResolvedValueOnce(ok(answer(false, 60, 4)));
     mount(answer(false, 30, 3));
-    choose('On');
+    choose(true);
+    fireEvent.click(save());
+    typeReason(dialogNamed('Turn on account deletion for all buyers?'));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    await screen.findByRole('button', { name: 'Compare' });
+    expect(call).toHaveBeenLastCalledWith('GET', SETTINGS);
+    // The draft is kept (still On), the baseline is what the other admin saved.
+    expect(enabledBox().checked).toBe(true);
+    expect(daysSelect().value).toBe('30');
+    expect(screen.getByText('Saved version 4')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(screen.getAllByText(/60 days/).length).toBeGreaterThan(0);
+    call.mockResolvedValueOnce(ok(answer(true, 30, 5)));
+    fireEvent.click(save());
+    typeReason(dialogNamed('Turn on account deletion for all buyers?'));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call.mock.calls[2]?.[2]).toMatchObject({ expectedVersion: 4 });
+  });
+
+  it('says so in words when the re-read after a conflict fails too', async () => {
+    call.mockResolvedValueOnce(refused(409, 'customers.conflict'));
+    call.mockResolvedValueOnce(refused(503, 'access.unavailable'));
+    mount();
+    choose(true);
     fireEvent.click(save());
     typeReason(dialogNamed('Turn on account deletion for all buyers?'));
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(
       await screen.findByText(
-        'Another admin changed this setting. Reload to see the current value.',
+        'Another admin changed this setting. Reload the page to see the current value.',
       ),
     ).toBeTruthy();
-    call.mockResolvedValueOnce(ok(answer(true, 60, 4)));
-    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
-    await waitFor(() => expect(call).toHaveBeenLastCalledWith('GET', SETTINGS));
-    await waitFor(() =>
-      expect(screen.getByRole<HTMLInputElement>('radio', { name: 'On' }).checked).toBe(true),
-    );
-    expect(screen.getByLabelText<HTMLSelectElement>('Waiting period before deletion').value).toBe(
-      '60',
-    );
-    expect(screen.queryByText(/Another admin changed/)).toBeNull();
-  });
-
-  it('shows a failed reload as a load error with a retry', async () => {
-    call.mockResolvedValueOnce(refused(409, 'customers.conflict'));
-    mount();
-    choose('On');
-    fireEvent.click(save());
-    typeReason(dialogNamed('Turn on account deletion for all buyers?'));
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
-    await screen.findByRole('button', { name: 'Reload' });
-    call.mockResolvedValueOnce(refused(503, 'access.unavailable'));
-    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
-    expect(await screen.findByText("Couldn't load this setting.")).toBeTruthy();
-    call.mockResolvedValueOnce(ok(answer(true, 30, 4)));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(screen.queryByText("Couldn't load this setting.")).toBeNull());
+    expect(enabledBox().checked).toBe(true);
   });
 
   it.each([
@@ -400,13 +398,12 @@ describe('AccountDeletionSettingsPanel', () => {
   ])('shows %s %s in words and keeps the choice', async (status, code, text) => {
     call.mockResolvedValue(refused(status, code));
     mount();
-    choose('On');
+    choose(true);
     fireEvent.click(save());
     typeReason(dialogNamed('Turn on account deletion for all buyers?'));
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect((await screen.findByRole('alert')).textContent).toContain(text);
-    expect(screen.getByRole<HTMLInputElement>('radio', { name: 'On' }).checked).toBe(true);
-    await waitFor(() => expect(document.activeElement).toBe(save()));
+    expect(enabledBox().checked).toBe(true);
   });
 
   it('counts the pending requests: none, some, one, 100+, unavailable, and hidden', () => {

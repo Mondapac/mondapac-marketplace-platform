@@ -22,6 +22,7 @@ import {
 } from './form.ts';
 import { SellerMethodsCard } from './seller-methods-card.tsx';
 import type { DeliverySettings, SellerMethods } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode, locale = 'en-AU') => (
@@ -74,6 +75,14 @@ beforeEach(() => {
   };
 });
 afterEach(cleanup);
+
+/** One row of the Compare list: the saved and typed values, read as text. */
+const compared = (label: string | RegExp) => {
+  const list = screen.getByRole('list', { name: 'Changes compared' });
+  const item = within(list).getByText(label).closest('li')!;
+  const [saved, yours] = [...item.querySelectorAll('q')].map((q) => q.textContent);
+  return { saved, yours, item };
+};
 
 describe('the margin example', () => {
   it('turns A$12.34 into A$13.60 with 10 percent and a 5c round-up', () => {
@@ -187,7 +196,7 @@ describe('the delivery settings page', () => {
       'Same-day delivery',
       'Scheduled delivery',
     ]) {
-      expect(screen.getByLabelText<HTMLInputElement>(name).checked).toBe(true);
+      expect(screen.getByRole<HTMLInputElement>('checkbox', { name }).checked).toBe(true);
     }
   });
 
@@ -221,8 +230,10 @@ describe('the delivery settings page', () => {
   it('is read-only without the manage permission', () => {
     mount(settings({ version: 2 }), false);
 
-    expect(screen.queryByRole('button', { name: 'Save delivery settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').disabled).toBe(true);
+    expect(screen.getByLabelText<HTMLSelectElement>('Window length').disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>('Cut-off time').disabled).toBe(true);
     expect(screen.getByText(/You can view these settings but not change them/)).toBeTruthy();
   });
@@ -247,11 +258,11 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Rounding'), { target: { value: '5' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(call).not.toHaveBeenCalled();
     pressInDialog('Confirm and save');
 
-    await waitFor(() => expect(screen.getByText(/Delivery settings saved/)).toBeTruthy());
+    await expectToast(/Delivery settings saved/);
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -278,9 +289,11 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Rounding'), { target: { value: '10' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    const dialog = within(screen.getByRole('dialog', { hidden: true }));
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Save these delivery settings?', hidden: true }),
+    );
     const text = flat(dialog.getByRole('list', { hidden: true }).textContent);
     expect(text).toContain('Instant delivery will be unavailable for all sellers in this Market.');
     expect(text).toContain('Sellers can’t receive Instant delivery orders');
@@ -292,17 +305,43 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('puts the error on the field, marks it invalid and focuses the first one', () => {
+  it('puts the error on the field, lists it in the summary and moves focus to the summary', () => {
     mount(settings());
 
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '250' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     const field = screen.getByLabelText<HTMLInputElement>('Percentage');
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
+    const summary = screen.getByRole('alert');
+    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(document.activeElement).toBe(summary);
+    fireEvent.click(within(summary).getByRole('link', { name: 'Percentage' }));
     expect(document.activeElement).toBe(field);
+    // Typing in the field takes its error away.
+    fireEvent.change(field, { target: { value: '12' } });
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('marks each changed field, counts them in the save bar and discards them', () => {
+    mount(settings({ version: 1 }));
+
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.click(screen.getByLabelText('Instant delivery'));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('2 unsaved changes');
+    expect(screen.getByLabelText('Days ahead').className).toContain('ring-attention-border');
+    expect(screen.getByLabelText('Cut-off time').className).not.toContain('ring-attention-border');
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('7');
+    expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').checked).toBe(true);
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -312,33 +351,54 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '45' } });
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'fixed' } });
     fireEvent.change(screen.getByLabelText(/^Amount/), { target: { value: '1.505' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(screen.getByText('Enter a whole number of days from 1 to 30.')).toBeTruthy();
     expect(screen.getByText(/Enter an amount up to/)).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('shows what is stored after someone saved first', async () => {
+  it('keeps the draft after someone saved first, compares, and sends the new version next', async () => {
     call
       .mockResolvedValueOnce(refused(409, 'shipping.delivery-settings-conflict'))
-      .mockResolvedValueOnce(ok(settings({ scheduledDaysAhead: 4, version: 5 })));
+      .mockResolvedValueOnce(ok(settings({ scheduledDaysAhead: 4, version: 5 })))
+      .mockResolvedValueOnce(ok(settings({ scheduledDaysAhead: 9, version: 6 })));
     mount(settings({ version: 4 }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
 
     await waitFor(() =>
-      expect(screen.getByText(/Someone saved these settings first/)).toBeTruthy(),
+      expect(screen.getByText('Someone else saved these settings first')).toBeTruthy(),
     );
     expect(call).toHaveBeenNthCalledWith(2, 'GET', 'shipping/admin/delivery-settings');
-    expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('4');
+    // The draft stays; the compare list names what is saved now.
+    expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('9');
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(compared('Days ahead')).toMatchObject({ saved: '4', yours: '9' });
+
+    // The confirm-impact dialog still comes before the next save, which names version 5.
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      'shipping/admin/delivery-settings',
+      expect.objectContaining({ expectedVersion: 5, scheduledDaysAhead: 9 }),
+      'csrf',
+    );
   });
 
   it('says what went wrong when the API refuses', async () => {
     call.mockResolvedValue(refused(403, 'access.denied'));
     mount(settings());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
 
     await waitFor(() =>
       expect(screen.getByText('Your role cannot change delivery settings.')).toBeTruthy(),
@@ -351,7 +411,9 @@ describe('the delivery settings page', () => {
     call.mockResolvedValue(refused(401, 'session.invalid'));
     mount(settings());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    fireEvent.change(screen.getByLabelText('Days ahead'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Confirm and save');
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
     vi.unstubAllGlobals();
@@ -408,7 +470,7 @@ describe('the seller delivery methods card', () => {
     );
     pressInDialog('Confirm and save');
 
-    await waitFor(() => expect(screen.getByText(/Delivery methods saved/)).toBeTruthy());
+    await expectToast(/Delivery methods saved/);
     expect(call).toHaveBeenCalledWith(
       'PUT',
       `shipping/admin/sellers/${SELLER}/delivery-methods`,

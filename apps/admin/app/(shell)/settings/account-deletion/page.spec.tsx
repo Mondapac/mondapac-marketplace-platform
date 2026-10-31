@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../messages/en.json';
 import type { AdminSession } from '../../../../src/server/session.ts';
-import SettingsPage from '../page.tsx';
 import AccountDeletionPage from './page.tsx';
 import RequestsPage from './requests/page.tsx';
 
@@ -24,8 +23,20 @@ vi.mock('next-intl/server', () => ({
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 vi.mock('../../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
-vi.mock('../../../../src/server/admin-shell.tsx', () => ({
-  AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
+vi.mock('../../../../src/server/settings-shell.tsx', () => ({
+  SettingsShell: ({
+    children,
+    linkId,
+    nested,
+  }: {
+    readonly children: ReactNode;
+    readonly linkId: string;
+    readonly nested?: boolean;
+  }) => (
+    <main data-link={linkId} data-nested={nested === true ? 'yes' : 'no'}>
+      {children}
+    </main>
+  ),
 }));
 vi.mock('../../../../src/account-deletion/settings-panel.tsx', () => ({
   AccountDeletionSettingsPanel: (props: unknown) => {
@@ -72,8 +83,16 @@ describe('settings account deletion page', () => {
   it('shows no-access without the view key and reads nothing', async () => {
     as();
     render(await AccountDeletionPage());
-    expect(screen.getByText("You don't have access to the account deletion setting.")).toBeTruthy();
+    expect(screen.getByText(/needs the "Account deletion: view" permission/)).toBeTruthy();
     expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it('sits on the settings template as the account-deletion page of the map', async () => {
+    as(SETTINGS_VIEW);
+    const { container } = render(await AccountDeletionPage());
+    const main = container.querySelector('main');
+    expect(main?.getAttribute('data-link')).toBe('account-deletion');
+    expect(main?.getAttribute('data-nested')).toBe('no');
   });
 
   it('reads the setting, and the pending list only with the requests view key', async () => {
@@ -118,8 +137,19 @@ describe('deletion requests page', () => {
   it('shows no-access without the requests view key', async () => {
     as(SETTINGS_VIEW);
     render(await RequestsPage());
-    expect(screen.getByText("You don't have access to the deletion requests.")).toBeTruthy();
+    expect(screen.getByText(/needs the "Account deletion requests: view" permission/)).toBeTruthy();
     expect(screen.queryByText(/^list-/)).toBeNull();
+  });
+
+  it('is a nested sub-page of Account deletion, with a way back to it', async () => {
+    as(REQUESTS_VIEW);
+    const { container } = render(await RequestsPage());
+    const main = container.querySelector('main');
+    expect(main?.getAttribute('data-link')).toBe('account-deletion');
+    expect(main?.getAttribute('data-nested')).toBe('yes');
+    expect(screen.getByRole('link', { name: 'Account deletion' }).getAttribute('href')).toBe(
+      '/settings/account-deletion',
+    );
   });
 
   it('shows the list read-only without the delete key, and with cancel with it', async () => {
@@ -133,17 +163,5 @@ describe('deletion requests page', () => {
     as(REQUESTS_VIEW, DELETE);
     render(await RequestsPage());
     expect(screen.getByText('list-with-cancel')).toBeTruthy();
-  });
-});
-
-describe('settings page redirect', () => {
-  it('sends an admin who sees only the account deletion tab there', async () => {
-    as(SETTINGS_VIEW);
-    await expect(SettingsPage()).rejects.toThrow('redirect:/settings/account-deletion');
-  });
-
-  it('prefers the assistant tab when both are visible and general is not', async () => {
-    as('assistant.settings.view', SETTINGS_VIEW);
-    await expect(SettingsPage()).rejects.toThrow('redirect:/settings/assistant');
   });
 });

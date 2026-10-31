@@ -2,17 +2,23 @@
 
 import {
   Banner,
-  Button,
-  Card,
   LinkButton,
-  LoadError,
-  RadioGroup,
-  Select,
+  SaveBar,
+  SettingCheckbox,
+  SettingRow,
+  SettingSelect,
+  SettingsPage,
+  SettingsSection,
   formatCount,
+  toast,
+  useSettingsForm,
+  type FieldChange,
+  type SaveResult,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { SettingsConflictView } from '../settings/conflict-view.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { deletionProblemOf } from './errors.ts';
 import { ReasonDialog } from './reason-dialog.tsx';
@@ -26,11 +32,30 @@ import {
 
 type Kind = 'on' | 'off' | 'days';
 
+interface Draft {
+  readonly enabled: boolean;
+  readonly days: number;
+}
+
+const toDraft = (answer: AccountDeletionSettingsAnswer): Draft => ({
+  enabled: answer.settings.enabled,
+  days: answer.settings.waitingPeriodDays,
+});
+const versionOf = (answer: AccountDeletionSettingsAnswer) => answer.version;
+async function reload(): Promise<AccountDeletionSettingsAnswer | null> {
+  const fresh = await callApi<AccountDeletionSettingsAnswer>(
+    'GET',
+    'customers/admin/account-deletion-settings',
+  );
+  return fresh.ok ? fresh.body : null;
+}
+
 /**
- * The Market's account deletion setting (customers package 5a): the On/Off choice, the waiting
- * period and the pending requests card. A change asks for a reason in a confirm dialog and then
- * for the two-step code (the shared step-up dialog); the answer drives the screen, nothing is
- * optimistic. A cancelled code leaves the screen as it was, with no message.
+ * The Market's account deletion setting (customers package 5a) on the settings template: the On/Off
+ * switch, the waiting period and the pending requests card. Save opens a confirm dialog with a
+ * required reason, then the two-step code (the shared step-up dialog). The answer drives the
+ * screen, nothing is optimistic. A cancelled code leaves the draft as it was, with no message; a
+ * stale version keeps the draft and compares it with what is saved now (the hub's conflict view).
  */
 export function AccountDeletionSettingsPanel({
   initial,
@@ -43,227 +68,258 @@ export function AccountDeletionSettingsPanel({
   readonly pending: PendingCount;
   readonly csrfToken: string;
 }) {
-  const t = useTranslations('account-deletion');
+  const t = useTranslations();
+  const P = 'account-deletion';
   const locale = useLocale();
   const guarded = useGuardedCall();
-  const [saved, setSaved] = useState(initial);
-  const [enabled, setEnabled] = useState(initial.settings.enabled);
-  const [days, setDays] = useState(initial.settings.waitingPeriodDays);
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-  const [reloadFailed, setReloadFailed] = useState(false);
-  const busy = useRef(false);
-  const saveButton = useRef<HTMLButtonElement>(null);
-  const doneNote = useRef<HTMLDivElement>(null);
-
-  const changed = enabled !== saved.settings.enabled || days !== saved.settings.waitingPeriodDays;
-  const kind: Kind = enabled !== saved.settings.enabled ? (enabled ? 'on' : 'off') : 'days';
-  const off = !canManage || saving;
+  const day = (days: number) => t(`${P}.settings.days.option`, { days });
+  const onOff = (enabled: boolean) => t(`${P}.settings.enabled.${enabled ? 'on' : 'off'}`);
+  const form = useSettingsForm<AccountDeletionSettingsAnswer, Draft>({
+    initial,
+    toDraft,
+    versionOf,
+    reload,
+    changes: (saved, draft): readonly FieldChange[] => [
+      ...(draft.enabled === saved.settings.enabled
+        ? []
+        : [
+            {
+              key: 'enabled',
+              label: t(`${P}.settings.enabled.legend`),
+              saved: onOff(saved.settings.enabled),
+              yours: onOff(draft.enabled),
+            },
+          ]),
+      ...(draft.days === saved.settings.waitingPeriodDays
+        ? []
+        : [
+            {
+              key: 'days',
+              label: t(`${P}.settings.days.label`),
+              saved: day(saved.settings.waitingPeriodDays),
+              yours: day(draft.days),
+            },
+          ]),
+    ],
+  });
+  const { enabled, days } = form.draft;
+  const savedSettings = form.saved.settings;
+  const kind: Kind = enabled !== savedSettings.enabled ? (enabled ? 'on' : 'off') : 'days';
+  const dirty = canManage && form.dirty;
+  const count = canManage ? form.count : 0;
   const knownPending = pending.state === 'ok' ? pending : null;
 
   const choices = WAITING_PERIOD_CHOICES.includes(days as (typeof WAITING_PERIOD_CHOICES)[number])
     ? [...WAITING_PERIOD_CHOICES]
     : [...WAITING_PERIOD_CHOICES, days].sort((a, b) => a - b);
-
-  function adopt(answer: AccountDeletionSettingsAnswer) {
-    setSaved(answer);
-    setEnabled(answer.settings.enabled);
-    setDays(answer.settings.waitingPeriodDays);
+  if (!choices.includes(savedSettings.waitingPeriodDays)) {
+    choices.push(savedSettings.waitingPeriodDays);
+    choices.sort((a, b) => a - b);
   }
 
-  async function reload() {
-    setReloadFailed(false);
-    const result = await callApi<AccountDeletionSettingsAnswer>(
-      'GET',
-      'customers/admin/account-deletion-settings',
-    );
-    if (result.ok) {
-      adopt(result.body);
-      setProblem(null);
-    } else if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setReloadFailed(true);
+  function discard() {
+    form.discard();
+    setProblem(null);
+  }
+
+  function review() {
+    setProblem(null);
+    setReason('');
+    setReasonError(false);
+    setConfirming(true);
   }
 
   async function save() {
-    if (busy.current) return;
     if (reasonProblem(reason)) {
       setReasonError(true);
       return;
     }
-    busy.current = true;
-    setSaving(true);
     setReasonError(false);
     setProblem(null);
-    setDone(false);
     // The confirm closes first, so the code dialog never opens on top of it.
     setConfirming(false);
-    const result = await guarded<AccountDeletionSettingsAnswer>(
-      'PUT',
-      'customers/admin/account-deletion-settings',
-      {
-        expectedVersion: saved.version,
-        settings: { enabled, waitingPeriodDays: days },
-        reason: reason.trim(),
+    const result = await form.run(
+      async (expectedVersion): Promise<SaveResult<AccountDeletionSettingsAnswer>> => {
+        const answer = await guarded<AccountDeletionSettingsAnswer>(
+          'PUT',
+          'customers/admin/account-deletion-settings',
+          {
+            expectedVersion,
+            settings: { enabled, waitingPeriodDays: days },
+            reason: reason.trim(),
+          },
+          csrfToken,
+        );
+        if (answer.ok) return { status: 'saved', saved: answer.body };
+        // A cancelled code leaves the screen as it was, with no message.
+        if (isStepUpCancelled(answer)) return { status: 'failed' };
+        if (answer.failure.status === 401) window.location.assign('/session-ended');
+        else if (deletionProblemOf(answer.failure) === 'conflict') return { status: 'conflict' };
+        else setProblem(deletionProblemOf(answer.failure));
+        return { status: 'failed' };
       },
-      csrfToken,
     );
-    busy.current = false;
-    setSaving(false);
-    if (result.ok) {
-      adopt(result.body);
+    if (result.status === 'saved') {
       setReason('');
-      setDone(true);
-      // The save button is off again (nothing differs): the note takes focus.
-      setTimeout(() => doneNote.current?.focus(), 0);
-      return;
+      toast.success(t(`${P}.settings.saved`));
     }
-    if (!isStepUpCancelled(result)) {
-      if (result.failure.status === 401) {
-        window.location.assign('/session-ended');
-        return;
-      }
-      setProblem(deletionProblemOf(result.failure));
-    }
-    // The code was cancelled or the call failed: the focus goes back to where the admin was.
-    setTimeout(() => saveButton.current?.focus(), 0);
+    // The re-read failed too: the plain "reload the page" message is all that is left.
+    else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
+
+  const banners = [
+    canManage ? null : (
+      <Banner key="read-only" tone="info">
+        {t(`${P}.settings.read-only`)}
+      </Banner>
+    ),
+    form.theirs === null ? null : (
+      <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
+    ),
+    problem === null ? null : (
+      <Banner key="problem" tone="critical">
+        {t(`${P}.error.${problem}`)}
+      </Banner>
+    ),
+  ].filter((node) => node !== null);
+  const banner =
+    banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>;
 
   const title =
     kind === 'on'
-      ? t('settings.confirm.on.title')
+      ? t(`${P}.settings.confirm.on.title`)
       : kind === 'off'
-        ? t('settings.confirm.off.title')
-        : t('settings.confirm.days.title', { days });
+        ? t(`${P}.settings.confirm.off.title`)
+        : t(`${P}.settings.confirm.days.title`, { days });
 
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
-      {done ? (
-        <div ref={doneNote} tabIndex={-1}>
-          <Banner tone="success">{t('settings.saved')}</Banner>
-        </div>
-      ) : null}
-      {problem === null ? null : (
-        <Banner tone="critical">
-          {t(`error.${problem}`)}
-          {problem === 'conflict' ? (
-            <>
-              {' '}
-              <Button variant="secondary" className="mt-2" onClick={() => void reload()}>
-                {t('reload')}
-              </Button>
-            </>
-          ) : null}
-        </Banner>
-      )}
-      {reloadFailed ? (
-        <LoadError
-          className="flex flex-col items-start gap-3"
-          message={t('settings.load-failed')}
-          retryLabel={t('retry')}
-          onRetry={() => void reload()}
-        />
-      ) : null}
-      {canManage ? null : <Banner tone="info">{t('settings.read-only')}</Banner>}
-      <Card title={t('settings.card')}>
-        <RadioGroup
-          legend={t('settings.enabled.legend')}
-          name="enabled"
-          value={enabled ? 'on' : 'off'}
-          disabled={off}
-          options={[
-            { value: 'off', label: t('settings.enabled.off') },
-            { value: 'on', label: t('settings.enabled.on') },
-          ]}
-          note={t('settings.enabled.help')}
-          onChange={(value) => {
-            setEnabled(value === 'on');
-            setDone(false);
-          }}
-        />
-        <Select
-          name="waitingPeriodDays"
-          label={t('settings.days.label')}
-          help={t('settings.days.help')}
-          value={String(days)}
-          disabled={off}
-          options={choices.map((value) => ({
-            value: String(value),
-            label: t('settings.days.option', { days: value }),
-          }))}
-          onChange={(event) => {
-            setDays(Number(event.target.value));
-            setDone(false);
-          }}
-        />
-        {canManage ? (
-          <div>
-            <Button
-              ref={saveButton}
-              disabled={!changed}
-              loading={saving}
-              onClick={() => {
-                setReason('');
-                setReasonError(false);
-                setConfirming(true);
-              }}
-            >
-              {t('settings.save')}
-            </Button>
-          </div>
-        ) : null}
-      </Card>
+    <SettingsPage
+      title={t(`${P}.settings.card`)}
+      description={t(`${P}.settings.intro`)}
+      lastChanged={{
+        text:
+          form.saved.version === 0
+            ? t(`${P}.settings.version-defaults`)
+            : t(`${P}.settings.version`, { version: form.saved.version }),
+      }}
+      banner={banner}
+      onSubmit={canManage ? review : undefined}
+      dirty={dirty}
+      leave={{
+        title: t('settings.leave.title'),
+        message: t('settings.leave.message'),
+        stay: t('settings.leave.stay'),
+        leave: t('settings.leave.leave'),
+      }}
+      saveBar={
+        canManage ? (
+          <SaveBar
+            count={count}
+            summary={t('settings.bar.summary', { count })}
+            errorCount={0}
+            errorsSummary={t('settings.bar.errors', { count: 0 })}
+            saving={form.saving}
+            labels={{
+              region: t('settings.bar.region'),
+              discard: t('settings.bar.discard'),
+              save: t('settings.bar.save'),
+              saving: t('settings.bar.saving'),
+            }}
+            onDiscard={discard}
+          />
+        ) : null
+      }
+    >
+      <SettingsSection title={t(`${P}.settings.section`)}>
+        <SettingRow
+          settingId="account-deletion-enabled"
+          label={t(`${P}.settings.enabled.legend`)}
+          help={t(`${P}.settings.enabled.help`)}
+          changed={enabled !== savedSettings.enabled}
+          disabled={!canManage}
+        >
+          <SettingCheckbox
+            name="enabled"
+            text={onOff(enabled)}
+            checked={enabled}
+            onChange={(event) =>
+              form.setDraft((current) => ({ ...current, enabled: event.target.checked }))
+            }
+          />
+        </SettingRow>
+        <SettingRow
+          settingId="account-deletion-days"
+          label={t(`${P}.settings.days.label`)}
+          help={t(`${P}.settings.days.help`)}
+          changed={days !== savedSettings.waitingPeriodDays}
+          disabled={!canManage}
+        >
+          <SettingSelect
+            name="waitingPeriodDays"
+            value={String(days)}
+            options={choices.map((value) => ({ value: String(value), label: day(value) }))}
+            onChange={(event) =>
+              form.setDraft((current) => ({ ...current, days: Number(event.target.value) }))
+            }
+          />
+        </SettingRow>
+      </SettingsSection>
       {pending.state === 'hidden' ? null : (
-        <Card title={t('settings.pending.title')}>
-          {pending.state === 'unavailable' ? (
-            <p>{t('settings.pending.unavailable')}</p>
-          ) : pending.count === 0 ? (
-            <p>{t('settings.pending.none')}</p>
-          ) : pending.more ? (
-            <p>{t('settings.pending.more', { count: formatCount(pending.count, true, locale) })}</p>
-          ) : (
-            <p>{t('settings.pending.some', { count: pending.count })}</p>
-          )}
-          <div>
+        <SettingsSection title={t(`${P}.settings.pending.title`)}>
+          <div className="flex flex-col items-start gap-3 px-5 py-4">
+            {pending.state === 'unavailable' ? (
+              <p>{t(`${P}.settings.pending.unavailable`)}</p>
+            ) : pending.count === 0 ? (
+              <p>{t(`${P}.settings.pending.none`)}</p>
+            ) : pending.more ? (
+              <p>
+                {t(`${P}.settings.pending.more`, {
+                  count: formatCount(pending.count, true, locale),
+                })}
+              </p>
+            ) : (
+              <p>{t(`${P}.settings.pending.some`, { count: pending.count })}</p>
+            )}
             <LinkButton variant="secondary" href={REQUESTS_HREF}>
-              {t('settings.pending.view')}
+              {t(`${P}.settings.pending.view`)}
             </LinkButton>
           </div>
-        </Card>
+        </SettingsSection>
       )}
       <ReasonDialog
         open={confirming}
         title={title}
-        reasonLabel={t('reason.label')}
-        reasonHelp={t('reason.help-history')}
+        reasonLabel={t(`${P}.reason.label`)}
+        reasonHelp={t(`${P}.reason.help-history`)}
         reason={reason}
-        reasonError={reasonError ? t('error.invalid') : undefined}
+        reasonError={reasonError ? t(`${P}.error.invalid`) : undefined}
         onReasonChange={(value) => {
           setReason(value);
           setReasonError(false);
         }}
-        confirmLabel={t(`settings.confirm.${kind}.action`)}
-        cancelLabel={t('cancel')}
+        confirmLabel={t(`${P}.settings.confirm.${kind}.action`)}
+        cancelLabel={t(`${P}.cancel`)}
         destructive={kind === 'off'}
-        pending={saving}
+        pending={form.saving}
         onConfirm={() => void save()}
         onCancel={() => setConfirming(false)}
       >
         <p>
           {kind === 'on'
-            ? t('settings.confirm.on.body', { days })
+            ? t(`${P}.settings.confirm.on.body`, { days })
             : kind === 'off'
               ? knownPending === null
-                ? t('settings.confirm.off.body-unknown')
+                ? t(`${P}.settings.confirm.off.body-unknown`)
                 : knownPending.more
-                  ? t('settings.confirm.off.body-more')
-                  : t('settings.confirm.off.body', { count: knownPending.count })
-              : t('settings.confirm.days.body')}
+                  ? t(`${P}.settings.confirm.off.body-more`)
+                  : t(`${P}.settings.confirm.off.body`, { count: knownPending.count })
+              : t(`${P}.settings.confirm.days.body`)}
         </p>
       </ReasonDialog>
-    </div>
+    </SettingsPage>
   );
 }

@@ -10,6 +10,7 @@ import { callApi } from '../api/client.ts';
 import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import { RequestsQueue } from './requests-queue.tsx';
 import type { AdminCredit, QueueTab } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ME = '0190a000-0000-7000-8000-0000000000a1';
@@ -207,7 +208,7 @@ describe('RequestsQueue approve', () => {
     );
     call.mockResolvedValueOnce(ok(entry('01', { status: 'approved' })));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
-    expect(await screen.findByText('Credit approved. $900.00 was added.')).toBeTruthy();
+    await expectToast('Credit approved. $900.00 was added.');
     expect(call).toHaveBeenLastCalledWith(
       'POST',
       'wallet/admin/credit-requests/0190a000-0000-7000-8000-000000000001/approve',
@@ -216,9 +217,24 @@ describe('RequestsQueue approve', () => {
     );
     expect(screen.queryByText('$900.00')).toBeNull();
     expect(screen.getByText('$25.00')).toBeTruthy();
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByRole('status').parentElement),
-    );
+    // The row left the Pending tab, so focus goes to the list instead of being lost.
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement;
+      expect(active.tabIndex).toBe(-1);
+      expect(active.contains(screen.getByRole('table'))).toBe(true);
+    });
+  });
+
+  it('puts focus on the decided row when it stays in the list', async () => {
+    call.mockResolvedValueOnce(list([entry('01')]));
+    mount('decided');
+    await screen.findByText('$900.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve this credit?' });
+    call.mockResolvedValueOnce(ok(entry('01', { status: 'approved' })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    await expectToast('Credit approved. $900.00 was added.');
+    await waitFor(() => expect(document.activeElement).toBe(row('$900.00')));
   });
 
   it('keeps the row when the code dialog is cancelled', async () => {
@@ -277,7 +293,7 @@ describe('RequestsQueue reject', () => {
     fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'policy' } });
     call.mockResolvedValueOnce(ok(entry('01', { status: 'rejected', decisionReason: 'policy' })));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reject request' }));
-    expect(await screen.findByText('Request rejected. No credit was issued.')).toBeTruthy();
+    await expectToast('Request rejected. No credit was issued.');
     expect(call).toHaveBeenLastCalledWith(
       'POST',
       'wallet/admin/credit-requests/0190a000-0000-7000-8000-000000000001/reject',

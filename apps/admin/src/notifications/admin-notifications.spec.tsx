@@ -192,7 +192,7 @@ describe('AdminNotifications drawer', () => {
     const price = screen.getByRole('link', { name: /A price drop is held for approval/ });
     expect(price.getAttribute('href')).toBe('/price-holds');
     const delivery = screen.getByRole('link', { name: /A different fleet was booked/ });
-    expect(delivery.getAttribute('href')).toBe('/delivery-settings');
+    expect(delivery.getAttribute('href')).toBe('/settings/delivery');
   });
 
   it('marks a notice without a page read in place, and opens a linked one after marking it', async () => {

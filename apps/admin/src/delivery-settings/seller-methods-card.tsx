@@ -1,6 +1,6 @@
 'use client';
 
-import { ActionRow, Banner, Button, Card, CheckboxRow, Dialog } from '@mondapac/ui';
+import { ActionRow, Banner, Button, Card, CheckboxRow, Dialog, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -28,13 +28,11 @@ export function SellerMethodsCard({
   const [chosen, setChosen] = useState<readonly Method[]>(initial.supported);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   const [notice, setNotice] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const busy = useRef(false);
 
   const toggle = (method: Method, on: boolean) => {
-    setDone(false);
     setChosen(METHODS.filter((m) => (m === method ? on : chosen.includes(m))));
   };
 
@@ -48,7 +46,6 @@ export function SellerMethodsCard({
   function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current || !canManage) return;
-    setDone(false);
     setProblem(null);
     setNotice(false);
     if (changes.length === 0) void save();
@@ -67,7 +64,7 @@ export function SellerMethodsCard({
     if (result.ok) {
       setSaved(result.body);
       setChosen(result.body.supported);
-      setDone(true);
+      toast.success(t(`${P}.saved`));
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
     else {
       const key = deliveryProblemOf(result.failure);
@@ -90,7 +87,6 @@ export function SellerMethodsCard({
       <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
         {canManage ? null : <Banner tone="info">{t(`${P}.viewer-only`)}</Banner>}
         <p className="text-sm text-fg-muted">{t(`${P}.intro`)}</p>
-        {done ? <Banner tone="success">{t(`${P}.saved`)}</Banner> : null}
         {notice ? <Banner tone="attention">{t(`${P}.notice.reloaded`)}</Banner> : null}
         {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
         <div className="flex flex-col gap-3">

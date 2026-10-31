@@ -20,7 +20,10 @@ import type { WalletDependencies } from './wallet-dependencies';
 // spends a fresh two-step proof of the admin's session for `wallet.settings.change` (issue #491,
 // closes M3; Hassan L1, L2): the proof is taken in the same unit as the save, so it serves one
 // change only, and no fresh proof left at that moment means the unit commits nothing. The route
-// guard checks the same proof (read-only) before the body is read.
+// guard checks the same proof (read-only) before the body is read; it spends nothing.
+// Versioning (settings S4): the request carries `expectedVersion`; the unit compares it to the
+// locked row before anything else is decided or spent, so a stale save is a 409
+// `wallet.settings-conflict` that keeps the proof. No row reads as version 0.
 
 const LOCK_TIMEOUT_MS = 3000;
 
@@ -32,6 +35,8 @@ export type SettingsFailure =
   | { readonly code: 'wallet.cannot-turn-off-with-history' }
   /** Journals in flight held the switch for too long (lock timeout); try again. */
   | { readonly code: 'wallet.busy' }
+  /** The switch changed since the admin loaded it (`expectedVersion` is not the current one). */
+  | { readonly code: 'wallet.settings-conflict' }
   /** The admin has no fresh two-step proof for the switch: verify one, then repeat (issue #491). */
   | { readonly code: 'second-factor.required'; readonly actionKey: string }
   /** The admin has no active two-step: set it up first. */
@@ -44,6 +49,8 @@ export interface SettingsView {
   readonly reason: WalletStatusReason | null;
   /** Null while the Market has never been switched. */
   readonly updatedAt: Temporal.Instant | null;
+  /** 0 while the Market has never been switched; the value to send back as `expectedVersion`. */
+  readonly version: number;
 }
 
 /** Whether the actor is an acting-as session (Login as Seller): the reserved marker on the actor. */
@@ -70,6 +77,7 @@ export async function viewSettings(
         status: row?.status ?? 'off',
         reason: row?.reason ?? null,
         updatedAt: row?.updatedAt ?? null,
+        version: row?.version ?? 0,
       });
     },
     { readOnly: true },
@@ -90,7 +98,11 @@ function stepUpFailure(refusal: StepUpRefusal): SettingsFailure {
 export async function setStatus(
   deps: WalletDependencies,
   context: CallContext,
-  input: { readonly status: unknown; readonly reasonCode?: unknown },
+  input: {
+    readonly status: unknown;
+    readonly reasonCode?: unknown;
+    readonly expectedVersion?: unknown;
+  },
 ): Promise<Result<SettingsView, SettingsFailure>> {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
@@ -110,7 +122,11 @@ export async function setStatus(
       fields.push({ path: 'reasonCode', code: 'not-allowed' });
     }
   }
-  if (fields.length > 0 || !isWalletStatus(status))
+  const expected = input?.expectedVersion;
+  if (typeof expected !== 'number' || !Number.isSafeInteger(expected) || expected < 0) {
+    fields.push({ path: 'expectedVersion', code: expected === undefined ? 'required' : 'value' });
+  }
+  if (fields.length > 0 || !isWalletStatus(status) || typeof expected !== 'number')
     return err({ code: 'validation.failed', fields });
 
   const now = deps.clock.now();
@@ -122,11 +138,16 @@ export async function setStatus(
       async () => {
         const before = await deps.settings.findForUpdate(context.market);
         const was = before?.status ?? 'off';
+        const currentVersion = before?.version ?? 0;
+        // Stale check first, under the row lock and BEFORE the step-up is spent: a stale save
+        // answers 409 and the admin's two-step proof stays unspent for the retry.
+        if (expected !== currentVersion) return err({ code: 'wallet.settings-conflict' } as const);
         if (was === status) {
           return ok({
             status: was,
             reason: before?.reason ?? null,
             updatedAt: before?.updatedAt ?? null,
+            version: currentVersion,
           });
         }
         if (status === 'off' && (await deps.wallet.hasJournals(context.market))) {
@@ -140,6 +161,7 @@ export async function setStatus(
           reason,
           updatedAt: now,
           updatedBy: actor.accountId,
+          version: currentVersion + 1,
         });
         await deps.audit.record(
           context,
@@ -153,7 +175,7 @@ export async function setStatus(
             },
           }),
         );
-        return ok({ status, reason, updatedAt: now });
+        return ok({ status, reason, updatedAt: now, version: currentVersion + 1 });
       },
       { lockTimeoutMs: LOCK_TIMEOUT_MS },
     );

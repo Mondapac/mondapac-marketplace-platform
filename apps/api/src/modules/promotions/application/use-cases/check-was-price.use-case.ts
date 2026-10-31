@@ -5,15 +5,16 @@ import type { PromotionsDependencies } from '../promotions-dependencies';
 import { checkWasPrice } from '../read-flow';
 
 interface Input {
-  readonly productId: string;
+  readonly offerId: string;
+  readonly variantId: string;
   readonly price: { readonly amountMinor: bigint; readonly currency: string };
 }
 
 /**
- * `promotions.check-was-price`: may this product show a struck-through earlier price? Yes only if
- * it sold at that price on at least the Market's minimum of days in the Market's window (AU 28 of
- * the last 90). The system decides; no seller input reaches the answer. Anonymous: the product page
- * asks. Until `pricing` publishes a price-history read the answer is always "not eligible".
+ * `promotions.check-was-price`: may this priced unit (an Offer's Variant) show a struck-through
+ * earlier price? Yes only if it sold at that price on at least the Market's minimum of days in the
+ * Market's window (AU 28 of the last 90), as `pricing` measures it. The system decides; no seller
+ * input reaches the answer. Anonymous: the product page asks. Unknown history is "not eligible".
  */
 export class CheckWasPrice extends UseCase<
   Input,

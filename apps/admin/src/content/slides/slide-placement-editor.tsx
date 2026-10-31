@@ -9,6 +9,7 @@ import {
   Icon,
   Select,
   TextField,
+  toast,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -86,7 +87,6 @@ export function SlidePlacementEditor({
   const [form, setForm] = useState<PlacementFormState>(baseline);
   const [errors, setErrors] = useState<PlacementErrors>({ rows: {} });
   const [problem, setProblem] = useState<Problem>(null);
-  const [saved, setSaved] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
   const [live, setLive] = useState<Live>({ state: 'loading' });
@@ -129,7 +129,6 @@ export function SlidePlacementEditor({
 
   function edit(patch: Partial<PlacementFormState>, field?: 'startsAt' | 'endsAt') {
     setForm((previous) => ({ ...previous, ...patch }));
-    setSaved(null);
     if (field !== undefined) setErrors((previous) => clearErrors(previous, { field }));
   }
 
@@ -140,7 +139,6 @@ export function SlidePlacementEditor({
         ? previous
         : { ...previous, rows: { ...previous.rows, [key]: { ...row, ...patch } } };
     });
-    setSaved(null);
     setErrors((previous) => clearErrors(previous, { row: key }));
   }
 
@@ -154,7 +152,6 @@ export function SlidePlacementEditor({
     event?.preventDefault();
     if (!editable || inFlight.current) return;
     setProblem(null);
-    setSaved(null);
     const found = validatePlacement(form, zone);
     if (hasErrors(found)) {
       failWith(found);
@@ -180,7 +177,7 @@ export function SlidePlacementEditor({
         setDetail(result.body);
         setBaseline(next);
         setForm(next);
-        setSaved(t('saved', { version: result.body.draft?.versionNo ?? 0 }));
+        toast.success(t('saved', { version: result.body.draft?.versionNo ?? 0 }));
         return;
       }
       const failure = result.failure;
@@ -217,7 +214,6 @@ export function SlidePlacementEditor({
     setForm(baseline);
     setErrors({ rows: {} });
     setProblem(null);
-    setSaved(null);
   }
 
   const windowMessage = (field: 'startsAt' | 'endsAt'): string | undefined => {
@@ -352,16 +348,7 @@ export function SlidePlacementEditor({
           )}
           {editable ? (
             <div className="sticky bottom-0 z-10 -mx-4 bg-page px-4 pb-4 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0">
-              <FormActionBar
-                status={
-                  <>
-                    <span role="status" aria-live="polite" className="block">
-                      {saved}
-                    </span>
-                    <span className="block">{t('approval-note')}</span>
-                  </>
-                }
-              >
+              <FormActionBar status={<span className="block">{t('approval-note')}</span>}>
                 <Button variant="secondary" disabled={!dirty || pending} onClick={discard}>
                   {t('discard')}
                 </Button>

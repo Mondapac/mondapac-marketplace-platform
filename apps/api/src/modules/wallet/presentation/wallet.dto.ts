@@ -45,6 +45,12 @@ export class SettingsBody {
   @ApiProperty({ enum: [...WALLET_STATUS_REASONS], nullable: true, type: String })
   reason!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) updatedAt!: string | null;
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    description: '0 while never switched. Send it back as expectedVersion.',
+  })
+  version!: number;
 }
 
 export class SetSettingsRequest {
@@ -55,6 +61,13 @@ export class SetSettingsRequest {
     description: 'Required for paused and frozen; not allowed for off and active.',
   })
   reasonCode?: string;
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    description:
+      'The `version` the admin saw. A different current version answers 409 wallet.settings-conflict.',
+  })
+  expectedVersion!: number;
 }
 
 export const myWalletBody = (view: MyWalletView): MyWalletBody => ({
@@ -85,4 +98,5 @@ export const settingsBody = (view: SettingsView): SettingsBody => ({
   status: view.status,
   reason: view.reason,
   updatedAt: view.updatedAt === null ? null : view.updatedAt.toString(),
+  version: view.version,
 });

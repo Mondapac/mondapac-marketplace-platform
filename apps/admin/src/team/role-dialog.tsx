@@ -1,11 +1,10 @@
 'use client';
 
-import { Banner, Button, Dialog, Select, TextField } from '@mondapac/ui';
+import { Banner, Button, Dialog, Select, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
-import { useNotice } from './notice.tsx';
 import { roleLabel } from './role-label.ts';
 import { roleOptions } from './role-options.ts';
 import type { PlatformRole } from './types.ts';
@@ -68,7 +67,6 @@ export function ChangeRoleDialog({
   const t = useTranslations('identity.members');
   const root = useTranslations();
   const router = useRouter();
-  const notify = useNotice();
   const messageFor = useMessageFor();
   const flight = useSingleFlight();
   const [roleId, setRoleId] = useState('');
@@ -103,7 +101,7 @@ export function ChangeRoleDialog({
       );
       if (result.ok) {
         onClose();
-        notify({ tone: 'success', text: t('toast.change-role', { name }) });
+        toast.success(t('toast.change-role', { name }));
         router.refresh();
         return;
       }
@@ -114,7 +112,7 @@ export function ChangeRoleDialog({
       }
       if (CHANGED_MEANWHILE.has(failure.code)) {
         onClose();
-        notify({ tone: 'critical', text: messageFor(failure.code) });
+        toast.error(messageFor(failure.code));
         router.refresh();
         return;
       }
@@ -174,7 +172,6 @@ export function InviteAdminDialog({
   const t = useTranslations('identity.members');
   const root = useTranslations();
   const router = useRouter();
-  const notify = useNotice();
   const messageFor = useMessageFor();
   const flight = useSingleFlight();
   const [email, setEmail] = useState('');
@@ -217,7 +214,7 @@ export function InviteAdminDialog({
       );
       if (result.ok) {
         onClose();
-        notify({ tone: 'success', text: t('dialog.invite.toast-sent', { email: address }) });
+        toast.success(t('dialog.invite.toast-sent', { email: address }));
         router.refresh();
         return;
       }

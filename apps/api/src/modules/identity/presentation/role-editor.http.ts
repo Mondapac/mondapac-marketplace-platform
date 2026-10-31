@@ -46,7 +46,11 @@ export function rolePathId(raw: string): Id<'Role'> | HttpException {
 }
 
 const BODY_FIELDS = ['name', 'permissionKeys'] as const;
+const EDIT_FIELDS = ['name', 'permissionKeys', 'expectedVersion'] as const;
 const MAX_ECHOED = 5;
+
+const isVersion = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
 
 /**
  * The body of create and edit: JSON only, a closed object with `name` (a string) and
@@ -56,7 +60,19 @@ const MAX_ECHOED = 5;
 export function roleBody(
   request: Request,
   body: unknown,
-): { name: string; permissionKeys: unknown } | HttpException {
+): { name: string; permissionKeys: unknown } | HttpException;
+/** With `withVersion`, `expectedVersion` (a positive integer) is required (the edit body). */
+export function roleBody(
+  request: Request,
+  body: unknown,
+  withVersion: true,
+): { name: string; permissionKeys: unknown; expectedVersion: number } | HttpException;
+export function roleBody(
+  request: Request,
+  body: unknown,
+  withVersion = false,
+): { name: string; permissionKeys: unknown; expectedVersion?: number } | HttpException {
+  const allowed: readonly string[] = withVersion ? EDIT_FIELDS : BODY_FIELDS;
   if (request.is('application/json') !== 'application/json') {
     return fail(415, 'request.body-unsupported');
   }
@@ -65,21 +81,51 @@ export function roleBody(
   }
   const record = body as Record<string, unknown>;
   const fields: { path: string; code: string }[] = Object.keys(record)
-    .filter((key) => !(BODY_FIELDS as readonly string[]).includes(key))
+    .filter((key) => !allowed.includes(key))
     .sort()
     .slice(0, MAX_ECHOED)
     .map((key) => ({ path: key.slice(0, 32), code: 'unknown-field' }));
-  for (const field of BODY_FIELDS) {
+  for (const field of allowed) {
     const value = Object.hasOwn(record, field) ? record[field] : undefined;
     if (value === undefined) fields.push({ path: field, code: 'required' });
     else if (field === 'name' && typeof value !== 'string')
       fields.push({ path: field, code: 'type' });
     else if (field === 'permissionKeys' && !Array.isArray(value)) {
       fields.push({ path: field, code: 'type' });
+    } else if (field === 'expectedVersion' && !isVersion(value)) {
+      fields.push({ path: field, code: 'type' });
     }
   }
   if (fields.length > 0) return roleRefusal({ code: 'validation.failed', fields });
-  return { name: record.name as string, permissionKeys: record.permissionKeys };
+  return {
+    name: record.name as string,
+    permissionKeys: record.permissionKeys,
+    ...(withVersion ? { expectedVersion: record.expectedVersion as number } : {}),
+  };
+}
+
+/** The body of delete: JSON `{expectedVersion}` only (the panel relay forwards no query on DELETE). */
+export function roleVersionBody(request: Request, body: unknown): number | HttpException {
+  // No body at all is a missing version (400), not an unsupported media type.
+  const sent = request.headers['content-type'] !== undefined;
+  if (sent && request.is('application/json') !== 'application/json') {
+    return fail(415, 'request.body-unsupported');
+  }
+  const parsed = sent ? body : {};
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return roleRefusal({ code: 'validation.failed', fields: [{ path: '', code: 'type' }] });
+  }
+  const record = parsed as Record<string, unknown>;
+  const fields: { path: string; code: string }[] = Object.keys(record)
+    .filter((key) => key !== 'expectedVersion')
+    .sort()
+    .slice(0, MAX_ECHOED)
+    .map((key) => ({ path: key.slice(0, 32), code: 'unknown-field' }));
+  const value = Object.hasOwn(record, 'expectedVersion') ? record.expectedVersion : undefined;
+  if (value === undefined) fields.push({ path: 'expectedVersion', code: 'required' });
+  else if (!isVersion(value)) fields.push({ path: 'expectedVersion', code: 'type' });
+  if (fields.length > 0) return roleRefusal({ code: 'validation.failed', fields });
+  return value as number;
 }
 
 /** The catalogue as JSON: exactly the declared fields, in a fixed order. */

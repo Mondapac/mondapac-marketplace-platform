@@ -121,7 +121,13 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
     });
     wallet = new MemoryWallet();
     setting = new MemoryMarketSetting();
-    setting.record = { status: 'active', reason: null, updatedAt: T0, updatedBy: CHECKER };
+    setting.record = {
+      status: 'active',
+      reason: null,
+      updatedAt: T0,
+      updatedBy: CHECKER,
+      version: 1,
+    };
     credits = new MemoryAdminCredits();
     customers = new FakeCustomerDirectory();
     customers.add(CUSTOMER, market.marketId);
@@ -511,6 +517,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
         reason: status === 'off' ? null : 'maintenance',
         updatedAt: T0,
         updatedBy: CHECKER,
+        version: 1,
       };
       expect(await issue(1n)).toEqual({ ok: false, error: { code: refusal } });
       expect(await issue(issueCap + 1n)).toEqual({ ok: false, error: { code: refusal } });
@@ -525,6 +532,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
         reason: 'maintenance',
         updatedAt: T0,
         updatedBy: CHECKER,
+        version: 1,
       };
       expect(await approve(request.id)).toEqual({ ok: false, error: { code: 'wallet.paused' } });
       expect(credits.rows.get(request.id)!.status).toBe('pending');

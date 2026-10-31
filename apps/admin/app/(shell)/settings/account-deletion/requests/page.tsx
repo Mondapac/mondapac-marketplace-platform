@@ -1,4 +1,4 @@
-import { BackLink, LoadError } from '@mondapac/ui';
+import { BackLink, LoadError, NoAccess } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { RequestsList } from '../../../../../src/account-deletion/requests-list.tsx';
 import {
@@ -6,8 +6,8 @@ import {
   REQUESTS_VIEW_PERMISSION,
   SETTINGS_HREF,
 } from '../../../../../src/account-deletion/types.ts';
-import { AdminShell } from '../../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../../src/server/session.ts';
+import { SettingsShell } from '../../../../../src/server/settings-shell.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -23,7 +23,8 @@ export default async function DeletionRequestsPage() {
   const title = t('account-deletion.requests.title');
   const keys = new Set(gate.session.permissionKeys);
   return (
-    <AdminShell session={gate.session} activeId="settings" title={title}>
+    // Nested: the breadcrumb is Settings / Marketplace / Account deletion, then this page.
+    <SettingsShell session={gate.session} linkId="account-deletion" title={title} nested>
       <BackLink href={SETTINGS_HREF} label={t('account-deletion.requests.back')} />
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {keys.has(REQUESTS_VIEW_PERMISSION) ? (
@@ -32,15 +33,16 @@ export default async function DeletionRequestsPage() {
           csrfToken={gate.session.csrfToken}
         />
       ) : (
-        <>
-          <p className="text-fg-muted">{t('account-deletion.requests.no-access')}</p>
-          <p className="mt-4">
-            <a className="font-medium text-link underline" href="/">
-              {t('settings.back-home')}
-            </a>
-          </p>
-        </>
+        <NoAccess
+          title={t('settings.no-access-title')}
+          body={t('settings.no-access-needs', {
+            page: title,
+            permission: t('account-deletion.requests.permission-view'),
+          })}
+          backHref="/"
+          backLabel={t('settings.back-home')}
+        />
       )}
-    </AdminShell>
+    </SettingsShell>
   );
 }

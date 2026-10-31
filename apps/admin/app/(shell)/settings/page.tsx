@@ -1,64 +1,49 @@
-import { LoadError } from '@mondapac/ui';
-import { redirect } from 'next/navigation';
+import { LoadError, NoAccess, RecentPages } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { SETTINGS_HREF, SETTINGS_VIEW_PERMISSION } from '../../../src/account-deletion/types.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
-import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
-import { ASSISTANT_VIEW_PERMISSION } from '../../../src/settings/assistant-types.ts';
-import { SettingsTabs, settingsTabLabels } from '../../../src/settings/settings-tabs.tsx';
-import { SupportEmailCard } from '../../../src/settings/support-email-card.tsx';
-import {
-  SUPPORT_MANAGE_PERMISSION,
-  SUPPORT_VIEW_PERMISSION,
-  type SupportContact,
-} from '../../../src/settings/types.ts';
+import { SettingsHub } from '../../../src/settings/settings-hub.tsx';
+import { visibleSettings } from '../../../src/settings/settings-nav.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('settings.title') };
 }
 
-export default async function SettingsPage() {
+/** The Settings hub: every settings page the admin may open, grouped by topic. */
+export default async function SettingsHubPage() {
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   const title = t('settings.title');
-  const { permissionKeys, csrfToken } = gate.session;
-  const shell = (body: React.ReactNode) => (
+  const groups = visibleSettings(gate.session.permissionKeys);
+  return (
     <AdminShell session={gate.session} activeId="settings" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <SettingsTabs active="general" labels={settingsTabLabels(t, permissionKeys)} />
-      {body}
+      {groups.length === 0 ? (
+        <NoAccess
+          title={t('settings.hub.no-access-title')}
+          body={t('settings.hub.no-access-body')}
+          backHref="/"
+          backLabel={t('settings.back-home')}
+        />
+      ) : (
+        <div className="flex flex-col gap-6">
+          <header>
+            <h1 className="text-2xl font-semibold text-fg">{title}</h1>
+            <p className="mt-1 max-w-prose text-sm text-fg-muted">
+              {t('settings.hub.description')}
+            </p>
+          </header>
+          <RecentPages heading={t('palette.recent-heading')} />
+          <SettingsHub
+            groups={groups}
+            label={(key) => t(key)}
+            labels={{ viewOnly: t('settings.hub.view-only') }}
+          />
+        </div>
+      )}
     </AdminShell>
-  );
-  if (!permissionKeys.includes(SUPPORT_VIEW_PERMISSION)) {
-    // An admin who may not see this tab lands on the first one they may see.
-    if (permissionKeys.includes(ASSISTANT_VIEW_PERMISSION)) redirect('/settings/assistant');
-    if (permissionKeys.includes(SETTINGS_VIEW_PERMISSION)) redirect(SETTINGS_HREF);
-    return shell(
-      <>
-        <p className="text-fg-muted">{t('settings.no-access')}</p>
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/">
-            {t('settings.back-home')}
-          </a>
-        </p>
-      </>,
-    );
-  }
-  const read = await serverGet<SupportContact>('notifications/admin/support-contact');
-  if (read.kind === 'signed-out') redirect('/session-ended');
-  if (read.kind !== 'ok') {
-    return shell(<LoadError message={t('settings.unavailable')} retryLabel={t('load.retry')} />);
-  }
-  return shell(
-    <SupportEmailCard
-      initial={read.body}
-      canManage={permissionKeys.includes(SUPPORT_MANAGE_PERMISSION)}
-      csrfToken={csrfToken}
-    />,
   );
 }

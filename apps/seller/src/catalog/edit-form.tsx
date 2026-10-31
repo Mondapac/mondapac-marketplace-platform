@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, CheckboxRow, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, CheckboxRow, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -103,7 +103,6 @@ export function EditForm({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<EditProblem | null>(null);
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
-  const [notice, setNotice] = useState<'saved' | 'submitted' | 'published' | null>(null);
   const busy = useRef(false);
 
   const fixedVariantIds = product.variants
@@ -172,13 +171,12 @@ export function EditForm({
     busy.current = true;
     setPending(true);
     setProblem(null);
-    setNotice(null);
     if (dirty || action === 'save' || content === undefined) {
       const saved = await save();
       if (saved !== 'saved' || action === 'save') {
         busy.current = false;
         setPending(false);
-        if (saved === 'saved') setNotice('saved');
+        if (saved === 'saved') toast.success(t('catalog.edit.notice.saved'));
         return;
       }
     }
@@ -194,7 +192,7 @@ export function EditForm({
       fail(result.failure);
       return;
     }
-    setNotice(result.body.published ? 'published' : 'submitted');
+    toast.success(t(`catalog.edit.notice.${result.body.published ? 'published' : 'submitted'}`));
     router.refresh();
   }
 
@@ -204,12 +202,10 @@ export function EditForm({
       [locale]: { ...(texts[locale] as Record<TextKey, string>), [key]: value },
     });
     setDirty(true);
-    setNotice(null);
   }
 
   function edited() {
     setDirty(true);
-    setNotice(null);
   }
 
   function submit(event: FormEvent) {
@@ -233,9 +229,6 @@ export function EditForm({
 
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
-      {notice === null ? null : (
-        <Banner tone="success">{t(`catalog.edit.notice.${notice}`)}</Banner>
-      )}
       {refused.length > 0 ? <Banner tone="attention">{t('catalog.edit.refused')}</Banner> : null}
       {problem === null ? null : (
         <Banner tone="critical">

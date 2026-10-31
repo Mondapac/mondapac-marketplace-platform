@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, NoAccess, SettingsPage } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AccountDeletionSettingsPanel } from '../../../../src/account-deletion/settings-panel.tsx';
@@ -13,10 +13,9 @@ import {
   type DeletionRequestPage,
   type PendingCount,
 } from '../../../../src/account-deletion/types.ts';
-import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
-import { SettingsTabs, settingsTabLabels } from '../../../../src/settings/settings-tabs.tsx';
+import { SettingsShell } from '../../../../src/server/settings-shell.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -29,35 +28,37 @@ export default async function AccountDeletionSettingsPage() {
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const title = t('settings.title');
+  const title = t('account-deletion.settings.card');
   const { permissionKeys, csrfToken } = gate.session;
   const shell = (body: React.ReactNode) => (
-    <AdminShell session={gate.session} activeId="settings" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <SettingsTabs active="account-deletion" labels={settingsTabLabels(t, permissionKeys)} />
+    <SettingsShell session={gate.session} linkId="account-deletion" title={title}>
       {body}
-    </AdminShell>
+    </SettingsShell>
   );
   if (!permissionKeys.includes(SETTINGS_VIEW_PERMISSION)) {
     return shell(
-      <>
-        <p className="text-fg-muted">{t('account-deletion.settings.no-access')}</p>
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/">
-            {t('settings.back-home')}
-          </a>
-        </p>
-      </>,
+      <NoAccess
+        title={t('settings.no-access-title')}
+        body={t('settings.no-access-needs', {
+          page: title,
+          permission: t('account-deletion.settings.permission-view'),
+        })}
+        backHref="/"
+        backLabel={t('settings.back-home')}
+      />,
     );
   }
   const read = await serverGet<AccountDeletionSettingsAnswer>(SETTINGS_PATH);
   if (read.kind === 'signed-out') redirect('/session-ended');
   if (read.kind !== 'ok') {
     return shell(
-      <LoadError
-        message={t('account-deletion.settings.load-failed')}
-        retryLabel={t('load.retry')}
-      />,
+      <SettingsPage title={title}>
+        <LoadError
+          message={t('account-deletion.settings.load-failed')}
+          retryLabel={t('load.retry')}
+          className="flex flex-col items-start gap-3"
+        />
+      </SettingsPage>,
     );
   }
   // The API has no count: the first page of the list tells it ("100+" when more pages exist).

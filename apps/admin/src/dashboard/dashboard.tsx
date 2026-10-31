@@ -44,12 +44,12 @@ const KINDS = ['onboarding', 'identity-change'] as const;
 const ACTIONS = [
   {
     id: 'invite-admin',
-    href: '/team',
+    href: '/settings/admins',
     anyOf: ['identity.admin-account.view', 'identity.admin-account.invite'],
   },
   {
     id: 'create-role',
-    href: '/roles/new',
+    href: '/settings/roles/new',
     anyOf: ['identity.platform-role.view', 'identity.platform-role.create'],
   },
   { id: 'without-owner', href: '/sellers/without-owner', anyOf: ['identity.seller-access.view'] },

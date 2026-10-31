@@ -13,6 +13,7 @@ import { formatMoney } from './format.ts';
 import { holdProblemOf } from './hold-errors.ts';
 import { HoldsQueue } from './holds-queue.tsx';
 import type { PriceHoldRow } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ID = '0190a000-0000-7000-8000-0000000000c1';
@@ -89,7 +90,7 @@ describe('admin held prices', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, approve' }));
-    await waitFor(() => expect(screen.getByText('Price approved.')).toBeTruthy());
+    await expectToast('Price approved.');
     expect(call).toHaveBeenCalledWith(
       'POST',
       `pricing/admin/price-holds/${ID}/approve`,
@@ -110,7 +111,7 @@ describe('admin held prices', () => {
       target: { value: ' too high ' },
     });
     fireEvent.click(submit);
-    await waitFor(() => expect(screen.getByText(/Price rejected/)).toBeTruthy());
+    await expectToast(/Price rejected/);
     expect(call).toHaveBeenCalledWith(
       'POST',
       `pricing/admin/price-holds/${ID}/reject`,

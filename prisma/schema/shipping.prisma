@@ -14,7 +14,7 @@ model ShippingCarrierBooking {
   /// Plain ids of ordering and sellers (no foreign key across schemas).
   orderId          String   @map("order_id") @db.Uuid
   sellerId         String   @map("seller_id") @db.Uuid
-  /// The fleet that booked it (mondapac_drive | uber_direct | zoom2u | auspost | fake_test, CHECK).
+  /// The fleet that booked it (mondapac_drive | uber_direct | zoom2u | doordash_drive | auspost | fake_test, CHECK).
   fleet            String
   /// The fleet's own id of the delivery: the tracking reference.
   carrierReference String   @map("carrier_reference")
@@ -141,6 +141,21 @@ model ShippingFleetReliability {
   @@schema("shipping")
 }
 
+/// The version of the fleet-selection page, one row per Market: the active model per method and
+/// the reliability scores are saved together and compared against it (compare-and-bump). No row
+/// means version 0. Rows are never deleted.
+model ShippingFleetSelectionSettings {
+  marketId  String   @id @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  version   Int
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last saved the page (a plain id, no foreign key).
+  updatedBy String   @map("updated_by") @db.Uuid
+
+  @@map("fleet_selection_settings")
+  @@schema("shipping")
+}
+
 /// A booking the router is making (or made without learning the answer) for a seller order, so a
 /// repeat after a lost answer goes to the same fleet, and never to a second fleet. Written before
 /// the fleet is called; removed with the booking row, or when the fleet answers that nothing was
@@ -224,7 +239,7 @@ model ShippingDeliveryQuote {
   /// instant | same_day | scheduled (CHECK); a pickup is free and has no quote.
   method          String
   dropoffPostcode String    @map("dropoff_postcode") @db.VarChar(16)
-  /// The fleet that quoted (mondapac_drive | uber_direct | zoom2u | auspost | fake_test, CHECK).
+  /// The fleet that quoted (mondapac_drive | uber_direct | zoom2u | doordash_drive | auspost | fake_test, CHECK).
   fleet           String
   /// Minor units of `currency`: the fleet's price, the platform's margin, and what the buyer pays
   /// (`total` = `quote_amount` + `margin_amount`, CHECK).
