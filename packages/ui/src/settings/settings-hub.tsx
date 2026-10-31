@@ -1,27 +1,42 @@
-import { Badge, Icon } from '@mondapac/ui';
-import type { VisibleSettingsGroup } from './settings-nav.ts';
+import { Badge } from '../form/badge.tsx';
+import { Icon, type IconName } from '../icon/icon.tsx';
 
 export interface SettingsHubLabels {
   readonly viewOnly: string;
 }
 
+export interface SettingsHubGroup {
+  readonly group: {
+    readonly id: string;
+    /** Message key of the card's heading. */
+    readonly labelKey: string;
+    readonly icon: IconName;
+  };
+  readonly links: readonly {
+    readonly link: { readonly id: string; readonly labelKey: string; readonly href: string };
+    /** The caller can see the page but not change it. */
+    readonly viewOnly: boolean;
+  }[];
+}
+
 /**
- * The Settings hub: one card per group, one link per page the caller may open. A link of a page
- * the caller can only view carries a "View only" chip. A group with no visible link is not drawn
- * (`visibleSettings` leaves it out); the page shows the no-access state when nothing is left.
+ * The Settings hub: one card per group, one link per page the caller may open, at most two cards
+ * to a row at every width. A link of a page the caller can only view carries a "View only" chip;
+ * every link ends with a chevron. A group with no visible link is not drawn (the app's
+ * `visibleSettings` leaves it out); the page shows the no-access state when nothing is left.
  */
 export function SettingsHub({
   groups,
   label,
   labels,
 }: {
-  readonly groups: readonly VisibleSettingsGroup[];
+  readonly groups: readonly SettingsHubGroup[];
   /** Resolves a label key through the app's messages. */
   readonly label: (key: string) => string;
   readonly labels: SettingsHubLabels;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[1500px]:grid-cols-3">
+    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
       {groups.map(({ group, links }) => (
         <section
           key={group.id}
@@ -43,11 +58,14 @@ export function SettingsHub({
                   className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-2 text-fg hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                 >
                   <span className="min-w-0 break-words">{label(link.labelKey)}</span>
-                  {viewOnly ? (
-                    <span className="shrink-0">
-                      <Badge tone="neutral">{labels.viewOnly}</Badge>
-                    </span>
-                  ) : null}
+                  <span className="ms-auto flex shrink-0 items-center gap-2">
+                    {viewOnly ? (
+                      <span className="shrink-0">
+                        <Badge tone="neutral">{labels.viewOnly}</Badge>
+                      </span>
+                    ) : null}
+                    <Icon name="chevron-right" className="text-icon-muted rtl:-scale-x-100" />
+                  </span>
                 </a>
               </li>
             ))}
