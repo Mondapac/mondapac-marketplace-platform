@@ -1160,19 +1160,22 @@ async function buildProposal(key) {
   const T = findHosts();
   if (!T.sandbox) { post({ type: 'error', message: 'This file has no Sandbox page or section.' }); return; }
   progress('Library read');
-  let removed = 0, made = 0;
+  let removed = 0, made = 0, drawn = [];
   await onPage(T.sandbox, def.title, function (host) {
     host.children.filter(function (n) { return n.getPluginData && n.getPluginData('proposal') === key; }).forEach(function (n) { n.remove(); removed++; });
     // a failed drawing leaves nothing behind: remove the layers it put on the page
     const before = figma.currentPage.children.slice();
     let rows;
     try { rows = def.rows(); } catch (e) { figma.currentPage.children.filter(function (n) { return before.indexOf(n) < 0; }).forEach(function (n) { n.remove(); }); throw e; }
-    rows.forEach(function (r) { made += r.length; });
+    rows.forEach(function (r) { made += r.length; drawn = drawn.concat(r); });
     placeRows(host, rows, bottomEdge(host) + 240);
     fitSection(host);
   });
   await flush();
   const moved = restackSections();
+  // Show the new frames: the Sandbox is long and they are drawn at its bottom.
+  figma.currentPage.selection = drawn;
+  figma.viewport.scrollAndZoomIntoView(drawn);
   progress('Frames drawn');
   post({ type: 'done', added: [def.title + ': ' + made + ' frames in Sandbox' + (removed ? ' (replaced ' + removed + ' earlier frames)' : '')].concat(moved), report: S.report });
 }
