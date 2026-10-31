@@ -77,12 +77,15 @@ function failureOf(
 export function ProductsList({
   accountId,
   marketId,
+  marketName,
   timeZone,
   permissionKeys,
   csrfToken,
 }: {
   readonly accountId: string;
   readonly marketId: string;
+  /** The Market's display name for the subtitle (configuration, never a code). */
+  readonly marketName: string;
   readonly timeZone: string;
   readonly permissionKeys: readonly string[];
   readonly csrfToken: string;
@@ -303,7 +306,7 @@ export function ProductsList({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <p className="min-w-0 text-sm text-fg-muted">
-          {counts === null ? '' : t('subtitle', { count: counts.all, market: marketId })}
+          {counts === null ? '' : t('subtitle', { count: counts.all, market: marketName })}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {permissionKeys.includes('catalog.platform-import.run') ? (

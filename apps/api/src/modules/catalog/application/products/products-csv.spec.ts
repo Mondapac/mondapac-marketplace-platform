@@ -2,16 +2,28 @@ import { CSV_BOM, csvCell, csvLine, EXPORT_COLUMNS, EXPORT_HEADERS } from './pro
 
 describe('the CSV of the admin product export (catalog design 9.2c)', () => {
   describe('csvCell', () => {
-    it.each(['=SUM(A1:A9)', '+1+1', '-2+3', '@cmd', '\tTab', '\rReturn'])(
-      'prefixes %j with a quote, so a spreadsheet never runs it as a formula',
-      (value) => {
-        const cell = csvCell(value);
+    it.each([
+      '=SUM(A1:A9)',
+      '+1+1',
+      '-2+3',
+      '@cmd',
+      '\tTab',
+      '\rReturn',
+      ' =HYPERLINK(1)',
+      '  +1',
+      '\u00a0@cmd',
+      '\uFF1DSUM(A1)',
+      '\uFF0B1',
+      '\uFF0D2',
+      '\uFF20cmd',
+      ' \uFF1DSUM(A1)',
+    ])('prefixes %j with a quote, so a spreadsheet never runs it as a formula', (value) => {
+      const cell = csvCell(value);
 
-        // The leading quote (inside the field quotes where a line break needs them).
-        expect(cell.replace(/^"/, '').startsWith("'")).toBe(true);
-        expect(cell).toContain(value.replace(/"/g, '""'));
-      },
-    );
+      // The leading quote (inside the field quotes where a line break needs them).
+      expect(cell.replace(/^"/, '').startsWith("'")).toBe(true);
+      expect(cell).toContain(value.replace(/"/g, '""'));
+    });
 
     it('guards the formula that hides behind a quoted comma', () => {
       expect(csvCell('=HYPERLINK("http://x","y")')).toBe(`"'=HYPERLINK(""http://x"",""y"")"`);
