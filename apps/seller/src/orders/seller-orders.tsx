@@ -9,8 +9,8 @@ import { FULFILMENT_FILTERS, type FulfilmentFilter, type SellerOrderPage } from 
 
 /**
  * The seller's paid orders: a fulfilment filter, the list (each order opens on its own page,
- * where it is shipped and delivered) and "Show more" by cursor. The API has no status
- * parameter, so the filter works on the orders loaded so far.
+ * where it is shipped and delivered) and "Show more" by cursor. The filter is the API's `status`
+ * parameter, so a tab lists every order in that state, not only the ones loaded so far.
  */
 export function SellerOrders({ initial }: { readonly initial: SellerOrderPage }) {
   const t = useTranslations('orders');
@@ -19,15 +19,18 @@ export function SellerOrders({ initial }: { readonly initial: SellerOrderPage })
   const [filter, setFilter] = useState<FulfilmentFilter>('all');
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  const pathFor = (status: FulfilmentFilter, after: string | null) =>
+    `ordering/seller/orders?limit=20${status === 'all' ? '' : `&status=${status}`}${
+      after === null ? '' : `&cursor=${encodeURIComponent(after)}`
+    }`;
 
   async function loadMore() {
     if (cursor === null || loadingMore) return;
     setLoadingMore(true);
     setMoreFailed(false);
-    const result = await callApi<SellerOrderPage>(
-      'GET',
-      `ordering/seller/orders?limit=20&cursor=${encodeURIComponent(cursor)}`,
-    );
+    const result = await callApi<SellerOrderPage>('GET', pathFor(filter, cursor));
     setLoadingMore(false);
     if (!result.ok) {
       if (result.failure.status === 401) window.location.assign('/session-ended');
@@ -39,18 +42,35 @@ export function SellerOrders({ initial }: { readonly initial: SellerOrderPage })
     setCursor(result.body.nextCursor);
   }
 
-  const shown = filter === 'all' ? orders : orders.filter((order) => order.fulfilment === filter);
+  /** A tab asks the API for the first page of that state; the old rows stay until it answers. */
+  async function selectFilter(next: FulfilmentFilter) {
+    if (next === filter || switching) return;
+    setSwitching(true);
+    setMoreFailed(false);
+    const result = await callApi<SellerOrderPage>('GET', pathFor(next, null));
+    setSwitching(false);
+    if (!result.ok) {
+      if (result.failure.status === 401) window.location.assign('/session-ended');
+      else setMoreFailed(true);
+      return;
+    }
+    setFilter(next);
+    setOrders(result.body.sellerOrders);
+    setCursor(result.body.nextCursor);
+  }
+
+  const shown = orders;
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      {orders.length === 0 ? (
+      {orders.length === 0 && filter === 'all' ? (
         <EmptyState icon="clipboard" title={t('empty-state.title')} body={t('empty-state.body')} />
       ) : (
         <>
           <Tabs
             label={t('filter.label')}
             activeId={filter}
-            onSelect={(id) => setFilter(id as FulfilmentFilter)}
+            onSelect={(id) => void selectFilter(id as FulfilmentFilter)}
             items={FULFILMENT_FILTERS.map((id) => ({
               id,
               label: t(id === 'all' || id === 'to-ship' ? `filter.${id}` : `status.${id}`),
@@ -60,7 +80,7 @@ export function SellerOrders({ initial }: { readonly initial: SellerOrderPage })
             <EmptyState
               icon="clipboard"
               title={t('filter.empty.title')}
-              body={t(cursor === null ? 'filter.empty.body' : 'filter.empty.body-more')}
+              body={t('filter.empty.body')}
             />
           ) : (
             <OrdersTable orders={shown} />
