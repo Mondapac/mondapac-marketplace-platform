@@ -3,7 +3,6 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { TeamTabs } from '../team/team-tabs.tsx';
 import { RolesTable } from './roles-table.tsx';
 import { RoleView } from './role-view.tsx';
 import { groupByResource, humanise } from './role-name.ts';
@@ -64,7 +63,7 @@ describe('admin roles', () => {
     expect(screen.getByText('2 permissions')).toBeTruthy();
     expect(screen.getByText('None yet')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Edit Night shift' }).getAttribute('href')).toBe(
-      '/roles/0190a000-0000-7000-8000-0000000000a3',
+      '/settings/roles/0190a000-0000-7000-8000-0000000000a3',
     );
   });
 
@@ -119,7 +118,7 @@ describe('admin roles', () => {
     cleanup();
     render(await RoleView({ role: locked, catalogue, canDuplicate: true }));
     expect(screen.getByRole('link', { name: 'Duplicate' }).getAttribute('href')).toBe(
-      `/roles/new?from=${locked.roleId}`,
+      `/settings/roles/new?from=${locked.roleId}`,
     );
   });
 
@@ -221,18 +220,5 @@ describe('admin roles', () => {
       ['b.x', ['b.x.one', 'b.x.two']],
     ]);
     expect(humanise('admin-account')).toBe('Admin account');
-  });
-
-  it('marks the current tab and shows no tabs without labels', () => {
-    const labels = {
-      nav: messages.identity.members.tab.label,
-      admins: messages.identity.members.tab.admins,
-      roles: messages.identity.members.tab.roles,
-    };
-    const { rerender } = render(<TeamTabs active="roles" labels={labels} />);
-    expect(screen.getByRole('link', { name: 'Roles' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Admins' }).getAttribute('aria-current')).toBeNull();
-    rerender(<TeamTabs active="admins" labels={null} />);
-    expect(screen.queryByRole('navigation')).toBeNull();
   });
 });

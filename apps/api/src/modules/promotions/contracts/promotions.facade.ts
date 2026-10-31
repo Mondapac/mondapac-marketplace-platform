@@ -66,13 +66,13 @@ export interface PromotionsFacade {
   ): Promise<Result<QuoteResult, PromotionsFacadeFailure>>;
 
   /**
-   * Whether a product may show a struck-through earlier price: it sold at `price` on at least the
-   * Market's minimum number of days in the Market's window (AU 28 of the last 90). Rule
-   * `anonymous`. Until `pricing` publishes a price-history read the answer is always `false`.
+   * Whether a priced unit (an Offer's Variant) may show a struck-through earlier price: it sold at
+   * `price` on at least the Market's minimum number of days in the Market's window (AU 28 of the
+   * last 90), as `pricing` measures it. Rule `anonymous`. Unknown history is `false`.
    */
   wasPriceEligible(
     context: CallContext,
-    productId: Id<'Product'>,
+    unit: { readonly offerId: Id<'Offer'>; readonly variantId: Id<'Variant'> },
     price: Money,
   ): Promise<Result<{ readonly eligible: boolean }, PromotionsFacadeFailure>>;
 }

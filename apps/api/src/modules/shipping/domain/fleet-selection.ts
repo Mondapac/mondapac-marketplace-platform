@@ -222,6 +222,8 @@ export interface FleetStatusView {
 }
 
 export interface FleetSelectionView {
+  /** The version of the page (the batch save): 0 before the first save; send it back as expectedVersion. */
+  readonly version: number;
   readonly models: readonly FleetSelectionModel[];
   /** The active model id per method, or null for the built-in default order. */
   readonly active: Readonly<Record<CarrierMethod, Id<'FleetSelectionModel'> | null>>;

@@ -4,6 +4,74 @@
     "market": "MondaPac {marketName}",
     "support": "Need help? Email {supportEmail}."
   },
+  "toast": {
+    "region": "Action notifications",
+    "close": "Close notification"
+  },
+  "palette": {
+    "search": "Search",
+    "title": "Search",
+    "placeholder": "Search pages, settings and actions",
+    "close": "Close search",
+    "results": "Search results",
+    "recent": "Recent",
+    "recent-heading": "Recent",
+    "pinned": "Pinned",
+    "kind": {
+      "page": "Pages",
+      "setting": "Settings",
+      "action": "Actions"
+    },
+    "empty": "No results for “{query}”",
+    "count-one": "1 result",
+    "count-many": "{count} results",
+    "hint-move": "to move",
+    "hint-open": "to open",
+    "hint-close": "to close",
+    "group": {
+      "account": "Account"
+    },
+    "pin": {
+      "pin": "Pin {page}",
+      "limit": "You can pin up to 5 pages. Unpin one first."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "close": "Close",
+      "open-search": "Search",
+      "show-list": "Show keyboard shortcuts",
+      "then": "then",
+      "go-settings": "Go to Settings",
+      "go-orders": "Go to Orders",
+      "single-key": "Single-key shortcuts",
+      "single-key-hint": "Turn off if they clash with your assistive technology.",
+      "pin-hint": "Pin or unpin a page: use the star in the top bar."
+    },
+    "action": {
+      "create-role": "Create role",
+      "invite-admin": "Invite admin"
+    },
+    "setting": {
+      "support-email": "Support email address",
+      "support-email-words": "contact, help, customer support, email address",
+      "assistant-enabled": "Assistant switched on",
+      "assistant-audience": "Show to",
+      "assistant-model": "Model",
+      "assistant-welcome": "Welcome message",
+      "delivery-methods": "Delivery methods",
+      "delivery-cutoff": "Same-day cut-off",
+      "delivery-margin": "Delivery fee margin",
+      "delivery-margin-words": "delivery fee, markup, platform fee, charge",
+      "wallet-state": "Wallet state",
+      "wallet-state-words": "store credit, pause, freeze, turn off",
+      "two-step": "Two-step sign-in",
+      "assistant-enabled-words": "smart assistant, on, off, chat",
+      "assistant-audience-words": "smart assistant, who sees, visitors, rollout",
+      "assistant-model-words": "smart assistant, tier",
+      "assistant-welcome-words": "smart assistant, greeting"
+    },
+    "empty-hint": "Check the spelling or try a shorter word."
+  },
   "theme": {
     "menu": "Theme",
     "system": "System",
@@ -15,6 +83,7 @@
     "pages": "Your account",
     "profile": "My profile",
     "sessions": "Signed-in devices",
+    "security": "Account security",
     "sign-out": "Sign out",
     "signing-out": "Signing out…",
     "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
@@ -28,12 +97,9 @@
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
     "home": "Dashboard",
-    "team": "Roles & permissions",
     "customers": "Customers",
     "sellers": "All sellers",
     "orders": "Orders",
-    "fleet-selection": "Delivery fleets",
-    "delivery-settings": "Delivery settings",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
@@ -46,10 +112,8 @@
       "content": "Content",
       "sellers": "Sellers",
       "orders": "Orders & customers",
-      "money": "Money",
-      "platform": "Platform"
+      "money": "Money"
     },
-    "wallet-settings": "Wallet switch",
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
     "disputes": "Disputes",
@@ -280,11 +344,6 @@
       "title": {
         "admin": "Roles & permissions"
       },
-      "tab": {
-        "admins": "Admins",
-        "roles": "Roles",
-        "label": "Roles and permissions sections"
-      },
       "table-caption": "Admins and pending invitations",
       "label": {
         "person": "Person",
@@ -314,8 +373,7 @@
       "next-page": "Next page",
       "no-access": {
         "title": "You don't have access to this page",
-        "body": "Your role doesn't include it. Ask an admin who manages roles.",
-        "action": "Go to Dashboard"
+        "body": "Your role doesn't include it. Ask an admin who manages roles."
       },
       "actions": "Actions",
       "actions-for": "Actions for {name}",
@@ -529,6 +587,7 @@
       "editor": {
         "title-create": "New custom role",
         "title-edit": "Edit role",
+        "section-name": "Name",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -544,6 +603,17 @@
         "delete-body": "This can't be undone. A role that someone still holds can't be deleted: give those people another role first.",
         "delete-confirm": "Delete role",
         "keep": "Keep role"
+      },
+      "conflict": {
+        "title": "Someone saved this role first",
+        "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
+        "compare": "Compare",
+        "hide": "Hide comparison",
+        "name": "Saved name: {saved}. Your name: {yours}.",
+        "saved-only": "In the saved role but not in yours: {keys}.",
+        "saved-none": "Every permission in the saved role is in yours.",
+        "yours-only": "In yours but not in the saved role: {keys}.",
+        "yours-none": "Every permission in yours is in the saved role."
       },
       "reason": {
         "role": {
@@ -1434,11 +1504,57 @@
   },
   "settings": {
     "title": "Settings",
+    "danger": {
+      "title": "Danger zone"
+    },
+    "admins": {
+      "description": "The people who can sign in to this admin panel, and the invitations that have not been accepted yet.",
+      "section": "Admin accounts"
+    },
+    "roles": {
+      "description": "A role is a set of permissions. Give each admin the role that matches their work."
+    },
     "no-access": "You don't have access to settings.",
+    "no-access-title": "You don't have access to this page",
+    "no-access-needs": "{page} needs the \"{permission}\" permission. Ask an admin who manages roles to add it.",
     "back-home": "Back to dashboard",
     "unavailable": "Settings could not be loaded. Try again later.",
+    "errors": {
+      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+    },
+    "bar": {
+      "region": "Unsaved changes",
+      "summary": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+      "errors": "{count, plural, one {# needs fixing} other {# need fixing}}",
+      "new": "New role · nothing entered yet",
+      "discard": "Discard",
+      "save": "Save changes",
+      "saving": "Saving…"
+    },
+    "leave": {
+      "title": "Leave without saving?",
+      "message": "You have changes that are not saved. If you leave this page, they are lost.",
+      "stay": "Stay on page",
+      "leave": "Leave page"
+    },
+    "conflict": {
+      "title": "Someone else saved these settings first",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
+      "compare": "Compare",
+      "hide": "Hide comparison",
+      "heading": "What changed",
+      "list-label": "Changes compared",
+      "saved-label": "Saved now:",
+      "yours-label": "Yours:",
+      "same": "Your draft now matches what is saved.",
+      "unset": "not set"
+    },
     "support": {
-      "title": "Support email",
+      "title": "Support contact",
+      "section": "Contact address",
+      "none": "Not set",
+      "permission-view": "Support email: view",
+      "read-only": "You can view the support email. To change it you need the \"Support email: manage\" permission.",
       "intro": "The address customers and sellers are told to write to when they need help. A change applies from now on.",
       "not-set": "No support email is set yet.",
       "current": "Current address",
@@ -1457,13 +1573,35 @@
         "unknown": "Something went wrong. Try again."
       }
     },
-    "tabs": {
-      "label": "Settings sections",
-      "general": "General",
-      "assistant": "Smart assistant"
+    "hub": {
+      "description": "Set up how the marketplace works. Changes here apply to every seller and customer.",
+      "view-only": "View only",
+      "no-access-title": "You don't have access to settings",
+      "no-access-body": "Your role doesn't include any settings page. Ask an admin who manages roles to add one.",
+      "group": {
+        "marketplace": "Marketplace",
+        "delivery": "Delivery",
+        "money": "Money",
+        "people": "People & access"
+      },
+      "link": {
+        "support": "Support contact",
+        "assistant": "Smart assistant",
+        "delivery": "Delivery rules",
+        "fleets": "Delivery fleets",
+        "wallet": "Customer wallet",
+        "admins": "Admins",
+        "roles": "Roles & permissions"
+      }
+    },
+    "sub": {
+      "label": "Settings pages",
+      "back": "Back to Settings"
     },
     "assistant": {
-      "title": "Smart assistant settings",
+      "title": "Smart assistant",
+      "permission-view": "Smart assistant: view",
+      "intro": "Whether the shopping assistant is on, who sees it, what it answers and what it may spend.",
       "no-access": "You don't have access to the smart assistant settings.",
       "unavailable": "The smart assistant settings could not be loaded. Try again later.",
       "read-only": "Only the Platform Administrator can change these settings.",
@@ -1472,7 +1610,6 @@
       "version": "Saved version {version}",
       "save": "Save settings",
       "saved": "Settings saved. They apply on the storefront from now on.",
-      "reloaded": "Another admin saved changes first. The page now shows their settings. Make your change again and save.",
       "status": {
         "title": "Status",
         "switch": "Assistant",
@@ -1598,15 +1735,16 @@
   },
   "fleets": {
     "title": "Delivery fleets",
+    "permission-view": "Delivery fleets: view",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
     "back-home": "Back to the dashboard",
     "unavailable": "Delivery fleets could not be loaded. Try again.",
     "notice": {
-      "activated": "Active models saved. They apply to the next booking.",
       "created": "Model created.",
       "edited": "Model saved. If it is active, it applies to the next booking.",
-      "reloaded": "Someone saved this model first. The page now shows what is stored. Make your change again."
+      "reloaded": "Someone saved this model first. The page now shows what is stored. Make your change again.",
+      "saved": "Fleet settings saved. They apply to the next booking."
     },
     "method": {
       "instant": "Instant",
@@ -1631,8 +1769,7 @@
     "active": {
       "title": "Active model per delivery method",
       "intro": "Each delivery method uses one model. With none chosen, the built-in order applies: {order}.",
-      "default": "Built-in order",
-      "save": "Save active models"
+      "default": "Built-in order"
     },
     "models": {
       "title": "Models",
@@ -1691,9 +1828,7 @@
     "reliability": {
       "label": "Reliability (0 to 100)",
       "help": "Used by weighted models.",
-      "unset": "Not set. The router uses {score}.",
-      "save": "Save score",
-      "saved": "Score saved."
+      "unset": "Not set. The router uses {score}."
     },
     "invalid": {
       "name": "Enter a name of 1 to 60 characters.",
@@ -1712,7 +1847,8 @@
       "csrf": "Your session needs a refresh. Reload the page and try again.",
       "denied": "Your role cannot change delivery fleets.",
       "unavailable": "Delivery fleets are not available right now. Try again shortly.",
-      "unknown": "Something went wrong. Try again."
+      "unknown": "Something went wrong. Try again.",
+      "page-conflict": "Someone saved the fleet settings first, and the page could not be reloaded. Reload the page and try again."
     },
     "viewer-only": "You can view but not change delivery fleets.",
     "confirm": {
@@ -1722,6 +1858,19 @@
       "edit-body": "{name} is active for {methods}. Saving applies the new rule to every new order of that method.",
       "go": "Confirm",
       "cancel": "Go back"
+    },
+    "conflict": {
+      "title": "Someone else saved the fleet settings first",
+      "model-title": "This page changed while you were editing",
+      "body": "{count, plural, one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Compare",
+      "hide": "Hide comparison",
+      "same": "Your draft now matches what is saved.",
+      "line": "{field}: saved now {saved}, yours {yours}"
+    },
+    "compare": {
+      "score": "{fleet} reliability",
+      "unset": "not set"
     }
   },
   "commission": {
@@ -2166,7 +2315,8 @@
       "denied": "You don't have permission to do that.",
       "unavailable": "We can't do that right now. Try again in a moment.",
       "network": "You're offline or the connection dropped. Check it and try again.",
-      "unknown": "Something went wrong on our side. Try again."
+      "unknown": "Something went wrong on our side. Try again.",
+      "replace-unavailable": "Nothing is waiting to be confirmed. Start again from your current code."
     }
   },
   "sessions": {
@@ -2263,7 +2413,15 @@
     "loading": "Loading notifications"
   },
   "deliverySettings": {
-    "title": "Delivery settings",
+    "title": "Delivery rules",
+    "permission-view": "Delivery settings: view",
+    "state": {
+      "on": "On",
+      "off": "Off"
+    },
+    "conflict": {
+      "title": "These settings changed while you were editing"
+    },
     "intro": "Choose which delivery methods the whole Market offers, when same-day orders close, how far ahead buyers can schedule, and what the platform adds on top of the fleet quote. Which methods each seller supports is set on the seller page.",
     "no-access": "Your role cannot see delivery settings.",
     "back-home": "Back to the dashboard",
@@ -2421,8 +2579,8 @@
     "wait-note": "Just signed in? Wait for your authenticator app to show a new code before you enter it. The code you used to sign in cannot be used again.",
     "action": {
       "commission-payouts": {
-        "commission-rate": {
-          "edit": "change this seller's commission rate"
+        "dispute": {
+          "attribute": "record a dispute decision"
         }
       },
       "wallet": {
@@ -2512,14 +2670,24 @@
       "owner-decision": "Owner decision"
     },
     "settings": {
-      "title": "Wallet switch",
+      "title": "Customer wallet",
       "intro": "Controls store credit for every customer in this Market.",
+      "permission-view": "Customer wallet: view",
+      "view-only": "View only. You can see the state of the wallet but not change it. Ask an admin who manages roles to add the wallet change permission.",
+      "state": "State",
+      "last-change": "Last change",
+      "danger": {
+        "description": "Changing the state affects every customer in this Market. Each change asks you to confirm it, then for a code from your authenticator app."
+      },
       "current": "Current state",
       "never-changed": "Never changed",
+      "conflict-title": "The wallet state changed while you were on this page",
+      "conflict-body": "The state above is now the current one. The state you chose is kept: review it, then save again.",
       "changed": "Changed {when}",
       "reason-line": "Reason: {reason}",
       "change": "Change state",
       "new-state": "New state",
+      "choose-first": "Choose a new state first to review a change.",
       "reason": "Reason",
       "reason-placeholder": "Choose a reason",
       "review": "Review change",
@@ -3217,6 +3385,58 @@
         }
       },
       "load-failed": "The payout terms and holds could not be loaded."
+    }
+  },
+  "security": {
+    "title": "Account security",
+    "description": "How you sign in to the admin panel. This page is only about your own account.",
+    "unavailable": "We couldn't load your account security. Try again.",
+    "two-step": {
+      "title": "Two-step verification",
+      "description": "A code from your authenticator app, asked for each time you sign in.",
+      "status": "Status",
+      "on": "On",
+      "off": "Off",
+      "cannot-turn-off": "Two-step verification cannot be turned off for an admin account.",
+      "off-guidance": "Two-step verification is not set up on this account. Ask an admin who manages Roles & permissions to send you a reset link."
+    },
+    "replace": {
+      "label": "Authenticator app",
+      "help": "Move your codes to a new phone. Your current app keeps working until the new one is confirmed.",
+      "action": "Replace authenticator",
+      "in-progress": "Replacing your authenticator. Finish the steps below.",
+      "verify-title": "Confirm it is you",
+      "verify-body": "Enter the current code from your authenticator app, or a backup code.",
+      "current-code": "Current 6-digit code",
+      "continue": "Continue",
+      "cancel": "Cancel",
+      "secret-title": "Step 1 of 2: Add the new key",
+      "secret-body": "In the authenticator app on your new device, add this account, then enter the 6-digit code it shows.",
+      "qr-label": "QR code for your authenticator app",
+      "scan": "Scan this code with the authenticator app on your new phone.",
+      "cannot-scan": "Can't scan it? Enter this key in the app instead.",
+      "key-label": "Setup key",
+      "copy": "Copy key",
+      "copied": "Copied",
+      "new-code": "6-digit code from the new device",
+      "confirm": "Confirm replacement",
+      "effect": "When you confirm, your other devices are signed out and we email you a notice. You stay signed in here.",
+      "done": "Your authenticator was replaced. Your other devices were signed out.",
+      "confirm-title": "Step 2 of 2: Confirm the code",
+      "confirm-body": "Enter the 6-digit code the new device shows now.",
+      "copy-failed": "Couldn't copy. Select the key and copy it manually."
+    },
+    "lost": {
+      "title": "Lost your phone?",
+      "label": "No access to your authenticator",
+      "help": "Ask an admin who manages Roles & permissions to send you a reset link.",
+      "guidance": "You cannot replace it here without a current code or a backup code."
+    },
+    "sessions": {
+      "title": "Signed-in devices",
+      "label": "Where you are signed in",
+      "help": "See your open sessions and sign out of the others.",
+      "link": "Open signed-in devices"
     }
   }
 }

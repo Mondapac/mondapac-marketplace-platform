@@ -179,8 +179,21 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
   const sessionIdOf = (context: CallContext): Id<'Session'> =>
     (context.actor as { sessionId: Id<'Session'> }).sessionId;
   const codeNow = (secret: Uint8Array) => hotp(secret, timeStepAt(Temporal.Now.instant()));
-  const turnOn = (context: CallContext) =>
-    app.get(SetWalletStatus).execute(context, { status: 'active' });
+  /** What a fresh admin tab sees: 0 for no row or the seeded "never set" row, else the column. */
+  const versionNow = async () => {
+    const { rows } = await sql.query<{ version: number; updated_by_account_id: string }>(
+      `SELECT version, updated_by_account_id FROM wallet.market_settings WHERE market_id = $1`,
+      [code],
+    );
+    const row = rows[0];
+    return row === undefined || row.updated_by_account_id === '00000000-0000-0000-0000-000000000000'
+      ? 0
+      : Number(row.version);
+  };
+  const turnOn = async (context: CallContext) =>
+    app
+      .get(SetWalletStatus)
+      .execute(context, { status: 'active', expectedVersion: await versionNow() });
   /** The switch and who moved it last; `off` and null while the Market has no row. */
   const switchOf = async () => {
     const { rows } = await sql.query<{ status: string; updated_by_account_id: string }>(
@@ -276,11 +289,50 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
     expect(await turnOn(context)).toMatchObject({ ok: true, value: { status: 'active' } });
     expect(await proofRows(context)).toBe(0);
     expect(
-      await app
-        .get(SetWalletStatus)
-        .execute(context, { status: 'paused', reasonCode: 'maintenance' }),
+      await app.get(SetWalletStatus).execute(context, {
+        status: 'paused',
+        reasonCode: 'maintenance',
+        expectedVersion: await versionNow(),
+      }),
     ).toEqual({ ok: false, error: { code: 'second-factor.required', actionKey: ACTION } });
     expect((await switchOf()).status).toBe('active');
+  });
+
+  it('a stale save answers wallet.settings-conflict and leaves the proof unspent', async () => {
+    const { accountId } = await administrator();
+    const context = await sessionOf(accountId);
+    const proofs = app.get<StepUpRepository>(STEP_UP_REPOSITORY);
+    await inUnit(() =>
+      proofs.recordProof(market, sessionIdOf(context), ACTION, Temporal.Now.instant()),
+    );
+    const stale = await versionNow();
+
+    // Another admin tab moves the switch first (their own proof is not modelled: the row is set
+    // directly, as the save of the other tab would have left it).
+    await sql.query(
+      `INSERT INTO wallet.market_settings (market_id, tenant_id, status, updated_at, updated_by_account_id, version)
+       VALUES ($1, 'default', 'active', now(), $2, $3)
+       ON CONFLICT (market_id) DO UPDATE SET status = 'active', updated_by_account_id = $2, version = $3`,
+      [code, accountId, stale + 1],
+    );
+
+    expect(
+      await app
+        .get(SetWalletStatus)
+        .execute(context, { status: 'paused', reasonCode: 'maintenance', expectedVersion: stale }),
+    ).toEqual({ ok: false, error: { code: 'wallet.settings-conflict' } });
+    expect(await proofRows(context)).toBe(1);
+    expect((await switchOf()).status).toBe('active');
+
+    // The same admin retries with the version it now sees: the kept proof is spent once.
+    expect(
+      await app.get(SetWalletStatus).execute(context, {
+        status: 'paused',
+        reasonCode: 'maintenance',
+        expectedVersion: stale + 1,
+      }),
+    ).toMatchObject({ ok: true, value: { status: 'paused', version: stale + 2 } });
+    expect(await proofRows(context)).toBe(0);
   });
 
   it('lets exactly one of two concurrent changes spend one proof (Hassan L1, L2)', async () => {
@@ -291,14 +343,19 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
       proofs.recordProof(market, sessionIdOf(context), ACTION, Temporal.Now.instant()),
     );
 
+    const expectedVersion = await versionNow();
     const results = await Promise.all([
-      app.get(SetWalletStatus).execute(context, { status: 'active' }),
-      app.get(SetWalletStatus).execute(context, { status: 'paused', reasonCode: 'maintenance' }),
+      app.get(SetWalletStatus).execute(context, { status: 'active', expectedVersion }),
+      app
+        .get(SetWalletStatus)
+        .execute(context, { status: 'paused', reasonCode: 'maintenance', expectedVersion }),
     ]);
 
+    // Both saw the same version: the loser queues on the row lock, finds the version moved and
+    // answers a conflict before it reaches the proof (the proof was spent once, by the winner).
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results.filter((result) => !result.ok)).toEqual([
-      { ok: false, error: { code: 'second-factor.required', actionKey: ACTION } },
+      { ok: false, error: { code: 'wallet.settings-conflict' } },
     ]);
     expect(await proofRows(context)).toBe(0);
     const changes = (await auditsBy(accountId)).filter(
@@ -320,7 +377,13 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
       ),
     );
     // A refusal before the spend (bad body) leaves the proof where it was.
-    expect((await app.get(SetWalletStatus).execute(context, { status: 'paused' })).ok).toBe(false);
+    expect(
+      (
+        await app
+          .get(SetWalletStatus)
+          .execute(context, { status: 'paused', expectedVersion: await versionNow() })
+      ).ok,
+    ).toBe(false);
     expect(await proofRows(context)).toBe(1);
 
     // A re-enrolment activates the factor after the proof was made.

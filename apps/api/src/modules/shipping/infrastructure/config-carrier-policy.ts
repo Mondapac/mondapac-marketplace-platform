@@ -21,6 +21,7 @@ export const FLEET_NAMES: Readonly<Record<FleetCode, string>> = {
   mondapac_drive: 'Mondapac Drive',
   uber_direct: 'Uber Direct',
   zoom2u: 'Zoom2u',
+  doordash_drive: 'DoorDash Drive',
   auspost: 'Australia Post',
   fake_test: 'Test Fleet',
 };

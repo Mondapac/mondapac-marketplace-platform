@@ -4,6 +4,65 @@
     "market": "MondaPac {marketName}",
     "support": "Need help? Email {supportEmail}."
   },
+  "toast": {
+    "region": "Action notifications",
+    "close": "Close notification"
+  },
+  "palette": {
+    "search": "Search",
+    "title": "Search",
+    "placeholder": "Search pages, settings and actions",
+    "close": "Close search",
+    "results": "Search results",
+    "recent": "Recent",
+    "recent-heading": "Recent",
+    "pinned": "Pinned",
+    "kind": {
+      "page": "Pages",
+      "setting": "Settings",
+      "action": "Actions"
+    },
+    "empty": "No results for “{query}”",
+    "count-one": "1 result",
+    "count-many": "{count} results",
+    "hint-move": "to move",
+    "hint-open": "to open",
+    "hint-close": "to close",
+    "group": {
+      "account": "Account"
+    },
+    "pin": {
+      "pin": "Pin {page}",
+      "limit": "You can pin up to 5 pages. Unpin one first."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "close": "Close",
+      "open-search": "Search",
+      "show-list": "Show keyboard shortcuts",
+      "then": "then",
+      "go-settings": "Go to Settings",
+      "go-orders": "Go to Orders",
+      "single-key": "Single-key shortcuts",
+      "single-key-hint": "Turn off if they clash with your assistive technology.",
+      "pin-hint": "Pin or unpin a page: use the star in the top bar."
+    },
+    "action": {
+      "add-product": "Add product",
+      "invite-member": "Invite team member"
+    },
+    "setting": {
+      "store-name": "Store name",
+      "store-logo": "Store logo",
+      "store-banner": "Store banner",
+      "stock-locations": "Stock locations",
+      "stock-locations-words": "warehouse, pickup address, where stock is kept",
+      "payout-bank": "Payout bank account",
+      "payout-bank-words": "bank, BSB, payments, get paid",
+      "team-members": "Team members"
+    },
+    "empty-hint": "Check the spelling or try a shorter word."
+  },
   "theme": {
     "menu": "Theme",
     "system": "System",
@@ -34,20 +93,14 @@
     "offers": "Offers",
     "orders": "Orders",
     "earnings": "Earnings",
-    "team": "Team",
-    "stock": "Stock locations",
-    "payout": "Payout account",
-    "store-profile": "Store profile",
-    "security": "Security",
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
     "group": {
       "orders": "Orders",
       "catalogue": "Catalogue",
-      "store": "My store",
-      "money": "Money",
-      "team": "Team & settings"
-    }
+      "money": "Money"
+    },
+    "settings": "Settings"
   },
   "home": {
     "title": "Dashboard",
@@ -427,7 +480,7 @@
       }
     },
     "team": {
-      "title": "Team",
+      "title": "Members",
       "table-caption": "Team members and pending invitations",
       "label": {
         "person": "Person",
@@ -1098,6 +1151,8 @@
   },
   "stock": {
     "title": "Stock locations",
+    "section": "Your locations",
+    "view-only": "You can see your stock locations but not change them. Ask the store owner for access.",
     "intro": "Where you keep stock, in the order we use it to fill orders. You can have up to {max} locations.",
     "optional": "optional",
     "default": "Default",
@@ -1111,7 +1166,6 @@
     "move-up": "Move {name} up",
     "move-down": "Move {name} down",
     "saved": "Saved.",
-    "reload": "Reload the page",
     "form": {
       "add-title": "Add a location",
       "edit-title": "Edit location",
@@ -1137,6 +1191,7 @@
     "error": {
       "limit": "You have reached the limit of {max} locations.",
       "stale": "Another change was saved first. Reload the page to see it, then try again.",
+      "list-changed": "Another change was saved first. The list is up to date now; check it before you continue.",
       "throttled": "Too many requests. Wait a moment and try again.",
       "unavailable": "Stock locations are unavailable right now. Try again later.",
       "not-ready": "Your stock is not ready yet. Try again in a moment.",
@@ -1166,6 +1221,10 @@
         "not-found": "This offer or location was not found. Reload the page."
       },
       "on-hand": "Units in stock"
+    },
+    "no-access": {
+      "title": "You don't have access to this page",
+      "body": "Ask the account owner to give you permission to view stock locations."
     }
   },
   "orders": {
@@ -1465,6 +1524,7 @@
     },
     "status": {
       "title": "Status",
+      "account": "Account status",
       "not-connected": "Not connected",
       "not-started": "Not started",
       "pending": "Pending",
@@ -1810,10 +1870,8 @@
       "save": "Save",
       "saving": "Saving…",
       "saved": "Saved. Buyers can see it now.",
-      "loading": "Loading the latest version",
-      "load-latest": "Show the latest version",
       "error": {
-        "stale": "Someone else saved a newer version first. Your changes are still in the box; show the latest version to compare, then save again.",
+        "stale": "Someone else saved a newer version first. Your changes are still in the box. Reload the page to see the latest version, then save again.",
         "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
         "denied": "You do not have access to change the store profile.",
         "csrf": "Your session needs refreshing. Reload the page and try again.",
@@ -1878,6 +1936,10 @@
         "unavailable": "The store profile is unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "no-access": {
+      "title": "You don't have access to this page",
+      "body": "Ask the account owner to give you permission to view the store profile."
     }
   },
   "disputes": {
@@ -1987,6 +2049,60 @@
       "kept": "{amount} kept against what you owed",
       "more": "Load more",
       "more-failed": "More payouts could not be loaded. Try again."
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "back-home": "Back to Dashboard",
+    "errors": {
+      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+    },
+    "bar": {
+      "region": "Unsaved changes",
+      "summary": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+      "errors": "{count, plural, one {# needs fixing} other {# need fixing}}",
+      "discard": "Discard",
+      "save": "Save changes",
+      "saving": "Saving…"
+    },
+    "leave": {
+      "title": "Leave without saving?",
+      "message": "You have changes that are not saved. If you leave this page, they are lost.",
+      "stay": "Stay on page",
+      "leave": "Leave page"
+    },
+    "conflict": {
+      "title": "Someone else saved these settings first",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
+      "compare": "Compare",
+      "hide": "Hide comparison",
+      "heading": "What changed",
+      "list-label": "Changes compared",
+      "saved-label": "Saved now:",
+      "yours-label": "Yours:",
+      "same": "Your draft now matches what is saved.",
+      "unset": "empty"
+    },
+    "hub": {
+      "description": "Set up how your store works. Changes here apply to your whole store.",
+      "view-only": "View only",
+      "no-access-title": "You don't have access to settings",
+      "no-access-body": "Your role doesn't include any settings page. Ask the account owner to add one.",
+      "group": {
+        "store": "Store",
+        "money": "Money",
+        "team": "Team"
+      },
+      "link": {
+        "store-profile": "Store profile",
+        "stock-locations": "Stock locations",
+        "payout-account": "Payout account",
+        "team": "Members"
+      }
+    },
+    "sub": {
+      "label": "Settings pages",
+      "back": "Back to Settings"
     }
   }
 }

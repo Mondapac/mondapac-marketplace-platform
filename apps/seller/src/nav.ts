@@ -1,18 +1,16 @@
-import { PAYOUT_VIEW_PERMISSION } from './payout/types.ts';
-import { STOCK_VIEW_PERMISSION } from './stock/types.ts';
-import { STORE_PROFILE_VIEW_PERMISSION } from './store-profile/types.ts';
+import { settingsViewKeys } from './settings/settings-nav.ts';
 import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
 
-// Seller nav config (panels IA 3.2). Items of a phase that has not shipped are absent, not
-// disabled; each item is added with its screen. Items sit under topic groups; a group with one
-// visible item shows that item flat (navSections).
+// Seller nav config (panels IA 3.2). The menu is daily work; what is set once and changed rarely
+// lives under Settings, one item pinned to the sidebar footer (the hub, settings/settings-nav.ts).
+// Personal account pages (profile, security, sessions) are in the account menu only. Items of a
+// phase that has not shipped are absent, not disabled; each item is added with its screen. Items
+// sit under topic groups; a group with one visible item shows that item flat (navSections).
 export const sellerNav: NavConfig = {
   groups: [
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
     { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'store' },
-    { id: 'store', labelKey: 'nav.group.store', icon: 'briefcase' },
     { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
-    { id: 'team', labelKey: 'nav.group.team', icon: 'users' },
   ],
   items: [
     { id: 's_home', icon: 'home', labelKey: 'nav.home', href: '/' },
@@ -41,22 +39,6 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-product.view'],
     },
     {
-      id: 's_stock',
-      icon: 'map-pin',
-      labelKey: 'nav.stock',
-      href: '/stock-locations',
-      group: 'catalogue',
-      anyOf: [STOCK_VIEW_PERMISSION],
-    },
-    {
-      id: 's_store_profile',
-      icon: 'user',
-      labelKey: 'nav.store-profile',
-      href: '/store-profile',
-      group: 'store',
-      anyOf: [STORE_PROFILE_VIEW_PERMISSION],
-    },
-    {
       id: 's_earnings',
       icon: 'receipt',
       labelKey: 'nav.earnings',
@@ -65,28 +47,12 @@ export const sellerNav: NavConfig = {
       anyOf: ['commission-payouts.earnings.view'],
     },
     {
-      id: 's_payout',
-      icon: 'lock',
-      labelKey: 'nav.payout',
-      href: '/payout-account',
-      group: 'money',
-      anyOf: [PAYOUT_VIEW_PERMISSION],
-    },
-    {
-      id: 's_team',
-      icon: 'users',
-      labelKey: 'nav.team',
-      href: '/team',
-      group: 'team',
-      anyOf: ['identity.team-member.view'],
-    },
-    // Security is the one page left of the old Settings tabs; every approved seller has it.
-    {
       id: 's_settings',
-      icon: 'shield-check',
-      labelKey: 'nav.security',
-      href: '/account/security',
-      group: 'team',
+      icon: 'sliders',
+      labelKey: 'nav.settings',
+      href: '/settings',
+      placement: 'footer',
+      anyOf: settingsViewKeys,
     },
     // The only item before approval (sellerNavItems).
     { id: 's_setup', icon: 'briefcase', labelKey: 'nav.setup', href: '/account-setup' },

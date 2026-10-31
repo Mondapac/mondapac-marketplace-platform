@@ -12,6 +12,7 @@ export const WALLET_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'wallet.unavailable': 503,
   'wallet.cannot-turn-off-with-history': 409,
   'wallet.busy': 409,
+  'wallet.settings-conflict': 409,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
   // Admin credit issuance (package 2a).

@@ -18,6 +18,7 @@ import {
   type SlideSummary,
 } from './slide-types.ts';
 import { SlidesList } from './slides-list.tsx';
+import { expectToast } from '../../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const A = '0190a000-0000-7000-8000-0000000000a1';
@@ -382,7 +383,7 @@ describe('Pause and Resume… as the row action, by key', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Paused “Storm delivery delays”/)).toBeTruthy();
+    await expectToast(/Paused “Storm delivery delays”/);
     expect(within(rowOf('Storm delivery delays')).getByText('Paused')).toBeTruthy();
     // Nothing else is loaded again.
     expect(call).toHaveBeenCalledTimes(2);
@@ -406,7 +407,7 @@ describe('Pause and Resume… as the row action, by key', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Resumed “New minimum order rule”/)).toBeTruthy();
+    await expectToast(/Resumed “New minimum order rule”/);
   });
 
   it('keeps the row and says why when a resume is refused because a position is full', async () => {

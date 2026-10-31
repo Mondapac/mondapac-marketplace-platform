@@ -158,7 +158,7 @@ others (`CarrierGateway`: `fleet`, `capabilities(market)`, `book`, `quote`, `can
 - **Ranking.** The admin picks one model per Market and method (`shipping.fleet_selection_*`):
   `cheapest` (lowest quote), `weighted` (weights over price, ETA and reliability) or
   `fixed_priority` (an ordered list; fleets not on it are not used). Without an active model the
-  built-in order is Drive, Uber Direct, Zoom2u, Australia Post. Quotes are asked only when the
+  built-in order is Drive, Uber Direct, Zoom2u, DoorDash Drive, Australia Post. Quotes are asked only when the
   rule needs them and more than one candidate exists. Drive wins ties. A weighted score uses
   integer arithmetic; a fleet with no ETA scores 0 on it.
 - **Reliability** is a 0 to 100 score per fleet and Market that an admin sets (default 50 when
@@ -182,7 +182,11 @@ others (`CarrierGateway`: `fleet`, `capabilities(market)`, `book`, `quote`, `can
   Drive event for a booking of another fleet is refused.
 - **Admin.** `GET/POST/PUT shipping/admin/fleet-selection[...]` (permissions
   `shipping.fleet-selection.view` and the protected `.manage`); every create, edit, activation
-  and reliability change is audited.
+  and reliability change is audited. The page (active model per method and reliability per fleet)
+  is saved with one `PUT shipping/admin/fleet-selection` in one transaction, guarded by a page
+  version (`shipping.fleet_selection_settings`, one row per Market, 0 before the first save; `GET`
+  returns it as `version`); a stale `expectedVersion` answers 409
+  `shipping.fleet-selection-conflict`. The per-method and per-fleet PUTs are removed.
 - **Assumed Drive fields** (not in Drive's contract yet; read when present, ignored otherwise):
   `GET /delivery/deliveries/:id` for `status()`, and `etaMinutes`, `expiresAt` and `trackingUrl`
   in answers. The Drive quote request is unchanged (postcode only).

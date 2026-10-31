@@ -1,7 +1,9 @@
 import type { NavConfig } from '@mondapac/ui';
+import { settingsViewKeys } from './settings/settings-nav.ts';
 
-// Admin nav config (panels IA 3.1). Items of a phase that has not shipped are absent, not
-// disabled; each item is added with its screen. Items sit under topic groups; a group with one
+// Admin nav config (panels IA 3.1). The menu is daily work; what is set once and changed rarely
+// lives under Settings, one item pinned to the sidebar footer (the hub, settings/settings-nav.ts).
+// Items of a phase that has not shipped are absent, not disabled; each item is added with its screen. Items sit under topic groups; a group with one
 // visible item shows that item flat (navSections).
 export const adminNav: NavConfig = {
   groups: [
@@ -10,7 +12,6 @@ export const adminNav: NavConfig = {
     { id: 'sellers', labelKey: 'nav.group.sellers', icon: 'store' },
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
     { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
-    { id: 'platform', labelKey: 'nav.group.platform', icon: 'briefcase' },
   ],
   items: [
     { id: 'home', icon: 'home', labelKey: 'nav.home', href: '/' },
@@ -63,22 +64,6 @@ export const adminNav: NavConfig = {
       anyOf: ['identity.customer-account.view'],
     },
     {
-      id: 'fleet-selection',
-      icon: 'package',
-      labelKey: 'nav.fleet-selection',
-      href: '/fleet-selection',
-      group: 'orders',
-      anyOf: ['shipping.fleet-selection.view'],
-    },
-    {
-      id: 'delivery-settings',
-      icon: 'sliders',
-      labelKey: 'nav.delivery-settings',
-      href: '/delivery-settings',
-      group: 'orders',
-      anyOf: ['shipping.delivery-settings.view'],
-    },
-    {
       id: 'payouts',
       icon: 'receipt',
       labelKey: 'nav.payouts',
@@ -103,14 +88,6 @@ export const adminNav: NavConfig = {
       anyOf: ['commission-payouts.dispute.view'],
     },
     {
-      id: 'wallet-settings',
-      icon: 'wallet',
-      labelKey: 'nav.wallet-settings',
-      href: '/wallet',
-      group: 'money',
-      anyOf: ['wallet.settings.view'],
-    },
-    {
       id: 'wallet-credits',
       icon: 'receipt',
       labelKey: 'nav.wallet-credits',
@@ -127,20 +104,12 @@ export const adminNav: NavConfig = {
       anyOf: ['wallet.credit.view'],
     },
     {
-      id: 'team',
-      icon: 'key',
-      labelKey: 'nav.team',
-      href: '/team',
-      group: 'platform',
-      anyOf: ['identity.admin-account.view'],
-    },
-    {
       id: 'settings',
       icon: 'sliders',
       labelKey: 'nav.settings',
       href: '/settings',
-      group: 'platform',
-      anyOf: ['notifications.support-contact.view', 'assistant.settings.view'],
+      placement: 'footer',
+      anyOf: settingsViewKeys,
     },
   ],
 };

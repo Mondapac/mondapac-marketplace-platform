@@ -22,7 +22,7 @@ export async function RoleView({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col items-start gap-2">
-        <BackLink href="/roles" label={t('identity.roles.back')} />
+        <BackLink href="/settings/roles" label={t('identity.roles.back')} />
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <h1 className="min-w-0 break-words text-2xl font-semibold">{roleName(t, role)}</h1>
@@ -34,7 +34,7 @@ export async function RoleView({
           {canDuplicate ? (
             <LinkButton
               variant="secondary"
-              href={`/roles/new?from=${role.roleId}`}
+              href={`/settings/roles/new?from=${role.roleId}`}
               className="max-sm:w-full"
             >
               {t('identity.roles.action.duplicate')}

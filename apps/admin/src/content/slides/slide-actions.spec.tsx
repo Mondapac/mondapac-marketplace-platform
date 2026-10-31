@@ -13,6 +13,7 @@ import { actionsFor } from './slide-actions.tsx';
 import { SlideEditor } from './slide-editor.tsx';
 import { CATEGORY, ID, detail, version } from './test-data.ts';
 import type { SlideDetail, SlideGates, SlidePlacement } from './slide-types.ts';
+import { expectToast } from '../../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ZONE = 'Australia/Brisbane';
@@ -242,7 +243,7 @@ describe('Send for approval', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Sent “Diwali sweets week” for approval/)).toBeTruthy();
+    await expectToast(/Sent “Diwali sweets week” for approval/);
     expect(screen.getByText('Waiting for a platform admin to approve')).toBeTruthy();
     // Once it is waiting there is nothing more to send.
     expect(sendButton()).toBeNull();
@@ -256,7 +257,7 @@ describe('Send for approval', () => {
     fireEvent.click(sendButton()!);
     expect(call).toHaveBeenCalledTimes(1);
     finish(ok(waiting()));
-    await screen.findByText(/Sent “Diwali sweets week” for approval/);
+    await expectToast(/Sent “Diwali sweets week” for approval/);
   });
 
   it('waits for unsaved changes to be saved, with the reason on the button', () => {
@@ -388,7 +389,7 @@ describe('Approve dialog (storefront.slide.publish)', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Approved “Diwali sweets week”/)).toBeTruthy();
+    await expectToast(/Approved “Diwali sweets week”/);
     expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
     expect(screen.queryByText('Waiting for a platform admin to approve')).toBeNull();
   });
@@ -490,7 +491,7 @@ describe('Pause (storefront.slide.pause)', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Paused “Diwali sweets week”/)).toBeTruthy();
+    await expectToast(/Paused “Diwali sweets week”/);
     expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
     // Paused now: a holder of the pause key has nothing more to do here.
     expect(moreButton()).toBeNull();
@@ -533,7 +534,7 @@ describe('Resume… (storefront.slide.publish)', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Resumed “Diwali sweets week”/)).toBeTruthy();
+    await expectToast(/Resumed “Diwali sweets week”/);
   });
 
   it('names the position that is full', async () => {
@@ -567,7 +568,7 @@ describe('Archive (storefront.slide.edit)', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Archived “Diwali sweets week”/)).toBeTruthy();
+    await expectToast(/Archived “Diwali sweets week”/);
     expect(sendButton()).toBeNull();
     expect(menuItems()).toEqual(['Copy to another Market…']);
   });

@@ -32,18 +32,16 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
-import { ActivateFleetSelectionModel } from '../application/use-cases/activate-fleet-selection-model.use-case';
 import { CreateFleetSelectionModel } from '../application/use-cases/create-fleet-selection-model.use-case';
-import { SetFleetReliability } from '../application/use-cases/set-fleet-reliability.use-case';
+import { SetFleetSelection } from '../application/use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from '../application/use-cases/update-fleet-selection-model.use-case';
 import { ViewFleetSelection } from '../application/use-cases/view-fleet-selection.use-case';
 import {
-  ActivateModelRequest,
   FleetModelBody,
   FleetModelRequest,
   FleetSelectionBody,
   modelBody,
-  ReliabilityRequest,
+  SaveFleetSelectionRequest,
   selectionBody,
   UpdateFleetModelRequest,
 } from './fleet-selection.dto';
@@ -69,8 +67,7 @@ export class FleetSelectionController {
     private readonly view: ViewFleetSelection,
     private readonly create: CreateFleetSelectionModel,
     private readonly update: UpdateFleetSelectionModel,
-    private readonly activate: ActivateFleetSelectionModel,
-    private readonly reliability: SetFleetReliability,
+    private readonly save: SetFleetSelection,
   ) {}
 
   @Get()
@@ -178,78 +175,45 @@ export class FleetSelectionController {
     return modelBody(result.value);
   }
 
-  @Put('active/:method')
+  @Put()
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Pick the active model of a delivery method',
+    summary: 'Save the fleet-selection page: the active model per method and the fleet reliability',
     description:
-      'Needs shipping.fleet-selection.manage (protected). `method` is instant, same_day or ' +
-      'scheduled. A null modelId puts the built-in default order back. The change is audited.',
+      'Needs shipping.fleet-selection.manage (protected). One batch in one transaction: ' +
+      '`active` holds the active model id per delivery method (instant, same_day, scheduled; ' +
+      'null puts the built-in default order back) and `reliability` the 0 to 100 score per ' +
+      'fleet code. `expectedVersion` is the page `version` read (0 before the first save): a ' +
+      'stale one answers 409 shipping.fleet-selection-conflict and nothing is written. Each ' +
+      'changed item is audited. The answer is the page as saved, with its new version.',
   })
   @ApiHeader(CSRF)
-  @ApiParam({ name: 'method', enum: ['instant', 'same_day', 'scheduled'] })
-  @ApiBody({ type: ActivateModelRequest })
+  @ApiBody({ type: SaveFleetSelectionRequest })
   @ApiOkResponse({ type: FleetSelectionBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiNotFoundResponse({ ...ERROR, description: 'shipping.fleet-model-not-found' })
-  async activateModel(
+  @ApiConflictResponse({ ...ERROR, description: 'shipping.fleet-selection-conflict' })
+  async saveSelection(
     @Call() context: CallContext,
-    @Param('method') method: string,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['modelId']);
+    const invalid = closedBody(request, requestBody, ['expectedVersion', 'active', 'reliability']);
     if (invalid !== null) throw invalid;
-    const { modelId } = requestBody as { modelId?: unknown };
-    const result = await this.activate.execute(context, { method, modelId: modelId ?? undefined });
+    const { expectedVersion, active, reliability } = requestBody as {
+      expectedVersion?: unknown;
+      active?: unknown;
+      reliability?: unknown;
+    };
+    const result = await this.save.execute(context, { expectedVersion, active, reliability });
     this.log(
-      'shipping.activate-fleet-selection-model-route',
+      'shipping.set-fleet-selection-route',
       context,
-      result.ok ? 'activated' : result.error.code,
-    );
-    if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return selectionBody(result.value);
-  }
-
-  @Put('fleets/:fleet/reliability')
-  @HttpCode(200)
-  @ApiOperation({
-    summary: 'Set the reliability score of a fleet',
-    description:
-      'Needs shipping.fleet-selection.manage (protected). A whole number from 0 to 100, an ' +
-      'input of the weighted kind. It is set by an admin for now; a score computed from delivery ' +
-      'history comes later. The change is audited.',
-  })
-  @ApiHeader(CSRF)
-  @ApiParam({
-    name: 'fleet',
-    enum: ['mondapac_drive', 'uber_direct', 'zoom2u', 'auspost', 'fake_test'],
-  })
-  @ApiBody({ type: ReliabilityRequest })
-  @ApiOkResponse({ type: FleetSelectionBody })
-  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
-  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
-  async setReliability(
-    @Call() context: CallContext,
-    @Param('fleet') fleet: string,
-    @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
-    @Body() requestBody: unknown,
-  ) {
-    response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['score']);
-    if (invalid !== null) throw invalid;
-    const { score } = requestBody as { score?: unknown };
-    const result = await this.reliability.execute(context, { fleet, score });
-    this.log(
-      'shipping.set-fleet-reliability-route',
-      context,
-      result.ok ? 'set' : result.error.code,
+      result.ok ? 'saved' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return selectionBody(result.value);

@@ -139,23 +139,29 @@ export async function viewOne(
 }
 
 /**
- * Whether a product may show a struck-through earlier price (the was-price rule): decided from the
- * product's price history, never from what a seller types. Unknown history is "not eligible".
+ * Whether a priced unit (an Offer's Variant) may show a struck-through earlier price (the
+ * was-price rule): decided from the unit's price history, never from what a seller types. Unknown
+ * history is "not eligible".
  */
 export async function checkWasPrice(
   deps: PromotionsDependencies,
   context: CallContext,
   input: {
-    readonly productId: string;
+    readonly offerId: string;
+    readonly variantId: string;
     readonly price: { readonly amountMinor: bigint; readonly currency: string };
   },
 ): Promise<Result<{ readonly eligible: boolean }, PromotionsFailure>> {
   const switched = await activeSettings(deps, context);
   if (!switched.ok) return switched;
   const settings = switched.value;
-  const productId = parseId<'Product'>(input.productId);
-  if (!productId.ok) {
-    return err({ code: 'validation.failed', fields: [{ path: 'productId', code: 'value' }] });
+  const offerId = parseId<'Offer'>(input.offerId);
+  if (!offerId.ok) {
+    return err({ code: 'validation.failed', fields: [{ path: 'offerId', code: 'value' }] });
+  }
+  const variantId = parseId<'Variant'>(input.variantId);
+  if (!variantId.ok) {
+    return err({ code: 'validation.failed', fields: [{ path: 'variantId', code: 'value' }] });
   }
   if (input.price.currency !== settings.currency || input.price.amountMinor < 1n) {
     return err({ code: 'validation.failed', fields: [{ path: 'price', code: 'value' }] });
@@ -164,7 +170,7 @@ export async function checkWasPrice(
   try {
     days = await deps.priceHistory.daysSoldAtPrice(
       context,
-      productId.value,
+      { offerId: offerId.value, variantId: variantId.value },
       { amount: input.price.amountMinor, currency: input.price.currency },
       settings.wasPrice.windowDays,
     );

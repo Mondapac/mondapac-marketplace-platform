@@ -572,7 +572,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'wallet.market_settings': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
+      columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id', 'version'],
     },
     // Admin credit (package 2a): a request is written once and decided once; a day row is
     // written once and then only locked. Neither is ever deleted (a trigger refuses it).
@@ -938,6 +938,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'shipping.fleet_selection_assignments': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['model_id', 'updated_at', 'updated_by'],
+    },
+    // Settings S4: the version of the fleet-selection page, one row per Market, raised on each save.
+    'shipping.fleet_selection_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['updated_at', 'updated_by', 'version'],
     },
     'shipping.fleet_reliability': {
       table: ['INSERT', 'SELECT'],

@@ -12,6 +12,7 @@ import { DisputeDetailView } from './dispute-detail.tsx';
 import { DisputesList } from './disputes-list.tsx';
 import { evidenceDue, reasonText } from './evidence.ts';
 import { STRIPE_DASHBOARD_DISPUTES, type DisputeDetail, type DisputeRow } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const ZONE = 'Australia/Brisbane';
@@ -498,7 +499,11 @@ describe('decision dialog', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Decision saved.')).toBeTruthy();
+    await expectToast('Decision saved.');
+    // The decision buttons are gone and the toast takes no focus: the page heading does.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 })),
+    );
     expect(screen.getByRole('dialog', { hidden: true }).hasAttribute('open')).toBe(false);
   });
 

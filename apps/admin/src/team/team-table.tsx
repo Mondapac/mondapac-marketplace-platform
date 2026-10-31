@@ -97,10 +97,10 @@ export async function TeamTable({
     );
   }
   if (page.items.length === 0) {
-    return <p className="text-fg-muted">{t('identity.members.empty.page')}</p>;
+    return <p className="px-5 py-4 text-fg-muted">{t('identity.members.empty.page')}</p>;
   }
   return (
-    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+    <div className="relative overflow-x-auto">
       {/* Fixed layout, like the Roles tab: Person takes what is left, the others have set widths. */}
       <table className={`${CARD_TABLE.table} lg:min-w-160 lg:table-fixed`}>
         <caption className="sr-only">{t('identity.members.table-caption')}</caption>

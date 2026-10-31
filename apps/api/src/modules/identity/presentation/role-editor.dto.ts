@@ -24,6 +24,22 @@ export class RoleEditorRequest {
   permissionKeys!: string[];
 }
 
+const EXPECTED_VERSION =
+  'The `version` of the role as you read it (required). If the role changed since, the answer is ' +
+  '409 conflict.stale and nothing is written: read it again and decide.';
+
+/** Edit a custom role: the whole name and key set, at the version read. */
+export class RoleEditRequest extends RoleEditorRequest {
+  @ApiProperty({ description: EXPECTED_VERSION, minimum: 1 })
+  expectedVersion!: number;
+}
+
+/** Delete a custom role, at the version read. */
+export class RoleVersionRequest {
+  @ApiProperty({ description: EXPECTED_VERSION, minimum: 1 })
+  expectedVersion!: number;
+}
+
 export class RoleActionHintView {
   @ApiProperty()
   allowed!: boolean;

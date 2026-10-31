@@ -15,10 +15,16 @@ export const PLATFORM_EVENT_TYPES = [
   ...DISPUTE_EVENT_TYPES,
   ...TRANSFER_EVENT_TYPES,
 ] as const;
-/** The connected-account events (Connect endpoint) the receiver keeps. */
+/**
+ * The connected-account events (Connect endpoint) the receiver keeps. `balance_settings.updated`
+ * is the one Stripe sends when an account's payout schedule changes (F-3 record (b), Hassan's
+ * HP-1 re-check): the account is read again, so a schedule changed outside payments while a pause
+ * holds is paused again at once, not only at the daily reconciliation.
+ */
 export const ACCOUNT_EVENT_TYPES = [
   'account.updated',
   'capability.updated',
+  'balance_settings.updated',
   ...EXTERNAL_ACCOUNT_EVENT_TYPES,
 ] as const;
 export const KEPT_EVENT_TYPES = [...PLATFORM_EVENT_TYPES, ...ACCOUNT_EVENT_TYPES] as const;

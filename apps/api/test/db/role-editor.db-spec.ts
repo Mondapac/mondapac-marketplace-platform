@@ -209,6 +209,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     );
     const edited = await app.get(EditPlatformRole).execute(asAdmin(root), {
       roleId,
+      expectedVersion: 1,
       name: `${name} 2`,
       permissionKeys: ['identity.platform-role.view', 'identity.seller-access.view'],
     });
@@ -231,7 +232,13 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
       version: 2,
     });
 
-    const removed = await app.get(DeletePlatformRole).execute(asAdmin(root), { roleId });
+    // The version moved to 2 with the edit: the old one is stale, the current one deletes.
+    await expect(
+      app.get(DeletePlatformRole).execute(asAdmin(root), { roleId, expectedVersion: 1 }),
+    ).rejects.toBeInstanceOf(StaleAggregateError);
+    const removed = await app
+      .get(DeletePlatformRole)
+      .execute(asAdmin(root), { roleId, expectedVersion: 2 });
     expect(removed).toEqual({ ok: true, value: { code: 'role.deleted', roleId } });
     expect(await keysOf(roleId)).toEqual([]);
 
@@ -294,7 +301,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     await account('admin', first.value.roleId, null);
     const held = await app
       .get(DeletePlatformRole)
-      .execute(asAdmin(root), { roleId: first.value.roleId });
+      .execute(asAdmin(root), { roleId: first.value.roleId, expectedVersion: 1 });
     expect(held).toEqual({ ok: false, error: { code: 'role.in-use' } });
     await expect(
       sql.query(`DELETE FROM identity.roles WHERE market_id = $1 AND id = $2`, [
@@ -335,11 +342,18 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     if (!theirList.ok) throw new Error(theirList.error.code);
     expect(theirList.value.items.map((i) => i.roleId)).not.toContain(roleId);
     expect(
-      await app
-        .get(EditSellerRole)
-        .execute(asSeller(rival, theirs), { roleId, name: 'Mine now', permissionKeys: [] }),
+      await app.get(EditSellerRole).execute(asSeller(rival, theirs), {
+        roleId,
+        expectedVersion: 1,
+        name: 'Mine now',
+        permissionKeys: [],
+      }),
     ).toEqual({ ok: false, error: { code: 'role.unknown' } });
-    expect(await app.get(DeleteSellerRole).execute(asSeller(rival, theirs), { roleId })).toEqual({
+    expect(
+      await app
+        .get(DeleteSellerRole)
+        .execute(asSeller(rival, theirs), { roleId, expectedVersion: 1 }),
+    ).toEqual({
       ok: false,
       error: { code: 'role.unknown' },
     });
@@ -352,7 +366,9 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     expect(
       await app.get(CreateSellerRole).execute(asAdmin(root), { name: 'x', permissionKeys: [] }),
     ).toEqual({ ok: false, error: { code: 'access.denied' } });
-    expect(await app.get(DeletePlatformRole).execute(asAdmin(root), { roleId })).toEqual({
+    expect(
+      await app.get(DeletePlatformRole).execute(asAdmin(root), { roleId, expectedVersion: 1 }),
+    ).toEqual({
       ok: false,
       error: { code: 'role.unknown' },
     });
@@ -373,7 +389,11 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
       expect([null, mine]).toContain(each.seller_id);
     }
 
-    expect(await app.get(DeleteSellerRole).execute(asSeller(owner, mine), { roleId })).toEqual({
+    expect(
+      await app
+        .get(DeleteSellerRole)
+        .execute(asSeller(owner, mine), { roleId, expectedVersion: 1 }),
+    ).toEqual({
       ok: true,
       value: { code: 'role.deleted', roleId },
     });
@@ -423,9 +443,12 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
 
     const settled = await Promise.allSettled(
       sets.map((permissionKeys, n) =>
-        app
-          .get(EditPlatformRole)
-          .execute(asAdmin(root), { roleId, name: `Racer ${n} ${unique()}`, permissionKeys }),
+        app.get(EditPlatformRole).execute(asAdmin(root), {
+          roleId,
+          expectedVersion: 1,
+          name: `Racer ${n} ${unique()}`,
+          permissionKeys,
+        }),
       ),
     );
 
@@ -469,10 +492,11 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     const settled = await Promise.allSettled([
       app.get(EditPlatformRole).execute(asAdmin(root), {
         roleId,
+        expectedVersion: 1,
         name: `Edited ${unique()}`,
         permissionKeys: ['identity.customer-account.view'],
       }),
-      app.get(DeletePlatformRole).execute(asAdmin(root), { roleId }),
+      app.get(DeletePlatformRole).execute(asAdmin(root), { roleId, expectedVersion: 1 }),
     ]);
 
     for (const result of settled) {
@@ -552,10 +576,13 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
       if (!made.ok) throw new Error(JSON.stringify(made.error));
       const roleId = made.value.roleId;
       // Everything out again: the `removedKeys` side is as large as the `addedKeys` side was.
-      const emptied = await app
-        .get(edit)
-        .execute(context, { roleId, name: `Long ${unique()}`, permissionKeys: [] });
-      const gone = await app.get(remove).execute(context, { roleId });
+      const emptied = await app.get(edit).execute(context, {
+        roleId,
+        expectedVersion: 1,
+        name: `Long ${unique()}`,
+        permissionKeys: [],
+      });
+      const gone = await app.get(remove).execute(context, { roleId, expectedVersion: 2 });
 
       expect([emptied.ok, gone.ok]).toEqual([true, true]);
       const audits = await sql.query<{ action: string }>(
@@ -583,14 +610,14 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
 
     const held = await app
       .get(DeleteSellerRole)
-      .execute(asSeller(owner, mine), { roleId: made.value.roleId });
+      .execute(asSeller(owner, mine), { roleId: made.value.roleId, expectedVersion: 1 });
     await sql.query(
       `DELETE FROM identity.role_assignments WHERE market_id = $1 AND account_id = $2`,
       [code, member],
     );
     const free = await app
       .get(DeleteSellerRole)
-      .execute(asSeller(owner, mine), { roleId: made.value.roleId });
+      .execute(asSeller(owner, mine), { roleId: made.value.roleId, expectedVersion: 1 });
 
     expect(held).toEqual({ ok: false, error: { code: 'role.in-use' } });
     expect(free.ok).toBe(true);

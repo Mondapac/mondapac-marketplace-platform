@@ -13,6 +13,7 @@ import { commissionProblemOf } from './errors.ts';
 import { LedgerCard } from './ledger-card.tsx';
 import { CommissionRateCard } from './rate-card.tsx';
 import { bpsOf, percentOf, type CommissionRate, type Ledger, type LedgerEntry } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -72,7 +73,7 @@ describe('CommissionRateCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith('PUT', RATE, { rateBps: 1275 }, 'csrf');
-    expect(await screen.findByText(/Rate saved/)).toBeTruthy();
+    await expectToast(/Rate saved/);
     expect(screen.getByText('12.75%')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reset to Market rate' })).toBeTruthy();
   });
@@ -95,7 +96,7 @@ describe('CommissionRateCard', () => {
     expect(call).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, reset' }));
     await waitFor(() => expect(call).toHaveBeenCalledWith('DELETE', RATE, undefined, 'csrf'));
-    expect(await screen.findByText(/back on the Market rate/)).toBeTruthy();
+    await expectToast(/back on the Market rate/);
     expect(screen.getByText('Market default')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Reset to Market rate' })).toBeNull();
   });

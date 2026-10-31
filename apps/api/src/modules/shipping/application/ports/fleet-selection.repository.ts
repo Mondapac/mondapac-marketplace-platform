@@ -50,6 +50,20 @@ export interface FleetSelectionRepository {
   /** The rule active for a method, or null for the built-in default. */
   activeRule(market: MarketContext, method: CarrierMethod): Promise<SelectionRule | null>;
 
+  /** The version of the fleet-selection page (the batch save): 0 before the first save. */
+  selectionVersion(market: MarketContext): Promise<number>;
+
+  /**
+   * Raises the page version from `expectedVersion` (0: the first save inserts the row); `conflict`
+   * when the stored version is not `expectedVersion`, nothing changed.
+   */
+  bumpSelectionVersion(
+    market: MarketContext,
+    expectedVersion: number,
+    by: ActorId,
+    at: Temporal.Instant,
+  ): Promise<'bumped' | 'conflict'>;
+
   reliabilities(market: MarketContext): Promise<ReadonlyMap<FleetCode, number>>;
   setReliability(
     market: MarketContext,

@@ -10,12 +10,14 @@ import { callApi } from '../api/client.ts';
 import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import { SettingsForm } from './settings-form.tsx';
 import type { WalletSettings } from './types.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const settings = (over: Partial<WalletSettings> = {}): WalletSettings => ({
   status: 'off',
   reason: null,
   updatedAt: null,
+  version: 0,
   ...over,
 });
 const ok = (body: unknown) => ({ ok: true as const, status: 200, body });
@@ -83,12 +85,27 @@ describe('SettingsForm', () => {
     expect(await screen.findByText('Never changed')).toBeTruthy();
   });
 
-  it('leaves the change card out for a view-only admin', async () => {
+  it('shows a view-only admin the danger zone disabled, with the reason and no button', async () => {
     call.mockResolvedValue(ok(settings()));
     mount(false);
     await screen.findByText('Never changed');
-    expect(screen.queryByLabelText('New state')).toBeNull();
+    expect(screen.getByText(/^View only\./)).toBeTruthy();
+    expect(screen.getByLabelText<HTMLSelectElement>('New state').disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Review change' })).toBeNull();
+  });
+
+  it('puts the change in a danger zone at the end, with its own button, not a save bar', async () => {
+    call.mockResolvedValue(ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00Z' })));
+    mount();
+    await screen.findByText(/Changed/);
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
+    expect(headings).toEqual(['Current state', 'What each state means', 'Danger zone']);
+    const zone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section')!;
+    expect(zone.getAttribute('data-variant')).toBe('danger');
+    expect(zone.contains(screen.getByLabelText('New state'))).toBe(true);
+    expect(zone.contains(screen.getByRole('button', { name: 'Review change' }))).toBe(true);
+    choose('paused');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('keeps Review off until the state differs and a required reason is chosen', async () => {
@@ -130,11 +147,11 @@ describe('SettingsForm', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
-    expect(await screen.findByText('Wallet is now paused.')).toBeTruthy();
+    await expectToast('Wallet is now paused.');
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',
-      { status: 'paused', reasonCode: 'maintenance' },
+      { status: 'paused', reasonCode: 'maintenance', expectedVersion: 0 },
       'csrf',
     );
     expect(screen.getByText('Reason: Maintenance')).toBeTruthy();
@@ -175,11 +192,11 @@ describe('SettingsForm', () => {
       ok(settings({ status: 'active', updatedAt: '2026-10-27T01:00:00.000Z' })),
     );
     review();
-    expect(await screen.findByText('Wallet is now active.')).toBeTruthy();
+    await expectToast('Wallet is now active.');
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',
-      { status: 'active' },
+      { status: 'active', expectedVersion: 0 },
       'csrf',
     );
   });
@@ -204,6 +221,66 @@ describe('SettingsForm', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(text);
     // The state shown stays the one the server last told us.
     expect(screen.getByText('Changed 1 Oct 2026, 12:00 am UTC')).toBeTruthy();
+  });
+
+  it('sends the version it loaded, and on a conflict shows the banner, the current state and keeps the chosen one', async () => {
+    call.mockResolvedValueOnce(
+      ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z', version: 3 })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    choose('paused');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'maintenance' } });
+    review();
+    await confirmDialog('Pause the wallet?');
+    call.mockResolvedValueOnce(refused(409, 'wallet.settings-conflict'));
+    // The reload after the conflict: another admin froze the wallet meanwhile.
+    call.mockResolvedValueOnce(
+      ok(
+        settings({
+          status: 'frozen',
+          reason: 'legal-hold',
+          updatedAt: '2026-10-02T00:00:00.000Z',
+          version: 4,
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
+    expect(
+      await screen.findByText('The wallet state changed while you were on this page'),
+    ).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      'PUT',
+      'wallet/admin/settings',
+      { status: 'paused', reasonCode: 'maintenance', expectedVersion: 3 },
+      'csrf',
+    );
+    expect(await screen.findByText('Reason: Legal hold')).toBeTruthy();
+    expect(screen.getByLabelText<HTMLSelectElement>('New state').value).toBe('paused');
+    expect(screen.getByLabelText<HTMLSelectElement>('Reason').value).toBe('maintenance');
+    // The next save carries the new version and clears the banner.
+    review();
+    await confirmDialog('Pause the wallet?');
+    call.mockResolvedValueOnce(
+      ok(
+        settings({
+          status: 'paused',
+          reason: 'maintenance',
+          updatedAt: '2026-10-03T00:00:00.000Z',
+          version: 5,
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
+    await expectToast('Wallet is now paused.');
+    expect(call).toHaveBeenLastCalledWith(
+      'PUT',
+      'wallet/admin/settings',
+      { status: 'paused', reasonCode: 'maintenance', expectedVersion: 4 },
+      'csrf',
+    );
+    expect(screen.queryByText('The wallet state changed while you were on this page')).toBeNull();
   });
 
   it('puts a validation answer on the reason field', async () => {
@@ -240,7 +317,7 @@ describe('SettingsForm', () => {
 
 describe('SettingsForm: unusual data from the server', () => {
   it('treats a wallet state it does not know as a load error', async () => {
-    call.mockResolvedValue(ok({ status: 'short', reason: null, updatedAt: null }));
+    call.mockResolvedValue(ok({ status: 'short', reason: null, updatedAt: null, version: 0 }));
     mount();
     expect(await screen.findByRole('alert')).toBeTruthy();
   });

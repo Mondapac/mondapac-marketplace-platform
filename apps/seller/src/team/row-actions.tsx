@@ -1,11 +1,10 @@
 'use client';
 
-import { Banner, Button, Dialog, Menu, type MenuItem } from '@mondapac/ui';
+import { Banner, Button, Dialog, Menu, toast, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
-import { useNotice } from './notice.tsx';
 import { ChangeRoleDialog } from './role-dialog.tsx';
 import type { ActionHint, SellerRole } from './types.ts';
 import { useFailureMessage } from './use-team.ts';
@@ -89,7 +88,6 @@ export function RowActions({
 }) {
   const t = useTranslations('identity.team');
   const router = useRouter();
-  const notify = useNotice();
   const messageFor = useFailureMessage();
   const callGuarded = useGuardedCall();
   const [asking, setAsking] = useState<ActionDef | null>(null);
@@ -110,7 +108,7 @@ export function RowActions({
     if (isStepUpCancelled(result)) return;
     if (result.ok) {
       setAsking(null);
-      notify({ tone: 'success', text: t(`toast.${action.id}`, { name: target.name }) });
+      toast.success(t(`toast.${action.id}`, { name: target.name }));
       router.refresh();
       return;
     }
@@ -122,12 +120,12 @@ export function RowActions({
     if (CHANGED_MEANWHILE.has(failure.code)) {
       // The row changed or went away meanwhile: close, say so, and show it as it is now.
       setAsking(null);
-      notify({ tone: 'critical', text: messageFor(failure) });
+      toast.error(messageFor(failure));
       router.refresh();
       return;
     }
     if (action.confirm) setProblem(messageFor(failure));
-    else notify({ tone: 'critical', text: messageFor(failure) });
+    else toast.error(messageFor(failure));
   }
 
   const items: MenuItem[] = definitionsFor(target).map((action) => ({

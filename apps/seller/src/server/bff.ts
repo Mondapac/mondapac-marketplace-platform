@@ -24,6 +24,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
     'sellers/my-file/form-descriptors',
+    // The stock locations, read again after a stale write (the list and its version).
+    'inventory/seller/sources',
     // The store's settings (delivery terms; the minimum order is in the same answer).
     'sellers/store-settings',
     'payments/seller/payout-account',

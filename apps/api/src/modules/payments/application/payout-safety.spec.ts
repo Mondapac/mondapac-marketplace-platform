@@ -388,6 +388,26 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
       expect(row().payoutScheduleApplied).toBe('manual');
     });
 
+    it('pauses again when a payout-settings event shows the schedule changed outside payments', async () => {
+      await onboarded();
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
+      await bankEvent('updated', 'evt_2');
+      await sync();
+      const changeId = row().lastChangeId;
+
+      // Stripe reports a Balance Settings change (for example from the Express Dashboard).
+      connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'daily' }));
+      await receive(accountEvent({ id: 'evt_bal_1', type: 'balance_settings.updated' }));
+      await apply();
+      expect(row()).toMatchObject({ payoutScheduleApplied: 'normal', payoutScheduleRevision: 1 });
+
+      expect(await sync()).toEqual(ok({ paused: 1, resumed: 0, problems: [] }));
+      expect(connect.schedules.map((s) => s.idempotencyKey)).toEqual([
+        `payout-pause:${changeId}`,
+        `payout-pause:${changeId}:r1`,
+      ]);
+    });
+
     it('takes a new key after Stripe answered a write with an error, and keeps it after no answer', async () => {
       await onboarded();
       connect.readAnswer = ok(snapshot({ payoutScheduleInterval: 'manual' }));
