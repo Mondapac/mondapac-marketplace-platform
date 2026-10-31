@@ -9,6 +9,11 @@ export interface ApiFailure {
     /** The action a guarded route asks a fresh two-step code for (`second-factor.required`). */
     readonly actionKey?: string;
     readonly fields?: readonly { readonly path: string; readonly code: string }[];
+    /** `batch.too-large`: the cap of one request and how many products the request named. */
+    readonly max?: number;
+    readonly total?: number;
+    /** `retire.count-changed`: the Offers on the products now, to confirm again. */
+    readonly currentCount?: number;
   };
 }
 

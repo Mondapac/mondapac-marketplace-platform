@@ -1380,6 +1380,117 @@ describe('relay of the product list', () => {
     expect(upstream.mock.calls[1]?.[0]).toBe(`http://api.test/${photo.join('/')}`);
   });
 
+  it('passes the Paused status of the list, and drops a status it does not know', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get('catalog/admin/products?view=inactive&status=paused'), path, upstream);
+    await relay(config, get('catalog/admin/products?status=deleted'), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/products?view=inactive&status=paused',
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products');
+  });
+
+  describe('the bulk action and the export', () => {
+    const exportPath = ['catalog', 'admin', 'products', 'export'];
+    const second = '0190a000-0000-7000-8000-000000000002';
+
+    it('relays the bulk action as a same-origin POST only', async () => {
+      const upstream = upstreamOk();
+      const bulk = ['catalog', 'admin', 'products', 'bulk'];
+      const body = JSON.stringify({ action: 'pause', productIds: [id] });
+
+      expect(
+        (await relay(config, post('catalog/admin/products/bulk', sameOrigin, body), bulk, upstream))
+          .status,
+      ).toBe(200);
+      expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/products/bulk');
+      // A cross-site request is refused before it reaches the API.
+      expect(
+        (
+          await relay(
+            config,
+            post('catalog/admin/products/bulk', { host: 'admin.localhost:3002' }, body),
+            bulk,
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+      // Not a read, and no other path under it.
+      expect((await relay(config, get('catalog/admin/products/bulk'), bulk, upstream)).status).toBe(
+        404,
+      );
+      const other = ['catalog', 'admin', 'products', 'bulk', 'x'];
+      expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+      expect(upstream).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a body over 16 KB', async () => {
+      const upstream = upstreamOk();
+      const big = JSON.stringify({ action: 'pause', productIds: [], pad: 'x'.repeat(17 * 1024) });
+      const response = await relay(
+        config,
+        post('catalog/admin/products/bulk', sameOrigin, big),
+        ['catalog', 'admin', 'products', 'bulk'],
+        upstream,
+      );
+      expect(response.status).toBe(413);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('relays the export with the ids, columns and list query that have the right shape', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        get(
+          `catalog/admin/products/export?format=csv&columns=code,offers&ids=${id},${second}&view=all&q=lamb&extra=1`,
+        ),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/catalog/admin/products/export?format=csv&columns=code%2Coffers&ids=${id}%2C${second}&view=all&q=lamb`,
+      );
+    });
+
+    it('passes 200 ids and drops a list of 201, a bad column and the xlsx format', async () => {
+      const upstream = upstreamOk();
+      const ids = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+        ).join(',');
+      await relay(
+        config,
+        get(`catalog/admin/products/export?ids=${ids(200)}`),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get(`catalog/admin/products/export?ids=${ids(201)}`),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get('catalog/admin/products/export?columns=code,secret&format=xlsx'),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toContain(encodeURIComponent(ids(200)));
+      expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products/export');
+      expect(upstream.mock.calls[2]?.[0]).toBe('http://api.test/catalog/admin/products/export');
+    });
+
+    it('does not relay an export as a write', async () => {
+      const upstream = upstreamOk();
+      expect(
+        (await relay(config, post('catalog/admin/products/export'), exportPath, upstream)).status,
+      ).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+  });
+
   it('refuses a write, another photo size, a take-down and a product that is not a UUID', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, post('catalog/admin/products'), path, upstream)).status).toBe(404);

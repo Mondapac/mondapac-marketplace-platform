@@ -202,6 +202,8 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     readonly categories?: readonly Category[];
     /** Never published: the revision is only pending. */
     readonly pendingOnly?: boolean;
+    /** A published product the admin paused (catalog design 4.1a). */
+    readonly paused?: boolean;
     readonly changedAt?: Temporal.Instant;
     readonly createdAt?: Temporal.Instant;
     readonly target?: typeof market;
@@ -291,6 +293,13 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
         (options.changedAt ?? T0).toString(),
       ],
     );
+    if (options.paused === true) {
+      await owner.query(
+        `UPDATE catalog.products SET paused_at = now(), paused_by_account_id = $3
+          WHERE market_id = $1 AND id = $2`,
+        [target.marketId, productId, uuid7()],
+      );
+    }
     return {
       productId,
       productCode,
@@ -415,6 +424,98 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     const narrowed = await ask({ sellerId: mine, view: 'all', status: 'withdrawn' });
     expect(narrowed.items.map((i) => i.productId)).toEqual([withdrawn.productId]);
     expect(narrowed.counts).toEqual({ active: 0, all: 1, inactive: 1 });
+  });
+
+  it('shows a paused product in the Inactive tab as Paused, not in Active, and filters by Paused', async () => {
+    const mine = seller();
+    const live = await make({ sellerId: mine, name: 'Live' });
+    const paused = await make({ sellerId: mine, name: 'Paused one', paused: true });
+    const withdrawn = await make({ sellerId: mine, status: 'withdrawn' });
+
+    const active = await ask({ sellerId: mine, view: 'active' });
+    const inactive = await ask({ sellerId: mine, view: 'inactive' });
+    const all = await ask({ sellerId: mine, view: 'all' });
+
+    expect(active.items.map((i) => i.productId)).toEqual([live.productId]);
+    expect(inactive.items.map((i) => [i.productId, i.status]).sort()).toEqual(
+      [
+        [paused.productId, 'paused'],
+        [withdrawn.productId, 'withdrawn'],
+      ].sort(),
+    );
+    expect(all.items.map((i) => i.status).sort()).toEqual(['paused', 'published', 'withdrawn']);
+    expect(all.counts).toEqual({ active: 1, all: 3, inactive: 2 });
+    // The status filter tells paused from published, which are the same stored status.
+    const onlyPaused = await ask({ sellerId: mine, view: 'all', status: 'paused' });
+    const onlyPublished = await ask({ sellerId: mine, view: 'all', status: 'published' });
+    expect(onlyPaused.items.map((i) => i.productId)).toEqual([paused.productId]);
+    expect(onlyPublished.items.map((i) => i.productId)).toEqual([live.productId]);
+    expect(onlyPaused.counts).toEqual({ active: 0, all: 1, inactive: 1 });
+  });
+
+  describe('the reads of the bulk action and the export', () => {
+    it('answers which ids exist in this Market only, and their state with the Offer count', async () => {
+      const mine = seller();
+      const a = await make({ sellerId: mine });
+      const b = await make({ sellerId: mine, paused: true });
+      const platform = await make({ scope: 'PLATFORM' });
+      const foreign = await make({ target: other });
+      // One Offer per seller and product: three sellers, one of them deleted.
+      await offerOn(a, mine, `SKU-${uuid7().slice(-8)}`);
+      await offerOn(a, seller(), `SKU-${uuid7().slice(-8)}`);
+      await offerOn(a, seller(), `SKU-${uuid7().slice(-8)}`, true);
+      const reader = new PrismaAdminProductsReader(db.service);
+      const wanted = [a.productId, b.productId, platform.productId, foreign.productId];
+
+      const found = await run(market, () => reader.existing(market, wanted));
+      const states = await run(market, () => reader.states(market, wanted));
+
+      expect([...found].sort()).toEqual([a.productId, b.productId, platform.productId].sort());
+      const byId = new Map(states.map((state) => [state.productId, state]));
+      expect(byId.get(a.productId)).toMatchObject({
+        scope: 'SELLER',
+        status: 'published',
+        paused: false,
+        offerCount: 2,
+      });
+      expect(byId.get(b.productId)).toMatchObject({ paused: true, offerCount: 0 });
+      expect(byId.get(platform.productId)).toMatchObject({ scope: 'PLATFORM', paused: false });
+      expect(byId.has(foreign.productId)).toBe(false);
+    });
+
+    it('resolves a filter to ids, newest change first, at most the limit, and rows by id in order', async () => {
+      const mine = seller();
+      const old = await make({ sellerId: mine, changedAt: T0 });
+      const newer = await make({ sellerId: mine, changedAt: T0.add({ hours: 1 }) });
+      const newest = await make({ sellerId: mine, changedAt: T0.add({ hours: 2 }), paused: true });
+      const reader = new PrismaAdminProductsReader(db.service);
+      const filter = {
+        matches: [
+          { status: 'published' as const, paused: false },
+          { status: 'published' as const, paused: true },
+        ],
+        scope: null,
+        categoryId: null,
+        typeCode: null,
+        sellerId: mine,
+        text: null,
+        locale,
+      };
+
+      const idsAll = await run(market, () => reader.ids(market, filter, 10));
+      const idsTwo = await run(market, () => reader.ids(market, filter, 2));
+      const rows = await run(market, () =>
+        reader.rowsByIds(market, [old.productId, newest.productId, newer.productId], locale),
+      );
+
+      expect(idsAll).toEqual([newest.productId, newer.productId, old.productId]);
+      expect(idsTwo).toEqual([newest.productId, newer.productId]);
+      expect(rows.map((row) => [row.productId, row.status])).toEqual([
+        [old.productId, 'published'],
+        [newest.productId, 'paused'],
+        [newer.productId, 'published'],
+      ]);
+    });
   });
 
   it('searches the name in the Market locale, ignoring case, and the product code', async () => {
