@@ -51,6 +51,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/slug',
     'sellers/my-file/identifier',
     'inventory/seller/sources-order',
+    // The whole Store profile page in one save (text, logo and banner), and the single parts.
+    'sellers/store-profile',
     // The About text, the logo and the banner of the store (slice 12 part 2).
     'sellers/store-profile/about',
     'sellers/store-profile/logo',
@@ -180,12 +182,16 @@ function isAllowed(method: string, path: readonly string[]): boolean {
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_PHOTO_BODY_BYTES = 5800 * 1024;
 const PHOTO_UPLOAD = 'catalog/seller/products/:id/images';
+/** The whole-profile save carries the text and up to two such pictures: twice the photo body. */
+const MAX_PROFILE_SAVE_BODY_BYTES = 2 * MAX_PHOTO_BODY_BYTES;
+const STORE_PROFILE_SAVE = 'sellers/store-profile';
 const STORE_IMAGE_UPLOADS: ReadonlySet<string> = new Set([
   'sellers/store-profile/logo',
   'sellers/store-profile/banner',
 ]);
 
 function bodyLimitFor(method: string, path: readonly string[]): number {
+  if (method === 'PUT' && path.join('/') === STORE_PROFILE_SAVE) return MAX_PROFILE_SAVE_BODY_BYTES;
   if (method === 'PUT' && STORE_IMAGE_UPLOADS.has(path.join('/'))) return MAX_PHOTO_BODY_BYTES;
   return method === 'POST' && matches(PHOTO_UPLOAD, path) ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES;
 }

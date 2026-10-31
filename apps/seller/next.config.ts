@@ -18,6 +18,9 @@ const config: NextConfig = {
   poweredByHeader: false,
   // `next dev` writes an AGENTS.md into the app folder; the repository keeps its agent rules elsewhere.
   agentRules: false,
+  // The combined store-profile save carries both pictures (the BFF allows up to 2 x the photo cap);
+  // Next's proxy buffer defaults to 10 MB.
+  experimental: { proxyClientMaxBodySize: '60mb' },
   redirects: () => Promise.resolve(settingsRedirects),
 };
 

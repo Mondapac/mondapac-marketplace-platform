@@ -136,6 +136,7 @@ import { StoreImageReadOwn } from './application/use-cases/store-image-read-own.
 import { StoreImageRemove } from './application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from './application/use-cases/store-image-save.use-case';
 import { StoreProfileRead } from './application/use-cases/store-profile-read.use-case';
+import { StoreProfileSave } from './application/use-cases/store-profile-save.use-case';
 import { StoreProfileSaveAbout } from './application/use-cases/store-profile-save-about.use-case';
 import { storeProfileProviders } from './infrastructure/store-profile-providers';
 import { PublicStoreImageController } from './presentation/public-store-image.controller';
@@ -341,6 +342,18 @@ const REVIEW_DECISION_PORTS = {
       counters: true,
       counterKeys: true,
       claimCheck: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(StoreProfileSave, {
+      ...STORE_PROFILE_READ_PORTS,
+      audit: true,
+      outbox: true,
+      counters: true,
+      counterKeys: true,
+      claimCheck: true,
+      imageProcessor: true,
+      objectStore: true,
       ids: true,
       clock: true,
     }),

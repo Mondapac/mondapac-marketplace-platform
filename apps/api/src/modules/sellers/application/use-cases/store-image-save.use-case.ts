@@ -1,23 +1,17 @@
-import { createHash } from 'node:crypto';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
-import { IMAGE_BUSY_RETRY_SECONDS } from '../../../../platform/images/image-pipeline';
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import { SELLERS_STORE_PROFILE_EDIT } from '../../contracts/permissions';
 import { StoreImageChanged } from '../../domain/audit';
 import { STORE_IMAGE_LIMITS } from '../../domain/rate-limits';
-import {
-  isStoreImageKind,
-  STORE_IMAGE_MAX_UPLOAD_BYTES,
-  type StoreImageKind,
-} from '../../domain/store-image';
+import { isStoreImageKind, type StoreImageKind } from '../../domain/store-image';
 import { logDraftOutcome, reserveRateLimits, sellerActorOf } from '../draft/draft-support';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { StoreImageProcessor, StoreImageRefusalCode } from '../ports/store-image-processor';
-import type { StoredStoreRendition } from '../ports/store-image.repository';
+import { decodeImageData, stageStoreImage } from '../store-profile/stage-store-image';
 import {
   loadStoreProfileView,
   storeProfileLogger,
@@ -25,7 +19,7 @@ import {
   type StoreProfileView,
   type StoreProfileWriteFailure,
 } from '../store-profile/store-profile';
-import { removeObjects, storeImageObjectKey } from '../store-profile/store-image-objects';
+import { removeObjects } from '../store-profile/store-image-objects';
 
 export interface StoreImageSaveInput {
   readonly kind?: unknown;
@@ -47,8 +41,6 @@ export interface StoreImageSaveDependencies extends StoreProfileReadDependencies
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }
-
-const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 /**
  * `store-image.save` (sellers design 3.7, 6.2 `my-store-profile.save`; slice 12 part 2): sets or
@@ -113,47 +105,16 @@ export class StoreImageSave extends UseCase<
 
     const kind = input.kind;
     if (!isStoreImageKind(kind)) return fail('kind', 'format');
-    const data = input.data;
-    if (typeof data !== 'string' || data.length === 0) return fail('data', 'required');
-    if (data.length > Math.ceil((STORE_IMAGE_MAX_UPLOAD_BYTES * 4) / 3) + 4) {
-      return err({ code: 'file.too-large' });
-    }
-    if (data.length % 4 !== 0 || !BASE64.test(data)) return fail('data', 'format');
+    const decoded = decodeImageData(input.data, 'data');
+    if (!decoded.ok) return decoded;
+    const bytes = decoded.value;
 
     const ready = await this.approved(context, owner.sellerId);
     if (!ready.ok) return ready;
 
-    const bytes = Buffer.from(data, 'base64');
-    const processed = await deps.imageProcessor.process(kind, bytes);
-    if (!processed.ok) {
-      // Too many pictures are in flight: a 503 with a short wait, before anything is stored.
-      return processed.error.code === 'file.busy'
-        ? err({ code: 'access.unavailable', retryAfterSeconds: IMAGE_BUSY_RETRY_SECONDS })
-        : err({ code: processed.error.code });
-    }
-
-    const imageId = deps.ids.next<'StoreImage'>();
-    const renditions: StoredStoreRendition[] = [];
-    const stored: string[] = [];
-    try {
-      for (const rendition of processed.value) {
-        const objectKey = storeImageObjectKey(owner.sellerId, imageId, rendition.size);
-        await deps.objectStore.put(objectKey, rendition.bytes);
-        stored.push(objectKey);
-        renditions.push({
-          size: rendition.size,
-          objectKey,
-          sha256: createHash('sha256').update(rendition.bytes).digest(),
-          byteSize: rendition.bytes.length,
-          width: rendition.width,
-          height: rendition.height,
-        });
-      }
-    } catch {
-      await removeObjects(deps.objectStore, stored);
-      return err({ code: 'access.unavailable' });
-    }
-    const largest = renditions[0]!;
+    const staged = await stageStoreImage(deps, owner.sellerId, kind, bytes);
+    if (!staged.ok) return staged;
+    const { imageId, renditions, width, height, objectKeys: stored } = staged.value;
     let outcome: Result<readonly string[], StoreImageSaveFailure>;
     try {
       outcome = await deps.unitOfWork.run<readonly string[], StoreImageSaveFailure>(
@@ -166,8 +127,8 @@ export class StoreImageSave extends UseCase<
             id: imageId,
             kind,
             uploaderAccountId: owner.accountId,
-            width: largest.width,
-            height: largest.height,
+            width,
+            height,
             uploadedBytes: bytes.length,
             createdAt: deps.clock.now(),
             renditions,

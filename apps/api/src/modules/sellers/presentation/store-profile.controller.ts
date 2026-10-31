@@ -23,6 +23,7 @@ import {
   ApiOperation,
   ApiPayloadTooLargeResponse,
   ApiProperty,
+  ApiPropertyOptional,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -45,6 +46,7 @@ import {
   StoreProfileRead,
   type StoreProfileView,
 } from '../application/use-cases/store-profile-read.use-case';
+import { StoreProfileSave } from '../application/use-cases/store-profile-save.use-case';
 import { StoreProfileSaveAbout } from '../application/use-cases/store-profile-save-about.use-case';
 import { STORE_ABOUT_MAX_LENGTH } from '../domain/store-about';
 import { STORE_IMAGE_MAX_UPLOAD_BYTES, type StoreImageKind } from '../domain/store-image';
@@ -54,8 +56,10 @@ import {
   jsonOf,
   parseSaveAboutBody,
   parseSaveImageBody,
+  parseSaveProfileBody,
   type SaveAboutBody,
   type SaveImageBody,
+  type SaveProfileBody,
 } from './store-profile.body';
 
 /** The status of the refusals the picture routes add to the draft table. */
@@ -119,6 +123,23 @@ export class SaveImageRequest {
   data!: string;
 }
 
+export class SaveProfileRequest extends SaveAboutRequest {
+  @ApiPropertyOptional({
+    type: SaveImageRequest,
+    nullable: true,
+    description:
+      'Leave out to keep the logo, null to remove it, or { data } (base64) to set or replace it.',
+  })
+  logo?: SaveImageRequest | null;
+
+  @ApiPropertyOptional({
+    type: SaveImageRequest,
+    nullable: true,
+    description: 'As the logo, for the banner.',
+  })
+  banner?: SaveImageRequest | null;
+}
+
 const NO_STORE = 'no-store';
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
@@ -152,6 +173,7 @@ export class StoreProfileController {
   constructor(
     private readonly read: StoreProfileRead,
     private readonly saveAbout: StoreProfileSaveAbout,
+    private readonly saveProfile: StoreProfileSave,
     private readonly saveImage: StoreImageSave,
     private readonly removeImage: StoreImageRemove,
     private readonly readImage: StoreImageReadOwn,
@@ -179,6 +201,63 @@ export class StoreProfileController {
   ): Promise<StoreProfileBody> {
     const result = await this.read.execute(context, {});
     return this.settle('sellers.store-profile-read', context, response, result, 'read');
+  }
+
+  @Put()
+  @Header('Cache-Control', NO_STORE)
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Save the About text and the pictures as one',
+    description:
+      'Needs sellers.store-profile.edit. The whole Store profile page in one versioned save: the ' +
+      'About text of each locale, and the logo and banner (leave out to keep, null to remove, ' +
+      '{ data } to set or replace, at most 4 MiB of bytes each). Every part commits or none ' +
+      'does; a picture change is a new revision and the version rises. Buyers see it at once ' +
+      '(no review). Texts are trimmed, at most 2000 characters, plain text with no link, no ' +
+      'hidden character and no certification claim (about.<locale> with url, characters, length ' +
+      'or claim-term in details.fields). A refused picture is its file.* answer with ' +
+      'details.kind (logo or banner). A stale expectedVersion is conflict.stale. Audited.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: SaveProfileRequest })
+  @ApiOkResponse({ type: StoreProfileBody })
+  @ApiBadRequestResponse({ type: SellersErrorBody, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ type: SellersErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiConflictResponse({ type: SellersErrorBody, description: 'conflict.stale (read and retry)' })
+  @ApiPayloadTooLargeResponse({ type: SellersErrorBody, description: 'file.too-large' })
+  @ApiUnprocessableEntityResponse({
+    type: SellersErrorBody,
+    description: 'file.too-many-pixels, file.too-small or file.unreadable (details.kind)',
+  })
+  @ApiUnsupportedMediaTypeResponse({
+    type: SellersErrorBody,
+    description: 'Not application/json, or file.unsupported-type',
+  })
+  @ApiTooManyRequestsResponse({
+    type: SellersErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async putProfile(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<StoreProfileBody> {
+    const msg = 'sellers.store-profile-save';
+    this.#requireJson(msg, context, request);
+    const parsed = parseSaveProfileBody(jsonOf(body));
+    if (Array.isArray(parsed)) {
+      this.#log(msg, context, 'validation.failed');
+      throw fail(400, 'validation.failed', { fields: parsed });
+    }
+    const result = await this.saveProfile.execute(context, parsed as SaveProfileBody);
+    return this.settle(msg, context, response, result, 'saved');
   }
 
   @Put('about')
@@ -423,18 +502,18 @@ export class StoreProfileController {
     }
   }
 
-  #errorOf(error: { readonly code: string }, response: Response) {
+  #errorOf(error: { readonly code: string; readonly kind?: string }, response: Response) {
     const status = IMAGE_STATUS[error.code];
-    return status === undefined
-      ? errorOf(error as MyFileError, response)
-      : fail(status, error.code);
+    if (status === undefined) return errorOf(error as MyFileError, response);
+    // A refused picture of the whole-profile save says which one it was.
+    return fail(status, error.code, error.kind === undefined ? undefined : { kind: error.kind });
   }
 
   private settle(
     msg: string,
     context: CallContext,
     response: Response,
-    result: Result<StoreProfileView, { readonly code: string }>,
+    result: Result<StoreProfileView, { readonly code: string; readonly kind?: string }>,
     okCode: string,
   ): StoreProfileBody {
     this.#log(msg, context, result.ok ? okCode : result.error.code);
