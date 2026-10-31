@@ -69,7 +69,7 @@ export function prescanSheet(xml: Uint8Array, limits: ImportLimits): FileRefusal
       if (BLANKS.has(byte) || byte === GT || byte === SLASH) break;
       nameEnd += 1;
     }
-    const name = bytes.latin1Slice(open + 1, nameEnd);
+    const name = bytes.toString('latin1', open + 1, nameEnd);
     const local = name.slice(name.lastIndexOf(':') + 1);
     if (local !== 'row' && local !== 'c') {
       at = nameEnd;
@@ -99,7 +99,7 @@ export function prescanSheet(xml: Uint8Array, limits: ImportLimits): FileRefusal
     if (end >= tagLimit) return { code: 'file.unreadable' };
     rows += 1;
     if (rows > lastRowNumber) return tooManyRows;
-    const number = rowNumberOf(bytes.latin1Slice(nameEnd, end));
+    const number = rowNumberOf(bytes.toString('latin1', nameEnd, end));
     if (number === 'not-a-number') return { code: 'file.unreadable' };
     if (number === 'huge') return tooManyRows;
     if (number !== null) {
