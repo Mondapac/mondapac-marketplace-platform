@@ -130,6 +130,19 @@ describe('admin product list', () => {
     }
   });
 
+  it('shows the Import button only with the platform-import key, linking to the import page', async () => {
+    serve(() => page([row()]));
+    const first = mount([...ALL_KEYS, 'catalog.platform-import.run']);
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.getByRole('link', { name: 'Import' }).getAttribute('href')).toBe(
+      '/catalog/products/import',
+    );
+    first.unmount();
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.queryByRole('link', { name: 'Import' })).toBeNull();
+  });
+
   it('shows the four fixed columns by default: product with code, category, status', async () => {
     serve(() => page([row()]));
     mount();

@@ -1,11 +1,6 @@
 import { createHash } from 'node:crypto';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
-import type {
-  AttributeField,
-  Id,
-  MarketContext,
-  Result,
-} from '@mondapac/shared-kernel';
+import type { AttributeField, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -14,7 +9,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
-import type { AuthorisationCheck , JobCallContexts} from '../../../../platform/authz';
+import type { AuthorisationCheck, JobCallContexts } from '../../../../platform/authz';
 import { type AdminJobContext } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';

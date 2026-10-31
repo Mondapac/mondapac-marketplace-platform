@@ -1361,3 +1361,90 @@ describe('relay of the product list', () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe('relay of the product import', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const base = ['catalog', 'admin', 'platform-imports'];
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it('relays the template, the current import and one import, GET only', async () => {
+    const upstream = upstreamOk();
+    for (const path of [
+      [...base, 'template'],
+      [...base, 'current'],
+      [...base, id],
+    ]) {
+      expect((await relay(config, get(path.join('/')), path, upstream)).status).toBe(200);
+    }
+    expect(upstream).toHaveBeenCalledTimes(3);
+    const notAnId = [...base, 'nope'];
+    expect((await relay(config, get(notAnId.join('/')), notAnId, upstream)).status).toBe(404);
+  });
+
+  it('relays the report with its kind only, and passes the file name header back', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('Row,Problem\n', {
+          status: 200,
+          headers: {
+            'content-type': 'text/csv; charset=utf-8',
+            'content-disposition': 'attachment; filename="import-errors.csv"',
+          },
+        }),
+      ),
+    );
+    const path = [...base, id, 'report'];
+    const response = await relay(
+      config,
+      get(`${path.join('/')}?kind=errors&extra=1`),
+      path,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path.join('/')}?kind=errors`);
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="import-errors.csv"',
+    );
+  });
+
+  it('relays the upload, start, resume and discard as same-origin POSTs only', async () => {
+    const upstream = upstreamOk();
+    expect((await relay(config, post(base.join('/')), base, upstream)).status).toBe(200);
+    for (const action of ['start', 'resume', 'discard']) {
+      const path = [...base, id, action];
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+      expect(
+        (
+          await relay(
+            config,
+            post(path.join('/'), { host: 'admin.localhost:3002' }),
+            path,
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+    }
+    expect(upstream).toHaveBeenCalledTimes(4);
+    expect((await relay(config, get(base.join('/')), base, upstream)).status).toBe(404);
+  });
+
+  it('lets the upload carry a large body and keeps every other path at 16 KB', async () => {
+    const upstream = upstreamOk();
+    const large = JSON.stringify({ fileName: 'a.csv', data: 'x'.repeat(2 * 1024 * 1024) });
+    expect(
+      (await relay(config, post(base.join('/'), sameOrigin, large), base, upstream)).status,
+    ).toBe(200);
+    const tooLarge = JSON.stringify({ data: 'x'.repeat(15 * 1024 * 1024) });
+    expect(
+      (await relay(config, post(base.join('/'), sameOrigin, tooLarge), base, upstream)).status,
+    ).toBe(413);
+    const start = [...base, id, 'start'];
+    expect(
+      (await relay(config, post(start.join('/'), sameOrigin, large), start, upstream)).status,
+    ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});

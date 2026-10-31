@@ -51,6 +51,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/categories',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
+    // Import products (catalog): the CSV template and the admin's current import.
+    'catalog/admin/platform-imports/template',
+    'catalog/admin/platform-imports/current',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -108,6 +111,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
     // the chosen products (at most 200 ids) or the whole filter; the body is capped at 16 KB.
     'catalog/admin/products/bulk',
+    // Import products (catalog): the checked file, as base64 in a JSON body (the one path with a
+    // larger body cap, see UPLOAD_PATH).
+    'catalog/admin/platform-imports',
   ]),
 };
 
@@ -117,6 +123,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // Start, resume or discard one checked import (catalog).
+    'catalog/admin/platform-imports/:id/start',
+    'catalog/admin/platform-imports/:id/resume',
+    'catalog/admin/platform-imports/:id/discard',
     'identity/admin/accounts/:id/disable',
     'identity/admin/accounts/:id/enable',
     'identity/admin/accounts/:id/role',
@@ -165,6 +175,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   GET: [
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
+    // One import and its report CSV (catalog): the report takes the query `kind`.
+    'catalog/admin/platform-imports/:id',
+    'catalog/admin/platform-imports/:id/report',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -268,6 +281,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
+  'catalog/admin/platform-imports/:id/report': ['kind'],
 };
 const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
@@ -328,7 +342,12 @@ const FORWARDED_REQUEST_HEADERS = [
 ] as const;
 
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
-const FORWARDED_RESPONSE_HEADERS = ['content-type', 'retry-after'] as const;
+const FORWARDED_RESPONSE_HEADERS = [
+  'content-type',
+  'retry-after',
+  // The import report CSV arrives as an attachment with a file name the API made.
+  'content-disposition',
+] as const;
 
 /** The API issues the correlation id and returns it in this header (ADR-0034 decision 3). */
 const CORRELATION_HEADER = 'x-correlation-id';
@@ -338,6 +357,12 @@ export type RelayLog = (line: Record<string, string | number>) => void;
 const stdoutLog: RelayLog = (line) => console.log(JSON.stringify(line));
 
 const MAX_BODY_BYTES = 16 * 1024;
+/**
+ * The import upload carries a file of at most 10 MiB as base64 (about 14 MB). The API accepts
+ * 14500 kB for this one path and checks the real size itself; every other path keeps 16 KB.
+ */
+const UPLOAD_PATH = 'catalog/admin/platform-imports';
+const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
 
 /** Lower case, no trailing dot on the host name; the port stays. */
 export function normaliseHost(raw: string | null): string | null {
@@ -435,12 +460,14 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
+  const bodyCap =
+    request.method === 'POST' && target === UPLOAD_PATH ? MAX_UPLOAD_BODY_BYTES : MAX_BODY_BYTES;
   const declared = Number(request.headers.get('content-length') ?? 0);
-  if (declared > MAX_BODY_BYTES) return jsonError(413, 'request.too-large');
+  if (declared > bodyCap) return jsonError(413, 'request.too-large');
   let body: string | undefined;
   if (request.method !== 'GET') {
     // Read the stream with a hard cap, so a chunked body without Content-Length is refused too.
-    const read = await readCapped(request, MAX_BODY_BYTES);
+    const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
   }

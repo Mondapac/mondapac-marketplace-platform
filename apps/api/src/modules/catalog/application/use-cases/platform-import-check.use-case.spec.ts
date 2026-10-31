@@ -31,7 +31,10 @@ import type { CategoryTreeReader } from '../ports/category-tree.reader';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { NewImportJob, PlatformImportRepository } from '../ports/platform-import.repository';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
-import { PlatformImportCheck } from './platform-import-check.use-case';
+import {
+  PlatformImportCheck,
+  type PlatformImportCheckInput,
+} from './platform-import-check.use-case';
 
 // `platform-import.check` in memory on both Market fixtures (catalog design 14a): what a check
 // stores and, as important, what it never touches. The database behaviour is in test/db.
@@ -73,7 +76,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
     const ids = new SequenceIdGenerator(clock);
     const jobs: NewImportJob[] = [];
     const rows: ImportRowRecord[] = [];
-    const files = new Map<string, Uint8Array>();
+    const files = new Map<string, Buffer>();
     const reserved: string[] = [];
     const unitOfWork = {
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
@@ -205,7 +208,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
     ['an empty body', { fileName: 'a.csv', data: '' }, 'validation.failed'],
     ['a name that is not text', { fileName: 7, data: 'QQ==' }, 'validation.failed'],
     ['data that is not base64', { fileName: 'a.csv', data: '@@@@' }, 'validation.failed'],
-    ['no data', { fileName: 'a.csv' }, 'validation.failed'],
+    ['no data', { fileName: 'a.csv' } as unknown as PlatformImportCheckInput, 'validation.failed'],
   ])('refuses %s without storing anything', async (_label, input, expected) => {
     const r = rig();
     const result = await r.useCase.execute(contextOf('admin', r.ids), input);

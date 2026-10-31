@@ -5,6 +5,7 @@ import {
   Button,
   EmptyState,
   FilterChip,
+  LinkButton,
   Popover,
   SearchField,
   SkeletonRows,
@@ -253,19 +254,26 @@ export function ProductsList({
         <p className="min-w-0 text-sm text-fg-muted">
           {counts === null ? '' : t('subtitle', { count: counts.all, market: marketId })}
         </p>
-        <ProductsBulk
-          selection={{ ids: [...selected], allMatching, total: answer?.total ?? 0 }}
-          query={query}
-          columns={columns}
-          permissionKeys={permissionKeys}
-          csrfToken={csrfToken}
-          onSelectAll={() => setAllMatching(true)}
-          onClear={clearSelection}
-          onChanged={() => {
-            clearSelection();
-            void load(query);
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {permissionKeys.includes('catalog.platform-import.run') ? (
+            <LinkButton variant="secondary" href="/catalog/products/import">
+              {t('import')}
+            </LinkButton>
+          ) : null}
+          <ProductsBulk
+            selection={{ ids: [...selected], allMatching, total: answer?.total ?? 0 }}
+            query={query}
+            columns={columns}
+            permissionKeys={permissionKeys}
+            csrfToken={csrfToken}
+            onSelectAll={() => setAllMatching(true)}
+            onClear={clearSelection}
+            onChanged={() => {
+              clearSelection();
+              void load(query);
+            }}
+          />
+        </div>
       </div>
       <Tabs
         label={t('tabs')}
