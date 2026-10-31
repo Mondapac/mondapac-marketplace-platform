@@ -1220,4 +1220,83 @@ describe('relay of the wallet and step-up routes', () => {
       );
     }
   });
+
+  it.each([
+    ['GET', 'commission-payouts/admin/payouts'],
+    ['GET', `commission-payouts/admin/payouts/${id}`],
+    ['POST', `commission-payouts/admin/payouts/${id}/approve`],
+    ['GET', `commission-payouts/admin/sellers/${id}/payout-terms`],
+    ['PUT', `commission-payouts/admin/sellers/${id}/payout-terms`],
+    ['GET', `commission-payouts/admin/sellers/${id}/payout-holds`],
+    ['POST', `commission-payouts/admin/sellers/${id}/payout-holds`],
+    ['POST', `commission-payouts/admin/payout-holds/${id}/release`],
+  ])('relays the payout route %s %s', async (method, path) => {
+    const { response, upstream } = await run(
+      method,
+      path,
+      method === 'GET' ? readHeaders : undefined,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+  });
+
+  it('passes a payout list query only in the shape the API issues', async () => {
+    const cursor = `1790000000000.${id}`;
+    const ok = await run(
+      'GET',
+      `commission-payouts/admin/payouts?status=awaiting-approval&limit=50&cursor=${cursor}&x=1`,
+      readHeaders,
+    );
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?status=awaiting-approval&cursor=${encodeURIComponent(cursor)}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      'commission-payouts/admin/payouts?status=all&limit=100000&cursor=a%20b',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts',
+    );
+    // Only the states a tab shows cross; the API's other states are not relayed.
+    for (const state of ['pending', 'voided', 'settled-by-netting']) {
+      const other = await run(
+        'GET',
+        `commission-payouts/admin/payouts?status=${state}`,
+        readHeaders,
+      );
+      expect(other.upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/commission-payouts/admin/payouts',
+      );
+    }
+  });
+
+  it('passes the version and reason of removing payout terms, and nothing else', async () => {
+    const ok = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy&x=1`,
+    );
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy`,
+    );
+    const bad = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3.5&reasonCode=because`,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms`,
+    );
+  });
+
+  it('does not relay a payout write the panel has no screen for', async () => {
+    for (const [method, path] of [
+      ['DELETE', `commission-payouts/admin/payouts/${id}`],
+      ['PUT', `commission-payouts/admin/payouts/${id}`],
+      ['POST', `commission-payouts/admin/payouts/${id}/void`],
+    ] as const) {
+      const { response, upstream } = await run(method, path);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
 });

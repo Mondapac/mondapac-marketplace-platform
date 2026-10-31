@@ -116,7 +116,8 @@
     },
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
-    "disputes": "Disputes"
+    "disputes": "Disputes",
+    "payouts": "Payouts"
   },
   "home": {
     "title": "Dashboard",
@@ -2740,7 +2741,22 @@
           "delete": "delete a buyer's account or cancel a deletion request"
         }
       },
-      "fallback": "do this"
+      "fallback": "do this",
+      "commission-payouts": {
+        "dispute": {
+          "attribute": "record a dispute decision"
+        },
+        "payout": {
+          "approve": "approve a payout"
+        },
+        "payout-terms": {
+          "edit": "change a seller's payout terms"
+        },
+        "payout-hold": {
+          "place": "place a payout hold",
+          "release": "release a payout hold"
+        }
+      }
     },
     "label": {
       "code": "6-digit code",
@@ -3178,6 +3194,346 @@
         "not-found": "This case or seller order no longer exists.",
         "unknown": "The decision could not be saved. Try again."
       }
+    }
+  },
+  "payouts": {
+    "title": "Payouts",
+    "intro": "The money sent to sellers. A seller's first payout, and any payout the seller's terms say so for, waits here until an admin approves it.",
+    "no-access-title": "No access",
+    "no-access": "You do not have access to payouts.",
+    "not-found-title": "Payout not found",
+    "not-found": "This payout does not exist, or it belongs to another market.",
+    "back-home": "Back to the dashboard",
+    "tabs": "Payouts by stage",
+    "tab": {
+      "awaiting-approval": "Awaiting approval",
+      "sending": "Sending",
+      "paid": "Paid",
+      "failed": "Failed",
+      "not-sent": "Not sent"
+    },
+    "tab-count": "{label} ({count})",
+    "empty": {
+      "awaiting-approval": "No payouts are waiting for approval",
+      "sending": "No payouts are being sent",
+      "paid": "No payouts have been paid yet",
+      "failed": "No payouts have failed",
+      "not-sent": "No payouts were stopped before sending"
+    },
+    "today": {
+      "line": "Transfers sent today: {total} of {level} alert level.",
+      "over": "Above the alert level"
+    },
+    "footnote": "Times are shown in {zone}. Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
+    "zone-note": "Times are shown in {zone}.",
+    "loading": "Loading payouts",
+    "retry": "Try again",
+    "more": "Show more",
+    "loaded-more": "{count, plural, one {# more payout loaded} other {# more payouts loaded}}",
+    "error": {
+      "unavailable": "The payouts could not be loaded. Try again.",
+      "more": "More payouts could not be loaded. Try again."
+    },
+    "col": {
+      "payout": "Payout",
+      "seller": "Seller",
+      "amount": "Transfer",
+      "state": "State",
+      "why": "Approval",
+      "slot": "Planned for",
+      "actions": "Actions"
+    },
+    "ref": "Payout {id}",
+    "unnamed": "Seller {id}",
+    "state": {
+      "pending": "Planned",
+      "awaiting-approval": "Awaiting approval",
+      "approved": "Approved",
+      "instructing": "Sending",
+      "instructed": "Sent",
+      "paid": "Paid",
+      "failed": "Failed",
+      "not-sent": "Not sent",
+      "voided": "Cancelled",
+      "settled-by-netting": "Settled against debt",
+      "unknown": "Unknown"
+    },
+    "why": {
+      "auto": "Automatic",
+      "first-payout": "First payout",
+      "terms": "Seller's terms"
+    },
+    "review": "Review and approve",
+    "approve-for": "payout for {name}",
+    "approve-action": "Approve {amount}",
+    "approved-notice": "Approved {amount} for {seller}. The transfer is sent shortly.",
+    "approved-notice-seller": "the seller",
+    "you": "You",
+    "another-admin": "Another admin ({id})",
+    "detail": {
+      "page-title": "Payout",
+      "title": "Payout {id}"
+    },
+    "summary": {
+      "title": "Summary",
+      "seller": "Seller",
+      "state": "State",
+      "gross": "Seller orders taken",
+      "netted": "Kept against what the seller owes",
+      "transfer": "Transfer",
+      "approval": "Approval",
+      "slot": "Planned for",
+      "created": "Created",
+      "changed": "Last changed",
+      "outcome": "Outcome"
+    },
+    "outcome": {
+      "payout-unwound": "Stopped before sending. Nothing was sent.",
+      "transfer-failed": "The transfer failed after it was created.",
+      "transfer-refused": "The transfer was refused.",
+      "voided-hold": "Cancelled because a hold was placed.",
+      "voided-amount-changed": "Cancelled because the amount changed.",
+      "voided-access": "Cancelled because the seller can no longer be paid.",
+      "voided-account-not-ready": "Cancelled because the payout account was not ready.",
+      "voided-second-factor": "Cancelled because the owner's second step could not be confirmed.",
+      "refused": "Refused by payments ({code})."
+    },
+    "account": {
+      "title": "Payout account and limits",
+      "readiness": "Payout account",
+      "ready": "Ready",
+      "not-ready": "Not ready",
+      "unknown": "Not checked yet",
+      "bank-changed": "Bank account last changed",
+      "bank-changed-none": "Not on record yet",
+      "per-transfer": "Limit per transfer",
+      "today": "Sent today",
+      "today-value": "{total} of {level} alert level"
+    },
+    "approval": {
+      "title": "Approval",
+      "waiting": "Nobody has approved this payout yet.",
+      "none": "This payout did not need an approval, or it was not approved.",
+      "by": "Approved by",
+      "at": "Approved",
+      "amount": "Amount approved"
+    },
+    "items": {
+      "title": "Seller orders in this payout",
+      "note": "Each line is the seller's net amount for one order when it was taken.",
+      "none": "No seller orders.",
+      "order": "Seller order {id}",
+      "col": {
+        "order": "Order",
+        "share": "Seller's share"
+      }
+    },
+    "approve": {
+      "title": "Approve payout",
+      "intro": "Check what is sent. Your approval is for exactly this amount; if it changes first, the approval is refused.",
+      "loading": "Loading the payout",
+      "load-failed": "The payout could not be loaded. Try again.",
+      "retry": "Try again",
+      "seller": "Seller",
+      "unnamed": "Unnamed seller",
+      "why": "Why it waits",
+      "why-first-payout": "This is the seller's first payout",
+      "why-terms": "The seller's terms ask for approval",
+      "account": "Payout account",
+      "account-ready": "Ready",
+      "account-not-ready": "Not ready",
+      "account-unknown": "Not checked yet",
+      "bank-changed": "Bank account last changed",
+      "bank-changed-none": "Not on record yet",
+      "gross": "Seller orders taken",
+      "netted": "Kept against what the seller owes",
+      "transfer": "Transfer",
+      "limit": "Limit per transfer",
+      "today": "Sent today",
+      "today-value": "{total} of {level} alert level",
+      "zone-note": "Times are shown in {zone}.",
+      "not-ready": "The seller's payout account is not ready, so this payout cannot be sent. It cannot be approved now.",
+      "above-limit": "This transfer is above the limit of {limit} per transfer, so it would not be sent. It cannot be approved.",
+      "over-level": "Today's total is above the daily alert level. You can still approve; the platform will be alerted.",
+      "action": "Approve {amount}",
+      "cancel": "Cancel",
+      "close": "Close",
+      "done": "Payout approved. The transfer is sent shortly.",
+      "done-stale": "Payout approved. The page could not read it again; reload to see its state.",
+      "error": {
+        "amount-changed": "The amount changed. Close and review again.",
+        "not-awaiting": "This payout is no longer waiting for approval. Close and review again.",
+        "not-found": "This payout no longer exists.",
+        "denied": "You cannot approve payouts. Your account may lack permission, or you may be acting as a seller.",
+        "session": "Your session expired. Reload the page and try again.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "unavailable": "The approval could not be sent. Try again.",
+        "unknown": "The payout could not be approved. Try again."
+      }
+    },
+    "seller": {
+      "terms": {
+        "title": "Payout terms",
+        "schedule": "Schedule",
+        "seller-time": ", seller's time",
+        "hold-carrier": "Hold after courier delivery",
+        "hold-click": "Hold after the seller marks delivered",
+        "minimum": "Minimum payout",
+        "minor-units": "{amount} (minor units)",
+        "approval": "Approval",
+        "first-payout": "First payout",
+        "first-manual": "Waits for an admin",
+        "first-auto": "Sent automatically",
+        "own": "Set for this seller",
+        "days": "{count, plural, one {# day} other {# days}}",
+        "mode": {
+          "AUTO": "Automatic",
+          "MANUAL": "Manual"
+        },
+        "day": {
+          "MON": "Monday",
+          "TUE": "Tuesday",
+          "WED": "Wednesday",
+          "THU": "Thursday",
+          "FRI": "Friday",
+          "SAT": "Saturday",
+          "SUN": "Sunday"
+        },
+        "day-short": {
+          "MON": "Mon",
+          "TUE": "Tue",
+          "WED": "Wed",
+          "THU": "Thu",
+          "FRI": "Fri",
+          "SAT": "Sat",
+          "SUN": "Sun"
+        },
+        "note-market": "Every value comes from the Market default. Editing needs a fresh authenticator code and is recorded in the audit log.",
+        "note-seller": "Values without a badge come from the Market default. Editing needs a fresh authenticator code and is recorded in the audit log.",
+        "edit": "Edit for this seller",
+        "remove": "Back to Market default",
+        "edit-title": "Edit payout terms",
+        "edit-intro": "Tick a value to set it for this seller. A value that is not ticked follows the Market default.",
+        "own-field": "Set {field} for this seller",
+        "days-group": "Payout days",
+        "time": "Time of day",
+        "time-help": "24-hour time in the seller's own time zone, such as 10:00.",
+        "hold-help": "Whole days, {min} to {max}.",
+        "minimum-in": "Minimum payout ({currency})",
+        "minimum-help": "A smaller payout carries over to the next one.",
+        "minimum-no-currency": "The currency is not known on this page, so the minimum cannot be edited here.",
+        "reason": {
+          "label": "Reason",
+          "placeholder": "Choose a reason",
+          "seller-request": "The seller asked",
+          "risk-review": "Risk review",
+          "correction": "Correction",
+          "policy": "Policy"
+        },
+        "cancel": "Cancel",
+        "save": "Save terms",
+        "remove-title": "Back to the Market default",
+        "remove-body": "This seller's own payout terms are removed. The seller follows the Market default from the next payout.",
+        "remove-yes": "Remove seller terms",
+        "done": {
+          "saved": "Payout terms saved.",
+          "removed": "The seller is back on the Market default."
+        },
+        "error": {
+          "days": "Choose at least one day.",
+          "time": "Enter a time such as 10:00.",
+          "hold-days": "Enter whole days from {min} to {max}.",
+          "minimum": "Enter an amount such as 50.00.",
+          "none": "Tick at least one value to set for this seller.",
+          "reason": "Choose a reason.",
+          "seller-not-found": "This seller no longer exists.",
+          "version-conflict": "These terms changed while you were editing. They are shown again; review and try again.",
+          "terms-not-set": "This seller already follows the Market default.",
+          "validation": "The terms were refused. Check the values and try again.",
+          "throttled": "Too many attempts. Wait a moment and try again.",
+          "session": "Your session expired. Reload the page and try again.",
+          "denied": "You cannot change payout terms. Your account may lack permission, or you may be acting as a seller.",
+          "unavailable": "The terms could not be saved. Try again.",
+          "unknown": "The terms could not be saved. Try again."
+        }
+      },
+      "holds": {
+        "title": "Payout holds",
+        "place": "Place a hold",
+        "place-title": "Place a payout hold",
+        "place-intro": "While a hold is active, the money it covers is not paid out. The seller sees only that it is on hold.",
+        "place-yes": "Place hold",
+        "reason-label": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "scope": {
+          "legend": "What it covers",
+          "seller": "The whole seller",
+          "order": "One seller order",
+          "order-id": "Seller order ID",
+          "order-help": "The seller order's full ID, which is on the order page."
+        },
+        "reason": {
+          "seller-suspended": "Seller suspended",
+          "unknown": "On hold",
+          "refund-pending": "Refund in progress",
+          "dispute": "Payment disputed",
+          "admin-review": "Admin review",
+          "bank-change": "Bank change"
+        },
+        "release": {
+          "resolved": "Resolved",
+          "placed-in-error": "Placed in error",
+          "seller-reinstated": "Seller reinstated",
+          "review-complete": "Review complete"
+        },
+        "release-title": "Release hold",
+        "release-body": "Release the {reason} hold on {covers}? The money it covers can be paid out in the next payout.",
+        "release-reason-label": "Reason for releasing",
+        "release-yes": "Release hold",
+        "suspended-note": "A suspended seller's hold is never released by the system. Only an admin can release it.",
+        "release-action": "Release",
+        "cancel": "Cancel",
+        "whole-seller": "Whole seller",
+        "order": "Seller order {id}",
+        "col": {
+          "covers": "Covers",
+          "reason": "Reason",
+          "placed": "Placed",
+          "status": "Status",
+          "actions": "Actions"
+        },
+        "origin": {
+          "admin": "admin",
+          "system": "system"
+        },
+        "placed-by": "{when}, {origin}",
+        "active": "Active",
+        "released": "Released {when}, {reason}",
+        "empty": {
+          "title": "No holds",
+          "body": "Nothing stops this seller's payouts."
+        },
+        "footnote": "Times are shown in {zone}. A dispute, refund or bank-change hold is released by the system when it ends. A suspended seller's hold is released only by an admin.",
+        "done": {
+          "placed": "Hold placed.",
+          "released": "Hold released."
+        },
+        "error": {
+          "reason": "Choose a reason.",
+          "order": "Enter the full seller order ID.",
+          "seller-not-found": "This seller no longer exists.",
+          "order-not-found": "That order is not one of this seller's orders.",
+          "hold-not-found": "This hold no longer exists. The list is shown again.",
+          "hold-released": "This hold was already released. The list is shown again.",
+          "validation": "The request was refused. Check the values and try again.",
+          "throttled": "Too many attempts. Wait a moment and try again.",
+          "session": "Your session expired. Reload the page and try again.",
+          "denied": "You cannot do this. Your account may lack permission, or you may be acting as a seller.",
+          "unavailable": "The change could not be saved. Try again.",
+          "unknown": "The change could not be saved. Try again."
+        }
+      },
+      "load-failed": "The payout terms and holds could not be loaded."
     }
   },
   "security": {

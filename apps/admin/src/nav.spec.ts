@@ -51,6 +51,7 @@ describe('admin nav: daily work only', () => {
       'sellers',
       'orders',
       'customers',
+      'payouts',
       'payout-accounts',
       'disputes',
       'wallet-credits',
@@ -129,6 +130,21 @@ describe('admin nav: Disputes', () => {
   it('is hidden without it, also with the decision key alone', () => {
     expect(ids([])).not.toContain('disputes');
     expect(ids(['commission-payouts.dispute.attribute'])).not.toContain('disputes');
+  });
+});
+
+describe('admin nav: Payouts', () => {
+  it('sits in Money right before Connected accounts, for commission-payouts.payout.view', () => {
+    expect(ids(['commission-payouts.payout.view'])).toEqual(['home', 'payouts']);
+    expect(ids(['commission-payouts.payout.approve'])).toEqual(['home']);
+    const order = adminNav.items.map((item) => item.id);
+    expect(order.indexOf('payouts')).toBe(order.indexOf('payout-accounts') - 1);
+    expect(adminNav.items.find((item) => item.id === 'payouts')).toMatchObject({
+      icon: 'receipt',
+      href: '/payouts',
+      group: 'money',
+      labelKey: 'nav.payouts',
+    });
   });
 });
 
