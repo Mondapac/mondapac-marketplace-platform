@@ -4,6 +4,7 @@ import {
   addressLines,
   Badge,
   Banner,
+  SettingsViewOnlyBanner,
   Button,
   DataList,
   SettingsPage,
@@ -111,9 +112,9 @@ export function StockLocations({
 
   const banners = [
     canEdit ? null : (
-      <Banner key="view-only" tone="info">
+      <SettingsViewOnlyBanner key="view-only" title={t('settings.view-only.title')}>
         {t('stock.view-only')}
-      </Banner>
+      </SettingsViewOnlyBanner>
     ),
     // A conflict while no editor is open (a move): the list is already up to date.
     mode === null && conflictId !== null ? (

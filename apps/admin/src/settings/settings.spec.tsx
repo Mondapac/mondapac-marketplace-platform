@@ -46,7 +46,8 @@ describe('SupportEmailCard', () => {
   it('shows the current address, and no form without the manage permission', () => {
     mount(contact('help@example.com'), false);
     expect(screen.getByText('help@example.com')).toBeTruthy();
-    expect(screen.getByText(/you need the "Support email: manage" permission/)).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(screen.getByText(/^Your role can see these settings but not change them/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByLabelText('Support email address')).toBeNull();
   });
@@ -105,7 +106,7 @@ describe('SupportEmailCard', () => {
       expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
       // The summary at the top names the field, takes focus, and its link goes to the field.
       const summary = screen.getByRole('alert');
-      expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+      expect(summary.textContent).toContain('1 setting needs fixing');
       expect(document.activeElement).toBe(summary);
       fireEvent.click(screen.getByRole('link', { name: 'Support email address' }));
       expect(document.activeElement).toBe(screen.getByLabelText('Support email address'));
@@ -152,13 +153,13 @@ describe('SupportEmailCard', () => {
     expect(screen.getByText('<b>ops</b>@example.com')).toBeTruthy();
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     const row = compared('Support email address');
     expect(row.saved).toBe('<b>ops</b>@example.com');
     expect(row.yours).toBe('care@example.com');
     // Text, never markup.
     expect(row.item.querySelector('b')).toBeNull();
-    const toggle = screen.getByRole('button', { name: 'Hide comparison' });
+    const toggle = screen.getByRole('button', { name: 'Hide what changed' });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy();
 

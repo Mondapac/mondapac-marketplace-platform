@@ -84,7 +84,7 @@ describe('StoreProfile About card', () => {
     fireEvent.change(box(), { target: { value: '  Family bakery, since 1990.  ' } });
     fireEvent.click(save());
 
-    await expectToast('Saved. Buyers can see it now.');
+    await expectToast('Store profile saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'sellers/store-profile/about',
@@ -107,7 +107,7 @@ describe('StoreProfile About card', () => {
     fireEvent.click(saving);
     finish(done(view({ version: 3, about: { 'en-AU': 'New text' } })));
 
-    await expectToast('Saved. Buyers can see it now.');
+    await expectToast('Store profile saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledTimes(1);
   });
 
@@ -123,7 +123,8 @@ describe('StoreProfile About card', () => {
     );
     // The error summary at the top links to the box.
     const summary = screen.getByRole('alert');
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain('1 setting needs fixing');
+    expect(summary.textContent).toContain('About your store (Australian English): Use at most');
     fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));
     expect(document.activeElement).toBe(box());
     expect(box().getAttribute('aria-invalid')).toBe('true');
@@ -186,7 +187,7 @@ describe('StoreProfile About card', () => {
     expect(boxFor(/English/).value).toBe('My edit');
     fireEvent.change(boxFor(/Japanese/), { target: { value: 'Mine' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     const english = compared(/^About your store \(.*English.*\)$/);
     expect(english).toMatchObject({ saved: '<b>Their</b> text', yours: 'My edit' });
     expect(english.item.querySelector('b')).toBeNull();
@@ -475,7 +476,12 @@ describe('StoreProfile without the edit permission', () => {
   it('shows the view-only banner and the content, with no way to change it', () => {
     mount(view({ logo: { id: IMAGE, width: 512, height: 512 }, banner: null }), false);
 
-    expect(screen.getByText(/You can see the store profile but not change it/)).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'You can see the store profile but not change it. The store owner can give you access.',
+      ),
+    ).toBeTruthy();
     expect(box().disabled).toBe(true);
     expect(box().value).toBe('Family bakery.');
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();

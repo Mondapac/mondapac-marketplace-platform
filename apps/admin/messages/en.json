@@ -605,9 +605,9 @@
       },
       "conflict": {
         "title": "Someone saved this role first",
-        "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
-        "compare": "Compare",
-        "hide": "Hide comparison",
+        "body": "Your changes are kept. Review what changed, then save again.",
+        "compare": "Show what changed",
+        "hide": "Hide what changed",
         "name": "Saved name: {saved}. Your name: {yours}.",
         "saved-only": "In the saved role but not in yours: {keys}.",
         "saved-none": "Every permission in the saved role is in yours.",
@@ -1519,7 +1519,7 @@
     "back-home": "Back to dashboard",
     "unavailable": "Settings could not be loaded. Try again later.",
     "errors": {
-      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+      "title": "{count, plural, one {# setting needs fixing} other {# settings need fixing}}"
     },
     "bar": {
       "region": "Unsaved changes",
@@ -1538,9 +1538,9 @@
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
-      "hide": "Hide comparison",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
+      "hide": "Hide what changed",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
@@ -1553,7 +1553,6 @@
       "section": "Contact address",
       "none": "Not set",
       "permission-view": "Support email: view",
-      "read-only": "You can view the support email. To change it you need the \"Support email: manage\" permission.",
       "intro": "The address customers and sellers are told to write to when they need help. A change applies from now on.",
       "not-set": "No support email is set yet.",
       "current": "Current address",
@@ -1731,6 +1730,10 @@
       },
       "not-configured-option": "{option} (not configured on the server)",
       "version-defaults": "Built-in defaults, never saved"
+    },
+    "view-only": {
+      "title": "View only",
+      "body": "Your role can see these settings but not change them. An admin who manages roles can give you access."
     }
   },
   "fleets": {
@@ -1850,7 +1853,6 @@
       "unknown": "Something went wrong. Try again.",
       "page-conflict": "Someone saved the fleet settings first, and the page could not be reloaded. Reload the page and try again."
     },
-    "viewer-only": "You can view but not change delivery fleets.",
     "confirm": {
       "title": "Change the active models?",
       "edit-title": "Save a model that is in use?",
@@ -1863,8 +1865,8 @@
       "title": "Someone else saved the fleet settings first",
       "model-title": "This page changed while you were editing",
       "body": "{count, plural, one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
-      "compare": "Compare",
-      "hide": "Hide comparison",
+      "compare": "Show what changed",
+      "hide": "Hide what changed",
       "same": "Your draft now matches what is saved.",
       "line": "{field}: saved now {saved}, yours {yours}"
     },
@@ -2251,7 +2253,6 @@
     "settings": {
       "card": "Account deletion",
       "load-failed": "Couldn't load this setting.",
-      "read-only": "You can view this setting but not change it.",
       "enabled": {
         "legend": "Allow buyers to delete their account",
         "off": "Off",
@@ -2570,7 +2571,7 @@
     "read-only": "Your role can view these settings but not change them.",
     "save": "Save delivery settings",
     "notice": {
-      "saved": "Delivery settings saved. They apply to orders placed from now on.",
+      "saved": "Delivery rules saved.",
       "reloaded": "Someone saved these settings first. The page now shows what is stored. Make your change again."
     },
     "method": {
@@ -2629,7 +2630,7 @@
       "line-none": "A fleet quote of {quote} stays {total} for the buyer: no margin added."
     },
     "invalid": {
-      "cutoff": "Enter a time such as 12:00.",
+      "cutoff": "Enter a time between 00:00 and 23:59, such as 13:00.",
       "daysAhead": "Enter a whole number of days from 1 to 30.",
       "margin-percent": "Enter a percentage from 0 to 100, with up to two decimals.",
       "margin-fixed": "Enter an amount up to {max}, with no more decimals than the currency uses."
@@ -2644,7 +2645,6 @@
       "unavailable": "Delivery settings are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
     },
-    "viewer-only": "You can view these settings but not change them. Ask an admin with the manage permission to make changes.",
     "confirm": {
       "title": "Save these delivery settings?",
       "intro": "These changes apply to orders placed from now on.",
@@ -2671,6 +2671,9 @@
         "margin-percent": "Sellers are not affected: the margin is added on top of the fleet quote.",
         "margin-fixed": "Sellers are not affected: the margin is added on top of the fleet quote."
       }
+    },
+    "invalid-summary": {
+      "cutoff": "enter a time between 00:00 and 23:59."
     }
   },
   "sellerDelivery": {
@@ -2806,7 +2809,6 @@
       "title": "Customer wallet",
       "intro": "Controls store credit for every customer in this Market.",
       "permission-view": "Customer wallet: view",
-      "view-only": "View only. You can see the state of the wallet but not change it. Ask an admin who manages roles to add the wallet change permission.",
       "state": "State",
       "last-change": "Last change",
       "danger": {

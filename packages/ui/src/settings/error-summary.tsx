@@ -7,10 +7,12 @@ export interface SettingsErrorItem {
   readonly id: string;
   /** The field's label. */
   readonly label: string;
+  /** What is wrong, written to follow the label: "Same-day cut-off: enter a time ...". */
+  readonly message?: string;
 }
 
 export interface SettingsErrorSummaryProps {
-  /** "2 settings need fixing before you can save" */
+  /** "2 settings need fixing" */
   readonly title: string;
   readonly items: readonly SettingsErrorItem[];
   /** Raise it after each failed Save: focus moves to the summary. 0 never moves focus. */
@@ -35,9 +37,9 @@ export function SettingsErrorSummary({ title, items, focusSignal = 0 }: Settings
       className="rounded-md border border-critical-border bg-critical-bg px-4 py-3 text-sm text-critical-fg outline-offset-2"
     >
       <p className="font-semibold">{title}</p>
-      <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+      <ul className="mt-1 flex flex-col gap-1">
         {items.map((item) => (
-          <li key={item.id}>
+          <li key={item.id} className="min-w-0">
             <a
               href={`#${item.id}`}
               className="font-medium underline"
@@ -50,6 +52,7 @@ export function SettingsErrorSummary({ title, items, focusSignal = 0 }: Settings
             >
               {item.label}
             </a>
+            {item.message ? `: ${item.message}` : null}
           </li>
         ))}
       </ul>

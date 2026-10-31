@@ -10,6 +10,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   SettingsPage,
   SettingsSection,
   toast,
@@ -253,17 +254,27 @@ export function DeliverySettingsPanel({
       : field === 'daysAhead'
         ? t(`${P}.scheduled.days`)
         : marginLabel;
+  const summaryMessage = (field: FormField) =>
+    field === 'cutoff'
+      ? t(`${P}.invalid-summary.cutoff`)
+      : field === 'daysAhead'
+        ? t(`${P}.invalid.daysAhead`)
+        : t(`${P}.invalid.margin-${form.marginKind}`, { max: money(1_000_000) });
   const banners = [
     readOnly ? (
-      <Banner key="viewer-only" tone="info">
-        {t(`${P}.viewer-only`)}
-      </Banner>
+      <SettingsViewOnlyBanner key="viewer-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ) : null,
     invalid.length === 0 ? null : (
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: invalid.length })}
-        items={invalid.map((field) => ({ id: ROW[field], label: summaryLabel(field) }))}
+        items={invalid.map((field) => ({
+          id: ROW[field],
+          label: summaryLabel(field),
+          message: summaryMessage(field),
+        }))}
         focusSignal={failedSaves}
       />
     ),

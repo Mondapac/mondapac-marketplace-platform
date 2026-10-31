@@ -3,6 +3,7 @@
 import {
   Badge,
   Banner,
+  SettingsViewOnlyBanner,
   Button,
   Dialog,
   EmptyState,
@@ -262,9 +263,9 @@ export function FleetSelectionPanel({
 
   const banners = [
     canManage ? null : (
-      <Banner key="viewer-only" tone="info">
-        {t(`${P}.viewer-only`)}
-      </Banner>
+      <SettingsViewOnlyBanner key="viewer-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ),
     conflict ? (
       <div key="conflict" className="flex flex-col gap-3">

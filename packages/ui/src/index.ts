@@ -81,6 +81,10 @@ export {
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
 export {
+  SettingsViewOnlyBanner,
+  type SettingsViewOnlyBannerProps,
+} from './settings/view-only-banner.tsx';
+export {
   SettingsConflictBanner,
   type SettingsConflictBannerProps,
 } from './settings/conflict-banner.tsx';
