@@ -6,9 +6,17 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import type {
   Authenticator,
   CredentialRejected,
+  JobIdentity,
+  JobIdentityResolver,
   SessionCredential,
 } from '../../../../platform/authz';
-import { lastSeenIsDue, LAST_SEEN_INTERVAL_SECONDS, sessionIsLive } from '../../domain/session';
+import {
+  lastSeenIsDue,
+  LAST_SEEN_INTERVAL_SECONDS,
+  sessionIsLive,
+  type SessionRevokedReason,
+} from '../../domain/session';
+import type { AccountRepository } from '../ports/account.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens } from '../ports/session-secrets';
 
@@ -100,5 +108,71 @@ export class SessionAuthenticator implements Authenticator {
       }
     }
     return ok(actor);
+  }
+}
+
+export interface AdminJobIdentityDependencies {
+  readonly unitOfWork: UnitOfWork;
+  readonly accounts: AccountRepository;
+  readonly sessions: SessionRepository;
+}
+
+/**
+ * The only revocation that leaves what a person started in the session running: the person signed
+ * out (their import goes on). Natural expiry or idleness is no revocation at all (`revokedAt` is
+ * null). **Every other reason ends the job**, including one added later: a list of the reasons that
+ * stop it would fail open (a hijacked session that the real owner ends by changing the password,
+ * signing out elsewhere or resetting the second factor must not keep working). Hassan M-585-1.
+ */
+export const SESSION_REASONS_THAT_LEAVE_JOBS: ReadonlySet<string> = new Set<SessionRevokedReason>([
+  'sign-out',
+]);
+
+/**
+ * identity's {@link JobIdentityResolver}: the second thing this file builds actors for, next to the
+ * {@link SessionAuthenticator} (dependency-cruiser `authenticated-actor-is-built-by-the-authenticator`).
+ * A background job that the admin started runs as that admin, later (catalog design 14a). In one
+ * read-only unit it reads the kept session and the account: the session must be the account's, of
+ * the Market and of the admin population, and the account must be active. The session may have
+ * ended by the person signing out, or by its lifetime running out (neither cancels an import the
+ * person started); a session that was revoked for any other reason does. Nothing is cached, and the
+ * actor holds no permission: the gate asks `identity` again for every use case the job calls.
+ */
+export class AdminJobIdentityResolver implements JobIdentityResolver {
+  constructor(private readonly deps: AdminJobIdentityDependencies) {}
+
+  async resumeAdmin(market: MarketContext, identity: JobIdentity) {
+    const found = await this.deps.unitOfWork.run(
+      market,
+      async () =>
+        ok({
+          session: await this.deps.sessions.findById(market, identity.sessionId),
+          account: await this.deps.accounts.findById(market, identity.accountId),
+        }),
+      { readOnly: true },
+    );
+    if (!found.ok) return null;
+    const { session, account } = found.value;
+    if (
+      session === null ||
+      account === null ||
+      session.marketId !== market.marketId ||
+      session.accountId !== identity.accountId ||
+      session.population !== 'admin' ||
+      session.sellerId !== null ||
+      (session.revokedAt !== null &&
+        (session.revokedReason === null ||
+          !SESSION_REASONS_THAT_LEAVE_JOBS.has(session.revokedReason))) ||
+      account.state.population !== 'admin' ||
+      account.state.status !== 'active'
+    ) {
+      return null;
+    }
+    return authenticatedActor(market, {
+      population: 'admin',
+      accountId: identity.accountId,
+      sessionId: identity.sessionId,
+      sellerId: null,
+    });
   }
 }

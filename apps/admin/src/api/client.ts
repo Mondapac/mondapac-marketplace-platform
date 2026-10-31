@@ -14,6 +14,11 @@ export interface ApiFailure {
     readonly total?: number;
     /** `retire.count-changed`: the Offers on the products now, to confirm again. */
     readonly currentCount?: number;
+    /** The platform import's file refusals: the column keys, the row count and the limits. */
+    readonly columns?: readonly string[];
+    readonly rows?: number;
+    readonly maxBytes?: number;
+    readonly detected?: string;
   };
 }
 

@@ -18,6 +18,14 @@ export {
   type AccessDecision,
   type AuthorisationCheck,
 } from './authorisation-check';
+export {
+  JOB_CALL_CONTEXTS,
+  JOB_IDENTITY_RESOLVER,
+  JobCallContexts,
+  type AdminJobContext,
+  type JobIdentity,
+  type JobIdentityResolver,
+} from './job-identity';
 export type {
   AccessDeclaration,
   AccessRule,
