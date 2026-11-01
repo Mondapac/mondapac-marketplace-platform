@@ -20,6 +20,7 @@ import { ConflictFilter } from './platform/http/conflict-filter';
 import { IdsModule } from './platform/ids/ids.module';
 import { LoggingModule } from './platform/logging/logging.module';
 import { MailModule } from './platform/mail/mail.module';
+import { MalwareModule } from './platform/malware/malware.module';
 import { StorageModule } from './platform/storage/storage.module';
 import { MarketConfigModule } from './platform/market-config/market-config.module';
 import { MarketContextGuard } from './platform/market-context/market-context.guard';
@@ -79,6 +80,7 @@ export class AppModule {
         ExtensionsModule,
         MailModule,
         StorageModule,
+        MalwareModule,
         SchedulerModule,
         // The one model entry point (ADR-0019 decision 6); no model is called unless configured.
         AiModule,

@@ -504,7 +504,7 @@ describe('admin certificate review over HTTP (integration)', () => {
 
     it('serves an attachment with the hardening headers once the switch is on', async () => {
       reviews = makeReviews(code);
-      await boot({ CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' });
+      await boot({ CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true', CLAMD_HOST: 'clamav.test' });
       await seeded(code);
       const h = headers(code, sessionOf(code, REVIEWER, 8));
       const file = await http()
@@ -532,7 +532,7 @@ describe('admin certificate review over HTTP (integration)', () => {
     async (code) => {
       const owning = TEST_MARKETS.find((m) => m !== code)!;
       reviews = makeReviews(owning);
-      await boot({ CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' });
+      await boot({ CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true', CLAMD_HOST: 'clamav.test' });
       await seeded(code);
       const h = headers(code, sessionOf(code, APPROVER, 9));
       await http().get(`${base}/${CERTIFICATE}`).set(h).expect(404);
