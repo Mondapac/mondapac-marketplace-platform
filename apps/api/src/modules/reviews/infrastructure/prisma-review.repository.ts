@@ -490,7 +490,7 @@ export class PrismaReviewRepository implements ReviewRepository {
               ],
             }),
       },
-      include: { replies: true },
+      include: { replies: { where: { sellerId, status: { not: 'superseded' } } } },
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
       take: query.limit,
     });
@@ -504,9 +504,26 @@ export class PrismaReviewRepository implements ReviewRepository {
   ) {
     const row = await this.prisma.tx(market).reviewsProductReview.findFirst({
       where: { marketId: market.marketId, sellerId, id: reviewId },
-      include: { replies: true },
+      include: { replies: { where: { sellerId, status: { not: 'superseded' } } } },
     });
     return row === null ? null : { review: toReview(row), reply: toReply(row.replies[0] ?? null) };
+  }
+
+  async supersedeRepliesOfOtherSellers(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    keepSellerId: Id<'Seller'>,
+  ) {
+    const changed = await this.prisma.tx(market).reviewsReply.updateMany({
+      where: {
+        marketId: market.marketId,
+        reviewId,
+        sellerId: { not: keepSellerId },
+        status: { not: 'superseded' },
+      },
+      data: { status: 'superseded' },
+    });
+    return changed.count;
   }
 
   async insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord) {
@@ -529,11 +546,17 @@ export class PrismaReviewRepository implements ReviewRepository {
   }
 
   async saveReply(market: MarketContext, reply: ReplyRecord) {
+    // Only the shop's own published reply changes, and only its text and edit time: a
+    // moderator's status is never written from here.
     await this.prisma.tx(market).reviewsReply.updateMany({
-      where: { marketId: market.marketId, id: reply.id },
+      where: {
+        marketId: market.marketId,
+        id: reply.id,
+        sellerId: reply.sellerId,
+        status: 'published',
+      },
       data: {
         body: reply.body,
-        status: reply.status,
         editedAt: reply.editedAt === null ? null : toDate(reply.editedAt),
       },
     });

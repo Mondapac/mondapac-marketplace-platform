@@ -286,6 +286,15 @@ export async function submitProductReview(
       if (
         (await deps.reviews.saveProductReview(context.market, moved, existing.status)) === 'saved'
       ) {
+        // The review now says "Bought from" another shop: the earlier shop's reply is cleared, so
+        // the new shop never reads or edits it and can write its own (package 4a).
+        if (purchase.sellerId !== existing.sellerId) {
+          await deps.reviews.supersedeRepliesOfOtherSellers(
+            context.market,
+            existing.id,
+            purchase.sellerId,
+          );
+        }
         return ok({
           outcome: 'purchase-recorded',
           review: ownReviewView(moved, settings.editWindowDays),

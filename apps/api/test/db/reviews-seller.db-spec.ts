@@ -1,4 +1,4 @@
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -180,5 +180,61 @@ describe.each(TEST_MARKETS)('seller reviews in market %s (database)', (code) => 
       ])
     )[0]!.n;
     expect(count).toBe(0);
+  });
+
+  it("clears the first shop's reply when the review moves; the new shop writes its own", async () => {
+    const review = await insertReview(seller);
+    const reply = (ctx: typeof sellerCtx, body: string) =>
+      new ReplyToReview(gate, deps).execute(ctx, { reviewId: review, body });
+    expect((await reply(sellerCtx, 'Shop A answer')).ok).toBe(true);
+    // The buyer bought again from another shop: the label moves, then the reply is superseded.
+    await owner.query('UPDATE reviews.product_reviews SET seller_id = $2 WHERE id = $1', [
+      review,
+      otherSeller,
+    ]);
+    const changed = await db.unitOfWork.run(market, async () =>
+      ok(await deps.reviews.supersedeRepliesOfOtherSellers(market, review, otherSeller)),
+    );
+    expect(changed.ok && changed.value).toBe(1);
+
+    const other = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: otherSeller,
+      }),
+      'reviews-seller-db-2',
+    );
+    const seen = await new ListSellerReviews(gate, deps).execute(other, {});
+    const mine = seen.ok ? seen.value.items.find((r) => r.id === review) : undefined;
+    expect(mine?.reply).toBeNull();
+    const edit = await new EditReviewReply(gate, deps).execute(other, {
+      reviewId: review,
+      body: 'Rewritten by B',
+    });
+    expect(edit.ok ? null : edit.error.code).toBe('reviews.not-found');
+    expect((await reply(other, 'Shop B answer')).ok).toBe(true);
+    // Two live replies are impossible; the first stays as history.
+    const stored = await rows(
+      'SELECT seller_id, body, status FROM reviews.review_replies WHERE review_id = $1 ORDER BY created_at',
+      [review],
+    );
+    expect(stored.map((r) => [r.seller_id, r.body, r.status])).toEqual([
+      [seller, 'Shop A answer', 'superseded'],
+      [otherSeller, 'Shop B answer', 'published'],
+    ]);
+    const second = await owner
+      .query(
+        `INSERT INTO reviews.review_replies (id, market_id, tenant_id, review_id, seller_id, body, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'x', 'published', now())`,
+        [ids.next<'ReviewReply'>(), market.marketId, market.tenantId, review, seller],
+      )
+      .then(
+        () => 'allowed',
+        (error: { code?: string }) => error.code,
+      );
+    expect(second).toBe('23505');
   });
 });

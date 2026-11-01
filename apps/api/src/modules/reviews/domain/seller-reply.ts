@@ -9,15 +9,15 @@ import { isWithinEditWindow, type FieldProblem, type Validated } from './rules';
 // are passed in from Market config.
 
 export const SELLER_REPORT_REASONS = [
-  'personal-info',
+  'personal-information',
   'abusive',
   'irrelevant',
-  'not-a-buyer',
+  'not-a-purchase',
   'extortion',
 ] as const;
 export type SellerReportReason = (typeof SELLER_REPORT_REASONS)[number];
 
-export const REPLY_STATUSES = ['published', 'hidden', 'removed'] as const;
+export const REPLY_STATUSES = ['published', 'hidden', 'removed', 'superseded'] as const;
 export type ReplyStatus = (typeof REPLY_STATUSES)[number];
 
 export interface ReplyLimits {

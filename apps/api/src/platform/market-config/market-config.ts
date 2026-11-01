@@ -1713,7 +1713,7 @@ const marketSchema = z
          * (default 7), and a reply is at most `replyMaxLength` characters (default 2000).
          */
         replyEditWindowDays: z.number().int().min(0).max(365).default(7),
-        replyMaxLength: z.number().int().min(1).max(5000).default(2000),
+        replyMaxLength: z.number().int().min(1).max(2000).default(2000),
         /**
          * How often the job recomputes the rating summaries from the source rows (minutes, default
          * 1440, daily). The write path refreshes a product summary at once; a SELLER summary is

@@ -27,6 +27,7 @@ import type { ProductReviewRecord } from './ports/review.repository';
 import type { ReviewsDependencies } from './reviews-dependencies';
 import { EditReviewReply } from './use-cases/edit-review-reply.use-case';
 import { ListSellerReviews } from './use-cases/list-seller-reviews.use-case';
+import { SubmitProductReview } from './use-cases/submit-product-review.use-case';
 import { ReplyToReview } from './use-cases/reply-to-review.use-case';
 import { ReportReview } from './use-cases/report-review.use-case';
 
@@ -53,6 +54,8 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
   let clock: FixedClock;
   let reviews: MemoryReviews;
   let deps: ReviewsDependencies;
+  let deliveries: FakeDeliveries;
+  let offers: FakeOffers;
   let gate: ReturnType<typeof createUseCaseGate>;
 
   const sellerCtx = (sellerId = SELLER): CallContext =>
@@ -127,13 +130,15 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
     });
     reviews = new MemoryReviews();
     const setting = new MemoryReviewsSetting();
+    deliveries = new FakeDeliveries();
+    offers = new FakeOffers();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reviews,
       settings: setting,
       policy: new ConfigReviewsPolicy(markets),
-      ordering: new FakeDeliveries().facade(),
-      catalog: new FakeOffers().facade(),
+      ordering: deliveries.facade(),
+      catalog: offers.facade(),
       names: new FakeNames(),
       affinity: new FakeAffinity(),
       audit: { record: () => Promise.resolve() },
@@ -258,6 +263,70 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
       const review = addReview();
       const result = await editReply(review.id, 'Hello');
       expect(result.ok ? null : result.error.code).toBe('reviews.not-found');
+    });
+  });
+
+  describe('a review that moves to another seller', () => {
+    const PRODUCT = id<'Product'>(0x9001);
+    /** The buyer received PRODUCT from `sellerId` `daysAgo` days ago (offer and order n). */
+    const bought = (k: number, sellerId: Id<'Seller'>, daysAgo: number) => {
+      offers.offers.set(id<'Offer'>(0x9100 + k), { productId: PRODUCT, sellerId });
+      deliveries.add(BUYER, {
+        sellerOrderId: id<'SellerOrder'>(0x9200 + k),
+        sellerId,
+        deliveredAt: T0.subtract({ hours: 24 * daysAgo }),
+        offerIds: [id<'Offer'>(0x9100 + k)],
+      });
+    };
+    const submit = () =>
+      new SubmitProductReview(gate, deps).execute(customerCtx(), {
+        productId: PRODUCT,
+        rating: 2,
+        body: 'Arrived late',
+      });
+
+    it("clears the first shop's reply: the new shop never reads or edits it and can write its own", async () => {
+      bought(1, SELLER, 5);
+      const first = await submit();
+      expect(first.ok && first.value.outcome).toBe('created');
+      const reviewId = first.ok ? first.value.review.id : id<'ProductReview'>(0);
+      expect((await reply(reviewId, 'Shop A answer')).ok).toBe(true);
+
+      bought(2, OTHER_SELLER, 1);
+      const again = await submit();
+      expect(again.ok && again.value.outcome).toBe('purchase-recorded');
+
+      // Shop A no longer has the review; shop B sees it with no reply and cannot edit A's text.
+      const listA = await list();
+      expect(listA.ok && listA.value.items).toEqual([]);
+      const listB = await list(undefined, sellerCtx(OTHER_SELLER));
+      expect(listB.ok && listB.value.items.map((r) => [r.id, r.reply])).toEqual([[reviewId, null]]);
+      const edit = await editReply(reviewId, 'Rewritten by B', sellerCtx(OTHER_SELLER));
+      expect(edit.ok ? null : edit.error.code).toBe('reviews.not-found');
+      const editA = await editReply(reviewId, 'A tries again');
+      expect(editA.ok ? null : editA.error.code).toBe('reviews.not-found');
+
+      // Shop B writes its own reply; A's text stays as history, marked superseded.
+      const own = await reply(reviewId, 'Shop B answer', sellerCtx(OTHER_SELLER));
+      expect(own.ok && own.value.reply?.body).toBe('Shop B answer');
+      const stored = [...reviews.replies.values()].map((r) => [r.sellerId, r.body, r.status]);
+      expect(stored).toEqual(
+        expect.arrayContaining([
+          [SELLER, 'Shop A answer', 'superseded'],
+          [OTHER_SELLER, 'Shop B answer', 'published'],
+        ]),
+      );
+    });
+
+    it('keeps the reply when a later purchase is from the same shop', async () => {
+      bought(1, SELLER, 5);
+      const first = await submit();
+      const reviewId = first.ok ? first.value.review.id : id<'ProductReview'>(0);
+      await reply(reviewId, 'Shop A answer');
+      bought(2, SELLER, 1);
+      expect((await submit()).ok).toBe(true);
+      const listA = await list();
+      expect(listA.ok && listA.value.items[0]?.reply?.body).toBe('Shop A answer');
     });
   });
 

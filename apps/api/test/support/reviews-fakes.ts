@@ -179,10 +179,14 @@ export class MemoryReviews implements ReviewRepository {
         : { publishedAt: found.publishedAt, id: found.id },
     );
   }
-  private rowOf(review: ProductReviewRecord): SellerReviewRow {
+  private rowOf(review: ProductReviewRecord, sellerId: Id<'Seller'>): SellerReviewRow {
     return {
       review,
-      reply: [...this.replies.values()].find((r) => r.reviewId === review.id) ?? null,
+      // Only the asking shop's own reply, as the store answers it.
+      reply:
+        [...this.replies.values()].find(
+          (r) => r.reviewId === review.id && r.sellerId === sellerId && r.status !== 'superseded',
+        ) ?? null,
     };
   }
   listSellerReviews(
@@ -203,23 +207,45 @@ export class MemoryReviews implements ReviewRepository {
           (r.publishedAt!.equals(query.after.publishedAt) && r.id < query.after.id),
       )
       .slice(0, query.limit);
-    return Promise.resolve(rows.map((r) => this.rowOf(r)));
+    return Promise.resolve(rows.map((r) => this.rowOf(r, sellerId)));
   }
   findSellerReview(_m: MarketContext, sellerId: Id<'Seller'>, reviewId: Id<'ProductReview'>) {
     const found = this.productReviews.get(reviewId);
     return Promise.resolve(
-      found !== undefined && found.sellerId === sellerId ? this.rowOf(found) : null,
+      found !== undefined && found.sellerId === sellerId ? this.rowOf(found, sellerId) : null,
     );
   }
+  supersedeRepliesOfOtherSellers(
+    _m: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    keepSellerId: Id<'Seller'>,
+  ) {
+    let changed = 0;
+    for (const r of this.replies.values()) {
+      if (r.reviewId === reviewId && r.sellerId !== keepSellerId && r.status !== 'superseded') {
+        this.replies.set(r.id, { ...r, status: 'superseded' });
+        changed += 1;
+      }
+    }
+    return Promise.resolve(changed);
+  }
   insertReplyIfAbsent(_m: MarketContext, reply: ReplyRecord) {
-    if ([...this.replies.values()].some((r) => r.reviewId === reply.reviewId)) {
+    // The partial unique index: one live (not superseded) reply per review.
+    if (
+      [...this.replies.values()].some(
+        (r) => r.reviewId === reply.reviewId && r.status !== 'superseded',
+      )
+    ) {
       return Promise.resolve(false);
     }
     this.replies.set(reply.id, reply);
     return Promise.resolve(true);
   }
   saveReply(_m: MarketContext, reply: ReplyRecord) {
-    this.replies.set(reply.id, reply);
+    const stored = this.replies.get(reply.id);
+    if (stored?.sellerId === reply.sellerId && stored.status === 'published') {
+      this.replies.set(reply.id, { ...stored, body: reply.body, editedAt: reply.editedAt });
+    }
     return Promise.resolve();
   }
   insertReportIfAbsent(_m: MarketContext, report: NewReportRecord) {

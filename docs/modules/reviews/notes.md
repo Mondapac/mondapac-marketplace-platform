@@ -236,9 +236,15 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
   `reviews.replyMaxLength` defaults to 2000. Both are Market config.
 - A reply goes through the same text checks as a review (contact details, links, markup, the
   Market's blocked words). Unlike a review it is refused, not held: a reply has no queue.
-- A report stores a reason code from a closed list (`personal-info`, `abusive`, `irrelevant`,
-  `not-a-buyer`, `extortion`) in `review_reports`, one per team member; it opens the existing
+- A report stores a reason code from a closed list (`personal-information`, `abusive`, `irrelevant`,
+  `not-a-purchase`, `extortion`) in `review_reports`, one per team member; it opens the existing
   "reported" tab of the admin queue. The seller can never hide or remove a review.
-- No migration: the reply and report tables and their grants came with package 1.
+- A review moves to another seller when the buyer buys the product again from someone else. The
+  earlier seller's reply is then set to `superseded` (kept as history, never shown or edited) and
+  the new seller starts clean; a seller only ever reads and edits its own reply. The one-reply
+  rule is "one live reply per review" (partial unique index, migration
+  `20261101230000_reviews_reply_per_seller`). Open question for the owner: keep the old reply
+  instead? Clearing is the safe default.
+- Reply max length is capped at 2000 in Market config, matching the table CHECK.
 - Not in 4a: the public reply under a review on the product page (package 3 list), notices for the
   seller, buyer and admin (4b), the seller panel screens (4c), the daily digest, appeals.

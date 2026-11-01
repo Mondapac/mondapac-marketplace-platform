@@ -127,7 +127,7 @@ export interface ReplyRecord {
   readonly reviewId: Id<'ProductReview'>;
   readonly sellerId: Id<'Seller'>;
   readonly body: string;
-  readonly status: 'published' | 'hidden' | 'removed';
+  readonly status: 'published' | 'hidden' | 'removed' | 'superseded';
   readonly createdAt: Temporal.Instant;
   readonly editedAt: Temporal.Instant | null;
 }
@@ -297,6 +297,16 @@ export interface ReviewRepository {
     sellerId: Id<'Seller'>,
     reviewId: Id<'ProductReview'>,
   ): Promise<SellerReviewRow | null>;
+
+  /**
+   * A review moved to another seller: the replies of every other seller become `superseded`
+   * (kept as history, never shown or edited) so the new seller starts clean. Returns how many.
+   */
+  supersedeRepliesOfOtherSellers(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    keepSellerId: Id<'Seller'>,
+  ): Promise<number>;
 
   /** False when the review already has a reply (the unique key): two submits make one reply. */
   insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord): Promise<boolean>;
