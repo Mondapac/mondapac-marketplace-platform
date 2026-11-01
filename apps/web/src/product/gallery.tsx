@@ -112,6 +112,7 @@ export function Gallery({
                   height={800}
                   decoding="async"
                   loading={i === 0 ? undefined : 'lazy'}
+                  fetchPriority={i === 0 ? 'high' : 'auto'}
                   ref={(el) => checkLoaded(el, () => fail(shot.src))}
                   onError={() => fail(shot.src)}
                 />

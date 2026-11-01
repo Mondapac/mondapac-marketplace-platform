@@ -36,9 +36,6 @@ vi.mock('../src/storefront/photo-source.ts', () => ({
 
 const { default: RootLayout } = await import('../app/layout.tsx');
 const html = async () => renderToStaticMarkup(await RootLayout({ children: 'page' }));
-const sheets = (markup: string) =>
-  [...markup.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]);
-
 afterEach(() => {
   request.locale = 'en';
 });
@@ -47,9 +44,8 @@ describe('root layout language and direction', () => {
   it('renders English, left to right, with the brand fonts only, by default', async () => {
     const markup = await html();
     expect(markup).toMatch(/<html lang="en" dir="ltr"/);
-    expect(sheets(markup)).toHaveLength(1);
-    expect(sheets(markup)[0]).toContain('family=Figtree');
-    expect(markup).not.toMatch(/Vazirmatn|Noto\+Sans\+Arabic/);
+    expect(markup).toMatch(/<html [^>]*class="figtree-var jakarta-var"/);
+    expect(markup).not.toMatch(/vazirmatn|noto-arabic/);
   });
 
   it('renders the same page for the English locale as next-intl hands it over', async () => {
@@ -61,20 +57,23 @@ describe('root layout language and direction', () => {
     request.locale = 'fa-u-ca-gregory-nu-latn';
     const markup = await html();
     expect(markup).toMatch(/<html lang="fa" dir="rtl"/);
-    expect(sheets(markup)).toHaveLength(2);
-    expect(sheets(markup)[1]).toContain('family=Vazirmatn');
+    expect(markup).toMatch(/<html [^>]*class="figtree-var jakarta-var vazirmatn-var"/);
   });
 
   it('renders right to left with the Arabic font for ar', async () => {
     request.locale = 'ar';
     const markup = await html();
     expect(markup).toMatch(/<html lang="ar" dir="rtl"/);
-    expect(sheets(markup)[1]).toContain('Noto+Sans+Arabic');
+    expect(markup).toMatch(/<html [^>]*class="figtree-var jakarta-var noto-arabic-var"/);
   });
 
-  it('is allowed by the Content-Security-Policy for the font hosts', () => {
-    const policy = storefrontCsp('n', false, null);
-    expect(policy).toContain('https://fonts.googleapis.com');
-    expect(policy).toContain("font-src 'self' data: https://fonts.gstatic.com");
+  it('asks no font from Google: no stylesheet, preconnect or font host in the page or the policy', async () => {
+    for (const locale of ['en', 'fa', 'ar']) {
+      request.locale = locale;
+      const markup = await html();
+      expect(markup).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
+      expect(markup).not.toMatch(/rel="(stylesheet|preconnect)"/);
+    }
+    expect(storefrontCsp('n', false, null)).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 });

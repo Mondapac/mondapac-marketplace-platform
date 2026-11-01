@@ -11,7 +11,7 @@ import {
   textSizeOf,
 } from '../src/preferences/preferences.ts';
 import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
-import { scriptFontHref } from '../src/i18n/fonts.ts';
+import { fontClassNames } from '../src/i18n/fonts.ts';
 import { directionOf, languageTag } from '../src/i18n/locale.ts';
 import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
 import { RegisterServiceWorker } from '../src/pwa/register-service-worker.tsx';
@@ -80,26 +80,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     loadDeliveryLocator(),
   ]);
   const lang = languageTag(locale);
-  const scriptFont = scriptFontHref(lang);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
   const textSize = textSizeOf(jar.get(TEXT_SIZE_COOKIE)?.value);
   return (
     <html
       lang={lang}
       dir={directionOf(lang)}
+      className={fontClassNames(lang)}
       data-palette={palette === DEFAULT_PALETTE ? undefined : palette}
       data-text-size={textSize === 'auto' ? undefined : textSize}
       suppressHydrationWarning
     >
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-        />
-        {scriptFont === null ? null : <link rel="stylesheet" href={scriptFont} />}
-      </head>
       <body>
         <NextIntlClientProvider messages={messages}>
           <StoreShell

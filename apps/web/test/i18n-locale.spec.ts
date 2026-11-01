@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { formatClock } from '../src/format/clock.ts';
 import { formatDate } from '../src/format/date.ts';
 import { formatMoney } from '../src/format/money.ts';
-import { scriptFontHref } from '../src/i18n/fonts.ts';
+import { fontClassNames } from '../src/i18n/fonts.ts';
 import {
   DEFAULT_LOCALE,
   arrowInReadingOrder,
@@ -138,17 +138,13 @@ describe('message catalogues', () => {
 });
 
 describe('script fonts', () => {
-  it('loads no extra font for English or a Latin language', () => {
-    expect(scriptFontHref('en')).toBeNull();
-    expect(scriptFontHref('en-AU')).toBeNull();
+  it('adds no script font for English or a Latin language', () => {
+    expect(fontClassNames('en')).toBe('figtree-var jakarta-var');
+    expect(fontClassNames('en-AU')).toBe('figtree-var jakarta-var');
   });
 
-  it('loads Vazirmatn for Persian and Noto Sans Arabic for Arabic, from Google Fonts only', () => {
-    expect(scriptFontHref('fa')).toMatch(
-      /^https:\/\/fonts\.googleapis\.com\/css2\?family=Vazirmatn:/,
-    );
-    expect(scriptFontHref('ar')).toMatch(
-      /^https:\/\/fonts\.googleapis\.com\/css2\?family=Noto\+Sans\+Arabic:/,
-    );
+  it('adds Vazirmatn for Persian and Noto Sans Arabic for Arabic', () => {
+    expect(fontClassNames('fa')).toBe('figtree-var jakarta-var vazirmatn-var');
+    expect(fontClassNames('ar')).toBe('figtree-var jakarta-var noto-arabic-var');
   });
 });
