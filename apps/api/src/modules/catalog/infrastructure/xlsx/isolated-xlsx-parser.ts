@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { Worker, type ResourceLimits } from 'node:worker_threads';
 import { err, ok } from '@mondapac/shared-kernel';
@@ -127,14 +126,17 @@ function typescriptWorker(
   entry: string,
   resourceLimits: ResourceLimits,
 ): Worker {
-  const kernel = path.join(repositoryRoot(), 'packages/shared-kernel/src');
+  const root = repositoryRoot();
+  const kernel = path.join(root, 'packages/shared-kernel/src');
   return new Worker(TS_BOOTSTRAP, {
     eval: true,
     workerData: {
       ...input,
       entry,
       typescript: 'typescript', // resolved from the working directory (tests only)
-      cacheDir: path.join(os.tmpdir(), 'mondapac-xlsx-worker-ts'),
+      // Inside the checkout (git-ignored), never a shared temp folder: on a machine with other users,
+      // a world-writable cache would let one of them plant code that this worker runs (Hassan, #616).
+      cacheDir: path.join(root, 'node_modules/.cache/mondapac-xlsx-worker-ts'),
       aliases: {
         '@mondapac/shared-kernel': path.join(kernel, 'index.ts'),
         '@mondapac/shared-kernel/testing': path.join(kernel, 'testing.ts'),
