@@ -121,7 +121,8 @@
     "disputes": "Disputes",
     "products": "Products",
     "payouts": "Payouts",
-    "brands": "Brands"
+    "brands": "Brands",
+    "review-moderation": "Buyer reviews"
   },
   "home": {
     "title": "Dashboard",
@@ -3261,7 +3262,15 @@
           "delete": "delete a buyer's account or cancel a deletion request"
         }
       },
-      "fallback": "do this"
+      "fallback": "do this",
+      "reviews": {
+        "settings": {
+          "change": "change the buyer reviews switch"
+        },
+        "review": {
+          "moderate": "moderate a buyer review"
+        }
+      }
     },
     "label": {
       "code": "6-digit code",
@@ -4260,5 +4269,129 @@
       "confirm-body": "{count, plural, one {# other value is} other {# other values are}} archived and {moved, plural, one {# product moves} other {# products move}} to {name}. The old names stay as aliases."
     },
     "not-set": "Not set"
+  },
+  "reviews-moderation": {
+    "title": "Buyer reviews",
+    "page-title": "Buyer reviews",
+    "no-access": "You do not have access to the buyer review queue.",
+    "back-home": "Back to the dashboard",
+    "intro": "Reviews waiting for a person, reviews buyers have reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited. A true negative review that follows the review policy is never hidden for being negative.",
+    "tabs": "Queue",
+    "tab": {
+      "held": "Held",
+      "reported": "Reported",
+      "actioned": "Hidden or removed"
+    },
+    "empty": {
+      "held": "No review is waiting.",
+      "reported": "No review has an open report.",
+      "actioned": "No review has been hidden or removed."
+    },
+    "col": {
+      "review": "Review",
+      "rating": "Rating",
+      "status": "Status",
+      "flags": "Flags",
+      "submitted": "Submitted"
+    },
+    "stars": "{rating} out of 5",
+    "status": {
+      "published": "Published",
+      "held": "Held",
+      "hidden": "Hidden",
+      "removed": "Removed",
+      "deleted-by-author": "Deleted by buyer"
+    },
+    "signal": {
+      "profanity": "Blocked word",
+      "phone-number": "Phone number",
+      "email-address": "Email address",
+      "web-address": "Web address",
+      "street-address": "Street address",
+      "markup": "HTML or script",
+      "repeated-text": "Repeated text"
+    },
+    "report-reason": {
+      "personal-information": "Personal information",
+      "abusive": "Abusive",
+      "irrelevant": "Not relevant",
+      "not-a-purchase": "Not a purchase",
+      "extortion": "Extortion",
+      "incentivised": "Paid or rewarded",
+      "spam": "Spam",
+      "other": "Other"
+    },
+    "open-reports": "{count, plural, one {# open report} other {# open reports}}",
+    "no-text": "No text, rating only",
+    "loading": "Loading reviews",
+    "retry": "Try again",
+    "more": "Show more",
+    "footnote": "Hiding can be undone; removing cannot. Every change needs a fresh two-step code and is recorded with your account and a reason.",
+    "error": {
+      "unavailable": "The reviews could not be loaded. Try again.",
+      "not-found": "This review no longer exists.",
+      "not-moderatable": "Another moderator changed this review first. It is shown as it is now.",
+      "unknown": "The change could not be saved. Try again."
+    },
+    "dialog": {
+      "title": "Review",
+      "close": "Close",
+      "apply": "Choose an action",
+      "action": "Action",
+      "action-placeholder": "Choose an action",
+      "reason": "Reason",
+      "reason-placeholder": "Choose a reason",
+      "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone."
+    },
+    "submitted": "Submitted {date}",
+    "product": "Product",
+    "seller": "Seller",
+    "signals": "Automatic checks",
+    "reports": "Open reports",
+    "none": "None",
+    "history": "History",
+    "history-line": "{date}: {action} by {who} ({reason})",
+    "who": {
+      "moderator": "a moderator",
+      "system-or-author": "the system or the buyer"
+    },
+    "history-action": {
+      "auto-hold": "Held for review",
+      "publish": "Published",
+      "hold": "Held",
+      "hide": "Hidden",
+      "remove": "Removed",
+      "restore": "Restored",
+      "author-delete": "Deleted by the buyer",
+      "author-edit": "Edited by the buyer"
+    },
+    "action": {
+      "publish": "Publish",
+      "hide": "Hide",
+      "restore": "Restore",
+      "remove": "Remove",
+      "dismiss-reports": "Dismiss reports"
+    },
+    "reason": {
+      "checked-ok": "Checked, within policy",
+      "personal-information": "Personal information",
+      "abusive": "Abusive",
+      "irrelevant": "Not relevant to the product",
+      "not-a-purchase": "Not from a real purchase",
+      "incentivised": "Paid or rewarded review",
+      "spam": "Spam",
+      "other": "Other policy breach",
+      "reinstated": "Reinstated",
+      "hidden-in-error": "Hidden in error",
+      "illegal": "Illegal content",
+      "defamatory": "Defamatory",
+      "not-against-policy": "Not against policy",
+      "duplicate": "Duplicate report",
+      "auto-check": "automatic check",
+      "submitted": "submitted",
+      "author": "the buyer"
+    },
+    "no-actions": "No action applies to this review now.",
+    "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden."
   }
 }

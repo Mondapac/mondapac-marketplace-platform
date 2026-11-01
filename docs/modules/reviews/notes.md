@@ -80,7 +80,26 @@ Public (anonymous, reasons in `http-reachable-anonymous-system.json`):
 `GET /reviews/products/:productId` (published only, newest first, `stars` filter, keyset cursor,
 page size from Market config; `sort=helpful` is refused until helpful votes exist),
 `GET /reviews/products/:productId/summary`, `GET /reviews/sellers/:sellerId/summary`.
-Admin: settings, above. Bodies and queries are closed (an unknown field is a 400).
+Admin: settings, above (the switch change needs a fresh step-up proof, action
+`reviews.settings.change`). Bodies and queries are closed (an unknown field is a 400).
+
+## Package 2: admin moderation queue
+
+Routes under `/reviews/admin/moderation` (admin host, English LTR panel at `/reviews/moderation`):
+`GET` queue (tabs held, reported, actioned; keyset cursor; counts), `GET :id` one review with
+report reasons and history, `POST :id/{publish,hide,restore,remove}` and `POST :id/dismiss-reports`.
+Permission `reviews.moderation.queue`. It is named so it is not a `.view` key: the Viewer role
+would otherwise get it automatically (open owner question, Viewer role). Moderation works whether
+the review switch is on or off.
+- Publish, hide, restore and remove each need a fresh step-up proof of the one action
+  `reviews.review.moderate`, spent once inside the unit of work. Dismissing reports needs none.
+- `moderation_actions` is insert-only and holds the moderator id and a reason code, never text.
+- Daily cap: the write flow takes advisory lock class 1703 (`reviews.lock-account`) before counting
+  the account's submissions of the day, so two parallel submits cannot both pass. Moderator
+  publish rows do not count against the author's cap.
+- Own store: `identity.ownAccountTiedToSeller` answers a boolean (same normalised email between
+  the customer and an active member of the seller). The reviews module fails closed if it cannot answer.
+- Switch stays OFF. Real use still needs the review policy text and the Viewer-role decision.
 
 ## Open questions for the owner
 

@@ -8,6 +8,10 @@ import { EditProductReview } from '../src/modules/reviews/application/use-cases/
 import { ListMyReviews } from '../src/modules/reviews/application/use-cases/list-my-reviews.use-case';
 import { ListProductReviews } from '../src/modules/reviews/application/use-cases/list-product-reviews.use-case';
 import { ListToReview } from '../src/modules/reviews/application/use-cases/list-to-review.use-case';
+import { ListModerationQueue } from '../src/modules/reviews/application/use-cases/list-moderation-queue.use-case';
+import { ModerateReview } from '../src/modules/reviews/application/use-cases/moderate-review.use-case';
+import { RemoveReview } from '../src/modules/reviews/application/use-cases/remove-review.use-case';
+import { ViewModerationReview } from '../src/modules/reviews/application/use-cases/view-moderation-review.use-case';
 import { RateSellerOrder } from '../src/modules/reviews/application/use-cases/rate-seller-order.use-case';
 import { SetReviewsStatus } from '../src/modules/reviews/application/use-cases/set-reviews-status.use-case';
 import { SubmitProductReview } from '../src/modules/reviews/application/use-cases/submit-product-review.use-case';
@@ -53,8 +57,11 @@ it('maps every refusal code of the reviews routes to its exact status', () => {
     'reviews.already-rated': 409,
     'reviews.not-editable': 409,
     'reviews.edit-window-closed': 409,
+    'reviews.not-moderatable': 409,
     'reviews.rate-limited': 429,
     'reviews.unavailable': 503,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
   });
 });
 
@@ -91,6 +98,10 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
           ['seller-summary', ViewSellerSummary],
           ['view-settings', ViewReviewsSettings],
           ['set-status', SetReviewsStatus],
+          ['queue', ListModerationQueue],
+          ['view-review', ViewModerationReview],
+          ['moderate', ModerateReview],
+          ['remove', RemoveReview],
         ].reduce(
           (b, [name, type]) => b.overrideProvider(type as never).useValue(stub(name as string)),
           fakes.override(builder).overrideProvider(CLOCK).useValue(clock),
@@ -115,7 +126,30 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
         credential: { passwordHash: fakeHashOf('x'), changedAt: START },
       });
     }
+    // The admin's active second factor, for the admin step-up of the switch and the moderation.
+    fakes.factors.set(ADMIN, {
+      id: id<'SecondFactor'>(0xf301),
+      marketId,
+      accountId: ADMIN,
+      state: 'active',
+      secretCiphertext: 'sealed',
+      pendingSecretCiphertext: null,
+      lastAcceptedStep: null,
+      activatedAt: START,
+      lockedAt: null,
+      createdAt: START,
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
+      version: 1,
+    });
   }
+
+  /** A fresh step-up proof of the admin session (n = 2) for one action (identity's verify route). */
+  const prove = (actionKey: string) =>
+    fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + 2)}|${actionKey}`, clock.now());
   function sessionOf(population: 'customer' | 'admin', n: number) {
     const issued = tokens.issue();
     void fakes.sessionRepository.add(
@@ -193,6 +227,7 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
     expect(read.body).toEqual({ status: 'active', updatedAt: START.toString() });
+    prove('reviews.settings.change');
     expect((await asAdmin('put', session, { status: 'active' })).status).toBe(200);
     expect(calls).toEqual([
       { name: 'view-settings', input: {} },
@@ -201,6 +236,7 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
     expect((await asAdmin('put', { cookie: session.cookie }, { status: 'active' })).status).toBe(
       403,
     );
+    prove('reviews.settings.change');
     const extra = await asAdmin('put', session, { status: 'active', enabled: true });
     expect(extra.status).toBe(400);
     expect(extra.body).toMatchObject({
@@ -213,7 +249,147 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
       .send('x');
     expect(text.status).toBe(415);
     next = err({ code: 'access.denied' });
+    prove('reviews.settings.change');
     expect((await asAdmin('put', session, { status: 'off' })).status).toBe(403);
+  });
+
+  it('refuses the switch without a fresh step-up proof of the session', async () => {
+    await boot();
+    const session = admin();
+    const refused = await asAdmin('put', session, { status: 'active' });
+    expect(refused.status).toBe(403);
+    expect(refused.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'reviews.settings.change' },
+    });
+    // A proof for another action does not cover this one.
+    prove('reviews.review.moderate');
+    expect((await asAdmin('put', session, { status: 'active' })).status).toBe(403);
+    expect(calls).toEqual([]);
+    // The read needs no proof.
+    expect((await asAdmin('get', session)).status).toBe(200);
+  });
+
+  describe('the moderator queue', () => {
+    const REVIEW_ID = id<'ProductReview'>(0xe101);
+    const base = '/reviews/admin/moderation';
+    const asMod = (
+      method: 'get' | 'post',
+      path: string,
+      headers: Record<string, string>,
+      payload?: unknown,
+    ) => {
+      const req = http()
+        [method](path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers });
+      return payload === undefined ? req : req.send(payload as object);
+    };
+
+    it('reads the queue and one review, no-store, with a closed query', async () => {
+      await boot();
+      const session = admin();
+      next = ok({
+        tab: 'held',
+        items: [],
+        nextCursor: null,
+        counts: { held: 0, reported: 0, actioned: 0 },
+      });
+      const page = await asMod('get', `${base}?tab=held&limit=10`, session);
+      expect(page.status).toBe(200);
+      expect(page.headers['cache-control']).toBe('no-store');
+      expect(page.body).toEqual({
+        tab: 'held',
+        items: [],
+        nextCursor: null,
+        counts: { held: 0, reported: 0, actioned: 0 },
+      });
+      expect(calls[0]).toEqual({ name: 'queue', input: { tab: 'held', limit: 10 } });
+      const stray = await asMod('get', `${base}?x=1`, session);
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'x', code: 'unknown-field' }] },
+      });
+      next = err({
+        code: 'validation.failed',
+        fields: [{ path: 'limit', code: 'range' }],
+      });
+      const bad = await asMod('get', `${base}?limit=abc`, session);
+      expect(bad.status).toBe(400);
+      expect(calls.at(-1)).toEqual({ name: 'queue', input: { limit: Number.NaN } });
+      next = err({ code: 'reviews.not-found' });
+      expect((await asMod('get', `${base}/${REVIEW_ID}`, session)).status).toBe(404);
+      expect(calls.at(-1)).toEqual({ name: 'view-review', input: { reviewId: REVIEW_ID } });
+    });
+
+    it('refuses a customer and a signed-out caller', async () => {
+      await boot();
+      next = err({ code: 'access.unauthenticated' });
+      const out = await asMod('get', base, {});
+      expect(out.status).toBe(401);
+      expect(out.body).toMatchObject({ code: 'access.unauthenticated' });
+      next = err({ code: 'access.denied' });
+      expect((await asMod('get', base, customer())).status).toBe(403);
+    });
+
+    it.each(['publish', 'hide', 'restore', 'remove'])(
+      'asks %s for a fresh two-step proof and passes the closed body once it has one',
+      async (action) => {
+        await boot();
+        const session = admin();
+        const post = (payload: unknown = { reasonCode: 'spam' }) =>
+          asMod('post', `${base}/${REVIEW_ID}/${action}`, session, payload);
+        const refused = await post();
+        expect(refused.status).toBe(403);
+        expect(refused.body).toEqual({
+          statusCode: 403,
+          code: 'second-factor.required',
+          details: { actionKey: 'reviews.review.moderate' },
+        });
+        expect(calls).toEqual([]);
+        prove('reviews.review.moderate');
+        next = err({ code: 'reviews.not-moderatable' });
+        expect((await post()).status).toBe(409);
+        expect(calls).toEqual([
+          {
+            name: action === 'remove' ? 'remove' : 'moderate',
+            input: { reviewId: REVIEW_ID, action, reasonCode: 'spam' },
+          },
+        ]);
+        prove('reviews.review.moderate');
+        const stray = await post({ reasonCode: 'spam', note: 'x' });
+        expect(stray.status).toBe(400);
+        expect(stray.body).toMatchObject({
+          details: { fields: [{ path: 'note', code: 'unknown-field' }] },
+        });
+        expect(
+          (
+            await asMod(
+              'post',
+              `${base}/${REVIEW_ID}/${action}`,
+              { cookie: session.cookie },
+              { reasonCode: 'spam' },
+            )
+          ).status,
+        ).toBe(403);
+      },
+    );
+
+    it('dismisses reports with no proof', async () => {
+      await boot();
+      const session = admin();
+      next = err({ code: 'reviews.not-found' });
+      const gone = await asMod('post', `${base}/${REVIEW_ID}/dismiss-reports`, session, {
+        reasonCode: 'duplicate',
+      });
+      expect(gone.status).toBe(404);
+      expect(calls).toEqual([
+        {
+          name: 'moderate',
+          input: { reviewId: REVIEW_ID, action: 'dismiss-reports', reasonCode: 'duplicate' },
+        },
+      ]);
+    });
   });
 
   it('submits a review: 201 when created, 200 when only the purchase was recorded, passing the body', async () => {

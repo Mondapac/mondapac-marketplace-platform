@@ -7,6 +7,7 @@ import type { OwnOwnerEmail } from '../application/use-cases/own-owner-email.use
 import type { CustomerAccountOf } from '../application/use-cases/customer-account-of.use-case';
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
+import type { OwnAccountTiedToSeller } from '../application/use-cases/own-account-tied-to-seller.use-case';
 import type { CustomerAccountExists } from '../application/use-cases/customer-account-exists.use-case';
 import type { AdminEndCustomerSessions } from '../application/use-cases/admin-end-customer-sessions.use-case';
 import type { EndAllCustomerSessions } from '../application/use-cases/end-all-customer-sessions.use-case';
@@ -50,6 +51,7 @@ export interface IdentityFacadeUseCases {
   readonly endAllCustomerSessions: EndAllCustomerSessions;
   readonly adminEndCustomerSessions: AdminEndCustomerSessions;
   readonly customerAccountExists: CustomerAccountExists;
+  readonly ownAccountTiedToSeller: OwnAccountTiedToSeller;
   readonly eraseCustomerAccount: EraseCustomerAccount;
 }
 
@@ -188,6 +190,14 @@ export class IdentityFacadeImplementation implements IdentityFacade {
       requestId,
     });
     return result.ok ? ok({ revokedSessions: result.value.revokedSessions }) : err(result.error);
+  }
+
+  async ownAccountTiedToSeller(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | { readonly code: 'access.unavailable' }>> {
+    const result = await this.useCases.ownAccountTiedToSeller.execute(context, { sellerId });
+    return result.ok ? ok(result.value) : err(result.error);
   }
 
   async customerAccountExists(

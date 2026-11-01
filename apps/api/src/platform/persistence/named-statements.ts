@@ -52,7 +52,11 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
         UUID.test(values[2])
       );
     }
-    if (sql === LOCK_DISPUTE_CASE_TEXT || sql === LOCK_SELLER_ORDER_TEXT) {
+    if (
+      sql === LOCK_DISPUTE_CASE_TEXT ||
+      sql === LOCK_SELLER_ORDER_TEXT ||
+      sql === LOCK_REVIEWS_ACCOUNT_TEXT
+    ) {
       return (
         values.length === 3 &&
         values[0] === market.marketId &&
@@ -123,6 +127,11 @@ export interface SharedCertificationIssuer {
 
 /** The answer of `engagement.lock-account`: the lock is held until the unit ends. */
 export interface LockedEngagementAccount {
+  readonly locked: true;
+}
+
+/** The answer of `reviews.lock-account`: the lock is held until the unit ends. */
+export interface LockedReviewsAccount {
   readonly locked: true;
 }
 
@@ -214,6 +223,18 @@ export interface NamedStatements {
   readonly 'commission-payouts.lock-seller-order': {
     readonly params: { readonly sellerOrderId: string };
     readonly row: LockedSellerOrder;
+  };
+  /**
+   * Takes the exclusive transaction advisory lock of one customer account's review writes in the
+   * unit's Market and tenant (reviews), so two parallel submits, edits or ratings of one account
+   * count the daily limit one after the other and cannot both pass it. The key is `hashtext` of
+   * Market, tenant and account under class 1703, which is this statement's alone; a collision
+   * only makes two accounts wait for each other. Always one row; released at COMMIT or ROLLBACK;
+   * a wait past `lock_timeout` (55P03) ends the unit as a conflict.
+   */
+  readonly 'reviews.lock-account': {
+    readonly params: { readonly accountId: string };
+    readonly row: LockedReviewsAccount;
   };
 }
 
@@ -501,6 +522,40 @@ const LOCK_SELLER_ORDER_TEXT = lockSellerOrderStatement(
   '',
 ).sql;
 
+/** The advisory-lock class of `reviews.lock-account`. */
+export const REVIEWS_ACCOUNT_LOCK_CLASS = 1703;
+
+/** The statement of `reviews.lock-account`: Market, tenant, then the account. */
+export function lockReviewsAccountStatement(market: MarketContext, accountId: string): Prisma.Sql {
+  const key = Prisma.sql`hashtext(${market.marketId}::text || ':' || ${market.tenantId}::text || ':' || ${accountId}::text)`;
+  return Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock(${Prisma.raw(String(REVIEWS_ACCOUNT_LOCK_CLASS))}::int4, ${key})`;
+}
+
+async function lockReviewsAccount(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'reviews.lock-account'>,
+): Promise<LockedReviewsAccount[]> {
+  const name = 'reviews.lock-account';
+  if (typeof params.accountId !== 'string' || !UUID.test(params.accountId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(lockReviewsAccountStatement(market, params.accountId))) as {
+    locked: boolean;
+  }[];
+  if (rows.length !== 1 || rows[0]!.locked !== true) {
+    throw new NamedStatementRefusedError(name, 'rows-missing');
+  }
+  return [{ locked: true }];
+}
+
+const LOCK_REVIEWS_ACCOUNT_TEXT = lockReviewsAccountStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
 /** Runs one named statement on the open read-write unit's transaction. */
 export async function runNamedStatement<K extends NamedStatementName>(
   runner: RawRunner,
@@ -550,6 +605,12 @@ export async function runNamedStatement<K extends NamedStatementName>(
         runner,
         market,
         params as NamedStatementParams<'commission-payouts.lock-seller-order'>,
+      );
+    case 'reviews.lock-account':
+      return await lockReviewsAccount(
+        runner,
+        market,
+        params as NamedStatementParams<'reviews.lock-account'>,
       );
     default:
       throw new Error('Unknown named statement');
