@@ -61,6 +61,8 @@ import { PrismaCertificateTypeCatalog } from './prisma-certificate-type-catalog'
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaSellerCertificateRepository } from './prisma-seller-certificate.repository';
 import { SharpDocumentIntake } from './sharp-document-intake';
+import { ScanningDocumentIntake } from './scanning-document-intake';
+import { MALWARE_SCANNER, type MalwareScanner } from '../../../platform/malware/malware-scanner';
 import { SubjectKeyCertificateFieldCipher } from './subject-key-certificate-field-cipher';
 
 /** Bytes of draft files one seller may hold (certification design 5.1): 200 MiB. */
@@ -131,7 +133,12 @@ export const sellerCertificateProviders: readonly Provider[] = [
     inject: [CERTIFICATION_SECRET],
     useFactory: (secret: Uint8Array): CertificateIndexKeys => new HmacCertificateIndexKeys(secret),
   },
-  { provide: DOCUMENT_INTAKE, useFactory: (): DocumentIntake => new SharpDocumentIntake() },
+  {
+    provide: DOCUMENT_INTAKE,
+    inject: [MALWARE_SCANNER],
+    useFactory: (scanner: MalwareScanner): DocumentIntake =>
+      new ScanningDocumentIntake(new SharpDocumentIntake(), scanner),
+  },
   {
     provide: DOCUMENT_VAULT,
     inject: [OBJECT_STORE, SUBJECT_KEY_SERVICE],

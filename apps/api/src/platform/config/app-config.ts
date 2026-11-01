@@ -96,6 +96,11 @@ const envSchema = z.object({
   // Both or neither: with neither, the AWS default credential chain applies (an instance role).
   OBJECT_STORE_S3_ACCESS_KEY_ID: z.string().min(1).max(256).optional(),
   OBJECT_STORE_S3_SECRET_ACCESS_KEY: z.string().min(1).max(512).optional(),
+  // File storage pilot F12: the ClamAV daemon (clamd) that scans certificate files. Unset: no scan,
+  // which is allowed only while CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED is false.
+  CLAMD_HOST: z.string().min(1).max(255).optional(),
+  CLAMD_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
+  CLAMD_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
   // Phase 5: the Stripe secret key for hosted Checkout. Test mode only until the live gates
   // (pen test, tax agent) are passed: a live key is refused at boot. The value is never echoed.
   STRIPE_SECRET_KEY: z
@@ -403,6 +408,15 @@ export interface AppConfig {
    * whole; read by `platform/storage/` alone.
    */
   readonly objectStore: ObjectStoreConfig | null;
+  /**
+   * The ClamAV daemon (`CLAMD_HOST`, `CLAMD_PORT`, `CLAMD_TIMEOUT_MS`), or null: then no scan runs.
+   * Required when `certificationReviewerDocumentsEnabled` is true (checked at start-up).
+   */
+  readonly malwareScanner: {
+    readonly host: string;
+    readonly port: number;
+    readonly timeoutMs: number;
+  } | null;
   /**
    * The Stripe secret key (`STRIPE_SECRET_KEY`, test mode only), or null: then ordering cannot
    * open a payment page and a checkout answers "payment unavailable". Holds a secret: never log
@@ -870,6 +884,15 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     ? objectStoreSettings(parsed.data)
     : { config: null, issues: [] };
   issues.push(...objectStore.issues);
+  if (
+    parsed.success &&
+    parsed.data.CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED === 'true' &&
+    parsed.data.CLAMD_HOST === undefined
+  ) {
+    issues.push(
+      'CLAMD_HOST: required when CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED is true (reviewers may open certificate files only after they are scanned)',
+    );
+  }
   if (!parsed.success || issues.length > 0 || assistant.config === null) {
     throw new InvalidConfigError(issues);
   }
@@ -890,6 +913,14 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
     objectStore: objectStore.config,
+    malwareScanner:
+      parsed.data.CLAMD_HOST === undefined
+        ? null
+        : {
+            host: parsed.data.CLAMD_HOST,
+            port: parsed.data.CLAMD_PORT,
+            timeoutMs: parsed.data.CLAMD_TIMEOUT_MS,
+          },
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
     stripePaymentMethodConfiguration: parsed.data.STRIPE_PAYMENT_METHOD_CONFIGURATION ?? null,
     stripeWebhookSecrets: webhookSecrets.secrets,

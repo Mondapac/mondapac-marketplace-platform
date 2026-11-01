@@ -54,5 +54,22 @@ services:
       - '127.0.0.1:${SMTP_PORT:-1025}:1025'
       - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025'
 
+  # Virus scanner for certificate documents (F12). Optional locally: leave CLAMD_HOST unset and
+  # nothing is scanned. Set CLAMD_HOST=127.0.0.1 to try it. The first start downloads the
+  # signature database, so it takes a few minutes to become healthy.
+  clamav:
+    image: clamav/clamav:1.4
+    ports:
+      - '127.0.0.1:${CLAMD_PORT:-3310}:3310'
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
 volumes:
   postgres-data:
+  clamav-data:

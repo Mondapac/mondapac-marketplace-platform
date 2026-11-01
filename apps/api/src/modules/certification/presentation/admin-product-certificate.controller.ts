@@ -113,6 +113,8 @@ export const PRODUCT_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Obje
   'file.active-content': 422,
   'file.too-complex': 422,
   'file.inspection-timeout': 422,
+  'file.infected': 422,
+  'file.scan-unavailable': 503,
   'request.throttled': 429,
   'review.checks-incomplete': 422,
   'certificate.incomplete': 422,
@@ -752,7 +754,7 @@ export class AdminProductCertificateController {
     type: CertificationErrorBody,
     description:
       'file.unreadable, file.too-many-pages, file.encrypted, file.active-content, ' +
-      'file.too-complex or file.inspection-timeout',
+      'file.too-complex, file.inspection-timeout or file.infected (503 file.scan-unavailable when the scanner gives no verdict)',
   })
   @ApiUnsupportedMediaTypeResponse({
     type: CertificationErrorBody,
