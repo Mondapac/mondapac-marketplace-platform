@@ -1765,6 +1765,16 @@ const marketSchema = z
      * code, whose entropy (`codeLength` x log2 of the alphabet size) must be at least 60 bits;
      * `maxPerBatch` the most codes one generating call makes; `maxPerPromotion` the most codes
      * one promotion may hold in all.
+     * Phase 3: `customerGroup.defaultReturningDays`: the days since a customer's last order that a
+     * returning-customer segment uses when its admin gives none (AU 60); absent means the admin
+     * must say. `referral` (refer a friend; absent means the Market has no referral program):
+     * `maxRewardMinor` the most either credit of a referral may be, `maxRewardedPerReferrer` the
+     * most rewarded referrals one referrer may have under one promotion, `qualifyWithinDays` the
+     * days a new customer has, from applying a code, to get a qualifying order delivered, and
+     * `codeLength` and `alphabet` (upper-case letters and digits, each once; at least 60 bits) of
+     * a referral code. `cashback` (absent means the Market has no cashback): `maxBps` the most of
+     * the goods paid that a promotion may credit and `maxCapMinor` the most one order may be
+     * credited. The credits themselves (amounts, caps, budgets) are promotion data.
      * Whether promotions are on is not config: an admin sets it at runtime
      * (`promotions.market_settings`), off by default.
      */
@@ -1800,6 +1810,33 @@ const marketSchema = z
             (value) => value.maxPerPromotion >= value.maxPerBatch,
             'maxPerPromotion must be at least maxPerBatch',
           )
+          .optional(),
+        customerGroup: z
+          .strictObject({
+            defaultReturningDays: z.number().int().min(1).max(3650),
+          })
+          .optional(),
+        referral: z
+          .strictObject({
+            maxRewardMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+            maxRewardedPerReferrer: z.number().int().min(1).max(10000),
+            qualifyWithinDays: z.number().int().min(1).max(365),
+            codeLength: z.number().int().min(8).max(32),
+            alphabet: z
+              .string()
+              .regex(/^[A-Z0-9]{16,36}$/, 'upper-case letters and digits, 16 to 36 of them')
+              .refine((value) => new Set(value).size === value.length, 'each character once'),
+          })
+          .refine(
+            (value) => value.codeLength * Math.log2(value.alphabet.length) >= 60,
+            'a code needs at least 60 bits of entropy (codeLength x log2 alphabet size)',
+          )
+          .optional(),
+        cashback: z
+          .strictObject({
+            maxBps: z.number().int().min(1).max(10000),
+            maxCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+          })
           .optional(),
         firstOrder: z
           .strictObject({

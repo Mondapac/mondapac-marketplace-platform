@@ -1592,6 +1592,327 @@ describe.each(MARKETS)('discount calculation in market $code', (market) => {
     });
   });
 
+  describe('phase 3: customer-group discount', () => {
+    const group = (over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id: 'grp',
+        type: 'CUSTOMER_GROUP',
+        layer: 'PLATFORM_CART',
+        platformShareBps: 10000,
+        reward: { kind: 'PERCENT', bps: 1000 },
+        audience: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 60 },
+        ...over,
+      });
+    const cart = { lines: [line('l1', 's1', P, 2)] };
+
+    it('applies to a customer whose last order was at least N days ago', () => {
+      for (const days of [60, 61, 400]) {
+        const out = run(market, {
+          ...cart,
+          promotions: [group()],
+          customer: { daysSinceLastOrder: days, followedSellerIds: null },
+          orderCommission: 100000n,
+        });
+        expect(out.totals.goodsDiscount).toBe((2n * P * 1000n) / 10000n);
+        expect(out.applied[0]).toMatchObject({ promotionId: 'grp', layer: 'PLATFORM_CART' });
+      }
+    });
+
+    it('does not apply one day short, to a customer who never ordered, or to an unknown customer', () => {
+      const tries: Partial<CalculationInput>[] = [
+        { customer: { daysSinceLastOrder: 59, followedSellerIds: null } },
+        { customer: { daysSinceLastOrder: 0, followedSellerIds: null } },
+        { customer: { daysSinceLastOrder: null, followedSellerIds: null } },
+        { customer: null },
+        {},
+      ];
+      for (const over of tries) {
+        const out = run(market, {
+          ...cart,
+          promotions: [group()],
+          orderCommission: 100000n,
+          ...over,
+        });
+        expect(out.totals.goodsDiscount).toBe(0n);
+      }
+    });
+
+    it('applies to a cart delivered to one of the target zones only', () => {
+      const zoned = group({ audience: { kind: 'DELIVERY_ZONE', zones: ['Z9', 'Z2'] } });
+      const base = { ...cart, promotions: [zoned], orderCommission: 100000n };
+      expect(
+        run(market, { ...base, shipping: [charge('sh', 500n, null, 'Z2')] }).totals.goodsDiscount,
+      ).toBe((2n * P * 1000n) / 10000n);
+      expect(
+        run(market, { ...base, shipping: [charge('sh', 500n, null, 'Z1')] }).totals.goodsDiscount,
+      ).toBe(0n);
+      expect(run(market, base).totals.goodsDiscount).toBe(0n);
+    });
+
+    it('keeps the platform money rules: the commission cap, the budget and the line cap', () => {
+      const out = run(market, {
+        ...cart,
+        promotions: [group({ reward: { kind: 'PERCENT', bps: 9000 }, budgetRemaining: 700n })],
+        customer: { daysSinceLastOrder: 90, followedSellerIds: null },
+        orderCommission: 100000n,
+      });
+      expect(out.totals.goodsDiscount).toBe(700n);
+      const capped = run(market, {
+        ...cart,
+        promotions: [group({ reward: { kind: 'PERCENT', bps: 9000 } })],
+        customer: { daysSinceLastOrder: 90, followedSellerIds: null },
+        orderCommission: 1000000n,
+      });
+      expect(capped.totals.goodsDiscount).toBe((2n * P * BigInt(market.lineCapBps)) / 10000n);
+      const commissionCapped = run(market, {
+        ...cart,
+        promotions: [group()],
+        customer: { daysSinceLastOrder: 90, followedSellerIds: null },
+        orderCommission: 150n,
+      });
+      expect(commissionCapped.totals.platformShare).toBe(150n);
+    });
+
+    it('refuses a malformed audience for the whole cart', () => {
+      const bad = [
+        { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 0 },
+        { kind: 'DELIVERY_ZONE', zones: [] },
+        { kind: 'STORE_FOLLOWER' },
+      ] as const;
+      for (const audience of bad) {
+        const result = calculateDiscounts({
+          currency: market.currency,
+          lines: [line('l1', 's1', P)],
+          shipping: [],
+          promotions: [group({ audience })],
+          code: null,
+          isFirstOrder: false,
+          orderCommission: 0n,
+          rules: { lineDiscountCapBps: market.lineCapBps },
+        });
+        expect(result.ok).toBe(false);
+      }
+    });
+  });
+
+  describe('phase 3: types defined by their audience', () => {
+    it('refuses a customer-group or store-follower promotion that has no audience', () => {
+      for (const over of [
+        { type: 'CUSTOMER_GROUP', layer: 'PLATFORM_CART', platformShareBps: 10000 },
+        { type: 'STORE_FOLLOWER', layer: 'SELLER_CART', sellerId: 's1' },
+      ] as Partial<CalculationPromotion>[]) {
+        for (const audience of [null, undefined]) {
+          const result = calculateDiscounts({
+            currency: market.currency,
+            lines: [line('l1', 's1', P)],
+            shipping: [],
+            promotions: [
+              promo({
+                id: 'aud',
+                reward: { kind: 'PERCENT', bps: 1000 },
+                ...over,
+                ...(audience === undefined ? {} : { audience }),
+              }),
+            ],
+            code: null,
+            isFirstOrder: false,
+            orderCommission: 100000n,
+            rules: { lineDiscountCapBps: market.lineCapBps },
+          });
+          expect(result.ok).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe('phase 3: store-follower offer', () => {
+    const follower = (over: Partial<CalculationPromotion> = {}) =>
+      promo({
+        id: 'fol',
+        type: 'STORE_FOLLOWER',
+        layer: 'SELLER_CART',
+        sellerId: 's1',
+        reward: { kind: 'PERCENT', bps: 1000 },
+        audience: { kind: 'STORE_FOLLOWER' },
+        ...over,
+      });
+    const cart = { lines: [line('l1', 's1', P), line('l2', 's2', P)] };
+
+    it('gives the follower of the seller a seller-funded discount on that seller lines only', () => {
+      const out = run(market, {
+        ...cart,
+        promotions: [follower()],
+        customer: { daysSinceLastOrder: null, followedSellerIds: ['s1'] },
+      });
+      expect(out.lines[0]!.discount).toBe(1000n);
+      expect(out.lines[1]!.discount).toBe(0n);
+      expect(out.lines[0]!.allocations[0]).toMatchObject({
+        layer: 'SELLER_CART',
+        sellerShare: 1000n,
+        platformShare: 0n,
+      });
+    });
+
+    it('does not apply to someone who follows another store, an unknown follow list or no customer', () => {
+      const tries: Partial<CalculationInput>[] = [
+        { customer: { daysSinceLastOrder: null, followedSellerIds: ['s2'] } },
+        { customer: { daysSinceLastOrder: null, followedSellerIds: [] } },
+        { customer: { daysSinceLastOrder: 5, followedSellerIds: null } },
+        { customer: null },
+        {},
+      ];
+      for (const over of tries) {
+        const out = run(market, { ...cart, promotions: [follower()], ...over });
+        expect(out.totals.goodsDiscount).toBe(0n);
+      }
+    });
+
+    it('is held to the seller maximum and stacks with a seller sale on the item layer', () => {
+      const out = run(market, {
+        lines: [line('l1', 's1', P)],
+        promotions: [
+          follower({ reward: { kind: 'PERCENT', bps: 9000 }, maxShareBps: 2500 }),
+          promo({ id: 'sale', sellerId: 's1', reward: { kind: 'PERCENT', bps: 1000 } }),
+        ],
+        customer: { daysSinceLastOrder: null, followedSellerIds: ['s1'] },
+      });
+      // 10 % item sale first, then at most 25 % of the eligible goods left.
+      const left = P - 1000n;
+      expect(out.lines[0]!.discount).toBe(1000n + (left * 2500n) / 10000n);
+    });
+
+    it('needs a seller owner', () => {
+      const result = calculateDiscounts({
+        currency: market.currency,
+        lines: [line('l1', 's1', P)],
+        shipping: [],
+        promotions: [follower({ sellerId: null })],
+        code: null,
+        isFirstOrder: false,
+        orderCommission: 0n,
+        rules: { lineDiscountCapBps: market.lineCapBps },
+        customer: { daysSinceLastOrder: null, followedSellerIds: ['s1'] },
+      });
+      expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('phase 3: invariants over generated carts', () => {
+    let seed = 4242;
+    const next = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const shuffled = <T>(items: readonly T[]): T[] => {
+      const copy = [...items];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = next(i + 1);
+        [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+      }
+      return copy;
+    };
+
+    it('keeps the books, the caps and the order independence with audience promotions', () => {
+      for (let round = 0; round < 300; round++) {
+        const lines: CartLine[] = [];
+        for (let i = 0; i < 1 + next(5); i++) {
+          lines.push(
+            line(`l${i}`, `s${next(3)}`, BigInt(1 + next(20000)), 1 + next(4), `p${next(4)}`),
+          );
+        }
+        const promotions: CalculationPromotion[] = [
+          promo({
+            id: 'sale',
+            sellerId: 's0',
+            reward: { kind: 'PERCENT', bps: 100 * (1 + next(99)) },
+          }),
+          promo({
+            id: 'fol0',
+            type: 'STORE_FOLLOWER',
+            layer: 'SELLER_CART',
+            sellerId: 's0',
+            maxShareBps: next(2) === 0 ? null : 1000 * (1 + next(9)),
+            reward: { kind: 'PERCENT', bps: 100 * (1 + next(99)) },
+            audience: { kind: 'STORE_FOLLOWER' },
+          }),
+          promo({
+            id: 'fol1',
+            type: 'STORE_FOLLOWER',
+            layer: 'SELLER_CART',
+            sellerId: 's1',
+            combinable: next(3) !== 0,
+            reward: { kind: 'FIXED', amount: BigInt(1 + next(3000)) },
+            audience: { kind: 'STORE_FOLLOWER' },
+          }),
+          promo({
+            id: 'ret',
+            type: 'CUSTOMER_GROUP',
+            layer: 'PLATFORM_CART',
+            platformShareBps: 10000,
+            budgetRemaining: next(2) === 0 ? null : BigInt(next(5000)),
+            reward: { kind: 'PERCENT', bps: 100 * (1 + next(60)) },
+            audience: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 1 + next(90) },
+          }),
+          promo({
+            id: 'zone',
+            type: 'CUSTOMER_GROUP',
+            layer: 'PLATFORM_CART',
+            platformShareBps: 10000,
+            reward: { kind: 'FIXED', amount: BigInt(1 + next(4000)) },
+            audience: { kind: 'DELIVERY_ZONE', zones: ['Z1', 'Z7'] },
+          }),
+        ];
+        const followed = ['s0', 's1', 's2'].filter(() => next(2) === 0);
+        const input: Partial<CalculationInput> = {
+          lines,
+          promotions,
+          shipping: [charge('sh1', BigInt(next(2000)), null, next(2) === 0 ? 'Z1' : 'Z3')],
+          customer: {
+            daysSinceLastOrder: next(5) === 0 ? null : next(150),
+            followedSellerIds: next(6) === 0 ? null : followed,
+          },
+          orderCommission: BigInt(next(5000)),
+        };
+        const out = run(market, input);
+        let platformShare = 0n;
+        for (const l of out.lines) {
+          expect(l.allocations.reduce((t, a) => t + a.amount, 0n)).toBe(l.discount);
+          expect(l.net).toBe(l.gross - l.discount);
+          expect(l.net).toBeGreaterThanOrEqual(0n);
+          expect(l.discount).toBeLessThanOrEqual((l.gross * BigInt(market.lineCapBps)) / 10000n);
+          expect(l.allocations.filter((a) => a.layer === 'ITEM').length).toBeLessThanOrEqual(1);
+          for (const a of l.allocations) {
+            expect(a.sellerShare + a.platformShare).toBe(a.amount);
+            platformShare += a.platformShare;
+          }
+        }
+        expect(platformShare).toBeLessThanOrEqual(input.orderCommission!);
+        // An audience promotion never applies without its fact.
+        const applied = new Set(out.applied.map((a) => a.promotionId));
+        const customer = input.customer!;
+        for (const [id, seller] of [
+          ['fol0', 's0'],
+          ['fol1', 's1'],
+        ] as const) {
+          if (customer.followedSellerIds === null || !customer.followedSellerIds.includes(seller)) {
+            expect(applied.has(id)).toBe(false);
+          }
+        }
+        if (customer.daysSinceLastOrder === null) expect(applied.has('ret')).toBe(false);
+        if (out.shipping[0]!.gross >= 0n && input.shipping![0]!.zoneCode !== 'Z1') {
+          expect(applied.has('zone')).toBe(false);
+        }
+        // Same answer in any order.
+        const again = run(market, {
+          ...input,
+          lines: shuffled(lines),
+          promotions: shuffled(promotions),
+        });
+        expect(again).toEqual(out);
+      }
+    });
+  });
+
   describe('invariants over generated carts', () => {
     // A small seeded generator, so the carts are the same on every run.
     let seed = 12345;

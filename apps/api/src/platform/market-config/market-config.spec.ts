@@ -2360,3 +2360,79 @@ describe('promotions.batchCodes (single-use code batches)', () => {
     expect(() => load(batchCodes)).toThrow(InvalidMarketConfigError);
   });
 });
+
+describe('promotions phase 3 limits (customer group, referral, cashback)', () => {
+  const PROMOTIONS = {
+    lineDiscountCapBps: 8000,
+    sellerMaxDiscountBps: 7000,
+    platformBudgetStepUpMinor: 200000,
+    freeShippingThresholdMinor: 5000,
+    newSellerDays: 30,
+    priorApprovalDiscountBps: 5000,
+    wasPrice: { windowDays: 90, minDaysAtPrice: 28 },
+    gstRulingConfirmed: false,
+    maxActivePromotionsPerSeller: 50,
+  };
+  const REFERRAL = {
+    maxRewardMinor: 2000,
+    maxRewardedPerReferrer: 10,
+    qualifyWithinDays: 30,
+    codeLength: 12,
+    alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+  };
+  const CASHBACK = { maxBps: 1000, maxCapMinor: 5000 };
+  const load = (extra: Record<string, unknown>) =>
+    loadMarketConfigs(
+      [directoryWith({ 'QQ.json': { ...VALID, promotions: { ...PROMOTIONS, ...extra } } })],
+      [QQ],
+    ).get(QQ)!.promotions;
+
+  it('are all optional, and load when valid', () => {
+    const none = load({});
+    expect(none?.customerGroup).toBeUndefined();
+    expect(none?.referral).toBeUndefined();
+    expect(none?.cashback).toBeUndefined();
+    const all = load({
+      customerGroup: { defaultReturningDays: 60 },
+      referral: REFERRAL,
+      cashback: CASHBACK,
+    });
+    expect(all?.customerGroup).toEqual({ defaultReturningDays: 60 });
+    expect(all?.referral).toMatchObject({ maxRewardMinor: 2000, codeLength: 12 });
+    expect(all?.cashback).toEqual(CASHBACK);
+  });
+
+  it('differ between the two Market fixtures', () => {
+    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+    const [first, second] = [...markets.values()].map((m) => m.promotions);
+    for (const key of ['customerGroup', 'referral', 'cashback'] as const) {
+      expect(first?.[key]).toBeDefined();
+      expect(second?.[key]).toBeDefined();
+      expect(first?.[key]).not.toEqual(second?.[key]);
+    }
+  });
+
+  it.each([
+    ['zero default days', { customerGroup: { defaultReturningDays: 0 } }],
+    ['too many default days', { customerGroup: { defaultReturningDays: 4000 } }],
+    ['an unknown customer-group key', { customerGroup: { defaultReturningDays: 5, x: 1 } }],
+    ['a referral code with too little entropy', { referral: { ...REFERRAL, codeLength: 8 } }],
+    [
+      'a referral alphabet with a repeated character',
+      { referral: { ...REFERRAL, alphabet: 'AABCDEFGHJKLMNPQRSTUVWXYZ23456789' } },
+    ],
+    [
+      'a lower-case referral alphabet (codes are typed in any case)',
+      { referral: { ...REFERRAL, alphabet: 'abcdefghjklmnpqrstuvwxyz23456789' } },
+    ],
+    ['a zero referral reward limit', { referral: { ...REFERRAL, maxRewardMinor: 0 } }],
+    ['a zero rewarded-referrals limit', { referral: { ...REFERRAL, maxRewardedPerReferrer: 0 } }],
+    ['a zero qualifying window', { referral: { ...REFERRAL, qualifyWithinDays: 0 } }],
+    ['an unknown referral key', { referral: { ...REFERRAL, bonus: 1 } }],
+    ['a cashback above 100 percent', { cashback: { ...CASHBACK, maxBps: 10001 } }],
+    ['a zero cashback cap', { cashback: { ...CASHBACK, maxCapMinor: 0 } }],
+    ['an unknown cashback key', { cashback: { ...CASHBACK, rate: 1 } }],
+  ])('rejects %s', (_label, extra) => {
+    expect(() => load(extra)).toThrow(InvalidMarketConfigError);
+  });
+});

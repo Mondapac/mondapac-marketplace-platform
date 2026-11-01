@@ -36,6 +36,24 @@ export class ConfigPromotionsPolicy implements PromotionsPolicy {
         newSellerDays: promotions.newSellerDays,
         platformBudgetStepUpMinor: BigInt(promotions.platformBudgetStepUpMinor),
         gstRulingConfirmed: promotions.gstRulingConfirmed,
+        customerGroupReturningDays: promotions.customerGroup?.defaultReturningDays ?? null,
+        referral:
+          promotions.referral === undefined
+            ? null
+            : {
+                maxRewardMinor: BigInt(promotions.referral.maxRewardMinor),
+                maxRewardedPerReferrer: promotions.referral.maxRewardedPerReferrer,
+                qualifyWithinDays: promotions.referral.qualifyWithinDays,
+                codeLength: promotions.referral.codeLength,
+                alphabet: promotions.referral.alphabet,
+              },
+        cashback:
+          promotions.cashback === undefined
+            ? null
+            : {
+                maxBps: promotions.cashback.maxBps,
+                maxCapMinor: BigInt(promotions.cashback.maxCapMinor),
+              },
       },
       lineDiscountCapBps: promotions.lineDiscountCapBps,
       freeShippingThresholdMinor: BigInt(promotions.freeShippingThresholdMinor),

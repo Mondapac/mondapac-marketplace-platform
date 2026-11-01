@@ -22,6 +22,11 @@ export type PromotionsFailure =
   | { readonly code: 'promotions.too-many-active' }
   /** Not editable by this caller: an admin on a seller's promotion, a rejected promotion. */
   | { readonly code: 'promotions.not-editable' }
+  /**
+   * The customer cannot be referred: they are the referrer, have ordered before, were referred
+   * already, or the facts to tell could not be read. One answer for all of them.
+   */
+  | { readonly code: 'promotions.referral-not-eligible' }
   /** The step-up refusals of identity, as the use case passes them on. */
   | { readonly code: 'second-factor.required'; readonly actionKey: string }
   | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string }
