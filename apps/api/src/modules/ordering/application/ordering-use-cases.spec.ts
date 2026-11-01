@@ -499,6 +499,23 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         [SELLER_B, 'instant', null],
       ]);
     });
+
+    it('freezes the preparation minutes of each seller order as the policy gave them', async () => {
+      deps = {
+        ...deps,
+        deliveryMethods: {
+          readyPrepMinutes: (_c, sellerId) => Promise.resolve(sellerId === SELLER_A ? 45 : 120),
+          allows: () => Promise.resolve(true),
+        },
+      };
+
+      const order = await placed();
+
+      expect(order.sellerOrders.map((s) => [s.sellerId, s.readyPrepMinutes])).toEqual([
+        [SELLER_A, 45],
+        [SELLER_B, 120],
+      ]);
+    });
   });
 
   describe('delivery address', () => {
