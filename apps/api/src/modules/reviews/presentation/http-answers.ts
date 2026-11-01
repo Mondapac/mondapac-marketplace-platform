@@ -15,6 +15,7 @@ export const REVIEWS_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'reviews.not-found': 404,
   'reviews.window-closed': 409,
   'reviews.already-reviewed': 409,
+  'reviews.already-replied': 409,
   'reviews.already-rated': 409,
   'reviews.not-editable': 409,
   'reviews.edit-window-closed': 409,

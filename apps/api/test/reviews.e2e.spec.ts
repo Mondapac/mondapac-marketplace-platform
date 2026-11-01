@@ -1,10 +1,15 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import { FixedClock, testMarketContext } from '@mondapac/shared-kernel/testing';
+import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { DeleteProductReview } from '../src/modules/reviews/application/use-cases/delete-product-review.use-case';
 import { EditProductReview } from '../src/modules/reviews/application/use-cases/edit-product-review.use-case';
+import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
+import { EditReviewReply } from '../src/modules/reviews/application/use-cases/edit-review-reply.use-case';
+import { ListSellerReviews } from '../src/modules/reviews/application/use-cases/list-seller-reviews.use-case';
+import { ReplyToReview } from '../src/modules/reviews/application/use-cases/reply-to-review.use-case';
+import { ReportReview } from '../src/modules/reviews/application/use-cases/report-review.use-case';
 import { ListMyReviews } from '../src/modules/reviews/application/use-cases/list-my-reviews.use-case';
 import { ListProductReviews } from '../src/modules/reviews/application/use-cases/list-product-reviews.use-case';
 import { ListToReview } from '../src/modules/reviews/application/use-cases/list-to-review.use-case';
@@ -42,6 +47,8 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const CUSTOMER = id<'Account'>(0xa101);
 const ADMIN = id<'Account'>(0xa001);
+const SELLER_MEMBER = id<'Account'>(0xa201);
+const SELLER = id<'Seller'>(0xe0a5);
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
@@ -55,6 +62,7 @@ it('maps every refusal code of the reviews routes to its exact status', () => {
     'reviews.window-closed': 409,
     'reviews.already-reviewed': 409,
     'reviews.already-rated': 409,
+    'reviews.already-replied': 409,
     'reviews.not-editable': 409,
     'reviews.edit-window-closed': 409,
     'reviews.not-moderatable': 409,
@@ -102,6 +110,10 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
           ['view-review', ViewModerationReview],
           ['moderate', ModerateReview],
           ['remove', RemoveReview],
+          ['seller-list', ListSellerReviews],
+          ['seller-reply', ReplyToReview],
+          ['seller-edit-reply', EditReviewReply],
+          ['seller-report', ReportReview],
         ].reduce(
           (b, [name, type]) => b.overrideProvider(type as never).useValue(stub(name as string)),
           fakes.override(builder).overrideProvider(CLOCK).useValue(clock),
@@ -110,6 +122,7 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
     for (const [accountId, population, label] of [
       [CUSTOMER, 'customer', 'shopper'],
       [ADMIN, 'admin', 'admin'],
+      [SELLER_MEMBER, 'seller', 'merchant'],
     ] as const) {
       fakes.seedAccount({
         id: accountId,
@@ -126,6 +139,46 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
         credential: { passwordHash: fakeHashOf('x'), changedAt: START },
       });
     }
+    // The shop's approved access and its active member (the Seller Owner role), as identity holds them.
+    await app
+      .get(SeedRoles)
+      .execute(
+        testCallContext(testMarketContext(code, PLATFORM_TENANT_ID), 'system', 'reviews-seed-0001'),
+        {},
+      );
+    const ownerRole = [...fakes.roles.values()].find(
+      (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === 'seller-owner',
+    )!.id;
+    fakes.seedSellerAccess({
+      sellerId: SELLER,
+      marketId,
+      origin: 'self',
+      state: 'approved',
+      stateChangedAt: START,
+      reapplyCount: 0,
+      registeredAt: START,
+      version: 3,
+      createdAt: START,
+    });
+    fakes.seedAssignment({
+      id: id<'RoleAssignment'>(0xe0f1),
+      marketId,
+      accountId: SELLER_MEMBER,
+      roleId: ownerRole,
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
+    fakes.seedMembership({
+      id: id<'SellerMembership'>(0xf0f1),
+      marketId,
+      accountId: SELLER_MEMBER,
+      sellerId: SELLER,
+      state: 'active',
+      removedAt: null,
+      version: 1,
+      createdAt: START,
+    });
     // The admin's active second factor, for the admin step-up of the switch and the moderation.
     fakes.factors.set(ADMIN, {
       id: id<'SecondFactor'>(0xf301),
@@ -150,16 +203,17 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
   /** A fresh step-up proof of the admin session (n = 2) for one action (identity's verify route). */
   const prove = (actionKey: string) =>
     fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + 2)}|${actionKey}`, clock.now());
-  function sessionOf(population: 'customer' | 'admin', n: number) {
+  function sessionOf(population: 'customer' | 'admin' | 'seller', n: number) {
     const issued = tokens.issue();
     void fakes.sessionRepository.add(
       testMarketContext(code, PLATFORM_TENANT_ID),
       openSession({
         id: id<'Session'>(0xf100 + n),
         marketId,
-        accountId: population === 'customer' ? CUSTOMER : ADMIN,
+        accountId:
+          population === 'customer' ? CUSTOMER : population === 'seller' ? SELLER_MEMBER : ADMIN,
         population,
-        sellerId: null,
+        sellerId: population === 'seller' ? SELLER : null,
         transport: 'cookie',
         lifetime: LIFETIME,
         now: clock.now(),
@@ -173,6 +227,7 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
   }
   const customer = () => sessionOf('customer', 1);
   const admin = () => sessionOf('admin', 2);
+  const seller = () => sessionOf('seller', 3);
 
   const asAdmin = (method: 'get' | 'put', headers: Record<string, string>, payload?: unknown) => {
     const req = http()
@@ -628,6 +683,117 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
       (await http().get(`/reviews/products/${PRODUCT}/summary`).set({ 'x-market-id': code }))
         .status,
     ).toBe(404);
+  });
+
+  describe('the seller routes', () => {
+    const view = {
+      id: REVIEW,
+      productId: PRODUCT,
+      offerId: id<'Offer'>(0xe004),
+      orderRef: SELLER_ORDER,
+      rating: 2,
+      title: null,
+      body: 'Late',
+      locale: 'en',
+      publishedAt: START,
+      reply: null,
+    };
+    const asSeller = (
+      method: 'get' | 'post' | 'patch',
+      path: string,
+      headers: Record<string, string>,
+      payload?: unknown,
+    ) => {
+      const req = http()
+        [method](path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers });
+      return payload === undefined ? req : req.send(payload as object);
+    };
+
+    it('lists with a closed query and no-store, never carrying a buyer', async () => {
+      await boot();
+      next = ok({ items: [view], nextCursor: null });
+      const listed = await asSeller('get', '/reviews/seller', seller());
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toBe('no-store');
+      expect(listed.body).toMatchObject({ items: [{ id: REVIEW, orderRef: SELLER_ORDER }] });
+      expect((await asSeller('get', '/reviews/seller?stray=1', seller())).status).toBe(400);
+      expect(calls.map((c) => c.name)).toEqual(['seller-list']);
+    });
+
+    it('replies (201), edits (200) and reports (201) through the path id, passing only the body', async () => {
+      await boot();
+      const session = seller();
+      next = ok(view);
+      const created = await asSeller('post', `/reviews/seller/${REVIEW}/reply`, session, {
+        body: 'Sorry',
+      });
+      expect(created.status).toBe(201);
+      const edited = await asSeller('patch', `/reviews/seller/${REVIEW}/reply`, session, {
+        body: 'Sorry again',
+      });
+      expect(edited.status).toBe(200);
+      next = ok({ reported: true });
+      const reported = await asSeller('post', `/reviews/seller/${REVIEW}/report`, session, {
+        reasonCode: 'abusive',
+      });
+      expect(reported.status).toBe(201);
+      expect(reported.body).toEqual({ reported: true });
+      expect(calls).toEqual([
+        { name: 'seller-reply', input: { body: 'Sorry', reviewId: REVIEW } },
+        { name: 'seller-edit-reply', input: { body: 'Sorry again', reviewId: REVIEW } },
+        { name: 'seller-report', input: { reasonCode: 'abusive', reviewId: REVIEW } },
+      ]);
+    });
+
+    it('cannot be told the seller or the review state: a stray field, no CSRF, a buyer or an admin session', async () => {
+      await boot();
+      const session = seller();
+      const stray = await asSeller('post', `/reviews/seller/${REVIEW}/reply`, session, {
+        body: 'x',
+        sellerId: id<'Seller'>(0xbad),
+      });
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'sellerId', code: 'unknown-field' }] },
+      });
+      expect(
+        (
+          await asSeller(
+            'post',
+            `/reviews/seller/${REVIEW}/reply`,
+            { cookie: session.cookie },
+            { body: 'x' },
+          )
+        ).status,
+      ).toBe(403);
+      // The session decides who the caller is; the use case then refuses another population
+      // (its own unit test), and the route answers that refusal as 403.
+      next = err({ code: 'access.denied' });
+      for (const other of [customer(), admin()]) {
+        expect((await asSeller('get', '/reviews/seller', other)).status).toBe(403);
+      }
+      expect(calls.map((c) => c.name)).toEqual(['seller-list', 'seller-list']);
+    });
+
+    it('maps the seller refusals to their statuses without any text', async () => {
+      await boot();
+      const session = seller();
+      for (const [error, status] of [
+        [{ code: 'reviews.already-replied' }, 409],
+        [{ code: 'reviews.edit-window-closed' }, 409],
+        [{ code: 'reviews.not-found' }, 404],
+        [{ code: 'reviews.disabled' }, 404],
+        [{ code: 'access.denied' }, 403],
+      ] as const) {
+        next = err(error);
+        const refused = await asSeller('post', `/reviews/seller/${REVIEW}/reply`, session, {
+          body: 'secret words',
+        });
+        expect(refused.status).toBe(status);
+        expect(JSON.stringify(refused.body)).not.toContain('secret words');
+      }
+    });
   });
 
   it('refuses a visitor on a buyer route', async () => {
