@@ -91,4 +91,8 @@ export interface AdminOrder {
 export interface AdminOrderPage {
   readonly orders: readonly AdminOrder[];
   readonly nextCursor: string | null;
+  /** Page mode only (null in cursor mode): the orders matching the filter, and this page. */
+  readonly total?: number | null;
+  readonly page?: number | null;
+  readonly pageSize?: number | null;
 }

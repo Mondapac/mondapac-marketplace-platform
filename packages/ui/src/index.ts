@@ -108,6 +108,13 @@ export {
 } from './settings/use-settings-form.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
+export {
+  Pagination,
+  PrevNext,
+  pageWindow,
+  type PageItem,
+  type PaginationLabels,
+} from './data/pagination.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
 export { addressLines } from './data/address.ts';

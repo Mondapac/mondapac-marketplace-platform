@@ -2557,7 +2557,6 @@
     },
     "none": "Not set",
     "loading": "Loading orders...",
-    "more": "Show more",
     "empty": {
       "all": {
         "title": "No orders yet",
@@ -2574,6 +2573,10 @@
       "cancelled": {
         "title": "No cancelled orders",
         "body": "Orders that expired or failed to be paid appear here."
+      },
+      "filtered": {
+        "title": "No orders match",
+        "body": "Change or clear the filters to see more orders."
       }
     },
     "error": {
@@ -2620,6 +2623,31 @@
       "parts": "{count, plural, one {# seller} other {# sellers}}",
       "seller": "Seller {id}",
       "no-parts": "This order has no seller parts."
+    },
+    "range": "{from} to {to} of {total}",
+    "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "filters": {
+      "group": "Filters",
+      "payment": "Payment",
+      "fulfilment": "Delivery",
+      "from": "Placed from (UTC)",
+      "to": "Placed until (UTC)",
+      "any": "Any",
+      "clear": "Clear filters",
+      "backwards": "The end day is before the start day."
+    },
+    "sort": {
+      "label": "Sort by",
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "total-high": "Total, high to low",
+      "total-low": "Total, low to high"
+    },
+    "paging": {
+      "nav": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {n}"
     }
   },
   "load": {
