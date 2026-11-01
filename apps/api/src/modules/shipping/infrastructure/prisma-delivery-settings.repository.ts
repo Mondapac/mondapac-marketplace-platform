@@ -25,6 +25,7 @@ interface SettingsRow {
   readonly sameDayCutoffMinutes: number;
   readonly scheduledDaysAhead: number;
   readonly scheduledWindowMinutes: number;
+  readonly readyPrepMinutes: number;
   readonly marginKind: string;
   readonly marginBasisPoints: number | null;
   readonly marginFixedMinor: number | null;
@@ -54,6 +55,7 @@ function toSettings(row: SettingsRow): DeliverySettings {
     sameDayCutoffMinutes: row.sameDayCutoffMinutes,
     scheduledDaysAhead: row.scheduledDaysAhead,
     scheduledWindowMinutes: row.scheduledWindowMinutes,
+    readyPrepMinutes: row.readyPrepMinutes,
     margin: marginOf(row),
     roundingStepMinor: isRoundingStep(row.roundingStepMinor) ? row.roundingStepMinor : 1,
     version: row.version,
@@ -70,6 +72,7 @@ function columnsOf(settings: DeliverySettingsInput) {
     sameDayCutoffMinutes: settings.sameDayCutoffMinutes,
     scheduledDaysAhead: settings.scheduledDaysAhead,
     scheduledWindowMinutes: settings.scheduledWindowMinutes,
+    readyPrepMinutes: settings.readyPrepMinutes,
     marginKind: margin.kind,
     marginBasisPoints: margin.kind === 'percent' ? margin.basisPoints : null,
     marginFixedMinor: margin.kind === 'fixed' ? margin.amountMinor : null,

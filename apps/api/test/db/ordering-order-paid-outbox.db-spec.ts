@@ -153,6 +153,7 @@ describe.each(TEST_MARKETS)(
           deliveryMethod: 'instant' as const,
           deliveryWindow: null,
           readyAt: null,
+          readyPrepMinutes: null,
           deliveryAttention: null,
           deliveryQuote: null,
         })),

@@ -279,11 +279,18 @@ export async function startCheckout(
   const choiceOf = (sellerId: Id<'Seller'>): DeliveryChoice =>
     choices.choices.get(sellerId) ?? { method: DEFAULT_DELIVERY_METHOD, window: null };
   const refused: Id<'Seller'>[] = [];
+  // The preparation minutes the Market gives each seller, frozen on its seller order.
+  const prepMinutes = new Map<Id<'Seller'>, number | null>();
   for (const { sellerId } of planned.plan.sellers) {
     const choice = choiceOf(sellerId);
     if (!(await deps.deliveryMethods.allows(context, sellerId, choice.method, choice.window))) {
       refused.push(sellerId);
+      continue;
     }
+    prepMinutes.set(
+      sellerId,
+      await deps.deliveryMethods.readyPrepMinutes(context, sellerId, choice.method, choice.window),
+    );
   }
   if (refused.length > 0) {
     return err({ code: 'ordering.delivery-method-unavailable', methodSellerIds: refused });
@@ -586,6 +593,7 @@ export async function startCheckout(
       deliveryMethod: choiceOf(seller.sellerId).method,
       deliveryWindow: choiceOf(seller.sellerId).window,
       readyAt: null,
+      readyPrepMinutes: prepMinutes.get(seller.sellerId) ?? null,
       deliveryAttention: null,
       deliveryQuote: chargedQuoteOf(charges.get(seller.sellerId)),
     })),

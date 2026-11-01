@@ -103,6 +103,7 @@ describe('markCollected', () => {
     deliveryMethod: 'pickup',
     deliveryWindow: null,
     readyAt: NOW,
+    readyPrepMinutes: null,
     deliveryAttention: null,
     deliveryQuote: null,
   };

@@ -209,6 +209,7 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
             deliveryMethod: 'instant',
             deliveryWindow: null,
             readyAt: null,
+            readyPrepMinutes: null,
             deliveryAttention: null,
             deliveryQuote: null,
           },

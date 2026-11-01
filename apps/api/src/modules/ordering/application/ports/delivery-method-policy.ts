@@ -18,6 +18,18 @@ export interface DeliveryMethodPolicy {
     method: DeliveryMethod,
     window?: DeliveryWindow | null,
   ): Promise<boolean>;
+
+  /**
+   * The minutes the Market gives the seller to get this seller order ready (seller health, late
+   * ready), asked once the method is allowed. Null when it cannot be read: the order is then
+   * placed without a promise and is never counted late (fail to the seller's side, not closed).
+   */
+  readyPrepMinutes(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    method: DeliveryMethod,
+    window?: DeliveryWindow | null,
+  ): Promise<number | null>;
 }
 
 export const DELIVERY_METHOD_POLICY = Symbol('DELIVERY_METHOD_POLICY');

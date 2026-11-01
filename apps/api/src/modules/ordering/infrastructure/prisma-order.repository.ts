@@ -66,6 +66,7 @@ interface OrderRow {
     readonly deliveryWindowStart: Date | null;
     readonly deliveryWindowEnd: Date | null;
     readonly readyAt: Date | null;
+    readonly readyPrepMinutes: number | null;
     readonly deliveryAttention: string | null;
     readonly deliveryQuoteId: string | null;
     readonly deliveryQuoteFleet: string | null;
@@ -119,6 +120,7 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
       ? null
       : { start: toInstant(s.deliveryWindowStart), end: toInstant(s.deliveryWindowEnd) },
   readyAt: optionalInstant(s.readyAt),
+  readyPrepMinutes: s.readyPrepMinutes,
   deliveryAttention: s.deliveryAttention as DeliveryAttention | null,
   deliveryQuote:
     s.deliveryQuoteId === null ||
@@ -249,6 +251,7 @@ export class PrismaOrderRepository implements OrderRepository {
         deliveryMethod: s.deliveryMethod,
         deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
         deliveryWindowEnd: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.end),
+        readyPrepMinutes: s.readyPrepMinutes,
         deliveryQuoteId: s.deliveryQuote?.quoteId ?? null,
         deliveryQuoteFleet: s.deliveryQuote?.fleet ?? null,
         deliveryQuoteAmount: s.deliveryQuote?.quoteAmount ?? null,

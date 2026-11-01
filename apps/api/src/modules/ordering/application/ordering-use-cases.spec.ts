@@ -435,6 +435,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method) => {
             asked.push([sellerId, method]);
             return Promise.resolve(!(sellerId === SELLER_B && method === 'instant'));
@@ -465,6 +466,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method, window) => {
             seen.push([
               sellerId,

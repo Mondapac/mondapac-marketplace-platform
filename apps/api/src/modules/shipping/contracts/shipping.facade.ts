@@ -252,7 +252,15 @@ export interface ShippingFacade {
       readonly window: { readonly start: string; readonly end: string } | null;
     },
   ): Promise<
-    Result<{ readonly allowed: boolean; readonly reason: ChoiceRefusal | null }, ShippingFailure>
+    Result<
+      {
+        readonly allowed: boolean;
+        readonly reason: ChoiceRefusal | null;
+        /** Minutes the Market gives a seller to get a paid order ready (seller health). */
+        readonly readyPrepMinutes: number;
+      },
+      ShippingFailure
+    >
   >;
 
   /**

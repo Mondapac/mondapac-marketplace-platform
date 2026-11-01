@@ -19,6 +19,27 @@ export class ShippingDeliveryMethodPolicy implements DeliveryMethodPolicy {
     method: DeliveryMethod,
     window: DeliveryWindow | null = null,
   ): Promise<boolean> {
+    const verdict = await this.#verdict(context, sellerId, method, window);
+    return verdict !== null && verdict.allowed === true;
+  }
+
+  async readyPrepMinutes(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    method: DeliveryMethod,
+    window: DeliveryWindow | null = null,
+  ): Promise<number | null> {
+    const verdict = await this.#verdict(context, sellerId, method, window);
+    const minutes = verdict?.readyPrepMinutes;
+    return typeof minutes === 'number' && Number.isInteger(minutes) ? minutes : null;
+  }
+
+  async #verdict(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    method: DeliveryMethod,
+    window: DeliveryWindow | null,
+  ) {
     try {
       const verdict = await this.shipping.deliveryChoice(context, {
         sellerId,
@@ -26,9 +47,9 @@ export class ShippingDeliveryMethodPolicy implements DeliveryMethodPolicy {
         window:
           window === null ? null : { start: window.start.toString(), end: window.end.toString() },
       });
-      return verdict.ok && verdict.value.allowed === true;
+      return verdict.ok ? verdict.value : null;
     } catch {
-      return false;
+      return null;
     }
   }
 }
