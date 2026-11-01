@@ -21,6 +21,7 @@ export const HIDE_REASON_CODES = [
   'abusive',
   'irrelevant',
   'not-a-purchase',
+  'extortion',
   'incentivised',
   'spam',
   'other',
