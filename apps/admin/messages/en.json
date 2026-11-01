@@ -1520,7 +1520,11 @@
     },
     "no-access": "You don't have access to settings.",
     "no-access-title": "You don't have access to this page",
-    "no-access-needs": "{page} needs the \"{permission}\" permission. Ask an admin who manages roles to add it.",
+    "no-access-needs": "{page} needs the permission \"{permission}\". An admin who manages roles can add it.",
+    "load-error": {
+      "title": "{page} could not be loaded",
+      "body": "Try again. If it keeps happening, check the status page."
+    },
     "back-home": "Back to dashboard",
     "unavailable": "Settings could not be loaded. Try again later.",
     "errors": {
@@ -1537,9 +1541,9 @@
     },
     "leave": {
       "title": "Leave without saving?",
-      "message": "You have changes that are not saved. If you leave this page, they are lost.",
-      "stay": "Stay on page",
-      "leave": "Leave page"
+      "message": "You have {count, plural, one {# unsaved change} other {# unsaved changes}} on {page}. If you leave now, they are lost.",
+      "stay": "Stay",
+      "leave": "Leave"
     },
     "conflict": {
       "title": "Someone else saved these settings first",
@@ -1557,7 +1561,7 @@
       "title": "Support contact",
       "section": "Contact address",
       "none": "Not set",
-      "permission-view": "Support email: view",
+      "permission-view": "View support email",
       "read-only": "You can view the support email. To change it you need the \"Support email: manage\" permission.",
       "intro": "The address customers and sellers are told to write to when they need help. A change applies from now on.",
       "not-set": "No support email is set yet.",
@@ -1605,7 +1609,7 @@
     },
     "assistant": {
       "title": "Smart assistant",
-      "permission-view": "Smart assistant: view",
+      "permission-view": "View smart assistant",
       "intro": "Whether the shopping assistant is on, who sees it, what it answers and what it may spend.",
       "no-access": "You don't have access to the smart assistant settings.",
       "unavailable": "The smart assistant settings could not be loaded. Try again later.",
@@ -1740,7 +1744,7 @@
   },
   "fleets": {
     "title": "Delivery fleets",
-    "permission-view": "Delivery fleets: view",
+    "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
     "back-home": "Back to the dashboard",
@@ -2775,7 +2779,7 @@
       },
       "section": "Buyer self-service",
       "intro": "Let buyers delete their own account, and set how long a request waits before the account is erased.",
-      "permission-view": "Account deletion: view",
+      "permission-view": "View account deletion",
       "version": "Saved version {version}",
       "version-defaults": "Built-in defaults in force",
       "saved": "Saved. Buyers see the change within a minute.",
@@ -2810,7 +2814,7 @@
     "requests": {
       "title": "Pending deletion requests",
       "back": "Account deletion",
-      "permission-view": "Account deletion requests: view",
+      "permission-view": "View account deletion requests",
       "caption": "Accounts waiting to be deleted, earliest first",
       "loading": "Loading the requests",
       "load-failed": "Couldn't load the list.",
@@ -3065,7 +3069,7 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
-    "permission-view": "Delivery settings: view",
+    "permission-view": "View delivery settings",
     "state": {
       "on": "On",
       "off": "Off"
@@ -3076,7 +3080,7 @@
     "intro": "Choose which delivery methods the whole Market offers, when same-day orders close, how far ahead buyers can schedule, and what the platform adds on top of the fleet quote. Which methods each seller supports is set on the seller page.",
     "no-access": "Your role cannot see delivery settings.",
     "back-home": "Back to the dashboard",
-    "unavailable": "Delivery settings could not be loaded. Try again.",
+    "unavailable": "Delivery settings could not be loaded",
     "defaults": "Nothing has been saved yet, so the defaults apply: every method on, same-day orders close at 12:00, buyers can schedule up to 7 days ahead in 2-hour windows, and no margin is added.",
     "read-only": "Your role can view these settings but not change them.",
     "save": "Save delivery settings",
@@ -3326,7 +3330,7 @@
     "settings": {
       "title": "Customer wallet",
       "intro": "Controls store credit for every customer in this Market.",
-      "permission-view": "Customer wallet: view",
+      "permission-view": "View customer wallet",
       "view-only": "View only. You can see the state of the wallet but not change it. Ask an admin who manages roles to add the wallet change permission.",
       "state": "State",
       "last-change": "Last change",

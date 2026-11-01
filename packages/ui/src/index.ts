@@ -75,6 +75,7 @@ export {
   useUnsavedChangesGuard,
   leavesPage,
   type ClickInfo,
+  type LeaveInfo,
   type LeaveLabels,
 } from './settings/unsaved-changes-guard.tsx';
 export {

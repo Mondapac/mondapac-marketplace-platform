@@ -265,6 +265,24 @@ describe('NoAccess and the conflict banner', () => {
     expect(out).toContain('Back to dashboard');
   });
 
+  it('is a card under the page h1 when a settings page names itself', () => {
+    const out = html(
+      <NoAccess
+        pageTitle="Delivery rules"
+        title="You don't have access to this page"
+        body='Delivery rules needs the permission "View delivery settings".'
+        backHref="/settings"
+        backLabel="Back to Settings"
+      />,
+    );
+    expect(out.match(/<h1/g)).toHaveLength(1);
+    expect(out).toContain('>Delivery rules</h1>');
+    expect(out).toContain('<h2');
+    expect(out).toContain('rounded-lg border border-line');
+    expect(out).toContain('href="/settings"');
+    expect(out).toContain('Back to Settings');
+  });
+
   it('says who saved first, that changes are kept, and offers Compare only with a handler', () => {
     const base = {
       title: 'Sara K. saved these settings 1 minute ago',

@@ -296,6 +296,7 @@ export function RoleEditor({
         }
         onSubmit={() => void submit()}
         dirty={!done && count > 0}
+        dirtyCount={count}
         leave={chrome.leave}
         saveBar={
           <SaveBar

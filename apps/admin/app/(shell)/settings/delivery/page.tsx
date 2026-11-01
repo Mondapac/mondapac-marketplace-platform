@@ -33,13 +33,14 @@ export default async function DeliverySettingsPage() {
   if (!permissionKeys.includes(DELIVERY_VIEW_PERMISSION)) {
     return shell(
       <NoAccess
+        pageTitle={title}
         title={t('settings.no-access-title')}
         body={t('settings.no-access-needs', {
           page: title,
           permission: t('deliverySettings.permission-view'),
         })}
-        backHref="/"
-        backLabel={t('settings.back-home')}
+        backHref="/settings"
+        backLabel={t('settings.sub.back')}
       />,
     );
   }
@@ -49,9 +50,10 @@ export default async function DeliverySettingsPage() {
     return shell(
       <SettingsPage title={title}>
         <LoadError
-          message={t('deliverySettings.unavailable')}
+          title={t('deliverySettings.unavailable')}
+          message={t('settings.load-error.body')}
           retryLabel={t('load.retry')}
-          className="flex flex-col items-start gap-3"
+          className="w-full"
         />
       </SettingsPage>,
     );

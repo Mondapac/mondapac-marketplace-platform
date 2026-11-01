@@ -39,7 +39,12 @@ export default async function RolePageRoute({
     return (
       <SettingsShell session={gate.session} linkId="roles" title={title} nested>
         <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
+        <LoadError
+          title={t('settings.load-error.title', { page: title })}
+          message={t('settings.load-error.body')}
+          retryLabel={t('load.retry')}
+          className="w-full"
+        />
       </SettingsShell>
     );
   }

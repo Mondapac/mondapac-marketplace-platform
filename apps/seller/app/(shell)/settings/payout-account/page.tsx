@@ -25,6 +25,7 @@ export default async function PayoutAccountPage({
     return (
       <SettingsShell session={page.session} linkId="payout-account" title={t('payout.title')}>
         <SettingsNoAccess
+          pageTitle={t('payout.title')}
           permissionKeys={page.session.permissionKeys}
           title={t('payout.no-access.title')}
           body={t('payout.no-access.body')}

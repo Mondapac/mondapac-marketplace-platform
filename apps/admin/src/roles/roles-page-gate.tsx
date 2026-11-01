@@ -9,6 +9,7 @@ export async function RolesNoAccess({ session }: { readonly session: AdminSessio
   return (
     <SettingsShell session={session} linkId="roles" title={t('identity.members.title.admin')}>
       <NoAccess
+        pageTitle={t('identity.members.title.admin')}
         title={t('identity.members.no-access.title')}
         body={t('identity.members.no-access.body')}
         backHref="/settings"

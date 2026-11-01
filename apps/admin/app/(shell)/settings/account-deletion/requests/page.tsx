@@ -34,13 +34,14 @@ export default async function DeletionRequestsPage() {
         />
       ) : (
         <NoAccess
+          pageTitle={title}
           title={t('settings.no-access-title')}
           body={t('settings.no-access-needs', {
             page: title,
             permission: t('account-deletion.requests.permission-view'),
           })}
-          backHref="/"
-          backLabel={t('settings.back-home')}
+          backHref="/settings"
+          backLabel={t('settings.sub.back')}
         />
       )}
     </SettingsShell>

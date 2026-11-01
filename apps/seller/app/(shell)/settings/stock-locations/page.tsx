@@ -21,6 +21,7 @@ export default async function StockLocationsPage() {
     return (
       <SettingsShell session={page.session} linkId="stock-locations" title={t('stock.title')}>
         <SettingsNoAccess
+          pageTitle={t('stock.title')}
           permissionKeys={page.session.permissionKeys}
           title={t('stock.no-access.title')}
           body={t('stock.no-access.body')}
