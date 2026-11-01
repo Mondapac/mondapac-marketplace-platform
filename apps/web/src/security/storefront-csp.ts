@@ -22,21 +22,32 @@ export function makeNonce(): string {
 }
 
 const STRIPE_SCRIPTS = 'https://js.stripe.com https://*.js.stripe.com';
+// Google Analytics 4 (SEO package 7), added only for a Market with a measurement ID. The tag is
+// loaded with the nonce and 'strict-dynamic' covers what it loads, so script-src stays as it is.
+const GA_CONNECT =
+  'https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com';
+const GA_IMG = 'https://*.google-analytics.com https://www.googletagmanager.com';
 
 /**
  * The policy for one response. `dev` adds what `next dev` needs (eval and the socket for its
  * refresh) and leaves out the upgrade to https, which a plain-http local site cannot follow.
  * `imageOrigin` is where product photos load from (STOREFRONT_IMAGE_ORIGIN); null: this site only.
+ * `analytics`: the Market has a GA4 measurement ID, so the Google hosts may be reached.
  */
-export function storefrontCsp(nonce: string, dev: boolean, imageOrigin: string | null): string {
+export function storefrontCsp(
+  nonce: string,
+  dev: boolean,
+  imageOrigin: string | null,
+  analytics = false,
+): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${STRIPE_SCRIPTS}${dev ? " 'unsafe-eval'" : ''}`,
     // Stripe's Element and React set style attributes; no script can come through a style.
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: https://*.stripe.com${imageOrigin ? ` ${imageOrigin}` : ''}`,
+    `img-src 'self' data: blob: https://*.stripe.com${imageOrigin ? ` ${imageOrigin}` : ''}${analytics ? ` ${GA_IMG}` : ''}`,
     "font-src 'self' data:",
-    `connect-src 'self' https://api.stripe.com https://merchant-ui-api.stripe.com${dev ? ' ws:' : ''}`,
+    `connect-src 'self' https://api.stripe.com https://merchant-ui-api.stripe.com${analytics ? ` ${GA_CONNECT}` : ''}${dev ? ' ws:' : ''}`,
     `frame-src ${STRIPE_SCRIPTS} https://hooks.stripe.com`,
     // PWA (package M5). A service worker is governed by worker-src, which would otherwise fall back
     // to script-src, where 'strict-dynamic' makes the browser ignore 'self': the worker would be

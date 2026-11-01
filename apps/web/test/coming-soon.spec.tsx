@@ -96,7 +96,7 @@ describe('coming soon pages', () => {
             cartSource={SAMPLE_CART_SOURCE}
             locator={SAMPLE_DELIVERY_LOCATOR}
             deliverTo={null}
-            consent={{ personalization: false }}
+            consent={{ personalization: false, analytics: false }}
             signIn={SAMPLE_CHECKOUT.customer}
           >
             {body}

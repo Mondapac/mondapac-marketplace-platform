@@ -537,6 +537,8 @@
     "reject": "Necessary only",
     "settings": "Cookie settings",
     "short": "We use cookies to run the shop and, if you agree, to suggest products. <settings>Cookie settings</settings>",
+    "body-analytics": "We use necessary cookies to keep you signed in and remember your cart and settings. With your permission we also remember what you view and search for, to suggest products, and measure how the shop is used and how fast it loads with Google Analytics. Analytics data is processed by Google outside Australia. You can change this at any time.",
+    "short-analytics": "We use cookies to run the shop and, if you agree, to suggest products and measure visits. <settings>Cookie settings</settings>",
     "error": "We could not save your choice. Try again."
   },
   "cookies": {
@@ -563,8 +565,9 @@
     "personalization": "Personalization",
     "personalization-body": "Remembers the products you view, search for and add to your cart for 30 days, so we can suggest products for you. Turning it off deletes this cookie.",
     "save": "Save my choice",
-    "saved-on": "Saved. Personalization is on.",
-    "saved-off": "Saved. Personalization is off.",
+    "analytics": "Analytics",
+    "analytics-body": "Counts visits and measures how fast pages load, using Google Analytics. It does not see your name, email or search words. Analytics data is processed by Google outside Australia. Turning it off deletes its cookies.",
+    "saved": "Saved. Your choice is kept for one year.",
     "error": "We could not save your choice. Try again."
   },
   "product": {

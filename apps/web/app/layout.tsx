@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import {
   DEFAULT_PALETTE,
@@ -10,6 +10,9 @@ import {
   paletteOf,
   textSizeOf,
 } from '../src/preferences/preferences.ts';
+import { Ga4 } from '../src/analytics/ga4.tsx';
+import { ga4IdFor } from '../src/analytics/ga4-config.ts';
+import { nonceOf } from '../src/security/nonce.ts';
 import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
 import { fontClassNames } from '../src/i18n/fonts.ts';
 import { directionOf, languageTag } from '../src/i18n/locale.ts';
@@ -67,6 +70,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     checkout,
     assistant,
     locator,
+    incoming,
   ] = await Promise.all([
     getMessages(),
     getLocale(),
@@ -78,7 +82,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     loadCheckout(),
     loadAssistant(),
     loadDeliveryLocator(),
+    headers(),
   ]);
+  const ga4Id = ga4IdFor(incoming.get('host'));
+  const consent = consentOf(jar.get(CONSENT_COOKIE)?.value);
   const lang = languageTag(locale);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
   const textSize = textSizeOf(jar.get(TEXT_SIZE_COOKIE)?.value);
@@ -100,7 +107,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             photoBase={photos}
             locator={locator}
             deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
-            consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
+            consent={consent}
+            analyticsAvailable={ga4Id !== null}
             signIn={checkout.customer}
             live={storefrontIsLive()}
             assistant={assistant}
@@ -109,6 +117,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </StoreShell>
         </NextIntlClientProvider>
         <RegisterServiceWorker />
+        {ga4Id === null ? null : (
+          <Ga4
+            id={ga4Id}
+            nonce={nonceOf(incoming.get('content-security-policy'))}
+            enabled={consent?.analytics === true}
+          />
+        )}
       </body>
     </html>
   );
