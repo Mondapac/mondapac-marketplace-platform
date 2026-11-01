@@ -633,6 +633,11 @@
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
   { "name": "sellers.selling-eligibility-system", "rule": "system" },
+  {
+    "name": "settings.read-list-paging",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },

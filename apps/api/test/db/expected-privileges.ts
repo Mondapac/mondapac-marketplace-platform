@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    settings: ['USAGE'],
     promotions: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
@@ -638,6 +639,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'sum',
       ],
     },
+    // Settings (admin-editable Market settings, ADR-0026): a setting changes its value, version and
+    // stamps (never its identity or scope); the history is read and appended to only.
+    'settings.market_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['updated_at', 'updated_by_account_id', 'value', 'version'],
+    },
+    'settings.market_setting_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.market_settings': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],

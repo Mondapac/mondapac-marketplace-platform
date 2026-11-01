@@ -2022,6 +2022,19 @@
     }
   },
   {
+    "action": "settings.market-setting.changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(list-paging)",
+    "actors": ["authenticated"],
+    "before": {
+      "value": "enumOf(pages|prev-next)"
+    },
+    "after": {
+      "value": "enumOf(pages|prev-next)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "shipping.delivery-settings.changed",
     "targetType": "shipping.delivery-settings",
     "targetId": "enumOf(market)",

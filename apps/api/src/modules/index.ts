@@ -26,6 +26,7 @@ import { EngagementModule } from './engagement';
 import { AssistantModule } from './assistant';
 import { WalletModule } from './wallet';
 import { ReviewsModule } from './reviews';
+import { SettingsModule } from './settings';
 import { PromotionsModule } from './promotions';
 
 export const CORE_MODULES = [
@@ -53,6 +54,7 @@ export const CORE_MODULES = [
   AssistantModule,
   ReviewsModule,
   PromotionsModule,
+  SettingsModule,
 ];
 
 /**

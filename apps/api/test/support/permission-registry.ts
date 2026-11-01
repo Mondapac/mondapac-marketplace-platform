@@ -20,6 +20,7 @@ import { SHIPPING_PERMISSIONS } from '../../src/modules/shipping/contracts/permi
 import { STOREFRONT_PERMISSIONS } from '../../src/modules/storefront/contracts/permissions';
 import { PROMOTIONS_PERMISSIONS } from '../../src/modules/promotions/contracts/permissions';
 import { REVIEWS_PERMISSIONS } from '../../src/modules/reviews/contracts/permissions';
+import { SETTINGS_PERMISSIONS } from '../../src/modules/settings/contracts/permissions';
 import { WALLET_PERMISSIONS } from '../../src/modules/wallet/contracts/permissions';
 import { TAX_PERMISSIONS } from '../../src/modules/tax/contracts/permissions';
 import { PermissionRegistry } from '../../src/platform/authz/permission-registry';
@@ -47,6 +48,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('customers', CUSTOMERS_PERMISSIONS);
   registry.register('tax', TAX_PERMISSIONS);
   registry.register('reviews', REVIEWS_PERMISSIONS);
+  registry.register('settings', SETTINGS_PERMISSIONS);
   registry.register('promotions', PROMOTIONS_PERMISSIONS);
   registry.register('wallet', WALLET_PERMISSIONS);
   registry.register('storefront', STOREFRONT_PERMISSIONS);
