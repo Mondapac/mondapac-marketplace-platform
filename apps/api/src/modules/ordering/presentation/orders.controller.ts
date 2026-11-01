@@ -22,8 +22,10 @@ import {
   ApiOperation,
   ApiParam,
   ApiQuery,
+  ApiResponse,
   ApiServiceUnavailableResponse,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
   ApiUnsupportedMediaTypeResponse,
@@ -39,12 +41,14 @@ import {
 import { DeliveryQuotes } from '../application/use-cases/delivery-quotes.use-case';
 import { ListOrders } from '../application/use-cases/list-orders.use-case';
 import { RegeneratePickupCode } from '../application/use-cases/regenerate-pickup-code.use-case';
+import { PayByCard } from '../application/use-cases/pay-by-card.use-case';
 import { StartCheckout } from '../application/use-cases/start-checkout.use-case';
 import { ViewOrder } from '../application/use-cases/view-order.use-case';
 import { ViewOrderDocument } from '../application/use-cases/view-order-document.use-case';
 import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, moneyBody, refusal } from './http-answers';
 import {
+  CardPaymentStartedView,
   CheckoutRequest,
   CheckoutStartedView,
   DeliveryQuoteRequest,
@@ -53,6 +57,7 @@ import {
   OrderPageBody,
   OwnOrderBody,
   OwnPickupCodeBody,
+  PayByCardRequest,
   ownListOrderBody,
   ownOrderBody,
   ownPickupCodeBody,
@@ -84,6 +89,7 @@ export class OrdersController {
 
   constructor(
     private readonly start: StartCheckout,
+    private readonly pay: PayByCard,
     private readonly quotes: DeliveryQuotes,
     private readonly view: ViewOrder,
     private readonly list: ListOrders,
@@ -211,6 +217,96 @@ export class OrdersController {
     return {
       orderId: result.value.orderId,
       checkoutUrl: result.value.checkoutUrl,
+      payBy: result.value.payBy.toString(),
+      total: moneyBody(result.value.total),
+    };
+  }
+
+  @Post('pay')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Pay by card: the cart becomes a pending order and the card is authorised',
+    description:
+      'The same order as checkout (address, notes, delivery choices, stock hold) but the card is ' +
+      'paid on the MondaPac page: send the ConfirmationToken of the Payment Element. The server ' +
+      'prices everything again; the client never sends a price, fee, discount or tax. Visa and ' +
+      'Mastercard only (read from Stripe, not from the client). The money is only held here ' +
+      '(manual capture); the order is confirmed and captured when the signed Stripe event ' +
+      'arrives. A customer has a few attempts per ten minutes.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: PayByCardRequest })
+  @ApiOkResponse({ type: CardPaymentStartedView })
+  @ApiBadRequestResponse({
+    ...ERROR,
+    description:
+      'validation.failed (details.fields: confirmationToken required, format or invalid; ' +
+      'expectedTotal format; and the fields of checkout)',
+  })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'ordering.price-changed (details.total: the total now), ordering.stock-insufficient, ' +
+      'ordering.cart-not-ready, ordering.delivery-quote-changed or conflict.retry',
+  })
+  @ApiResponse({
+    status: 402,
+    ...ERROR,
+    description: 'ordering.card-declined: the bank refused the card; nothing was charged',
+  })
+  @ApiUnprocessableEntityResponse({
+    ...ERROR,
+    description:
+      'ordering.card-not-accepted (Visa and Mastercard only) and the refusals of checkout',
+  })
+  @ApiTooManyRequestsResponse({ ...ERROR, description: 'request.throttled (Retry-After)' })
+  @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.check-unavailable, ordering.payment-unavailable or access.unavailable',
+  })
+  async payByCard(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, [
+      'addressId',
+      'sellerNotes',
+      'deliveryMethods',
+      'confirmationToken',
+      'expectedTotal',
+    ]);
+    if (invalid !== null) throw this.refused(invalid, context);
+    const { addressId, sellerNotes, deliveryMethods, confirmationToken, expectedTotal } =
+      body as Record<string, unknown>;
+    const result = await this.pay.execute(context, {
+      addressId,
+      sellerNotes,
+      deliveryMethods,
+      confirmationToken,
+      expectedTotal,
+    });
+    // Only the outcome: never the token, the secret or anything of the card.
+    this.log(
+      'ordering.pay-by-card-route',
+      context,
+      result.ok ? result.value.status : result.error.code,
+    );
+    if (!result.ok) {
+      if (result.error.code === 'request.throttled') {
+        response.setHeader('Retry-After', String(result.error.retryAfterSeconds));
+      }
+      throw refusal(result.error, context, this.#logger);
+    }
+    return {
+      orderId: result.value.orderId,
+      status: result.value.status,
+      clientSecret: result.value.clientSecret,
       payBy: result.value.payBy.toString(),
       total: moneyBody(result.value.total),
     };

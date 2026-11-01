@@ -14,6 +14,7 @@ import {
   FakeGateway,
   FakeInventory,
   FakeLabels,
+  FakeAttemptLimits,
   FakePickupVault,
   AllowAllDeliveryMethods,
   FakeShipping,
@@ -167,6 +168,7 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       deliveryMethods: new AllowAllDeliveryMethods(),
       pickupCodes: codes,
       pickupVault: vault,
+      attempts: new FakeAttemptLimits(),
     };
   });
 

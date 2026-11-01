@@ -9,6 +9,7 @@ import { isExternalAccountEvent } from '../domain/payout-change';
 import type { PaymentsDependencies } from './payments-dependencies';
 import {
   ACCOUNT_EVENT_TYPES,
+  isCardPaymentEventType,
   PLATFORM_EVENT_TYPES,
   type KeptEventType,
 } from './ports/stripe-event-inbox';
@@ -43,6 +44,7 @@ export type ReceiveFailure =
 
 const EVENT_ID = /^evt_[A-Za-z0-9_]{1,200}$/;
 const SESSION_ID = /^cs_[A-Za-z0-9_]{1,200}$/;
+const INTENT_ID = /^pi_[A-Za-z0-9_]{1,200}$/;
 const DISPUTE_ID = /^(dp|du)_[A-Za-z0-9_]{1,200}$/;
 const TRANSFER_ID = /^tr_[A-Za-z0-9_]{1,200}$/;
 const ACCOUNT_ID = /^acct_[A-Za-z0-9_]{1,200}$/;
@@ -167,6 +169,21 @@ export async function receiveStripeEvent(
     // dropped. One without a Market is stored, and the worker decides (it is never ours to apply).
     const eventMarket = isObject(object.metadata) ? object.metadata.market_id : undefined;
     if (typeof eventMarket === 'string' && eventMarket !== marketId) return ok('other-market');
+  } else if (kind === 'platform' && isCardPaymentEventType(event.type)) {
+    if (
+      object.object !== 'payment_intent' ||
+      typeof object.id !== 'string' ||
+      !INTENT_ID.test(object.id)
+    ) {
+      return err({ code: 'validation.failed' });
+    }
+    objectId = object.id;
+    const metadata = isObject(object.metadata) ? object.metadata : {};
+    // Only a PaymentIntent of this Market made by the card payment on our page: Stripe sends the
+    // PaymentIntent events of hosted Checkout (and of every Market) to this endpoint too, and the
+    // hosted flow is confirmed by its session, never by its PaymentIntent.
+    if (metadata.payment_flow !== 'card-intent') return ok('ignored');
+    if (metadata.market_id !== marketId) return ok('other-market');
   } else if (kind === 'platform') {
     if (
       object.object !== 'checkout.session' ||

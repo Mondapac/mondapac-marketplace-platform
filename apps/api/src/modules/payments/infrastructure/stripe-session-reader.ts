@@ -1,6 +1,8 @@
 import { err, ok } from '@mondapac/shared-kernel';
+import type { Result } from '@mondapac/shared-kernel';
 import type {
   CheckoutSessionSnapshot,
+  PaymentIntentSnapshot,
   ReadFailure,
   StripeSessionReader,
 } from '../application/ports/stripe-session-reader';
@@ -41,19 +43,31 @@ export class StripeCheckoutSessionReader implements StripeSessionReader {
 
   async readCheckoutSession(sessionId: string) {
     if (!SESSION_ID.test(sessionId)) return err(REJECTED);
+    const body = await this.get(`/v1/checkout/sessions/${sessionId}?expand[]=payment_intent`);
+    if (!body.ok) return body;
+    const snapshot = toSnapshot(body.value);
+    return snapshot === null ? err(UNAVAILABLE) : ok(snapshot);
+  }
+
+  async readPaymentIntent(intentId: string) {
+    if (!INTENT_ID.test(intentId)) return err(REJECTED);
+    const body = await this.get(`/v1/payment_intents/${intentId}`);
+    if (!body.ok) return body;
+    const snapshot = toIntentSnapshot(body.value);
+    return snapshot === null ? err(UNAVAILABLE) : ok(snapshot);
+  }
+
+  private async get(path: string): Promise<Result<unknown, ReadFailure>> {
     if (this.secretKey === null) return err(UNAVAILABLE);
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(), this.timeoutMs);
     let body: unknown;
     try {
-      const response = await this.fetchFn(
-        `${STRIPE_API}/v1/checkout/sessions/${sessionId}?expand[]=payment_intent`,
-        {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${this.secretKey}` },
-          signal: timeout.signal,
-        },
-      );
+      const response = await this.fetchFn(`${STRIPE_API}${path}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${this.secretKey}` },
+        signal: timeout.signal,
+      });
       if (response.status >= 500 || response.status === 429) return err(UNAVAILABLE);
       if (response.status >= 400) return err(REJECTED);
       body = await response.json();
@@ -62,9 +76,36 @@ export class StripeCheckoutSessionReader implements StripeSessionReader {
     } finally {
       clearTimeout(timer);
     }
-    const snapshot = toSnapshot(body);
-    return snapshot === null ? err(UNAVAILABLE) : ok(snapshot);
+    return ok(body);
   }
+}
+
+/** Stripe's PaymentIntent, narrowed; null when it is not a well-formed PaymentIntent. */
+function toIntentSnapshot(body: unknown): PaymentIntentSnapshot | null {
+  if (
+    !isObject(body) ||
+    body.object !== 'payment_intent' ||
+    typeof body.id !== 'string' ||
+    !INTENT_ID.test(body.id) ||
+    typeof body.livemode !== 'boolean' ||
+    typeof body.status !== 'string' ||
+    typeof body.currency !== 'string'
+  ) {
+    return null;
+  }
+  const amountCapturable = minor(body.amount_capturable);
+  if (amountCapturable === null) return null;
+  const metadata = isObject(body.metadata) ? body.metadata : {};
+  return {
+    id: body.id,
+    livemode: body.livemode,
+    status: body.status,
+    currency: body.currency,
+    amountCapturable,
+    metadataOrderId: text(metadata.order_id),
+    metadataMarketId: text(metadata.market_id),
+    metadataPaymentFlow: text(metadata.payment_flow),
+  };
 }
 
 /** Stripe's session object, narrowed; null when it is not a well-formed session. */

@@ -3,7 +3,11 @@ import type { Result } from '@mondapac/shared-kernel';
 import type {
   CheckoutGateway,
   CreateSessionRequest,
+  CardPaymentAnswer,
+  CardPaymentFailure,
+  ConfirmationTokenFacts,
   GatewayFailure,
+  PayByCardRequest,
   RefundAnswer,
   RefundCallRequest,
 } from '../application/ports/checkout-gateway';
@@ -28,6 +32,12 @@ const UNAVAILABLE: GatewayFailure = Object.freeze({
 });
 const REJECTED: GatewayFailure = Object.freeze({ code: 'payment.provider-rejected' as const });
 const REFUND_ID = /^re_[A-Za-z0-9_]{1,200}$/;
+const CONFIRMATION_TOKEN = /^ctoken_[A-Za-z0-9_]{1,200}$/;
+const INTENT_ID = /^pi_[A-Za-z0-9_]{1,200}$/;
+const CLIENT_SECRET = /^pi_[A-Za-z0-9_]{1,200}_secret_[A-Za-z0-9_]{1,200}$/;
+const CARD_BRAND = /^[a-z_]{1,32}$/;
+/** The tag on every PaymentIntent this flow makes; the webhook worker acts on tagged ones only. */
+export const CARD_FLOW_TAG = 'card-intent';
 
 /**
  * Stripe's refund object as {@link RefundAnswer}. Only `succeeded` is money back (Hassan M1);
@@ -154,6 +164,112 @@ export class StripeCheckoutGateway implements CheckoutGateway {
     return refundAnswer(answer);
   }
 
+  /**
+   * `GET /v1/confirmation_tokens/<id>`: the brand of the card the buyer's browser tokenised.
+   * Refused (no call) unless the key is a test-mode key; a live-mode token is refused too.
+   */
+  async readConfirmationToken(
+    confirmationToken: string,
+  ): Promise<Result<ConfirmationTokenFacts, GatewayFailure>> {
+    if (this.secretKey === null || !this.secretKey.startsWith('sk_test_')) return err(REJECTED);
+    if (!CONFIRMATION_TOKEN.test(confirmationToken)) return err(REJECTED);
+    const read = await this.post(`/v1/confirmation_tokens/${confirmationToken}`, null, null);
+    if (!read.ok) return read;
+    const body = read.value;
+    const preview = body.payment_method_preview;
+    if (
+      body.object !== 'confirmation_token' ||
+      body.id !== confirmationToken ||
+      typeof body.livemode !== 'boolean' ||
+      typeof preview !== 'object' ||
+      preview === null
+    ) {
+      return err(UNAVAILABLE);
+    }
+    if (body.livemode) return err(REJECTED);
+    const { type, card } = preview as { type?: unknown; card?: unknown };
+    const brand =
+      typeof card === 'object' && card !== null ? (card as { brand?: unknown }).brand : undefined;
+    return ok({
+      livemode: false,
+      methodType: typeof type === 'string' ? type : '',
+      cardBrand: typeof brand === 'string' && CARD_BRAND.test(brand) ? brand : null,
+    });
+  }
+
+  /**
+   * `POST /v1/payment_intents` with `confirm=true`: manual capture, the order's own amount, cards
+   * only through the same payment method configuration as the hosted page. One request, never
+   * retried here; the order's key makes a repeat return the same PaymentIntent. A 402 is a card
+   * the bank refused; its PaymentIntent id (if Stripe made one) is returned so ordering can cancel
+   * it. No card data, token or client secret reaches a log.
+   */
+  async payByCard(
+    request: PayByCardRequest,
+  ): Promise<Result<CardPaymentAnswer, CardPaymentFailure>> {
+    if (this.secretKey === null || !this.secretKey.startsWith('sk_test_')) return err(REJECTED);
+    if (!PAYMENT_METHOD_CONFIGURATION.test(this.paymentMethodConfiguration ?? '')) {
+      return err(UNAVAILABLE);
+    }
+    if (!CONFIRMATION_TOKEN.test(request.confirmationToken) || request.amount <= 0n) {
+      return err(REJECTED);
+    }
+    const form = new URLSearchParams();
+    form.set('amount', request.amount.toString());
+    form.set('currency', request.currency.toLowerCase());
+    form.set('capture_method', 'manual');
+    form.set('confirm', 'true');
+    form.set('confirmation_token', request.confirmationToken);
+    form.set('payment_method_configuration', this.paymentMethodConfiguration as string);
+    form.set('automatic_payment_methods[enabled]', 'true');
+    form.set('return_url', request.returnUrl);
+    form.set('metadata[order_id]', request.orderId);
+    form.set('metadata[market_id]', request.marketId);
+    form.set('metadata[payment_flow]', CARD_FLOW_TAG);
+    const sent = await this.send('/v1/payment_intents', form, request.idempotencyKey);
+    if (!sent.ok) return sent;
+    const { status, body } = sent.value;
+    if (status === 402) {
+      const intent = (body?.error as { payment_intent?: { id?: unknown } } | undefined)
+        ?.payment_intent;
+      const id = typeof intent?.id === 'string' && INTENT_ID.test(intent.id) ? intent.id : null;
+      return err({ code: 'payment.card-declined', paymentIntentId: id });
+    }
+    if (status >= 400) return err(REJECTED);
+    if (
+      body === null ||
+      body.object !== 'payment_intent' ||
+      typeof body.id !== 'string' ||
+      !INTENT_ID.test(body.id) ||
+      body.livemode !== false ||
+      body.currency !== request.currency.toLowerCase() ||
+      body.amount !== Number(request.amount)
+    ) {
+      return err(UNAVAILABLE);
+    }
+    const metadata = body.metadata as Record<string, unknown> | null;
+    if (metadata?.order_id !== request.orderId) return err(UNAVAILABLE);
+    switch (body.status) {
+      case 'requires_capture':
+        return body.amount_capturable === body.amount
+          ? ok({ status: 'authorised', paymentIntentId: body.id })
+          : err(UNAVAILABLE);
+      case 'requires_action':
+        return typeof body.client_secret === 'string' && CLIENT_SECRET.test(body.client_secret)
+          ? ok({
+              status: 'requires-action',
+              paymentIntentId: body.id,
+              clientSecret: body.client_secret,
+            })
+          : err(UNAVAILABLE);
+      case 'requires_payment_method':
+        return err({ code: 'payment.card-declined', paymentIntentId: body.id });
+      default:
+        // processing, succeeded (automatic capture) and anything new: not what a manual hold is.
+        return err({ code: 'payment.provider-unavailable' });
+    }
+  }
+
   private async intentCall(
     paymentIntentId: string,
     action: 'capture' | 'cancel',
@@ -177,6 +293,18 @@ export class StripeCheckoutGateway implements CheckoutGateway {
     form: URLSearchParams | null,
     idempotencyKey: string | null,
   ): Promise<Result<Record<string, unknown>, GatewayFailure>> {
+    const sent = await this.send(path, form, idempotencyKey);
+    if (!sent.ok) return sent;
+    if (sent.value.status >= 400) return err(REJECTED);
+    return sent.value.body === null ? err(UNAVAILABLE) : ok(sent.value.body);
+  }
+
+  /** The request itself: the status of a 4xx answer and its body are returned for the caller. */
+  private async send(
+    path: string,
+    form: URLSearchParams | null,
+    idempotencyKey: string | null,
+  ): Promise<Result<{ status: number; body: Record<string, unknown> | null }, GatewayFailure>> {
     if (this.secretKey === null) return err(UNAVAILABLE);
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.secretKey}`,
@@ -195,11 +323,18 @@ export class StripeCheckoutGateway implements CheckoutGateway {
       if (response.status >= 500 || response.status === 429 || response.status === 409) {
         return err(UNAVAILABLE);
       }
-      if (response.status >= 400) return err(REJECTED);
-      const body = await response.json();
-      return typeof body === 'object' && body !== null
-        ? ok(body as Record<string, unknown>)
-        : err(UNAVAILABLE);
+      let body: unknown = null;
+      try {
+        body = await response.json();
+      } catch {
+        body = null;
+      }
+      const object =
+        typeof body === 'object' && body !== null && !Array.isArray(body)
+          ? (body as Record<string, unknown>)
+          : null;
+      if (response.status < 400 && object === null) return err(UNAVAILABLE);
+      return ok({ status: response.status, body: object });
     } catch {
       return err(UNAVAILABLE);
     } finally {

@@ -20,6 +20,7 @@ import { applyTransferEvent } from './transfer-events';
 import type { PaymentsDependencies } from './payments-dependencies';
 import {
   isAccountEventType,
+  isCardPaymentEventType,
   type EventOutcome,
   type PendingEvent,
 } from './ports/stripe-event-inbox';
@@ -197,6 +198,59 @@ async function applyAccountEvent(
 }
 
 /**
+ * A PaymentIntent event of a card payment made on the MondaPac page: the PaymentIntent is read
+ * again from Stripe and must be a test-mode one of this Market, made by that flow, with an order
+ * id; only what Stripe returns now is acted on, never the webhook payload. The order is confirmed
+ * or cancelled by ordering exactly as for a Checkout session (no session id: the order must have
+ * none).
+ */
+async function applyCardPaymentEvent(
+  deps: PaymentsDependencies,
+  context: CallContext,
+  event: PendingEvent,
+): Promise<Applied> {
+  const read = await deps.reader.readPaymentIntent(event.objectId);
+  if (!read.ok) return read.error.code === 'payment.provider-unavailable' ? 'retry' : 'rejected';
+  const intent = read.value;
+  const orderId = intent.metadataOrderId;
+  if (
+    intent.id !== event.objectId ||
+    intent.livemode !== false ||
+    intent.metadataPaymentFlow !== 'card-intent' ||
+    intent.metadataMarketId !== context.market.marketId ||
+    orderId === null
+  ) {
+    return 'rejected';
+  }
+  switch (event.type) {
+    case 'payment_intent.amount_capturable_updated': {
+      // Held: what can be captured. Any other state (cancelled since, captured) is not a hold.
+      if (intent.status !== 'requires_capture') return 'ignored';
+      if (!CURRENCY.test(intent.currency) || intent.amountCapturable <= 0n) return 'rejected';
+      return outcomeOf(
+        await deps.ordering.confirmPayment(context, {
+          orderId,
+          paymentIntentId: intent.id,
+          sessionId: null,
+          amount: money(intent.amountCapturable, intent.currency.toUpperCase()),
+        }),
+      );
+    }
+    case 'payment_intent.payment_failed':
+    case 'payment_intent.canceled':
+      // Only a PaymentIntent that really holds nothing: never one that holds or took the money.
+      if (intent.status !== 'requires_payment_method' && intent.status !== 'canceled') {
+        return 'ignored';
+      }
+      return outcomeOf(
+        await deps.ordering.cancelPayment(context, { orderId, cause: 'payment-failed' }),
+      );
+    default:
+      return 'ignored';
+  }
+}
+
+/**
  * One stored event: the Checkout session is read again from Stripe and must be a test-mode
  * session of this Market whose order reference agrees in both places; only what Stripe returns
  * now is acted on, never the webhook payload.
@@ -214,6 +268,9 @@ async function applyOne(
   }
   if (isTransferEventType(event.type)) {
     return applyTransferEvent(deps, context, event);
+  }
+  if (isCardPaymentEventType(event.type)) {
+    return applyCardPaymentEvent(deps, context, event);
   }
   const read = await deps.reader.readCheckoutSession(event.objectId);
   if (!read.ok) return read.error.code === 'payment.provider-unavailable' ? 'retry' : 'rejected';

@@ -11,6 +11,12 @@ import {
   SUBJECT_KEY_SERVICE,
   type SubjectKeyService,
 } from '../../../platform/subject-keys/subject-key-service';
+import { SubjectRateLimits } from '../../../platform/rate-limit/subject-rate-limits';
+import {
+  PAYMENT_ATTEMPT_LIMITS,
+  type PaymentAttemptLimits,
+} from '../application/ports/payment-attempt-limits';
+import { SubjectPaymentAttemptLimits } from './subject-payment-attempt-limits';
 import { CHECKOUT_GATEWAY, type CheckoutGateway } from '../application/ports/checkout-gateway';
 import { ORDER_LABELS, type OrderLabels } from '../application/ports/order-labels';
 import {
@@ -105,6 +111,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
         config.stripePaymentMethodConfiguration,
       );
     },
+  },
+  {
+    provide: PAYMENT_ATTEMPT_LIMITS,
+    inject: [SubjectRateLimits],
+    useFactory: (counters: SubjectRateLimits): PaymentAttemptLimits =>
+      new SubjectPaymentAttemptLimits(counters),
   },
   {
     provide: ORDERING_POLICY,
