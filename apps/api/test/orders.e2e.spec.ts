@@ -803,7 +803,21 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const badFilter = await http()
         .get('/ordering/admin/orders?status=shipped')
         .set(adminHeaders(VIEWER, 15));
+      const paged = await http()
+        .get('/ordering/admin/orders?page=1&pageSize=10&sort=total&direction=asc')
+        .set(adminHeaders(VIEWER, 16));
+      const tooDeep = await http()
+        .get('/ordering/admin/orders?page=401')
+        .set(adminHeaders(VIEWER, 17));
+      const strayPageSize = await http()
+        .get('/ordering/admin/orders?pageSize=10')
+        .set(adminHeaders(VIEWER, 18));
 
+      expect(paged.status).toBe(200);
+      expect(body(paged)).toMatchObject({ total: 1, page: 1, pageSize: 10, nextCursor: null });
+      expect(body(list)).toMatchObject({ total: null, page: null, pageSize: null });
+      expect(tooDeep.status).toBe(400);
+      expect(strayPageSize.status).toBe(400);
       expect(list.status).toBe(200);
       expect(list.headers['cache-control']).toBe('no-store');
       expect(body(list).orders).toHaveLength(1);

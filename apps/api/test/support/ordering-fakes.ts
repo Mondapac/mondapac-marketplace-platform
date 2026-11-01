@@ -30,6 +30,7 @@ import {
 } from '../../src/modules/ordering/application/ports/order-labels';
 import type {
   OrderFilter,
+  OrderSort,
   OrderPage,
   OrderRepository,
   SellerOrderFilter,
@@ -160,19 +161,39 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
-  listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
-    return Promise.resolve(
-      this.newestFirst(
-        [...this.rows.values()].filter(
-          (o) =>
-            (filter.status === null || o.status === filter.status) &&
-            (filter.reference === null ||
-              o.id === filter.reference ||
-              o.sellerOrders.some((s) => s.id === filter.reference)),
-        ),
-        page,
-      ),
+  private matching(filter: OrderFilter) {
+    return [...this.rows.values()].filter(
+      (o) =>
+        (filter.status === null || o.status === filter.status) &&
+        (filter.paymentState === null || o.paymentState === filter.paymentState) &&
+        (filter.reference === null ||
+          o.id === filter.reference ||
+          o.sellerOrders.some((s) => s.id === filter.reference)) &&
+        ((filter.sellerId === null && filter.fulfilment === null) ||
+          o.sellerOrders.some(
+            (s) =>
+              (filter.sellerId === null || s.sellerId === filter.sellerId) &&
+              (filter.fulfilment === null || s.fulfilment === filter.fulfilment),
+          )) &&
+        (filter.from === null || o.createdAt.epochMilliseconds >= filter.from.epochMilliseconds) &&
+        (filter.to === null || o.createdAt.epochMilliseconds < filter.to.epochMilliseconds),
     );
+  }
+  listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
+    return Promise.resolve(this.newestFirst(this.matching(filter), page));
+  }
+  pageAll(_m: MarketContext, filter: OrderFilter, sort: OrderSort, offset: number, limit: number) {
+    const sign = sort.direction === 'asc' ? 1 : -1;
+    const value = (o: OrderState) =>
+      sort.key === 'total' ? Number(o.total.amount) : o.createdAt.epochMilliseconds;
+    return Promise.resolve(
+      this.matching(filter)
+        .sort((a, b) => sign * (value(a) - value(b) || a.id.localeCompare(b.id)))
+        .slice(offset, offset + limit),
+    );
+  }
+  countMatching(_m: MarketContext, filter: OrderFilter) {
+    return Promise.resolve(this.matching(filter).length);
   }
   countAll() {
     const all = [...this.rows.values()];

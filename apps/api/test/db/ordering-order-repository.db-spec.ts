@@ -5,6 +5,7 @@ import { Client } from 'pg';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import { markDelivered, markShipped } from '../../src/modules/ordering/domain/order';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
+import type { OrderFilter } from '../../src/modules/ordering/application/ports/order.repository';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -53,6 +54,17 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     if (!result.ok) throw new Error('unit failed');
     return result.value;
   };
+
+  const filterOf = (over: Partial<OrderFilter> = {}): OrderFilter => ({
+    status: null,
+    reference: null,
+    paymentState: null,
+    sellerId: null,
+    fulfilment: null,
+    from: null,
+    to: null,
+    ...over,
+  });
 
   const newOrder = (accountId = ids.next<'Account'>(), at = T0): OrderState => {
     const orderId = ids.next<'Order'>();
@@ -283,11 +295,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     );
     const pending = await value(market, () => repository.findPending(market, account));
     const confirmed = await value(market, () =>
-      repository.listAll(
-        market,
-        { status: 'confirmed', reference: null },
-        { limit: 100, after: null },
-      ),
+      repository.listAll(market, filterOf({ status: 'confirmed' }), { limit: 100, after: null }),
     );
 
     expect(first.map((o) => o.id)).toEqual([rows[2]!.id, rows[1]!.id]);
@@ -302,11 +310,11 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
 
     expect(await value(other, () => repository.findById(other, order.id))).toBeNull();
     const all = await value(other, () =>
-      repository.listAll(other, { status: null, reference: null }, { limit: 100, after: null }),
+      repository.listAll(other, filterOf(), { limit: 100, after: null }),
     );
     expect(all.some((o) => o.id === order.id)).toBe(false);
     const byReference = await value(other, () =>
-      repository.listAll(other, { status: null, reference: order.id }, { limit: 100, after: null }),
+      repository.listAll(other, filterOf({ reference: order.id }), { limit: 100, after: null }),
     );
     expect(byReference).toEqual([]);
     const before = await value(market, () => repository.countAll(market));
@@ -324,7 +332,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     await value(market, () => repository.insert(market, unrelated));
     const find = (reference: string) =>
       value(market, () =>
-        repository.listAll(market, { status: null, reference }, { limit: 100, after: null }),
+        repository.listAll(market, filterOf({ reference }), { limit: 100, after: null }),
       );
 
     expect((await find(order.id)).map((o) => o.id)).toEqual([order.id]);
@@ -362,6 +370,52 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       return (error as { code?: string }).code ?? 'unknown';
     }
   };
+
+  it('pages the admin list with a total, a sort and the filters', async () => {
+    const seller = ids.next<'Seller'>();
+    const day = T0.add({ hours: 24 * 400 });
+    const rows = [0, 1, 2, 3, 4].map((n) => {
+      const base = newOrder(ids.next<'Account'>(), day.add({ minutes: n }));
+      return {
+        ...base,
+        // Only the last two are captured; only the first three carry the seller's part.
+        paymentState: n >= 3 ? ('captured' as const) : base.paymentState,
+        sellerOrders: base.sellerOrders.map((part) => ({
+          ...part,
+          sellerId: n < 3 ? seller : part.sellerId,
+        })),
+      };
+    });
+    for (const row of rows) await value(market, () => repository.insert(market, row));
+    const window = { from: day, to: day.add({ hours: 1 }) };
+    const page = (
+      over: Partial<OrderFilter>,
+      direction: 'asc' | 'desc',
+      offset: number,
+      n: number,
+    ) =>
+      value(market, () =>
+        repository.pageAll(
+          market,
+          filterOf({ ...window, ...over }),
+          { key: 'created', direction },
+          offset,
+          n,
+        ),
+      );
+    const count = (over: Partial<OrderFilter>) =>
+      value(market, () => repository.countMatching(market, filterOf({ ...window, ...over })));
+
+    expect((await page({}, 'desc', 0, 2)).map((o) => o.id)).toEqual([rows[4]!.id, rows[3]!.id]);
+    expect((await page({}, 'desc', 2, 2)).map((o) => o.id)).toEqual([rows[2]!.id, rows[1]!.id]);
+    expect((await page({}, 'asc', 0, 2)).map((o) => o.id)).toEqual([rows[0]!.id, rows[1]!.id]);
+    expect(await count({})).toBe(5);
+    expect(await count({ sellerId: seller })).toBe(3);
+    expect(await count({ sellerId: seller, fulfilment: 'delivered' })).toBe(0);
+    expect(await count({ paymentState: 'captured' })).toBe(2);
+    expect(await count({ from: day.add({ minutes: 2 }), to: day.add({ minutes: 4 }) })).toBe(2);
+    expect(await count({ status: 'confirmed' })).toBe(0);
+  });
 
   it('refuses what the application never writes', async () => {
     const key = `checkout-${ids.next<'Order'>()}`;
