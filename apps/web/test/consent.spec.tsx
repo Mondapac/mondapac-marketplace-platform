@@ -17,14 +17,24 @@ const jar = vi.hoisted(() => ({
   set: vi.fn(),
   getAll: vi.fn(() => [] as { name: string }[]),
 }));
-vi.mock('next/headers', () => ({ cookies: () => Promise.resolve(jar) }));
+const incoming = vi.hoisted(() => ({ host: 'storefront.localhost:3003' }));
+vi.mock('next/headers', () => ({
+  cookies: () => Promise.resolve(jar),
+  headers: () => Promise.resolve(new Headers({ host: incoming.host })),
+}));
 
 beforeEach(() => {
   nav.pathname = '/';
+  incoming.host = 'storefront.localhost:3003';
+  vi.stubEnv('STOREFRONT_HOSTS', 'http://storefront.localhost:3003=AU');
+  vi.stubEnv('STOREFRONT_GA4_IDS', '');
   jar.set.mockReset();
   jar.getAll.mockReset().mockReturnValue([]);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 const withIntl = (node: ReactNode) =>
   render(
@@ -35,36 +45,42 @@ const withIntl = (node: ReactNode) =>
 
 describe('consent cookie value', () => {
   it('reads back what it writes', () => {
-    expect(consentOf(consentValue({ personalization: true }))).toEqual({ personalization: true });
-    expect(consentOf(consentValue({ personalization: false }))).toEqual({
-      personalization: false,
-    });
+    for (const personalization of [true, false])
+      for (const analytics of [true, false]) {
+        const consent = { personalization, analytics };
+        expect(consentOf(consentValue(consent))).toEqual(consent);
+      }
+    expect(consentValue({ personalization: true, analytics: false })).toBe('v2.p1.a0');
   });
 
-  it('asks again when the value is missing, malformed or from another version', () => {
+  it('asks again when the value is missing, malformed, from version 1 or from a later one', () => {
     expect(consentOf(undefined)).toBeNull();
     expect(consentOf('yes')).toBeNull();
-    expect(consentOf(`v${CONSENT_VERSION + 1}.p1`)).toBeNull();
+    expect(consentOf('v1.p1')).toBeNull();
+    expect(consentOf('v2.p1')).toBeNull();
+    expect(consentOf(`v${CONSENT_VERSION + 1}.p1.a1`)).toBeNull();
   });
 });
 
 describe('engagement request', () => {
   it('sends nothing without Personalization', () => {
     expect(engagementRequest({ kind: 'view' }, null)).toBeNull();
-    expect(engagementRequest({ kind: 'view' }, { personalization: false })).toBeNull();
+    expect(
+      engagementRequest({ kind: 'view' }, { personalization: false, analytics: false }),
+    ).toBeNull();
   });
 
   it('carries the consent header once accepted', () => {
-    const init = engagementRequest({ kind: 'view' }, { personalization: true });
+    const init = engagementRequest({ kind: 'view' }, { personalization: true, analytics: false });
     expect(init?.headers).toMatchObject({ [ENGAGEMENT_CONSENT_HEADER]: 'granted' });
   });
 });
 
 describe('saveConsent', () => {
   it('keeps the choice in a one-year Secure Lax cookie', async () => {
-    await saveConsent(true);
+    await saveConsent(true, false);
     expect(jar.set).toHaveBeenCalledTimes(1);
-    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v1.p1', {
+    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p1.a0', {
       path: '/',
       maxAge: 31536000,
       sameSite: 'lax',
@@ -79,14 +95,54 @@ describe('saveConsent', () => {
       { name: '__Host-cart-guest-AU' },
       { name: 'sf-palette' },
     ]);
-    await saveConsent(false);
-    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v1.p0', expect.anything());
+    await saveConsent(false, false);
+    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p0.a0', expect.anything());
     expect(jar.set).toHaveBeenCalledWith(
       '__Host-engagement-guest-AU',
       '',
       expect.objectContaining({ maxAge: 0, path: '/', secure: true }),
     );
     expect(jar.set).toHaveBeenCalledTimes(2);
+  });
+
+  describe('with a measurement ID for the Market', () => {
+    beforeEach(() => {
+      vi.stubEnv('STOREFRONT_GA4_IDS', 'AU=G-ABC123XYZ9');
+    });
+
+    it('keeps Analytics on when the buyer chose it', async () => {
+      await saveConsent(false, true);
+      expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p0.a1', expect.anything());
+    });
+
+    it('deletes _ga and _ga_* when Analytics is withdrawn, and only those', async () => {
+      jar.getAll.mockReturnValue([
+        { name: '_ga' },
+        { name: '_ga_ABC123XYZ9' },
+        { name: '_gat' },
+        { name: '__Host-engagement-guest-AU' },
+        { name: 'sf-palette' },
+      ]);
+      await saveConsent(true, false);
+      expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p1.a0', expect.anything());
+      for (const name of ['_ga', '_ga_ABC123XYZ9'])
+        expect(jar.set).toHaveBeenCalledWith(
+          name,
+          '',
+          expect.objectContaining({ maxAge: 0, path: '/' }),
+        );
+      expect(jar.set).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not keep Analytics for a host with no ID', async () => {
+      incoming.host = 'other.localhost:3003';
+      vi.stubEnv(
+        'STOREFRONT_HOSTS',
+        'http://storefront.localhost:3003=AU,http://other.localhost:3003=NZ',
+      );
+      await saveConsent(true, true);
+      expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p1.a0', expect.anything());
+    });
   });
 });
 
@@ -127,8 +183,8 @@ describe('cookie bar', () => {
   });
 
   it.each([
-    ['Accept all', 'v1.p1'],
-    ['Necessary only', 'v1.p0'],
+    ['Accept all', 'v2.p1.a0'],
+    ['Necessary only', 'v2.p0.a0'],
   ])('%s saves the choice and closes', async (name, value) => {
     withIntl(<ConsentBar initial={null} />);
     await act(async () => {
@@ -157,14 +213,14 @@ describe('cookie bar', () => {
     expect(screen.getByRole('region')).toBeTruthy();
     view.rerender(
       <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
-        <ConsentBar initial={{ personalization: true }} />
+        <ConsentBar initial={{ personalization: true, analytics: false }} />
       </NextIntlClientProvider>,
     );
     expect(screen.queryByRole('region')).toBeNull();
   });
 
   it('is not shown once chosen, nor on the cookie settings page', () => {
-    withIntl(<ConsentBar initial={{ personalization: false }} />);
+    withIntl(<ConsentBar initial={{ personalization: false, analytics: false }} />);
     expect(screen.queryByRole('region')).toBeNull();
     cleanup();
     nav.pathname = '/cookies';
@@ -183,19 +239,55 @@ describe('cookie settings', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save my choice' }));
       await Promise.resolve();
     });
-    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v1.p1', expect.anything());
-    expect(screen.getByRole('status').textContent).toBe(messages.cookies['saved-on']);
+    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p1.a0', expect.anything());
+    expect(screen.getByRole('status').textContent).toBe(messages.cookies.saved);
+    expect(screen.queryByRole('switch', { name: /Analytics/ })).toBeNull();
   });
 
   it('withdraws an earlier Accept', async () => {
     jar.getAll.mockReturnValue([{ name: '__Host-engagement-guest-AU' }]);
-    withIntl(<CookieSettings initial={{ personalization: true }} />);
+    withIntl(<CookieSettings initial={{ personalization: true, analytics: false }} />);
     fireEvent.click(screen.getByRole('switch'));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save my choice' }));
       await Promise.resolve();
     });
     expect(jar.set).toHaveBeenCalledWith('__Host-engagement-guest-AU', '', expect.anything());
-    expect(screen.getByRole('status').textContent).toBe(messages.cookies['saved-off']);
+    expect(screen.getByRole('status').textContent).toBe(messages.cookies.saved);
+  });
+});
+
+describe('analytics in the cookie bar and settings', () => {
+  beforeEach(() => {
+    vi.stubEnv('STOREFRONT_GA4_IDS', 'AU=G-ABC123XYZ9');
+  });
+
+  it('Accept all turns both on when the Market has an ID', async () => {
+    withIntl(<ConsentBar initial={null} analyticsAvailable />);
+    expect(document.querySelector('.consent-long')?.textContent).toContain('outside Australia');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Accept all' }));
+      await Promise.resolve();
+    });
+    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p1.a1', expect.anything());
+  });
+
+  it('shows an Analytics switch only where the Market has an ID, with the disclosure', () => {
+    withIntl(<CookieSettings initial={null} analyticsAvailable />);
+    const toggle = screen.getByRole<HTMLInputElement>('switch', { name: /Analytics/ });
+    expect(toggle.checked).toBe(false);
+    expect(toggle.closest('label')?.textContent).toContain(
+      'Analytics data is processed by Google outside Australia.',
+    );
+  });
+
+  it('saves Personalization and Analytics separately', async () => {
+    withIntl(<CookieSettings initial={null} analyticsAvailable />);
+    fireEvent.click(screen.getByRole('switch', { name: /Analytics/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save my choice' }));
+      await Promise.resolve();
+    });
+    expect(jar.set).toHaveBeenCalledWith('sf-consent', 'v2.p0.a1', expect.anything());
   });
 });

@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { ga4IdFor } from '../../src/analytics/ga4-config.ts';
 import { CONSENT_COOKIE, consentOf } from '../../src/consent/consent.ts';
 import { CookieSettings } from '../../src/consent/cookie-settings.tsx';
 import { pageMetadata, seoDescription } from '../../src/seo/metadata.ts';
@@ -16,7 +17,7 @@ const NECESSARY = ['session', 'cart', 'palette', 'text-size', 'delivery', 'conse
 
 export default async function CookiesPage() {
   const t = await getTranslations('cookies');
-  const jar = await cookies();
+  const [jar, incoming] = await Promise.all([cookies(), headers()]);
   return (
     <div className="state cookies">
       <h1>{t('title')}</h1>
@@ -38,7 +39,10 @@ export default async function CookiesPage() {
       </section>
       <section className="cookie-group" aria-labelledby="cookies-optional">
         <h2 id="cookies-optional">{t('optional')}</h2>
-        <CookieSettings initial={consentOf(jar.get(CONSENT_COOKIE)?.value)} />
+        <CookieSettings
+          initial={consentOf(jar.get(CONSENT_COOKIE)?.value)}
+          analyticsAvailable={ga4IdFor(incoming.get('host')) !== null}
+        />
       </section>
     </div>
   );

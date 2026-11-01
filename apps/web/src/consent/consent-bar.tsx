@@ -15,7 +15,14 @@ import { saveConsent } from './save-consent.ts';
  * inline link, and Accept and Reject side by side; the long text and the Settings button are
  * the tablet and desktop form.
  */
-export function ConsentBar({ initial }: { readonly initial: Consent | null }) {
+export function ConsentBar({
+  initial,
+  analyticsAvailable = false,
+}: {
+  readonly initial: Consent | null;
+  /** The Market has a measurement ID: Accept also turns analytics on, and the text says so. */
+  readonly analyticsAvailable?: boolean;
+}) {
   const t = useTranslations('consent');
   const pathname = usePathname();
   // The layout passes the saved choice again after a save on the settings page.
@@ -24,11 +31,11 @@ export function ConsentBar({ initial }: { readonly initial: Consent | null }) {
   const [pending, startTransition] = useTransition();
   if (decided || initial !== null || pathname === '/cookies') return null;
 
-  const choose = (personalization: boolean) => {
+  const choose = (on: boolean) => {
     setFailed(false);
     startTransition(async () => {
       try {
-        await saveConsent(personalization);
+        await saveConsent(on, on);
         setDecided(true);
       } catch {
         setFailed(true);
@@ -40,9 +47,9 @@ export function ConsentBar({ initial }: { readonly initial: Consent | null }) {
     <section className="consent" aria-labelledby="consent-title">
       <div className="consent-text">
         <h2 id="consent-title">{t('title')}</h2>
-        <p className="consent-long">{t('body')}</p>
+        <p className="consent-long">{t(analyticsAvailable ? 'body-analytics' : 'body')}</p>
         <p className="consent-short">
-          {t.rich('short', {
+          {t.rich(analyticsAvailable ? 'short-analytics' : 'short', {
             settings: (chunks) => <Link href="/cookies">{chunks}</Link>,
           })}
         </p>

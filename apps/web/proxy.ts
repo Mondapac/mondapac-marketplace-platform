@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { ga4IdFor } from './src/analytics/ga4-config.ts';
 import { DEFAULT_LOCALE, publishedLocales } from './src/i18n/locale.ts';
 import { makeNonce, policyPath, storefrontCsp } from './src/security/storefront-csp.ts';
 import { NOINDEX_HEADER, indexingOn } from './src/seo/indexing.ts';
@@ -31,6 +32,7 @@ export function proxy(request?: NextRequest): NextResponse {
       makeNonce(),
       process.env.NODE_ENV === 'development',
       imageOrigin(),
+      ga4IdFor(request.headers.get('host')) !== null,
     );
     const headers = new Headers(request.headers);
     headers.set('content-security-policy', policy);
