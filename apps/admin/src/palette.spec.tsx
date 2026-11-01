@@ -62,6 +62,21 @@ describe('admin palette index', () => {
     expect(labels([])).toContain('Two-step sign-in');
   });
 
+  it('puts the path in front of a settings page and a setting, and starts an account page at its group', () => {
+    const context = (id: string) =>
+      adminPaletteEntries(ALL_KEYS, text).find((entry) => entry.id === id)?.context;
+    expect(context('page:settings/delivery')).toBe('Settings / Delivery');
+    expect(context('setting:delivery-cutoff')).toBe('Settings / Delivery / Delivery rules');
+    expect(context('page:settings/account-profile')).toBe('Account');
+  });
+
+  it('lists Invite admin before Create role', () => {
+    const actions = adminPaletteEntries(ALL_KEYS, text)
+      .filter((entry) => entry.kind === 'action')
+      .map((entry) => entry.label);
+    expect(actions).toEqual(['Invite admin', 'Create role']);
+  });
+
   it('has a unique id for every registered setting, each on a page of the settings map or the account', () => {
     const ids = settingEntries.map((entry) => entry.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -178,11 +193,14 @@ describe('PanelTools', () => {
     const box = within(dialog()!).getByRole('combobox');
     fireEvent.change(box, { target: { value: 'support' } });
     const options = within(dialog()!).getAllByRole('option');
+    // Settings first, then pages, each with the path it lives under.
     expect(options.map((o) => o.textContent)).toEqual([
-      expect.stringContaining('Support contact'),
-      expect.stringContaining('Support email address'),
+      'Support email addressSettings / Marketplace / Support contact',
+      'Support contactSettings / Marketplace',
     ]);
     expect(within(dialog()!).getByRole('status').textContent).toBe('2 results');
+    // The count is also on screen, under the field.
+    expect(within(dialog()!).getByText('2 results', { selector: 'p[aria-hidden]' })).toBeTruthy();
     expect(box.getAttribute('aria-activedescendant')).toBe(options[0]!.id);
     expect(options[0]!.getAttribute('aria-selected')).toBe('true');
     key(box, { key: 'ArrowDown' });
@@ -191,8 +209,51 @@ describe('PanelTools', () => {
     expect(box.getAttribute('aria-activedescendant')).toBe(options[0]!.id);
     key(box, { key: 'ArrowUp' });
     key(box, { key: 'Enter' });
-    expect(navigate).toHaveBeenCalledWith('/settings/support#setting-support-email');
+    expect(navigate).toHaveBeenCalledWith('/settings/support');
     expect(dialog()).toBeNull();
+  });
+
+  it('lists Pinned, Recent and Actions before typing, with the path of each page', () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:pins',
+      JSON.stringify(['page:orders', 'page:settings/support']),
+    );
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:recent',
+      JSON.stringify(['page:settings/support', 'page:sellers']),
+    );
+    mount({ keys: [...KEYS, 'identity.admin-account.invite', 'identity.platform-role.create'] });
+    key(document, { key: 'k', ctrlKey: true });
+    const groups = within(dialog()!).getAllByRole('group');
+    expect(groups.map((g) => g.querySelector('p')?.textContent)).toEqual([
+      'Pinned',
+      'Recent',
+      'Actions',
+    ]);
+    const rows = (group: HTMLElement) =>
+      within(group)
+        .getAllByRole('option')
+        .map((option) => option.textContent);
+    expect(rows(groups[0]!)).toEqual([
+      'OrdersOrders & customers',
+      'Support contactSettings / Marketplace',
+    ]);
+    // A pinned page is not listed again under Recent.
+    expect(rows(groups[1]!)).toEqual(['All sellersSellers']);
+    expect(rows(groups[2]!)).toEqual([
+      'Invite admin',
+      'Create role',
+      expect.stringContaining('Keyboard shortcuts'),
+    ]);
+  });
+
+  it('offers no actions while typing, and ends the footer with "? for shortcuts"', () => {
+    mount({ keys: [...KEYS, 'identity.platform-role.create'] });
+    key(document, { key: 'k', ctrlKey: true });
+    const footer = dialog()!.querySelector('div.border-t')!;
+    expect(footer.textContent).toBe('↑ ↓ to moveEnter to openEsc to close? for shortcuts');
+    fireEvent.change(within(dialog()!).getByRole('combobox'), { target: { value: 'role' } });
+    expect(within(dialog()!).queryAllByRole('option')).toEqual([]);
   });
 
   it('says so when nothing matches, and never lists what the keys do not allow', () => {
@@ -391,12 +452,11 @@ describe('PanelTools', () => {
     const opener = screen.getByRole('button', { name: 'Search' });
     opener.focus();
     fireEvent.click(opener);
-    const box = within(dialog()!).getByRole('combobox');
-    fireEvent.change(box, { target: { value: 'keyboard' } });
-    expect(within(dialog()!).getAllByRole('option')[0]!.textContent).toContain(
-      'Keyboard shortcuts',
-    );
-    key(box, { key: 'Enter' });
+    // Before typing, the action is listed with the other actions.
+    const help = within(dialog()!)
+      .getAllByRole('option')
+      .find((option) => option.textContent?.includes('Keyboard shortcuts'))!;
+    fireEvent.click(help);
     expect(navigate).not.toHaveBeenCalled();
     expect(dialog()?.getAttribute('aria-labelledby')).not.toBeNull();
     expect(dialog()?.textContent).toContain('Single-key shortcuts');

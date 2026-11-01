@@ -28,6 +28,7 @@
     "hint-move": "to move",
     "hint-open": "to open",
     "hint-close": "to close",
+    "hint-shortcuts": "for shortcuts",
     "group": {
       "account": "Account"
     },
@@ -49,7 +50,8 @@
     },
     "action": {
       "add-product": "Add product",
-      "invite-member": "Invite team member"
+      "invite-member": "Invite member",
+      "add-stock-location": "Add stock location"
     },
     "setting": {
       "store-name": "Store name",
