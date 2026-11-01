@@ -11,6 +11,8 @@ Market, validated when the API starts. The directory is read by `ServiceAreaDire
   "areas": [
     {
       "code": "greater-brisbane",
+      "names": { "en": "Greater Brisbane" },
+      "region": "QLD",
       "postcodes": ["4000-4179", "4500"],
       "sellerOnboardingEnabled": false,
       "deliveryEnabled": false
@@ -20,6 +22,11 @@ Market, validated when the API starts. The directory is read by `ServiceAreaDire
 ```
 
 - `code`: stable text, `^[a-z0-9][a-z0-9-]{0,63}$`. Other modules store only this code.
+- `names`: the area's display names by language tag (`en`, `fa`, `ar`...). English is required;
+  other languages are added as they are translated by a person (never machine-translated).
+  The admin and the storefront show the name for the reader's language and fall back to `en`.
+- `region`: optional. The Market region (state) the area sits in, as the address region field
+  writes it ("QLD"). A later cross-area rule can name a whole region and mean all its areas.
 - `postcodes`: exact postcodes (ASCII letters and digits) or digit ranges whose ends have the
   same length, low to high. Spaces and case are ignored. A hyphen always means a range, so a
   Market whose postcodes contain a hyphen cannot list them yet; the grammar grows with that

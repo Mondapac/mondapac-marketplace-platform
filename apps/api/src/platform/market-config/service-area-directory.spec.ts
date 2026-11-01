@@ -25,6 +25,7 @@ function directoryWith(files: Record<string, unknown>): string {
 
 const area = (code: string, postcodes: string[], open = true) => ({
   code,
+  names: { en: code },
   postcodes,
   sellerOnboardingEnabled: open,
   deliveryEnabled: open,
@@ -87,6 +88,8 @@ describe('ServiceAreaDirectory', () => {
     expect(directory.areaFor(ZZ, 'zz1 9aa')?.code).toBe('zz-central');
     expect(directory.areaFor(ZZ, '2000500')).toEqual({
       code: 'zz-coast',
+      names: { en: 'Coast' },
+      region: null,
       sellerOnboardingEnabled: false,
       deliveryEnabled: true,
     });
@@ -113,6 +116,30 @@ describe('ServiceAreaDirectory', () => {
 });
 
 describe('loadServiceAreas', () => {
+  it('reads display names and the region, and needs an English name', () => {
+    const named = loadServiceAreas(TEST_SERVICE_AREA_CONFIG_DIRS, TEST_MARKET_IDS);
+    expect(named.areaFor(AU, '4000')).toMatchObject({
+      names: { en: 'Greater Brisbane' },
+      region: 'QLD',
+    });
+    expect(named.areaFor(ZZ, '1000001')?.names).toEqual({ en: 'Central', ja: '中央' });
+    const withNames = (names: unknown, region?: string) =>
+      directoryWith({
+        'AU.json': { market: 'AU', areas: [{ ...area('a', ['4000']), names, region }] },
+      });
+    expect(() => loadServiceAreas([withNames({ fa: 'الف' })], [AU])).toThrow(/English name/);
+    expect(() => loadServiceAreas([withNames({})], [AU])).toThrow(/English name/);
+    expect(() => loadServiceAreas([withNames({ en: ' ' })], [AU])).toThrow(/1 to 120/);
+    expect(() => loadServiceAreas([withNames({ en: 'A', 'Not A Tag': 'B' })], [AU])).toThrow(
+      /Invalid key/,
+    );
+    expect(() => loadServiceAreas([withNames({ en: 'A' }, 'Q L D')], [AU])).toThrow(
+      /letters or digits/,
+    );
+    const ok = loadServiceAreas([withNames({ en: 'A', fa: 'الف' }, 'QLD')], [AU]);
+    expect(ok.areasOf(AU)[0]).toMatchObject({ names: { en: 'A', fa: 'الف' }, region: 'QLD' });
+  });
+
   it('requires a file for every hosted market', () => {
     const dir = directoryWith({});
     expect(() => loadServiceAreas([dir], [AU])).toThrow(/no service-area file/);
