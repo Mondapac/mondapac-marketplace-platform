@@ -1596,7 +1596,8 @@
         "fleets": "Delivery fleets",
         "wallet": "Customer wallet",
         "admins": "Admins",
-        "roles": "Roles & permissions"
+        "roles": "Roles & permissions",
+        "lists": "Lists"
       }
     },
     "sub": {
@@ -4260,5 +4261,33 @@
       "confirm-body": "{count, plural, one {# other value is} other {# other values are}} archived and {moved, plural, one {# product moves} other {# products move}} to {name}. The old names stay as aliases."
     },
     "not-set": "Not set"
+  },
+  "lists-settings": {
+    "title": "Lists",
+    "permission-view": "Market settings: view",
+    "load-failed": "Couldn't load this setting.",
+    "read-only": "You can view this setting but not change it.",
+    "intro": "How lists move between pages, in the admin and seller panels.",
+    "section": "Paging",
+    "version-defaults": "Not changed yet. The default is in force.",
+    "version": "Version {version}",
+    "saved": "Saved.",
+    "paging": {
+      "label": "List paging",
+      "help": "Page numbers show the total and let people jump to a page, up to the first 10,000 rows. Previous and next works for any length and is used when this setting cannot be read.",
+      "option": {
+        "pages": "Page numbers",
+        "prev-next": "Previous and next"
+      }
+    },
+    "error": {
+      "invalid": "This value isn't allowed.",
+      "conflict": "Someone changed this setting. Reload the page and try again.",
+      "denied": "You don't have permission to change this setting.",
+      "csrf": "Your session expired. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "unavailable": "The service isn't available right now. Try again.",
+      "unknown": "Something went wrong. Try again."
+    }
   }
 }
