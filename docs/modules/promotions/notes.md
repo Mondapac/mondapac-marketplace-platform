@@ -158,7 +158,7 @@ re-download of generated codes.
 
 ## Phase 3 discount types
 
-Four types on top of phase 2 (migration `20261031120000_promotions_phase3_types`). The Market switch stays
+Four types on top of phase 2 (migration `20261031140000_promotions_phase3_types`). The Market switch stays
 off by default. Every amount and threshold is Market config (`promotions.customerGroup`,
 `promotions.referral`, `promotions.cashback`; absent means the type is unavailable, fail closed) or
 promotion data; nothing is hardcoded.
@@ -227,7 +227,7 @@ panel or buyer UI.
 
 ## Phase 3 review fixes (PR #601)
 
-Changes after review, all in the `20261031120000_promotions_phase3_types` migration (not yet merged, edited in
+Changes after review, all in the `20261031140000_promotions_phase3_types` migration (not yet merged, edited in
 place) and the promotions module.
 
 - **Reserved credits are always finished.** A delivery first looks up the credits that already exist for its

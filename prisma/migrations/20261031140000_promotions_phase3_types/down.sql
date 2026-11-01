@@ -1,5 +1,5 @@
 -- Never run this against production after launch: it drops every referral code, referral, credit
--- record and inbox row. Reverses 20261031120000_promotions_phase3_types: the grants first, then the
+-- record and inbox row. Reverses 20261031140000_promotions_phase3_types: the grants first, then the
 -- new tables (which drops their triggers, indexes and foreign keys) and the trigger functions, then the new columns and
 -- checks, and last the two type checks of the phase 2 migration. The type checks are put back
 -- last, so the down refuses when a promotion of a phase 3 type is still stored. Nothing is lost
