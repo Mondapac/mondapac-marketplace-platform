@@ -28,6 +28,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // (customers package 5a and 5b; screens: account deletion).
     'customers/me/account-deletion',
     'customers/me/deletion-requests/current',
+    // The buyer's own reviews: what waits for one, and what was written (reviews package 3).
+    'reviews/me/to-review',
+    'reviews/me',
   ]),
   POST: new Set([
     'cart/items',
@@ -43,6 +46,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/me/deletion-requests',
     // The delivery methods and prices of the basket for a saved address (delivery models, pkg 5).
     'orders/delivery-quotes',
+    // The buyer writes a product review (reviews package 3).
+    'reviews/products',
   ]),
   PUT: new Set([
     // The customer's own display name and storefront look (buyer account backend).
@@ -57,9 +62,21 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
 
 /** Paths with one resource id (`:id`, a UUID), by method. */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
-  POST: ['customers/me/addresses/:id/default', 'cart/saved/:id/move-to-cart'],
+  POST: [
+    'customers/me/addresses/:id/default',
+    'cart/saved/:id/move-to-cart',
+    // The buyer rates one delivered seller order.
+    'reviews/seller-orders/:id/rating',
+  ],
+  // The buyer edits their own review.
+  PATCH: ['reviews/products/:id'],
   PUT: ['cart/items/:id', 'customers/me/addresses/:id'],
-  DELETE: ['cart/items/:id', 'customers/me/addresses/:id', 'cart/saved/:id'],
+  DELETE: [
+    'cart/items/:id',
+    'customers/me/addresses/:id',
+    'cart/saved/:id',
+    'reviews/products/:id',
+  ],
 };
 
 /** The answers that start a customer session; a guest cart is merged into it right after. */

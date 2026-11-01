@@ -41,6 +41,21 @@ describe('admin nav: Catalogue', () => {
   });
 });
 
+describe('admin nav: Buyer reviews', () => {
+  it('shows the queue for reviews.moderation.queue, in the Reviews group', () => {
+    expect(ids(['reviews.moderation.queue'])).toEqual(['home', 'review-moderation']);
+    expect(adminNav.items.find((entry) => entry.id === 'review-moderation')).toMatchObject({
+      href: '/reviews/moderation',
+      group: 'reviews',
+      anyOf: ['reviews.moderation.queue'],
+    });
+  });
+
+  it('is hidden with only the moderate or remove key', () => {
+    expect(ids(['reviews.moderation.moderate', 'reviews.moderation.remove'])).toEqual(['home']);
+  });
+});
+
 describe('admin nav: Wallet', () => {
   it('lists the credit pages for wallet.credit.view; the switch is a settings page', () => {
     expect(ids(['wallet.credit.view'])).toEqual(['home', 'wallet-credits', 'wallet-requests']);
@@ -71,6 +86,7 @@ describe('admin nav: daily work only', () => {
       'home',
       'products',
       'offer-reviews',
+      'review-moderation',
       'price-holds',
       'brands',
       'content',

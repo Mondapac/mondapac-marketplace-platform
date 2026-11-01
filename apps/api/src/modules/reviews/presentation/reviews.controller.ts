@@ -40,6 +40,11 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { CastHelpfulVote } from '../application/use-cases/cast-helpful-vote.use-case';
 import { RemoveHelpfulVote } from '../application/use-cases/remove-helpful-vote.use-case';
+import { RequiresStepUp } from '../../../platform/authz';
+import { ListModerationQueue } from '../application/use-cases/list-moderation-queue.use-case';
+import { ModerateReview } from '../application/use-cases/moderate-review.use-case';
+import { RemoveReview } from '../application/use-cases/remove-review.use-case';
+import { ViewModerationReview } from '../application/use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from '../application/use-cases/delete-product-review.use-case';
 import { EditProductReview } from '../application/use-cases/edit-product-review.use-case';
 import { ListMyReviews } from '../application/use-cases/list-my-reviews.use-case';
@@ -56,6 +61,11 @@ import {
   DeletedReviewBody,
   HelpfulVoteBody,
   helpfulVoteBody,
+  ModerateRequest,
+  ModerationDetailBody,
+  moderationDetailBody,
+  ModerationQueueBody,
+  moderationQueueBody,
   EditReviewRequest,
   MyReviewsBody,
   myReviewsBody,
@@ -565,10 +575,13 @@ export class AdminReviewsController {
 
   @Put()
   @HttpCode(200)
+  @RequiresStepUp('reviews.settings.change')
   @ApiOperation({
     summary: 'Move the reviews of the Market to off or active (admin)',
     description:
-      'Needs reviews.settings.manage (protected); refused in an acting-as session. Audited with ' +
+      'Needs reviews.settings.manage (protected) and a fresh two-step proof of this admin ' +
+      '(`POST identity/admin/step-up/verify` for reviews.settings.change; without it 403 ' +
+      'second-factor.required with details.actionKey). Refused in an acting-as session. Audited with ' +
       'before and after. Asking for the state the Market is in changes nothing. Turning off ' +
       'deletes nothing.',
   })
@@ -577,7 +590,11 @@ export class AdminReviewsController {
   @ApiOkResponse({ type: SettingsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description:
+      'access.denied, request.csrf, second-factor.required (details.actionKey) or second-factor.enrolment-required',
+  })
   async put(
     @Call() context: CallContext,
     @Req() request: Request,
@@ -597,5 +614,271 @@ export class AdminReviewsController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return settingsBody(result.value);
+  }
+}
+
+const MODERATE_STEP_UP_NOTE =
+  'Needs a fresh two-step proof of this admin for reviews.review.moderate (`POST ' +
+  'identity/admin/step-up/verify`); without it 403 second-factor.required with details.actionKey. ' +
+  'The proof is spent by the change. Refused in an acting-as session. Audited with codes only.';
+
+const MODERATE_FORBIDDEN =
+  'access.denied, request.csrf, second-factor.required (details.actionKey) or second-factor.enrolment-required';
+
+const MODERATE_CONFLICT =
+  'reviews.not-moderatable: the review is not in a status the action applies to, or another ' +
+  'moderator moved it first';
+
+/**
+ * The moderator queue (package 2): held, reported and actioned reviews, and the actions on them.
+ * Works whether the Market switch is on or off. A review's text appears here for the moderator
+ * only, never in a log, audit row or event. The author is never named. Every answer is
+ * `Cache-Control: no-store`.
+ */
+@ApiTags('reviews')
+@RoutePopulation('admin')
+@ReadsSession()
+@Controller('reviews/admin/moderation')
+export class AdminModerationController {
+  readonly #logger = new Logger('AdminModerationController');
+
+  constructor(
+    private readonly list: ListModerationQueue,
+    private readonly view: ViewModerationReview,
+    private readonly moderate: ModerateReview,
+    private readonly remove: RemoveReview,
+  ) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'The moderator queue (admin)',
+    description:
+      'Needs reviews.moderation.queue. Tabs: held, reported, actioned. Newest submitted first, ' +
+      '25 per page (limit up to 50), with counts per tab.',
+  })
+  @ApiQuery({ name: 'tab', required: false, enum: ['held', 'reported', 'actioned'] })
+  @ApiQuery({ name: 'cursor', required: false })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiOkResponse({ type: ModerationQueueBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async queue(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const unknown = closedQuery(query, ['tab', 'cursor', 'limit']);
+    if (unknown !== null) throw unknown;
+    const limit = query.limit;
+    const result = await this.list.execute(context, {
+      ...(query.tab === undefined ? {} : { tab: query.tab }),
+      ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+      ...(limit === undefined
+        ? {}
+        : { limit: typeof limit === 'string' && /^\d{1,3}$/.test(limit) ? Number(limit) : NaN }),
+    });
+    logRoute(
+      this.#logger,
+      'reviews.list-moderation-queue-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return moderationQueueBody(result.value);
+  }
+
+  @Get(':reviewId')
+  @ApiOperation({
+    summary: 'One review for a moderator (admin)',
+    description:
+      'Needs reviews.moderation.queue. The review with its open report reasons, signal codes, ' +
+      'its history and the actions that apply now.',
+  })
+  @ApiParam({ name: 'reviewId', format: 'uuid' })
+  @ApiOkResponse({ type: ModerationDetailBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.not-found' })
+  async detail(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('reviewId') reviewId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const unknown = closedQuery(query, []);
+    if (unknown !== null) throw unknown;
+    const result = await this.view.execute(context, { reviewId });
+    logRoute(
+      this.#logger,
+      'reviews.view-moderation-review-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return moderationDetailBody(result.value);
+  }
+
+  private async act(
+    action: 'publish' | 'hide' | 'restore' | 'dismiss-reports' | 'remove',
+    context: CallContext,
+    request: Request,
+    response: Response,
+    reviewId: string,
+    requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['reasonCode']);
+    if (invalid !== null) throw invalid;
+    const { reasonCode } = requestBody as { reasonCode?: unknown };
+    const useCase = action === 'remove' ? this.remove : this.moderate;
+    const result = await useCase.execute(context, { reviewId, action, reasonCode });
+    logRoute(
+      this.#logger,
+      `reviews.${action}-review-route`,
+      context,
+      result.ok ? 'done' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return moderationDetailBody(result.value);
+  }
+
+  @Post(':reviewId/publish')
+  @HttpCode(200)
+  @RequiresStepUp('reviews.review.moderate')
+  @ApiOperation({
+    summary: 'Publish a held review (admin)',
+    description: `Needs reviews.moderation.moderate. Reason: checked-ok. ${MODERATE_STEP_UP_NOTE}`,
+  })
+  @ApiParam({ name: 'reviewId', format: 'uuid' })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ModerateRequest })
+  @ApiOkResponse({ type: ModerationDetailBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: MODERATE_FORBIDDEN })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: MODERATE_CONFLICT })
+  publish(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('reviewId') reviewId: string,
+    @Body() requestBody: unknown,
+  ) {
+    return this.act('publish', context, request, response, reviewId, requestBody);
+  }
+
+  @Post(':reviewId/hide')
+  @HttpCode(200)
+  @RequiresStepUp('reviews.review.moderate')
+  @ApiOperation({
+    summary: 'Hide a review, reversibly (admin)',
+    description:
+      'Needs reviews.moderation.moderate. A closed reason: personal-information, abusive, ' +
+      'irrelevant, not-a-purchase, incentivised, spam or other. There is no reason for a negative ' +
+      `review or a seller request: a true negative review is never hidden. ${MODERATE_STEP_UP_NOTE}`,
+  })
+  @ApiParam({ name: 'reviewId', format: 'uuid' })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ModerateRequest })
+  @ApiOkResponse({ type: ModerationDetailBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: MODERATE_FORBIDDEN })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: MODERATE_CONFLICT })
+  hide(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('reviewId') reviewId: string,
+    @Body() requestBody: unknown,
+  ) {
+    return this.act('hide', context, request, response, reviewId, requestBody);
+  }
+
+  @Post(':reviewId/restore')
+  @HttpCode(200)
+  @RequiresStepUp('reviews.review.moderate')
+  @ApiOperation({
+    summary: 'Restore a hidden review (admin)',
+    description: `Needs reviews.moderation.moderate. Reason: reinstated or hidden-in-error. A removed review stays removed. ${MODERATE_STEP_UP_NOTE}`,
+  })
+  @ApiParam({ name: 'reviewId', format: 'uuid' })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ModerateRequest })
+  @ApiOkResponse({ type: ModerationDetailBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: MODERATE_FORBIDDEN })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: MODERATE_CONFLICT })
+  restore(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('reviewId') reviewId: string,
+    @Body() requestBody: unknown,
+  ) {
+    return this.act('restore', context, request, response, reviewId, requestBody);
+  }
+
+  @Post(':reviewId/remove')
+  @HttpCode(200)
+  @RequiresStepUp('reviews.review.moderate')
+  @ApiOperation({
+    summary: 'Remove a review for illegal, defamatory or private content (admin)',
+    description:
+      'Needs reviews.moderation.remove (protected). Reason: illegal, defamatory, ' +
+      `personal-information or abusive. Not reversible. ${MODERATE_STEP_UP_NOTE}`,
+  })
+  @ApiParam({ name: 'reviewId', format: 'uuid' })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ModerateRequest })
+  @ApiOkResponse({ type: ModerationDetailBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: MODERATE_FORBIDDEN })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: MODERATE_CONFLICT })
+  removeReview(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('reviewId') reviewId: string,
+    @Body() requestBody: unknown,
+  ) {
+    return this.act('remove', context, request, response, reviewId, requestBody);
+  }
+
+  @Post(':reviewId/dismiss-reports')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Dismiss the open reports of a review (admin)',
+    description:
+      'Needs reviews.moderation.moderate. Reason: not-against-policy or duplicate. Changes no ' +
+      'status and needs no two-step proof. Audited with codes only.',
+  })
+  @ApiParam({ name: 'reviewId', format: 'uuid' })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ModerateRequest })
+  @ApiOkResponse({ type: ModerationDetailBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: MODERATE_CONFLICT })
+  dismissReports(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('reviewId') reviewId: string,
+    @Body() requestBody: unknown,
+  ) {
+    return this.act('dismiss-reports', context, request, response, reviewId, requestBody);
   }
 }

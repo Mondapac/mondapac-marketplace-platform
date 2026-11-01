@@ -34,6 +34,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'review-moderation',
+      icon: 'shield-check',
+      labelKey: 'nav.review-moderation',
+      href: '/reviews/moderation',
+      group: 'reviews',
+      anyOf: ['reviews.moderation.queue'],
+    },
+    {
       id: 'price-holds',
       icon: 'clock',
       labelKey: 'nav.price-holds',

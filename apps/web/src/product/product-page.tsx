@@ -12,6 +12,8 @@ import type {
   ProductDetail,
   ProductOffer,
 } from '../storefront/types.ts';
+import { ProductReviews } from '../reviews/product-reviews.tsx';
+import type { ProductReviews as ProductReviewsData } from '../reviews/reviews-source.ts';
 import { TabBarAutoHide } from '../shell/tabbar-autohide.tsx';
 import { BuyControl } from './buy-control.tsx';
 import { Collapsible } from './collapsible.tsx';
@@ -27,9 +29,12 @@ import { SellerBlock, SellerCards } from './seller-card.tsx';
 export function ProductPage({
   product,
   category,
+  reviews = null,
 }: {
   readonly product: ProductDetail;
   readonly category: Category | undefined;
+  /** The product's reviews while the Market's reviews switch is on and there is one; else null. */
+  readonly reviews?: ProductReviewsData | null;
 }) {
   const t = useTranslations('product');
   const tc = useTranslations('catalog');
@@ -138,6 +143,16 @@ export function ProductPage({
           ) : null}
         </div>
       </div>
+      {reviews === null ? null : (
+        <ProductReviews
+          productId={product.id}
+          summary={reviews.summary}
+          initial={reviews.page}
+          sellers={Object.fromEntries(
+            product.offers.map((o) => [o.seller.id.toLowerCase(), o.seller.name]),
+          )}
+        />
+      )}
       {product.similar.length > 0 ? (
         <section className="sec">
           <div className="sech">

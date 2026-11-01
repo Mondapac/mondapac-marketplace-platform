@@ -27,6 +27,7 @@ import {
   FakeNames,
   FakeOffers,
   FakeOverlap,
+  FakeStepUp,
 } from '../support/reviews-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
@@ -94,6 +95,7 @@ describe.each(TEST_MARKETS)('reviews package 5 in market %s (database)', (code) 
       names: new FakeNames(),
       affinity,
       overlap: new FakeOverlap(),
+      stepUp: new FakeStepUp(),
       audit: { record: () => Promise.resolve() },
       ids,
       clock,

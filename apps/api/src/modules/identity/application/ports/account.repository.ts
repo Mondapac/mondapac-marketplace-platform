@@ -68,6 +68,18 @@ export interface AccountRepository {
   ): Promise<readonly CustomerSummaryRow[]>;
 
   /**
+   * Whether the customer account with this id has the same normalised sign-in address as an
+   * account with an active membership of this seller (a person with a customer account and a
+   * seller-side account on one address). False for an unknown id or another population's account.
+   * Reads no personal data out: a boolean only.
+   */
+  customerSharesAddressWithSellerMember(
+    market: MarketContext,
+    customerId: Id<'Account'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<boolean>;
+
+  /**
    * The status of the Market's customer account with this id, or null for an unknown id or
    * another population's account. Reads no credential and no personal data, so an account
    * without a password credential is still answered.

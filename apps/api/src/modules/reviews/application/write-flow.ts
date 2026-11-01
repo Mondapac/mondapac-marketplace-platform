@@ -114,9 +114,9 @@ async function overlapCodes(
 
 /**
  * The author's own writes in the last 24 hours: counted in the insert-only log (submits, edits,
- * deletes) plus seller ratings, so delete-and-resubmit and edits are limited too. Soft limit: the
- * count and the insert are in one READ COMMITTED unit, so parallel requests of one account can
- * overshoot by the number in flight.
+ * deletes) plus seller ratings, so delete-and-resubmit and edits are limited too. The account's
+ * lock (`reviews.lock-account`) is taken before the count and held to the end of the unit, so
+ * parallel requests of one account cannot overshoot the limit.
  */
 async function overDailyLimit(
   deps: ReviewsDependencies,
@@ -125,6 +125,8 @@ async function overDailyLimit(
   now: Temporal.Instant,
   settings: ReviewsSettings,
 ): Promise<boolean> {
+  // The lock first: a parallel write of this account waits here, then counts what this one wrote.
+  await deps.reviews.lockAccount(context.market, accountId);
   const recent = await deps.reviews.countSubmissionsSince(
     context.market,
     accountId,

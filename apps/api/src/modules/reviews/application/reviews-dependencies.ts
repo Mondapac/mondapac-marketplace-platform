@@ -1,4 +1,5 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CatalogFacade } from '../../catalog';
@@ -25,6 +26,8 @@ export interface ReviewsDependencies {
   /** Facts for the same-address and same-payment-fingerprint signals (package 5). */
   readonly overlap: SellerOverlapSource;
   readonly audit: AuditWriter;
+  /** Spends an admin's two-step proof once, inside the unit that makes the change (ADR-0018). */
+  readonly stepUp: StepUpProofConsumer;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }

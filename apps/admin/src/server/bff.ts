@@ -43,6 +43,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
     'commission-payouts/admin/disputes',
+    // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
+    // `limit`); one review is read by its dialog and again after an action.
+    'reviews/admin/moderation',
     // The seller payouts (commission-payouts, package 6d), read-only list (query: `status`,
     // `cursor`, `limit`); one payout is read by the page server and again by the approve dialog.
     'commission-payouts/admin/payouts',
@@ -190,6 +193,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/payout-holds/:id/release',
     // Delete a buyer's account for them, from a support ticket (customers), behind a two-step code.
     'customers/admin/buyers/:id/deletion-requests',
+    // Publish, hide, restore or remove a buyer review, or dismiss its reports (reviews); all but
+    // the dismissal are behind a two-step code.
+    'reviews/admin/moderation/:id/publish',
+    'reviews/admin/moderation/:id/hide',
+    'reviews/admin/moderation/:id/restore',
+    'reviews/admin/moderation/:id/remove',
+    'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -234,6 +244,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'wallet/admin/customers/:id',
     // One dispute case, read again after a decision (commission-payouts).
     'commission-payouts/admin/disputes/:id',
+    // One buyer review for the moderator dialog (reviews).
+    'reviews/admin/moderation/:id',
     // One seller payout (commission-payouts), read by the approve dialog.
     'commission-payouts/admin/payouts/:id',
     // A seller's payout terms and holds (commission-payouts), read again after a change.
@@ -255,6 +267,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
+  'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
   'catalog/admin/products': [
     'view',
     'q',
@@ -292,6 +305,12 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     status: /^(pending|decided|granted)$/,
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'reviews/admin/moderation': {
+    tab: /^(held|reported|actioned)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the submission, an underscore and the review id.
+    cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/,
   },
   'commission-payouts/admin/disputes': {
     filter: /^(needs-response|decision-needed|under-review|won|closed)$/,
