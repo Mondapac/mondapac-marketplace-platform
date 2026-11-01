@@ -71,6 +71,16 @@ import { SellersAllowedProductTypesReader } from './sellers-allowed-product-type
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
+import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import {
+  SAVED_FILTER_REPOSITORY,
+  type SavedFilterRepository,
+} from '../application/ports/saved-filter.repository';
+import {
+  ADMIN_PRODUCTS_READER,
+  type AdminProductsReader,
+} from '../application/ports/admin-products.reader';
 import {
   PRODUCT_IMAGE_REPOSITORY,
   type ProductImageRepository,
@@ -78,6 +88,14 @@ import {
 import { IMAGE_PROCESSOR, type ImageProcessor } from '../application/ports/image-processor';
 import { PrismaProductImageRepository } from './prisma-product-image.repository';
 import { SharpImageProcessor } from './sharp-image-processor';
+import { csvParser } from '../domain/platform-import/import-file';
+import {
+  IMPORT_FILE_PARSERS,
+  type ImportFileParsers,
+} from '../application/ports/import-file-parsers';
+import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
+import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
+import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
 import {
@@ -120,7 +138,15 @@ import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
 import { HmacRateCounterKeys, localCatalogSecret } from './hmac-rate-counter-keys';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaProductRevisionRepository } from './prisma-product-revision.repository';
+import { OBJECT_STORE, type ObjectStore } from '../../../platform/storage/object-store';
 import { PrismaWorkingCopyRepository } from './prisma-working-copy.repository';
+import { PrismaPlatformImportRepository } from './prisma-platform-import.repository';
+import { ObjectImportFileStore } from './object-import-file-store';
+import { IMPORT_FILE_STORE, type ImportFileStore } from '../application/ports/import-file-store';
+import {
+  PLATFORM_IMPORT_REPOSITORY,
+  type PlatformImportRepository,
+} from '../application/ports/platform-import.repository';
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
@@ -269,6 +295,18 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (prisma: PrismaService): OwnCatalogReader => new PrismaOwnCatalogReader(prisma),
   },
   {
+    provide: ADMIN_PRODUCTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminProductsReader =>
+      new PrismaAdminProductsReader(prisma),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(prisma),
+  },
+  {
     provide: SELLER_ELIGIBILITY_READER,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerEligibilityReader =>
@@ -359,6 +397,17 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (): AttributeSeed => new CheckedInAttributeSeed(),
   },
   {
+    provide: PLATFORM_IMPORT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PlatformImportRepository =>
+      new PrismaPlatformImportRepository(prisma),
+  },
+  {
+    provide: IMPORT_FILE_STORE,
+    inject: [OBJECT_STORE],
+    useFactory: (store: ObjectStore): ImportFileStore => new ObjectImportFileStore(store),
+  },
+  {
     provide: WORKING_COPY_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): WorkingCopyRepository =>
@@ -375,6 +424,15 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ProductImageRepository =>
       new PrismaProductImageRepository(prisma),
+  },
+  {
+    // CSV is read by the domain; XLSX by exceljs, behind the container checks (catalog 14a).
+    provide: IMPORT_FILE_PARSERS,
+    useFactory: (): ImportFileParsers => [csvParser, xlsxParser],
+  },
+  {
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
   },
   {
     provide: IMAGE_PROCESSOR,

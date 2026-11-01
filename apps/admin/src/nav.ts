@@ -7,6 +7,7 @@ import { settingsViewKeys } from './settings/settings-nav.ts';
 // visible item shows that item flat (navSections).
 export const adminNav: NavConfig = {
   groups: [
+    { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'package' },
     { id: 'reviews', labelKey: 'nav.group.reviews', icon: 'shield-check' },
     { id: 'catalog', labelKey: 'nav.group.catalog', icon: 'package' },
     { id: 'content', labelKey: 'nav.group.content', icon: 'layout' },
@@ -16,6 +17,14 @@ export const adminNav: NavConfig = {
   ],
   items: [
     { id: 'home', icon: 'home', labelKey: 'nav.home', href: '/' },
+    {
+      id: 'products',
+      icon: 'package',
+      labelKey: 'nav.products',
+      href: '/catalog/products',
+      group: 'catalogue',
+      anyOf: ['catalog.product.view'],
+    },
     {
       id: 'offer-reviews',
       icon: 'inbox',

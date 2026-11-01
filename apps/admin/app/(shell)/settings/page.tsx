@@ -1,8 +1,7 @@
-import { LoadError, NoAccess, RecentPages } from '@mondapac/ui';
+import { LoadError, NoAccess, RecentPages, SettingsHub, SettingsHubHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../src/server/session.ts';
-import { SettingsHub } from '../../../src/settings/settings-hub.tsx';
 import { visibleSettings } from '../../../src/settings/settings-nav.ts';
 
 export async function generateMetadata() {
@@ -30,12 +29,7 @@ export default async function SettingsHubPage() {
         />
       ) : (
         <div className="flex flex-col gap-6">
-          <header>
-            <h1 className="text-2xl font-semibold text-fg">{title}</h1>
-            <p className="mt-1 max-w-prose text-sm text-fg-muted">
-              {t('settings.hub.description')}
-            </p>
-          </header>
+          <SettingsHubHeader title={title} description={t('settings.hub.description')} />
           <RecentPages heading={t('palette.recent-heading')} />
           <SettingsHub
             groups={groups}

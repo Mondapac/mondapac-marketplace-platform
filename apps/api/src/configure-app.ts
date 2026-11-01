@@ -82,6 +82,16 @@ export function isStoreImageUploadRequest(
 
 /** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
 const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
+// The admin platform import's upload (catalog design 14a): a base64 CSV file of at most 10 MiB, read
+// as bytes at the same limit; its controller parses the JSON itself. Only this one route.
+const PLATFORM_IMPORT_UPLOAD_PATH = /^\/catalog\/admin\/platform-imports\/?(?:\?.*)?$/;
+
+export function isPlatformImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+): boolean {
+  return method === 'POST' && url !== undefined && PLATFORM_IMPORT_UPLOAD_PATH.test(url);
+}
 const CERTIFICATE_DOCUMENT_PATH =
   /^\/certification\/seller\/certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
 /** An admin adds a file to a manufacturer certificate's draft (certification slice 15 part 2). */
@@ -157,6 +167,13 @@ export function configureApp(app: NestExpressApplication): void {
   // their controllers parse the JSON themselves.
   app.useBodyParser('raw', {
     type: (request) => isCertificateDocumentUploadRequest(request.method, request.url),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  // The platform import's upload takes the same larger body (a base64 file of at most 10 MiB, catalog
+  // design 14a), read as bytes; its controller parses the JSON itself.
+  app.useBodyParser('raw', {
+    type: (request) => isPlatformImportUploadRequest(request.method, request.url),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
     inflate: false,
   });

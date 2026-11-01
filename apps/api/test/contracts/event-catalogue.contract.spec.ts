@@ -130,6 +130,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.retire-on-variant-removed',
       'notifications.admin-certificate-notice',
       'notifications.admin-delivery-fallback-notice',
+      'notifications.admin-platform-import-notice',
       'notifications.admin-price-hold-notice',
       'notifications.admin-product-revision-notice',
       'notifications.admin-reinstated-hold-notice',
@@ -170,10 +171,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.cashback-on-delivery',
       'promotions.qualify-referral-on-delivery',
       'search.index-deleted-offer',
+      'search.index-listing-changed-offer',
       'search.index-moved-offer',
+      'search.index-paused-product',
       'search.index-published-offer',
       'search.index-published-revision',
       'search.index-reinstated-seller',
+      'search.index-resumed-product',
       'search.unindex-suspended-seller',
       'sellers.after-submission',
       'sellers.close-decision-approved',
@@ -241,6 +245,16 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('catalog.offer-published.v1')).toEqual([
       'notifications.seller-offer-published-notice',
       'search.index-published-offer',
+    ]);
+    // The admin pause takes a product and its Offers off the index and back (catalog design 4.1a).
+    expect(subscriptions.subscribersOf('catalog.product-paused.v1')).toEqual([
+      'search.index-paused-product',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.product-resumed.v1')).toEqual([
+      'search.index-resumed-product',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.offer-listing-changed.v1')).toEqual([
+      'search.index-listing-changed-offer',
     ]);
     expect(subscriptions.subscribersOf('catalog.product-revision-published.v1')).toEqual([
       'notifications.seller-product-published-notice',

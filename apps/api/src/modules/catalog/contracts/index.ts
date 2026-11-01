@@ -15,10 +15,17 @@ export {
   // Consumed by notifications' seller notices (package 4), with their reason vocabularies.
   IMAGE_TAKEDOWN_REASONS,
   OFFER_CHANGE_REASONS,
+  OfferListingChanged,
   OfferTagRemoved,
   OfferTagRestored,
   OfferTagSuspended,
   ProductImageTakenDown,
+  // Consumed by search: a paused product's Offers leave the index, a resumed one's return.
+  ProductPaused,
+  ProductResumed,
+  // Consumed by notifications' admin notice (the finished platform import).
+  PlatformImportFinished,
+  PLATFORM_IMPORT_OUTCOMES,
   ProductRevisionChangesRequested,
   VariantAdded,
   VariantRemoved,
@@ -30,6 +37,7 @@ export {
   CATALOG_BRAND_READ,
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PERMISSIONS,
+  CATALOG_PLATFORM_IMPORT_RUN,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_PRODUCT_APPROVE,
   CATALOG_PRODUCT_VIEW,

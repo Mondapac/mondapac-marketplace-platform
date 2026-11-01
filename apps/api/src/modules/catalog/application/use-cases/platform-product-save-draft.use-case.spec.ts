@@ -28,6 +28,7 @@ import type { RateCounter, RateCounterRepository } from '../ports/rate-counter.r
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import { SaveDraft } from '../working-copy/save-draft.service';
 import { SaveWorkingCopy } from '../working-copy/save-working-copy.service';
+import { PlatformImportRowSave } from './platform-import-row-save.use-case';
 import {
   PlatformProductSaveDraft,
   type PlatformProductSaveDraftInput,
@@ -167,7 +168,8 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
     });
     const saveDraft = new SaveDraft({ unitOfWork, check, save, workingCopies, policy });
     const useCase = new PlatformProductSaveDraft(gate, { saveDraft });
-    return { useCase, stored, copies, matched, check, counters };
+    const importRow = new PlatformImportRowSave(gate, { saveDraft });
+    return { useCase, importRow, stored, copies, matched, check, counters };
   }
 
   const request = (
@@ -410,6 +412,51 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
       request(product.state.id, { texts: { [locale]: { name: 'Dates' } } }),
     );
     expect(r.matched).toHaveLength(0);
+  });
+
+  // Design 14a, "Limits of a run": an import of 5,000 rows must be able to finish, so its rows do
+  // not spend the interactive per-account draft-save counters; the interactive route keeps them.
+  it('an import row spends no interactive draft-save counter: 5,000 rows pass, the interactive limit is untouched', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const admin = contextOf('admin');
+    for (let index = 0; index < 5000; index += 1) {
+      const saved = await r.importRow.execute(admin, request(product.state.id, {}));
+      expect(saved.ok).toBe(true);
+    }
+    expect([...r.counters.keys()].filter((key) => key.startsWith('draft-save'))).toEqual([]);
+    // The same account, interactively: the full 60 a minute is still there, then the limit holds.
+    for (let index = 0; index < 60; index += 1) {
+      const saved = await r.useCase.execute(admin, request(product.state.id, {}));
+      expect(saved.ok).toBe(true);
+    }
+    const refused = await r.useCase.execute(admin, request(product.state.id, {}));
+    expect(refused).toEqual({
+      ok: false,
+      error: { code: 'request.throttled', retryAfterSeconds: 60 },
+    });
+    // And an import row is still not throttled after the interactive limit is spent.
+    expect((await r.importRow.execute(admin, request(product.state.id, {}))).ok).toBe(true);
+  });
+
+  it('an import row still runs the claim-text control and the closed draft shape', async () => {
+    const r = rig();
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const admin = contextOf('admin');
+    const refused = await r.importRow.execute(
+      admin,
+      request(product.state.id, { texts: { [locale]: { name: 'Dates halal' } } }),
+    );
+    expect(refused.ok && refused.value.refusedFields.map((field) => field.code)).toEqual([
+      'claim-text.found',
+    ]);
+    const invalid = await r.importRow.execute(admin, request(product.state.id, { extra: 1 }));
+    expect(invalid).toEqual({ ok: false, error: { code: 'working-copy.invalid-content' } });
+    expect((await r.importRow.execute(contextOf('seller'), request(product.state.id, {}))).ok).toBe(
+      false,
+    );
   });
 
   it('refuses a draft that repeats a variant id before anything is checked or written', async () => {

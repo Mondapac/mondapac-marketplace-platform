@@ -2,11 +2,15 @@ import { CertificationModule } from '../certification';
 import { CatalogReferencesModule } from './infrastructure/catalog-references.module';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import {
+  AUTHORISATION_CHECK,
+  JOB_CALL_CONTEXTS,
   registerPermissions,
   registerStepUpActions,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -53,6 +57,40 @@ import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handl
 import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
+import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
+import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
+import { AdminProductListController } from './presentation/admin-product-list.controller';
+import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
+import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
+import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
+import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
+import { PlatformImportDiscard } from './application/use-cases/platform-import-discard.use-case';
+import { PlatformImportResume } from './application/use-cases/platform-import-resume.use-case';
+import { PlatformImportStart } from './application/use-cases/platform-import-start.use-case';
+import { PlatformImportCheck } from './application/use-cases/platform-import-check.use-case';
+import { PlatformImportRead } from './application/use-cases/platform-import-read.use-case';
+import { PlatformImportReport } from './application/use-cases/platform-import-report.use-case';
+import { PlatformImportTemplate } from './application/use-cases/platform-import-template.use-case';
+import { PlatformImportPurge } from './application/use-cases/platform-import-purge.use-case';
+import { PlatformImportRowSave } from './application/use-cases/platform-import-row-save.use-case';
+import { PlatformImportRowSubmit } from './application/use-cases/platform-import-row-submit.use-case';
+import { PlatformImportRun } from './application/use-cases/platform-import-run.use-case';
+import { PlatformImportController } from './presentation/platform-import.controller';
+import { platformImportRunJob } from './presentation/jobs/platform-import-run.job';
+import { purgePlatformImportsJob } from './presentation/jobs/purge-platform-imports.job';
+import { AdminProductResume } from './application/use-cases/admin-product-resume.use-case';
+import { AdminProductWithdraw } from './application/use-cases/admin-product-withdraw.use-case';
+import { PlatformProductRetire } from './application/use-cases/platform-product-retire.use-case';
+import { AdminProductsBulk } from './application/use-cases/admin-products-bulk.use-case';
+import { AdminProductsExport } from './application/use-cases/admin-products-export.use-case';
+import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
+import { SavedFilterCreate } from './application/use-cases/saved-filter-create.use-case';
+import { SavedFilterDelete } from './application/use-cases/saved-filter-delete.use-case';
+import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import { SavedFilterUpdate } from './application/use-cases/saved-filter-update.use-case';
+import { SavedFiltersList } from './application/use-cases/saved-filters-list.use-case';
+import { SavedFilterController } from './presentation/saved-filter.controller';
+import { CATALOG_AUDIT_ACTIONS } from './domain/audit';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
@@ -118,6 +156,8 @@ import {
   type ProductImageRepository,
 } from './application/ports/product-image.repository';
 import { IMAGE_PROCESSOR } from './application/ports/image-processor';
+import { IMPORT_FILE_PARSERS } from './application/ports/import-file-parsers';
+import { SHEET_WRITER } from './application/ports/sheet-writer';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { TAG_REEVALUATION_REQUESTS } from './application/ports/tag-reevaluation-requests';
 import { TAG_SELECTION_READER } from './application/ports/tag-selection.reader';
@@ -242,6 +282,7 @@ const PORT = {
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
+  adminProductsReader: ADMIN_PRODUCTS_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
   objectStore: OBJECT_STORE,
@@ -254,6 +295,22 @@ const PORT = {
   mailTransport: MAIL_TRANSPORT,
   mailSettings: OFFER_OWNER_MAIL_SETTINGS,
   notices: OFFER_OWNER_NOTICES,
+  audit: AUDIT_WRITER,
+  pause: AdminProductPause,
+  resume: AdminProductResume,
+  withdraw: AdminProductWithdraw,
+  retire: PlatformProductRetire,
+  importJobs: PLATFORM_IMPORT_REPOSITORY,
+  importFiles: IMPORT_FILE_STORE,
+  importParsers: IMPORT_FILE_PARSERS,
+  sheetWriter: SHEET_WRITER,
+  authorisation: AUTHORISATION_CHECK,
+  jobContexts: JOB_CALL_CONTEXTS,
+  platformCreate: PlatformProductCreate,
+  rowSave: PlatformImportRowSave,
+  rowSubmit: PlatformImportRowSubmit,
+  savedFilters: SAVED_FILTER_REPOSITORY,
+  shareCheck: SavedFilterShareCheck,
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
   brandAssigner: BRAND_ASSIGNER,
@@ -324,6 +381,10 @@ const productTypeProvider: FactoryProvider<string> = {
     OwnProductController,
     ProductImageController,
     OfferReviewController,
+    AdminProductListController,
+    AdminProductBulkController,
+    PlatformImportController,
+    SavedFilterController,
     ProductReviewController,
     ProductImageReviewController,
     PublicCategoryController,
@@ -335,6 +396,8 @@ const productTypeProvider: FactoryProvider<string> = {
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
+    PersistenceModule.auditWriterFor('catalog'),
+    registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS),
     registerEvents('catalog', CATALOG_EVENTS),
     productTypeProvider,
     {
@@ -412,6 +475,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
       offers: true,
       requests: true,
+      audit: true,
       brandAssigner: true,
     }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
@@ -559,6 +623,154 @@ const productTypeProvider: FactoryProvider<string> = {
       ownReader: true,
       policy: true,
       sellerNames: true,
+    }),
+    useCaseProvider(AdminProductsList, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      sellerNames: true,
+    }),
+    useCaseProvider(PlatformImportCheck, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      importJobs: true,
+      importFiles: true,
+      importParsers: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(PlatformImportStart, {
+      unitOfWork: true,
+      importJobs: true,
+      authorisation: true,
+      counters: true,
+      counterKeys: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformImportRead, { unitOfWork: true, importJobs: true }),
+    useCaseProvider(PlatformImportReport, { unitOfWork: true, importJobs: true, clock: true }),
+    useCaseProvider(PlatformImportTemplate, { policy: true, sheetWriter: true }),
+    useCaseProvider(PlatformImportDiscard, {
+      unitOfWork: true,
+      importJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformImportResume, { unitOfWork: true, importJobs: true, clock: true }),
+    useCaseProvider(PlatformImportRun, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      importJobs: true,
+      importFiles: true,
+      importParsers: true,
+      products: true,
+      outbox: true,
+      clock: true,
+      jobContexts: true,
+      platformCreate: true,
+      rowSave: true,
+      rowSubmit: true,
+    }),
+    useCaseProvider(PlatformImportRowSave, { saveDraft: true }),
+    useCaseProvider(PlatformImportRowSubmit, { submit: true, authorisation: true }),
+    useCaseProvider(PlatformImportPurge, {
+      unitOfWork: true,
+      importJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
+    {
+      provide: SavedFilterShareCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    useCaseProvider(SavedFiltersList, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      adminProductsReader: true,
+      policy: true,
+    }),
+    useCaseProvider(SavedFilterCreate, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SavedFilterUpdate, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SavedFilterDelete, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+    }),
+    useCaseProvider(AdminProductPause, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminProductResume, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      claims: true,
+      evaluator: true,
+    }),
+    useCaseProvider(AdminProductWithdraw, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformProductRetire, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminProductsBulk, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      pause: true,
+      resume: true,
+      withdraw: true,
+      retire: true,
+    }),
+    useCaseProvider(AdminProductsExport, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      sellerNames: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(ProductRevisionApprove, {
       unitOfWork: true,
@@ -728,6 +940,8 @@ const productTypeProvider: FactoryProvider<string> = {
         ReevaluateTags,
         ReconcileTags,
         SendOfferOwnerNotices,
+        PlatformImportRun,
+        PlatformImportPurge,
       ],
       (
         categories: SeedCategoryTree,
@@ -736,6 +950,8 @@ const productTypeProvider: FactoryProvider<string> = {
         reevaluate: ReevaluateTags,
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
+        importRun: PlatformImportRun,
+        importPurge: PlatformImportPurge,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -743,6 +959,8 @@ const productTypeProvider: FactoryProvider<string> = {
         reevaluateTagsJob(reevaluate),
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),
+        platformImportRunJob(importRun),
+        purgePlatformImportsJob(importPurge),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).

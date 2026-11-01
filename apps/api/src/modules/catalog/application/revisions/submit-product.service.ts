@@ -8,9 +8,11 @@ import type {
   IdGenerator,
   Result,
 } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { ProductPausedAudit, scopeCode } from '../../domain/audit';
 import { brandValueOf } from '../../domain/brand';
 import type { Product, ProductRefusal } from '../../domain/product';
 import { classify, decideOutcome } from '../../domain/product-revision-policy';
@@ -41,6 +43,13 @@ export interface SubmitProductInput {
   readonly revisionId?: Id<'ProductRevision'>;
   /** A seller's claim asks of this submit (design 4.2 row 1, 5.1a); none for an admin. */
   readonly claims?: SubmitClaims;
+  /**
+   * An admin import that starts products Inactive (design 14a): the product is paused in the same
+   * unit that publishes it, so it is never visible published. Refused for a seller; the caller has
+   * checked the pause permission. A submit that would not publish (the revision policy asks for a
+   * review) is refused with `product.not-published` before any write, never skipped silently.
+   */
+  readonly pauseOnPublish?: boolean;
 }
 
 /** The frozen revision being submitted, as the claim steps see it. */
@@ -111,6 +120,8 @@ export interface SubmitProductDependencies {
   readonly offers: OfferRepository;
   /** The fan-out request a PLATFORM publish writes (design 5.4). */
   readonly requests: TagReevaluationRequestRepository;
+  /** The audit of the pause of `pauseOnPublish`; the import wires it. */
+  readonly audit?: AuditWriter;
   /**
    * Sets the product's `brand_id` from the published `brand` attribute (catalog brand package).
    * Optional so a caller that builds the service without brands still publishes as before.
@@ -165,6 +176,12 @@ export class SubmitProduct {
     }
     const { market } = context;
     const { unitOfWork, products, revisions, freeze, check, policy } = this.deps;
+    if (
+      input.pauseOnPublish === true &&
+      (author.kind !== 'admin' || this.deps.audit === undefined)
+    ) {
+      return err({ code: 'access.denied' });
+    }
 
     let locales: { readonly default: string; readonly supported: readonly string[] };
     let maxVariants: number;
@@ -307,6 +324,18 @@ export class SubmitProduct {
             now,
           });
           if (!submitted.ok) return err(submitted.error);
+          // Inactive start: the pause is part of the publish, in this unit and with its events.
+          const pausedAtPublish = input.pauseOnPublish === true && submitted.value.published;
+          // Fail closed (Hassan L-585-2): an Inactive start that does not publish would leave a
+          // pending revision that a later approval publishes active, unpaused. Nothing is written
+          // yet, so the refusal leaves no trace.
+          if (input.pauseOnPublish === true && !submitted.value.published) {
+            return err({ code: 'product.not-published' });
+          }
+          if (pausedAtPublish) {
+            const paused = product.pause({ accountId: actor.accountId, now });
+            if (!paused.ok) return err(paused.error);
+          }
           const revision: StoredRevision = {
             id: revisionId,
             productId: product.state.id,
@@ -353,6 +382,16 @@ export class SubmitProduct {
             });
           }
           await this.deps.outbox.append(context, product.pendingEvents);
+          if (pausedAtPublish) {
+            // A product published in this unit has no Offer yet, so no Offer cause is added.
+            await this.deps.audit!.record(
+              context,
+              ProductPausedAudit.entry(product.state.id, {
+                before: { paused: false },
+                after: { paused: true, scope: scopeCode(product.state.scope), offerCount: 0 },
+              }),
+            );
+          }
           return ok({ revisionId, revisionNo, published: publishedAtOnce });
         },
         author.kind === 'admin' ? { timeoutMs: PLATFORM_PUBLISH_TIMEOUT_MS } : undefined,

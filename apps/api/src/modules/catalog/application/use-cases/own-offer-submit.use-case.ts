@@ -214,15 +214,17 @@ export class OwnOfferSubmit extends UseCase<
           return ok(null);
         }
         const product = await deps.products.findById(market, offer.state.productId);
+        // A paused product stays `published`, but it is not on sale: the mark counts, not only the
+        // status (catalog design 4.1a).
+        const productOnSale =
+          product?.state.status === 'published' && product.state.pausedAt === null;
         // The kept tags and the requested types that have no open tag yet (an open one is kept).
         const open = new Set(offer.tags.map((tag) => tag.typeCode));
         const kept = keptTagTypes(offer);
         const added = requested.filter((code) => !open.has(code));
         const types = [...kept, ...added];
         const prepared =
-          types.length === 0 ||
-          offer.state.handling === null ||
-          product?.state.status !== 'published'
+          types.length === 0 || offer.state.handling === null || !productOnSale
             ? null
             : await preparePublishedAsk(deps.claims, market, offer.state, types);
         return ok({
@@ -230,7 +232,7 @@ export class OwnOfferSubmit extends UseCase<
           status: offer.state.status,
           version: offer.state.version,
           handling: offer.state.handling,
-          productStatus: product?.state.status ?? null,
+          productStatus: productOnSale ? ('published' as const) : null,
           typeCode: product?.state.typeCode ?? null,
           added,
           prepared,
@@ -298,7 +300,7 @@ export class OwnOfferSubmit extends UseCase<
         }
         if (offer.state.version !== version) return ok(RETRY);
         const product = await deps.products.findById(market, offer.state.productId);
-        if (product?.state.status !== 'published') {
+        if (product?.state.status !== 'published' || product.state.pausedAt !== null) {
           return err({ code: 'offer.product-not-published' } as const);
         }
         let approvalRequired: boolean;
