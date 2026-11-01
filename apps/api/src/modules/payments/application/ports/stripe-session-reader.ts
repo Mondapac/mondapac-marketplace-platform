@@ -43,6 +43,9 @@ export interface PaymentIntentSnapshot {
   readonly metadataMarketId: string | null;
   /** `card-intent` on every PaymentIntent of that flow. */
   readonly metadataPaymentFlow: string | null;
+  /** The payment method the PaymentIntent holds now (null when none): its type and card brand. */
+  readonly paymentMethodType: string | null;
+  readonly cardBrand: string | null;
 }
 
 /** Reads a Checkout session or a PaymentIntent from Stripe; the webhook payload is never trusted. */

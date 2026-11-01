@@ -203,6 +203,48 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
     expect(gateway.captured).toEqual([]);
   });
 
+  it('keeps a payment a webhook confirmed between the PaymentIntent and the link', async () => {
+    // The signed event lands after Stripe answered but before the order is linked: the first save
+    // is stale. The order is read again, already holds this PaymentIntent, and nothing is undone.
+    const realSave = orders.save.bind(orders);
+    let raced = false;
+    orders.save = (m, order) => {
+      if (!raced && order.stripePaymentIntentId === 'pi_card_1') {
+        raced = true;
+        const stored = orders.rows.get(order.id)!;
+        orders.rows.set(order.id, {
+          ...stored,
+          stripePaymentIntentId: 'pi_card_1',
+          paymentState: 'authorised',
+          version: stored.version + 1,
+        });
+      }
+      return realSave(m, order);
+    };
+
+    const paid = await pay();
+
+    expect(paid.ok).toBe(true);
+    expect(raced).toBe(true);
+    expect(gateway.voided).toEqual([]);
+    expect(inventory.calls).toEqual(['reserve']);
+    expect(onlyOrder()).toMatchObject({
+      status: 'pending-payment',
+      paymentState: 'authorised',
+      stripePaymentIntentId: 'pi_card_1',
+    });
+  });
+
+  it('still undoes the payment when the order cannot be linked after the retries', async () => {
+    orders.save = () => Promise.resolve('stale' as const);
+
+    const paid = await pay();
+
+    expect(paid).toEqual(err({ code: 'conflict.retry' }));
+    expect(gateway.voided).toEqual([['pi_card_1', 'void-pi_card_1']]);
+    expect(inventory.calls).toEqual(['reserve', 'release-own']);
+  });
+
   it('accepts the total the buyer saw when it equals the server total', async () => {
     const paid = await pay({ expectedTotal: { amount: TOTAL.toString(), currency } });
 
@@ -349,6 +391,7 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
         paymentIntentId: 'pi_card_1',
         sessionId: null,
         amount: money(TOTAL, currency),
+        card: { methodType: 'card', brand: 'mastercard' },
         ...over,
       });
 
@@ -370,6 +413,24 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
       const again = await confirm(paid.value.orderId);
       expect(again.ok && again.value).toBe('already-confirmed');
       expect(gateway.captured).toHaveLength(1);
+    });
+
+    it.each([
+      ['an American Express card swapped in during 3DS', { methodType: 'card', brand: 'amex' }],
+      ['a method that is not a card', { methodType: 'au_becs_debit', brand: null }],
+      ['a method that could not be read', { methodType: '', brand: null }],
+      ['no card facts at all', null],
+    ])('voids the hold and cancels the order for %s, never capturing it', async (_name, card) => {
+      const paid = await pay();
+      if (!paid.ok) throw new Error('pay failed');
+
+      const settled = await confirm(paid.value.orderId, { card });
+
+      expect(settled.ok && settled.value).toBe('voided');
+      expect(gateway.voided).toEqual([['pi_card_1', 'void-pi_card_1']]);
+      expect(gateway.captured).toEqual([]);
+      expect(inventory.calls).not.toContain('commit');
+      expect(orders.rows.get(paid.value.orderId)).toMatchObject({ status: 'cancelled' });
     });
 
     it('voids a different PaymentIntent for the same order instead of taking two payments', async () => {

@@ -12,6 +12,12 @@ const body = (fields: Record<string, unknown> = {}) => ({
   currency: 'aud',
   amount_capturable: 3349,
   metadata: { order_id: 'order-1', market_id: 'AU', payment_flow: 'card-intent' },
+  payment_method: {
+    id: 'pm_1',
+    object: 'payment_method',
+    type: 'card',
+    card: { brand: 'visa', last4: '4242' },
+  },
   latest_charge: 'ch_secretish',
   ...fields,
 });
@@ -33,7 +39,9 @@ describe('StripeCheckoutSessionReader.readPaymentIntent', () => {
       'pi_1UnitIntent',
     );
 
-    expect(urls).toEqual(['https://api.stripe.com/v1/payment_intents/pi_1UnitIntent']);
+    expect(urls).toEqual([
+      'https://api.stripe.com/v1/payment_intents/pi_1UnitIntent?expand[]=payment_method',
+    ]);
     expect(read).toEqual({
       ok: true,
       value: {
@@ -45,8 +53,23 @@ describe('StripeCheckoutSessionReader.readPaymentIntent', () => {
         metadataOrderId: 'order-1',
         metadataMarketId: 'AU',
         metadataPaymentFlow: 'card-intent',
+        paymentMethodType: 'card',
+        cardBrand: 'visa',
       },
     });
+    // Nothing else of the card is kept.
+    expect(Object.keys(read.ok ? read.value : {}).sort()).not.toContain('last4');
+  });
+
+  it('answers no method when the payment method was not expanded or is absent', async () => {
+    for (const payment_method of ['pm_1', null, undefined]) {
+      const read = await new StripeCheckoutSessionReader(
+        KEY,
+        fake(200, body({ payment_method })).fetchFn,
+      ).readPaymentIntent('pi_1UnitIntent');
+
+      expect(read.ok && [read.value.paymentMethodType, read.value.cardBrand]).toEqual([null, null]);
+    }
   });
 
   it('refuses a malformed id without a call and answers rejected', async () => {

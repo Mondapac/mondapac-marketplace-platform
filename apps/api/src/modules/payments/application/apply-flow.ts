@@ -233,6 +233,8 @@ async function applyCardPaymentEvent(
           paymentIntentId: intent.id,
           sessionId: null,
           amount: money(intent.amountCapturable, intent.currency.toUpperCase()),
+          // Read from Stripe now: ordering voids a hold that is not an accepted card.
+          card: { methodType: intent.paymentMethodType ?? '', brand: intent.cardBrand },
         }),
       );
     }

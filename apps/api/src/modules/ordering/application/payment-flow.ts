@@ -1,5 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent, Result } from '@mondapac/shared-kernel';
+import { isAcceptedCard } from '../domain/card-payment';
 import { cancelOrder, confirmOrder, type OrderState, type PaymentState } from '../domain/order';
 import type { AuthorisedPayment, PaymentFailure } from '../contracts';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
@@ -119,7 +120,12 @@ export async function confirmPayment(
   }
   const wrongAmount =
     input.amount?.currency !== order.total.currency || input.amount?.amount !== order.total.amount;
-  if (order.status === 'cancelled' || wrongAmount) {
+  // A card payment on our page is checked again here: the PaymentIntent may hold another card
+  // than the token that was checked at checkout (the browser can confirm it with another one).
+  const cardRefused =
+    input.sessionId === null &&
+    !isAcceptedCard(input.card?.methodType ?? '', input.card?.brand ?? null);
+  if (order.status === 'cancelled' || wrongAmount || cardRefused) {
     if (!(await voidMoney(deps, order, input.paymentIntentId))) return RETRY;
     // A pending order is released only while no other payment is authorised on it.
     if (order.status === 'pending-payment' && order.paymentState !== 'none') return ok('voided');

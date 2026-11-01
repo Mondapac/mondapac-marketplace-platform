@@ -119,6 +119,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
 describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => {
   const currency = code === 'AU' ? 'AUD' : 'JPY';
   let app: NestExpressApplication;
+  let logLines: Array<Record<string, unknown>>;
   let orders: MemoryOrders;
   let gateway: FakeGateway;
   let inventory: FakeInventory;
@@ -154,7 +155,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         taxInclusive: true,
       },
     ];
-    ({ app } = await createTestApp({
+    ({ app, logLines } = await createTestApp({
       panelOrigins: true,
       override: (builder) =>
         fakes
@@ -635,6 +636,203 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(throttled.headers['retry-after']).toBe('90');
       expect(body(payment).code).toBe('ordering.payment-unavailable');
       expect(JSON.stringify([stock.body, payment.body])).not.toMatch(/sk_|cs_test|stripe/i);
+    });
+  });
+
+  describe('pay', () => {
+    const TOKEN = 'ctoken_1UnitTestToken';
+    const pay = (headers: Record<string, string>, payload: unknown = {}) =>
+      http()
+        .post('/orders/pay')
+        .set({ 'x-market-id': code, ...headers })
+        .send({ addressId: ADDRESS, confirmationToken: TOKEN, ...(payload as object) });
+
+    it('authorises the card, answers no-store and holds the order until Stripe confirms', async () => {
+      const res = await pay(customer(), { expectedTotal: { amount: '3500', currency } });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toEqual({
+        orderId: expect.any(String) as string,
+        status: 'authorised',
+        clientSecret: null,
+        payBy: expect.any(String) as string,
+        total: { amount: '3500', currency },
+      });
+      expect([...orders.rows.values()][0]).toMatchObject({
+        accountId: CUSTOMER,
+        status: 'pending-payment',
+        stripePaymentIntentId: 'pi_card_1',
+      });
+      expect(gateway.cardPayments).toHaveLength(1);
+      expect(gateway.cardPayments[0]).toMatchObject({ confirmationToken: TOKEN });
+    });
+
+    it('hands the browser the client secret only when the bank asks for 3DS', async () => {
+      gateway.cardStatus = 'requires-action';
+
+      const res = await pay(customer());
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        status: 'requires-action',
+        clientSecret: 'pi_card_1_secret_test',
+      });
+      expect(Object.keys(res.body as object).sort()).toEqual([
+        'clientSecret',
+        'orderId',
+        'payBy',
+        'status',
+        'total',
+      ]);
+    });
+
+    it('needs a customer session and the CSRF token, and an admin session is no customer', async () => {
+      const { cookie } = customer();
+      seedAccount(id<'Account'>(0xa0f1), 'admin', 'admin');
+      const admin = session(id<'Account'>(0xa0f1), 'admin', 7);
+
+      expect((await pay({})).status).toBe(401);
+      expect((await pay({ cookie })).status).toBe(403);
+      expect((await pay(admin)).status).toBe(401);
+      expect(orders.rows.size).toBe(0);
+      expect(gateway.cardPayments).toEqual([]);
+      expect(gateway.tokenReads).toEqual([]);
+    });
+
+    it('takes JSON with a closed body only', async () => {
+      const headers = customer();
+
+      const form = await http()
+        .post('/orders/pay')
+        .set({ 'x-market-id': code, ...headers, 'content-type': 'text/plain' })
+        .send('x');
+      const extra = await pay(headers, { accountId: 'x' });
+      const price = await pay(headers, { total: 1 });
+
+      expect(form.status).toBe(415);
+      expect(extra.status).toBe(400);
+      expect(extra.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'accountId', code: 'unknown-field' }] },
+      });
+      expect(price.status).toBe(400);
+      expect(inventory.calls).toEqual([]);
+      expect(gateway.cardPayments).toEqual([]);
+    });
+
+    it('refuses a missing or malformed token before anything is reserved', async () => {
+      const headers = customer();
+
+      const missing = await pay(headers, { confirmationToken: undefined });
+      const wrong = await pay(headers, { confirmationToken: 'pm_1234' });
+
+      expect(missing.status).toBe(400);
+      expect(missing.body).toMatchObject({
+        details: { fields: [{ path: 'confirmationToken', code: 'required' }] },
+      });
+      expect(wrong.status).toBe(400);
+      expect(wrong.body).toMatchObject({
+        details: { fields: [{ path: 'confirmationToken', code: 'format' }] },
+      });
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it("refuses an address that is not the customer's own, and a card that is not Visa or Mastercard", async () => {
+      const headers = customer();
+      const foreign = await pay(headers, { addressId: id<'CustomerAddress'>(0xad02) });
+      gateway.tokenFacts = { livemode: false, methodType: 'card', cardBrand: 'amex' };
+      const amex = await pay(headers);
+      gateway.tokenFacts = { livemode: true, methodType: 'card', cardBrand: 'visa' };
+      const live = await pay(headers);
+
+      expect(foreign.status).toBe(422);
+      expect(foreign.body).toEqual({ statusCode: 422, code: 'ordering.address-not-found' });
+      expect(amex.status).toBe(422);
+      expect(body(amex).code).toBe('ordering.card-not-accepted');
+      expect(live.status).toBe(422);
+      expect(gateway.cardPayments).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('answers 409 with the total now when the price moved', async () => {
+      const res = await pay(customer(), { expectedTotal: { amount: '1', currency } });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({
+        code: 'ordering.price-changed',
+        details: { total: { amount: '3500', currency } },
+      });
+      expect(gateway.cardPayments).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('answers 402 when the bank declines, with nothing charged and the stock released', async () => {
+      gateway.cardFails = { code: 'payment.card-declined', paymentIntentId: 'pi_declined_1' };
+
+      const res = await pay(customer());
+
+      expect(res.status).toBe(402);
+      expect(body(res).code).toBe('ordering.card-declined');
+      expect(gateway.voided.map(([intent]) => intent)).toContain('pi_declined_1');
+      expect(gateway.captured).toEqual([]);
+      expect([...orders.rows.values()][0]).toMatchObject({ status: 'cancelled' });
+    });
+
+    it('answers 503 when Stripe cannot be reached, without a word of Stripe', async () => {
+      gateway.cardFails = { code: 'payment.provider-unavailable' };
+
+      const res = await pay(customer());
+
+      expect(res.status).toBe(503);
+      expect(body(res).code).toBe('ordering.payment-unavailable');
+      expect(JSON.stringify(res.body)).not.toMatch(/sk_|pi_|ctoken|secret|stripe/i);
+    });
+
+    it('throttles after a few attempts with Retry-After', async () => {
+      const headers = customer();
+      gateway.cardFails = { code: 'payment.provider-unavailable' };
+
+      const statuses: number[] = [];
+      let last = await pay(headers);
+      statuses.push(last.status);
+      for (let i = 0; i < 8; i += 1) {
+        last = await pay(headers);
+        statuses.push(last.status);
+      }
+
+      expect(statuses.slice(0, 8)).toEqual(Array<number>(8).fill(503));
+      expect(statuses[8]).toBe(429);
+      expect(last.headers['retry-after']).toMatch(/^[1-9][0-9]*$/);
+      expect(body(last).code).toBe('request.throttled');
+    });
+
+    it("counts one customer's attempts apart from another's", async () => {
+      const first = customer();
+      const second = customer(OTHER_CUSTOMER, 2);
+      gateway.cardFails = { code: 'payment.provider-unavailable' };
+      for (let i = 0; i < 9; i += 1) await pay(first);
+
+      expect((await pay(first)).status).toBe(429);
+      // The second customer has no saved address here: the refusal is the address, not the limit.
+      const other = await pay(second);
+      expect(other.status).toBe(422);
+      expect(body(other).code).toBe('ordering.address-not-found');
+    });
+
+    it('never writes the token, the client secret or the card into the logs', async () => {
+      gateway.cardStatus = 'requires-action';
+      const res = await pay(customer());
+      gateway.cardFails = { code: 'payment.card-declined', paymentIntentId: 'pi_declined_9' };
+      await pay(customer());
+
+      expect(res.status).toBe(200);
+      expect(logLines.some((l) => l.msg === 'ordering.pay-by-card-route')).toBe(true);
+      const all = JSON.stringify(logLines);
+      expect(all).not.toContain(TOKEN);
+      expect(all).not.toContain('_secret_');
+      expect(all).not.toMatch(/ctoken_|visa|4242/i);
     });
   });
 

@@ -16,4 +16,6 @@ ALTER TABLE "payments"."stripe_events"
     'charge.dispute.funds_withdrawn', 'charge.dispute.funds_reinstated', 'charge.dispute.closed',
     'transfer.created', 'transfer.reversed',
     'payment_intent.amount_capturable_updated', 'payment_intent.payment_failed',
-    'payment_intent.canceled'));
+    'payment_intent.canceled')),
+  ADD CONSTRAINT "stripe_events_pi_object_check" CHECK (
+    ("type" LIKE 'payment_intent.%') = ("object_id" LIKE 'pi\_%'));

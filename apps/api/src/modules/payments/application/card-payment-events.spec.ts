@@ -140,6 +140,8 @@ describe.each([
     metadataOrderId: ORDER,
     metadataMarketId: code,
     metadataPaymentFlow: 'card-intent',
+    paymentMethodType: 'card',
+    cardBrand: 'visa',
     ...fields,
   });
   const store = async (type: string = TYPES[0]) => {
@@ -222,6 +224,8 @@ describe.each([
         paymentIntentId: 'pi_test_0001',
         sessionId: null,
         amount: money(3000n, currency.toUpperCase()),
+        // Read from Stripe, so a card swapped after the first token is seen by ordering.
+        card: { methodType: 'card', brand: 'visa' },
       });
       expect(inbox.get(code, 'evt_pi_0001')).toMatchObject({ outcome: 'confirmed' });
     });
@@ -278,6 +282,30 @@ describe.each([
       expect(ordering.cancels).toEqual([]);
       expect(inbox.get(code, 'evt_pi_0001')).toMatchObject({ outcome: 'rejected' });
     });
+
+    const cardCases: Array<[string, Partial<PaymentIntentSnapshot>]> = [
+      ['an American Express card', { cardBrand: 'amex' }],
+      [
+        'a payment method that is not a card',
+        { paymentMethodType: 'au_becs_debit', cardBrand: null },
+      ],
+      ['no payment method that could be read', { paymentMethodType: null, cardBrand: null }],
+    ];
+    it.each(cardCases)(
+      'tells ordering what card %s is, so it can void it',
+      async (_name, fields) => {
+        await store();
+        reader.intentAnswer = ok(intent(fields));
+
+        await apply.execute(system, {});
+
+        expect(ordering.confirms[0]!.payment.card).toEqual({
+          methodType:
+            fields.paymentMethodType === undefined ? 'card' : (fields.paymentMethodType ?? ''),
+          brand: fields.cardBrand ?? null,
+        });
+      },
+    );
 
     it('tries again later when Stripe cannot be read, and gives up on a refusal', async () => {
       await store();

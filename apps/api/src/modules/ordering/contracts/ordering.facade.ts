@@ -13,6 +13,13 @@ export interface AuthorisedPayment {
   readonly sessionId: string | null;
   /** What the provider holds; it must equal the order total or the payment is voided. */
   readonly amount: Money;
+  /**
+   * The payment method the provider holds, read from the provider. Required for a card payment
+   * on the MondaPac page (`sessionId: null`): it is checked again here, because the browser can
+   * confirm the same PaymentIntent with another card after the first token was checked. A
+   * method that is not an accepted card is voided, never captured. Ignored for a hosted session.
+   */
+  readonly card?: { readonly methodType: string; readonly brand: string | null } | null;
 }
 
 export type PaymentFailure =

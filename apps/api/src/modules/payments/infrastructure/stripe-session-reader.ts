@@ -51,7 +51,7 @@ export class StripeCheckoutSessionReader implements StripeSessionReader {
 
   async readPaymentIntent(intentId: string) {
     if (!INTENT_ID.test(intentId)) return err(REJECTED);
-    const body = await this.get(`/v1/payment_intents/${intentId}`);
+    const body = await this.get(`/v1/payment_intents/${intentId}?expand[]=payment_method`);
     if (!body.ok) return body;
     const snapshot = toIntentSnapshot(body.value);
     return snapshot === null ? err(UNAVAILABLE) : ok(snapshot);
@@ -96,6 +96,7 @@ function toIntentSnapshot(body: unknown): PaymentIntentSnapshot | null {
   const amountCapturable = minor(body.amount_capturable);
   if (amountCapturable === null) return null;
   const metadata = isObject(body.metadata) ? body.metadata : {};
+  const method = body.payment_method;
   return {
     id: body.id,
     livemode: body.livemode,
@@ -105,6 +106,8 @@ function toIntentSnapshot(body: unknown): PaymentIntentSnapshot | null {
     metadataOrderId: text(metadata.order_id),
     metadataMarketId: text(metadata.market_id),
     metadataPaymentFlow: text(metadata.payment_flow),
+    paymentMethodType: isObject(method) ? text(method.type) : null,
+    cardBrand: isObject(method) && isObject(method.card) ? text(method.card.brand) : null,
   };
 }
 

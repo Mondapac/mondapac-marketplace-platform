@@ -91,6 +91,11 @@ describe.each(TEST_MARKETS)('Stripe event inbox in market %s (database)', (code)
     ['a malformed event id', { event_id: 'not-an-event' }],
     ['a malformed session id', { object_id: 'chk_123' }],
     ['an unknown PaymentIntent event', { type: 'payment_intent.succeeded', object_id: 'pi_123' }],
+    ['a PaymentIntent id on a Checkout Session event', { object_id: 'pi_123' }],
+    [
+      'a session id on a PaymentIntent event',
+      { type: 'payment_intent.canceled', object_id: 'cs_1' },
+    ],
   ])('refuses %s', async (_label, change) => {
     const row: Record<string, unknown> = {
       event_id: nextEventId(),

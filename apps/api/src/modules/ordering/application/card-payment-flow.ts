@@ -120,6 +120,7 @@ export async function payByCard(
       const intentId = paid.value.paymentIntentId;
       return ok({
         link: (fresh) => ({ ...fresh, stripePaymentIntentId: intentId }),
+        isLinked: (fresh) => fresh.stripePaymentIntentId === intentId,
         answer: paid.value,
       });
     },

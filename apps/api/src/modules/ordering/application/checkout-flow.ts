@@ -169,6 +169,9 @@ const chargedQuoteOf = (quote: QuotedDelivery | undefined): ChargedDeliveryQuote
         expiresAt: quote.validUntil,
       };
 
+/** Reads of the order tried when linking the provider's object to it loses a race. */
+const LINK_ATTEMPTS = 3;
+
 /** A lock timeout on reserve costs the holder's rate budget, so retry once at most. */
 const RESERVE_ATTEMPTS = 2;
 
@@ -290,6 +293,8 @@ export interface ChargeRequest {
 /** What a payment step answers: how to link the provider's object to the order, and the answer. */
 export interface Charged<T> {
   readonly link: (order: OrderState) => OrderState;
+  /** Whether the order already carries this provider object (a webhook got there first). */
+  readonly isLinked: (order: OrderState) => boolean;
   readonly answer: T;
 }
 
@@ -327,6 +332,7 @@ function hostedPage(
       const { sessionId, url } = session.value;
       return ok({
         link: (fresh: OrderState) => ({ ...fresh, stripeSessionId: sessionId }),
+        isLinked: (fresh: OrderState) => fresh.stripeSessionId === sessionId,
         answer: { url, sessionId },
       });
     },
@@ -724,13 +730,18 @@ export async function placeOrder<T>(
   const linked = await deps.unitOfWork.run<OrderState, StartCheckoutFailure>(
     context.market,
     async () => {
-      const fresh = await deps.orders.findById(context.market, orderId);
-      if (fresh === null) return err({ code: 'ordering.payment-unavailable' } as const);
-      const next = charged.value.link(fresh);
-      const saved = await deps.orders.save(context.market, next);
-      return saved === 'saved'
-        ? ok({ ...next, version: next.version + 1 })
-        : err({ code: 'conflict.retry' } as const);
+      // A signed webhook can land between this read and the save (the card was authorised and
+      // the order confirmed already). A stale save then reads the order again: if it already
+      // carries this payment, the link is done and the payment must not be undone.
+      for (let attempt = 0; attempt < LINK_ATTEMPTS; attempt += 1) {
+        const fresh = await deps.orders.findById(context.market, orderId);
+        if (fresh === null) return err({ code: 'ordering.payment-unavailable' } as const);
+        if (charged.value.isLinked(fresh)) return ok(fresh);
+        const next = charged.value.link(fresh);
+        const saved = await deps.orders.save(context.market, next);
+        if (saved === 'saved') return ok({ ...next, version: next.version + 1 });
+      }
+      return err({ code: 'conflict.retry' } as const);
     },
   );
   if (!linked.ok) {
