@@ -490,7 +490,12 @@ export class PrismaReviewRepository implements ReviewRepository {
               ],
             }),
       },
-      include: { replies: { where: { sellerId, status: { not: 'superseded' } } } },
+      include: {
+        replies: {
+          where: { sellerId, status: { not: 'superseded' } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
       take: query.limit,
     });
@@ -504,7 +509,12 @@ export class PrismaReviewRepository implements ReviewRepository {
   ) {
     const row = await this.prisma.tx(market).reviewsProductReview.findFirst({
       where: { marketId: market.marketId, sellerId, id: reviewId },
-      include: { replies: { where: { sellerId, status: { not: 'superseded' } } } },
+      include: {
+        replies: {
+          where: { sellerId, status: { not: 'superseded' } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
     return row === null ? null : { review: toReview(row), reply: toReply(row.replies[0] ?? null) };
   }
