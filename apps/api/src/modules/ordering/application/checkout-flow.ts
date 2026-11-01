@@ -746,6 +746,11 @@ export async function placeOrder<T>(
           }
           return ok(fresh);
         }
+        // Another checkout of this customer superseded the order before the link: the payment
+        // is undone (void, release) and the buyer is told it did not go through.
+        if (fresh.status !== 'pending-payment') {
+          return err({ code: 'ordering.payment-unavailable' } as const);
+        }
         const next = charged.value.link(fresh);
         const saved = await deps.orders.save(context.market, next);
         if (saved === 'saved') return ok({ ...next, version: next.version + 1 });

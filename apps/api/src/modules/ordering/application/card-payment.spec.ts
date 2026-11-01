@@ -259,6 +259,30 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
     expect(onlyOrder()).toMatchObject({ status: 'cancelled' });
   });
 
+  it('does not say authorised for an order a second checkout superseded before the link', async () => {
+    // Two checkouts at once: the other one cancelled this order (superseded) before its link.
+    const realSave = orders.save.bind(orders);
+    orders.save = (m, order) => {
+      const stored = orders.rows.get(order.id)!;
+      orders.rows.set(order.id, {
+        ...stored,
+        status: 'cancelled',
+        cancelReason: 'superseded',
+        version: stored.version + 1,
+      });
+      orders.save = realSave;
+      return realSave(m, order);
+    };
+
+    const paid = await pay();
+
+    expect(paid).toEqual(err({ code: 'ordering.payment-unavailable' }));
+    // The PaymentIntent was not linked, so nobody else stops it: it is voided here.
+    expect(gateway.voided).toEqual([['pi_card_1', 'void-pi_card_1']]);
+    expect(inventory.calls).toEqual(['reserve', 'release-own']);
+    expect(onlyOrder()).toMatchObject({ status: 'cancelled', stripePaymentIntentId: null });
+  });
+
   it('still undoes the payment when the order cannot be linked after the retries', async () => {
     orders.save = () => Promise.resolve('stale' as const);
 
