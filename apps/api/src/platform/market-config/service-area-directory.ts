@@ -6,6 +6,10 @@ export { normalisePostcode, type PostcodeInterval };
 /** A ServiceArea as `sellers` and `shipping` read it (ADR-0005 decision 7). */
 export interface ServiceArea {
   readonly code: string;
+  /** Display names by language tag; always has "en" (config boot check). */
+  readonly names: Readonly<Record<string, string>>;
+  /** The Market region (state) the area sits in, or null when the Market has none. */
+  readonly region: string | null;
   readonly sellerOnboardingEnabled: boolean;
   readonly deliveryEnabled: boolean;
 }
@@ -47,6 +51,8 @@ export class ServiceAreaDirectory {
       if (found) {
         return {
           code: area.code,
+          names: area.names,
+          region: area.region,
           sellerOnboardingEnabled: area.sellerOnboardingEnabled,
           deliveryEnabled: area.deliveryEnabled,
         };
@@ -58,8 +64,10 @@ export class ServiceAreaDirectory {
   /** Every area of a Market, for admin lists and filters. Empty for an unknown Market. */
   areasOf(marketId: MarketId): readonly ServiceArea[] {
     return (this.areasByMarket.get(marketId) ?? []).map(
-      ({ code, sellerOnboardingEnabled, deliveryEnabled }) => ({
+      ({ code, names, region, sellerOnboardingEnabled, deliveryEnabled }) => ({
         code,
+        names,
+        region,
         sellerOnboardingEnabled,
         deliveryEnabled,
       }),

@@ -3,12 +3,14 @@
   "areas": [
     {
       "code": "zz-central",
+      "names": { "en": "Central", "ja": "中央" },
       "postcodes": ["1000001-1000002", "ZZ1 9AA"],
       "sellerOnboardingEnabled": true,
       "deliveryEnabled": true
     },
     {
       "code": "zz-coast",
+      "names": { "en": "Coast" },
       "postcodes": ["2000000-2000999"],
       "sellerOnboardingEnabled": false,
       "deliveryEnabled": true
