@@ -1,7 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type {
+  ChangeScope,
+  ChangeTrail,
+  LastChanged,
+} from '../../../../platform/audit/change-trail';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { StoreImageChanged, StoreProfileSaved } from '../../domain/audit';
 import type { StoreImageRef } from '../../domain/store-image';
 import type {
   AccessUnavailable,
@@ -31,6 +37,8 @@ export interface StoreProfileView {
   readonly locales: readonly string[];
   readonly logo: StoreImageRef | null;
   readonly banner: StoreImageRef | null;
+  /** The latest save of the texts or a picture; null while the profile was never saved. */
+  readonly lastChanged: LastChanged | null;
 }
 
 export type StoreProfileFailure =
@@ -46,7 +54,23 @@ export interface StoreProfileReadDependencies {
   readonly storeImages: StoreImageRepository;
   readonly contentSealer: StoreProfileContentSealer;
   readonly localesPolicy: StoreProfileLocalesPolicy;
+  /** "Last changed by" and the history of the page, from sellers' own audit rows. */
+  readonly trail: ChangeTrail;
 }
+
+/**
+ * The audit rows of one seller's Store profile page: the About text saves and the picture
+ * changes. A text save names the field `about`; a picture change names `logo` or `banner`.
+ */
+export const storeProfileChanges = (sellerId: string): ChangeScope => ({
+  actions: [StoreProfileSaved.action, StoreImageChanged.action],
+  targetId: sellerId,
+  fieldsOf: (row) => {
+    if (row.action === StoreProfileSaved.action) return ['about'];
+    const kind = (row.after as { readonly kind?: unknown } | null)?.kind;
+    return kind === 'logo' || kind === 'banner' ? [kind] : [];
+  },
+});
 
 export const storeProfileLogger = new Logger('SellerStoreProfile');
 
@@ -117,6 +141,8 @@ export async function loadStoreProfileView(
         ? null
         : { id: found.id, width: found.width, height: found.height };
     };
+    // The name of the latest author is read outside the unit; the page opens without it if it fails.
+    const lastChanged = await deps.trail.lastChanged(context, storeProfileChanges(owner.sellerId));
     return ok({
       version: read.value.revisionNo,
       about,
@@ -124,6 +150,7 @@ export async function loadStoreProfileView(
       locales: locales.supportedLocales,
       logo: ref('logo'),
       banner: ref('banner'),
+      lastChanged,
     });
   } catch (error) {
     storeProfileLogger.error({

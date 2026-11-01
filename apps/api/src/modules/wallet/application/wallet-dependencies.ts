@@ -1,6 +1,7 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { IdentityFacade } from '../../identity';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { ChangeTrail } from '../../../platform/audit/change-trail';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { AdminCreditRepository } from './ports/admin-credit.repository';
@@ -22,6 +23,8 @@ export interface WalletDependencies {
    * identity implements the platform port).
    */
   readonly stepUp: StepUpProofConsumer;
+  /** "Last changed by" and the history of the switch, from this module's audit rows. */
+  readonly trail: ChangeTrail;
 }
 
 /** The admin credit use cases (package 2a) also reach the request store. */

@@ -1,7 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { HistoryView } from '../application/use-cases/view-my-history.use-case';
 import type { MyWalletView } from '../application/use-cases/view-my-wallet.use-case';
-import type { SettingsView } from '../application/use-cases/view-wallet-settings.use-case';
+import { lastChangedBody } from '../../../platform/audit/change-trail';
+import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
+import type { SettingsPage } from '../application/use-cases/view-wallet-settings.use-case';
 import { WALLET_STATUS_REASONS, WALLET_STATUSES } from '../domain/wallet-status';
 
 // Bodies of the wallet routes. Amounts are minor-unit strings; ids and codes only.
@@ -51,6 +53,12 @@ export class SettingsBody {
     description: '0 while never switched. Send it back as expectedVersion.',
   })
   version!: number;
+  @ApiProperty({
+    type: LastChangedDto,
+    nullable: true,
+    description: 'Who switched the wallet last and when; null while it was never switched.',
+  })
+  lastChanged!: LastChangedDto | null;
 }
 
 export class SetSettingsRequest {
@@ -94,9 +102,10 @@ export const historyBody = (view: HistoryView): HistoryBody => ({
   nextCursor: view.nextCursor,
 });
 
-export const settingsBody = (view: SettingsView): SettingsBody => ({
+export const settingsBody = (view: SettingsPage): SettingsBody => ({
   status: view.status,
   reason: view.reason,
   updatedAt: view.updatedAt === null ? null : view.updatedAt.toString(),
   version: view.version,
+  lastChanged: lastChangedBody(view.lastChanged),
 });
