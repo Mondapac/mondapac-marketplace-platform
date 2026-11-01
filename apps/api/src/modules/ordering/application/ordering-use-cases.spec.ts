@@ -435,6 +435,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method) => {
             asked.push([sellerId, method]);
             return Promise.resolve(!(sellerId === SELLER_B && method === 'instant'));
@@ -465,6 +466,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method, window) => {
             seen.push([
               sellerId,
@@ -495,6 +497,23 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(seen).toEqual([
         [SELLER_A, 'scheduled', `${windowStart.toString()}/${windowEnd.toString()}`],
         [SELLER_B, 'instant', null],
+      ]);
+    });
+
+    it('freezes the preparation minutes of each seller order as the policy gave them', async () => {
+      deps = {
+        ...deps,
+        deliveryMethods: {
+          readyPrepMinutes: (_c, sellerId) => Promise.resolve(sellerId === SELLER_A ? 45 : 120),
+          allows: () => Promise.resolve(true),
+        },
+      };
+
+      const order = await placed();
+
+      expect(order.sellerOrders.map((s) => [s.sellerId, s.readyPrepMinutes])).toEqual([
+        [SELLER_A, 45],
+        [SELLER_B, 120],
       ]);
     });
   });

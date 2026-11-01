@@ -455,12 +455,19 @@ export class FakeShipping implements ShippingFacade {
       readonly window: { readonly start: string; readonly end: string } | null;
     },
   ): Promise<
-    Result<{ readonly allowed: boolean; readonly reason: ChoiceRefusal | null }, ShippingFailure>
+    Result<
+      {
+        readonly allowed: boolean;
+        readonly reason: ChoiceRefusal | null;
+        readonly readyPrepMinutes: number;
+      },
+      ShippingFailure
+    >
   > {
     this.deliveryChoicesAsked.push(request);
     if (this.deliveryChoiceDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     const reason = this.deliveryRefused.get(`${request.sellerId}|${request.method}`) ?? null;
-    return Promise.resolve(ok({ allowed: reason === null, reason }));
+    return Promise.resolve(ok({ allowed: reason === null, reason, readyPrepMinutes: 60 }));
   }
   priceDelivery(_c: CallContext, quote: Money): Promise<Result<PricedDelivery, ShippingFailure>> {
     return Promise.resolve(
@@ -1169,5 +1176,8 @@ export class FakePickupVault implements PickupCodeVault {
 export class AllowAllDeliveryMethods implements DeliveryMethodPolicy {
   allows(): Promise<boolean> {
     return Promise.resolve(true);
+  }
+  readyPrepMinutes(): Promise<number | null> {
+    return Promise.resolve(60);
   }
 }

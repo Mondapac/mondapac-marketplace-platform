@@ -345,10 +345,16 @@ describe('parseDeliverySettings', () => {
         sameDayCutoffMinutes: 690,
         scheduledDaysAhead: 5,
         scheduledWindowMinutes: 90,
+        readyPrepMinutes: null,
         margin: { kind: 'fixed', amountMinor: 150 },
         roundingStepMinor: 10,
       },
     });
+  });
+
+  it('takes the preparation minutes when sent and keeps null when left out', () => {
+    const parsed = parseDeliverySettings({ ...good, readyPrepMinutes: 90 });
+    expect(parsed.ok && parsed.value.readyPrepMinutes).toBe(90);
   });
 
   it.each([
@@ -365,6 +371,10 @@ describe('parseDeliverySettings', () => {
     [{ ...good, scheduledWindowMinutes: 495 }, 'scheduledWindowMinutes'],
     [{ ...good, margin: { kind: 'percent', basisPoints: 20000 } }, 'margin.basisPoints'],
     [{ ...good, roundingStepMinor: 25 }, 'roundingStepMinor'],
+    [{ ...good, readyPrepMinutes: 4 }, 'readyPrepMinutes'],
+    [{ ...good, readyPrepMinutes: 2881 }, 'readyPrepMinutes'],
+    [{ ...good, readyPrepMinutes: 30.5 }, 'readyPrepMinutes'],
+    [{ ...good, readyPrepMinutes: '60' }, 'readyPrepMinutes'],
     [{ ...good, nope: 1 }, 'field'],
     [null, ''],
   ])('refuses %j at %s', (input, path) => {

@@ -993,6 +993,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'margin_fixed_minor',
         'margin_kind',
         'pickup_enabled',
+        'ready_prep_minutes',
         'rounding_step_minor',
         'same_day_cutoff_minutes',
         'same_day_enabled',

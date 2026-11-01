@@ -98,6 +98,9 @@ model OrderingSellerOrder {
   deliveryWindowEnd      DateTime?           @map("delivery_window_end") @db.Timestamptz(6)
   /// When the seller told the platform the order is ready; set once, while the order is to-ship.
   readyAt                DateTime?           @map("ready_at") @db.Timestamptz(6)
+  /// The minutes the Market gave the seller to get the order ready, frozen at placement (5 to
+  /// 2880, CHECK). The promised ready-by time derives from it. Null on orders placed before it.
+  readyPrepMinutes       Int?                @map("ready_prep_minutes")
   /// Set by the platform when the order needs an admin: no-carrier (nothing can serve it),
   /// carrier-unknown (a booking whose answer was lost, so it may exist) or cancel-unknown (a
   /// cancel whose answer was lost) (CHECK). The seller

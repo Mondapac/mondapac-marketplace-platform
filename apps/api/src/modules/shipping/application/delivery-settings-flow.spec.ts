@@ -484,16 +484,16 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
     it('allows an open method and gives the reason for a closed one', async () => {
       expect(await choice({ sellerId: SELLER_A, method: 'instant', window: null })).toEqual({
         ok: true,
-        value: { allowed: true, reason: null },
+        value: { allowed: true, reason: null, readyPrepMinutes: 60 },
       });
       await setSeller(SELLER_A, ['pickup', 'scheduled', 'same_day']);
       expect(await choice({ sellerId: SELLER_A, method: 'instant', window: null })).toEqual({
         ok: true,
-        value: { allowed: false, reason: 'seller-unsupported' },
+        value: { allowed: false, reason: 'seller-unsupported', readyPrepMinutes: 60 },
       });
       expect(await choice({ sellerId: SELLER_B, method: 'pickup', window: null })).toEqual({
         ok: true,
-        value: { allowed: false, reason: 'no-pickup-address' },
+        value: { allowed: false, reason: 'no-pickup-address', readyPrepMinutes: 60 },
       });
     });
 
@@ -501,7 +501,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
       const ok = window('2026-06-12T14:00:00');
       expect(await choice({ sellerId: SELLER_A, method: 'scheduled', window: ok })).toEqual({
         ok: true,
-        value: { allowed: true, reason: null },
+        value: { allowed: true, reason: null, readyPrepMinutes: 60 },
       });
       for (const [bad, reason] of [
         [window('2026-06-12T14:00:00', 60), 'window-length'],
@@ -511,7 +511,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
       ] as const) {
         expect(await choice({ sellerId: SELLER_A, method: 'scheduled', window: bad })).toEqual({
           ok: true,
-          value: { allowed: false, reason },
+          value: { allowed: false, reason, readyPrepMinutes: 60 },
         });
       }
       await save({ ...SETTINGS, scheduledDaysAhead: 30, scheduledWindowMinutes: 60 });
@@ -521,7 +521,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
           method: 'scheduled',
           window: window('2026-06-30T14:00:00', 60),
         }),
-      ).toEqual({ ok: true, value: { allowed: true, reason: null } });
+      ).toEqual({ ok: true, value: { allowed: true, reason: null, readyPrepMinutes: 60 } });
     });
 
     it('refuses malformed input', async () => {

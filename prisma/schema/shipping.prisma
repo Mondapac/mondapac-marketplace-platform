@@ -188,6 +188,8 @@ model ShippingDeliverySettings {
   sameDayCutoffMinutes   Int      @map("same_day_cutoff_minutes")
   scheduledDaysAhead     Int      @map("scheduled_days_ahead")
   scheduledWindowMinutes Int      @map("scheduled_window_minutes")
+  /// Minutes a seller has to get a paid order ready, 5 to 2880 (CHECK); default 60.
+  readyPrepMinutes       Int      @default(60) @map("ready_prep_minutes")
   /// none | percent | fixed (CHECK); the amount column of the kind is set, the other is null.
   marginKind             String   @map("margin_kind")
   marginBasisPoints      Int?     @map("margin_basis_points")

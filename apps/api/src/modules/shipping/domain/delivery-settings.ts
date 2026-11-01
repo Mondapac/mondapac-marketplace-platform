@@ -16,6 +16,13 @@ export const MIN_WINDOW_MINUTES = 30;
 export const MAX_WINDOW_MINUTES = 480;
 /** The window length moves in steps of this many minutes. */
 export const WINDOW_STEP_MINUTES = 15;
+/**
+ * Minutes the Market gives a seller to get a paid order ready (seller health, late ready): the
+ * promised ready-by time is the payment time plus this, or the window start of a scheduled order.
+ */
+export const MIN_READY_PREP_MINUTES = 5;
+export const MAX_READY_PREP_MINUTES = 2880;
+export const DEFAULT_READY_PREP_MINUTES = 60;
 /** The default cut-off: 12:00 local time, as minutes after midnight. */
 export const DEFAULT_SAME_DAY_CUTOFF_MINUTES = 12 * 60;
 
@@ -26,6 +33,8 @@ export interface DeliverySettings extends DeliveryPricing {
   readonly sameDayCutoffMinutes: number;
   readonly scheduledDaysAhead: number;
   readonly scheduledWindowMinutes: number;
+  /** Minutes a seller has to get a paid order ready (5 to 2880). */
+  readonly readyPrepMinutes: number;
   /** Rises with each save; 0 while the Market has never saved (the defaults apply). */
   readonly version: number;
 }
@@ -39,6 +48,7 @@ export const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = Object.freeze({
   sameDayCutoffMinutes: DEFAULT_SAME_DAY_CUTOFF_MINUTES,
   scheduledDaysAhead: 7,
   scheduledWindowMinutes: 120,
+  readyPrepMinutes: DEFAULT_READY_PREP_MINUTES,
   ...NO_MARGIN,
   version: 0,
 });
@@ -65,12 +75,18 @@ const KEYS = [
   'sameDayCutoff',
   'scheduledDaysAhead',
   'scheduledWindowMinutes',
+  'readyPrepMinutes',
   'margin',
   'roundingStepMinor',
   'expectedVersion',
 ] as const;
 
 export type DeliverySettingsInput = Omit<DeliverySettings, 'version'>;
+
+/** What an admin sent: `readyPrepMinutes` is null when the key was left out (keep the saved value). */
+export type ParsedDeliverySettings = Omit<DeliverySettingsInput, 'readyPrepMinutes'> & {
+  readonly readyPrepMinutes: number | null;
+};
 
 /**
  * Parses the settings an admin saves (the whole set: `enabled` per method, `sameDayCutoff` as
@@ -81,7 +97,7 @@ export type DeliverySettingsInput = Omit<DeliverySettings, 'version'>;
 export function parseDeliverySettings(
   input: unknown,
 ):
-  | { readonly ok: true; readonly value: DeliverySettingsInput }
+  | { readonly ok: true; readonly value: ParsedDeliverySettings }
   | { readonly ok: false; readonly fields: Field[] } {
   if (!isObject(input)) return { ok: false, fields: [{ path: '', code: 'type' }] };
   const fields: Field[] = [];
@@ -122,6 +138,18 @@ export function parseDeliverySettings(
   ) {
     fields.push({ path: 'scheduledWindowMinutes', code: 'range' });
   }
+  const prepRaw = input.readyPrepMinutes;
+  let prep: number | null = null;
+  if (prepRaw !== undefined) {
+    if (
+      typeof prepRaw !== 'number' ||
+      !Number.isInteger(prepRaw) ||
+      prepRaw < MIN_READY_PREP_MINUTES ||
+      prepRaw > MAX_READY_PREP_MINUTES
+    ) {
+      fields.push({ path: 'readyPrepMinutes', code: 'range' });
+    } else prep = prepRaw;
+  }
   const pricing = parseDeliveryPricing({
     margin: input.margin,
     roundingStepMinor: input.roundingStepMinor,
@@ -148,6 +176,7 @@ export function parseDeliverySettings(
       sameDayCutoffMinutes: cutoff,
       scheduledDaysAhead: days,
       scheduledWindowMinutes: length,
+      readyPrepMinutes: prep,
       ...pricing.value,
     },
   };

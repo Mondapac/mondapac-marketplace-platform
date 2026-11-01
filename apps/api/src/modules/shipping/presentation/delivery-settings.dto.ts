@@ -51,6 +51,12 @@ export class DeliverySettingsRequest {
     multipleOf: WINDOW_STEP_MINUTES,
   })
   scheduledWindowMinutes!: number;
+  @ApiPropertyOptional({
+    minimum: 5,
+    maximum: 2880,
+    description: 'Minutes a seller has to get a paid order ready; left out keeps the saved value.',
+  })
+  readyPrepMinutes?: number;
   @ApiProperty({ type: MarginBody }) margin!: MarginBody;
   @ApiProperty({
     enum: [...ROUNDING_STEPS],
@@ -66,6 +72,8 @@ export class DeliverySettingsBody {
   @ApiProperty({ example: '12:00' }) sameDayCutoff!: string;
   @ApiProperty() scheduledDaysAhead!: number;
   @ApiProperty() scheduledWindowMinutes!: number;
+  @ApiProperty({ description: 'Minutes a seller has to get a paid order ready.' })
+  readyPrepMinutes!: number;
   @ApiProperty({ type: MarginBody }) margin!: MarginBody;
   @ApiProperty({ enum: [...ROUNDING_STEPS] }) roundingStepMinor!: number;
   @ApiProperty({ description: 'Rises with each save; 0 while the defaults apply.' })
@@ -85,6 +93,7 @@ export function settingsBody(view: DeliverySettingsView) {
     sameDayCutoff: formatCutoff(settings.sameDayCutoffMinutes),
     scheduledDaysAhead: settings.scheduledDaysAhead,
     scheduledWindowMinutes: settings.scheduledWindowMinutes,
+    readyPrepMinutes: settings.readyPrepMinutes,
     margin:
       margin.kind === 'percent'
         ? { kind: margin.kind, basisPoints: margin.basisPoints }

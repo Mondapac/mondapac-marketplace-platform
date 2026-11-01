@@ -229,6 +229,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           deliveryMethod: 'instant',
           deliveryWindow: null,
           readyAt: null,
+          readyPrepMinutes: null,
           deliveryAttention: null,
           deliveryQuote: null,
         },
