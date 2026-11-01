@@ -1,22 +1,24 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
-import type { OverlapFacts } from '../../domain/seller-overlap';
+import type { OverlapAnswers } from '../../domain/seller-overlap';
 
 /**
- * The facts for the same-address and same-payment-fingerprint signals (package 5): where the
- * buyer's seller order went, which payment methods paid it, and the seller's own address and
- * payment methods. Null means the source cannot say (no signal is raised). A failure to answer is
- * thrown; the caller treats it as "no signal", because a source that is down must never stop an
- * honest buyer. The facts are compared and dropped; only a signal code is ever stored.
+ * The two yes or no answers for the same-address and same-payment-fingerprint signals (package 5):
+ * did the buyer's order go to the seller's address, and did the buyer pay with a payment method of
+ * the seller. The comparison is made by the owners of the data (ordering for the address, with at
+ * least two shared address fields after folding case and spacing; payments for the fingerprint)
+ * behind their facades; reviews never receives an address or a payment detail. Null means the
+ * source cannot say (no signal). A failure to answer is thrown; the caller treats it as "no
+ * signal", because a source that is down must never stop an honest buyer.
  */
 export interface SellerOverlapSource {
-  factsFor(
+  answersFor(
     context: CallContext,
     request: {
       readonly accountId: Id<'Account'>;
       readonly sellerId: Id<'Seller'>;
       readonly sellerOrderId: Id<'SellerOrder'>;
     },
-  ): Promise<OverlapFacts | null>;
+  ): Promise<OverlapAnswers | null>;
 }
 
 export const SELLER_OVERLAP_SOURCE = Symbol('SELLER_OVERLAP_SOURCE');

@@ -73,6 +73,23 @@ BEGIN
   RETURN OLD;
 END; $$;
 
+-- The count is derived data: a direct write of the application login is refused. The counting
+-- trigger's own UPDATE runs one trigger level deeper (depth 2) and passes; a review is born with 0.
+CREATE FUNCTION "reviews"."guard_helpful_count"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW."helpful_count" <> 0 THEN
+      RAISE EXCEPTION 'helpful_count is kept by the votes' USING ERRCODE = '42501';
+    END IF;
+  ELSIF NEW."helpful_count" IS DISTINCT FROM OLD."helpful_count" AND pg_trigger_depth() < 2 THEN
+    RAISE EXCEPTION 'helpful_count is kept by the votes' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END; $$;
+CREATE TRIGGER "product_reviews_guard_helpful_count" BEFORE INSERT OR UPDATE OF "helpful_count"
+  ON "reviews"."product_reviews" FOR EACH ROW EXECUTE FUNCTION "reviews"."guard_helpful_count"();
+
 CREATE TRIGGER "helpful_votes_keep_count" AFTER INSERT OR DELETE ON "reviews"."helpful_votes"
   FOR EACH ROW EXECUTE FUNCTION "reviews"."keep_helpful_count"();
 CREATE TRIGGER "helpful_votes_no_update" BEFORE UPDATE ON "reviews"."helpful_votes"

@@ -238,7 +238,17 @@ describe.each(TEST_MARKETS)('reviews package 5 in market %s (database)', (code) 
     ).rejects.toMatchObject({ code: NO_PRIVILEGE });
     await expect(
       sql.query('UPDATE reviews.product_reviews SET helpful_count = -1 WHERE id = $1', [review.id]),
-    ).rejects.toMatchObject({ code: '23514' });
+    ).rejects.toMatchObject({ code: '42501' });
+    // The count is derived: a plausible value written by hand, or a review born with one, is refused.
+    await expect(
+      sql.query('UPDATE reviews.product_reviews SET helpful_count = 5 WHERE id = $1', [review.id]),
+    ).rejects.toMatchObject({ code: NO_PRIVILEGE });
+    await expect(
+      owner.query('UPDATE reviews.product_reviews SET helpful_count = 5 WHERE id = $1', [
+        review.id,
+      ]),
+    ).rejects.toMatchObject({ code: NO_PRIVILEGE });
+    expect(await countOf(review.id)).toBe(1);
     await expect(
       owner.query('UPDATE reviews.helpful_votes SET created_at = now() WHERE review_id = $1', [
         review.id,

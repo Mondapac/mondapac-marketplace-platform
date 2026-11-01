@@ -108,17 +108,16 @@ fixtures and the DB specs, on both Market fixtures (AU and ZZ); nothing is seede
   and at most `maxHelpfulVotesPerAccountPerDay` (AU 200, ZZ 3; over it the vote is rolled back,
   `reviews.rate-limited`). Table `reviews.helpful_votes` (insert and delete only; an update is refused);
   `product_reviews.helpful_count` is kept exact by database triggers in the same transaction, and the
-  the application role holds a column grant on `helpful_count` because the triggers run as the invoker, so the API login could set it by hand (a known limit; the exact count can be rebuilt from the votes, and a SECURITY DEFINER trigger is the alternative for the DB review). A vote is never shown with its
+  the application role holds a column grant on `helpful_count` because the triggers run as the invoker; a guard trigger (`pg_trigger_depth() < 2`) refuses any direct write, and a review is born with 0. A vote is never shown with its
   voter. `detachAuthor` deletes the votes of the deleted account. The public list shows `helpfulCount`
   and takes `sort=helpful` (keyset on helpful count, published time, id; partial index
   `product_reviews_public_list_helpful_idx`).
-- **Overlap signals:** `same-address-as-seller` (at least two shared address fields after folding case
+- **Overlap signals:** `same-address-as-seller` (ordering decides, with at least two shared address fields after folding case
   and spacing) and `same-payment-fingerprint`. A signal only: it holds the review for a moderator like
-  the other submit signals and is recorded on seller ratings, and never refuses a buyer. The facts come
-  through the port `SellerOverlapSource`. **Open:** ordering and payments publish no such comparison yet,
+  the other submit signals and is recorded on seller ratings, and never refuses a buyer. The port `SellerOverlapSource` returns only two yes or no answers
+  (`sameAddress`, `samePaymentFingerprint`); the comparison is made in ordering and payments. **Open:** ordering and payments publish no such comparison yet,
   so the bound source is `UnavailableSellerOverlap` (answers "cannot say", no signal). Wiring it is a
-  follow-up with ordering and payments; it must never pass a raw address or card detail across modules,
-  only the two yes or no answers.
+  follow-up with ordering and payments; reviews never receives an address or card detail.
 - **Rating totals for search:** facade `productRatingTotals` (rule system, at most 1000 per page, from
   the rebuilt summaries). Search copies them (see docs/modules/search/search.md).
 - **UI follow-ups (not in this package):** packages 2 and 3 are not merged. The review list should show

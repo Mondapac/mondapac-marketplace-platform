@@ -186,6 +186,39 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
     expect(hits[0]!.offerId).toBe(b.offerId);
   });
 
+  it('never lets a late sync run overwrite a fresher one', async () => {
+    const productId = id<'Product'>();
+    const write = (count: number, sum: number, at: Temporal.Instant) =>
+      inUnit(market, () =>
+        ratings.upsertMany(
+          market,
+          [
+            {
+              productId,
+              count,
+              sum,
+              bayesTimes1000: bayesTimes1000(count, sum, boost),
+              boostPpm: boostPpm(bayesTimes1000(count, sum, boost), boost),
+            },
+          ],
+          at,
+        ),
+      );
+    await write(10, 40, T0.add({ hours: 1 }));
+    await write(2, 4, T0);
+    const row = await sql.query<{ rating_count: number }>(
+      'SELECT rating_count FROM "search"."product_ratings" WHERE market_id = $1 AND product_id = $2',
+      [market.marketId, productId],
+    );
+    expect(row.rows).toEqual([{ rating_count: 10 }]);
+    await write(11, 44, T0.add({ hours: 2 }));
+    const newer = await sql.query<{ rating_count: number }>(
+      'SELECT rating_count FROM "search"."product_ratings" WHERE product_id = $1',
+      [productId],
+    );
+    expect(newer.rows).toEqual([{ rating_count: 11 }]);
+  });
+
   it('treats hostile query text as data', async () => {
     await seed(market, doc('Mock honey'));
     for (const text of ["'; DROP TABLE search.product_ratings; --", '(((', '& | !', '\\']) {

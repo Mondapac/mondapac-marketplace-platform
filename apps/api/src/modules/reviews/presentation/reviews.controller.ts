@@ -311,7 +311,7 @@ export class BuyerReviewsController {
     description: 'access.denied, request.csrf or reviews.own-review',
   })
   @ApiNotFoundResponse({ ...ERROR, description: 'reviews.disabled or reviews.not-found' })
-  @ApiTooManyRequestsResponse({ ...ERROR, description: 'reviews.limit-reached' })
+  @ApiTooManyRequestsResponse({ ...ERROR, description: 'reviews.rate-limited' })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'reviews.unavailable' })
   async markHelpful(
     @Call() context: CallContext,

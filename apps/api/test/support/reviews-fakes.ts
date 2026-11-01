@@ -23,7 +23,7 @@ import type {
 import type { ReviewerNames } from '../../src/modules/reviews/application/ports/reviewer-names';
 import type { SellerAffinity } from '../../src/modules/reviews/application/ports/seller-affinity';
 import type { SellerOverlapSource } from '../../src/modules/reviews/application/ports/seller-overlap';
-import type { OverlapFacts } from '../../src/modules/reviews/domain/seller-overlap';
+import type { OverlapAnswers } from '../../src/modules/reviews/domain/seller-overlap';
 import { isPublic } from '../../src/modules/reviews/domain/rules';
 import {
   summariseSellerGroups,
@@ -468,12 +468,12 @@ export class FakeAffinity implements SellerAffinity {
 
 /** The overlap facts per seller order (mock data); nothing registered means "cannot say". */
 export class FakeOverlap implements SellerOverlapSource {
-  readonly bySellerOrder = new Map<string, OverlapFacts>();
+  readonly bySellerOrder = new Map<string, OverlapAnswers>();
   failing = false;
-  factsFor(
+  answersFor(
     _context: CallContext,
     request: { readonly sellerOrderId: Id<'SellerOrder'> },
-  ): Promise<OverlapFacts | null> {
+  ): Promise<OverlapAnswers | null> {
     if (this.failing) return Promise.reject(new Error('overlap source down'));
     return Promise.resolve(this.bySellerOrder.get(request.sellerOrderId) ?? null);
   }

@@ -9,6 +9,8 @@ REVOKE SELECT, INSERT, DELETE ON TABLE "reviews"."helpful_votes" FROM "mondapac_
 
 DROP TABLE "search"."product_ratings";
 DROP TABLE "reviews"."helpful_votes";
+DROP TRIGGER "product_reviews_guard_helpful_count" ON "reviews"."product_reviews";
+DROP FUNCTION "reviews"."guard_helpful_count"();
 DROP FUNCTION "reviews"."keep_helpful_count"();
 DROP INDEX "reviews"."product_reviews_public_list_helpful_idx";
 ALTER TABLE "reviews"."product_reviews" DROP COLUMN "helpful_count";

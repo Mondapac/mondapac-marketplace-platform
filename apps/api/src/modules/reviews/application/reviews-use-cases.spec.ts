@@ -1072,23 +1072,19 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
     });
 
     describe('signals for the same address or payment fingerprint as the seller', () => {
-      const sellerAddress = { line1: '12 Smith Street', suburb: 'Sunnybank', postcode: '4109' };
       const facts = (extra: object = {}) => ({
-        deliveryAddress: null,
-        sellerAddresses: [sellerAddress],
-        buyerPaymentFingerprints: [],
-        sellerPaymentFingerprints: [],
+        sameAddress: null,
+        samePaymentFingerprint: null,
         ...extra,
       });
       const codesOf = () => reviews.signals.map((s) => s.code);
 
       it('holds a review that went to the seller address, with a code and no text, and does not refuse it', async () => {
         bought(1);
-        overlap.bySellerOrder.set(sellerOrder(1), facts({ deliveryAddress: sellerAddress }));
+        overlap.bySellerOrder.set(sellerOrder(1), facts({ sameAddress: true }));
         const result = await submitted(1);
         expect(result.review.status).toBe('held');
         expect(codesOf()).toEqual(['same-address-as-seller']);
-        expect(JSON.stringify(reviews.signals)).not.toContain('Smith');
         expect(JSON.stringify(reviews.signals)).not.toContain('Arrived fresh');
         expect(reviews.actions.at(-1)).toMatchObject({ action: 'auto-hold', toStatus: 'held' });
         // Held means it is not in the product's numbers until a human looks.
@@ -1099,11 +1095,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
         bought(1);
         overlap.bySellerOrder.set(
           sellerOrder(1),
-          facts({
-            deliveryAddress: sellerAddress,
-            buyerPaymentFingerprints: ['fp_1'],
-            sellerPaymentFingerprints: ['fp_1'],
-          }),
+          facts({ sameAddress: true, samePaymentFingerprint: true }),
         );
         await submitted(1, { body: `${blocked} stuff` });
         expect(codesOf().sort()).toEqual(
@@ -1117,11 +1109,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
         bought(3);
         overlap.bySellerOrder.set(
           sellerOrder(2),
-          facts({
-            deliveryAddress: { line1: 'Elsewhere 1', postcode: '4109' },
-            buyerPaymentFingerprints: ['fp_9'],
-            sellerPaymentFingerprints: ['fp_1'],
-          }),
+          facts({ sameAddress: false, samePaymentFingerprint: false }),
         );
         expect((await submitted(1)).review.status).toBe('published');
         expect((await submitted(2)).review.status).toBe('published');
@@ -1133,10 +1121,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
 
       it('records a seller rating signal without holding the rating', async () => {
         bought(1);
-        overlap.bySellerOrder.set(
-          sellerOrder(1),
-          facts({ buyerPaymentFingerprints: ['fp_1'], sellerPaymentFingerprints: ['fp_1'] }),
-        );
+        overlap.bySellerOrder.set(sellerOrder(1), facts({ samePaymentFingerprint: true }));
         const rated = await rate(1);
         expect(rated).toMatchObject({ ok: true, value: { status: 'published' } });
         expect(reviews.signals).toMatchObject([

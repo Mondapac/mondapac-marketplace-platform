@@ -101,12 +101,12 @@ async function overlapCodes(
   purchase: { readonly sellerId: Id<'Seller'>; readonly sellerOrderId: Id<'SellerOrder'> },
 ): Promise<readonly string[]> {
   try {
-    const facts = await deps.overlap.factsFor(context, {
+    const answers = await deps.overlap.answersFor(context, {
       accountId,
       sellerId: purchase.sellerId,
       sellerOrderId: purchase.sellerOrderId,
     });
-    return facts === null ? [] : overlapSignals(facts);
+    return answers === null ? [] : overlapSignals(answers);
   } catch {
     return [];
   }

@@ -25,19 +25,29 @@ export class PrismaProductRatingRepository implements ProductRatingRepository {
         boostPpm: row.boostPpm,
         syncedAt: toDate(syncedAt),
       };
-      await tx.searchProductRating.upsert({
+      // A late run never overwrites a fresher one: update only a row not newer than this run,
+      // and create it only when it does not exist (a row that is newer is left as it is).
+      const updated = await tx.searchProductRating.updateMany({
         where: {
           marketId: market.marketId,
-          marketId_productId: { marketId: market.marketId, productId: row.productId },
-        },
-        create: {
-          marketId: market.marketId,
-          tenantId: market.tenantId,
           productId: row.productId,
-          ...data,
+          syncedAt: { lte: data.syncedAt },
         },
-        update: data,
+        data,
       });
+      if (updated.count === 0) {
+        await tx.searchProductRating.createMany({
+          data: [
+            {
+              marketId: market.marketId,
+              tenantId: market.tenantId,
+              productId: row.productId,
+              ...data,
+            },
+          ],
+          skipDuplicates: true,
+        });
+      }
     }
   }
 
