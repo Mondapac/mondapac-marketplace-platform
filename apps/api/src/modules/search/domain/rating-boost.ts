@@ -17,8 +17,9 @@ export interface RatingBoostSettings {
 export const NEUTRAL_BOOST_PPM = 1_000_000;
 /** The cap of the boost whatever the config says: 10 % either way (the table CHECK says the same). */
 export const MAX_WEIGHT_BPS = 1000;
-/** How far from the prior mean (in thousandths of a star) the boost reaches its full weight. */
-const FULL_EFFECT_DISTANCE_TIMES_1000 = 2000;
+/** The lowest and highest Bayesian average a product can have, in thousandths of a star. */
+const MIN_BAYES_TIMES_1000 = 1000;
+const MAX_BAYES_TIMES_1000 = 5000;
 
 /** The prior mean in thousandths of a star: what a product with no ratings is worth. */
 export const priorMeanTimes1000 = (boost: RatingBoostSettings): number =>
@@ -40,16 +41,17 @@ export function bayesTimes1000(
 }
 
 /**
- * The relevance factor in millionths: `1 + weight * d`, where `d` is how far the Bayesian average
- * is from the prior mean in steps of two stars, clamped to [-1, 1]. At the prior mean the factor
- * is exactly 1; at the weight's 10 % cap it never leaves [0.9, 1.1].
+ * The relevance factor in millionths: `1 + weight * d`. `d` is the Bayesian average's distance from
+ * the prior mean, scaled by the room to the nearest end of the scale on that side (1 star at the
+ * bottom, 5 at the top), so the best possible product gets the full boost and the worst possible one
+ * the full penalty whatever the Market's prior is: at most the Market weight (10 % cap) either way,
+ * decided by owner (john, 1 Nov 2026, PR #627 review M-3). At the prior mean the factor is exactly 1.
  */
 export function boostPpm(bayes: number, boost: RatingBoostSettings): number {
   const weightBps = Math.min(Math.max(boost.weightBps, 0), MAX_WEIGHT_BPS);
-  const distance = Math.min(
-    Math.max((bayes - priorMeanTimes1000(boost)) / FULL_EFFECT_DISTANCE_TIMES_1000, -1),
-    1,
-  );
+  const prior = priorMeanTimes1000(boost);
+  const room = bayes >= prior ? MAX_BAYES_TIMES_1000 - prior : prior - MIN_BAYES_TIMES_1000;
+  const distance = room <= 0 ? 0 : Math.min(Math.max((bayes - prior) / room, -1), 1);
   return Math.round(NEUTRAL_BOOST_PPM + weightBps * 100 * distance);
 }
 

@@ -130,10 +130,9 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   (`boost_ppm`, 900000 to 1100000, so at most 10 %; the Market's `weightBps` is capped at
   1000 by the config schema and by a table CHECK). The factor comes from the Bayesian average of the
   stars (`priorCount` and `priorMeanTimes100` in the Market file), computed in TypeScript
-  (`domain/rating-boost.ts`). A product with no ratings has the prior mean and the neutral factor. The full effect needs a
-  distance of 2 stars from the prior mean, so with a prior of 4.00 (AU) the largest boost is +5 % and
-  the largest penalty -10 %; a prior of 3.00 (ZZ) is symmetric. Whether to make it symmetric is a
-  product-owner question (PR #627, review M-3).
+  (`domain/rating-boost.ts`). A product with no ratings has the prior mean and the neutral factor. The distance from the prior mean is scaled by the room to the nearest end of the scale on
+  that side, so the best possible product gets the full boost and the worst the full penalty in every
+  Market (john, 1 Nov 2026, PR #627 review M-3).
 - **Top rated:** `GET /search/products?sort=top-rated` orders by the stored Bayesian average (products without ratings sit at the prior mean), then by
   Offer id; needs `q` or `category`, and is refused with `store` or `brand`.
 - **Copy of the totals:** `search.product_ratings` (written only by the job `search.sync-ratings`, hourly

@@ -17,6 +17,12 @@ describe.each([
 ] as const)('the rating boost in market %s', (_code, boost) => {
   const prior = priorMeanTimes1000(boost);
 
+  it('gives the best and the worst possible product the same full swing, whatever the prior', () => {
+    const swing = boost.weightBps * 100;
+    expect(boostPpm(5000, boost)).toBe(NEUTRAL_BOOST_PPM + swing);
+    expect(boostPpm(1000, boost)).toBe(NEUTRAL_BOOST_PPM - swing);
+  });
+
   it('puts a product with no ratings exactly at the prior mean, with no change to relevance', () => {
     expect(bayesTimes1000(0, 0, boost)).toBe(prior);
     expect(boostPpm(prior, boost)).toBe(NEUTRAL_BOOST_PPM);
@@ -32,10 +38,7 @@ describe.each([
       expect(ppm).toBeLessThanOrEqual(1_100_000);
     }
     // A config beyond the cap (the Zod schema refuses it) is clamped here too.
-    expect(boostPpm(5000, { ...boost, weightBps: 5000 })).toBe(
-      boostPpm(5000, { ...boost, weightBps: MAX_WEIGHT_BPS }),
-    );
-    expect(boostPpm(5000, { ...boost, weightBps: 5000 })).toBeLessThanOrEqual(1_100_000);
+    expect(boostPpm(5000, { ...boost, weightBps: 5000 })).toBe(1_000_000 + MAX_WEIGHT_BPS * 100);
     expect(boostPpm(0, { ...boost, weightBps: 5000 })).toBe(1_000_000 - MAX_WEIGHT_BPS * 100);
     expect(boostPpm(5000, { ...boost, weightBps: 0 })).toBe(NEUTRAL_BOOST_PPM);
   });
