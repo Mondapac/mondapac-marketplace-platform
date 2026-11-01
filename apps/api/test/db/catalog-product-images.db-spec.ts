@@ -26,6 +26,7 @@ import { OwnProductImageRead } from '../../src/modules/catalog/application/use-c
 import { ProductImageAdminRead } from '../../src/modules/catalog/application/use-cases/product-image-admin-read.use-case';
 import { ProductImageTakeDown } from '../../src/modules/catalog/application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from '../../src/modules/catalog/application/use-cases/product-revision-image-list.use-case';
+import { SweepOrphanImageFiles } from '../../src/modules/catalog/application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from '../../src/modules/catalog/application/use-cases/sweep-orphan-images.use-case';
 import { OwnProductImageUpload } from '../../src/modules/catalog/application/use-cases/own-product-image-upload.use-case';
 import type { SaveWorkingCopy } from '../../src/modules/catalog/application/working-copy/save-working-copy.service';
@@ -99,6 +100,7 @@ describe.each(TEST_MARKETS)(
     let revisionImages: ProductRevisionImageList;
     let sweepLater: SweepOrphanImages;
     let sweepNow: SweepOrphanImages;
+    let sweepFiles: SweepOrphanImageFiles;
     let events: PendingEvent[];
     let revisions: PrismaProductRevisionRepository;
     let categoryId: string;
@@ -273,6 +275,14 @@ describe.each(TEST_MARKETS)(
           clock: new FixedClock(at),
         });
       sweepNow = sweepWith(T0);
+      const fileSweepWith = (at: Temporal.Instant) =>
+        new SweepOrphanImageFiles(gate, {
+          unitOfWork: persistence.unitOfWork,
+          images,
+          objectStore: store,
+          clock: new FixedClock(at),
+        });
+      sweepFiles = fileSweepWith(T0.add({ hours: 24 * 30 }));
       sweepLater = sweepWith(T0.add({ hours: 24 * 30 }));
     });
     beforeEach(() => {
@@ -869,6 +879,53 @@ describe.each(TEST_MARKETS)(
           reasonCode: 'other',
         });
         await sweepLater.execute(systemContext(), {});
+        expect((await stateOf(view.imageId))?.state).toBe('taken-down');
+      });
+    });
+    describe('the orphan file sweep', () => {
+      it('removes old photo files that no row names and leaves everything else', async () => {
+        const product = await draftedProduct();
+        const real = await uploaded(product.state.id);
+        const stray = `${product.state.id}/${uuid7()}/medium`;
+        const unknownProduct = `${uuid7()}/${uuid7()}/medium`;
+        const young = `${product.state.id}/${uuid7()}/thumb`;
+        const unrelated = `certification/${uuid7()}/${uuid7()}`;
+        await store.put(stray, Buffer.from('x'));
+        await store.put(unknownProduct, Buffer.from('x'));
+        await store.put(unrelated, Buffer.from('x'));
+        store.now = () => T0.add({ hours: 24 * 30 });
+        await store.put(young, Buffer.from('x'));
+        store.now = () => Temporal.Instant.fromEpochMilliseconds(1_000);
+
+        // The store dates every file from the epoch, so the strays are older than the grace
+        // period; the file written 30 days on is not.
+        const swept = await sweepFiles.execute(systemContext(), {});
+        expect(swept.ok).toBe(true);
+        expect(await store.get(stray)).toBeNull();
+        // A file whose product is in no Market row is not this Market's to delete.
+        expect(await store.get(unknownProduct)).not.toBeNull();
+        expect(await store.get(unrelated)).not.toBeNull();
+        expect(await store.get(young)).not.toBeNull();
+        expect(objectsOf(real.imageId)).toHaveLength(3);
+
+        const again = await sweepFiles.execute(systemContext(), {});
+        expect(again.ok && again.value.deleted).toBe(0);
+        const asAdmin = await sweepFiles.execute(adminContext(), {});
+        expect(!asAdmin.ok && asAdmin.error.code).toBe('access.denied');
+      });
+
+      it('leaves a taken-down photo as the takedown left it', async () => {
+        const product = await draftedProduct();
+        const view = await uploaded(product.state.id);
+        await takeDown.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: view.imageId,
+          reasonCode: 'other',
+        });
+        const before = objectsOf(view.imageId);
+        await sweepFiles.execute(systemContext(), {});
+        // Whatever the takedown left, the file sweep neither adds to it nor removes more.
+        expect(objectsOf(view.imageId)).toEqual(before);
         expect((await stateOf(view.imageId))?.state).toBe('taken-down');
       });
     });
