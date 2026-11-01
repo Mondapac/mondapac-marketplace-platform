@@ -1,0 +1,37 @@
+// The settings module's tables (admin-editable Market settings, ADR-0026). Every model is named
+// Settings<Name> and mapped to its table with @@map. The CHECKs, the triggers and the grants are
+// hand-written in the migration.
+
+/// The current value of one setting in one Market. A missing row means the setting's default.
+model SettingsMarketSetting {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  /// The setting's code, declared in code (domain/definitions.ts), e.g. "list-paging".
+  code               String
+  value              String
+  /// 1 for the first admin change, +1 for each later one. A stale edit is refused.
+  version            Int
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@id([marketId, code])
+  @@map("market_settings")
+  @@schema("settings")
+}
+
+/// One row per change, insert-only: the history of a setting (who, when, before, after).
+model SettingsMarketSettingHistory {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  code               String
+  version            Int
+  /// The value before this change; null when the default was in force.
+  previousValue      String?  @map("previous_value")
+  value              String
+  changedAt          DateTime @map("changed_at") @db.Timestamptz(6)
+  changedByAccountId String   @map("changed_by_account_id") @db.Uuid
+
+  @@id([marketId, code, version])
+  @@map("market_setting_history")
+  @@schema("settings")
+}
