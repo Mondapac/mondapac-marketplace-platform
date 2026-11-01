@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useReportWebVitals } from 'next/web-vitals';
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { reportedPath } from './page-path.ts';
+import { reportedPath, reportedReferrer, reportedTitle } from './page-path.ts';
 
 // Google Analytics 4 with Consent Mode v2, basic mode (SEO package 7): the Google tag is not
 // loaded at all until the buyer accepts analytics, so nothing is sent before a choice. Ads are
@@ -44,8 +44,18 @@ function location(pathname: string, search: string): Record<string, string> {
 function PageEvents() {
   const pathname = usePathname();
   const search = useSearchParams().toString();
+  // Where the buyer came from, as reported: the first page view reads document.referrer, later ones
+  // the previous reported page. gtag would otherwise send the raw referrer, query string included.
+  const previous = useRef<string | null>(null);
   useEffect(() => {
-    gtag('event', 'page_view', { ...location(pathname, search), page_title: document.title });
+    const where = location(pathname, search);
+    gtag('event', 'page_view', {
+      ...where,
+      page_title: reportedTitle(pathname, document.title),
+      page_referrer:
+        previous.current ?? reportedReferrer(document.referrer, window.location.origin),
+    });
+    previous.current = where.page_location ?? null;
   }, [pathname, search]);
   const here = useRef({ pathname, search });
   here.current = { pathname, search };

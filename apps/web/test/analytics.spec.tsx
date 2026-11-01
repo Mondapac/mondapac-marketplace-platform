@@ -3,7 +3,7 @@ import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Ga4, GA4_SCRIPT_ID } from '../src/analytics/ga4.tsx';
 import { ga4IdFor, parseGa4Ids } from '../src/analytics/ga4-config.ts';
-import { reportedPath } from '../src/analytics/page-path.ts';
+import { reportedPath, reportedReferrer, reportedTitle } from '../src/analytics/page-path.ts';
 import { nonceOf } from '../src/security/nonce.ts';
 import { storefrontCsp } from '../src/security/storefront-csp.ts';
 
@@ -198,6 +198,41 @@ describe('GA4 tag', () => {
       '/cart',
     ]);
     expect(JSON.stringify(layer())).not.toMatch(/lamb|email|token|promo/);
+  });
+
+  it('reports no search words in the title or the referrer', () => {
+    document.title = 'Results for “halal lamb” | Mondapac';
+    Object.defineProperty(document, 'referrer', {
+      configurable: true,
+      value: 'https://shop.example/search?q=halal+lamb',
+    });
+    nav.pathname = '/search';
+    nav.search = 'q=halal+lamb';
+    const view = render(<Ga4 id="G-ABC123XYZ9" nonce={null} enabled />);
+    nav.pathname = '/browse';
+    nav.search = '';
+    document.title = 'Browse | Mondapac';
+    view.rerender(<Ga4 id="G-ABC123XYZ9" nonce={null} enabled />);
+    const views = layer()
+      .filter((command) => command[1] === 'page_view')
+      .map((command) => command[2]);
+    expect(views[0]).toMatchObject({
+      page_title: '/search',
+      page_referrer: 'https://shop.example/search',
+    });
+    expect(views[1]).toMatchObject({
+      page_title: 'Browse | Mondapac',
+      page_referrer: 'https://shop.example/search',
+    });
+    expect(JSON.stringify(layer())).not.toMatch(/lamb/i);
+  });
+
+  it('keeps only the origin of a referrer from another site', () => {
+    expect(reportedReferrer('https://www.google.com/search?q=halal', 'https://shop.example')).toBe(
+      'https://www.google.com',
+    );
+    expect(reportedReferrer('', 'https://shop.example')).toBe('');
+    expect(reportedTitle('/account/orders', 'Order 123 for Jo')).toBe('/account/orders');
   });
 
   it('sends LCP, INP and CLS as events, and ignores other metrics', () => {
