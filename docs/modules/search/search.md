@@ -120,3 +120,24 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   re-checked like any other result. Unknown query parameters stay 400.
 - **Known gaps:** the Market-wide fill reads `offer_documents` ordered by name without an index on
   `(market_id, name)`; add one if the read model grows large.
+
+## Rating boost and Top rated (reviews package 5, 1 Nov 2026)
+
+- **Switch:** `search.ratingBoost.enabled` in the Market file, off by default (AU); the reviews
+  switch must also be active. Off: nothing in search changes, `sort=top-rated` answers 400
+  `validation.failed` (`sort`/`unavailable`), and the sync clears the copy.
+- **What it does:** the relevance of a text search is multiplied by a stored factor of the product
+  (`boost_ppm`, 900000 to 1100000, so at most 10 %; the Market's `weightBps` is capped at
+  1000 by the config schema and by a table CHECK). The factor comes from the Bayesian average of the
+  stars (`priorCount` and `priorMeanTimes100` in the Market file), computed in TypeScript
+  (`domain/rating-boost.ts`). A product with no ratings has the prior mean and the neutral factor. The distance from the prior mean is scaled by the room to the nearest end of the scale on
+  that side, so the best possible product gets the full boost and the worst the full penalty in every
+  Market (john, 1 Nov 2026, PR #627 review M-3).
+- **Top rated:** `GET /search/products?sort=top-rated` orders by the stored Bayesian average (products without ratings sit at the prior mean), then by
+  Offer id; needs `q` or `category`, and is refused with `store` or `brand`.
+- **Copy of the totals:** `search.product_ratings` (written only by the job `search.sync-ratings`, hourly
+  and at worker start) holds the star totals read through reviews' public facade
+  `productRatingTotals` (rule system, paged by product id). Search never reads reviews' tables. A
+  source that fails keeps the old copy.
+- **Not built:** a rating shown in the result cards (storefront follow-up); no personalization.
+

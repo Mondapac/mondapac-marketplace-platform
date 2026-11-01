@@ -64,6 +64,7 @@
     "bodyMaxLength": 2000,
     "pageSize": 10,
     "summaryRebuildMinutes": 1440,
+    "maxHelpfulVotesPerAccountPerDay": 200,
     "autoChecks": {
       "blockedTerms": [
         "fuck",
@@ -129,7 +130,13 @@
     }
   },
   "search": {
-    "textSearchConfig": "english"
+    "textSearchConfig": "english",
+    "ratingBoost": {
+      "enabled": false,
+      "weightBps": 1000,
+      "priorCount": 10,
+      "priorMeanTimes100": 400
+    }
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,

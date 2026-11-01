@@ -19,8 +19,11 @@ export {
 } from './permissions';
 export { REVIEWS_STEP_UP_ACTIONS } from './step-up';
 export {
+  MAX_RATING_TOTALS_PAGE,
   REVIEWS_FACADE,
   type ProductRatingSummary,
+  type ProductRatingTotal,
+  type ProductRatingTotalsPage,
   type ReviewsFacade,
   type ReviewsFacadeFailure,
   type SellerRatingSummary,

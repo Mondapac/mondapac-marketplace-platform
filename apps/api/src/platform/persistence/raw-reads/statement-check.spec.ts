@@ -415,6 +415,48 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
     expect(await checkSearch(base('d.category_ids && $2::uuid[]'), [{}])).toEqual([]);
   });
 
+  // Package 5 (reviews): the one multiplication, `ts_rank(...) * COALESCE(<column>, <integer>)`.
+  describe('the rating factor multiplication', () => {
+    const ratedOwner: StatementOwner = {
+      schema: 'search',
+      tables: new Set(['offer_documents', 'product_ratings']),
+    };
+    const checkRated = (order: string): Promise<string[]> =>
+      checkStatement(
+        parseSql,
+        {
+          id: 'search.test',
+          sql: `SELECT d.offer_id FROM "search"."offer_documents" d
+                LEFT JOIN "search"."product_ratings" r ON r.market_id = $1 AND r.product_id = d.product_id
+               WHERE d.market_id = $1 AND d.search_vector @@ ${TSQ}
+               ORDER BY ${order}`,
+          params: [{}, {}],
+        },
+        ratedOwner,
+      );
+    const RANK = `ts_rank(d.search_vector, ${TSQ})`;
+
+    it('passes ts_rank times a column with an integer fallback', async () => {
+      expect(await checkRated(`${RANK} * COALESCE(r.boost_ppm, 1000000) DESC, d.offer_id`)).toEqual(
+        [],
+      );
+    });
+
+    it.each([
+      ['a column times an integer', 'd.offer_id * 2'],
+      ['an integer times ts_rank', `2 * ${RANK}`],
+      ['ts_rank times a bare column', `${RANK} * r.boost_ppm`],
+      ['ts_rank times a parameter', `${RANK} * $3::text::int4`],
+      ['two ranks', `${RANK} * ${RANK}`],
+      ['a fallback that is a column', `${RANK} * COALESCE(r.boost_ppm, r.rating_count)`],
+      ['a fallback that is a function', `${RANK} * COALESCE(r.boost_ppm, length(d.name))`],
+      ['a three-argument COALESCE', `${RANK} * COALESCE(r.boost_ppm, 1, 2)`],
+    ])('refuses %s', async (_name, order) => {
+      expect(await checkRated(order)).toEqual(expect.arrayContaining([expect.stringMatching(/./)]));
+      expect((await checkRated(order)).length).toBeGreaterThan(0);
+    });
+  });
+
   // Hassan's probes (PR review M-1) and the shapes around them: each construct only as used.
   it.each([
     ['@@ against a bare parameter', 'd.search_vector @@ $2', [{}], ['operator-shape:@@']],

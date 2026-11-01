@@ -11,10 +11,19 @@ export class ConfigSearchPolicy implements SearchPolicy {
 
   settings(market: MarketContext): SearchSettings {
     const config = this.markets.get(market.marketId);
+    const boost = config.search?.ratingBoost;
     return {
       textSearchConfig: config.search?.textSearchConfig ?? DEFAULT_TEXT_SEARCH_CONFIG,
       locale: config.defaultLocale,
       currency: config.defaultCurrency,
+      ratingBoost:
+        boost === undefined || !boost.enabled
+          ? null
+          : {
+              weightBps: boost.weightBps,
+              priorCount: boost.priorCount,
+              priorMeanTimes100: boost.priorMeanTimes100,
+            },
     };
   }
 }

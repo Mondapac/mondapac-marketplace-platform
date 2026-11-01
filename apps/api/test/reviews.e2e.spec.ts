@@ -50,6 +50,7 @@ it('maps every refusal code of the reviews routes to its exact status', () => {
     'validation.failed': 400,
     'reviews.not-eligible': 403,
     'reviews.own-store': 403,
+    'reviews.own-review': 403,
     'reviews.disabled': 404,
     'reviews.not-found': 404,
     'reviews.window-closed': 409,

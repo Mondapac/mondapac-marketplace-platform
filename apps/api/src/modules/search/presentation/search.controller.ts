@@ -16,7 +16,7 @@ import type { SearchProductsRequest } from '../domain/search-query';
 import { SearchProducts } from '../application/use-cases/search-products.use-case';
 import { ProductSearchPageBody } from './search.dto';
 
-const ALLOWED = ['q', 'category', 'store', 'brand', 'page', 'pageSize'] as const;
+const ALLOWED = ['q', 'category', 'store', 'brand', 'sort', 'page', 'pageSize'] as const;
 const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
 
 const fail = (status: number, code: string, details?: object): HttpException =>
@@ -59,6 +59,7 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
     category: text('category'),
     store: text('store'),
     brand: text('brand'),
+    sort: text('sort'),
     page: whole('page'),
     pageSize: whole('pageSize'),
   };
@@ -104,6 +105,17 @@ export class SearchController {
       'A brand address (slug), at most 80 characters. Lists the Offers of that brand by name ' +
       '(up to its first 1000 live products); not with `q` or `store`; may combine with ' +
       '`category`. An unknown, draft or archived brand answers an empty page.',
+  })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['relevance', 'top-rated'],
+    description:
+      '`relevance` (default). `top-rated` orders by the Bayesian average of the product stars, ' +
+      'then by relevance; it exists only while the Market has the search rating boost on ' +
+      '(`search.ratingBoost`, off by default) and is `validation.failed` otherwise. Not with ' +
+      '`store` or `brand`. While the boost is on, `relevance` is also nudged by the ratings, ' +
+      'by 10 % at most.',
   })
   @ApiQuery({ name: 'page', required: false, description: '1 to 100, default 1.' })
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 48, default 24.' })

@@ -23,7 +23,9 @@ import { REVIEW_REPOSITORY } from './application/ports/review.repository';
 import { REVIEWER_NAMES } from './application/ports/reviewer-names';
 import { REVIEWS_POLICY } from './application/ports/reviews-policy';
 import { SELLER_AFFINITY } from './application/ports/seller-affinity';
+import { SELLER_OVERLAP_SOURCE } from './application/ports/seller-overlap';
 import type { ReviewsDependencies } from './application/reviews-dependencies';
+import { CastHelpfulVote } from './application/use-cases/cast-helpful-vote.use-case';
 import { ListModerationQueue } from './application/use-cases/list-moderation-queue.use-case';
 import { ModerateReview } from './application/use-cases/moderate-review.use-case';
 import { RemoveReview } from './application/use-cases/remove-review.use-case';
@@ -32,10 +34,12 @@ import { DeleteProductReview } from './application/use-cases/delete-product-revi
 import { DetachAuthor } from './application/use-cases/detach-author.use-case';
 import { EditProductReview } from './application/use-cases/edit-product-review.use-case';
 import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case';
+import { ListProductRatingTotals } from './application/use-cases/list-product-rating-totals.use-case';
 import { ListProductReviews } from './application/use-cases/list-product-reviews.use-case';
 import { ListToReview } from './application/use-cases/list-to-review.use-case';
 import { RateSellerOrder } from './application/use-cases/rate-seller-order.use-case';
 import { RebuildRatingSummaries } from './application/use-cases/rebuild-rating-summaries.use-case';
+import { RemoveHelpfulVote } from './application/use-cases/remove-helpful-vote.use-case';
 import { SetReviewsStatus } from './application/use-cases/set-reviews-status.use-case';
 import { SubmitProductReview } from './application/use-cases/submit-product-review.use-case';
 import { ViewProductSummary } from './application/use-cases/view-product-summary.use-case';
@@ -68,6 +72,7 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
   ['catalog', CATALOG_FACADE],
   ['names', REVIEWER_NAMES],
   ['affinity', SELLER_AFFINITY],
+  ['overlap', SELLER_OVERLAP_SOURCE],
   ['audit', AUDIT_WRITER],
   ['stepUp', STEP_UP_CONSUMER],
   ['ids', ID_GENERATOR],
@@ -136,12 +141,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RemoveReview,
       RebuildRatingSummaries,
       DetachAuthor,
+      CastHelpfulVote,
+      RemoveHelpfulVote,
+      ListProductRatingTotals,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: REVIEWS_FACADE,
-      inject: [ViewProductSummary, ViewSellerSummary, DetachAuthor],
-      useFactory: (product: ViewProductSummary, seller: ViewSellerSummary, detach: DetachAuthor) =>
-        new ReviewsFacadeImplementation(product, seller, detach),
+      inject: [ViewProductSummary, ViewSellerSummary, DetachAuthor, ListProductRatingTotals],
+      useFactory: (
+        product: ViewProductSummary,
+        seller: ViewSellerSummary,
+        detach: DetachAuthor,
+        totals: ListProductRatingTotals,
+      ) => new ReviewsFacadeImplementation(product, seller, detach, totals),
     },
     registerJobsFrom(
       'reviews',

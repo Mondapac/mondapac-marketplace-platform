@@ -169,6 +169,16 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
   document in the asked category or any live subcategory; their `categoryIds` cap goes from 1 to
   1000 (`MAX_FILTER_CATEGORIES`, the list check's largest cap). The ids come from catalog's public
   category tree, never from the visitor.
+- Amended 2026-11-01 (reviews package 5, rating boost; review by the agents Opus, Hassan and Mojtaba
+  recorded on the PR): the parse check gains `*` in the one shape
+  `ts_rank(...) * COALESCE(<column>, <integer constant>)`, so the ranked search can multiply the text
+  rank by the stored rating factor of the product (at most 10 % either way, held by a table CHECK). The
+  factor is computed in TypeScript and stored (`search.product_ratings.boost_ppm`); the statement does
+  no other arithmetic. Any other `*` is refused. The new statements are
+  `search.offer-search-rated`, `search.offer-search-in-category-rated` and
+  `search.offer-browse-top-rated`; each joins `search.product_ratings` with `market_id = $1` and a
+  bound Market, and numbers still travel as text with `::text::int4` casts. The three run only while
+  the Market's separate rating-boost switch is on (off by default).
 
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is

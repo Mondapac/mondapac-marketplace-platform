@@ -11,6 +11,8 @@ export interface ReviewsSettings {
   readonly sellerRatingMinCount: number;
   /** Product reviews plus seller ratings one account may write in 24 hours. */
   readonly maxSubmissionsPerAccountPerDay: number;
+  /** Helpful votes one account may cast in 24 hours. */
+  readonly maxHelpfulVotesPerAccountPerDay: number;
   readonly titleMaxLength: number;
   readonly bodyMaxLength: number;
   /** Reviews per public page. */

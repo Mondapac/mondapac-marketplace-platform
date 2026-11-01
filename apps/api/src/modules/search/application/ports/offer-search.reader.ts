@@ -1,5 +1,7 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { OfferHit } from '../../domain/offer-document';
+import type { RatingBoostSettings } from '../../domain/rating-boost';
+import type { SearchSort } from '../../domain/search-query';
 
 export interface OfferSearchRequest {
   /** The Market's text search configuration. */
@@ -13,6 +15,13 @@ export interface OfferSearchRequest {
   readonly categoryIds: readonly Id<'Category'>[] | null;
   readonly limit: number;
   readonly offset: number;
+  /**
+   * The Market's rating boost while its switch is on. Present: the text search multiplies the
+   * relevance by the stored rating factor of the product. Absent: relevance alone, as before.
+   */
+  readonly ratingBoost?: RatingBoostSettings;
+  /** `top-rated` orders by the stored Bayesian average (needs `ratingBoost`); absent is relevance. */
+  readonly sort?: SearchSort;
 }
 
 /**

@@ -160,7 +160,7 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
   });
 
   it.each([
-    ['an unknown parameter', '?q=tea&sort=price', 'sort'],
+    ['an unknown parameter', '?q=tea&order=price', 'order'],
     ['a repeated q', '?q=tea&q=coffee', 'q'],
     ['a bracketed q', '?q[a]=1', 'q[a]'],
     ['a non-numeric page', '?q=tea&page=two', 'page'],

@@ -14,15 +14,20 @@ import type {
   QueueCursor,
   QueueRow,
   NewSignal,
+  ProductRatingTotal,
   ProductReviewRecord,
+  PublishedReviewRef,
   ReviewCursor,
   ReviewRepository,
+  ReviewSort,
   SellerRatingRecord,
   StoredSellerSummary,
   StoredStarSummary,
 } from '../../src/modules/reviews/application/ports/review.repository';
 import type { ReviewerNames } from '../../src/modules/reviews/application/ports/reviewer-names';
 import type { SellerAffinity } from '../../src/modules/reviews/application/ports/seller-affinity';
+import type { SellerOverlapSource } from '../../src/modules/reviews/application/ports/seller-overlap';
+import type { OverlapAnswers } from '../../src/modules/reviews/domain/seller-overlap';
 import type { QueueTab } from '../../src/modules/reviews/domain/moderation';
 import { isPublic } from '../../src/modules/reviews/domain/rules';
 import {
@@ -127,31 +132,46 @@ export class MemoryReviews implements ReviewRepository {
       ),
     );
   }
+  /** Helpful votes by review id: the accounts that voted, with when. */
+  readonly votes = new Map<string, Map<string, Temporal.Instant>>();
+  helpfulCountOf(reviewId: string): number {
+    return this.votes.get(reviewId)?.size ?? 0;
+  }
   listPublishedProductReviews(
     _m: MarketContext,
     productId: Id<'Product'>,
-    query: { stars: number | null; after: ReviewCursor | null; limit: number },
+    query: { sort: ReviewSort; stars: number | null; after: ReviewCursor | null; limit: number },
   ) {
+    const published = (r: ProductReviewRecord) => r.publishedAt!.epochMilliseconds;
+    const votes = (r: ProductReviewRecord) => this.helpfulCountOf(r.id);
+    const order = (a: ProductReviewRecord, b: ProductReviewRecord) =>
+      (query.sort === 'helpful' ? votes(b) - votes(a) : 0) ||
+      published(b) - published(a) ||
+      (a.id < b.id ? 1 : -1);
     const rows = [...this.productReviews.values()]
       .filter((r) => r.productId === productId && isPublic(r.status) && r.publishedAt !== null)
       .filter((r) => query.stars === null || r.rating === query.stars)
-      .sort(
-        (a, b) =>
-          b.publishedAt!.epochMilliseconds - a.publishedAt!.epochMilliseconds ||
-          (a.id < b.id ? 1 : -1),
-      );
+      .sort(order);
     const after = query.after;
     const rest =
       after === null
         ? rows
-        : rows.filter(
-            (r) =>
-              r.publishedAt!.epochMilliseconds < after.publishedAt.epochMilliseconds ||
-              (r.publishedAt!.epochMilliseconds === after.publishedAt.epochMilliseconds &&
-                r.id < after.id),
-          );
+        : rows.filter((r) => {
+            // Strictly after the cursor row in the sort order.
+            if (query.sort === 'helpful' && votes(r) !== after.helpfulCount) {
+              return votes(r) < after.helpfulCount;
+            }
+            return (
+              published(r) < after.publishedAt.epochMilliseconds ||
+              (published(r) === after.publishedAt.epochMilliseconds && r.id < after.id)
+            );
+          });
     return Promise.resolve(
-      rest.slice(0, query.limit).map((r) => ({ ...r, publicId: this.publicIdOf(r.id) })),
+      rest.slice(0, query.limit).map((r) => ({
+        ...r,
+        publicId: this.publicIdOf(r.id),
+        helpfulCount: this.helpfulCountOf(r.id),
+      })),
     );
   }
   /** A random version 4 id per review, as the database default makes it. */
@@ -171,8 +191,66 @@ export class MemoryReviews implements ReviewRepository {
     return Promise.resolve(
       found === undefined || found.publishedAt === null
         ? null
-        : { publishedAt: found.publishedAt, id: found.id },
+        : {
+            publishedAt: found.publishedAt,
+            id: found.id,
+            helpfulCount: this.helpfulCountOf(found.id),
+          },
     );
+  }
+  findPublishedByPublicId(_m: MarketContext, publicId: string): Promise<PublishedReviewRef | null> {
+    const found = [...this.productReviews.values()].find(
+      (r) => this.publicIdOf(r.id) === publicId && isPublic(r.status),
+    );
+    return Promise.resolve(
+      found === undefined
+        ? null
+        : {
+            id: found.id,
+            productId: found.productId,
+            sellerId: found.sellerId,
+            accountId: found.accountId,
+            helpfulCount: this.helpfulCountOf(found.id),
+          },
+    );
+  }
+  insertHelpfulVote(
+    _m: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    accountId: Id<'Account'>,
+    at: Temporal.Instant,
+  ) {
+    const voters = this.votes.get(reviewId) ?? new Map<string, Temporal.Instant>();
+    if (voters.has(accountId)) return Promise.resolve(false);
+    voters.set(accountId, at);
+    this.votes.set(reviewId, voters);
+    return Promise.resolve(true);
+  }
+  deleteHelpfulVote(_m: MarketContext, reviewId: Id<'ProductReview'>, accountId: Id<'Account'>) {
+    return Promise.resolve(this.votes.get(reviewId)?.delete(accountId) ?? false);
+  }
+  readHelpfulCount(_m: MarketContext, reviewId: Id<'ProductReview'>) {
+    return Promise.resolve(this.helpfulCountOf(reviewId));
+  }
+  countHelpfulVotesSince(_m: MarketContext, accountId: Id<'Account'>, since: Temporal.Instant) {
+    let count = 0;
+    for (const voters of this.votes.values()) {
+      const at = voters.get(accountId);
+      if (at !== undefined && Temporal.Instant.compare(at, since) >= 0) count += 1;
+    }
+    return Promise.resolve(count);
+  }
+  listProductRatingTotals(_m: MarketContext, after: Id<'Product'> | null, limit: number) {
+    const totals: ProductRatingTotal[] = [...this.productSummaries]
+      .filter(([, summary]) => summary.count > 0)
+      .map(([productId, summary]) => ({
+        productId: productId as Id<'Product'>,
+        count: summary.count,
+        sum: summary.sum,
+      }))
+      .filter((total) => after === null || total.productId > after)
+      .sort((a, b) => (a.productId < b.productId ? -1 : 1));
+    return Promise.resolve(totals.slice(0, limit));
   }
   insertSellerRatingIfAbsent(_m: MarketContext, record: SellerRatingRecord) {
     if ([...this.sellerRatings.values()].some((r) => r.sellerOrderId === record.sellerOrderId)) {
@@ -386,6 +464,7 @@ export class MemoryReviews implements ReviewRepository {
     });
   }
   detachAccount(_m: MarketContext, accountId: Id<'Account'>) {
+    for (const voters of this.votes.values()) voters.delete(accountId);
     let reviews = 0;
     let ratings = 0;
     for (const [key, r] of this.productReviews) {
@@ -493,6 +572,19 @@ export class FakeAffinity implements SellerAffinity {
   readonly tied = new Set<string>();
   isTiedToSeller(_context: CallContext, accountId: Id<'Account'>, sellerId: Id<'Seller'>) {
     return Promise.resolve(this.tied.has(`${accountId}:${sellerId}`));
+  }
+}
+
+/** The overlap facts per seller order (mock data); nothing registered means "cannot say". */
+export class FakeOverlap implements SellerOverlapSource {
+  readonly bySellerOrder = new Map<string, OverlapAnswers>();
+  failing = false;
+  answersFor(
+    _context: CallContext,
+    request: { readonly sellerOrderId: Id<'SellerOrder'> },
+  ): Promise<OverlapAnswers | null> {
+    if (this.failing) return Promise.reject(new Error('overlap source down'));
+    return Promise.resolve(this.bySellerOrder.get(request.sellerOrderId) ?? null);
   }
 }
 
