@@ -13,6 +13,8 @@ import { SetPromotionsStatus } from '../../src/modules/promotions/application/us
 import { ViewBatchCodeSummary } from '../../src/modules/promotions/application/use-cases/view-batch-code-summary.use-case';
 import { ConfigPromotionsPolicy } from '../../src/modules/promotions/infrastructure/config-promotions-policy';
 import { CryptoBatchCodeCrypto } from '../../src/modules/promotions/infrastructure/crypto-batch-code-crypto';
+import { PrismaCreditRepository } from '../../src/modules/promotions/infrastructure/prisma-credit.repository';
+import { PrismaReferralRepository } from '../../src/modules/promotions/infrastructure/prisma-referral.repository';
 import { PrismaBatchCodeRepository } from '../../src/modules/promotions/infrastructure/prisma-batch-code.repository';
 import { PrismaMarketSettingRepository } from '../../src/modules/promotions/infrastructure/prisma-market-setting.repository';
 import { PrismaOptInRepository } from '../../src/modules/promotions/infrastructure/prisma-opt-in.repository';
@@ -31,6 +33,7 @@ import {
   FakePriceHistory,
   FakeSellerActivity,
   FakeStepUp,
+  phase3Fakes,
 } from '../support/promotions-fakes';
 import {
   TEST_CODE_PEPPER,
@@ -105,6 +108,9 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
       flashSales: new FakeFlashSales(),
       sellerActivity: new FakeSellerActivity(),
       priceHistory: new FakePriceHistory(),
+      ...phase3Fakes(),
+      credits: new PrismaCreditRepository(db.service),
+      referrals: new PrismaReferralRepository(db.service),
       stepUp,
       audit: { record: () => Promise.resolve() },
       ids,

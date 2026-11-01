@@ -1,35 +1,79 @@
-import { Figtree, Noto_Sans_Arabic, Plus_Jakarta_Sans, Vazirmatn } from 'next/font/google';
+import localFont from 'next/font/local';
 
-// Self-hosted at build by next/font: the browser never contacts Google for a font, so no visitor
-// IP goes there before consent and a blocked Google Fonts cannot change the layout.
+// Self-hosted: the woff2 files live in the repo (./font-files, SIL Open Font License, licence text
+// next to them), so `next build` never needs the internet and the browser never contacts Google
+// for a font (no visitor IP goes there before consent; a blocked Google Fonts cannot change layout).
 // The CSS stacks (app/globals.css) use the variables; Figtree and Plus Jakarta Sans stay first, so
 // Latin digits and brand text keep the brand look in every language.
-const figtree = Figtree({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+const figtree = localFont({
+  src: [
+    { path: './font-files/figtree-latin-400-normal.woff2', weight: '400', style: 'normal' },
+    { path: './font-files/figtree-latin-500-normal.woff2', weight: '500', style: 'normal' },
+    { path: './font-files/figtree-latin-600-normal.woff2', weight: '600', style: 'normal' },
+    { path: './font-files/figtree-latin-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-figtree',
 });
 
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['600', '700', '800'],
+const jakarta = localFont({
+  src: [
+    {
+      path: './font-files/plus-jakarta-sans-latin-600-normal.woff2',
+      weight: '600',
+      style: 'normal',
+    },
+    {
+      path: './font-files/plus-jakarta-sans-latin-700-normal.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: './font-files/plus-jakarta-sans-latin-800-normal.woff2',
+      weight: '800',
+      style: 'normal',
+    },
+  ],
   display: 'swap',
   variable: '--font-jakarta',
 });
 
 // Script fonts are not preloaded: only a page in that language uses them.
-const vazirmatn = Vazirmatn({
-  subsets: ['arabic'],
-  weight: ['400', '500', '600', '700'],
+const vazirmatn = localFont({
+  src: [
+    { path: './font-files/vazirmatn-arabic-400-normal.woff2', weight: '400', style: 'normal' },
+    { path: './font-files/vazirmatn-arabic-500-normal.woff2', weight: '500', style: 'normal' },
+    { path: './font-files/vazirmatn-arabic-600-normal.woff2', weight: '600', style: 'normal' },
+    { path: './font-files/vazirmatn-arabic-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   preload: false,
   variable: '--font-vazirmatn',
 });
 
-const notoArabic = Noto_Sans_Arabic({
-  subsets: ['arabic'],
-  weight: ['400', '500', '600', '700'],
+const notoArabic = localFont({
+  src: [
+    {
+      path: './font-files/noto-sans-arabic-arabic-400-normal.woff2',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: './font-files/noto-sans-arabic-arabic-500-normal.woff2',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: './font-files/noto-sans-arabic-arabic-600-normal.woff2',
+      weight: '600',
+      style: 'normal',
+    },
+    {
+      path: './font-files/noto-sans-arabic-arabic-700-normal.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
   display: 'swap',
   preload: false,
   variable: '--font-noto-arabic',

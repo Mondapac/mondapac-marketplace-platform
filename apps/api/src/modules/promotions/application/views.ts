@@ -7,6 +7,7 @@ import type {
   PromotionRecord,
   PromotionStatus,
   CreatableType,
+  SegmentKind,
   TierDraft,
 } from '../domain/promotion';
 import type { UsageRecord } from './ports/promotion.repository';
@@ -43,6 +44,13 @@ interface Common {
   readonly maxRepeatsPerOrder: number | null;
   /** FLASH_SALE: the limit of units and the zone the window was written in. */
   readonly flash: { readonly unitLimit: number; readonly timeZone: string } | null;
+  /** CUSTOMER_GROUP: the segment (DELIVERY_ZONE uses `zones`). */
+  readonly segment: {
+    readonly kind: SegmentKind;
+    readonly minDaysSinceLastOrder: number | null;
+  } | null;
+  /** REFERRAL: the credit of the new customer (`reward.amount` is the referrer's). */
+  readonly refereeRewardMinor: bigint | null;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
 }
@@ -112,6 +120,11 @@ function common(record: PromotionRecord): Common {
       record.flashUnitLimit === null || record.flashTimeZone === null
         ? null
         : { unitLimit: record.flashUnitLimit, timeZone: record.flashTimeZone },
+    segment:
+      record.segmentKind === null
+        ? null
+        : { kind: record.segmentKind, minDaysSinceLastOrder: record.segmentMinDays },
+    refereeRewardMinor: record.refereeRewardMinor,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
