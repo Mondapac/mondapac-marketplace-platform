@@ -617,6 +617,7 @@
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
   { "name": "sellers.selling-eligibility-system", "rule": "system" },
+  { "name": "sellers.sweep-orphan-store-image-files", "rule": "system" },
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },
