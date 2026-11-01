@@ -1,9 +1,11 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import { ok } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SHIPPING_DELIVERY_SETTINGS_MANAGE } from '../../contracts/permissions';
 import {
+  DELIVERY_SETTINGS_CHANGES,
   setDeliverySettings,
-  type DeliverySettingsView,
+  type DeliverySettingsPage,
   type DeliverySettingsFailure,
 } from '../delivery-settings-flow';
 import type { ShippingDependencies } from '../shipping-dependencies';
@@ -11,7 +13,7 @@ import type { ShippingDependencies } from '../shipping-dependencies';
 /** `shipping.set-delivery-settings`: an admin saves the delivery settings of the Market (protected key; audited). */
 export class SetDeliverySettings extends UseCase<
   unknown,
-  DeliverySettingsView,
+  DeliverySettingsPage,
   DeliverySettingsFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -26,7 +28,18 @@ export class SetDeliverySettings extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext, input: unknown) {
-    return setDeliverySettings(this.deps, context, input);
+  protected async handle(
+    context: CallContext,
+    input: unknown,
+  ): Promise<Result<DeliverySettingsPage, DeliverySettingsFailure>> {
+    const result = await setDeliverySettings(this.deps, context, input);
+    if (!result.ok) {
+      // On a conflict the winning save is named.
+      return this.deps.trail.namingTheWinner(context, DELIVERY_SETTINGS_CHANGES, result, [
+        'shipping.delivery-settings-conflict',
+      ]);
+    }
+    const lastChanged = await this.deps.trail.lastChanged(context, DELIVERY_SETTINGS_CHANGES);
+    return ok({ ...result.value, lastChanged });
   }
 }

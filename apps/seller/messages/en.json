@@ -1882,7 +1882,7 @@
         "length": "Use at most {max} characters.",
         "characters": "This text has characters that are not allowed.",
         "url": "Remove web addresses and links, or add a space after a full stop. Buyers contact you through the platform.",
-        "claim-term": "This text claims a certification. Remove that wording. Certificates are shown as verified badges after our team checks them.",
+        "claim-term": "This text claims a certification. Remove that wording.",
         "invalid": "This text is not valid."
       }
     },

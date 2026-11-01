@@ -1,3 +1,4 @@
+import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import {
@@ -149,6 +150,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       limits,
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      trail: unusedChangeTrail,
     };
   });
 

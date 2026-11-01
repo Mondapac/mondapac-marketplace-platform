@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
+import { lastChangedBody } from '../../../platform/audit/change-trail';
 import { ROUNDING_STEPS } from '../domain/delivery-margin';
 import {
   formatCutoff,
@@ -8,7 +10,7 @@ import {
   MIN_WINDOW_MINUTES,
   WINDOW_STEP_MINUTES,
 } from '../domain/delivery-settings';
-import type { DeliverySettingsView } from '../application/use-cases/view-delivery-settings.use-case';
+import type { DeliverySettingsPage } from '../application/use-cases/view-delivery-settings.use-case';
 import type { SellerDeliveryMethodsView } from '../application/use-cases/view-seller-delivery-methods.use-case';
 
 // Bodies of the delivery-settings routes (delivery models, package 4). Whole numbers, flags and
@@ -75,9 +77,15 @@ export class DeliverySettingsBody {
   @ApiProperty({ description: 'The Market IANA zone: the fallback for a seller without one.' })
   marketZone!: string;
   @ApiProperty({ enum: [...ROUNDING_STEPS], isArray: true }) roundingSteps!: number[];
+  @ApiProperty({
+    type: LastChangedDto,
+    nullable: true,
+    description: 'Who changed this page last and when; null while nothing was ever changed.',
+  })
+  lastChanged!: LastChangedDto | null;
 }
 
-export function settingsBody(view: DeliverySettingsView) {
+export function settingsBody(view: DeliverySettingsPage) {
   const { settings } = view;
   const { margin } = settings;
   return {
@@ -96,6 +104,7 @@ export function settingsBody(view: DeliverySettingsView) {
     currency: view.currency,
     marketZone: view.marketZone,
     roundingSteps: [...ROUNDING_STEPS],
+    lastChanged: lastChangedBody(view.lastChanged),
   };
 }
 

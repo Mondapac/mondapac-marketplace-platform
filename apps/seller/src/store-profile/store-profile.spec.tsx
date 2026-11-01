@@ -10,6 +10,7 @@ vi.mock('../catalog/photo-prepare.ts', () => ({ preparePhoto: vi.fn() }));
 
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { preparePhoto } from '../catalog/photo-prepare.ts';
+import { claimsCertification } from './claim-terms.ts';
 import { aboutProblemOf, imageProblemOf } from './errors.ts';
 import { StoreProfile } from './store-profile.tsx';
 import type { StoreProfileView } from './types.ts';
@@ -41,8 +42,12 @@ const failure = (over: Partial<ApiFailure>): { ok: false; failure: ApiFailure } 
 });
 const done = (body: StoreProfileView) => ({ ok: true as const, status: 200, body });
 
-const mount = (initial = view(), canEdit = true) =>
-  render(wrap(<StoreProfile initial={initial} csrfToken="csrf" canEdit={canEdit} />));
+const mount = (initial = view(), canEdit = true, claimTerms: readonly string[] = []) =>
+  render(
+    wrap(
+      <StoreProfile initial={initial} csrfToken="csrf" canEdit={canEdit} claimTerms={claimTerms} />,
+    ),
+  );
 const box = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: /About your store/ });
 const save = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' });
 
@@ -56,6 +61,76 @@ const compared = (label: string | RegExp) => {
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
+
+describe('claim wording, read live from the API terms', () => {
+  it('finds a term as whole tokens in a row, in any case, width or spacing', () => {
+    const terms = ['halal', 'halal certified'];
+    expect(claimsCertification('We are HALAL', terms)).toBe(true);
+    expect(claimsCertification('Ｈａｌａｌ meat', terms)).toBe(true);
+    expect(claimsCertification('100% halal-certified!', ['halal certified'])).toBe(true);
+    expect(claimsCertification('halalish', terms)).toBe(false);
+    expect(claimsCertification('certified and then halal', ['halal certified'])).toBe(false);
+    expect(claimsCertification('anything', [])).toBe(false);
+    expect(claimsCertification('', terms)).toBe(false);
+  });
+});
+
+describe('StoreProfile live About checks', () => {
+  const terms = ['halal certified'];
+
+  it('shows the certification error while typing, counts it and keeps Save off', () => {
+    mount(view(), true, terms);
+    fireEvent.change(box(), { target: { value: 'Family bakery, Halal Certified.' } });
+
+    // Under the field and in the summary banner.
+    expect(
+      screen.getAllByText(/This text claims a certification\. Remove that wording\./),
+    ).toHaveLength(2);
+    expect(box().getAttribute('aria-invalid')).toBe('true');
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('1 unsaved change');
+    expect(bar.textContent).toContain('1 needs fixing');
+    expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+    expect(save().disabled).toBe(true);
+    expect(call).not.toHaveBeenCalled();
+
+    fireEvent.change(box(), { target: { value: 'Family bakery, open daily.' } });
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(save().disabled).toBe(false);
+  });
+
+  it('shows the length error while typing and clears it when the text is short enough again', () => {
+    mount(view({ aboutMaxLength: 10 }), true, terms);
+    fireEvent.change(box(), { target: { value: 'x'.repeat(11) } });
+    expect(save().disabled).toBe(true);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    fireEvent.change(box(), { target: { value: 'x'.repeat(10) } });
+    expect(save().disabled).toBe(false);
+  });
+
+  it('does not warn on a saved text that is fine, and warns nothing without terms', () => {
+    mount(view(), true, []);
+    fireEvent.change(box(), { target: { value: 'Halal Certified bakery' } });
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
+    expect(save().disabled).toBe(false);
+  });
+
+  it('still shows the server refusal of a claim the live check could not see', async () => {
+    mount(view(), true, terms);
+    fireEvent.change(box(), { target: { value: 'Pure h a l a l bakery' } });
+    call.mockResolvedValueOnce(
+      failure({
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'about.en-AU', code: 'claim-term' }] },
+      }),
+    );
+    fireEvent.click(save());
+    await screen.findAllByText(/This text claims a certification/);
+    expect(save().disabled).toBe(true);
+  });
+});
 
 describe('StoreProfile About card', () => {
   it('shows the saved text and a counter, and the save bar only once something changed', () => {
@@ -124,6 +199,7 @@ describe('StoreProfile About card', () => {
     // The error summary at the top links to the box.
     const summary = screen.getByRole('alert');
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain(': Use at most 10 characters.');
     fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));
     expect(document.activeElement).toBe(box());
     expect(box().getAttribute('aria-invalid')).toBe('true');
@@ -142,7 +218,7 @@ describe('StoreProfile About card', () => {
     fireEvent.change(box(), { target: { value: 'We are certified bakers' } });
     fireEvent.click(save());
 
-    await screen.findByText(/This text claims a certification/);
+    await screen.findAllByText(/This text claims a certification/);
     // One announcement of the failure: the field's own alert, with no second banner above it.
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(box().getAttribute('aria-invalid')).toBe('true');

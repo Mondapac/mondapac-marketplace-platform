@@ -93,6 +93,21 @@ export interface TeamMemberLabel {
   } | null;
 }
 
+/**
+ * One account of {@link IdentityFacade.changeActors}: who made a change, as the asking side may
+ * see it. PERSONAL DATA for the actor who asked: no module logs it or puts it in an event, an
+ * audit row, a cache, an outbox or an error body; rendered as escaped text only.
+ */
+export interface ChangeActorLabel {
+  readonly accountId: Id<'Account'>;
+  /**
+   * `member`: a person of the asker's own side, named. `platform`: Mondapac staff seen by a
+   * seller, never named (`displayName` is null).
+   */
+  readonly kind: 'member' | 'platform';
+  readonly displayName: string | null;
+}
+
 /** A request the facade refused before any read: a code and the field, never its value. */
 export interface IdentityValidationFailed {
   readonly code: 'validation.failed';
@@ -219,6 +234,21 @@ export interface IdentityFacade {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly TeamMemberLabel[], AccessDenied | IdentityValidationFailed>>;
+
+  /**
+   * Names the accounts that audit rows record as the actor of a settings change, for the "last
+   * changed by" line and the history of a settings page. Rule `own-resources`, denied while the
+   * seller is not approved; the actor is read again in the read. An admin asking gets the name of
+   * each admin account; a seller asking gets the name of each current member of its own team and
+   * `platform` (no name) for an admin account. Anyone else (a former member, another seller's
+   * member, a customer, an unknown id, another Market's account) is absent, alike. The display
+   * name only, never the sign-in address. At most 100 ids, duplicates answered once. Not exposed
+   * over HTTP.
+   */
+  changeActors(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<readonly ChangeActorLabel[], AccessDenied | IdentityValidationFailed>>;
 
   /**
    * Ends every session of the calling customer's own account except the one making the call

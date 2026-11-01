@@ -7,6 +7,8 @@ export interface SettingsErrorItem {
   readonly id: string;
   /** The field's label. */
   readonly label: string;
+  /** Why the field is invalid, the same text as under the field: "Same-day cut-off: Enter a time…". */
+  readonly reason?: string;
 }
 
 export interface SettingsErrorSummaryProps {
@@ -50,6 +52,7 @@ export function SettingsErrorSummary({ title, items, focusSignal = 0 }: Settings
             >
               {item.label}
             </a>
+            {item.reason === undefined ? null : <span>: {item.reason}</span>}
           </li>
         ))}
       </ul>

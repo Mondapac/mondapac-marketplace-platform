@@ -10,6 +10,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingsErrorSummary,
+  useLiveErrors,
   SettingsPage,
   SettingsSection,
   toast,
@@ -164,9 +165,10 @@ export function AssistantSettingsPanel({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
-  const [invalid, setInvalid] = useState<readonly FieldKey[]>([]);
+  // The fields the server refused on the last save (a rule only it knows); the rest is worked out live.
+  const [refusedKeys, setRefusedKeys] = useState<readonly FieldKey[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
-  const [failedSaves, setFailedSaves] = useState(0);
+  const [refusals, setRefusals] = useState(0);
   const settings = useSettingsForm<AssistantSettingsAnswer, AssistantForm>({
     initial,
     toDraft,
@@ -178,11 +180,24 @@ export function AssistantSettingsPanel({
   const form = settings.draft;
   const changedKeys = settings.changes.map((change) => change.key);
   const changed = (key: keyof AssistantForm) => changedKeys.includes(key);
+  const leave = (key: keyof AssistantForm) => {
+    const field = FIELD_OF[key] ?? key;
+    if (field in FIELD_LABEL) live.touch(field as FieldKey);
+  };
+  const checkedNow = settingsOf(form, answer.unavailableOptions);
+  const live = useLiveErrors<FieldKey>(checkedNow.ok ? [] : checkedNow.invalid);
+  const invalid: readonly FieldKey[] = [
+    ...live.shown,
+    ...refusedKeys.filter((key) => !live.shown.includes(key)),
+  ];
   const set = <K extends keyof AssistantForm>(key: K, value: AssistantForm[K]) => {
     settings.setDraft((current) => ({ ...current, [key]: value }));
-    // Editing a field takes its error away; the next save checks it again.
+    // Typing in a field checks it as it goes; a server refusal of it is old news now.
     const field = FIELD_OF[key] ?? key;
-    setInvalid((current) => current.filter((name) => name !== field));
+    if (field in FIELD_LABEL) live.touch(field as FieldKey);
+    // The daily cap may not pass the monthly one, so a monthly edit re-checks the daily cap too.
+    if (field === 'monthlySpendCapUsdCents') live.touch('dailySpendCapUsdCents');
+    setRefusedKeys((current) => current.filter((name) => name !== field));
   };
   const errorOf = (key: FieldKey) => (invalid.includes(key) ? t(`${P}.invalid.${key}`) : undefined);
 
@@ -190,12 +205,11 @@ export function AssistantSettingsPanel({
     setProblem(null);
     const check = settingsOf(form, answer.unavailableOptions);
     if (!check.ok) {
-      setInvalid(check.invalid);
+      live.attempt();
       setProblem('fix');
-      setFailedSaves((n) => n + 1);
       return;
     }
-    setInvalid([]);
+    setRefusedKeys([]);
     const result = await settings.run(
       async (expectedVersion): Promise<SaveResult<AssistantSettingsAnswer>> => {
         const reply = await callApi<AssistantSettingsAnswer>(
@@ -211,21 +225,25 @@ export function AssistantSettingsPanel({
           return { status: 'conflict' };
         } else {
           const refused = refusedFields(reply.failure);
-          setInvalid(refused);
-          if (refused.length > 0) setFailedSaves((n) => n + 1);
+          setRefusedKeys(refused);
+          if (refused.length > 0) setRefusals((n) => n + 1);
           setProblem(assistantProblemOf(reply.failure));
         }
         return { status: 'failed' };
       },
     );
-    if (result.status === 'saved') toast.success(t(`${P}.saved`));
+    if (result.status === 'saved') {
+      live.reset();
+      toast.success(t(`${P}.saved`));
+    }
     // The re-read failed too: the plain "reload the page" message is all that is left.
     else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
 
   function discard() {
     settings.discard();
-    setInvalid([]);
+    live.reset();
+    setRefusedKeys([]);
     setProblem(null);
   }
 
@@ -264,8 +282,12 @@ export function AssistantSettingsPanel({
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: invalid.length })}
-        items={invalid.map((key) => ({ id: rowId(key), label: t(`${P}.${FIELD_LABEL[key]}`) }))}
-        focusSignal={failedSaves}
+        items={invalid.map((key) => ({
+          id: rowId(key),
+          label: t(`${P}.${FIELD_LABEL[key]}`),
+          reason: errorOf(key),
+        }))}
+        focusSignal={live.attempts + refusals}
       />
     ),
     settings.theirs === null ? null : (
@@ -383,6 +405,7 @@ export function AssistantSettingsPanel({
               className="md:max-w-40"
               value={form.audiencePercent}
               onChange={(event) => set('audiencePercent', event.target.value)}
+              onBlur={() => leave('audiencePercent')}
             />
           </SettingRow>
         ) : null}
@@ -446,6 +469,7 @@ export function AssistantSettingsPanel({
             maxLength={BOUNDS.welcomeTextLength * 2}
             value={form.welcomeText}
             onChange={(event) => set('welcomeText', event.target.value)}
+            onBlur={() => leave('welcomeText')}
           />
         </SettingRow>
       </SettingsSection>
@@ -472,6 +496,7 @@ export function AssistantSettingsPanel({
             autoComplete="off"
             value={form.guestMessageLimit}
             onChange={(event) => set('guestMessageLimit', event.target.value)}
+            onBlur={() => leave('guestMessageLimit')}
           />
         </SettingRow>
         <SettingRow
@@ -487,6 +512,7 @@ export function AssistantSettingsPanel({
             autoComplete="off"
             value={form.customerMessageLimit}
             onChange={(event) => set('customerMessageLimit', event.target.value)}
+            onBlur={() => leave('customerMessageLimit')}
           />
         </SettingRow>
       </SettingsSection>
@@ -509,6 +535,7 @@ export function AssistantSettingsPanel({
             autoComplete="off"
             value={form.dailySpendCap}
             onChange={(event) => set('dailySpendCap', event.target.value)}
+            onBlur={() => leave('dailySpendCap')}
           />
         </SettingRow>
         <SettingRow
@@ -528,6 +555,7 @@ export function AssistantSettingsPanel({
             autoComplete="off"
             value={form.monthlySpendCap}
             onChange={(event) => set('monthlySpendCap', event.target.value)}
+            onBlur={() => leave('monthlySpendCap')}
           />
         </SettingRow>
       </SettingsSection>

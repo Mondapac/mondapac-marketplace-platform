@@ -255,8 +255,12 @@ describe('the fleet selection page', () => {
     fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
       target: { value: '120' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    // The error shows as the score is typed, and Save is off until it is fixed.
     expect(within(drive).getByText('Enter a whole number from 0 to 100.')).toBeTruthy();
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
     expect(call).not.toHaveBeenCalled();
 
     fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {

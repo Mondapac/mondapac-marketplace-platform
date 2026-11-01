@@ -3140,7 +3140,7 @@
       "line-none": "A fleet quote of {quote} stays {total} for the buyer: no margin added."
     },
     "invalid": {
-      "cutoff": "Enter a time such as 12:00.",
+      "cutoff": "Enter a time between 12:00 am and 11:59 pm, such as 1:00 pm.",
       "daysAhead": "Enter a whole number of days from 1 to 30.",
       "margin-percent": "Enter a percentage from 0 to 100, with up to two decimals.",
       "margin-fixed": "Enter an amount up to {max}, with no more decimals than the currency uses."

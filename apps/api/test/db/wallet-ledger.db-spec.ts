@@ -1,3 +1,6 @@
+import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
+import { WALLET_AUDIT_ACTIONS } from '../../src/modules/wallet/domain/audit';
+import { dbChangeTrail } from './change-trail-support';
 import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -98,6 +101,10 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     await sql.connect();
     await owner.connect();
     audit = new RecordingAudit();
+    // The real audit reader: this spec's audit is in memory, so the page has no change to name.
+    const catalogue = new AuditActionCatalogue();
+    catalogue.register('wallet', WALLET_AUDIT_ACTIONS);
+    catalogue.seal();
     deps = {
       unitOfWork: db.unitOfWork,
       wallet: new PrismaWalletRepository(db.service, ids),
@@ -117,6 +124,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
             }),
           ),
       },
+      trail: dbChangeTrail('wallet', catalogue, db.unitOfWork),
     };
   });
   afterAll(async () => {
@@ -1865,7 +1873,9 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         turn('active', undefined, 0),
       ]);
       expect(firstPuts.filter((r) => r.ok)).toHaveLength(1);
-      expect(firstPuts.filter((r) => !r.ok)).toEqual([err({ code: 'wallet.settings-conflict' })]);
+      expect(firstPuts.filter((r) => !r.ok)).toEqual([
+        err({ code: 'wallet.settings-conflict', lastChanged: null }),
+      ]);
       expect(await switchVersion()).toBe(1);
       expect((await turn('active')).ok).toBe(true);
       expect((await turn('off')).ok).toBe(true);

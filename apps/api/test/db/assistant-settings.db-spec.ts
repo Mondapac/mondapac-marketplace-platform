@@ -15,6 +15,7 @@ import {
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
 import { SetAssistantSettings } from '../../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettings } from '../../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
+import { ViewAssistantSettingsHistory } from '../../src/modules/assistant/application/use-cases/view-assistant-settings-history.use-case';
 import { ViewStorefrontAssistant } from '../../src/modules/assistant/application/use-cases/view-storefront-assistant.use-case';
 import { DEFAULT_ASSISTANT_SETTINGS } from '../../src/modules/assistant/domain/assistant-settings';
 import { ASSISTANT_AUDIT_ACTIONS } from '../../src/modules/assistant/domain/audit';
@@ -24,6 +25,8 @@ import { RegistryMarketCalendar } from '../../src/modules/assistant/infrastructu
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
+import { FakeChangeActors } from '../support/change-trail-fakes';
+import { dbChangeTrail } from './change-trail-support';
 import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -65,6 +68,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
   let settings: PrismaAssistantSettingsRepository;
   let spend: PrismaSpendRepository;
   let audit: AuditWriter;
+  let catalogue: AuditActionCatalogue;
   let sql: Client;
 
   beforeAll(async () => {
@@ -72,7 +76,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     settings = new PrismaAssistantSettingsRepository(db.service);
     spend = new PrismaSpendRepository(db.service);
     // The real audit writer (Hassan, package 2 review): the audit row commits with the version.
-    const catalogue = new AuditActionCatalogue();
+    catalogue = new AuditActionCatalogue();
     catalogue.register('assistant', ASSISTANT_AUDIT_ACTIONS);
     catalogue.seal();
     audit = PersistenceModule.auditWriterFor('assistant').useFactory(
@@ -89,6 +93,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     await sql.end();
   });
 
+  const actors = new FakeChangeActors();
   const deps = () => ({
     unitOfWork: db.unitOfWork,
     settings,
@@ -101,6 +106,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     limits: new MemoryLimits(),
     guestTokens: new SequenceGuestTokens(),
     calendar: new RegistryMarketCalendar(markets),
+    trail: dbChangeTrail('assistant', catalogue, db.unitOfWork, actors),
   });
   const auditRows = async (target: MarketContext) =>
     (
@@ -158,11 +164,29 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     expect(read.ok && read.value).toMatchObject({ version: from + 1, settings: next });
     expect(await versionOf(other)).toBe(otherBefore);
 
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
     const stale = await new SetAssistantSettings(gate, deps()).execute(admin(market), {
       settings: { ...next, guestMessageLimit: 30 },
       expectedVersion: from,
     });
-    expect(stale).toEqual({ ok: false, error: { code: 'assistant.conflict' } });
+    // The 409 names the winning save, read from the audit row that committed with it.
+    expect(stale).toEqual({
+      ok: false,
+      error: {
+        code: 'assistant.conflict',
+        lastChanged: {
+          at: expect.anything() as unknown,
+          byDisplayName: 'Sara K.',
+          byKind: 'member',
+        },
+      },
+    });
+    const history = await new ViewAssistantSettingsHistory(gate, deps()).execute(admin(market), {});
+    expect(history.ok && history.value.items[0]).toMatchObject({
+      byDisplayName: 'Sara K.',
+      byKind: 'member',
+    });
+    expect(JSON.stringify(history)).not.toContain(ADMIN);
     // The refused save wrote no audit row.
     expect(await auditRows(market)).toEqual([...auditedBefore, from + 1]);
   });

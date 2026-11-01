@@ -1,3 +1,4 @@
+import type { LastChanged } from '../../../../platform/audit/change-trail';
 import type { DraftPart, DraftRequirements, SellerFile } from '../../domain/seller-file';
 import type { RegionZones } from '../../domain/zone';
 
@@ -38,7 +39,11 @@ export interface DraftValidationFailed {
 export type FileNotFound = { readonly code: 'file.not-found' };
 
 /** Another save changed the file between this save's read and its write (P 10). */
-export type DraftConflict = { readonly code: 'conflict.stale' };
+export type DraftConflict = {
+  readonly code: 'conflict.stale';
+  /** The winning save (who and when), on a page that names it; null when it cannot be read. */
+  readonly lastChanged?: LastChanged | null;
+};
 
 /** Absent, null or only whitespace: "not entered" for an optional field of a save. */
 export const isBlank = (value: unknown): boolean =>
