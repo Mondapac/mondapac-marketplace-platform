@@ -84,6 +84,15 @@ export interface ProductImageRepository {
     mark: TakedownMark,
   ): Promise<boolean>;
   /**
+   * Of the given object keys, those that belong to a product of this Market and that no photo row
+   * names: files a crash left behind (the file write happens before the row). A key whose product
+   * is not in this Market is never returned, so one Market's sweep cannot take another's files.
+   */
+  unreferencedObjectKeys(
+    market: MarketContext,
+    keys: readonly string[],
+  ): Promise<readonly string[]>;
+  /**
    * Clean photos created before the instant that no revision holds, ordered by id, after the
    * given id. Whether a draft still names one is for the caller to check.
    */

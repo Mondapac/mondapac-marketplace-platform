@@ -3,12 +3,18 @@ import {
   GetObjectCommand,
   GetPublicAccessBlockCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
+import { Temporal } from '@mondapac/shared-kernel';
 import {
+  assertListLimit,
+  assertListPrefix,
   assertObjectKey,
+  isValidObjectKey,
+  type ObjectListPage,
   ObjectAlreadyExistsError,
   ObjectStoreUnavailableError,
   type ObjectStore,
@@ -124,6 +130,41 @@ export class S3ObjectStore implements ObjectStore {
       return Buffer.from(await out.Body.transformToByteArray());
     } catch (error) {
       if (error instanceof S3ServiceException && error.name === 'NoSuchKey') return null;
+      throw new ObjectStoreUnavailableError();
+    }
+  }
+
+  async list(
+    prefix: string,
+    options: { readonly after: string | null; readonly limit: number },
+  ): Promise<ObjectListPage> {
+    assertListPrefix(prefix);
+    assertListLimit(options.limit);
+    try {
+      const out = await this.#client.send(
+        new ListObjectsV2Command({
+          Bucket: this.#bucket,
+          Prefix: prefix === '' ? undefined : `${prefix}/`,
+          StartAfter: options.after ?? undefined,
+          MaxKeys: options.limit,
+        }),
+      );
+      const objects = (out.Contents ?? []).flatMap((item) =>
+        item.Key !== undefined && item.LastModified !== undefined && isValidObjectKey(item.Key)
+          ? [
+              {
+                key: item.Key,
+                lastModified: Temporal.Instant.fromEpochMilliseconds(item.LastModified.getTime()),
+              },
+            ]
+          : [],
+      );
+      const lastKey = out.Contents?.[out.Contents.length - 1]?.Key;
+      return {
+        objects,
+        next: out.IsTruncated === true && lastKey !== undefined ? lastKey : null,
+      };
+    } catch {
       throw new ObjectStoreUnavailableError();
     }
   }
