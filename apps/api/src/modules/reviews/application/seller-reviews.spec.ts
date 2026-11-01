@@ -27,6 +27,7 @@ import type { ProductReviewRecord } from './ports/review.repository';
 import type { ReviewsDependencies } from './reviews-dependencies';
 import { EditReviewReply } from './use-cases/edit-review-reply.use-case';
 import { ListSellerReviews } from './use-cases/list-seller-reviews.use-case';
+import { DeleteProductReview } from './use-cases/delete-product-review.use-case';
 import { SubmitProductReview } from './use-cases/submit-product-review.use-case';
 import { ReplyToReview } from './use-cases/reply-to-review.use-case';
 import { ReportReview } from './use-cases/report-review.use-case';
@@ -316,6 +317,60 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
           [OTHER_SELLER, 'Shop B answer', 'published'],
         ]),
       );
+    });
+
+    it('clears the reply when the author deletes and writes again, even after buying elsewhere', async () => {
+      bought(1, SELLER, 6);
+      const first = await submit();
+      const reviewId = first.ok ? first.value.review.id : id<'ProductReview'>(0);
+      expect((await reply(reviewId, 'Shop A answer')).ok).toBe(true);
+      expect(
+        (await new DeleteProductReview(gate, deps).execute(customerCtx(), { reviewId })).ok,
+      ).toBe(true);
+      // A new day: the Market's daily write limit (2 in ZZ) counts the first submit and the delete.
+      clock.advance(Temporal.Duration.from({ hours: 25 }));
+      bought(2, OTHER_SELLER, 1);
+      const again = await submit();
+      expect(again.ok && again.value.outcome).toBe('resubmitted');
+
+      const listB = await list(undefined, sellerCtx(OTHER_SELLER));
+      expect(listB.ok && listB.value.items.map((r) => [r.id, r.reply])).toEqual([[reviewId, null]]);
+      expect((await list()).ok && true).toBe(true);
+      const own = await reply(reviewId, 'Shop B answer', sellerCtx(OTHER_SELLER));
+      expect(own.ok).toBe(true);
+      expect([...reviews.replies.values()].map((r) => [r.sellerId, r.status])).toEqual(
+        expect.arrayContaining([
+          [SELLER, 'superseded'],
+          [OTHER_SELLER, 'published'],
+        ]),
+      );
+    });
+
+    it('also clears the reply of the same shop when the author writes the review again', async () => {
+      bought(1, SELLER, 6);
+      const first = await submit();
+      const reviewId = first.ok ? first.value.review.id : id<'ProductReview'>(0);
+      await reply(reviewId, 'Shop A answer');
+      await new DeleteProductReview(gate, deps).execute(customerCtx(), { reviewId });
+      clock.advance(Temporal.Duration.from({ hours: 25 }));
+      expect((await submit()).ok).toBe(true);
+      const listA = await list();
+      expect(listA.ok && listA.value.items[0]?.reply).toBeNull();
+    });
+
+    it('does not touch a hidden or removed reply of a moderator', async () => {
+      const review = addReview();
+      reviews.replies.set(id<'ReviewReply'>(1), {
+        id: id<'ReviewReply'>(1),
+        reviewId: review.id,
+        sellerId: SELLER,
+        body: 'hidden by moderator',
+        status: 'hidden',
+        createdAt: T0,
+        editedAt: null,
+      });
+      await reviews.supersedeReplies(market, review.id, null);
+      expect(reviews.replies.get(id<'ReviewReply'>(1))!.status).toBe('hidden');
     });
 
     it('keeps the reply when a later purchase is from the same shop', async () => {

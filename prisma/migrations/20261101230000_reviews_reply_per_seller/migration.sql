@@ -11,7 +11,7 @@ ALTER TABLE "reviews"."review_replies"
   ADD CONSTRAINT "review_replies_status_check" CHECK ("status" IN ('published', 'hidden', 'removed', 'superseded'));
 
 DROP INDEX "reviews"."review_replies_market_id_review_id_key";
-CREATE UNIQUE INDEX "review_replies_market_id_review_id_live_key"
+CREATE UNIQUE INDEX "review_replies_market_id_review_id_published_key"
   ON "reviews"."review_replies" ("market_id", "review_id")
-  WHERE "status" IN ('published', 'hidden', 'removed');
+  WHERE "status" = 'published';
 CREATE INDEX "review_replies_market_id_review_id_idx" ON "reviews"."review_replies" ("market_id", "review_id");

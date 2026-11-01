@@ -193,7 +193,7 @@ describe.each(TEST_MARKETS)('seller reviews in market %s (database)', (code) => 
       otherSeller,
     ]);
     const changed = await db.unitOfWork.run(market, async () =>
-      ok(await deps.reviews.supersedeRepliesOfOtherSellers(market, review, otherSeller)),
+      ok(await deps.reviews.supersedeReplies(market, review, otherSeller)),
     );
     expect(changed.ok && changed.value).toBe(1);
 
@@ -236,5 +236,33 @@ describe.each(TEST_MARKETS)('seller reviews in market %s (database)', (code) => 
         (error: { code?: string }) => error.code,
       );
     expect(second).toBe('23505');
+  });
+
+  it('clears every published reply when the author writes the review again', async () => {
+    const review = await insertReview(seller);
+    expect(
+      (await new ReplyToReview(gate, deps).execute(sellerCtx, { reviewId: review, body: 'Answer' }))
+        .ok,
+    ).toBe(true);
+    const cleared = await db.unitOfWork.run(market, async () =>
+      ok(await deps.reviews.supersedeReplies(market, review, null)),
+    );
+    expect(cleared.ok && cleared.value).toBe(1);
+    const again = await new ReplyToReview(gate, deps).execute(sellerCtx, {
+      reviewId: review,
+      body: 'Answer to the new text',
+    });
+    expect(again.ok).toBe(true);
+    // A concurrent move and a reply cannot both stand: once the review is not the shop's, the
+    // reply is refused before it is written.
+    await owner.query('UPDATE reviews.product_reviews SET seller_id = $2 WHERE id = $1', [
+      review,
+      otherSeller,
+    ]);
+    const late = await new ReplyToReview(gate, deps).execute(sellerCtx, {
+      reviewId: review,
+      body: 'Too late',
+    });
+    expect(late.ok ? null : late.error.code).toBe('reviews.not-found');
   });
 });

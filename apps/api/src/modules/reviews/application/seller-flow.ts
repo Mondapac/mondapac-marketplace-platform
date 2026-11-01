@@ -178,6 +178,11 @@ export async function writeReply(
   }
   const now = deps.clock.now();
   return deps.unitOfWork.run<SellerReviewView, ReviewsFailure>(context.market, async () => {
+    // Lock the review first: a concurrent move or re-post waits for this unit, so the reply can
+    // never be written beside a review that has just left the shop.
+    if (!(await deps.reviews.lockPublishedReviewOf(context.market, seller.sellerId, reviewId))) {
+      return err({ code: 'reviews.not-found' });
+    }
     const found = await deps.reviews.findSellerReview(context.market, seller.sellerId, reviewId);
     if (found === null || !canReplyToStatus(found.review.status)) {
       return err({ code: 'reviews.not-found' });

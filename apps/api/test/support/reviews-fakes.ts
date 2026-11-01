@@ -215,25 +215,31 @@ export class MemoryReviews implements ReviewRepository {
       found !== undefined && found.sellerId === sellerId ? this.rowOf(found, sellerId) : null,
     );
   }
-  supersedeRepliesOfOtherSellers(
+  supersedeReplies(
     _m: MarketContext,
     reviewId: Id<'ProductReview'>,
-    keepSellerId: Id<'Seller'>,
+    exceptSellerId: Id<'Seller'> | null,
   ) {
     let changed = 0;
     for (const r of this.replies.values()) {
-      if (r.reviewId === reviewId && r.sellerId !== keepSellerId && r.status !== 'superseded') {
+      if (r.reviewId === reviewId && r.status === 'published' && r.sellerId !== exceptSellerId) {
         this.replies.set(r.id, { ...r, status: 'superseded' });
         changed += 1;
       }
     }
     return Promise.resolve(changed);
   }
+  lockPublishedReviewOf(_m: MarketContext, sellerId: Id<'Seller'>, reviewId: Id<'ProductReview'>) {
+    const found = this.productReviews.get(reviewId);
+    return Promise.resolve(
+      found !== undefined && found.sellerId === sellerId && found.status === 'published',
+    );
+  }
   insertReplyIfAbsent(_m: MarketContext, reply: ReplyRecord) {
     // The partial unique index: one live (not superseded) reply per review.
     if (
       [...this.replies.values()].some(
-        (r) => r.reviewId === reply.reviewId && r.status !== 'superseded',
+        (r) => r.reviewId === reply.reviewId && r.status === 'published',
       )
     ) {
       return Promise.resolve(false);

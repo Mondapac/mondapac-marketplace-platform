@@ -509,21 +509,35 @@ export class PrismaReviewRepository implements ReviewRepository {
     return row === null ? null : { review: toReview(row), reply: toReply(row.replies[0] ?? null) };
   }
 
-  async supersedeRepliesOfOtherSellers(
+  async supersedeReplies(
     market: MarketContext,
     reviewId: Id<'ProductReview'>,
-    keepSellerId: Id<'Seller'>,
+    exceptSellerId: Id<'Seller'> | null,
   ) {
     const changed = await this.prisma.tx(market).reviewsReply.updateMany({
       where: {
         marketId: market.marketId,
         reviewId,
-        sellerId: { not: keepSellerId },
-        status: { not: 'superseded' },
+        status: 'published',
+        ...(exceptSellerId === null ? {} : { sellerId: { not: exceptSellerId } }),
       },
       data: { status: 'superseded' },
     });
     return changed.count;
+  }
+
+  async lockPublishedReviewOf(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ) {
+    // The row is rewritten with its own value: the write takes the row lock a concurrent move
+    // (which also updates the row) must wait for, and the count says whether it is still ours.
+    const locked = await this.prisma.tx(market).reviewsProductReview.updateMany({
+      where: { marketId: market.marketId, id: reviewId, sellerId, status: 'published' },
+      data: { status: 'published' },
+    });
+    return locked.count > 0;
   }
 
   async insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord) {

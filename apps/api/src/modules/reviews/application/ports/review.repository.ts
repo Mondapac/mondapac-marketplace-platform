@@ -299,14 +299,27 @@ export interface ReviewRepository {
   ): Promise<SellerReviewRow | null>;
 
   /**
-   * A review moved to another seller: the replies of every other seller become `superseded`
-   * (kept as history, never shown or edited) so the new seller starts clean. Returns how many.
+   * The shop's PUBLISHED reply to a review leaves (becomes `superseded`: history, never shown or
+   * edited) because the review moved to another seller or was written again. Replies of
+   * `exceptSellerId` are kept (null: none is kept). Hidden and removed replies are a moderator's
+   * decision and are not touched. Returns how many.
    */
-  supersedeRepliesOfOtherSellers(
+  supersedeReplies(
     market: MarketContext,
     reviewId: Id<'ProductReview'>,
-    keepSellerId: Id<'Seller'>,
+    exceptSellerId: Id<'Seller'> | null,
   ): Promise<number>;
+
+  /**
+   * Locks the row of a published review of this shop until the unit ends (a no-op write) and says
+   * whether it is still the shop's: false when it moved, is not published or is not the shop's.
+   * A reply is written or edited only after this, so it cannot slip in beside a concurrent move.
+   */
+  lockPublishedReviewOf(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<boolean>;
 
   /** False when the review already has a reply (the unique key): two submits make one reply. */
   insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord): Promise<boolean>;

@@ -258,6 +258,8 @@ export async function submitProductReview(
       ) {
         return err({ code: 'reviews.already-reviewed' } as const);
       }
+      // A new text starts over: the shop's reply was to the deleted one, so it leaves (history).
+      await deps.reviews.supersedeReplies(context.market, existing.id, null);
       await afterWrite(
         deps,
         context,
@@ -289,11 +291,7 @@ export async function submitProductReview(
         // The review now says "Bought from" another shop: the earlier shop's reply is cleared, so
         // the new shop never reads or edits it and can write its own (package 4a).
         if (purchase.sellerId !== existing.sellerId) {
-          await deps.reviews.supersedeRepliesOfOtherSellers(
-            context.market,
-            existing.id,
-            purchase.sellerId,
-          );
+          await deps.reviews.supersedeReplies(context.market, existing.id, purchase.sellerId);
         }
         return ok({
           outcome: 'purchase-recorded',

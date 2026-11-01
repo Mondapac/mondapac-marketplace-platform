@@ -240,11 +240,14 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
   `not-a-purchase`, `extortion`) in `review_reports`, one per team member; it opens the existing
   "reported" tab of the admin queue. The seller can never hide or remove a review.
 - A review moves to another seller when the buyer buys the product again from someone else. The
-  earlier seller's reply is then set to `superseded` (kept as history, never shown or edited) and
+  earlier seller's reply (and, when the author deletes and writes the review again, every published
+  reply) is then set to `superseded` (kept as history, never shown or edited) and
   the new seller starts clean; a seller only ever reads and edits its own reply. The one-reply
-  rule is "one live reply per review" (partial unique index, migration
+  rule is "one published reply per review" (partial unique index, migration
   `20261101230000_reviews_reply_per_seller`). Open question for the owner: keep the old reply
-  instead? Clearing is the safe default.
+  instead? Clearing is the safe default. Hidden and
+  removed replies are a moderator's decision and are never superseded. A reply is written or edited
+  only after the review row is locked, so it cannot slip in beside a concurrent move.
 - Reply max length is capped at 2000 in Market config, matching the table CHECK.
 - Not in 4a: the public reply under a review on the product page (package 3 list), notices for the
   seller, buyer and admin (4b), the seller panel screens (4c), the daily digest, appeals.
