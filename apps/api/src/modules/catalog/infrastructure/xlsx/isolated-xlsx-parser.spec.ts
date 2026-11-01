@@ -100,6 +100,13 @@ function fullSizeFile(): Buffer {
 describe('isolated xlsx parser (a real worker thread)', () => {
   const parser = createIsolatedXlsxParser();
 
+  // One parse at a time is process-wide. A spec that fails before its parse settles (a timeout)
+  // must not hand the next spec a parse that is still running, which it would read as `file.busy`:
+  // each spec starts only once the last parse has ended (it always does, by the time limit).
+  afterEach(async () => {
+    while (xlsxParseRunning()) await new Promise((resolve) => setTimeout(resolve, 20));
+  }, 30_000);
+
   it('gives the same table as the parse in this thread, canonical CSV included', async () => {
     const bytes = await workbookBytes([
       ['Title', 'Brand', 'Code'],
@@ -129,8 +136,10 @@ describe('isolated xlsx parser (a real worker thread)', () => {
   });
 
   it('refuses the empty-runs file (60 x 128 cells) cleanly and fast', async () => {
+    // The clock starts once the file is built: it times the parse, not the test's own setup.
+    const bytes = emptyRunsFile();
     const started = Date.now();
-    const result = await parser.parse(emptyRunsFile(), IMPORT_LIMITS);
+    const result = await parser.parse(bytes, IMPORT_LIMITS);
     expect(result).toEqual({ ok: false, error: { code: 'file.too-complex' } });
     expect(Date.now() - started).toBeLessThan(5000);
   });
@@ -207,8 +216,9 @@ describe('isolated xlsx parser (a real worker thread)', () => {
 
     it('passing the time limit ends the thread: file.too-complex', async () => {
       const impatient = createIsolatedXlsxParser({ timeoutMs: 50 });
+      const bytes = fullSizeFile();
       const started = Date.now();
-      const result = await impatient.parse(fullSizeFile(), IMPORT_LIMITS);
+      const result = await impatient.parse(bytes, IMPORT_LIMITS);
       expect(result).toEqual({ ok: false, error: { code: 'file.too-complex' } });
       expect(Date.now() - started).toBeLessThan(5000);
       expect(xlsxParseRunning()).toBe(false);

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { Worker, type ResourceLimits } from 'node:worker_threads';
 import { err, ok } from '@mondapac/shared-kernel';
@@ -56,21 +57,56 @@ const WORKER_ENTRY = path.join(__dirname, 'xlsx-parse-worker' + (IN_TYPESCRIPT ?
 // then started through this bootstrap, which compiles each `.ts` file it requires with the
 // TypeScript compiler (a file at a time, no type check) and maps the kernel package to its sources,
 // as the Jest and tsc path mappings do.
+//
+// Every test parse starts a fresh thread, and loading the compiler plus compiling the ~23 files the
+// worker needs took about 0.9 s of a 1 s start (more than the parse of a small file). Under a full
+// `pnpm test` run, with every core busy, that start alone passed Jest's 5 s default now and then, and
+// the next spec of the file then met the still-running parse as `file.busy`. So the compiled output
+// is kept on disk, keyed by a hash of the source, the compiler version and these options; a thread
+// that finds every file there never loads the compiler. A write goes to a temporary name and is
+// renamed into place, so concurrent Jest workers never read half a file.
 const TS_BOOTSTRAP = String.raw`
 const { workerData } = require('node:worker_threads');
 const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
 const Module = require('node:module');
-const ts = require(workerData.typescript);
 const aliases = workerData.aliases;
+const cacheDir = workerData.cacheDir;
+const typescriptVersion = require(workerData.typescript + '/package.json').version;
+let ts;
 const resolve = Module._resolveFilename;
 Module._resolveFilename = function (request, ...rest) {
   return resolve.call(this, Object.prototype.hasOwnProperty.call(aliases, request) ? aliases[request] : request, ...rest);
 };
-require.extensions['.ts'] = function (module, filename) {
-  const out = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+function compile(source, filename) {
+  ts ??= require(workerData.typescript);
+  return ts.transpileModule(source, {
     fileName: filename,
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
+}
+require.extensions['.ts'] = function (module, filename) {
+  const source = fs.readFileSync(filename, 'utf8');
+  const key = crypto
+    .createHash('sha256')
+    .update(typescriptVersion + '\0commonjs-es2022-esModuleInterop\0' + filename + '\0' + source)
+    .digest('hex');
+  const cached = path.join(cacheDir, key + '.js');
+  let out;
+  try {
+    out = fs.readFileSync(cached, 'utf8');
+  } catch {
+    out = compile(source, filename);
+    try {
+      fs.mkdirSync(cacheDir, { recursive: true });
+      const temporary = cached + '.' + process.pid + '.' + crypto.randomUUID() + '.tmp';
+      fs.writeFileSync(temporary, out);
+      fs.renameSync(temporary, cached);
+    } catch {
+      // No cache this time: the compiled text above is used as is.
+    }
+  }
   module._compile(out, filename);
 };
 require(workerData.entry);
@@ -98,6 +134,7 @@ function typescriptWorker(
       ...input,
       entry,
       typescript: 'typescript', // resolved from the working directory (tests only)
+      cacheDir: path.join(os.tmpdir(), 'mondapac-xlsx-worker-ts'),
       aliases: {
         '@mondapac/shared-kernel': path.join(kernel, 'index.ts'),
         '@mondapac/shared-kernel/testing': path.join(kernel, 'testing.ts'),
