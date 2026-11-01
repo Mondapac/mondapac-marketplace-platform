@@ -18,6 +18,10 @@ export class InMemoryAddresses implements AddressRepository {
     );
   }
 
+  lockBook() {
+    return Promise.resolve();
+  }
+
   list(market: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(
       this.mine(market, accountId).sort(

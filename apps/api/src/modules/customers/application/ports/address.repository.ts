@@ -18,6 +18,12 @@ export interface AddressRecord {
  * reads or changes another's address. At most one default address per account (a unique index).
  */
 export interface AddressRepository {
+  /**
+   * Takes the account's address-book lock (`customers.lock-address-book`) until the unit ends,
+   * so writers of one book run one after the other. Call it first in every write unit, before
+   * any read.
+   */
+  lockBook(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
   /** Newest first. */
   list(market: MarketContext, accountId: Id<'Account'>): Promise<readonly AddressRecord[]>;
   find(
