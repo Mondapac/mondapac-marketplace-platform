@@ -56,6 +56,17 @@ export function isProductImageUploadRequest(
 /** A base64 store logo or banner of 4 MiB is 5.6 million characters; the rest is the JSON around it. */
 const STORE_IMAGE_PATH = /^\/sellers\/store-profile\/(?:logo|banner)\/?(?:\?.*)?$/;
 
+/**
+ * The whole-profile save (`PUT /sellers/store-profile`) carries the About text and up to two
+ * pictures: two base64 pictures of 4 MiB are 11.2 million characters, and the rest is the JSON
+ * around them. The same cookie and CSRF pre-filter applies. The filter only checks that the cookie
+ * and header are present (Hassan L-599-2): the API is reachable only through the panel BFF, which
+ * caps the body before it relays, so a direct client is outside the deployment model. Keep the API
+ * off the public network.
+ */
+const STORE_PROFILE_SAVE_BODY_LIMIT = '11700kb';
+const STORE_PROFILE_SAVE_PATH = /^\/sellers\/store-profile\/?(?:\?.*)?$/;
+
 /** A seller session cookie of any Market: `__Host-session-seller-<MARKET>=...`. */
 const SELLER_SESSION_COOKIE = /(?:^|;\s*)__Host-session-seller-[A-Z][A-Z0-9_]{1,7}=[^;\s]/;
 
@@ -65,6 +76,21 @@ const SELLER_SESSION_COOKIE = /(?:^|;\s*)__Host-session-seller-[A-Z][A-Z0-9_]{1,
  * anonymous or cross-site request cannot make the server read 5.8 MB before it is refused. This
  * is a cheap pre-filter only: the actor guard still checks the session and the CSRF token itself.
  */
+export function isStoreProfileSaveRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'PUT' || url === undefined || !STORE_PROFILE_SAVE_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    SELLER_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
 export function isStoreImageUploadRequest(
   method: string | undefined,
   url: string | undefined,
@@ -160,6 +186,12 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) => isStoreImageUploadRequest(request.method, request.url, request.headers),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // The whole-profile save takes up to two such pictures in one body, under the same pre-filter.
+  app.useBodyParser('raw', {
+    type: (request) => isStoreProfileSaveRequest(request.method, request.url, request.headers),
+    limit: STORE_PROFILE_SAVE_BODY_LIMIT,
     inflate: false,
   });
   // The certificate file routes (seller and admin) and the issuer request route alone take a still

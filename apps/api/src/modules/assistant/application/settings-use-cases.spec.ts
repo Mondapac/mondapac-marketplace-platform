@@ -20,6 +20,11 @@ import {
   rolloutBucket,
   type AssistantSettings,
 } from '../domain/assistant-settings';
+import {
+  changeTrailOf,
+  FakeChangeActors,
+  InMemoryAuditTrail,
+} from '../../../../test/support/change-trail-fakes';
 import { AssistantSettingsChanged } from '../domain/audit';
 import type { AssistantDependencies } from './assistant-dependencies';
 import {
@@ -36,6 +41,7 @@ import type {
   AssistantSettingsRepository,
 } from './ports/assistant-settings.repository';
 import { SetAssistantSettings } from './use-cases/set-assistant-settings.use-case';
+import { ViewAssistantSettingsHistory } from './use-cases/view-assistant-settings-history.use-case';
 import { ViewAssistantSettings } from './use-cases/view-assistant-settings.use-case';
 import { ViewStorefrontAssistant } from './use-cases/view-storefront-assistant.use-case';
 
@@ -53,12 +59,10 @@ const id = <T extends string>(n: number): Id<T> => {
 const ADMIN = id<'Account'>(0xad);
 const VISITOR = 'visitor-key-0123456789';
 
-class RecordingAudit implements AuditWriter {
-  readonly entries: AuditEntry[] = [];
-  record(_context: CallContext, entry: AuditEntry): Promise<void> {
+class RecordingAudit extends InMemoryAuditTrail implements AuditWriter {
+  override record(context: CallContext, entry: AuditEntry): Promise<void> {
     if (entry.action !== AssistantSettingsChanged.action) throw new Error('audit: unknown action');
-    this.entries.push(entry);
-    return Promise.resolve();
+    return super.record(context, entry);
   }
 }
 
@@ -228,6 +232,8 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
   let deps: AssistantDependencies;
   let settings: MemorySettings;
   let audit: RecordingAudit;
+  let actors: FakeChangeActors;
+  let clock: FixedClock;
   let runtime: FakeRuntime;
   const market = testMarketContext(code, 'default');
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
@@ -248,20 +254,24 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
 
   beforeEach(() => {
     settings = new MemorySettings();
-    audit = new RecordingAudit();
+    clock = new FixedClock(T0);
+    audit = new RecordingAudit(clock);
+    actors = new FakeChangeActors();
     runtime = new FakeRuntime();
+    const unitOfWork = new FakeUnitOfWork();
     deps = {
-      unitOfWork: new FakeUnitOfWork(),
+      unitOfWork,
       settings,
       runtime,
       audit,
-      clock: new FixedClock(T0),
+      clock,
       conversations: new MemoryConversations(),
       spend: new MemorySpend(),
       tools: new FakeTools(),
       limits: new MemoryLimits(),
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      trail: changeTrailOf(unitOfWork, audit, actors),
     };
   });
 
@@ -284,6 +294,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
         ],
         unavailableOptions: { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] },
         spend: { todayMicroUsd: 0, monthMicroUsd: 0, conversationsToday: 0, lastAutoOff: null },
+        lastChanged: null,
       }),
     );
     runtime.key = false;
@@ -349,17 +360,52 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
 
   it('answers a conflict for a stale version or a lost race, and writes nothing', async () => {
     await set(on());
+    const winner = { at: T0, byDisplayName: null, byKind: 'member' };
     expect(await set(on({ guestMessageLimit: 30 }), 0)).toEqual({
       ok: false,
-      error: { code: 'assistant.conflict' },
+      error: { code: 'assistant.conflict', lastChanged: winner },
     });
     settings.taken = true;
     expect(await set(on({ guestMessageLimit: 30 }), 1)).toEqual({
       ok: false,
-      error: { code: 'assistant.conflict' },
+      error: { code: 'assistant.conflict', lastChanged: winner },
     });
     expect(settings.rows).toHaveLength(1);
     expect(audit.entries).toHaveLength(1);
+  });
+
+  it('says who saved last and when, on the read, the save and the conflict', async () => {
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+    const saved = await set(on());
+    const lastChanged = { at: T0, byDisplayName: 'Sara K.', byKind: 'member' };
+    expect(saved.ok && saved.value.lastChanged).toEqual(lastChanged);
+    const read = await view();
+    expect(read.ok && read.value.lastChanged).toEqual(lastChanged);
+    expect(await set(on({ guestMessageLimit: 30 }), 0)).toEqual({
+      ok: false,
+      error: { code: 'assistant.conflict', lastChanged },
+    });
+    actors.failure = new Error('identity is down');
+    const degraded = await view();
+    expect(degraded.ok && degraded.value.lastChanged).toBeNull();
+  });
+
+  it('lists the history with the changed field names only, never a value', async () => {
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+    await set(on({ welcomeText: 'Secret greeting' }));
+    clock.advance(Temporal.Duration.from({ minutes: 3 }));
+    await set(on({ welcomeText: 'Secret greeting', dailySpendCapUsdCents: 2_000 }), 1);
+    const history = (input: object, context = admin()) =>
+      new ViewAssistantSettingsHistory(gate, deps).execute(context, input);
+    const page = await history({});
+    expect(page.ok && page.value.items.map((i) => [i.at, i.byDisplayName, i.fields])).toEqual([
+      [T0.add({ minutes: 3 }), 'Sara K.', ['dailySpendCapUsdCents']],
+      [T0, 'Sara K.', ['enabled']],
+    ]);
+    expect(JSON.stringify(page)).not.toContain('Secret greeting');
+    expect((await history({ limit: 0 })).ok).toBe(false);
+    for (const context of [seller(), anonymous()])
+      expect((await history({}, context)).ok).toBe(false);
   });
 
   it('refuses invalid settings and a bad expected version together, writing nothing', async () => {

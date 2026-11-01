@@ -80,6 +80,49 @@ export async function matchClaimTermsFor(
   }
 }
 
+/**
+ * The light reading a panel can repeat without the matcher's confusable tables: NFKC, lower case,
+ * tokens split on anything that is not a letter or a number, joined by single spaces. A panel
+ * reads its own text the same way and looks for the phrase as whole tokens; the match on save
+ * (skeleton folds, second pass) is wider, so a live miss never means the save passes.
+ */
+const plainPhrase = (text: string): string =>
+  text
+    .normalize('NFKC')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length > 0)
+    .join(' ');
+
+/**
+ * The Market's published claim terms, each as its plain reading ({@link plainPhrase}),
+ * deduplicated and sorted (a read for panels that warn while a user types; the server check in
+ * `matchClaimTermsFor` stays the authority). Same fail-closed read as the match: an empty or
+ * unusable vocabulary is `certification.unavailable`, never an empty list a client could read as
+ * "no claim words".
+ */
+export async function claimTermListFor(
+  reader: PublishedTypesReader,
+  context: CallContext,
+): Promise<Result<readonly string[], CertificationUnavailable>> {
+  try {
+    const entries = await reader.claimVocabulary(context.market);
+    if (entries.length === 0 || entries.some((entry) => entry.terms.length === 0)) {
+      throw new Error('incomplete vocabulary');
+    }
+    // `prepareVocabulary` refuses a term with no matchable content, as the match does.
+    prepareVocabulary(entries);
+    const phrases = new Set<string>();
+    for (const entry of entries) {
+      for (const term of entry.terms) phrases.add(plainPhrase(term));
+    }
+    return ok([...phrases].sort());
+  } catch (error) {
+    logger.error(`claimTermList failed: ${error instanceof Error ? error.name : 'unknown'}`);
+    return err(UNAVAILABLE);
+  }
+}
+
 function project(t: CertificationTypeView): CertificationTypeView {
   return {
     typeId: t.typeId,

@@ -10,7 +10,8 @@ vi.mock('../catalog/photo-prepare.ts', () => ({ preparePhoto: vi.fn() }));
 
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { preparePhoto } from '../catalog/photo-prepare.ts';
-import { aboutProblemOf, imageProblemOf } from './errors.ts';
+import { claimsCertification } from './claim-terms.ts';
+import { aboutProblemOf, imageProblemOf, saveProblemOf } from './errors.ts';
 import { StoreProfile } from './store-profile.tsx';
 import type { StoreProfileView } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
@@ -41,8 +42,12 @@ const failure = (over: Partial<ApiFailure>): { ok: false; failure: ApiFailure } 
 });
 const done = (body: StoreProfileView) => ({ ok: true as const, status: 200, body });
 
-const mount = (initial = view(), canEdit = true) =>
-  render(wrap(<StoreProfile initial={initial} csrfToken="csrf" canEdit={canEdit} />));
+const mount = (initial = view(), canEdit = true, claimTerms: readonly string[] = []) =>
+  render(
+    wrap(
+      <StoreProfile initial={initial} csrfToken="csrf" canEdit={canEdit} claimTerms={claimTerms} />,
+    ),
+  );
 const box = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: /About your store/ });
 const save = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' });
 
@@ -56,6 +61,76 @@ const compared = (label: string | RegExp) => {
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
+
+describe('claim wording, read live from the API terms', () => {
+  it('finds a term as whole tokens in a row, in any case, width or spacing', () => {
+    const terms = ['halal', 'halal certified'];
+    expect(claimsCertification('We are HALAL', terms)).toBe(true);
+    expect(claimsCertification('Ｈａｌａｌ meat', terms)).toBe(true);
+    expect(claimsCertification('100% halal-certified!', ['halal certified'])).toBe(true);
+    expect(claimsCertification('halalish', terms)).toBe(false);
+    expect(claimsCertification('certified and then halal', ['halal certified'])).toBe(false);
+    expect(claimsCertification('anything', [])).toBe(false);
+    expect(claimsCertification('', terms)).toBe(false);
+  });
+});
+
+describe('StoreProfile live About checks', () => {
+  const terms = ['halal certified'];
+
+  it('shows the certification error while typing, counts it and keeps Save off', () => {
+    mount(view(), true, terms);
+    fireEvent.change(box(), { target: { value: 'Family bakery, Halal Certified.' } });
+
+    // Under the field and in the summary banner.
+    expect(
+      screen.getAllByText(/This text claims a certification\. Remove that wording\./),
+    ).toHaveLength(2);
+    expect(box().getAttribute('aria-invalid')).toBe('true');
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('1 unsaved change');
+    expect(bar.textContent).toContain('1 needs fixing');
+    expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+    expect(save().disabled).toBe(true);
+    expect(call).not.toHaveBeenCalled();
+
+    fireEvent.change(box(), { target: { value: 'Family bakery, open daily.' } });
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(save().disabled).toBe(false);
+  });
+
+  it('shows the length error while typing and clears it when the text is short enough again', () => {
+    mount(view({ aboutMaxLength: 10 }), true, terms);
+    fireEvent.change(box(), { target: { value: 'x'.repeat(11) } });
+    expect(save().disabled).toBe(true);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    fireEvent.change(box(), { target: { value: 'x'.repeat(10) } });
+    expect(save().disabled).toBe(false);
+  });
+
+  it('does not warn on a saved text that is fine, and warns nothing without terms', () => {
+    mount(view(), true, []);
+    fireEvent.change(box(), { target: { value: 'Halal Certified bakery' } });
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
+    expect(save().disabled).toBe(false);
+  });
+
+  it('still shows the server refusal of a claim the live check could not see', async () => {
+    mount(view(), true, terms);
+    fireEvent.change(box(), { target: { value: 'Pure h a l a l bakery' } });
+    call.mockResolvedValueOnce(
+      failure({
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'about.en-AU', code: 'claim-term' }] },
+      }),
+    );
+    fireEvent.click(save());
+    await screen.findAllByText(/This text claims a certification/);
+    expect(save().disabled).toBe(true);
+  });
+});
 
 describe('StoreProfile About card', () => {
   it('shows the saved text and a counter, and the save bar only once something changed', () => {
@@ -87,7 +162,7 @@ describe('StoreProfile About card', () => {
     await expectToast('Saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
-      'sellers/store-profile/about',
+      'sellers/store-profile',
       { expectedVersion: 2, about: { 'en-AU': '  Family bakery, since 1990.  ' } },
       'csrf',
     );
@@ -124,6 +199,7 @@ describe('StoreProfile About card', () => {
     // The error summary at the top links to the box.
     const summary = screen.getByRole('alert');
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain(': Use at most 10 characters.');
     fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));
     expect(document.activeElement).toBe(box());
     expect(box().getAttribute('aria-invalid')).toBe('true');
@@ -142,7 +218,7 @@ describe('StoreProfile About card', () => {
     fireEvent.change(box(), { target: { value: 'We are certified bakers' } });
     fireEvent.click(save());
 
-    await screen.findByText(/This text claims a certification/);
+    await screen.findAllByText(/This text claims a certification/);
     // One announcement of the failure: the field's own alert, with no second banner above it.
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(box().getAttribute('aria-invalid')).toBe('true');
@@ -203,7 +279,7 @@ describe('StoreProfile About card', () => {
     expect(call).toHaveBeenNthCalledWith(
       3,
       'PUT',
-      'sellers/store-profile/about',
+      'sellers/store-profile',
       { expectedVersion: 5, about: { 'en-AU': 'My edit', ja: 'Mine' } },
       'csrf',
     );
@@ -255,219 +331,216 @@ describe('StoreProfile About card', () => {
   });
 });
 
-describe('StoreProfile images', () => {
+describe('StoreProfile pictures', () => {
   const file = () => new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' });
-  const logoCard = () => screen.getByRole('heading', { name: 'Logo' }).closest('section')!;
-  const bannerCard = () => screen.getByRole('heading', { name: 'Banner' }).closest('section')!;
-  const chooseIn = (card: HTMLElement) =>
-    card.querySelector('input[type=file]') as HTMLInputElement;
+  const row = (name: string) => screen.getByRole<HTMLElement>('group', { name });
+  const chooseIn = (name: string) =>
+    row(name).querySelector('input[type=file]') as HTMLInputElement;
+  const SAVED = { id: IMAGE, width: 512, height: 512 };
+  const WIDE = { id: IMAGE, width: 1536, height: 384 };
+  const pick = async (name: string, data = 'QUJD') => {
+    prepare.mockResolvedValueOnce({ kind: 'ready', data });
+    fireEvent.change(chooseIn(name), { target: { files: [file()] } });
+    await waitFor(() => expect(within(row(name)).getByRole('img')).toBeTruthy());
+  };
 
-  it('shows an empty state for a missing logo and banner, and the pictures when there are some', () => {
-    const empty = mount();
-    expect(screen.getByText('No logo yet.')).toBeTruthy();
-    expect(screen.getByText('No banner yet.')).toBeTruthy();
-    expect(within(logoCard()).queryByRole('img')).toBeNull();
-    empty.unmount();
-
-    mount(
-      view({
-        logo: { id: IMAGE, width: 512, height: 512 },
-        banner: { id: IMAGE, width: 1536, height: 384 },
-      }),
-    );
-    const logo = within(logoCard()).getByRole('img', { name: 'Your store logo' });
-    const banner = within(bannerCard()).getByRole('img', { name: 'Your store banner' });
-    expect(logo.getAttribute('src')).toBe(`/api/sellers/store-profile/images/${IMAGE}/small`);
-    expect(banner.getAttribute('src')).toBe(`/api/sellers/store-profile/images/${IMAGE}/large`);
-    expect(banner.getAttribute('width')).toBe('1536');
-    expect(banner.getAttribute('height')).toBe('384');
+  it('has a Pictures section with a Logo and a Banner row, and the spec help text', () => {
+    mount();
+    expect(screen.getByRole('heading', { name: 'Pictures' })).toBeTruthy();
+    expect(screen.getByText('JPEG, PNG or WebP, under 25 MB.')).toBeTruthy();
+    expect(within(row('Logo')).getByText('No logo')).toBeTruthy();
+    expect(within(row('Banner')).getByText('No banner')).toBeTruthy();
+    expect(within(row('Logo')).getByText('Choose a picture')).toBeTruthy();
+    expect(within(row('Logo')).queryByRole('button', { name: 'Remove' })).toBeNull();
   });
 
-  it('uploads a shrunk picture to the right route and shows it', async () => {
+  it('shows the saved pictures', () => {
+    mount(view({ logo: SAVED, banner: WIDE }));
+    expect(
+      within(row('Logo')).getByRole('img', { name: 'Your store logo' }).getAttribute('src'),
+    ).toBe(`/api/sellers/store-profile/images/${IMAGE}/small`);
+    expect(
+      within(row('Banner')).getByRole('img', { name: 'Your store banner' }).getAttribute('src'),
+    ).toBe(`/api/sellers/store-profile/images/${IMAGE}/large`);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('stages a chosen picture with a preview and does not call the server', async () => {
     mount();
-    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
-    call.mockResolvedValueOnce(done(view({ banner: { id: IMAGE, width: 1536, height: 384 } })));
+    await pick('Banner');
 
-    fireEvent.change(chooseIn(bannerCard()), { target: { files: [file()] } });
+    expect(within(row('Banner')).getByRole('img').getAttribute('src')).toBe(
+      'data:image/jpeg;base64,QUJD',
+    );
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      '1 unsaved change',
+    );
+    expect(within(row('Banner')).getByText('Replace')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText('No logo')).toBeTruthy();
+  });
 
-    await expectToast('Banner saved. Buyers can see it now.');
+  it('saves a picture and the text in one versioned call, with one toast', async () => {
+    mount(view({ logo: SAVED }));
+    await pick('Banner');
+    fireEvent.click(within(row('Logo')).getByRole('button', { name: 'Remove' }));
+    fireEvent.change(box(), { target: { value: 'New text' } });
+    call.mockResolvedValueOnce(
+      done(view({ version: 3, about: { 'en-AU': 'New text' }, banner: WIDE })),
+    );
+
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      '3 unsaved changes',
+    );
+    fireEvent.click(save());
+
+    await expectToast('Saved. Buyers can see it now.');
+    expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
-      'sellers/store-profile/banner',
-      { data: 'QUJD' },
+      'sellers/store-profile',
+      { expectedVersion: 2, about: { 'en-AU': 'New text' }, logo: null, banner: { data: 'QUJD' } },
       'csrf',
     );
-    expect(within(bannerCard()).getByRole('img', { name: 'Your store banner' })).toBeTruthy();
-    expect(within(bannerCard()).getByText('Replace')).toBeTruthy();
-    // The logo is untouched.
-    expect(screen.getByText('No logo yet.')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(within(row('Banner')).getByRole('img').getAttribute('src')).toBe(
+      `/api/sellers/store-profile/images/${IMAGE}/large`,
+    );
+    expect(within(row('Logo')).getByText('No logo')).toBeTruthy();
   });
 
-  it('shows Uploading… while the call runs', async () => {
+  it('saves a picture change alone', async () => {
     mount();
-    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
+    await pick('Logo');
+    call.mockResolvedValueOnce(done(view({ version: 3, logo: SAVED })));
+    fireEvent.click(save());
+    await expectToast('Saved. Buyers can see it now.');
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'sellers/store-profile',
+      { expectedVersion: 2, about: { 'en-AU': 'Family bakery.' }, logo: { data: 'QUJD' } },
+      'csrf',
+    );
+  });
+
+  it('puts the saved picture back on Discard', () => {
+    mount(view({ logo: SAVED }));
+    fireEvent.click(within(row('Logo')).getByRole('button', { name: 'Remove' }));
+    expect(within(row('Logo')).getByText('No logo')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+
+    expect(within(row('Logo')).getByRole('img', { name: 'Your store logo' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('takes a staged picture back when it is removed and none was saved', async () => {
+    mount();
+    await pick('Logo');
+    fireEvent.click(within(row('Logo')).getByRole('button', { name: 'Remove' }));
+
+    expect(within(row('Logo')).getByText('No logo')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('lists a picture change in the comparison after a stale save', async () => {
+    mount(view({ logo: SAVED }));
+    fireEvent.click(within(row('Logo')).getByRole('button', { name: 'Remove' }));
+    call
+      .mockResolvedValueOnce(failure({ status: 409, code: 'conflict.stale' }))
+      .mockResolvedValueOnce(done(view({ version: 5, logo: SAVED })));
+    fireEvent.click(save());
+
+    await screen.findByText('Someone else saved these settings first');
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(compared('Logo')).toMatchObject({ saved: 'Current picture', yours: 'Removed' });
+  });
+
+  it('moves focus to the picker after Remove', () => {
+    mount(view({ logo: SAVED }));
+    fireEvent.click(within(row('Logo')).getByRole('button', { name: 'Remove' }));
+    expect(document.activeElement).toBe(chooseIn('Logo'));
+  });
+
+  it('disables the pickers and shows Saving… while the save runs', async () => {
+    mount();
+    await pick('Logo');
     let finish: (value: ReturnType<typeof done>) => void = () => undefined;
     call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    fireEvent.click(save());
 
-    fireEvent.change(chooseIn(logoCard()), { target: { files: [file()] } });
-
-    await waitFor(() =>
-      expect(within(logoCard()).getByRole('status').textContent).toBe('Uploading…'),
-    );
-    expect(chooseIn(logoCard()).disabled).toBe(true);
-    // "Uploading…" is said once, in the status line, not on the button as well.
-    expect(within(logoCard()).getAllByText('Uploading…')).toHaveLength(1);
-    finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
-    await expectToast('Logo saved. Buyers can see it now.');
-    // The picker was disabled while the picture went up: focus comes back to it.
-    await waitFor(() => expect(document.activeElement).toBe(chooseIn(logoCard())));
+    await screen.findByRole('button', { name: 'Saving…' });
+    expect(chooseIn('Logo').disabled).toBe(true);
+    expect(chooseIn('Banner').disabled).toBe(true);
+    finish(done(view({ version: 3, logo: SAVED })));
+    await expectToast('Saved. Buyers can see it now.');
   });
 
-  it('puts focus back on the picker when an upload fails', async () => {
+  it('says so, and stages nothing, when the browser cannot take the file', async () => {
     mount();
-    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
-    call.mockResolvedValueOnce(failure({ status: 422, code: 'file.too-small' }));
+    prepare.mockResolvedValueOnce({ kind: 'refused', reason: 'too-large' });
+    fireEvent.change(chooseIn('Banner'), { target: { files: [file()] } });
 
-    fireEvent.change(chooseIn(logoCard()), { target: { files: [file()] } });
-
-    await screen.findByText(/That logo is too small/);
-    await waitFor(() => expect(document.activeElement).toBe(chooseIn(logoCard())));
-  });
-
-  it('keeps the status line in the page when it is empty, so a screen reader hears it', () => {
-    mount();
-    const status = within(logoCard()).getByRole('status');
-    expect(status.textContent).toBe('');
-    expect(status.className).not.toContain('empty:hidden');
+    await within(row('Banner')).findByText('That picture is too large. Choose one under 25 MB.');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+    // A refused file does not keep the page from saving; the next pick clears the notice.
+    await pick('Banner');
+    expect(within(row('Banner')).queryByRole('alert')).toBeNull();
   });
 
   it.each([
-    ['file.too-small', 422, 'That logo is too small. Use at least 128 × 128 px.'],
-    ['file.unsupported-type', 415, 'That file is not a JPEG, PNG or WebP picture.'],
-    ['file.too-many-pixels', 422, 'That picture has too many pixels. Choose a smaller one.'],
-    ['file.unreadable', 422, 'We could not read that picture. Try another file.'],
-    ['sellers.unavailable', 503, 'The store profile is unavailable right now. Try again later.'],
-  ])('explains %s', async (code, status, message) => {
+    ['file.too-small', 'logo', 422, 'That logo is too small. Use at least 128 × 128 px.'],
+    ['file.too-small', 'banner', 422, 'That banner is too small. Use at least 1200 × 300 px.'],
+    ['file.unsupported-type', 'logo', 415, 'That file is not a JPEG, PNG or WebP picture.'],
+    [
+      'file.too-many-pixels',
+      'logo',
+      422,
+      'That picture has too many pixels. Choose a smaller one.',
+    ],
+    ['file.unreadable', 'logo', 422, 'We could not read that picture. Try another file.'],
+  ])(
+    'shows %s for the %s on its own row, blocks Save, and clears on a new pick',
+    async (code, kind, status, message) => {
+      mount();
+      const name = kind === 'logo' ? 'Logo' : 'Banner';
+      await pick(name);
+      call.mockResolvedValueOnce(
+        failure({ status, code, details: { kind: kind as 'logo' | 'banner' } }),
+      );
+      fireEvent.click(save());
+
+      await within(row(name)).findByText(message);
+      expect(screen.getByRole('alert').textContent).toContain(
+        '1 setting needs fixing before you can save',
+      );
+      expect(save().disabled).toBe(true);
+      // The other row is untouched.
+      expect(within(row(name === 'Logo' ? 'Banner' : 'Logo')).queryByText(message)).toBeNull();
+
+      await pick(name, 'REVG');
+      expect(within(row(name)).queryByText(message)).toBeNull();
+      expect(save().disabled).toBe(false);
+    },
+  );
+
+  it('shows the unavailable message and keeps the staged picture', async () => {
     mount();
-    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
-    call.mockResolvedValueOnce(failure({ status, code }));
+    await pick('Logo');
+    call.mockResolvedValueOnce(failure({ status: 503, code: 'sellers.unavailable' }));
+    fireEvent.click(save());
 
-    fireEvent.change(chooseIn(logoCard()), { target: { files: [file()] } });
-
-    await within(logoCard()).findByText(message);
-    expect(within(logoCard()).queryByRole('img')).toBeNull();
+    await screen.findByText('The store profile is unavailable right now. Try again later.');
+    expect(within(row('Logo')).getByRole('img').getAttribute('src')).toContain('QUJD');
+    expect(save().disabled).toBe(false);
   });
 
-  it('explains a banner that is too small in banner terms, and a file the browser cannot read', async () => {
+  it('keeps an empty status region in each picture row from the start', () => {
     mount();
-    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
-    call.mockResolvedValueOnce(failure({ status: 422, code: 'file.too-small' }));
-    fireEvent.change(chooseIn(bannerCard()), { target: { files: [file()] } });
-    await within(bannerCard()).findByText('That banner is too small. Use at least 1200 × 300 px.');
-
-    prepare.mockResolvedValueOnce({ kind: 'refused', reason: 'unreadable' });
-    fireEvent.change(chooseIn(bannerCard()), { target: { files: [file()] } });
-    await within(bannerCard()).findByText('We could not read that picture. Try another file.');
-    expect(call).toHaveBeenCalledTimes(1);
-  });
-
-  it('asks before removing, then removes and shows the empty state', async () => {
-    mount(view({ logo: { id: IMAGE, width: 512, height: 512 } }));
-    call.mockResolvedValueOnce(done(view()));
-
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
-    expect(within(logoCard()).getByText('Remove the logo?')).toBeTruthy();
-    expect(call).not.toHaveBeenCalled();
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Yes, remove' }));
-
-    await expectToast('Logo removed.');
-    expect(call).toHaveBeenCalledWith('DELETE', 'sellers/store-profile/logo', undefined, 'csrf');
-    expect(screen.getByText('No logo yet.')).toBeTruthy();
-  });
-
-  it('moves focus: Yes, remove on asking; back to Remove on cancel; Choose a picture after removing', async () => {
-    mount(view({ logo: { id: IMAGE, width: 512, height: 512 } }));
-    call.mockResolvedValueOnce(done(view()));
-
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
-    expect(document.activeElement).toBe(
-      within(logoCard()).getByRole('button', { name: 'Yes, remove' }),
-    );
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Cancel' }));
-    expect(document.activeElement).toBe(within(logoCard()).getByRole('button', { name: 'Remove' }));
-
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Yes, remove' }));
-    await expectToast('Logo removed.');
-    expect(document.activeElement).toBe(chooseIn(logoCard()));
-    expect(within(logoCard()).getByText('Choose a picture')).toBeTruthy();
-  });
-
-  it('keeps an empty status region in each picture card from the start', () => {
-    mount();
-    for (const card of [logoCard(), bannerCard()]) {
-      const status = within(card).getByRole('status');
-      expect(status.textContent).toBe('');
+    for (const name of ['Logo', 'Banner']) {
+      expect(within(row(name)).getByRole('status').textContent).toBe('');
     }
-  });
-
-  it('dims the old picture while a new one uploads', async () => {
-    mount(view({ logo: { id: IMAGE, width: 512, height: 512 } }));
-    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
-    let finish: (value: ReturnType<typeof done>) => void = () => undefined;
-    call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
-
-    fireEvent.change(chooseIn(logoCard()), { target: { files: [file()] } });
-
-    await waitFor(() =>
-      expect(within(logoCard()).getByRole('img').className).toContain('opacity-50'),
-    );
-    finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
-    await expectToast('Logo saved. Buyers can see it now.');
-    expect(within(logoCard()).getByRole('img').className).not.toContain('opacity-50');
-  });
-
-  it('previews the banner as buyers see it, on a phone or a wide screen, and says what is cropped', () => {
-    mount(view({ banner: { id: IMAGE, width: 1536, height: 384 } }));
-    const card = bannerCard();
-    expect(within(card).getByText(/edges are cropped on phones and wide screens/)).toBeTruthy();
-    expect(within(card).getByText(/1200 × 300 px/)).toBeTruthy();
-    const box = () => within(card).getByRole('img').parentElement!;
-    const phone = within(card).getByRole('button', { name: 'Phone' });
-    const desktop = within(card).getByRole('button', { name: 'Desktop' });
-    expect(phone.getAttribute('aria-pressed')).toBe('true');
-    expect(box().className).toContain('aspect-banner-phone');
-    expect(within(card).queryByText(/dashed square/)).toBeNull();
-    expect(within(card).getByText(/The Share button covers the top right/)).toBeTruthy();
-    // The ghost Share pill is in both shapes and hidden from assistive technology.
-    const ghosts = () => box().querySelectorAll('[aria-hidden="true"]');
-    expect(ghosts()).toHaveLength(1);
-
-    fireEvent.click(desktop);
-    expect(ghosts()).toHaveLength(2);
-
-    expect(desktop.getAttribute('aria-pressed')).toBe('true');
-    expect(phone.getAttribute('aria-pressed')).toBe('false');
-    expect(box().className).toContain('aspect-banner-desktop');
-    expect(within(card).getByText(/dashed square/)).toBeTruthy();
-  });
-
-  it('puts the removal question on its own line', () => {
-    mount(view({ banner: { id: IMAGE, width: 1536, height: 384 } }));
-
-    fireEvent.click(within(bannerCard()).getByRole('button', { name: 'Remove' }));
-
-    expect(within(bannerCard()).getByText('Remove the banner?').className).toContain('basis-full');
-  });
-
-  it('keeps the picture when the removal is cancelled', () => {
-    mount(view({ logo: { id: IMAGE, width: 512, height: 512 } }));
-
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
-    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Cancel' }));
-
-    expect(within(logoCard()).getByRole('img', { name: 'Your store logo' })).toBeTruthy();
-    expect(call).not.toHaveBeenCalled();
   });
 });
 
@@ -486,6 +559,20 @@ describe('StoreProfile without the edit permission', () => {
 });
 
 describe('problem mapping', () => {
+  it('maps a refused picture to its kind, and anything else to the About problem', () => {
+    expect(
+      saveProblemOf({ status: 422, code: 'file.too-small', details: { kind: 'banner' } }),
+    ).toEqual({
+      banner: null,
+      fields: {},
+      pictures: { banner: { key: 'too-small.banner' } },
+    });
+    expect(saveProblemOf({ status: 409, code: 'conflict.stale' })).toMatchObject({
+      banner: 'stale',
+      pictures: {},
+    });
+  });
+
   it('maps About failures to banners and per-locale rules', () => {
     expect(aboutProblemOf({ status: 409, code: 'conflict.stale' }).banner).toBe('stale');
     expect(aboutProblemOf({ status: 403, code: 'access.denied' }).banner).toBe('denied');

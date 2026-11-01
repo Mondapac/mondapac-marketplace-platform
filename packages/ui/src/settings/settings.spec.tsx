@@ -317,7 +317,7 @@ describe('SettingsErrorSummary', () => {
       <SettingsErrorSummary
         title="2 settings need fixing before you can save"
         items={[
-          { id: 'cutoff', label: 'Cut-off time' },
+          { id: 'cutoff', label: 'Cut-off time', reason: 'Enter a time such as 1:00 pm.' },
           { id: 'free', label: 'Free delivery from' },
         ]}
       />,
@@ -327,6 +327,10 @@ describe('SettingsErrorSummary', () => {
     expect(out).toContain('2 settings need fixing before you can save');
     expect(out).toContain('<a href="#cutoff"');
     expect(out).toContain('>Free delivery from</a>');
+    // The reason follows its link; an item without one shows the link alone.
+    expect(out).toMatch(
+      />Cut-off time<\/a><span>: (<!-- -->)?Enter a time such as 1:00 pm\.<\/span>/,
+    );
     expect(out).toContain('text-critical-fg');
   });
 

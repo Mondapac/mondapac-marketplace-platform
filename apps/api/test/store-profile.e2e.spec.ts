@@ -1,4 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
@@ -9,7 +10,10 @@ import { PublishedStoreImageRead } from '../src/modules/sellers/application/use-
 import { StoreImageReadOwn } from '../src/modules/sellers/application/use-cases/store-image-read-own.use-case';
 import { StoreImageRemove } from '../src/modules/sellers/application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from '../src/modules/sellers/application/use-cases/store-image-save.use-case';
+import { StoreProfileClaimTerms } from '../src/modules/sellers/application/use-cases/store-profile-claim-terms.use-case';
+import { StoreProfileHistory } from '../src/modules/sellers/application/use-cases/store-profile-history.use-case';
 import { StoreProfileRead } from '../src/modules/sellers/application/use-cases/store-profile-read.use-case';
+import { StoreProfileSave } from '../src/modules/sellers/application/use-cases/store-profile-save.use-case';
 import { StoreProfileSaveAbout } from '../src/modules/sellers/application/use-cases/store-profile-save-about.use-case';
 import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
@@ -52,15 +56,29 @@ const VIEW = {
   locales: ['en-AU'],
   logo: { id: '0199dddd-0000-7000-8000-0000000000aa', width: 512, height: 512 },
   banner: null,
+  lastChanged: {
+    at: Temporal.Instant.from('2026-10-15T10:00:00Z'),
+    byDisplayName: 'Mia T.',
+    byKind: 'member',
+  },
 };
-const ANSWER = { ...VIEW, aboutMaxLength: 2000, imageMaxBytes: 4 * 1024 * 1024 };
+const LAST_CHANGED_BODY = { at: '2026-10-15T10:00:00Z', byDisplayName: 'Mia T.', byKind: 'member' };
+const ANSWER = {
+  ...VIEW,
+  lastChanged: LAST_CHANGED_BODY,
+  aboutMaxLength: 2000,
+  imageMaxBytes: 4 * 1024 * 1024,
+};
 const IMAGE_ID = '0199dddd-0000-7000-8000-0000000000aa';
 
 describe('the seller store profile over HTTP (integration)', () => {
   let app: NestExpressApplication;
   const stubs = {
     read: new Stub(),
+    terms: new Stub(),
+    history: new Stub(),
     about: new Stub(),
+    profile: new Stub(),
     image: new Stub(),
     remove: new Stub(),
     own: new Stub(),
@@ -78,6 +96,12 @@ describe('the seller store profile over HTTP (integration)', () => {
           ? faked
               .overrideProvider(StoreProfileRead)
               .useValue(stubs.read)
+              .overrideProvider(StoreProfileSave)
+              .useValue(stubs.profile)
+              .overrideProvider(StoreProfileClaimTerms)
+              .useValue(stubs.terms)
+              .overrideProvider(StoreProfileHistory)
+              .useValue(stubs.history)
               .overrideProvider(StoreProfileSaveAbout)
               .useValue(stubs.about)
               .overrideProvider(StoreImageSave)
@@ -177,6 +201,234 @@ describe('the seller store profile over HTTP (integration)', () => {
       expect(response.body).toEqual(ANSWER);
       expect(stubs.read.calls[0]!.context.market.marketId).toBe(code);
       expect(stubs.read.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    describe('the whole-profile save (text and pictures as one)', () => {
+      const profileBody = {
+        expectedVersion: 2,
+        about: { 'en-AU': 'Fresh bread' },
+        logo: { data: 'AAAA' },
+        banner: null,
+      };
+      const putProfile = (headers: Record<string, string>, body: unknown) =>
+        http()
+          .put('/sellers/store-profile')
+          .set(headers)
+          .send(body as object);
+
+      it('passes the version, the texts and the two pictures to the use case and answers the profile', async () => {
+        await boot(true);
+        const session = await signedIn(code);
+
+        const saved = await putProfile(session.headers, profileBody);
+
+        expect(saved.status).toBe(200);
+        expect(saved.body).toEqual(ANSWER);
+        expect(saved.headers['cache-control']).toBe('no-store');
+        expect(stubs.profile.calls).toHaveLength(1);
+        expect(stubs.profile.calls[0]!.input).toEqual(profileBody);
+        expect(stubs.profile.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+      });
+
+      it('leaves a picture out of the input when the body leaves it out', async () => {
+        await boot(true);
+        const session = await signedIn(code);
+
+        await putProfile(session.headers, aboutBody);
+
+        expect(stubs.profile.calls[0]!.input).toEqual(aboutBody);
+      });
+
+      it('requires CSRF and takes a body larger than the JSON limit only with a session and the header', async () => {
+        await boot(true);
+        const session = await signedIn(code);
+        const big = { ...profileBody, logo: { data: 'A'.repeat(200_000) } };
+
+        const noToken = await putProfile({ ...session.headers, 'x-csrf-token': '' }, profileBody);
+        const largeNoToken = await putProfile({ ...session.headers, 'x-csrf-token': '' }, big);
+        const largeNoCookie = await putProfile({ ...session.headers, cookie: '' }, big);
+        const large = await putProfile(session.headers, big);
+
+        expect(noToken.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+        expect(largeNoToken.status).toBe(413);
+        expect(largeNoCookie.status).toBe(413);
+        expect(large.status).toBe(200);
+        expect(stubs.profile.calls).toHaveLength(1);
+      });
+
+      it.each([
+        ['a seller id', { ...profileBody, sellerId: 'x' }, 'sellerId', 'unknown-field'],
+        ['no version', { about: {} }, 'expectedVersion', 'required'],
+        ['no about', { expectedVersion: 1 }, 'about', 'required'],
+        ['a logo that is a string', { ...profileBody, logo: 'x' }, 'logo', 'type'],
+        ['a logo with no data', { ...profileBody, logo: {} }, 'logo.data', 'required'],
+        ['a banner with a number', { ...profileBody, banner: { data: 5 } }, 'banner.data', 'type'],
+        [
+          'an extra field on a picture',
+          { ...profileBody, logo: { data: 'AAAA', kind: 'x' } },
+          'logo.kind',
+          'unknown-field',
+        ],
+        ['an array body', [], '', 'type'],
+      ])(
+        'refuses %s as validation.failed without calling the use case',
+        async (_n, body, path, fieldCode) => {
+          await boot(true);
+          const session = await signedIn(code);
+
+          const response = await putProfile(session.headers, body);
+
+          expect(response.status).toBe(400);
+          expect(response.body).toMatchObject({
+            code: 'validation.failed',
+            details: { fields: expect.arrayContaining([{ path, code: fieldCode }]) as unknown },
+          });
+          expect(stubs.profile.calls).toHaveLength(0);
+        },
+      );
+
+      it('refuses a body that is not JSON with 415', async () => {
+        await boot(true);
+        const session = await signedIn(code);
+
+        const response = await http()
+          .put('/sellers/store-profile')
+          .set(session.headers)
+          .set('content-type', 'text/plain')
+          .send('x');
+
+        expect(response.status).toBe(415);
+        expect(stubs.profile.calls).toHaveLength(0);
+      });
+
+      it.each([
+        ['conflict.stale', 409, undefined],
+        ['access.denied', 403, undefined],
+        ['file.not-found', 404, undefined],
+        ['sellers.unavailable', 503, undefined],
+        ['file.too-large', 413, 'logo'],
+        ['file.unsupported-type', 415, 'logo'],
+        ['file.too-many-pixels', 422, 'banner'],
+        ['file.too-small', 422, 'banner'],
+        ['file.unreadable', 422, 'logo'],
+      ])('maps %s to %i, naming the picture (%s)', async (errorCode, status, kind) => {
+        await boot(true);
+        const session = await signedIn(code);
+        stubs.profile.next = {
+          ok: false,
+          error: kind === undefined ? { code: errorCode } : { code: errorCode, kind },
+        };
+
+        const response = await putProfile(session.headers, profileBody);
+
+        expect(response.status).toBe(status);
+        expect((response.body as { code: string }).code).toBe(errorCode);
+        if (kind !== undefined) expect(response.body).toMatchObject({ details: { kind } });
+      });
+
+      it('answers the claim wording as validation.failed with the about field, and a throttled save with 429', async () => {
+        await boot(true);
+        const session = await signedIn(code);
+        stubs.profile.next = {
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'about.en-AU', code: 'claim-term' }],
+          },
+        };
+        const refused = await putProfile(session.headers, profileBody);
+        stubs.profile.next = {
+          ok: false,
+          error: { code: 'request.throttled', retryAfterSeconds: 7 },
+        };
+        const throttled = await putProfile(session.headers, profileBody);
+
+        expect(refused.status).toBe(400);
+        expect(refused.body).toMatchObject({
+          details: { fields: [{ path: 'about.en-AU', code: 'claim-term' }] },
+        });
+        expect(throttled.status).toBe(429);
+        expect(throttled.headers['retry-after']).toBe('7');
+      });
+    });
+
+    it('reads the claim terms with the seller of the session, no-store, as a list', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.terms.next = { ok: true, value: ['halal', 'halal certified'] };
+
+      const response = await http().get('/sellers/store-profile/claim-terms').set(session.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({ terms: ['halal', 'halal certified'] });
+      expect(stubs.terms.calls[0]!.context.market.marketId).toBe(code);
+      expect(stubs.terms.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    it('answers the claim terms as 503 when they cannot be read, never an empty list', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.terms.next = { ok: false, error: { code: 'sellers.unavailable' } };
+
+      const response = await http().get('/sellers/store-profile/claim-terms').set(session.headers);
+
+      expect(response.status).toBe(503);
+    });
+
+    it('lists the changes of the page: paging passed on, names only, no cache', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.history.next = {
+        ok: true,
+        value: {
+          items: [
+            {
+              id: 'row-1',
+              at: Temporal.Instant.from('2026-10-15T10:00:00Z'),
+              byDisplayName: 'Mia T.',
+              byKind: 'member',
+              fields: ['about'],
+            },
+          ],
+          next: null,
+        },
+      };
+
+      const response = await http()
+        .get('/sellers/store-profile/history?limit=5&after=abc')
+        .set(session.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        items: [{ id: 'row-1', ...LAST_CHANGED_BODY, fields: ['about'] }],
+        next: null,
+      });
+      expect(stubs.history.calls[0]!.input).toEqual({ after: 'abc', limit: 5 });
+      expect(stubs.history.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+
+      stubs.history.next = { ok: false, error: { code: 'access.denied' } };
+      expect((await http().get('/sellers/store-profile/history').set(session.headers)).status).toBe(
+        403,
+      );
+    });
+
+    it('answers a stale save with 409 conflict.stale naming who saved first and when', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.about.next = {
+        ok: false,
+        error: { code: 'conflict.stale', lastChanged: VIEW.lastChanged },
+      };
+
+      const response = await putAbout(session.headers, aboutBody);
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        code: 'conflict.stale',
+        details: { lastChanged: LAST_CHANGED_BODY },
+      });
     });
 
     it('saves the About text: only the two named fields, CSRF required, no-store', async () => {
@@ -475,6 +727,7 @@ describe('the seller store profile over HTTP (integration)', () => {
       const visitors = [
         await http().get('/sellers/store-profile').set(visitor),
         await putAbout(visitor, aboutBody),
+        await http().put('/sellers/store-profile').set(visitor).send(aboutBody),
         await putImage('logo', visitor, { data: 'AAAA' }),
         await http().delete('/sellers/store-profile/banner').set(visitor),
         await http().get(`/sellers/store-profile/images/${IMAGE_ID}/small`).set(visitor),
@@ -482,6 +735,7 @@ describe('the seller store profile over HTTP (integration)', () => {
       const sellers = [
         await http().get('/sellers/store-profile').set(own),
         await putAbout(own, aboutBody),
+        await http().put('/sellers/store-profile').set(own).send(aboutBody),
         await putImage('banner', own, { data: 'AAAA' }),
         await http().delete('/sellers/store-profile/logo').set(own),
         await http().get(`/sellers/store-profile/images/${IMAGE_ID}/small`).set(own),
@@ -496,6 +750,7 @@ describe('the seller store profile over HTTP (integration)', () => {
       // in test/db/sellers-store-profile-http.db-spec.ts.
       const ZZ_UNAVAILABLE = [
         'sellers.unavailable',
+        'access.unavailable',
         'access.unavailable',
         'access.unavailable',
         'access.unavailable',

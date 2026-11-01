@@ -1,6 +1,7 @@
 import { HttpException, type Logger } from '@nestjs/common';
 import type { CallContext, Money } from '@mondapac/shared-kernel';
 import type { Request } from 'express';
+import { conflictDetails } from '../../../platform/audit/change-trail';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 // The parts of a shipping route that every route shares: the error format
@@ -70,5 +71,7 @@ export function refusal(
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
   if (typeof error.currency === 'string')
     return fail(status, error.code, { currency: error.currency });
+  const conflict = conflictDetails(error);
+  if (conflict !== undefined) return fail(status, error.code, conflict);
   return fail(status, error.code);
 }

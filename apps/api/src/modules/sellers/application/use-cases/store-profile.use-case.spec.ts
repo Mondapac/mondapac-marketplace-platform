@@ -9,6 +9,11 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import {
+  changeTrailOf,
+  FakeChangeActors,
+  InMemoryAuditTrail,
+} from '../../../../../test/support/change-trail-fakes';
 import { noRunOnce } from '../../../../../test/support/fake-run-once';
 import { InMemoryCounters } from '../../../../../test/support/sellers-submit-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
@@ -37,7 +42,10 @@ import { PublishedStoreContentReader } from '../store-profile/published-store-co
 import { StoreImageReadOwn } from './store-image-read-own.use-case';
 import { StoreImageRemove } from './store-image-remove.use-case';
 import { StoreImageSave } from './store-image-save.use-case';
+import { StoreProfileClaimTerms } from './store-profile-claim-terms.use-case';
+import { StoreProfileHistory } from './store-profile-history.use-case';
 import { StoreProfileRead } from './store-profile-read.use-case';
+import { StoreProfileSave } from './store-profile-save.use-case';
 import { StoreProfileSaveAbout } from './store-profile-save-about.use-case';
 
 // The seller's own store profile in memory (sellers design 3.7; slice 12 part 2) on both Market
@@ -64,14 +72,11 @@ function setUp() {
   const claimCheck = new FakeClaimCheck();
   const objectStore = new MapObjectStore();
   const counters = new InMemoryCounters();
-  const audits: AuditEntry[] = [];
+  const auditTrail = new InMemoryAuditTrail(clock);
+  const audits: AuditEntry[] = auditTrail.entries;
+  const actors = new FakeChangeActors();
   const events: { type: string; payload: unknown; aggregateVersion: number }[] = [];
-  const audit: AuditWriter = {
-    record: (_context, entry) => {
-      audits.push(entry);
-      return Promise.resolve();
-    },
-  };
+  const audit: AuditWriter = auditTrail;
   const outbox: OutboxWriter = {
     append: (_context, pending) => {
       for (const event of pending) {
@@ -113,12 +118,14 @@ function setUp() {
     storeImages,
     contentSealer,
     localesPolicy,
+    trail: changeTrailOf(unitOfWork, auditTrail, actors),
   };
   const counterKeys = new HmacRateCounterKeys(new Uint8Array(32).fill(7));
   const aboutCache = new PublishedAboutCache(clock);
   return {
     clock,
     ids,
+    actors,
     profiles,
     storeContent,
     storeImages,
@@ -133,6 +140,8 @@ function setUp() {
     deny: () => void (allowed = false),
     holdOnly: (...keys: string[]) => void (held = new Set(keys)),
     read: new StoreProfileRead(gate, reading),
+    claimTerms: new StoreProfileClaimTerms(gate, { claimCheck }),
+    history: new StoreProfileHistory(gate, { trail: reading.trail }),
     saveAbout: new StoreProfileSaveAbout(gate, {
       ...reading,
       audit,
@@ -140,6 +149,18 @@ function setUp() {
       counters,
       counterKeys,
       claimCheck,
+      ids,
+      clock,
+    }),
+    save: new StoreProfileSave(gate, {
+      ...reading,
+      audit,
+      outbox,
+      counters,
+      counterKeys,
+      claimCheck,
+      imageProcessor,
+      objectStore,
       ids,
       clock,
     }),
@@ -232,6 +253,7 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
           locales,
           logo: null,
           banner: null,
+          lastChanged: null,
         },
       });
     });
@@ -364,8 +386,75 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
         about: { [locale]: 'Another text' },
       });
 
-      expect(stale).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(stale).toEqual({
+        ok: false,
+        error: {
+          code: 'conflict.stale',
+          lastChanged: { at: START, byDisplayName: null, byKind: 'member' },
+        },
+      });
       expect(t.storeContent.revisions.size).toBe(1);
+    });
+
+    it('names the winning save in the conflict, and in the page, by display name only', async () => {
+      const t = setUp();
+      const { context, sellerId } = ownerOf(t, code);
+      const actor = context.actor;
+      if (actor.kind !== 'authenticated') throw new Error('expected a signed-in actor');
+      t.actors.labels.set(actor.accountId, { kind: 'member', displayName: 'Mia T.' });
+      await t.saveAbout.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } });
+      t.clock.advance(Temporal.Duration.from({ minutes: 5 }));
+
+      const stale = await t.saveAbout.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: 'Another text' },
+      });
+      const page = await t.read.execute(context, {});
+
+      const named = { at: START, byDisplayName: 'Mia T.', byKind: 'member' };
+      expect(stale).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale', lastChanged: named },
+      });
+      expect(page.ok && page.value.lastChanged).toEqual(named);
+      expect(JSON.stringify([stale, page])).not.toContain(actor.accountId);
+      expect(JSON.stringify([stale, page])).not.toContain(sellerId + 'x');
+    });
+
+    it('lists the changes of the page, newest first: which field, when, by whom, never the text', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      const actor = context.actor;
+      if (actor.kind !== 'authenticated') throw new Error('expected a signed-in actor');
+      t.actors.labels.set(actor.accountId, { kind: 'member', displayName: 'Mia T.' });
+      await t.saveAbout.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } });
+
+      const history = await t.history.execute(context, {});
+
+      expect(history.ok).toBe(true);
+      if (!history.ok) return;
+      expect(history.value.items).toHaveLength(1);
+      expect(history.value.items[0]).toMatchObject({
+        at: START,
+        byDisplayName: 'Mia T.',
+        byKind: 'member',
+        fields: ['about'],
+      });
+      expect(JSON.stringify(history)).not.toContain(TEXT);
+    });
+
+    it('keeps one seller from reading the history of another, and refuses a seller without the permission', async () => {
+      const t = setUp();
+      const first = ownerOf(t, code);
+      const second = ownerOf(t, code);
+      await t.saveAbout.execute(first.context, { expectedVersion: 0, about: { [locale]: TEXT } });
+
+      const other = await t.history.execute(second.context, {});
+      t.deny();
+      const denied = await t.history.execute(first.context, {});
+
+      expect(other.ok && other.value.items).toEqual([]);
+      expect(denied).toEqual({ ok: false, error: { code: 'access.denied' } });
     });
 
     it.each([
@@ -459,6 +548,19 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
       expect(t.storeContent.revisions.size).toBe(0);
     });
 
+    it('lists the claim terms for an approved seller, and refuses what the check cannot answer', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+
+      expect(await t.claimTerms.execute(context, {})).toEqual({ ok: true, value: ['claim word'] });
+
+      t.claimCheck.unavailable = true;
+      expect(await t.claimTerms.execute(context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    });
+
     it('fails closed when the claim check is unavailable: sellers.unavailable, nothing saved', async () => {
       const t = setUp();
       const { context } = ownerOf(t, code);
@@ -508,6 +610,345 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
 
       expect(await t.published.profileOf(b.context, b.sellerId)).toMatchObject({ about: null });
       expect(await t.read.execute(b.context, {})).toMatchObject({ value: { version: 0 } });
+    });
+  });
+
+  describe('saving the text and the pictures as one versioned unit', () => {
+    const SMALL = { width: 600, height: 400 };
+
+    it('saves the text, a logo and a banner together: one revision, one version, every part current', async () => {
+      const t = setUp();
+      const { sellerId, context } = ownerOf(t, code);
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: TEXT },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+        banner: { data: await picture(2000, 900, 'jpeg') },
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          version: 1,
+          about: { [locale]: TEXT },
+          logo: { width: 512, height: 512 },
+          banner: { width: 1536, height: 384 },
+        },
+      });
+      expect(t.storeContent.revisions.size).toBe(1);
+      expect(t.storeImages.current.size).toBe(2);
+      expect(t.objectStore.objects.size).toBe(4);
+      expect(t.audits.map((entry) => entry.action).sort()).toEqual([
+        'sellers.store-image.changed',
+        'sellers.store-image.changed',
+        'sellers.store-profile.saved',
+      ]);
+      expect(t.events).toEqual([
+        expect.objectContaining({
+          type: 'sellers.store-profile-published.v1',
+          aggregateVersion: 1,
+          payload: expect.objectContaining({ sellerId }) as unknown,
+        }),
+      ]);
+    });
+
+    it('keeps a picture left out, and removes one sent as null, in the same save as a text change', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      await t.save.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: TEXT },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+        banner: { data: await picture(2000, 900, 'jpeg') },
+      });
+      const keysBefore = t.objectStore.objects.size;
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 1,
+        about: { [locale]: 'Fresh bread and rolls' },
+        banner: null,
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: { version: 2, about: { [locale]: 'Fresh bread and rolls' }, banner: null },
+      });
+      expect((result as { value: { logo: unknown } }).value.logo).not.toBeNull();
+      // The removed banner's two objects go after the commit; the kept logo's stay.
+      expect(keysBefore - t.objectStore.objects.size).toBe(2);
+      expect(t.storeImages.current.size).toBe(1);
+    });
+
+    it('makes a picture-only change a new revision: the version rises, the text stays', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      await t.save.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } });
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 1,
+        about: { [locale]: TEXT },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: { version: 2, about: { [locale]: TEXT }, logo: { width: 512 } },
+      });
+      expect(t.storeContent.revisions.size).toBe(2);
+    });
+
+    it('replaces a picture: the old objects are deleted after the new one is current', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      await t.save.execute(context, {
+        expectedVersion: 0,
+        about: {},
+        logo: { data: await picture(300, 300) },
+      });
+      const first = [...t.objectStore.objects.keys()];
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 1,
+        about: {},
+        logo: { data: await picture(400, 400, 'jpeg') },
+      });
+
+      expect(result).toMatchObject({ ok: true, value: { version: 2 } });
+      const now = [...t.objectStore.objects.keys()];
+      expect(now).toHaveLength(2);
+      expect(now.some((key) => first.includes(key))).toBe(false);
+    });
+
+    it('writes nothing when nothing changed, and removing what is not there is not a change', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      await t.save.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } });
+      const audits = t.audits.length;
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 1,
+        about: { [locale]: TEXT },
+        logo: null,
+        banner: null,
+      });
+
+      expect(result).toMatchObject({ ok: true, value: { version: 1 } });
+      expect(t.storeContent.revisions.size).toBe(1);
+      expect(t.audits).toHaveLength(audits);
+    });
+
+    it('refuses a stale expectedVersion with conflict.stale: no picture becomes current and no object is left', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      await t.save.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } });
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: 'Other text' },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(t.storeContent.revisions.size).toBe(1);
+      expect(t.storeImages.current.size).toBe(0);
+      expect(t.objectStore.objects.size).toBe(0);
+    });
+
+    it('stops at a refused picture, names its kind, and saves neither the text nor the other picture', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: TEXT },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+        // 400 by 100 pixels is under the 1200 by 300 minimum of a banner.
+        banner: { data: await picture(400, 100) },
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'file.too-small', kind: 'banner' } });
+      expect(t.storeContent.revisions.size).toBe(0);
+      expect(t.storeImages.current.size).toBe(0);
+      expect(t.objectStore.objects.size).toBe(0);
+      expect(t.audits).toEqual([]);
+    });
+
+    it('answers a bad picture body by its path, and too large before decoding', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      const decoded = t.imageProcessor.calls;
+
+      expect(
+        await t.save.execute(context, {
+          expectedVersion: 0,
+          about: {},
+          logo: { data: 'not base64!' },
+        }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'logo.data', code: 'format' }] },
+      });
+      expect(
+        await t.save.execute(context, { expectedVersion: 0, about: {}, banner: { data: '' } }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'banner.data', code: 'required' }] },
+      });
+      expect(
+        await t.save.execute(context, {
+          expectedVersion: 0,
+          about: {},
+          logo: { data: 'A'.repeat(5_600_000) },
+        }),
+      ).toEqual({ ok: false, error: { code: 'file.too-large', kind: 'logo' } });
+      expect(t.imageProcessor.calls).toBe(decoded);
+    });
+
+    it('refuses a text that claims a certification as about.<locale> claim-term, before any picture is decoded', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: 'We are Claim Word bakers' },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: `about.${locale}`, code: 'claim-term' }],
+        },
+      });
+      expect(t.imageProcessor.calls).toBe(0);
+      expect(t.objectStore.objects.size).toBe(0);
+    });
+
+    it('fails closed when the claim check is unavailable, with nothing saved', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      t.claimCheck.unavailable = true;
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: TEXT },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'sellers.unavailable' } });
+      expect(t.storeContent.revisions.size).toBe(0);
+      expect(t.storeImages.current.size).toBe(0);
+    });
+
+    it('removes the objects it wrote when the object store fails part way, and saves nothing', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      t.objectStore.failAfterPuts = 3;
+
+      const result = await t.save.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: TEXT },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+        banner: { data: await picture(2000, 900, 'jpeg') },
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable', kind: 'banner' },
+      });
+      expect(t.objectStore.objects.size).toBe(0);
+      expect(t.storeImages.current.size).toBe(0);
+      expect(t.storeContent.revisions.size).toBe(0);
+    });
+
+    it('checks the shape: a version from 0, texts of the Market locales', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+
+      expect(await t.save.execute(context, { expectedVersion: -1, about: {} })).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'expectedVersion', code: 'format' }],
+        },
+      });
+      expect(
+        await t.save.execute(context, { expectedVersion: 0, about: { 'xx-XX': 'hello' } }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'about', code: 'locale' }] },
+      });
+    });
+
+    it('spends the saves limit once and the picture limit once per picture', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      // 10 pictures a minute: five saves of two pictures spend them all.
+      for (let version = 0; version < 5; version += 1) {
+        const saved = await t.save.execute(context, {
+          expectedVersion: version,
+          about: { [locale]: `Text ${version}` },
+          logo: { data: await picture(300 + version, 300) },
+          banner: { data: await picture(1300, 400 + version) },
+        });
+        expect(saved).toMatchObject({ ok: true });
+      }
+
+      const sixth = await t.save.execute(context, {
+        expectedVersion: 5,
+        about: { [locale]: 'Text 5' },
+        logo: { data: await picture(350, 300) },
+      });
+
+      expect(sixth).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
+    });
+
+    it('is access.denied for a seller who is not approved, and for a refused actor, with no decoding', async () => {
+      const t = setUp();
+      const pending = ownerOf(t, code, false);
+      const data = await picture(SMALL.width, SMALL.height);
+
+      expect(
+        await t.save.execute(pending.context, { expectedVersion: 0, about: {}, logo: { data } }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+
+      const { context } = ownerOf(t, code);
+      t.deny();
+      expect(
+        await t.save.execute(context, { expectedVersion: 0, about: {}, logo: { data } }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(t.imageProcessor.calls).toBe(0);
+      expect(t.objectStore.objects.size).toBe(0);
+    });
+
+    it('is refused for a seller who may view but not edit', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      t.holdOnly(SELLERS_STORE_PROFILE_VIEW.key);
+
+      expect(await t.save.execute(context, { expectedVersion: 0, about: {} })).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('keeps one seller from touching another: the seller is the actor, never the request', async () => {
+      const t = setUp();
+      const a = ownerOf(t, code);
+      const b = ownerOf(t, code);
+
+      await t.save.execute(a.context, {
+        expectedVersion: 0,
+        about: { [locale]: TEXT },
+        logo: { data: await picture(SMALL.width, SMALL.height) },
+      });
+
+      expect(await t.read.execute(b.context, {})).toMatchObject({
+        ok: true,
+        value: { version: 0, logo: null },
+      });
     });
   });
 

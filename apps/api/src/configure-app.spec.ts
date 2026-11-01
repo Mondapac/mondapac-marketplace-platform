@@ -1,4 +1,4 @@
-import { isStoreImageUploadRequest } from './configure-app';
+import { isStoreImageUploadRequest, isStoreProfileSaveRequest } from './configure-app';
 
 // Which requests may carry the large (5.8 MB) body of a store logo or banner (Hassan H4).
 
@@ -48,5 +48,34 @@ describe('isStoreImageUploadRequest', () => {
     ['PUT', undefined],
   ])('is false for %s %s even with a session', (method, url) => {
     expect(isStoreImageUploadRequest(method, url, OK)).toBe(false);
+  });
+});
+
+describe('isStoreProfileSaveRequest', () => {
+  it('takes the large body of the whole-profile PUT with a seller session and CSRF header', () => {
+    expect(isStoreProfileSaveRequest('PUT', '/sellers/store-profile', OK)).toBe(true);
+    expect(isStoreProfileSaveRequest('PUT', '/sellers/store-profile/?x=1', OK)).toBe(true);
+  });
+
+  it.each([
+    ['no headers at all', undefined],
+    ['no cookie', { 'x-csrf-token': 'token' }],
+    ['no CSRF header', { cookie: COOKIE }],
+    ['a customer cookie', { cookie: '__Host-session-customer-AU=abc', 'x-csrf-token': 't' }],
+    ['an admin cookie', { cookie: '__Host-session-admin-AU=abc', 'x-csrf-token': 't' }],
+  ])('keeps the 64 KiB parser for %s', (_, headers) => {
+    expect(isStoreProfileSaveRequest('PUT', '/sellers/store-profile', headers)).toBe(false);
+  });
+
+  it.each([
+    ['GET', '/sellers/store-profile'],
+    ['POST', '/sellers/store-profile'],
+    ['PUT', '/sellers/store-profile/about'],
+    ['PUT', '/sellers/store-profile/logo'],
+    ['PUT', '/sellers/store-profile/extra'],
+    [undefined, '/sellers/store-profile'],
+    ['PUT', undefined],
+  ])('is false for %s %s even with a session', (method, url) => {
+    expect(isStoreProfileSaveRequest(method, url, OK)).toBe(false);
   });
 });
