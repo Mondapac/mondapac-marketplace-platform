@@ -317,6 +317,11 @@
   },
   { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.notify-access-reviewers", "rule": "system" },
+  {
+    "name": "identity.own-account-tied-to-seller",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.own-owner-email", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "identity.purge-expired", "rule": "system" },
   { "name": "identity.purge-unverified-accounts", "rule": "system" },

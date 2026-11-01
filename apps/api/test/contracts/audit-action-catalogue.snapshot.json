@@ -1917,7 +1917,25 @@
       "status": "enumOf(off|active)"
     },
     "after": {
-      "status": "enumOf(off|active)"
+      "status": "enumOf(off|active)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "reviews.review.moderated",
+    "targetType": "reviews.product-review",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(published|held|hidden|removed|deleted-by-author)"
+    },
+    "after": {
+      "action": "enumOf(publish|hide|restore|remove|dismiss-reports)",
+      "reasonCode": "enumOf(checked-ok|personal-information|abusive|irrelevant|not-a-purchase|incentivised|spam|other|reinstated|hidden-in-error|illegal|defamatory|not-against-policy|duplicate)",
+      "status": "enumOf(published|held|hidden|removed|deleted-by-author)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)"
     }
   },
   {

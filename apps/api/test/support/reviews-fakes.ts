@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { ok, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { StepUpProofConsumer } from '../../src/platform/authz';
 import type { CatalogFacade } from '../../src/modules/catalog';
 import type { DeliveredSellerOrder, OrderingFacade } from '../../src/modules/ordering';
 import type {
@@ -8,7 +9,10 @@ import type {
   MarketSettingRepository,
 } from '../../src/modules/reviews/application/ports/market-setting.repository';
 import type {
+  ModerationDetailRecord,
   NewModerationAction,
+  QueueCursor,
+  QueueRow,
   NewSignal,
   ProductReviewRecord,
   ReviewCursor,
@@ -19,6 +23,7 @@ import type {
 } from '../../src/modules/reviews/application/ports/review.repository';
 import type { ReviewerNames } from '../../src/modules/reviews/application/ports/reviewer-names';
 import type { SellerAffinity } from '../../src/modules/reviews/application/ports/seller-affinity';
+import type { QueueTab } from '../../src/modules/reviews/domain/moderation';
 import { isPublic } from '../../src/modules/reviews/domain/rules';
 import {
   summariseSellerGroups,
@@ -69,13 +74,21 @@ export class MemoryReviews implements ReviewRepository {
     this.productReviews.set(record.id, record);
     return Promise.resolve('saved');
   }
+  /** The order of lock and count calls, to show the lock comes first. */
+  readonly limitCalls: string[] = [];
+  lockAccount(_m: MarketContext, accountId: Id<'Account'>) {
+    this.limitCalls.push(`lock:${accountId}`);
+    return Promise.resolve();
+  }
   countSubmissionsSince(_m: MarketContext, accountId: Id<'Account'>, since: Temporal.Instant) {
+    this.limitCalls.push(`count:${accountId}`);
     const at = (t: Temporal.Instant) => Temporal.Instant.compare(t, since) >= 0;
     const own = new Set(this.reviewsOf(accountId).map((r) => r.id));
     const actions = this.actions.filter(
       (a) =>
         own.has(a.reviewId) &&
         at(a.at) &&
+        a.actorAccountId === null &&
         ['publish', 'auto-hold', 'author-edit', 'author-delete'].includes(a.action),
     ).length;
     const ratings = [...this.sellerRatings.values()].filter(
@@ -185,6 +198,102 @@ export class MemoryReviews implements ReviewRepository {
           .map((r) => r.sellerOrderId!),
       ),
     );
+  }
+  /** Open reports by review id and reporter-less reason code. */
+  readonly reports: {
+    reviewId: string;
+    reasonCode: string;
+    status: 'open' | 'dismissed' | 'actioned';
+  }[] = [];
+  private tabOf(tab: QueueTab, review: ProductReviewRecord): boolean {
+    if (tab === 'held') return review.status === 'held';
+    if (tab === 'actioned') return review.status === 'hidden' || review.status === 'removed';
+    return (
+      ['published', 'held', 'hidden'].includes(review.status) &&
+      this.reports.some((r) => r.reviewId === review.id && r.status === 'open')
+    );
+  }
+  listModerationQueue(
+    _m: MarketContext,
+    query: { tab: QueueTab; after: QueueCursor | null; limit: number },
+  ): Promise<readonly QueueRow[]> {
+    const after = query.after;
+    const rows = [...this.productReviews.values()]
+      .filter((r) => this.tabOf(query.tab, r))
+      .sort(
+        (a, b) =>
+          b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds || (a.id < b.id ? 1 : -1),
+      )
+      .filter(
+        (r) =>
+          after === null ||
+          r.createdAt.epochMilliseconds < after.createdAt.epochMilliseconds ||
+          (r.createdAt.epochMilliseconds === after.createdAt.epochMilliseconds && r.id < after.id),
+      )
+      .slice(0, query.limit);
+    return Promise.resolve(
+      rows.map((review) => ({
+        review,
+        openReports: this.reports.filter((r) => r.reviewId === review.id && r.status === 'open')
+          .length,
+        signalCodes: [
+          ...new Set(this.signals.filter((s) => s.subjectId === review.id).map((s) => s.code)),
+        ],
+      })),
+    );
+  }
+  countModerationQueue() {
+    const all = [...this.productReviews.values()];
+    const count = (tab: QueueTab) => all.filter((r) => this.tabOf(tab, r)).length;
+    return Promise.resolve({
+      held: count('held'),
+      reported: count('reported'),
+      actioned: count('actioned'),
+    });
+  }
+  findForModeration(
+    _m: MarketContext,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<ModerationDetailRecord | null> {
+    const review = this.productReviews.get(reviewId);
+    if (review === undefined) return Promise.resolve(null);
+    const counts = new Map<string, number>();
+    for (const r of this.reports) {
+      if (r.reviewId === reviewId && r.status === 'open') {
+        counts.set(r.reasonCode, (counts.get(r.reasonCode) ?? 0) + 1);
+      }
+    }
+    return Promise.resolve({
+      review,
+      openReports: [...counts].map(([reasonCode, count]) => ({ reasonCode, count })),
+      signalCodes: [
+        ...new Set(this.signals.filter((s) => s.subjectId === reviewId).map((s) => s.code)),
+      ],
+      history: this.actions
+        .filter((a) => a.reviewId === reviewId)
+        .map((a) => ({
+          action: a.action,
+          reasonCode: a.reasonCode,
+          fromStatus: a.fromStatus,
+          toStatus: a.toStatus,
+          byModerator: a.actorAccountId !== null,
+          at: a.at,
+        })),
+    });
+  }
+  closeOpenReports(
+    _m: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    status: 'actioned' | 'dismissed',
+  ) {
+    let changed = 0;
+    for (const r of this.reports) {
+      if (r.reviewId === reviewId && r.status === 'open') {
+        r.status = status;
+        changed += 1;
+      }
+    }
+    return Promise.resolve(changed);
   }
   appendModerationAction(_m: MarketContext, action: NewModerationAction) {
     this.actions.push(action);
@@ -384,5 +493,27 @@ export class FakeAffinity implements SellerAffinity {
   readonly tied = new Set<string>();
   isTiedToSeller(_context: CallContext, accountId: Id<'Account'>, sellerId: Id<'Seller'>) {
     return Promise.resolve(this.tied.has(`${accountId}:${sellerId}`));
+  }
+}
+
+/**
+ * identity's admin step-up in memory: `proofs` fresh proofs wait; each `consume` spends one. With
+ * none, the action answers `second-factor.required`, as identity does.
+ */
+export class FakeStepUp implements StepUpProofConsumer {
+  proofs = Number.POSITIVE_INFINITY;
+  readonly spent: string[] = [];
+  consume(_context: CallContext, actionKey: string) {
+    if (this.proofs <= 0) {
+      return Promise.resolve(err({ code: 'second-factor.required', actionKey } as const));
+    }
+    this.proofs -= 1;
+    this.spent.push(actionKey);
+    return Promise.resolve(
+      ok({
+        sessionId: '0198a000-0000-7000-8000-0000000000aa' as Id<'Session'>,
+        verifiedAt: Temporal.Instant.from('2026-11-01T00:00:00Z'),
+      }),
+    );
   }
 }

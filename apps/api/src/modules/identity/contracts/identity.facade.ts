@@ -183,6 +183,18 @@ export interface IdentityFacade {
   ): Promise<Result<CustomerAccountRef | null, CustomerAccountOfFailure>>;
 
   /**
+   * Whether the signed-in customer's own sign-in address is also the address of an active member of
+   * `sellerId`'s team (reviews: nobody reviews their own shop). The account is the session's.
+   * Rule `own-resources`; a customer session only (an acting-as or other caller is `access.denied`).
+   * A boolean only. A failed read is `access.unavailable`: the caller fails closed. Not exposed
+   * over HTTP.
+   */
+  ownAccountTiedToSeller(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | { readonly code: 'access.unavailable' }>>;
+
+  /**
    * The display name and sign-in address of each requested customer account, for an admin page
    * that shows who placed an order. Rule `permissions [identity.customer-account.view]`, checked
    * by the gate and again in the read; the system actor, a seller, a customer and an acting-as

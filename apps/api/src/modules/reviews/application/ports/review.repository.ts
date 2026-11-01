@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { QueueTab } from '../../domain/moderation';
 import type { ReviewStatus, SellerRatingReason, SellerRatingStatus } from '../../domain/rules';
 import type { SellerSummary, StarSummary } from '../../domain/summary';
 
@@ -87,6 +88,39 @@ export interface NewSignal {
   readonly at: Temporal.Instant;
 }
 
+/** The queue position of the moderator list: newest submitted first. */
+export interface QueueCursor {
+  readonly createdAt: Temporal.Instant;
+  readonly id: Id<'ProductReview'>;
+}
+
+/** A line of the moderator queue: the review, how many reports are open, the signal codes. */
+export interface QueueRow {
+  readonly review: ProductReviewRecord;
+  readonly openReports: number;
+  readonly signalCodes: readonly string[];
+}
+
+/** One line of a review's history, as the insert-only log holds it (codes only). */
+export interface HistoryRow {
+  readonly action: ModerationActionName;
+  readonly reasonCode: string;
+  readonly fromStatus: ReviewStatus | null;
+  readonly toStatus: ReviewStatus;
+  /** Set for a moderator's action; null for the system and the author's own changes. */
+  readonly byModerator: boolean;
+  readonly at: Temporal.Instant;
+}
+
+/** Everything a moderator sees about one review. No author identity. */
+export interface ModerationDetailRecord {
+  readonly review: ProductReviewRecord;
+  /** Open reports by reason code, e.g. `[{ reasonCode: 'abusive', count: 2 }]`. */
+  readonly openReports: readonly { readonly reasonCode: string; readonly count: number }[];
+  readonly signalCodes: readonly string[];
+  readonly history: readonly HistoryRow[];
+}
+
 export type SummarySubject = 'product' | 'seller';
 
 /** A stored (rebuilt) summary; null count means no row. */
@@ -140,6 +174,13 @@ export interface ReviewRepository {
   ): Promise<'saved' | 'stale'>;
 
   /**
+   * Takes the account's review-write lock until the unit ends, so two parallel writes of one
+   * account count the daily limit one after the other (`reviews.lock-account`). Call it first,
+   * before {@link countSubmissionsSince}, in the read-write unit that writes.
+   */
+  lockAccount(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
+
+  /**
    * The account's own writes at or after `since`: its submits, edits and deletes of product
    * reviews (counted in the insert-only log, through the review's author) plus its seller ratings.
    */
@@ -184,6 +225,36 @@ export interface ReviewRepository {
     productId: Id<'Product'>,
     publicId: string,
   ): Promise<ReviewCursor | null>;
+
+  // ---- the moderator queue (package 2) -------------------------------------------------------
+
+  /**
+   * One page of the queue, newest submitted first, `limit` rows. Tabs: `held` (status held),
+   * `reported` (an open report on a review that is not deleted), `actioned` (hidden or removed).
+   */
+  listModerationQueue(
+    market: MarketContext,
+    query: { readonly tab: QueueTab; readonly after: QueueCursor | null; readonly limit: number },
+  ): Promise<readonly QueueRow[]>;
+
+  /** How many reviews wait in each tab (held, reported, actioned). */
+  countModerationQueue(market: MarketContext): Promise<Readonly<Record<QueueTab, number>>>;
+
+  /** The review by its internal id with its open reports, signals and history, or null. */
+  findForModeration(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<ModerationDetailRecord | null>;
+
+  /**
+   * Marks the open reports of a review `actioned` or `dismissed` (the reports table keeps no
+   * text). Returns how many changed.
+   */
+  closeOpenReports(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    status: 'actioned' | 'dismissed',
+  ): Promise<number>;
 
   // ---- seller ratings -----------------------------------------------------------------------
 
