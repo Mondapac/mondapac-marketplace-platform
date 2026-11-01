@@ -198,3 +198,10 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
   field refusals.
 - Not in this package: seller rings on the seller page (`SELLER_RATINGS_SHOWN` stays false), the
   "Top rated" sort and card stars (package 5), seller replies (package 4), helpful votes, photos.
+- Agent reviews (Hassan, Reza) of the PR are folded in: the site list route answers 404 only for
+  "off", 429 with `retry-after` for a throttle and 503 for a fault, all `no-store`; author names sit
+  in `<bdi>`; averages and percents use the language's number format; a saved form leaves a page
+  notice; a failed star filter goes back to the earlier filter.
+- Differences from design section 7, on purpose: the star chart filters the list instead of the
+  "With text / 1-2 star" chips, and one review count is shown (the API has no separate rating
+  count). A hidden review shows "Not shown" only: the API does not return the reason yet.

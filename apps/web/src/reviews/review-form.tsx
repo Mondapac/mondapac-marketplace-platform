@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { ApiResult, FieldProblem } from '../account/customer-api.ts';
 import { deleteReview, editReview, submitReview, type SubmittedReview } from './reviews-api.ts';
 import type { OwnReview } from './reviews-model.ts';
@@ -97,10 +97,10 @@ export function ReviewForm({
       setFields(result.kind === 'invalid' ? result.fields : []);
       return;
     }
-    const saved: SubmittedReview =
+    const saved: { outcome: string; review: OwnReview } =
       existing === undefined
         ? (result.value as SubmittedReview)
-        : { outcome: 'resubmitted', review: result.value as OwnReview };
+        : { outcome: 'edited', review: result.value as OwnReview };
     setPhase({ kind: 'done', review: saved.review, outcome: saved.outcome });
     onSaved(saved.review, saved.outcome);
   }
@@ -139,11 +139,17 @@ export function ReviewForm({
         <label htmlFor={`${id}-title`}>{t('title')}</label>
         <input
           id={`${id}-title`}
+          aria-invalid={fieldError(fields, 'title') || undefined}
+          aria-describedby={fieldError(fields, 'title') ? `${id}-title-err` : undefined}
           value={title}
           autoComplete="off"
           onChange={(event) => setTitle(event.target.value)}
         />
-        {fieldError(fields, 'title') ? <small className="err">{t('title-bad')}</small> : null}
+        {fieldError(fields, 'title') ? (
+          <small id={`${id}-title-err`} className="err">
+            {t('title-bad')}
+          </small>
+        ) : null}
       </div>
       <div className={fieldError(fields, 'body') ? 'ac-fld bad' : 'ac-fld'}>
         <label htmlFor={`${id}-body`}>{t('body')}</label>
@@ -152,11 +158,18 @@ export function ReviewForm({
           className="rv-text"
           rows={5}
           value={body}
-          aria-describedby={`${id}-body-hint`}
+          aria-invalid={fieldError(fields, 'body') || undefined}
+          aria-describedby={
+            fieldError(fields, 'body') ? `${id}-body-hint ${id}-body-err` : `${id}-body-hint`
+          }
           onChange={(event) => setBody(event.target.value)}
         />
         <small id={`${id}-body-hint`}>{t('body-hint')}</small>
-        {fieldError(fields, 'body') ? <small className="err">{t('body-bad')}</small> : null}
+        {fieldError(fields, 'body') ? (
+          <small id={`${id}-body-err`} className="err">
+            {t('body-bad')}
+          </small>
+        ) : null}
       </div>
       <label className="rv-check">
         <input
@@ -199,6 +212,11 @@ export function DeleteReview({
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const confirm = useRef<HTMLButtonElement>(null);
+  // The button that was pressed is gone: focus moves into the question.
+  useEffect(() => {
+    if (asking) confirm.current?.focus();
+  }, [asking]);
   if (!asking) {
     return (
       <button className="btn ghost ac-danger" type="button" onClick={() => setAsking(true)}>
@@ -217,6 +235,7 @@ export function DeleteReview({
       )}
       <div className="ac-acts">
         <button
+          ref={confirm}
           className="btn ghost ac-danger"
           type="button"
           aria-disabled={busy || undefined}

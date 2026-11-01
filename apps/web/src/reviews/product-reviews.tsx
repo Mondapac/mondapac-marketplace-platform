@@ -3,6 +3,7 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { formatDate } from '../format/date.ts';
+import { intlLocale } from '../i18n/locale.ts';
 import { readReviewsPage } from './reviews-api.ts';
 import {
   averageOf,
@@ -38,9 +39,11 @@ export function ProductReviews({
   const [failed, setFailed] = useState(false);
   // The newest request wins: a slow answer for an earlier filter never replaces a later one.
   const latest = useRef(0);
-  const average = summary.averageTimes100 === null ? null : averageOf(summary.averageTimes100);
+  const percentText = new Intl.NumberFormat(intlLocale(locale), { style: 'percent' });
+  const average =
+    summary.averageTimes100 === null ? null : averageOf(summary.averageTimes100, locale);
 
-  async function load(stars: number | null, cursor?: string): Promise<void> {
+  async function load(stars: number | null, cursor?: string, back?: number | null): Promise<void> {
     const ticket = ++latest.current;
     setBusy(true);
     setFailed(false);
@@ -51,6 +54,8 @@ export function ProductReviews({
     if (ticket !== latest.current) return;
     setBusy(false);
     if (next === null) {
+      // The list still shows the earlier filter, so the chart goes back to it.
+      if (back !== undefined) setFilter(back);
       setFailed(true);
       return;
     }
@@ -63,6 +68,7 @@ export function ProductReviews({
 
   function choose(stars: number | null): void {
     if (stars === filter) return;
+    const before = filter;
     setFilter(stars);
     if (stars === null) {
       // "All" is the page the server drew, no request.
@@ -72,7 +78,7 @@ export function ProductReviews({
       setPage(initial);
       return;
     }
-    void load(stars);
+    void load(stars, undefined, before);
   }
 
   return (
@@ -105,7 +111,7 @@ export function ProductReviews({
                 <span className="rv-track" aria-hidden="true">
                   <span style={{ inlineSize: `${percent}%` }} />
                 </span>
-                <span className="num">{percent}%</span>
+                <span className="num">{percentText.format(percent / 100)}</span>
               </button>
             );
           })}
@@ -180,7 +186,7 @@ function ReviewCard({
         </p>
       ) : null}
       <p className="rv-by">
-        <span>{who}</span>
+        <bdi>{who}</bdi>
         <span className="rv-chip">{t('verified-purchase')}</span>
         {seller === undefined ? null : <span>{t('bought-from', { seller })}</span>}
         <time dateTime={review.publishedOn}>{day(review.publishedOn)}</time>

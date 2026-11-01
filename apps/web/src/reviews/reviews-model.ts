@@ -2,6 +2,8 @@
 // Every body is read field by field: an answer that does not have the shape is "no answer", never
 // a half-shown review. Pure, for the server page, the browser calls and the tests.
 
+import { intlLocale } from '../i18n/locale.ts';
+
 type Json = Readonly<Record<string, unknown>>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -245,8 +247,12 @@ export function toReviewOf(body: unknown): ToReview | null {
   return { products, sellerOrders };
 }
 
-/** The average as the page writes it: one decimal, "4.6". */
-export const averageOf = (times100: number): string => (times100 / 100).toFixed(1);
+/** The average as the page writes it: one decimal, "4.6", in the language's own separator. */
+export const averageOf = (times100: number, locale = 'en'): string =>
+  new Intl.NumberFormat(intlLocale(locale), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(times100 / 100);
 
 /** The share of one star row, in whole percent of all reviews. */
 export function shareOf(count: number, total: number): number {

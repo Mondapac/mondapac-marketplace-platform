@@ -52,6 +52,7 @@ export function AccountReviews() {
   const names = useNames();
   const day = useDay();
   const [open, setOpen] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   if (state.kind === 'loading') {
     return (
@@ -82,13 +83,18 @@ export function AccountReviews() {
   const visible = mine.reviews.filter((review) => review.status !== 'deleted-by-author');
   const nothing =
     toReview.products.length === 0 && toReview.sellerOrders.length === 0 && visible.length === 0;
+  // The form closes and the lists reload; the notice stays, so the buyer (and a screen reader)
+  // gets the confirmation after the form is gone.
   const done = (key: string) => {
     setOpen(null);
+    setNotice(key);
     reload();
-    void key;
   };
   return (
     <AccountFrame title={t('account.title')}>
+      <div role="status">
+        {notice === null ? null : <p className="ac-note">{t(`notice.${notice}`)}</p>}
+      </div>
       {nothing ? (
         <AccountEmpty icon="bag" title={t('account.nothing')}>
           <p>{t('account.nothing-body')}</p>
@@ -123,7 +129,15 @@ export function AccountReviews() {
                     <ReviewForm
                       productId={item.productId}
                       productName={productOf(item.offerId)}
-                      onSaved={() => undefined}
+                      onSaved={(review, outcome) =>
+                        done(
+                          outcome === 'purchase-recorded'
+                            ? 'recorded'
+                            : review.status === 'held'
+                              ? 'held'
+                              : 'published',
+                        )
+                      }
                       onCancel={() => setOpen(null)}
                     />
                   ) : null}
@@ -155,7 +169,7 @@ export function AccountReviews() {
                     <SellerRatingForm
                       sellerOrderId={item.sellerOrderId}
                       sellerName={sellerOf(item.sellerId)}
-                      onSaved={() => done(key)}
+                      onSaved={() => done('rating')}
                       onCancel={() => setOpen(null)}
                     />
                   ) : null}
@@ -176,7 +190,7 @@ export function AccountReviews() {
                   name={productOf(review.offerId)}
                   editing={open === `r-${review.id}`}
                   onEdit={() => setOpen(open === `r-${review.id}` ? null : `r-${review.id}`)}
-                  onChanged={() => done(review.id)}
+                  onChanged={(kind) => done(kind)}
                 />
               </li>
             ))}
@@ -198,7 +212,7 @@ function OwnReviewRow({
   readonly name: string;
   readonly editing: boolean;
   readonly onEdit: () => void;
-  readonly onChanged: () => void;
+  readonly onChanged: (kind: 'saved' | 'deleted') => void;
 }) {
   const t = useTranslations('reviews');
   const day = useDay();
@@ -227,7 +241,7 @@ function OwnReviewRow({
           productId={review.productId}
           productName={name}
           existing={review}
-          onSaved={onChanged}
+          onSaved={() => onChanged('saved')}
           onCancel={onEdit}
         />
       ) : (
@@ -241,7 +255,7 @@ function OwnReviewRow({
               {t('account.edit-closed', { date: day(review.editableUntil.slice(0, 10)) })}
             </small>
           )}
-          <DeleteReview review={review} onDeleted={onChanged} />
+          <DeleteReview review={review} onDeleted={() => onChanged('deleted')} />
         </div>
       )}
     </div>

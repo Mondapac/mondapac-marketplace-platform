@@ -565,6 +565,14 @@
       "own-store": "You cannot review your own store.",
       "disabled": "Reviews are not open yet.",
       "not-found": "We could not find that review."
+    },
+    "notice": {
+      "published": "Thank you. Your review is now on the product page.",
+      "held": "Thank you. Your review is being checked and will show on the product page once it passes.",
+      "recorded": "You have already reviewed this product, so your review stays as it is. We noted your latest purchase.",
+      "saved": "Your changes were saved.",
+      "deleted": "Your review was deleted.",
+      "rating": "Thank you. Your rating was saved."
     }
   },
   "personalization": {

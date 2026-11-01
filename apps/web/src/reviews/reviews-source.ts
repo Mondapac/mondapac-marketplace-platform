@@ -18,12 +18,19 @@ export interface ProductReviews {
   readonly page: ReviewsPage;
 }
 
-/** One page of a product's published reviews, newest first; null when there is none to show. */
+export type PageRead =
+  | { readonly kind: 'ok'; readonly page: ReviewsPage }
+  /** Reviews are off for the Market, the id is not a product, or the API is not configured. */
+  | { readonly kind: 'off' }
+  | { readonly kind: 'throttled' }
+  | { readonly kind: 'failed' };
+
+/** One page of a product's published reviews, newest first. */
 export async function loadReviewsPage(
   productId: string,
   options: { readonly stars?: number; readonly cursor?: string } = {},
-): Promise<ReviewsPage | null> {
-  if (!UUID.test(productId)) return null;
+): Promise<PageRead> {
+  if (!UUID.test(productId)) return { kind: 'off' };
   const query = new URLSearchParams();
   if (options.stars !== undefined) query.set('stars', String(options.stars));
   if (options.cursor !== undefined) query.set('cursor', options.cursor);
@@ -31,7 +38,13 @@ export async function loadReviewsPage(
   const read = await apiGet<unknown>(
     `reviews/products/${encodeURIComponent(productId.toLowerCase())}${suffix}`,
   );
-  return read.kind === 'ok' ? reviewsPageOf(read.body) : null;
+  if (read.kind === 'off') return { kind: 'off' };
+  if (read.kind === 'failed') {
+    if (read.status === 404) return { kind: 'off' };
+    return read.status === 429 ? { kind: 'throttled' } : { kind: 'failed' };
+  }
+  const page = reviewsPageOf(read.body);
+  return page === null ? { kind: 'failed' } : { kind: 'ok', page };
 }
 
 /** The summary and the first page of a product's reviews; null when reviews are off or empty. */
@@ -41,7 +54,9 @@ export async function loadProductReviews(productId: string): Promise<ProductRevi
     apiGet<unknown>(`reviews/products/${encodeURIComponent(productId.toLowerCase())}/summary`),
     loadReviewsPage(productId),
   ]);
-  if (summaryRead.kind !== 'ok' || page === null) return null;
+  if (summaryRead.kind !== 'ok' || page.kind !== 'ok') return null;
   const summary = productSummaryOf(summaryRead.body);
-  return summary === null || !summary.shown || summary.count === 0 ? null : { summary, page };
+  return summary === null || !summary.shown || summary.count === 0
+    ? null
+    : { summary, page: page.page };
 }

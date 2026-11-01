@@ -83,10 +83,17 @@ describe('loadProductReviews', () => {
 describe('loadReviewsPage', () => {
   it('passes the star filter and the cursor in the query', async () => {
     reads.answers.set(`${LIST}?stars=2&cursor=${REVIEW}`, { kind: 'ok', body: page });
-    expect((await loadReviewsPage(PRODUCT, { stars: 2, cursor: REVIEW }))?.reviews).toHaveLength(1);
+    const read = await loadReviewsPage(PRODUCT, { stars: 2, cursor: REVIEW });
+    expect(read.kind === 'ok' && read.page.reviews).toHaveLength(1);
   });
-  it('answers null for a body that is not a page', async () => {
+  it('tells a body that is not a page, a throttle, a fault and "off" apart', async () => {
     reads.answers.set(LIST, { kind: 'ok', body: { reviews: 'no' } });
-    expect(await loadReviewsPage(PRODUCT)).toBeNull();
+    expect(await loadReviewsPage(PRODUCT)).toEqual({ kind: 'failed' });
+    reads.answers.set(LIST, { kind: 'failed', status: 429 });
+    expect(await loadReviewsPage(PRODUCT)).toEqual({ kind: 'throttled' });
+    reads.answers.set(LIST, { kind: 'failed', status: 503, code: 'reviews.unavailable' });
+    expect(await loadReviewsPage(PRODUCT)).toEqual({ kind: 'failed' });
+    reads.answers.set(LIST, { kind: 'failed', status: 404, code: 'reviews.disabled' });
+    expect(await loadReviewsPage(PRODUCT)).toEqual({ kind: 'off' });
   });
 });
