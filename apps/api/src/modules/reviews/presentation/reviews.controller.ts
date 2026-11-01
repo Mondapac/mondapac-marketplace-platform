@@ -702,7 +702,7 @@ export class AdminModerationController {
     summary: 'Hide a review, reversibly (admin)',
     description:
       'Needs reviews.moderation.moderate. A closed reason: personal-information, abusive, ' +
-      'irrelevant, not-a-purchase, incentivised, spam or other. There is no reason for a negative ' +
+      'irrelevant, not-a-purchase, extortion, incentivised, spam or other. There is no reason for a negative ' +
       `review or a seller request: a true negative review is never hidden. ${MODERATE_STEP_UP_NOTE}`,
   })
   @ApiParam({ name: 'reviewId', format: 'uuid' })
