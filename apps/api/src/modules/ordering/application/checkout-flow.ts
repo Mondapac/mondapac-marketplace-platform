@@ -39,6 +39,7 @@ import {
 } from '../domain/order';
 import type { CheckoutGateway } from './ports/checkout-gateway';
 import type { DeliveryMethodPolicy } from './ports/delivery-method-policy';
+import type { PaymentAttemptLimits } from './ports/payment-attempt-limits';
 import type { PickupCodeVault } from './ports/pickup-code-vault';
 import type { PickupCodeRepository } from './ports/pickup-code.repository';
 import type { OrderLabels } from './ports/order-labels';
@@ -78,6 +79,8 @@ export interface OrderingDependencies {
   readonly pickupCodes: PickupCodeRepository;
   /** Makes, hashes and seals those codes under the buyer's key. */
   readonly pickupVault: PickupCodeVault;
+  /** The card payment attempts of one customer account per window (rate limit). */
+  readonly attempts: PaymentAttemptLimits;
 }
 
 export type StartCheckoutFailure =
@@ -136,7 +139,16 @@ export type StartCheckoutFailure =
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'conflict.retry' }
-  | { readonly code: 'ordering.payment-unavailable' };
+  | { readonly code: 'ordering.payment-unavailable' }
+  /**
+   * The total the buyer saw is not the total the server computed now (a price, a fee or a tax
+   * moved): nothing was reserved or charged; the buyer confirms the new total.
+   */
+  | { readonly code: 'ordering.price-changed'; readonly total: ReturnType<typeof money> }
+  /** The card is not one the Market accepts (Visa and Mastercard only). */
+  | { readonly code: 'ordering.card-not-accepted' }
+  /** The bank refused the card. Nothing was charged; the stock hold was released. */
+  | { readonly code: 'ordering.card-declined' };
 
 export interface CheckoutStarted {
   readonly orderId: Id<'Order'>;
@@ -156,6 +168,9 @@ const chargedQuoteOf = (quote: QuotedDelivery | undefined): ChargedDeliveryQuote
         quotedAt: quote.quotedAt,
         expiresAt: quote.validUntil,
       };
+
+/** Reads of the order tried when linking the provider's object to it loses a race. */
+const LINK_ATTEMPTS = 3;
 
 /** A lock timeout on reserve costs the holder's rate budget, so retry once at most. */
 const RESERVE_ATTEMPTS = 2;
@@ -253,6 +268,91 @@ export async function startCheckout(
   accountId: Id<'Account'>,
   input: StartCheckoutInput,
 ): Promise<Result<CheckoutStarted, StartCheckoutFailure>> {
+  const placed = await placeOrder(deps, context, accountId, input, hostedPage(deps));
+  if (!placed.ok) return placed;
+  const { order, payBy, answer } = placed.value;
+  return ok({ orderId: order.id, checkoutUrl: answer.url, payBy, total: order.total });
+}
+
+/** An order stored, its stock held and its payment started by a {@link PaymentStep}. */
+export interface PlacedOrder<T> {
+  readonly order: OrderState;
+  readonly payBy: Temporal.Instant;
+  readonly answer: T;
+}
+
+/** What a payment step is given once the order is stored and its stock is held. */
+export interface ChargeRequest {
+  readonly order: OrderState;
+  /** One line per seller package, delivery and added tax, for the hosted page. */
+  readonly packages: readonly { readonly label: string; readonly amount: bigint }[];
+  readonly urls: { readonly success: string; readonly cancel: string };
+  readonly payBy: Temporal.Instant;
+}
+
+/** What a payment step answers: how to link the provider's object to the order, and the answer. */
+export interface Charged<T> {
+  readonly link: (order: OrderState) => OrderState;
+  /** Whether the order already carries this provider object (a webhook got there first). */
+  readonly isLinked: (order: OrderState) => boolean;
+  readonly answer: T;
+}
+
+/**
+ * The part of checkout that differs between the hosted page and a card payment on our own page.
+ * Everything before it (address, cart, prices, delivery, tax, stock) is shared, so both ways
+ * price the order on the server and never take a price from the client.
+ */
+export interface PaymentStep<T> {
+  /** After the total is known, before anything is reserved: a refusal here costs nothing. */
+  precheck(total: Money): Promise<StartCheckoutFailure | null>;
+  /** After the order is stored and its stock is held. */
+  charge(request: ChargeRequest): Promise<Result<Charged<T>, StartCheckoutFailure>>;
+  /** The link could not be stored: stop whatever {@link charge} opened. Best effort. */
+  undo(charged: Charged<T>): Promise<void>;
+}
+
+function hostedPage(
+  deps: OrderingDependencies,
+): PaymentStep<{ readonly url: string; readonly sessionId: string }> {
+  return {
+    precheck: () => Promise.resolve(null),
+    async charge({ order, packages, urls, payBy }) {
+      const session = await deps.gateway.createSession({
+        orderId: order.id,
+        marketId: order.marketId,
+        currency: order.total.currency,
+        packages,
+        successUrl: urls.success,
+        cancelUrl: urls.cancel,
+        expiresAt: payBy,
+        idempotencyKey: order.stripeIdempotencyKey,
+      });
+      if (!session.ok) return err({ code: 'ordering.payment-unavailable' } as const);
+      const { sessionId, url } = session.value;
+      return ok({
+        link: (fresh: OrderState) => ({ ...fresh, stripeSessionId: sessionId }),
+        isLinked: (fresh: OrderState) => fresh.stripeSessionId === sessionId,
+        answer: { url, sessionId },
+      });
+    },
+    async undo(charged) {
+      await deps.gateway.expireSession(charged.answer.sessionId);
+    },
+  };
+}
+
+/**
+ * The shared checkout: in order, the address, the cart, the plan and prices, the stock hold, the
+ * stored order, then the payment step's charge and the link of its object to the order.
+ */
+export async function placeOrder<T>(
+  deps: OrderingDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  input: StartCheckoutInput,
+  step: PaymentStep<T>,
+): Promise<Result<PlacedOrder<T>, StartCheckoutFailure>> {
   const notes = parseSellerNotes(input?.sellerNotes);
   if (!notes.ok) {
     return err({ code: 'validation.failed', fields: [{ path: notes.path, code: notes.code }] });
@@ -477,6 +577,10 @@ export async function startCheckout(
   const sellerTotal = (seller: (typeof plan.sellers)[number]): bigint =>
     seller.subtotal + seller.shipping + addedTax.get(seller.sellerId)!;
   const total = plan.sellers.reduce((sum, seller) => sum + sellerTotal(seller), 0n);
+  // The payment step may refuse now (the total moved, the card is not accepted): nothing is
+  // reserved yet, so a refusal here costs nothing.
+  const turnedDown = await step.precheck(money(total, plan.currency));
+  if (turnedDown !== null) return err(turnedDown);
 
   const orderId = deps.ids.next<'Order'>();
   const urls = deps.policy.returnUrls(context.market, orderId);
@@ -604,44 +708,59 @@ export async function startCheckout(
     return stored;
   }
 
-  const session = await deps.gateway.createSession({
-    orderId,
-    marketId: context.market.marketId,
-    currency: plan.currency,
-    packages: sellerOrders.flatMap(({ seller }, index) => [
-      { label: `MondaPac order, package ${index + 1}`, amount: seller.subtotal },
-      // A free delivery (an explicit zero fee) is no line: Stripe takes no zero-priced item.
-      ...(seller.shipping > 0n
-        ? [{ label: `Delivery, package ${index + 1}`, amount: seller.shipping }]
-        : []),
-      ...(addedTax.get(seller.sellerId)! > 0n
-        ? [{ label: `Tax, package ${index + 1}`, amount: addedTax.get(seller.sellerId)! }]
-        : []),
-    ]),
-    successUrl: urls.success,
-    cancelUrl: urls.cancel,
-    expiresAt: payBy,
-    idempotencyKey: order.stripeIdempotencyKey,
-  });
-  if (!session.ok) {
+  const packages = sellerOrders.flatMap(({ seller }, index) => [
+    { label: `MondaPac order, package ${index + 1}`, amount: seller.subtotal },
+    // A free delivery (an explicit zero fee) is no line: Stripe takes no zero-priced item.
+    ...(seller.shipping > 0n
+      ? [{ label: `Delivery, package ${index + 1}`, amount: seller.shipping }]
+      : []),
+    ...(addedTax.get(seller.sellerId)! > 0n
+      ? [{ label: `Tax, package ${index + 1}`, amount: addedTax.get(seller.sellerId)! }]
+      : []),
+  ]);
+  const charged = await step.charge({ order, packages, urls, payBy });
+  if (!charged.ok) {
     await abandon(deps, context, order, 'provider-failed');
     await deps.inventory.releaseOwnReservation(context, {
       reservationId: reservation.reservationId,
     });
-    return err({ code: 'ordering.payment-unavailable' });
+    return charged;
   }
 
-  const linked = await deps.unitOfWork.run<true, StartCheckoutFailure>(context.market, async () => {
-    const fresh = await deps.orders.findById(context.market, orderId);
-    if (fresh === null) return err({ code: 'ordering.payment-unavailable' } as const);
-    const saved = await deps.orders.save(context.market, {
-      ...fresh,
-      stripeSessionId: session.value.sessionId,
-    });
-    return saved === 'saved' ? ok(true as const) : err({ code: 'conflict.retry' } as const);
-  });
+  let alreadyCancelled = false;
+  const linked = await deps.unitOfWork.run<OrderState, StartCheckoutFailure>(
+    context.market,
+    async () => {
+      // A signed webhook can land between this read and the save (the card was authorised and
+      // the order confirmed already). A stale save then reads the order again: if it already
+      // carries this payment, the link is done and the payment must not be undone.
+      for (let attempt = 0; attempt < LINK_ATTEMPTS; attempt += 1) {
+        const fresh = await deps.orders.findById(context.market, orderId);
+        if (fresh === null) return err({ code: 'ordering.payment-unavailable' } as const);
+        if (charged.value.isLinked(fresh)) {
+          // The webhook confirmed and then cancelled the order (stock gone, capture refused):
+          // it already voided the payment and released the stock. The buyer is told it failed.
+          if (fresh.status === 'cancelled') {
+            alreadyCancelled = true;
+            return err({ code: 'ordering.payment-unavailable' } as const);
+          }
+          return ok(fresh);
+        }
+        // Another checkout of this customer superseded the order before the link: the payment
+        // is undone (void, release) and the buyer is told it did not go through.
+        if (fresh.status !== 'pending-payment') {
+          return err({ code: 'ordering.payment-unavailable' } as const);
+        }
+        const next = charged.value.link(fresh);
+        const saved = await deps.orders.save(context.market, next);
+        if (saved === 'saved') return ok({ ...next, version: next.version + 1 });
+      }
+      return err({ code: 'conflict.retry' } as const);
+    },
+  );
+  if (!linked.ok && alreadyCancelled) return linked;
   if (!linked.ok) {
-    await deps.gateway.expireSession(session.value.sessionId);
+    await step.undo(charged.value);
     await abandon(deps, context, order, 'provider-failed');
     await deps.inventory.releaseOwnReservation(context, {
       reservationId: reservation.reservationId,
@@ -650,7 +769,7 @@ export async function startCheckout(
   }
 
   await supersedeOthers(deps, context, accountId, orderId);
-  return ok({ orderId, checkoutUrl: session.value.url, payBy, total: order.total });
+  return ok({ order: linked.value, payBy, answer: charged.value.answer });
 }
 
 /** Cancels the stored order after a failure that follows its insert. */
@@ -696,6 +815,14 @@ async function supersedeOthers(
     });
     if (done.ok && done.value && old.stripeSessionId !== null) {
       await deps.gateway.expireSession(old.stripeSessionId);
+    }
+    // A card payment of the old order is stopped too (the same key as a cancel, so a repeat is
+    // one call to Stripe). Best effort: Stripe refuses a PaymentIntent that is already cancelled.
+    if (done.ok && done.value && old.stripePaymentIntentId !== null) {
+      await deps.gateway.voidAuthorisation(
+        old.stripePaymentIntentId,
+        `void-${old.stripePaymentIntentId}`,
+      );
     }
   }
 }

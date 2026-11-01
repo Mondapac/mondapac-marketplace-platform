@@ -89,7 +89,13 @@ describe.each(TEST_MARKETS)('Stripe event inbox in market %s (database)', (code)
   it.each([
     ['an unknown type', { type: 'charge.refunded' }],
     ['a malformed event id', { event_id: 'not-an-event' }],
-    ['a malformed session id', { object_id: 'pi_123' }],
+    ['a malformed session id', { object_id: 'chk_123' }],
+    ['an unknown PaymentIntent event', { type: 'payment_intent.succeeded', object_id: 'pi_123' }],
+    ['a PaymentIntent id on a Checkout Session event', { object_id: 'pi_123' }],
+    [
+      'a session id on a PaymentIntent event',
+      { type: 'payment_intent.canceled', object_id: 'cs_1' },
+    ],
   ])('refuses %s', async (_label, change) => {
     const row: Record<string, unknown> = {
       event_id: nextEventId(),
@@ -111,6 +117,22 @@ describe.each(TEST_MARKETS)('Stripe event inbox in market %s (database)', (code)
         Object.values(row),
       ),
     ).rejects.toMatchObject({ code: CHECK });
+  });
+
+  it.each([
+    'payment_intent.amount_capturable_updated',
+    'payment_intent.payment_failed',
+    'payment_intent.canceled',
+  ] as const)('keeps a %s event of a PaymentIntent (card payment on our page)', async (type) => {
+    const eventId = nextEventId();
+    const event = { ...received(eventId), type, objectId: 'pi_test_0001' };
+
+    expect(await value(market, () => inbox.record(market, event))).toBe('recorded');
+    const row = await sql.query<{ type: string; object_id: string }>(
+      'SELECT type, object_id FROM payments.stripe_events WHERE market_id = $1 AND event_id = $2',
+      [code, eventId],
+    );
+    expect(row.rows).toEqual([{ type, object_id: 'pi_test_0001' }]);
   });
 
   it('refuses an outcome without a processed time, and an unknown outcome', async () => {

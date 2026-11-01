@@ -20,6 +20,9 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.stock-insufficient': 409,
   'ordering.cart-not-ready': 409,
   'ordering.delivery-quote-changed': 409,
+  'ordering.price-changed': 409,
+  'ordering.card-not-accepted': 422,
+  'ordering.card-declined': 402,
   'conflict.retry': 409,
   'request.throttled': 429,
   'ordering.check-unavailable': 503,
@@ -80,6 +83,7 @@ const DETAILS = [
   'methodSellerIds',
   'quotes',
   'attemptsLeft',
+  'total',
 ] as const;
 
 /** The sellers of `ordering.cart-not-ready`: the public minimum leaves as a money body. */
@@ -128,7 +132,9 @@ export function refusal(
         ? sellersBody(error[key])
         : key === 'quotes'
           ? quotesBody(error[key])
-          : error[key],
+          : key === 'total'
+            ? moneyBody(error[key] as Money)
+            : error[key],
     ]),
   );
   return Object.keys(details).length === 0

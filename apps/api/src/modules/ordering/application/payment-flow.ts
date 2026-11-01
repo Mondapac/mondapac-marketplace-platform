@@ -1,5 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent, Result } from '@mondapac/shared-kernel';
+import { isAcceptedCard } from '../domain/card-payment';
 import { cancelOrder, confirmOrder, type OrderState, type PaymentState } from '../domain/order';
 import type { AuthorisedPayment, PaymentFailure } from '../contracts';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
@@ -86,8 +87,8 @@ export async function confirmPayment(
     typeof input.paymentIntentId !== 'string' ||
     input.paymentIntentId.length === 0 ||
     input.paymentIntentId.length > 255 ||
-    typeof input.sessionId !== 'string' ||
-    input.sessionId.length === 0
+    (input.sessionId !== null &&
+      (typeof input.sessionId !== 'string' || input.sessionId.length === 0))
   ) {
     return err({ code: 'validation.failed' });
   }
@@ -101,8 +102,14 @@ export async function confirmPayment(
   );
   if (!loaded.ok) return loaded;
   const order = loaded.value;
-  // The payment must come from this order's own Checkout session, not another order's.
-  if (order.stripeSessionId === null || order.stripeSessionId !== input.sessionId) {
+  // The payment must come from this order's own Checkout session, not another order's. A card
+  // payment on our page has no session: the order must have none either (a hosted order is only
+  // ever paid through its session), and the PaymentIntent checks below tell it from a second one.
+  if (
+    input.sessionId === null
+      ? order.stripeSessionId !== null
+      : order.stripeSessionId !== input.sessionId
+  ) {
     return err({ code: 'validation.failed' });
   }
 
@@ -113,7 +120,12 @@ export async function confirmPayment(
   }
   const wrongAmount =
     input.amount?.currency !== order.total.currency || input.amount?.amount !== order.total.amount;
-  if (order.status === 'cancelled' || wrongAmount) {
+  // A card payment on our page is checked again here: the PaymentIntent may hold another card
+  // than the token that was checked at checkout (the browser can confirm it with another one).
+  const cardRefused =
+    input.sessionId === null &&
+    !isAcceptedCard(input.card?.methodType ?? '', input.card?.brand ?? null);
+  if (order.status === 'cancelled' || wrongAmount || cardRefused) {
     if (!(await voidMoney(deps, order, input.paymentIntentId))) return RETRY;
     // A pending order is released only while no other payment is authorised on it.
     if (order.status === 'pending-payment' && order.paymentState !== 'none') return ok('voided');
@@ -129,8 +141,12 @@ export async function confirmPayment(
   }
 
   // Pending: remember the authorisation before anything else happens.
+  // An order that already names its PaymentIntent (a card payment on our page links it at checkout)
+  // is only ever authorised by that one: any other PaymentIntent is a second payment, voided below.
   const marked = await update(deps, context, orderId, (o) =>
-    o.status === 'pending-payment' && o.paymentState === 'none'
+    o.status === 'pending-payment' &&
+    o.paymentState === 'none' &&
+    (o.stripePaymentIntentId === null || o.stripePaymentIntentId === input.paymentIntentId)
       ? { ...o, paymentState: 'authorised', stripePaymentIntentId: input.paymentIntentId }
       : null,
   );
@@ -274,6 +290,11 @@ export async function cancelPayment(
   if (order.paymentState === 'authorised' && order.stripePaymentIntentId !== null) {
     if (!(await voidMoney(deps, order, order.stripePaymentIntentId))) return RETRY;
     paymentState = 'voided';
+  } else if (order.stripePaymentIntentId !== null) {
+    // A card payment that never authorised (3DS abandoned or failed): stop its PaymentIntent so
+    // it cannot be completed after the stock hold is gone. Best effort; Stripe refuses a
+    // PaymentIntent that is already cancelled, which is the state we want.
+    await voidMoney(deps, order, order.stripePaymentIntentId);
   }
   const settled = await release(deps, context, order, input.cause, paymentState);
   return settled.ok ? ok('cancelled') : settled;

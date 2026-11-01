@@ -135,7 +135,7 @@ describe.each([
     });
 
     it('acknowledges a type it does not act on without storing it', async () => {
-      const event = checkoutEvent({ type: 'payment_intent.payment_failed', marketId: code });
+      const event = checkoutEvent({ type: 'charge.succeeded', marketId: code });
 
       expect(await deliver(event)).toEqual(ok('ignored'));
       expect(inbox.rows.size).toBe(0);

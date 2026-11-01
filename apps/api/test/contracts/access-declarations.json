@@ -480,6 +480,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "ordering.pay-by-card", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-delivery-anchor", "rule": "system" },
