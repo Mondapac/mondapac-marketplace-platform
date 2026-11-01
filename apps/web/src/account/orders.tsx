@@ -17,6 +17,7 @@ import {
   useDay,
 } from './account-area.tsx';
 import { orderTotals, useAccount } from './account-state.tsx';
+import { ReviewsPrompt } from './reviews.tsx';
 
 type Filter = 'all' | OrderStatus;
 const FILTERS: readonly Filter[] = ['all', 'in-progress', 'delivered', 'cancelled'];
@@ -31,6 +32,7 @@ export function AccountOrders() {
   const shown = orders.filter((o) => filter === 'all' || o.status === filter);
   return (
     <AccountFrame title={t('titles.orders')}>
+      <ReviewsPrompt />
       <div className="ac-seg" role="group" aria-label={t('orders.filter')}>
         {FILTERS.map((f) => (
           <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>

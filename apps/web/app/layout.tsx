@@ -31,6 +31,7 @@ import {
 import { photoBase } from '../src/storefront/photo-source.ts';
 import './globals.css';
 // After globals.css: the store pictures refine the logo tile and the banner it defines.
+import '../src/reviews/reviews.css';
 import '../src/seller/store-images.css';
 
 export async function generateMetadata(): Promise<Metadata> {

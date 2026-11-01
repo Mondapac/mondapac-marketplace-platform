@@ -170,3 +170,31 @@ package that needs them).
 
 Any UI, the admin moderation queue, seller reply endpoint, notifications, search ranking, photos
 and helpful votes.
+
+## Package 3: buyer web pages (apps/web)
+
+Owner approved the build 2026-11-01. Everything is behind the runtime switch above: while it is
+`off` the API answers `reviews.disabled` (404) and the web draws nothing about reviews.
+
+- Product page: a "Customer reviews" section (stars summary, five-row chart that filters the list,
+  published reviews newest first, "Show more"). Server-read by `src/reviews/reviews-source.ts`;
+  the filter and "Show more" go through the site's own `app/api/product-reviews/[id]` route (the
+  session relay drops query strings, and these reads are anonymous). Text is shown as plain text.
+- "Bought from" is resolved from the product's own offers (seller id to store name); a seller who
+  no longer offers the product leaves the label out. The public body has no seller name.
+- Reviewer names: the page shows what the API sends. Until open question 1 is decided every
+  non-anonymous review reads "Verified buyer"; a "named" author without a usable name does too.
+- Account: `/account/reviews` (not in the account menu yet: the switch is runtime and the menu is
+  static; Orders shows a "N waiting for your review" link when the switch is on). Lists what waits
+  for a review, the review form (stars, title, text, "show me as Verified buyer"), edit and delete
+  of the buyer's own reviews, and the seller-order rating (satisfaction, as described, arrived ok,
+  optional reason). Product and seller names come from the account's orders.
+- Relay: GET `reviews/me`, `reviews/me/to-review`; POST `reviews/products`,
+  `reviews/seller-orders/:id/rating`; PATCH and DELETE `reviews/products/:id`. PATCH is a new method
+  for the relay and the `/api` route. Admin and public reads do not cross.
+- Messages are in `messages/en.json` (`reviews`); the layout uses logical CSS properties only, so
+  a Persian catalogue (W3) needs no other change. Review text carries `dir="auto"`.
+- Length limits are Market config in the API; the forms do not hard-code them and show the API's
+  field refusals.
+- Not in this package: seller rings on the seller page (`SELLER_RATINGS_SHOWN` stays false), the
+  "Top rated" sort and card stars (package 5), seller replies (package 4), helpful votes, photos.

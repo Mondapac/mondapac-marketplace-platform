@@ -110,6 +110,25 @@ describe('storefront session relay: what may cross', () => {
     expect(isSessionPathAllowed('DELETE', ['cart', 'saved'])).toBe(false);
   });
 
+  it("allows only the buyer's own reviews routes, each with its own method", () => {
+    const ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    expect(isSessionPathAllowed('GET', ['reviews', 'me'])).toBe(true);
+    expect(isSessionPathAllowed('GET', ['reviews', 'me', 'to-review'])).toBe(true);
+    expect(isSessionPathAllowed('POST', ['reviews', 'products'])).toBe(true);
+    expect(isSessionPathAllowed('PATCH', ['reviews', 'products', ID])).toBe(true);
+    expect(isSessionPathAllowed('DELETE', ['reviews', 'products', ID])).toBe(true);
+    expect(isSessionPathAllowed('POST', ['reviews', 'seller-orders', ID, 'rating'])).toBe(true);
+
+    // The admin routes, the public reads and the other methods do not cross.
+    expect(isSessionPathAllowed('GET', ['reviews', 'admin', 'settings'])).toBe(false);
+    expect(isSessionPathAllowed('PUT', ['reviews', 'admin', 'settings'])).toBe(false);
+    expect(isSessionPathAllowed('GET', ['reviews', 'products', ID])).toBe(false);
+    expect(isSessionPathAllowed('GET', ['reviews', 'sellers', ID, 'summary'])).toBe(false);
+    expect(isSessionPathAllowed('PATCH', ['reviews', 'products', 'not-a-uuid'])).toBe(false);
+    expect(isSessionPathAllowed('PUT', ['reviews', 'products', ID])).toBe(false);
+    expect(isSessionPathAllowed('POST', ['reviews', 'products', ID])).toBe(false);
+  });
+
   it("allows only the buyer's own account deletion routes, each with its own method", () => {
     const own = ['customers', 'me'];
     expect(isSessionPathAllowed('GET', [...own, 'account-deletion'])).toBe(true);
