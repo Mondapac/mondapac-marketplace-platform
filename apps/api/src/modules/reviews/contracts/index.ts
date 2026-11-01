@@ -11,8 +11,11 @@ export {
 } from '../domain/rules';
 export { REVIEWS_PERMISSIONS, REVIEWS_SETTINGS_MANAGE, REVIEWS_SETTINGS_VIEW } from './permissions';
 export {
+  MAX_RATING_TOTALS_PAGE,
   REVIEWS_FACADE,
   type ProductRatingSummary,
+  type ProductRatingTotal,
+  type ProductRatingTotalsPage,
   type ReviewsFacade,
   type ReviewsFacadeFailure,
   type SellerRatingSummary,

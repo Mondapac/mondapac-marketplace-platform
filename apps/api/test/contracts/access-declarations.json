@@ -534,6 +534,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "reviews.cast-helpful-vote",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "reviews.delete-product-review",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
@@ -545,10 +550,16 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "reviews.list-my-reviews", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "reviews.list-product-rating-totals", "rule": "system" },
   { "name": "reviews.list-product-reviews", "rule": "anonymous" },
   { "name": "reviews.list-to-review", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "reviews.rate-seller-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "reviews.rebuild-rating-summaries", "rule": "system" },
+  {
+    "name": "reviews.remove-helpful-vote",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "reviews.submit-product-review",
     "rule": "own-resources",
@@ -570,6 +581,7 @@
   { "name": "search.rebuild-offer-index", "rule": "system" },
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
+  { "name": "search.sync-product-ratings", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
   { "name": "sellers.active-since", "rule": "anonymous" },
   { "name": "sellers.active-since-system", "rule": "system" },

@@ -33,3 +33,27 @@ model SearchOfferDocument {
   @@map("offer_documents")
   @@schema("search")
 }
+
+/// The star totals of one product, copied from reviews' public facade by a job (package 5). Only
+/// the search ranking reads it; it is rebuilt from reviews at any time, empty while reviews are
+/// off or the rating boost is off in the Market, and never a source of truth.
+model SearchProductRating {
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  productId   String   @map("product_id") @db.Uuid
+  /// Published reviews of the product (1 or more) and the sum of their stars.
+  ratingCount Int      @map("rating_count")
+  ratingSum   Int      @map("rating_sum")
+  /// The Bayesian average of the stars times 1000 (a prior of `priorCount` ratings at the prior
+  /// mean plus the real ones), computed by the sync job from Market config. 0 to 5000 (CHECK).
+  bayesTimes1000 Int   @map("bayes_times_1000")
+  /// The relevance factor the rating gives this product, in millionths (1000000 is no change).
+  /// 900000 to 1100000 (CHECK): the rating can move a result by 10 % at most, whatever the config.
+  boostPpm    Int      @map("boost_ppm")
+  /// The last write of this row; a sync deletes the rows it did not touch.
+  syncedAt    DateTime @map("synced_at") @db.Timestamptz(6)
+
+  @@id([marketId, productId])
+  @@map("product_ratings")
+  @@schema("search")
+}

@@ -1715,6 +1715,11 @@ const marketSchema = z
          * read a single rating from it.
          */
         summaryRebuildMinutes: z.number().int().min(5).max(1440).default(1440),
+        /**
+         * The most "this review was helpful" votes one account may cast in 24 hours (package 5,
+         * default 200). A soft limit, like the daily limit of reviews; removing a vote never counts.
+         */
+        maxHelpfulVotesPerAccountPerDay: z.number().int().min(1).max(1000).default(200),
         autoChecks: z.strictObject({
           blockedTerms: z.array(z.string().trim().min(2).max(64)).max(1000),
           repeatedCharRun: z.number().int().min(4).max(100),
@@ -1925,7 +1930,29 @@ const marketSchema = z
      * is a closed list, never free text). `simple` splits words and folds case for any language.
      * Without this section the Market uses `simple`.
      */
-    search: z.strictObject({ textSearchConfig: z.enum(TEXT_SEARCH_CONFIGS) }).optional(),
+    search: z
+      .strictObject({
+        textSearchConfig: z.enum(TEXT_SEARCH_CONFIGS),
+        /**
+         * The rating boost of the text search (buyer reviews and ratings package 5, owner
+         * decision N9). Its own Market switch, OFF unless a Market sets `enabled` (the reviews
+         * switch must also be on, or there are no ratings to read). `weightBps`: the most the
+         * boost may move a result's relevance, in basis points (at most 1000, which is 10 %).
+         * `priorCount` and `priorMeanTimes100` make the Bayesian average: every product starts
+         * with `priorCount` imaginary ratings at that mean (hundredths of a star, 400 is 4.00),
+         * so one five-star review does not beat two hundred of 4.7 and an unrated product is not
+         * penalised. With the switch on, the `top-rated` sort is offered too.
+         */
+        ratingBoost: z
+          .strictObject({
+            enabled: z.boolean(),
+            weightBps: z.number().int().min(0).max(1000),
+            priorCount: z.number().int().min(1).max(1000),
+            priorMeanTimes100: z.number().int().min(100).max(500),
+          })
+          .optional(),
+      })
+      .optional(),
     /**
      * Customers settings, owned by `customers`: the delivery address book. `addressBookLimit`:
      * the most addresses one customer keeps (AU 20). `address`: the ISO 3166 country every

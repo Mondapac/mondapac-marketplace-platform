@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { REVIEWS_STATUSES } from '../domain/market-status';
 import { REVIEW_STATUSES, SELLER_RATING_REASONS } from '../domain/rules';
+import type { HelpfulVoteView } from '../application/use-cases/cast-helpful-vote.use-case';
 import type { ProductRatingSummary, SellerRatingSummary } from '../contracts';
 import type { MyReviewsView } from '../application/use-cases/list-my-reviews.use-case';
 import type { ProductReviewsPage } from '../application/use-cases/list-product-reviews.use-case';
@@ -120,6 +121,15 @@ export class PublicReviewBody {
   @ApiProperty({ type: BoughtFromBody }) boughtFrom!: BoughtFromBody;
   @ApiProperty({ format: 'date', description: 'The day only (UTC).' }) publishedOn!: string;
   @ApiProperty({ format: 'date', nullable: true, type: String }) editedOn!: string | null;
+  @ApiProperty({ description: 'How many buyers marked the review helpful.' })
+  helpfulCount!: number;
+}
+
+export class HelpfulVoteBody {
+  @ApiProperty() reviewId!: string;
+  @ApiProperty() helpfulCount!: number;
+  @ApiProperty({ description: 'Whether the caller has a vote on the review now.' })
+  voted!: boolean;
 }
 
 export class ProductReviewsBody {
@@ -285,6 +295,13 @@ export const publicReviewBody = (view: PublicReviewView): PublicReviewBody => ({
   boughtFrom: { offerId: view.boughtFrom.offerId, sellerId: view.boughtFrom.sellerId },
   publishedOn: view.publishedOn,
   editedOn: view.editedOn,
+  helpfulCount: view.helpfulCount,
+});
+
+export const helpfulVoteBody = (view: HelpfulVoteView): HelpfulVoteBody => ({
+  reviewId: view.reviewId,
+  helpfulCount: view.helpfulCount,
+  voted: view.voted,
 });
 
 export const productReviewsBody = (page: ProductReviewsPage): ProductReviewsBody => ({

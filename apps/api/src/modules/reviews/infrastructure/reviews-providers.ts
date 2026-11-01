@@ -9,10 +9,15 @@ import { REVIEW_REPOSITORY, type ReviewRepository } from '../application/ports/r
 import { REVIEWER_NAMES, type ReviewerNames } from '../application/ports/reviewer-names';
 import { REVIEWS_POLICY, type ReviewsPolicy } from '../application/ports/reviews-policy';
 import { SELLER_AFFINITY, type SellerAffinity } from '../application/ports/seller-affinity';
+import {
+  SELLER_OVERLAP_SOURCE,
+  type SellerOverlapSource,
+} from '../application/ports/seller-overlap';
 import { ConfigReviewsPolicy } from './config-reviews-policy';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaReviewRepository } from './prisma-review.repository';
 import { StructuralSellerAffinity } from './structural-seller-affinity';
+import { UnavailableSellerOverlap } from './unavailable-seller-overlap';
 import { UnavailableReviewerNames } from './unavailable-reviewer-names';
 
 /** Binds the ports of reviews. Only this layer may reach `PrismaService`. */
@@ -40,5 +45,9 @@ export const reviewsProviders: readonly FactoryProvider[] = [
   {
     provide: SELLER_AFFINITY,
     useFactory: (): SellerAffinity => new StructuralSellerAffinity(),
+  },
+  {
+    provide: SELLER_OVERLAP_SOURCE,
+    useFactory: (): SellerOverlapSource => new UnavailableSellerOverlap(),
   },
 ];

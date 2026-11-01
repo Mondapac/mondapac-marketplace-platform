@@ -31,6 +31,25 @@ export interface ProductReviewRecord {
 /** A published review as the public list reads it: with the random id the public sees. */
 export interface PublishedReviewRecord extends ProductReviewRecord {
   readonly publicId: string;
+  /** How many accounts voted this review helpful. */
+  readonly helpfulCount: number;
+}
+
+/** A published review looked up by the id the public sees, for a helpful vote. */
+export interface PublishedReviewRef {
+  readonly id: Id<'ProductReview'>;
+  readonly productId: Id<'Product'>;
+  readonly sellerId: Id<'Seller'>;
+  /** Null once the author's account was deleted. */
+  readonly accountId: Id<'Account'> | null;
+  readonly helpfulCount: number;
+}
+
+/** The star totals of one product that has published reviews (read by search for its ranking). */
+export interface ProductRatingTotal {
+  readonly productId: Id<'Product'>;
+  readonly count: number;
+  readonly sum: number;
 }
 
 /** One seller rating row (`reviews.seller_ratings`). */
@@ -97,10 +116,17 @@ export interface StoredSellerSummary extends SellerSummary {
   readonly rebuiltAt: Temporal.Instant | null;
 }
 
-/** The keyset position of the public list: newest published first. */
+/** The order of the public list: newest published first, or most helpful first (package 5). */
+export type ReviewSort = 'recent' | 'helpful';
+
+/**
+ * The keyset position of the public list: (published time, id) for `recent`; (votes, published
+ * time, id) for `helpful`, which reads `helpfulCount` too.
+ */
 export interface ReviewCursor {
   readonly publishedAt: Temporal.Instant;
   readonly id: Id<'ProductReview'>;
+  readonly helpfulCount: number;
 }
 
 /**
@@ -163,11 +189,15 @@ export interface ReviewRepository {
     productIds: readonly Id<'Product'>[],
   ): Promise<ReadonlySet<Id<'Product'>>>;
 
-  /** Published reviews of a product, newest first, optionally of one star value; `limit` rows. */
+  /**
+   * Published reviews of a product, optionally of one star value; `limit` rows. `recent`: newest
+   * first. `helpful`: most votes first, then newest (ties by id, so pages are stable).
+   */
   listPublishedProductReviews(
     market: MarketContext,
     productId: Id<'Product'>,
     query: {
+      readonly sort: ReviewSort;
       readonly stars: number | null;
       readonly after: ReviewCursor | null;
       readonly limit: number;
@@ -184,6 +214,51 @@ export interface ReviewRepository {
     productId: Id<'Product'>,
     publicId: string,
   ): Promise<ReviewCursor | null>;
+
+  // ---- helpful votes (package 5) ------------------------------------------------------------
+
+  /** The published review the public id names, or null (unknown, not published, other Market). */
+  findPublishedByPublicId(
+    market: MarketContext,
+    publicId: string,
+  ): Promise<PublishedReviewRef | null>;
+
+  /** False when the account had already voted (the primary key). The count is kept by triggers. */
+  insertHelpfulVote(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    accountId: Id<'Account'>,
+    at: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /** False when the account had no vote on the review. */
+  deleteHelpfulVote(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    accountId: Id<'Account'>,
+  ): Promise<boolean>;
+
+  /** The current vote count of a review (0 when unknown). */
+  readHelpfulCount(market: MarketContext, reviewId: Id<'ProductReview'>): Promise<number>;
+
+  /** The account's votes cast at or after `since` (removed votes are not counted). */
+  countHelpfulVotesSince(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    since: Temporal.Instant,
+  ): Promise<number>;
+
+  // ---- ratings for search (package 5) -------------------------------------------------------
+
+  /**
+   * The stored star totals of products with at least one published review, ordered by product id,
+   * after `after`, at most `limit` rows. Read-only; search copies them for its ranking.
+   */
+  listProductRatingTotals(
+    market: MarketContext,
+    after: Id<'Product'> | null,
+    limit: number,
+  ): Promise<readonly ProductRatingTotal[]>;
 
   // ---- seller ratings -----------------------------------------------------------------------
 

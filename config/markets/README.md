@@ -285,6 +285,14 @@ list in the schema). AU uses `english`. Without the section a Market uses `simpl
 case and splits words for any language. After changing it, run the `search.rebuild-index` job
 (it runs at worker start) so existing documents are rebuilt with the new configuration.
 
+`ratingBoost` (optional, buyer reviews and ratings package 5) is the staged rating boost of the text
+search and the `top-rated` sort, behind its own switch: `enabled` (AU `false`), `weightBps` (whole,
+0 to 1000: the most the boost moves a result's relevance, 1000 is 10 %), `priorCount` (whole, 1 to
+1000: the imaginary ratings every product starts with) and `priorMeanTimes100` (whole, 100 to 500:
+their mean in hundredths of a star, 400 is 4.00). Without it, or with `enabled` false, search ranks
+by text relevance only and `sort=top-rated` is refused. It also needs reviews switched on in the
+Market, or there are no ratings to read.
+
 ## `certification` section (optional)
 
 Owned by the `certification` module (`docs/design/domain/certification.md` 5.1, 8.6). The module

@@ -24,7 +24,13 @@ import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
-import { FakeAffinity, FakeDeliveries, FakeNames, FakeOffers } from '../support/reviews-fakes';
+import {
+  FakeAffinity,
+  FakeDeliveries,
+  FakeNames,
+  FakeOffers,
+  FakeOverlap,
+} from '../support/reviews-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
@@ -106,6 +112,7 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       catalog: offers.facade(),
       names: new FakeNames(),
       affinity: new FakeAffinity(),
+      overlap: new FakeOverlap(),
       audit: { record: () => Promise.resolve() },
       ids,
       clock,

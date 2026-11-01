@@ -15,6 +15,7 @@ export class ConfigReviewsPolicy implements ReviewsPolicy {
       editWindowDays: reviews.editWindowDays,
       sellerRatingMinCount: reviews.sellerRatingMinCount,
       maxSubmissionsPerAccountPerDay: reviews.maxSubmissionsPerAccountPerDay,
+      maxHelpfulVotesPerAccountPerDay: reviews.maxHelpfulVotesPerAccountPerDay,
       titleMaxLength: reviews.titleMaxLength,
       bodyMaxLength: reviews.bodyMaxLength,
       pageSize: reviews.pageSize,

@@ -8,6 +8,7 @@ import type { ReviewRepository } from './ports/review.repository';
 import type { ReviewerNames } from './ports/reviewer-names';
 import type { ReviewsPolicy } from './ports/reviews-policy';
 import type { SellerAffinity } from './ports/seller-affinity';
+import type { SellerOverlapSource } from './ports/seller-overlap';
 
 /** What every reviews use case may need; one object built from the same ports. */
 export interface ReviewsDependencies {
@@ -21,6 +22,8 @@ export interface ReviewsDependencies {
   readonly catalog: CatalogFacade;
   readonly names: ReviewerNames;
   readonly affinity: SellerAffinity;
+  /** Facts for the same-address and same-payment-fingerprint signals (package 5). */
+  readonly overlap: SellerOverlapSource;
   readonly audit: AuditWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;

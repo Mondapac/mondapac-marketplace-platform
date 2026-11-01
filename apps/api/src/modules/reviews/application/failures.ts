@@ -27,6 +27,8 @@ export type ReviewsFailure =
   | { readonly code: 'reviews.not-editable' }
   | { readonly code: 'reviews.edit-window-closed' }
   | { readonly code: 'reviews.rate-limited' }
+  /** A buyer does not vote on their own review. */
+  | { readonly code: 'reviews.own-review' }
   /** The account is tied to the seller (a member of its team): nobody reviews their own shop. */
   | { readonly code: 'reviews.own-store' };
 
