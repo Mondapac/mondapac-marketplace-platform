@@ -370,6 +370,16 @@ export class AdminOrderPageBody {
     description: "The Market's orders per status, whatever the page or filter.",
   })
   counts!: OrderStatusCountsBody;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Page mode only: the orders that match the filter. Null in cursor mode.',
+  })
+  total!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
+  page!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
+  pageSize!: number | null;
 }
 
 type SellerOrderLike = OrderView['sellerOrders'][number];
@@ -573,6 +583,9 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
 export const adminOrderPageBody = (page: AdminOrderPageView): AdminOrderPageBody => ({
   ...pageBody(page, adminOrderBody),
   counts: { ...page.counts },
+  total: page.paging?.total ?? null,
+  page: page.paging?.page ?? null,
+  pageSize: page.paging?.pageSize ?? null,
 });
 
 export const pageBody = <V, B>(

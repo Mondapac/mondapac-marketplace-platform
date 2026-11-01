@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { OrderStatus, OrderState, ShipTo } from '../domain/order';
+import type { Fulfilment, OrderStatus, OrderState, PaymentState, ShipTo } from '../domain/order';
 import {
   adminOrderView,
   orderView,
@@ -18,7 +18,7 @@ import {
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
 import { labelAdminOrders, labelOwnOrders } from './order-labels';
-import type { OrderFilter, OrderPage } from './ports/order.repository';
+import type { OrderFilter, OrderPage, OrderSort } from './ports/order.repository';
 import { openPickupCodes, storedPickupCodes } from './pickup-flow';
 
 export type ReadFailure =
@@ -50,7 +50,27 @@ export interface ListInput {
   readonly status?: unknown;
   /** Admin only: an order id or a seller order id (the reference in the emails), exact. */
   readonly q?: unknown;
+  /**
+   * Admin only. With `page` the list answers an offset page with its total (the page-number
+   * mode of the List paging setting); without it, the cursor page.
+   */
+  readonly page?: unknown;
+  readonly pageSize?: unknown;
+  readonly sort?: unknown;
+  readonly direction?: unknown;
+  readonly paymentState?: unknown;
+  readonly sellerId?: unknown;
+  readonly fulfilment?: unknown;
+  /** ISO instants: placed at or after `from`, before `to`. */
+  readonly from?: unknown;
+  readonly to?: unknown;
 }
+
+/** Page numbers stop at this row; deeper rows are reached by narrowing the filter (List paging). */
+export const MAX_PAGED_ROWS = 10_000;
+const PAYMENT_STATES: readonly PaymentState[] = ['none', 'authorised', 'captured', 'voided'];
+const FULFILMENTS: readonly Fulfilment[] = ['to-ship', 'shipped', 'delivered'];
+const SORT_KEYS: readonly OrderSort['key'][] = ['created', 'total'];
 
 function pageOf(
   input: ListInput,
@@ -87,9 +107,97 @@ function pageOf(
     if (allowFilters && parsed !== null && parsed.ok) reference = parsed.value;
     else fields.push({ path: 'q', code: 'format' });
   }
+  let paymentState: PaymentState | null = null;
+  if (input.paymentState !== undefined) {
+    if (allowFilters && PAYMENT_STATES.includes(input.paymentState as PaymentState)) {
+      paymentState = input.paymentState as PaymentState;
+    } else fields.push({ path: 'paymentState', code: 'value' });
+  }
+  let fulfilment: Fulfilment | null = null;
+  if (input.fulfilment !== undefined) {
+    if (allowFilters && FULFILMENTS.includes(input.fulfilment as Fulfilment)) {
+      fulfilment = input.fulfilment as Fulfilment;
+    } else fields.push({ path: 'fulfilment', code: 'value' });
+  }
+  let sellerId: Id<'Seller'> | null = null;
+  if (input.sellerId !== undefined) {
+    const parsed = typeof input.sellerId === 'string' ? parseId<'Seller'>(input.sellerId) : null;
+    if (allowFilters && parsed !== null && parsed.ok) sellerId = parsed.value;
+    else fields.push({ path: 'sellerId', code: 'format' });
+  }
+  const instant = (path: 'from' | 'to', value: unknown): Temporal.Instant | null => {
+    if (value === undefined) return null;
+    try {
+      if (allowFilters && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+        return Temporal.Instant.from(value);
+      }
+    } catch {
+      // falls through to the refusal below
+    }
+    fields.push({ path, code: 'format' });
+    return null;
+  };
+  const from = instant('from', input.from);
+  const to = instant('to', input.to);
+  if (from !== null && to !== null && Temporal.Instant.compare(from, to) >= 0) {
+    fields.push({ path: 'to', code: 'range' });
+  }
   return fields.length > 0
     ? err({ code: 'validation.failed', fields })
-    : ok({ page: { limit, after }, filter: { status, reference } });
+    : ok({
+        page: { limit, after },
+        filter: { status, reference, paymentState, sellerId, fulfilment, from, to },
+      });
+}
+
+interface OffsetRequest {
+  readonly page: number;
+  readonly pageSize: number;
+  readonly sort: OrderSort;
+}
+
+/** The offset-page request of a list input, or null when the caller asked for the cursor page. */
+function offsetOf(input: ListInput): Result<OffsetRequest | null, ReadFailure> {
+  if (input.page === undefined) {
+    const stray = (['pageSize', 'sort', 'direction'] as const).filter(
+      (k) => input[k] !== undefined,
+    );
+    return stray.length === 0
+      ? ok(null)
+      : err({
+          code: 'validation.failed',
+          fields: stray.map((path) => ({ path, code: 'needs-page' })),
+        });
+  }
+  const fields: { path: string; code: string }[] = [];
+  const whole = (value: unknown, min: number, max: number): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max
+      ? value
+      : null;
+  const page = whole(input.page, 1, MAX_PAGED_ROWS);
+  if (page === null) fields.push({ path: 'page', code: 'range' });
+  let pageSize = DEFAULT_PAGE_SIZE;
+  if (input.pageSize !== undefined) {
+    const given = whole(input.pageSize, 1, MAX_PAGE_SIZE);
+    if (given === null) fields.push({ path: 'pageSize', code: 'range' });
+    else pageSize = given;
+  }
+  let key: OrderSort['key'] = 'created';
+  if (input.sort !== undefined) {
+    if (SORT_KEYS.includes(input.sort as OrderSort['key'])) key = input.sort as OrderSort['key'];
+    else fields.push({ path: 'sort', code: 'value' });
+  }
+  let direction: OrderSort['direction'] = 'desc';
+  if (input.direction !== undefined) {
+    if (input.direction === 'asc' || input.direction === 'desc') direction = input.direction;
+    else fields.push({ path: 'direction', code: 'value' });
+  }
+  if (page !== null && fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
+    fields.push({ path: 'page', code: 'too-deep' });
+  }
+  return fields.length > 0 || page === null
+    ? err({ code: 'validation.failed', fields })
+    : ok({ page, pageSize, sort: { key, direction } });
 }
 
 function cut<T extends { orderId: Id<'Order'>; createdAt: Temporal.Instant }>(
@@ -268,28 +376,54 @@ export async function listAllOrders(
 ): Promise<Result<AdminOrderPageView, ReadFailure>> {
   const parsed = pageOf(input ?? {}, true);
   if (!parsed.ok) return parsed;
+  const offset = offsetOf(input ?? {});
+  if (!offset.ok) return offset;
   const { page, filter } = parsed.value;
+  const request = offset.value;
   const read = await deps.unitOfWork.run<
-    OrderPageView<AdminOrderView> & { readonly counts: OrderStatusCounts },
+    {
+      readonly rows: OrderPageView<AdminOrderView>;
+      readonly counts: OrderStatusCounts;
+      readonly total: number | null;
+    },
     ReadFailure
   >(
     context.market,
     async () => {
+      const counts = await deps.orders.countAll(context.market);
+      if (request !== null) {
+        const [rows, total] = await Promise.all([
+          deps.orders.pageAll(
+            context.market,
+            filter,
+            request.sort,
+            (request.page - 1) * request.pageSize,
+            request.pageSize,
+          ),
+          deps.orders.countMatching(context.market, filter),
+        ]);
+        return ok({
+          rows: { orders: rows.map(adminOrderView), nextCursor: null },
+          counts,
+          total,
+        });
+      }
       const rows = await deps.orders.listAll(context.market, filter, {
         ...page,
         limit: page.limit + 1,
       });
-      return ok({
-        ...cut(rows.map(adminOrderView), page.limit),
-        counts: await deps.orders.countAll(context.market),
-      });
+      return ok({ rows: cut(rows.map(adminOrderView), page.limit), counts, total: null });
     },
     { readOnly: true },
   );
   if (!read.ok) return read;
   return ok({
-    orders: await labelAdminOrders(deps.labels, context, read.value.orders),
-    nextCursor: read.value.nextCursor,
+    orders: await labelAdminOrders(deps.labels, context, read.value.rows.orders),
+    nextCursor: read.value.rows.nextCursor,
     counts: read.value.counts,
+    paging:
+      request === null || read.value.total === null
+        ? null
+        : { total: read.value.total, page: request.page, pageSize: request.pageSize },
   });
 }

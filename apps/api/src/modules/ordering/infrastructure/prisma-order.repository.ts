@@ -3,6 +3,7 @@ import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   OrderFilter,
+  OrderSort,
   OrderPage,
   OrderRepository,
   SellerOrderFilter,
@@ -189,6 +190,34 @@ function toOrder(row: OrderRow): OrderState {
 const INCLUDE = { sellerOrders: true, lines: true } as const;
 
 /** Rows older than the cursor, newest first: `(created_at, id) < (cursor)`. */
+/** The admin list's filter as a Market-scoped `where`; every field is optional. */
+const filterWhere = (market: MarketContext, filter: OrderFilter) => ({
+  marketId: market.marketId,
+  ...(filter.status === null ? {} : { status: filter.status }),
+  ...(filter.paymentState === null ? {} : { paymentState: filter.paymentState }),
+  ...(filter.reference === null
+    ? {}
+    : { OR: [{ id: filter.reference }, { sellerOrders: { some: { id: filter.reference } } }] }),
+  ...(filter.sellerId === null && filter.fulfilment === null
+    ? {}
+    : {
+        sellerOrders: {
+          some: {
+            ...(filter.sellerId === null ? {} : { sellerId: filter.sellerId }),
+            ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
+          },
+        },
+      }),
+  ...(filter.from === null && filter.to === null
+    ? {}
+    : {
+        createdAt: {
+          ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+          ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+        },
+      }),
+});
+
 const afterCursor = (page: OrderPage) =>
   page.after === null
     ? {}
@@ -343,21 +372,36 @@ export class PrismaOrderRepository implements OrderRepository {
 
   async listAll(market: MarketContext, filter: OrderFilter, page: OrderPage) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
-      where: {
-        marketId: market.marketId,
-        ...(filter.status === null ? {} : { status: filter.status }),
-        ...(filter.reference === null
-          ? {}
-          : {
-              OR: [{ id: filter.reference }, { sellerOrders: { some: { id: filter.reference } } }],
-            }),
-        ...afterCursor(page),
-      },
+      where: { ...filterWhere(market, filter), ...afterCursor(page) },
       include: INCLUDE,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: page.limit,
     });
     return rows.map(toOrder);
+  }
+
+  async pageAll(
+    market: MarketContext,
+    filter: OrderFilter,
+    sort: OrderSort,
+    offset: number,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).orderingOrder.findMany({
+      where: filterWhere(market, filter),
+      include: INCLUDE,
+      orderBy:
+        sort.key === 'total'
+          ? [{ totalAmount: sort.direction }, { id: sort.direction }]
+          : [{ createdAt: sort.direction }, { id: sort.direction }],
+      skip: offset,
+      take: limit,
+    });
+    return rows.map(toOrder);
+  }
+
+  countMatching(market: MarketContext, filter: OrderFilter) {
+    return this.prisma.tx(market).orderingOrder.count({ where: filterWhere(market, filter) });
   }
 
   async countAll(market: MarketContext): Promise<OrderStatusCounts> {

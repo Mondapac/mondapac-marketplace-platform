@@ -197,6 +197,12 @@ export interface LabelledSellerOrderPageView {
 /** The admin list: a page of labelled orders and the Market's counts per status. */
 export interface AdminOrderPageView extends OrderPageView<LabelledAdminOrderView> {
   readonly counts: OrderStatusCounts;
+  /** Set when the caller asked for an offset page: the rows matching the filter, and the page. */
+  readonly paging: {
+    readonly total: number;
+    readonly page: number;
+    readonly pageSize: number;
+  } | null;
 }
 
 export interface OrderPageView<V> {
