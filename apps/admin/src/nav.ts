@@ -58,6 +58,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.brand.read'],
     },
     {
+      id: 'business-activities',
+      icon: 'store',
+      labelKey: 'nav.business-activities',
+      href: '/catalog/business-activities',
+      group: 'catalog',
+      anyOf: ['catalog.business-activity.read'],
+    },
+    {
       id: 'content',
       icon: 'layout',
       labelKey: 'nav.content',
