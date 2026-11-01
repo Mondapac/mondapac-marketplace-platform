@@ -10,6 +10,10 @@ import {
 import { FLEET_MANAGE_PERMISSION, FLEET_VIEW_PERMISSION } from '../fleet-selection/types.ts';
 import { SETTINGS_MANAGE, SETTINGS_VIEW } from '../wallet/types.ts';
 import { ASSISTANT_MANAGE_PERMISSION, ASSISTANT_VIEW_PERMISSION } from './assistant-types.ts';
+import {
+  SETTINGS_MANAGE_PERMISSION as LISTS_MANAGE_PERMISSION,
+  SETTINGS_VIEW_PERMISSION as LISTS_VIEW_PERMISSION,
+} from '../lists-settings/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -61,6 +65,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/account-deletion',
         view: [DELETION_VIEW_PERMISSION],
         manage: [DELETION_MANAGE_PERMISSION],
+      },
+      {
+        id: 'lists',
+        labelKey: 'settings.hub.link.lists',
+        href: '/settings/lists',
+        view: [LISTS_VIEW_PERMISSION],
+        manage: [LISTS_MANAGE_PERMISSION],
       },
     ],
   },

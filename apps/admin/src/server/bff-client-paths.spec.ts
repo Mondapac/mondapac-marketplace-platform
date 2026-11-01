@@ -32,6 +32,9 @@ const files = [
   ...readdirSync(path.join(src, 'account-deletion'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'account-deletion', name)),
+  ...readdirSync(path.join(src, 'lists-settings'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'lists-settings', name)),
   path.join(src, 'step-up', 'step-up.tsx'),
 ];
 const CALL = /(?:callApi|guarded)(?:<[^>]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
@@ -89,6 +92,8 @@ describe('every path the wallet, dispute, account deletion and step-up client co
         'GET customers/admin/deletion-requests',
         'DELETE customers/admin/deletion-requests/:id',
         'POST customers/admin/buyers/:id/deletion-requests',
+        'GET settings/admin/market-settings',
+        'PUT settings/admin/market-settings',
       ]),
     );
   });

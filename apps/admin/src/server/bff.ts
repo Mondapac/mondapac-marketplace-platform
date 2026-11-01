@@ -63,6 +63,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    // The editable Market settings (settings; List paging), read again after a conflict.
+    'settings/admin/market-settings',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
@@ -89,6 +91,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/delivery-settings',
     // The buyer account deletion setting (customers), behind a fresh two-step code.
     'customers/admin/account-deletion-settings',
+    // One editable Market setting (settings): code, value and `expectedVersion`.
+    'settings/admin/market-settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
