@@ -235,6 +235,30 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
     });
   });
 
+  it('tells the buyer it failed when a webhook confirmed and then cancelled the order before the link', async () => {
+    const realSave = orders.save.bind(orders);
+    orders.save = (m, order) => {
+      const stored = orders.rows.get(order.id)!;
+      orders.rows.set(order.id, {
+        ...stored,
+        stripePaymentIntentId: 'pi_card_1',
+        status: 'cancelled',
+        paymentState: 'voided',
+        version: stored.version + 1,
+      });
+      orders.save = realSave;
+      return realSave(m, order);
+    };
+
+    const paid = await pay();
+
+    expect(paid).toEqual(err({ code: 'ordering.payment-unavailable' }));
+    // The webhook already voided the payment and released the stock: nothing is undone twice.
+    expect(gateway.voided).toEqual([]);
+    expect(inventory.calls).toEqual(['reserve']);
+    expect(onlyOrder()).toMatchObject({ status: 'cancelled' });
+  });
+
   it('still undoes the payment when the order cannot be linked after the retries', async () => {
     orders.save = () => Promise.resolve('stale' as const);
 

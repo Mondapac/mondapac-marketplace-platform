@@ -727,6 +727,7 @@ export async function placeOrder<T>(
     return charged;
   }
 
+  let alreadyCancelled = false;
   const linked = await deps.unitOfWork.run<OrderState, StartCheckoutFailure>(
     context.market,
     async () => {
@@ -736,7 +737,15 @@ export async function placeOrder<T>(
       for (let attempt = 0; attempt < LINK_ATTEMPTS; attempt += 1) {
         const fresh = await deps.orders.findById(context.market, orderId);
         if (fresh === null) return err({ code: 'ordering.payment-unavailable' } as const);
-        if (charged.value.isLinked(fresh)) return ok(fresh);
+        if (charged.value.isLinked(fresh)) {
+          // The webhook confirmed and then cancelled the order (stock gone, capture refused):
+          // it already voided the payment and released the stock. The buyer is told it failed.
+          if (fresh.status === 'cancelled') {
+            alreadyCancelled = true;
+            return err({ code: 'ordering.payment-unavailable' } as const);
+          }
+          return ok(fresh);
+        }
         const next = charged.value.link(fresh);
         const saved = await deps.orders.save(context.market, next);
         if (saved === 'saved') return ok({ ...next, version: next.version + 1 });
@@ -744,6 +753,7 @@ export async function placeOrder<T>(
       return err({ code: 'conflict.retry' } as const);
     },
   );
+  if (!linked.ok && alreadyCancelled) return linked;
   if (!linked.ok) {
     await step.undo(charged.value);
     await abandon(deps, context, order, 'provider-failed');
