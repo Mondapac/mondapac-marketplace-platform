@@ -1,4 +1,5 @@
-import { parsePlainText, Temporal } from '@mondapac/shared-kernel';
+import { parsePlainText } from '@mondapac/shared-kernel';
+import type { Temporal } from '@mondapac/shared-kernel';
 import { isWithinEditWindow, type FieldProblem, type Validated } from './rules';
 
 // The pure rules of the seller's side of reviews (buyer reviews and ratings package 4; owner

@@ -13,8 +13,11 @@ import type {
   NewModerationAction,
   QueueCursor,
   QueueRow,
+  NewReportRecord,
   NewSignal,
   ProductReviewRecord,
+  ReplyRecord,
+  SellerReviewRow,
   ReviewCursor,
   ReviewRepository,
   SellerRatingRecord,
@@ -38,6 +41,8 @@ import {
 export class MemoryReviews implements ReviewRepository {
   readonly productReviews = new Map<string, ProductReviewRecord>();
   readonly sellerRatings = new Map<string, SellerRatingRecord>();
+  readonly replies = new Map<string, ReplyRecord>();
+  readonly sellerReports: NewReportRecord[] = [];
   readonly actions: NewModerationAction[] = [];
   readonly signals: NewSignal[] = [];
   readonly productSummaries = new Map<string, StoredStarSummary>();
@@ -173,6 +178,60 @@ export class MemoryReviews implements ReviewRepository {
         ? null
         : { publishedAt: found.publishedAt, id: found.id },
     );
+  }
+  private rowOf(review: ProductReviewRecord): SellerReviewRow {
+    return {
+      review,
+      reply: [...this.replies.values()].find((r) => r.reviewId === review.id) ?? null,
+    };
+  }
+  listSellerReviews(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    query: { readonly after: ReviewCursor | null; readonly limit: number },
+  ) {
+    const rows = [...this.productReviews.values()]
+      .filter((r) => r.sellerId === sellerId && r.status === 'published' && r.publishedAt !== null)
+      .sort(
+        (a, b) =>
+          Temporal.Instant.compare(b.publishedAt!, a.publishedAt!) || (a.id < b.id ? 1 : -1),
+      )
+      .filter(
+        (r) =>
+          query.after === null ||
+          Temporal.Instant.compare(r.publishedAt!, query.after.publishedAt) < 0 ||
+          (r.publishedAt!.equals(query.after.publishedAt) && r.id < query.after.id),
+      )
+      .slice(0, query.limit);
+    return Promise.resolve(rows.map((r) => this.rowOf(r)));
+  }
+  findSellerReview(_m: MarketContext, sellerId: Id<'Seller'>, reviewId: Id<'ProductReview'>) {
+    const found = this.productReviews.get(reviewId);
+    return Promise.resolve(
+      found !== undefined && found.sellerId === sellerId ? this.rowOf(found) : null,
+    );
+  }
+  insertReplyIfAbsent(_m: MarketContext, reply: ReplyRecord) {
+    if ([...this.replies.values()].some((r) => r.reviewId === reply.reviewId)) {
+      return Promise.resolve(false);
+    }
+    this.replies.set(reply.id, reply);
+    return Promise.resolve(true);
+  }
+  saveReply(_m: MarketContext, reply: ReplyRecord) {
+    this.replies.set(reply.id, reply);
+    return Promise.resolve();
+  }
+  insertReportIfAbsent(_m: MarketContext, report: NewReportRecord) {
+    if (
+      this.sellerReports.some(
+        (r) => r.reviewId === report.reviewId && r.reporterAccountId === report.reporterAccountId,
+      )
+    ) {
+      return Promise.resolve(false);
+    }
+    this.sellerReports.push(report);
+    return Promise.resolve(true);
   }
   insertSellerRatingIfAbsent(_m: MarketContext, record: SellerRatingRecord) {
     if ([...this.sellerRatings.values()].some((r) => r.sellerOrderId === record.sellerOrderId)) {

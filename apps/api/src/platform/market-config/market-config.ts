@@ -1709,6 +1709,12 @@ const marketSchema = z
         bodyMaxLength: z.number().int().min(1).max(5000),
         pageSize: z.number().int().min(1).max(50),
         /**
+         * Seller replies (package 4): a seller may edit its reply this many days after writing it
+         * (default 7), and a reply is at most `replyMaxLength` characters (default 2000).
+         */
+        replyEditWindowDays: z.number().int().min(0).max(365).default(7),
+        replyMaxLength: z.number().int().min(1).max(5000).default(2000),
+        /**
          * How often the job recomputes the rating summaries from the source rows (minutes, default
          * 1440, daily). The write path refreshes a product summary at once; a SELLER summary is
          * written only by this job, so that several ratings land in one change and a poller cannot

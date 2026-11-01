@@ -45,7 +45,31 @@ export const REVIEWS_MODERATION_REMOVE = definePermission('reviews', {
   protected: true,
 });
 
+/** See the shop's own published reviews (never the buyer's name, only the order reference). */
+export const REVIEWS_SELLER_VIEW = definePermission('reviews', {
+  key: 'reviews.seller.view',
+  scope: 'seller',
+  protected: false,
+});
+
+/** Write and edit the shop's one public reply to a review. */
+export const REVIEWS_SELLER_REPLY = definePermission('reviews', {
+  key: 'reviews.seller.reply',
+  scope: 'seller',
+  protected: false,
+});
+
+/** Report a review of the shop to the platform's moderators (never hide or remove it). */
+export const REVIEWS_SELLER_REPORT = definePermission('reviews', {
+  key: 'reviews.seller.report',
+  scope: 'seller',
+  protected: false,
+});
+
 export const REVIEWS_PERMISSIONS = declarePermissions('reviews', [
+  REVIEWS_SELLER_REPLY,
+  REVIEWS_SELLER_REPORT,
+  REVIEWS_SELLER_VIEW,
   REVIEWS_MODERATION_MODERATE,
   REVIEWS_MODERATION_REMOVE,
   REVIEWS_MODERATION_QUEUE,

@@ -55,6 +55,7 @@ it('maps every refusal code of the reviews routes to its exact status', () => {
     'reviews.window-closed': 409,
     'reviews.already-reviewed': 409,
     'reviews.already-rated': 409,
+    'reviews.already-replied': 409,
     'reviews.not-editable': 409,
     'reviews.edit-window-closed': 409,
     'reviews.not-moderatable': 409,

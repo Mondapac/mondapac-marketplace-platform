@@ -3,6 +3,8 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   NewModerationAction,
+  NewReportRecord,
+  ReplyRecord,
   HistoryRow,
   ModerationDetailRecord,
   NewSignal,
@@ -111,6 +113,29 @@ const toRating = (row: {
   status: row.status as SellerRatingStatus,
   createdAt: fromDate(row.createdAt),
 });
+
+const toReply = (
+  row: {
+    readonly id: string;
+    readonly reviewId: string;
+    readonly sellerId: string;
+    readonly body: string;
+    readonly status: string;
+    readonly createdAt: Date;
+    readonly editedAt: Date | null;
+  } | null,
+): ReplyRecord | null =>
+  row === null
+    ? null
+    : {
+        id: row.id as Id<'ReviewReply'>,
+        reviewId: row.reviewId as Id<'ProductReview'>,
+        sellerId: row.sellerId as Id<'Seller'>,
+        body: row.body,
+        status: row.status as ReplyRecord['status'],
+        createdAt: fromDate(row.createdAt),
+        editedAt: row.editedAt === null ? null : fromDate(row.editedAt),
+      };
 
 /** The columns of one stored summary row. */
 type SummaryRow = Awaited<ReturnType<PrismaService['tx']>>['reviewsRatingSummary'] extends {
@@ -442,6 +467,95 @@ export class PrismaReviewRepository implements ReviewRepository {
     });
     if (row === null || row.publishedAt === null) return null;
     return { publishedAt: fromDate(row.publishedAt), id: row.id as Id<'ProductReview'> };
+  }
+
+  // ---- the seller's side (package 4) ---------------------------------------------------------
+
+  async listSellerReviews(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    query: { readonly after: ReviewCursor | null; readonly limit: number },
+  ) {
+    const rows = await this.prisma.tx(market).reviewsProductReview.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        status: 'published',
+        ...(query.after === null
+          ? {}
+          : {
+              OR: [
+                { publishedAt: { lt: toDate(query.after.publishedAt) } },
+                { publishedAt: toDate(query.after.publishedAt), id: { lt: query.after.id } },
+              ],
+            }),
+      },
+      include: { replies: true },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit,
+    });
+    return rows.map((row) => ({ review: toReview(row), reply: toReply(row.replies[0] ?? null) }));
+  }
+
+  async findSellerReview(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ) {
+    const row = await this.prisma.tx(market).reviewsProductReview.findFirst({
+      where: { marketId: market.marketId, sellerId, id: reviewId },
+      include: { replies: true },
+    });
+    return row === null ? null : { review: toReview(row), reply: toReply(row.replies[0] ?? null) };
+  }
+
+  async insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord) {
+    const created = await this.prisma.tx(market).reviewsReply.createMany({
+      data: [
+        {
+          id: reply.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          reviewId: reply.reviewId,
+          sellerId: reply.sellerId,
+          body: reply.body,
+          status: reply.status,
+          createdAt: toDate(reply.createdAt),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count > 0;
+  }
+
+  async saveReply(market: MarketContext, reply: ReplyRecord) {
+    await this.prisma.tx(market).reviewsReply.updateMany({
+      where: { marketId: market.marketId, id: reply.id },
+      data: {
+        body: reply.body,
+        status: reply.status,
+        editedAt: reply.editedAt === null ? null : toDate(reply.editedAt),
+      },
+    });
+  }
+
+  async insertReportIfAbsent(market: MarketContext, report: NewReportRecord) {
+    const created = await this.prisma.tx(market).reviewsReport.createMany({
+      data: [
+        {
+          id: report.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          reviewId: report.reviewId,
+          reporterAccountId: report.reporterAccountId,
+          reasonCode: report.reasonCode,
+          status: 'open',
+          createdAt: toDate(report.createdAt),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count > 0;
   }
 
   // ---- seller ratings -----------------------------------------------------------------------

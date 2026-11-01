@@ -224,3 +224,21 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
 - Differences from design section 7, on purpose: the star chart filters the list instead of the
   "With text / 1-2 star" chips, and one review count is shown (the API has no separate rating
   count). A hidden review shows "Not shown" only: the API does not return the reason yet.
+
+## Package 4a: the seller's side of the API (backend)
+
+- New seller permissions, not protected: `reviews.seller.view`, `reviews.seller.reply`,
+  `reviews.seller.report`. Routes under `reviews/seller`: GET list, POST and PATCH
+  `:reviewId/reply`, POST `:reviewId/report`. Writes are refused in an acting-as session.
+- A seller sees only its own published reviews and an order reference (the seller order id); never
+  the buyer's name, email or address. One reply per review (unique key, so a race makes one row).
+  Editing a reply is allowed for `reviews.replyEditWindowDays` (default 7) after it was written;
+  `reviews.replyMaxLength` defaults to 2000. Both are Market config.
+- A reply goes through the same text checks as a review (contact details, links, markup, the
+  Market's blocked words). Unlike a review it is refused, not held: a reply has no queue.
+- A report stores a reason code from a closed list (`personal-info`, `abusive`, `irrelevant`,
+  `not-a-buyer`, `extortion`) in `review_reports`, one per team member; it opens the existing
+  "reported" tab of the admin queue. The seller can never hide or remove a review.
+- No migration: the reply and report tables and their grants came with package 1.
+- Not in 4a: the public reply under a review on the product page (package 3 list), notices for the
+  seller, buyer and admin (4b), the seller panel screens (4c), the daily digest, appeals.

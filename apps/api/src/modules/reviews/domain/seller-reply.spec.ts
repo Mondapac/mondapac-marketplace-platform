@@ -11,7 +11,10 @@ const at = (iso: string) => Temporal.Instant.from(iso);
 
 describe('validateReplyInput', () => {
   it('trims and accepts a body within the Market limit', () => {
-    expect(validateReplyInput({ body: '  thanks  ' }, limits)).toEqual({ ok: true, value: 'thanks' });
+    expect(validateReplyInput({ body: '  thanks  ' }, limits)).toEqual({
+      ok: true,
+      value: 'thanks',
+    });
   });
   it('counts people-visible characters, not UTF-16 units', () => {
     expect(validateReplyInput({ body: '😀'.repeat(10) }, limits).ok).toBe(true);

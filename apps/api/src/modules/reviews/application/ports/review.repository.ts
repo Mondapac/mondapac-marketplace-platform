@@ -121,6 +121,32 @@ export interface ModerationDetailRecord {
   readonly history: readonly HistoryRow[];
 }
 
+/** A seller's one public reply to a review (`reviews.review_replies`). */
+export interface ReplyRecord {
+  readonly id: Id<'ReviewReply'>;
+  readonly reviewId: Id<'ProductReview'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly body: string;
+  readonly status: 'published' | 'hidden' | 'removed';
+  readonly createdAt: Temporal.Instant;
+  readonly editedAt: Temporal.Instant | null;
+}
+
+/** A report of a review by a member of the seller's team (reason code only, never text). */
+export interface NewReportRecord {
+  readonly id: Id<'ReviewReport'>;
+  readonly reviewId: Id<'ProductReview'>;
+  readonly reporterAccountId: Id<'Account'>;
+  readonly reasonCode: string;
+  readonly createdAt: Temporal.Instant;
+}
+
+/** One line of the seller's review list: the review and the shop's reply, if any. */
+export interface SellerReviewRow {
+  readonly review: ProductReviewRecord;
+  readonly reply: ReplyRecord | null;
+}
+
 export type SummarySubject = 'product' | 'seller';
 
 /** A stored (rebuilt) summary; null count means no row. */
@@ -255,6 +281,31 @@ export interface ReviewRepository {
     reviewId: Id<'ProductReview'>,
     status: 'actioned' | 'dismissed',
   ): Promise<number>;
+
+  // ---- the seller's side (package 4) ---------------------------------------------------------
+
+  /** The shop's published reviews, newest published first, `limit` rows. */
+  listSellerReviews(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    query: { readonly after: ReviewCursor | null; readonly limit: number },
+  ): Promise<readonly SellerReviewRow[]>;
+
+  /** A review of this shop by its internal id (any status) with its reply; null if not the shop's. */
+  findSellerReview(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<SellerReviewRow | null>;
+
+  /** False when the review already has a reply (the unique key): two submits make one reply. */
+  insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord): Promise<boolean>;
+
+  /** Writes body and edit time of a reply while it still stands at `expectedBody`'s status. */
+  saveReply(market: MarketContext, reply: ReplyRecord): Promise<void>;
+
+  /** False when this account already reported the review (the unique key). */
+  insertReportIfAbsent(market: MarketContext, report: NewReportRecord): Promise<boolean>;
 
   // ---- seller ratings -----------------------------------------------------------------------
 
