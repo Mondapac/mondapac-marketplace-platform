@@ -1121,6 +1121,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/archive`],
     ['POST', `catalog/admin/brands/${id}/merge`],
     ['POST', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['GET', 'catalog/admin/business-activities'],
+    ['GET', `catalog/admin/business-activities/${id}`],
+    ['POST', 'catalog/admin/business-activities'],
+    ['PUT', `catalog/admin/business-activities/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1158,6 +1162,11 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/delete`],
     ['POST', 'catalog/admin/brands/merge-queue'],
     ['GET', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['DELETE', `catalog/admin/business-activities/${id}`],
+    ['PUT', 'catalog/admin/business-activities'],
+    ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
+    ['POST', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/business-activities/not-a-uuid'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1202,6 +1211,25 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands');
+  });
+
+  it('passes only status, search, afterId and limit of the business activity list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/business-activities?status=inactive&search=gro&afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/business-activities?status=inactive&search=gro&afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/business-activities?status=draft&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/business-activities',
+    );
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {

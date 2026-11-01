@@ -18,6 +18,7 @@ import {
   type ValidationFailure,
 } from '../business-activities/business-activity-views';
 import type { BusinessActivityReader } from '../ports/business-activity.reader';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 
 export interface BusinessActivityListInput {
   readonly status?: unknown;
@@ -30,6 +31,8 @@ export interface BusinessActivityListOutput {
   readonly items: readonly BusinessActivityView[];
   /** The `afterId` of the next page; null on the last page. */
   readonly nextAfterId: string | null;
+  /** The Market's locales: the language dropdown of the form offers the supported ones. */
+  readonly locales: { readonly default: string; readonly supported: readonly string[] };
 }
 
 export type BusinessActivityListFailure =
@@ -38,6 +41,7 @@ export type BusinessActivityListFailure =
 export interface BusinessActivityListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly activityReader: BusinessActivityReader;
+  readonly policy: CatalogMarketPolicy;
 }
 
 /**
@@ -127,6 +131,11 @@ export class BusinessActivityList extends UseCase<
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    return ok({ items: read.value.items.map(viewOf), nextAfterId: read.value.nextAfterId });
+    const locales = this.deps.policy.locales(market);
+    return ok({
+      items: read.value.items.map(viewOf),
+      nextAfterId: read.value.nextAfterId,
+      locales: { default: locales.default, supported: [...locales.supported] },
+    });
   }
 }

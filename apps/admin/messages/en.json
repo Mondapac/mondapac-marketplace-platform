@@ -122,7 +122,8 @@
     "products": "Products",
     "payouts": "Payouts",
     "brands": "Brands",
-    "review-moderation": "Buyer reviews"
+    "review-moderation": "Buyer reviews",
+    "business-activities": "Business activities"
   },
   "home": {
     "title": "Dashboard",
@@ -4393,5 +4394,105 @@
     },
     "no-actions": "No action applies to this review now.",
     "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden."
+  },
+  "business-activities": {
+    "title": "Business activities",
+    "intro": "A business activity (Grocery, Butcher, ...) decides which categories and platform products a seller can reach. Sellers choose their activities at sign-up.",
+    "new": "New activity",
+    "search": "Search by name or code",
+    "search-label": "Search business activities",
+    "status-filter": "Status",
+    "loading": "Loading business activities",
+    "load-error": "The business activities could not be loaded. Check your connection and try again.",
+    "more": "Load more",
+    "more-error": "More business activities could not be loaded. Try again.",
+    "stale": "That activity changed while you were looking at it. The list is up to date now; nothing was saved.",
+    "no-access": "Your role cannot see business activities.",
+    "back-home": "Back to the dashboard",
+    "empty": "No business activities yet. Create the first one with New activity.",
+    "empty-filtered": "No business activity matches this search.",
+    "not-set": "Not set",
+    "col": {
+      "name": "Name",
+      "code": "Code",
+      "description": "Description",
+      "categories": "Category branches",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "action": {
+      "edit": "Edit",
+      "edit-name": "Edit {name}"
+    },
+    "done": {
+      "created": "{name} was created.",
+      "saved": "{name} was saved."
+    },
+    "error": {
+      "invalid": "Some values were not accepted. Check the fields and try again.",
+      "claim-word": "Names cannot claim a certification. Remove the claim and try again.",
+      "code-taken": "Another activity already uses this code.",
+      "name-taken": "Another activity already has one of these names.",
+      "gone": "This activity no longer exists.",
+      "stale": "The activity changed since you opened it. Reload the list and try again.",
+      "retry": "Another change was in progress. Try again.",
+      "denied": "Your role cannot do this.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "unavailable": "The service is unavailable. Nothing was saved. Try again in a moment.",
+      "unknown": "Something went wrong. Nothing was saved."
+    },
+    "form": {
+      "new-title": "New business activity",
+      "edit-title": "Edit {name}",
+      "names": "Names",
+      "names-help": "A name in {language} is required. Add other languages if you need them.",
+      "name-default": "{language} (required)",
+      "named-in": "Names in: {languages}",
+      "add-language": "Add language",
+      "add-language-placeholder": "Choose a language",
+      "remove": "Remove",
+      "remove-language": "Remove the {language} name",
+      "description": "Short description",
+      "optional": "optional",
+      "code": "Code",
+      "code-help": "Lower case words joined by hyphens. Leave empty to build it from the name. It cannot change later.",
+      "code-locked": "The code is fixed after creation.",
+      "categories": "Categories",
+      "categories-placeholder": "Add categories",
+      "categories-help": "Level 1 and 2 categories. Their sub-categories are included.",
+      "categories-error": "The categories could not be loaded.",
+      "category-fallback": "Category {id}",
+      "active": "Active",
+      "active-help": "Inactive activities cannot be chosen by new sellers.",
+      "cancel": "Cancel",
+      "create": "Create activity",
+      "save": "Save",
+      "reload": "Reload the list",
+      "select": {
+        "search": "Search",
+        "no-results": "No results",
+        "loading": "Loading...",
+        "retry": "Try again",
+        "remove": "Remove {name}",
+        "limit": "You can pick up to {max}"
+      },
+      "error": {
+        "name-required": "Enter a name.",
+        "name-long": "Use at most 80 characters.",
+        "code-format": "Use lower case letters and digits, joined by hyphens (at most 40 characters).",
+        "description-long": "Use at most 300 characters.",
+        "categories-many": "Pick at most 100 categories.",
+        "categories-refused": "One of these categories cannot be used. Pick level 1 or 2 categories.",
+        "claim-word": "Names cannot claim a certification such as halal.",
+        "code-taken": "This code is already used.",
+        "refused": "This value was not accepted."
+      }
+    }
   }
 }

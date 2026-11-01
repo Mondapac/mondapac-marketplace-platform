@@ -89,6 +89,7 @@ describe('admin nav: daily work only', () => {
       'review-moderation',
       'price-holds',
       'brands',
+      'business-activities',
       'content',
       'sellers',
       'orders',
@@ -212,5 +213,21 @@ describe('admin nav: Brands', () => {
   it('is hidden without it, also with the edit key alone', () => {
     expect(ids([])).not.toContain('brands');
     expect(ids(['catalog.brand.edit'])).not.toContain('brands');
+  });
+});
+
+describe('admin nav: Business activities', () => {
+  it('is there for catalog.business-activity.read, in the Catalog group', () => {
+    expect(ids(['catalog.business-activity.read'])).toEqual(['home', 'business-activities']);
+    expect(adminNav.items.find((item) => item.id === 'business-activities')).toMatchObject({
+      href: '/catalog/business-activities',
+      labelKey: 'nav.business-activities',
+      group: 'catalog',
+    });
+  });
+
+  it('is hidden without it, also with the edit key alone', () => {
+    expect(ids([])).not.toContain('business-activities');
+    expect(ids(['catalog.business-activity.edit'])).not.toContain('business-activities');
   });
 });

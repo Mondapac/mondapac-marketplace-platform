@@ -488,7 +488,11 @@ const productTypeProvider: FactoryProvider<string> = {
       audit: true,
       brandAssigner: true,
     }),
-    useCaseProvider(BusinessActivityList, { unitOfWork: true, activityReader: true }),
+    useCaseProvider(BusinessActivityList, {
+      unitOfWork: true,
+      activityReader: true,
+      policy: true,
+    }),
     useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
     useCaseProvider(BusinessActivityCreate, {
       unitOfWork: true,

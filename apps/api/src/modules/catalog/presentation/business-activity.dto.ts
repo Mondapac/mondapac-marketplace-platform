@@ -28,10 +28,19 @@ export class BusinessActivityWrapBody {
   @ApiProperty({ type: BusinessActivityBody }) activity!: BusinessActivityBody;
 }
 
+export class BusinessActivityLocalesBody {
+  @ApiProperty({ description: 'The Market default locale; a name in it is required.' })
+  default!: string;
+  @ApiProperty({ type: [String], description: 'The locales a name may be given in.' })
+  supported!: string[];
+}
+
 export class BusinessActivityListBody {
   @ApiProperty({ type: [BusinessActivityBody] }) items!: BusinessActivityBody[];
   @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next page.' })
   nextAfterId!: string | null;
+  @ApiProperty({ type: BusinessActivityLocalesBody })
+  locales!: BusinessActivityLocalesBody;
 }
 
 export class BusinessActivityCreateRequest {
