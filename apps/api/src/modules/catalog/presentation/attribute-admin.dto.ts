@@ -141,6 +141,8 @@ export class FeatureSetListItemBody {
 
 export class FeatureSetListBody {
   @ApiProperty({ type: [FeatureSetListItemBody] }) items!: FeatureSetListItemBody[];
+  @ApiProperty({ description: 'True when the Market has more than 500 feature sets.' })
+  truncated!: boolean;
 }
 
 export class FeatureSetAttributeBody {

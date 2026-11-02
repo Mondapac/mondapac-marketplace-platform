@@ -4506,18 +4506,13 @@
     "back-home": "Back to the home page",
     "intro": "Attributes are the fields a product carries, such as size or flavour. Feature sets group them for a kind of product.",
     "tabs": "Attribute sections",
-    "tab": {
-      "attributes": "Attributes",
-      "feature-sets": "Feature sets",
-      "brands": "Brands",
-      "waiting": "Waiting for you"
-    },
     "view-only": {
       "title": "View only",
       "body": "You can view attributes. Ask a Platform Administrator to change them."
     },
     "waiting": {
-      "empty": "Nothing is waiting for you."
+      "empty": "Nothing is waiting for you.",
+      "body": "Change requests for attributes will show here."
     },
     "list-label": "Attributes",
     "filters": "Filter attributes",
@@ -4531,7 +4526,8 @@
       "clear-feature-set": "Show all feature sets",
       "missing": "Language",
       "any-language": "Any language",
-      "missing-in": "Missing: {language}"
+      "missing-in": "Missing: {language}",
+      "clear": "Show all"
     },
     "type": {
       "text": "Text",
@@ -4626,15 +4622,12 @@
       "empty": "This attribute has no values yet.",
       "second": "Show next to {language}",
       "second-none": "No other language",
-      "col": {
-        "value": "Value ({language})",
-        "products": "Products",
-        "status": "Status"
-      },
       "no-label": "No label",
       "active": "Active",
       "inactive": "Inactive",
-      "code": "Code: {code}"
+      "code": "Code: {code}",
+      "second-clear": "Hide the second language",
+      "missing": "Missing"
     },
     "used-in": {
       "products": "Live products",
@@ -4656,10 +4649,11 @@
         "material": "Material",
         "variant": "Variant option",
         "bound": "{bound}",
-        "option-added": "Value {code} added",
-        "option-label": "Value {code} in {language}",
-        "option-active": "Value {code} active",
-        "option-position": "Value {code} position"
+        "option-added": "Value {value} added",
+        "option-label": "Value {value} in {language}",
+        "option-active": "Value {value}",
+        "option-position": "Position of value {value}",
+        "option-removed": "Value {value} removed"
       }
     },
     "feature-sets": {
@@ -4686,7 +4680,14 @@
       "revision-products": "Revision {number} · {count, plural, =0 {no products} one {# product} other {# products}}",
       "no-groups": "This feature set has no groups.",
       "group": "Group: {group}",
-      "unknown": "{code} · not found in this Market"
+      "unknown": "{code} · not found in this Market",
+      "truncated": "Only the first 500 feature sets are shown."
+    },
+    "tab": {
+      "attributes": "Attributes",
+      "feature-sets": "Feature sets",
+      "brands": "Brands",
+      "waiting": "Waiting for you"
     }
   }
 }

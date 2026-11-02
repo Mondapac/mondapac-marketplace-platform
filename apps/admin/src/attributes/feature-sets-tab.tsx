@@ -5,13 +5,8 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
-import {
-  API_FEATURE_SETS,
-  textIn,
-  type FeatureSetDetail,
-  type FeatureSetList,
-  type FeatureSetRow,
-} from './types.ts';
+import { API_FEATURE_SETS, textIn, type FeatureSetDetail, type FeatureSetList } from './types.ts';
+import { useRevealWhenStacked } from './reveal.ts';
 
 type Load<T> =
   | { readonly state: 'loading' }
@@ -30,25 +25,22 @@ const ROW =
 export function FeatureSetsTab({
   selectedId,
   onSelect,
-  onTotal,
   onOpenAttribute,
 }: {
   readonly selectedId: string | null;
   readonly onSelect: (id: string | null) => void;
-  readonly onTotal: (count: number) => void;
   readonly onOpenAttribute: (attributeId: string) => void;
 }) {
   const t = useTranslations('attributes.feature-sets');
   const tl = useTranslations('load');
-  const [load, setLoad] = useState<Load<readonly FeatureSetRow[]>>({ state: 'loading' });
+  const [load, setLoad] = useState<Load<FeatureSetList>>({ state: 'loading' });
   const [search, setSearch] = useState('');
 
   const fetchSets = useCallback(async () => {
     setLoad({ state: 'loading' });
     const result = await callApi<FeatureSetList>('GET', API_FEATURE_SETS);
     if (result.ok) {
-      setLoad({ state: 'ready', value: result.body.items });
-      onTotal(result.body.items.length);
+      setLoad({ state: 'ready', value: result.body });
       return;
     }
     if (result.failure.status === 401) {
@@ -56,7 +48,7 @@ export function FeatureSetsTab({
       return;
     }
     setLoad({ state: 'failed' });
-  }, [onTotal]);
+  }, []);
 
   useEffect(() => {
     void fetchSets();
@@ -65,7 +57,7 @@ export function FeatureSetsTab({
   const needle = search.trim().toLowerCase();
   const rows =
     load.state === 'ready'
-      ? load.value.filter((row) => needle === '' || row.code.toLowerCase().includes(needle))
+      ? load.value.items.filter((row) => needle === '' || row.code.toLowerCase().includes(needle))
       : [];
 
   return (
@@ -101,9 +93,9 @@ export function FeatureSetsTab({
           <EmptyState
             size="compact"
             icon="columns"
-            title={load.value.length === 0 ? t('empty') : t('empty-filtered')}
+            title={load.value.items.length === 0 ? t('empty') : t('empty-filtered')}
             action={
-              load.value.length === 0 ? undefined : (
+              load.value.items.length === 0 ? undefined : (
                 <Button variant="secondary" onClick={() => setSearch('')}>
                   {t('clear-search')}
                 </Button>
@@ -138,6 +130,9 @@ export function FeatureSetsTab({
             ))}
           </ul>
         ) : null}
+        {load.state === 'ready' && load.value.truncated ? (
+          <p className="border-t border-line px-4 py-3 text-sm text-fg-muted">{t('truncated')}</p>
+        ) : null}
       </section>
       <FeatureSetDetailPanel
         featureSetId={selectedId}
@@ -161,6 +156,8 @@ function FeatureSetDetailPanel({
   const tl = useTranslations('load');
   const [load, setLoad] = useState<Load<FeatureSetDetail>>({ state: 'loading' });
   const latest = useRef(0);
+  const panel = useRef<HTMLElement>(null);
+  useRevealWhenStacked(panel, featureSetId, load.state === 'ready');
 
   const fetchSet = useCallback(async () => {
     if (featureSetId === null) return;
@@ -199,6 +196,7 @@ function FeatureSetDetailPanel({
 
   return (
     <section
+      ref={panel}
       aria-label={t('feature-sets.detail-label')}
       aria-busy={load.state === 'loading'}
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
@@ -227,7 +225,9 @@ function FeatureSetDetailPanel({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold wrap-anywhere text-fg">{load.value.code}</h2>
+                <h2 tabIndex={-1} className="text-lg font-semibold wrap-anywhere text-fg">
+                  {load.value.code}
+                </h2>
                 <Badge tone={load.value.status === 'active' ? 'success' : 'neutral'}>
                   {t(`feature-sets.status.${load.value.status}`)}
                 </Badge>
@@ -247,7 +247,7 @@ function FeatureSetDetailPanel({
             </Button>
           </div>
           {load.value.groups.length === 0 ? (
-            <p className="text-fg-muted">{t('feature-sets.no-groups')}</p>
+            <EmptyState size="compact" icon="columns" title={t('feature-sets.no-groups')} />
           ) : (
             load.value.groups.map((group) => (
               <section

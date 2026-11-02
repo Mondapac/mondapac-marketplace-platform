@@ -206,19 +206,33 @@ export class PrismaAttributeAdminReader implements AttributeAdminReader {
     market: MarketContext,
     ids: readonly Id<'AttributeFamily'>[],
   ): Promise<ReadonlyMap<string, number>> {
+    const counts = new Map<string, number>(ids.map((id) => [id, 0]));
+    if (ids.length === 0) return counts;
     const tx = this.prisma.tx(market);
-    const counts = new Map<string, number>();
-    for (const id of ids) {
-      counts.set(
-        id,
-        await tx.catalogProduct.count({
-          where: {
-            marketId: market.marketId,
-            status: 'published',
-            publishedRevision: { is: { familyRevision: { familyId: id } } },
-          },
-        }),
-      );
+    // Two queries whatever the number of sets (Hassan, A1 review): the published revisions of
+    // published products grouped by family revision, then each family revision's family.
+    const groups = await tx.catalogProductRevision.groupBy({
+      by: ['familyRevisionId'],
+      where: {
+        marketId: market.marketId,
+        publishedOf: { some: { marketId: market.marketId, status: 'published' } },
+        familyRevision: { familyId: { in: [...ids] } },
+      },
+      _count: { _all: true },
+    });
+    if (groups.length === 0) return counts;
+    const revisions = await tx.catalogAttributeFamilyRevision.findMany({
+      where: {
+        marketId: market.marketId,
+        id: { in: groups.map((group) => group.familyRevisionId) },
+      },
+      select: { id: true, familyId: true },
+    });
+    const familyOf = new Map(revisions.map((revision) => [revision.id, revision.familyId]));
+    for (const group of groups) {
+      const familyId = familyOf.get(group.familyRevisionId);
+      if (familyId === undefined) continue;
+      counts.set(familyId, (counts.get(familyId) ?? 0) + group._count._all);
     }
     return counts;
   }

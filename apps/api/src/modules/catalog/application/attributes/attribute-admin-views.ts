@@ -10,7 +10,7 @@ import type {
 
 /** The default and largest page of the admin attribute list. */
 export const ATTRIBUTE_PAGE_DEFAULT = 25;
-export const ATTRIBUTE_PAGE_MAX = 100;
+export const ATTRIBUTE_PAGE_MAX = 50;
 /** The longest search text of the admin list. */
 export const ATTRIBUTE_SEARCH_MAX = 120;
 /**
@@ -90,8 +90,9 @@ export function listFilterOf(
   const rawSearch = present('search');
   if (rawSearch !== undefined) {
     if (typeof rawSearch !== 'string') return invalid('search', 'type');
+    // Measured before trimming, so a padded value is refused too (Hassan, A1 review).
+    if ([...rawSearch].length > ATTRIBUTE_SEARCH_MAX) return invalid('search', 'too-long');
     const tidy = rawSearch.trim();
-    if ([...tidy].length > ATTRIBUTE_SEARCH_MAX) return invalid('search', 'too-long');
     search = tidy === '' ? null : tidy;
   }
   const rawType = present('type');
@@ -266,6 +267,14 @@ export function changesBetween(
     }
     push(`option.${option.code}.active`, previous.active, option.active);
     push(`option.${option.code}.position`, previous.position, option.position);
+  }
+  // Values are deactivated, never removed (insert-only revisions); a value missing from the newer
+  // revision is still reported, so the history never hides a change.
+  const kept = new Set(after.options.map((option) => option.code));
+  for (const option of before.options) {
+    if (!kept.has(option.code)) {
+      changes.push({ field: `option.${option.code}.removed`, before: true, after: null });
+    }
   }
   return changes;
 }

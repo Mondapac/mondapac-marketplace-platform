@@ -269,7 +269,8 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
 
   it.each([
     [{ limit: 0 }, 'limit', 'range'],
-    [{ limit: 101 }, 'limit', 'range'],
+    [{ limit: 51 }, 'limit', 'range'],
+    [{ search: `${' '.repeat(100)}spicy${' '.repeat(20)}` }, 'search', 'too-long'],
     [{ afterId: 'x' }, 'afterId', 'format'],
     [{ colour: 'red' }, 'colour', 'unknown'],
     [{ missing: 'xx-XX' }, 'missing', 'unknown'],

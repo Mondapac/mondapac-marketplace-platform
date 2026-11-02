@@ -313,6 +313,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -381,6 +382,14 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
+  'catalog/admin/attributes': {
+    type: /^(text|long-text|integer|decimal|boolean|date|select|multi-select|measure)$/,
+    status: /^(draft|active|archived)$/,
+    usedIn: UUID,
+    missing: /^[a-z]{2,3}(-[A-Z][a-z]{3})?(-[A-Z]{2}|-[0-9]{3})?$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
@@ -408,6 +417,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'catalog/admin/attributes:search': 120,
 };
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */

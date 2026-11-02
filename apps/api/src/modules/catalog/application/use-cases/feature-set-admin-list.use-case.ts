@@ -24,6 +24,8 @@ export interface FeatureSetListItem {
 
 export interface FeatureSetAdminListOutput {
   readonly items: readonly FeatureSetListItem[];
+  /** True when the Market has more feature sets than the list carries. */
+  readonly truncated: boolean;
 }
 
 export type FeatureSetAdminListFailure =
@@ -86,17 +88,18 @@ export class FeatureSetAdminList extends UseCase<
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
-        const sets = await reader.featureSets(market, FEATURE_SET_LOAD_MAX);
+        const loaded = await reader.featureSets(market, FEATURE_SET_LOAD_MAX + 1);
+        const sets = loaded.slice(0, FEATURE_SET_LOAD_MAX);
         const counts = await reader.featureSetProductCounts(
           market,
           sets.map((set) => set.id),
         );
-        return ok({ sets, counts });
+        return ok({ sets, counts, truncated: loaded.length > FEATURE_SET_LOAD_MAX });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    const { sets, counts } = read.value;
+    const { sets, counts, truncated } = read.value;
     return ok({
       items: sets.map((set) => ({
         id: set.id,
@@ -109,6 +112,7 @@ export class FeatureSetAdminList extends UseCase<
         ).size,
         productCount: counts.get(set.id) ?? 0,
       })),
+      truncated,
     });
   }
 }

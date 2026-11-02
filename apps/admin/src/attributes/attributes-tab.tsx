@@ -6,7 +6,6 @@ import {
   EmptyState,
   LoadError,
   SearchSelect,
-  Select,
   SkeletonRows,
   TextField,
   toast,
@@ -49,17 +48,12 @@ const NO_FILTERS: Filters = { search: '', type: '', status: '', usedIn: '', miss
 export function AttributesTab({
   selectedId,
   onSelect,
-  onTotal,
-  onFeatureSetCount,
 }: {
   readonly selectedId: string | null;
   readonly onSelect: (id: string | null) => void;
-  readonly onTotal: (count: number) => void;
-  readonly onFeatureSetCount: (count: number) => void;
 }) {
   const t = useTranslations('attributes');
   const tl = useTranslations('load');
-  const selectLabels = useSelectLabels();
   const [typed, setTyped] = useState('');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [rows, setRows] = useState<readonly AttributeRow[]>([]);
@@ -108,9 +102,7 @@ export function AttributesTab({
     setRows(result.body.items);
     setPage(result.body);
     setLoad('ready');
-    onTotal(result.body.totalAll);
-    onFeatureSetCount(result.body.featureSets.length);
-  }, [queryOf, onTotal, onFeatureSetCount]);
+  }, [queryOf]);
 
   useEffect(() => {
     void fetchRows();
@@ -138,8 +130,6 @@ export function AttributesTab({
   const featureSetOptions: readonly SearchSelectOption[] = (page?.featureSets ?? []).map(
     (featureSet) => ({ value: featureSet.id, label: featureSet.code }),
   );
-  const pickedFeatureSet =
-    featureSetOptions.find((option) => option.value === filters.usedIn) ?? null;
   const otherLocales = locales?.supported.filter((locale) => locale !== locales.default) ?? [];
 
   return (
@@ -163,43 +153,43 @@ export function AttributesTab({
               onChange={(event) => setTyped(event.target.value)}
             />
           </div>
-          <Select
-            name="type"
+          <Pick
             label={t('filter.type')}
-            value={filters.type}
             placeholder={t('filter.all')}
+            clearLabel={t('filter.clear')}
             options={DATA_TYPES.map((type) => ({ value: type, label: t(`type.${type}`) }))}
-            onChange={(event) => set('type')(event.target.value)}
+            value={filters.type}
+            onChange={set('type')}
           />
-          <Select
-            name="status"
+          <Pick
             label={t('filter.status')}
-            value={filters.status}
             placeholder={t('filter.all')}
+            clearLabel={t('filter.clear')}
             options={STATUSES.map((status) => ({ value: status, label: t(`status.${status}`) }))}
-            onChange={(event) => set('status')(event.target.value)}
+            value={filters.status}
+            onChange={set('status')}
           />
-          <SearchSelect
+          <Pick
             label={t('filter.used-in')}
             placeholder={t('filter.all-feature-sets')}
-            options={featureSetOptions}
-            value={pickedFeatureSet}
-            alwaysSearch
-            labels={selectLabels}
             clearLabel={t('filter.clear-feature-set')}
-            onChange={(option) => set('usedIn')(option?.value ?? '')}
+            options={featureSetOptions}
+            value={filters.usedIn}
+            onChange={set('usedIn')}
           />
-          {otherLocales.length > 0 ? (
-            <Select
-              name="missing"
+          {otherLocales.length > 0 && locales !== null ? (
+            <Pick
               label={t('filter.missing')}
-              value={filters.missing}
               placeholder={t('filter.any-language')}
+              clearLabel={t('filter.clear')}
               options={otherLocales.map((locale) => ({
                 value: locale,
-                label: t('filter.missing-in', { language: languageName(locale) }),
+                label: t('filter.missing-in', {
+                  language: languageName(locale, locales.supported),
+                }),
               }))}
-              onChange={(event) => set('missing')(event.target.value)}
+              value={filters.missing}
+              onChange={set('missing')}
             />
           ) : null}
         </div>
@@ -288,7 +278,7 @@ function AttributeLine({
 }) {
   const t = useTranslations('attributes');
   const name = textIn(row.names, locales.default, locales.default, row.code);
-  const missing = row.missingLocales.map(languageName);
+  const missing = row.missingLocales.map((locale) => languageName(locale, locales.supported));
   return (
     <li>
       <button
@@ -329,5 +319,35 @@ function AttributeLine({
         </span>
       </button>
     </li>
+  );
+}
+
+/** One filter: the searchable dropdown (the panel's one dropdown for filters, same height). */
+function Pick({
+  label,
+  placeholder,
+  clearLabel,
+  options,
+  value,
+  onChange,
+}: {
+  readonly label: string;
+  readonly placeholder: string;
+  readonly clearLabel: string;
+  readonly options: readonly SearchSelectOption[];
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}) {
+  const selectLabels = useSelectLabels();
+  return (
+    <SearchSelect
+      label={label}
+      placeholder={placeholder}
+      options={options}
+      value={options.find((option) => option.value === value) ?? null}
+      labels={selectLabels}
+      clearLabel={clearLabel}
+      onChange={(option) => onChange(option?.value ?? '')}
+    />
   );
 }

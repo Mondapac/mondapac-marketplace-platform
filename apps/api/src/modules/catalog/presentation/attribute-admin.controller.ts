@@ -84,7 +84,7 @@ export class AttributeAdminController {
     description:
       `${NEEDS} By code, keyset-paged: send \`nextAfterId\` of the previous page as ` +
       '`afterId`. `search` matches the code or a name in any locale; `type`, `status`, ' +
-      '`usedIn` (a feature set id) and `missing` (a Market locale) filter. `limit` is 1 to 100 ' +
+      '`usedIn` (a feature set id) and `missing` (a Market locale) filter. `limit` is 1 to 50 ' +
       '(default 25).',
   })
   @ApiQuery({ name: 'search', required: false })

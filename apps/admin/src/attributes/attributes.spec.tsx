@@ -187,6 +187,16 @@ function serve(routes: Record<string, Handler>) {
     return Promise.resolve((typeof handler === 'function' ? handler() : handler) as never);
   });
 }
+/** Picks an option of a searchable dropdown by the dropdown's label. */
+async function choose(
+  scope: Pick<typeof screen, 'getByRole'>,
+  label: string | RegExp,
+  option: string | RegExp,
+) {
+  fireEvent.click(scope.getByRole('combobox', { name: label }));
+  const list = await screen.findByRole('listbox', { name: label });
+  fireEvent.click(within(list).getByRole('option', { name: option }));
+}
 const calls = (prefix: string) =>
   call.mock.calls.filter(([m, path]) => m === 'GET' && path.startsWith(prefix)).map(([, p]) => p);
 
@@ -250,7 +260,6 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     if (other !== null) {
       expect(within(second).getByText(/^Missing: /)).toBeTruthy();
     }
-    expect(screen.getByRole('button', { name: 'Attributes 2' })).toBeTruthy();
     expect(screen.getByText('2 attributes')).toBeTruthy();
     expect(calls('catalog/admin/attributes?')[0]).toBe('catalog/admin/attributes?limit=50');
   });
@@ -279,11 +288,11 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     await waitFor(() =>
       expect(calls('catalog/admin/attributes?').at(-1)).toContain('search=Spicy'),
     );
-    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'boolean' } });
+    await choose(screen, 'Type', 'Yes or no');
     await waitFor(() =>
       expect(calls('catalog/admin/attributes?').at(-1)).toContain('type=boolean'),
     );
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'archived' } });
+    await choose(screen, 'Status', 'Archived');
     await waitFor(() =>
       expect(calls('catalog/admin/attributes?').at(-1)).toContain('status=archived'),
     );
@@ -291,7 +300,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     if (other === null) {
       expect(missing).toBeNull();
     } else {
-      fireEvent.change(missing as HTMLElement, { target: { value: other } });
+      await choose(screen, 'Language', 'Missing: Persian');
       await waitFor(() =>
         expect(calls('catalog/admin/attributes?').at(-1)).toContain(`missing=${other}`),
       );
@@ -307,7 +316,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     });
     mount();
     await screen.findByRole('button', { name: /Attribute 1/ });
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'archived' } });
+    await choose(screen, 'Status', 'Archived');
     expect(await screen.findByText('No attributes match these filters.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(await screen.findByRole('button', { name: /Attribute 1/ })).toBeTruthy();
@@ -389,18 +398,16 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     }
 
     fireEvent.click(within(panel).getByRole('button', { name: 'Values' }));
-    const table = within(panel).getByRole('table');
-    expect(within(table).getByText('Mild')).toBeTruthy();
-    expect(within(table).getByText('Inactive')).toBeTruthy();
-    expect(within(table).getByText('4')).toBeTruthy();
+    const values = within(panel).getByRole('list', { name: 'Values' });
+    expect(within(values).getByText('Mild')).toBeTruthy();
+    expect(within(values).getByText('Inactive')).toBeTruthy();
+    expect(within(values).getByText('4 products')).toBeTruthy();
     if (other !== null) {
-      fireEvent.change(within(panel).getByLabelText(/^Show next to/), {
-        target: { value: other },
-      });
+      await choose(within(panel), /^Show next to/, 'Persian');
       expect(within(panel).getByText('ملایم').getAttribute('dir')).toBe('rtl');
-      expect(within(panel).getByText(/^Missing: /)).toBeTruthy();
+      expect(within(panel).getByText('Missing')).toBeTruthy();
     } else {
-      expect(within(panel).queryByLabelText(/^Show next to/)).toBeNull();
+      expect(within(panel).queryByRole('combobox', { name: /^Show next to/ })).toBeNull();
     }
 
     fireEvent.click(within(panel).getByRole('button', { name: 'Used in' }));
@@ -416,7 +423,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const changes = within(panel)
       .getAllByRole('listitem')
       .map((item) => item.textContent);
-    expect(changes).toContain('Value hot active: Yes to No');
+    expect(changes).toContain('Value Hot: Active to Inactive');
     expect(changes.some((text) => /: Heat to Attribute 1$/.test(text ?? ''))).toBe(true);
     expect(within(panel).getByText('Created')).toBeTruthy();
 
@@ -461,6 +468,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       'GET catalog/admin/feature-sets/': ok(featureSetDetail(locales, 50)),
       'GET catalog/admin/feature-sets': ok({
         items: [featureSet(50), featureSet(51, { status: 'archived' })],
+        truncated: false,
       }),
       'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
       [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)),
@@ -469,7 +477,6 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const list = await screen.findByRole('list', { name: 'Feature sets' });
     expect(within(list).getByText('Archived')).toBeTruthy();
     expect(within(list).getAllByText('1 group, 2 attributes')).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Feature sets 2' })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Search by code'), { target: { value: 'nothing' } });
     expect(screen.getByText('No feature sets match this search.')).toBeTruthy();
@@ -488,6 +495,40 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const attribute = await screen.findByRole('region', { name: 'Attribute details' });
     expect(await within(attribute).findByRole('heading', { name: 'Attribute 1' })).toBeTruthy();
     expect(window.location.search).toBe(`?id=${id(1)}`);
+  });
+
+  it('retries a failed feature-set list, and says when there is none or more than shown', async () => {
+    let answer: ApiResult<unknown> = refuse(503, 'access.unavailable');
+    serve({ 'GET catalog/admin/feature-sets': () => answer });
+    mount({ initialTab: 'feature-sets' });
+    expect(await screen.findByText('We could not load the feature sets. Try again.')).toBeTruthy();
+    answer = ok({ items: [], truncated: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('No feature sets yet.')).toBeTruthy();
+    cleanup();
+    answer = ok({ items: [featureSet(50)], truncated: true });
+    mount({ initialTab: 'feature-sets' });
+    expect(await screen.findByText('Only the first 500 feature sets are shown.')).toBeTruthy();
+  });
+
+  it('brings the details into view on a narrow screen', async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)),
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Attribute 1/ }));
+    const heading = await screen.findByRole('heading', { name: 'Attribute 1' });
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(document.activeElement).toBe(heading);
   });
 
   it('shows the Brands tab as a link, and the empty Waiting for you tab', () => {
@@ -523,7 +564,11 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
 describe('history change lines', () => {
   it('reads every field the API names, and keeps an unknown one by its name', () => {
     const line = (field: string) => changeLineOf({ field, before: null, after: null });
-    expect(line('name.fa-IR')).toEqual({ key: 'name', language: 'Persian (Iran)' });
+    expect(line('name.fa-IR')).toEqual({ key: 'name', language: 'Persian' });
+    expect(
+      changeLineOf({ field: 'name.en-AU', before: null, after: null }, ['en-AU', 'en-US']),
+    ).toEqual({ key: 'name', language: 'English (Australia)' });
+    expect(line('option.hot.removed')).toEqual({ key: 'option-removed', code: 'hot' });
     expect(line('material')).toEqual({ key: 'material' });
     expect(line('isVariantOption')).toEqual({ key: 'variant' });
     expect(line('bounds.maxLength')).toEqual({ key: 'bound', bound: 'maxLength' });
@@ -531,7 +576,7 @@ describe('history change lines', () => {
     expect(line('option.hot.label.ja-JP')).toEqual({
       key: 'option-label',
       code: 'hot',
-      language: 'Japanese (Japan)',
+      language: 'Japanese',
     });
     expect(line('option.hot.active')).toEqual({ key: 'option-active', code: 'hot' });
     expect(line('option.hot.position')).toEqual({ key: 'option-position', code: 'hot' });

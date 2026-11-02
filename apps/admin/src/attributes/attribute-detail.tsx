@@ -3,12 +3,10 @@
 import {
   Badge,
   Button,
-  CARD_TABLE,
   DataList,
   EmptyState,
   LoadError,
   SearchSelect,
-  Select,
   SkeletonRows,
   Tabs,
   type DataListRow,
@@ -20,6 +18,7 @@ import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { changeLineOf } from './history.ts';
+import { useRevealWhenStacked } from './reveal.ts';
 import { useSelectLabels } from './select-labels.ts';
 import {
   API_ATTRIBUTES,
@@ -58,6 +57,8 @@ export function AttributeDetailPanel({
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [tab, setTab] = useState<DetailTab>('details');
   const latest = useRef(0);
+  const panel = useRef<HTMLElement>(null);
+  useRevealWhenStacked(panel, attributeId, load.state === 'ready');
 
   const fetchDetail = useCallback(async () => {
     if (attributeId === null) return;
@@ -90,6 +91,7 @@ export function AttributeDetailPanel({
 
   return (
     <section
+      ref={panel}
       aria-label={t('label')}
       aria-busy={load.state === 'loading'}
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
@@ -143,7 +145,9 @@ function Header({
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold wrap-anywhere text-fg">{name}</h2>
+          <h2 tabIndex={-1} className="text-lg font-semibold wrap-anywhere text-fg">
+            {name}
+          </h2>
           <Badge tone={detail.status === 'active' ? 'success' : 'neutral'}>
             {t(`status.${detail.status}`)}
           </Badge>
@@ -168,12 +172,12 @@ function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
   const [locale, setLocale] = useState(locales.default);
   const options: readonly SearchSelectOption[] = locales.supported.map((tag) => ({
     value: tag,
-    label: languageName(tag),
+    label: languageName(tag, locales.supported),
     description: tag,
   }));
   const picked = options.find((option) => option.value === locale) ?? null;
   const name = detail.names[locale];
-  const language = languageName(locale);
+  const language = languageName(locale, locales.supported);
   const yesNo = (value: boolean) => (value ? t('yes') : t('no'));
   const rows: DataListRow[] = [
     { label: t('field.code'), value: detail.code },
@@ -232,7 +236,9 @@ function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
         {detail.missingLocales.length > 0 ? (
           <p className="text-sm text-fg-muted">
             {t('detail.missing-anywhere', {
-              languages: detail.missingLocales.map(languageName).join(', '),
+              languages: detail.missingLocales
+                .map((tag) => languageName(tag, locales.supported))
+                .join(', '),
             })}
           </p>
         ) : null}
@@ -249,93 +255,80 @@ function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
 
 function ValuesTab({ detail }: { readonly detail: AttributeDetail }) {
   const t = useTranslations('attributes');
+  const selectLabels = useSelectLabels();
   const { locales } = detail;
   const [second, setSecond] = useState('');
   if (!CHOICE_TYPES.has(detail.dataType)) {
-    return <p className="text-fg-muted">{t('values.not-choice')}</p>;
+    return <EmptyState size="compact" icon="sliders" title={t('values.not-choice')} />;
   }
   if (detail.options.length === 0) {
-    return <p className="text-fg-muted">{t('values.empty')}</p>;
+    return <EmptyState size="compact" icon="sliders" title={t('values.empty')} />;
   }
-  const others = locales.supported.filter((locale) => locale !== locales.default);
-  const defaultLanguage = languageName(locales.default);
-  const columns = [
-    { id: 'value', label: t('values.col.value', { language: defaultLanguage }) },
-    ...(second === ''
-      ? []
-      : [{ id: 'second', label: t('values.col.value', { language: languageName(second) }) }]),
-    { id: 'products', label: t('values.col.products') },
-    { id: 'status', label: t('values.col.status') },
-  ];
+  const nameOf = (locale: string) => languageName(locale, locales.supported);
+  const others: readonly SearchSelectOption[] = locales.supported
+    .filter((locale) => locale !== locales.default)
+    .map((locale) => ({ value: locale, label: nameOf(locale) }));
+  const defaultLanguage = nameOf(locales.default);
   return (
     <div className="flex flex-col gap-3">
       {others.length > 0 ? (
         <div className="max-w-xs">
-          <Select
-            name="second-language"
+          <SearchSelect
             label={t('values.second', { language: defaultLanguage })}
-            value={second}
             placeholder={t('values.second-none')}
-            options={others.map((locale) => ({ value: locale, label: languageName(locale) }))}
-            onChange={(event) => setSecond(event.target.value)}
+            options={others}
+            value={others.find((option) => option.value === second) ?? null}
+            labels={selectLabels}
+            clearLabel={t('values.second-clear')}
+            onChange={(option) => setSecond(option?.value ?? '')}
           />
         </div>
       ) : null}
-      <div className="overflow-x-auto rounded-md border border-line">
-        <table className={CARD_TABLE.table}>
-          <caption className="sr-only">{t('detail.tab.values')}</caption>
-          <thead className={CARD_TABLE.head}>
-            <tr>
-              {columns.map((column) => (
-                <th key={column.id} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">
-                  {column.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className={CARD_TABLE.body}>
-            {detail.options.map((option) => {
-              const label = option.labels[locales.default];
-              const other = second === '' ? undefined : option.labels[second];
-              return (
-                <tr key={option.code} className={CARD_TABLE.row}>
-                  <td className={CARD_TABLE.cell}>
-                    <span className="block font-medium wrap-anywhere text-fg">
-                      {label ?? <span className="text-fg-muted">{t('values.no-label')}</span>}
-                    </span>
-                    <span className="block text-sm wrap-anywhere text-fg-muted">
-                      {t('values.code', { code: option.code })}
-                    </span>
-                  </td>
-                  {second === '' ? null : (
-                    <td className={CARD_TABLE.labelled} data-label={columns[1]?.label}>
-                      {other === undefined ? (
-                        <span>
-                          <Badge tone="attention">
-                            {t('row.missing', { languages: languageName(second) })}
-                          </Badge>
-                        </span>
-                      ) : (
-                        <span lang={second} dir={directionOf(second)} className="wrap-anywhere">
-                          {other}
-                        </span>
-                      )}
-                    </td>
-                  )}
-                  <td className={CARD_TABLE.labelled} data-label={t('values.col.products')}>
-                    <span className="tabular-nums">{option.productCount}</span>
-                  </td>
-                  <td className={CARD_TABLE.corner}>
-                    <Badge tone={option.active ? 'success' : 'neutral'}>
-                      {option.active ? t('values.active') : t('values.inactive')}
-                    </Badge>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* A list, not a table: the panel is half the page wide, so columns would not fit. */}
+      <ul
+        aria-label={t('detail.tab.values')}
+        className="divide-y divide-line rounded-md border border-line"
+      >
+        {detail.options.map((option) => {
+          const label = option.labels[locales.default];
+          const other = second === '' ? undefined : option.labels[second];
+          return (
+            <li
+              key={option.code}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 px-4 py-3"
+            >
+              <span className="flex min-w-0 flex-col gap-1">
+                <span className="font-medium wrap-anywhere text-fg">
+                  {label ?? <span className="text-fg-muted">{t('values.no-label')}</span>}
+                </span>
+                {second === '' ? null : (
+                  <span className="text-sm">
+                    <span className="text-fg-muted">{nameOf(second)}: </span>
+                    {other === undefined ? (
+                      <Badge tone="attention">{t('values.missing')}</Badge>
+                    ) : (
+                      <bdi lang={second} dir={directionOf(second)} className="wrap-anywhere">
+                        {other}
+                      </bdi>
+                    )}
+                  </span>
+                )}
+                <span className="text-sm wrap-anywhere text-fg-muted">
+                  {t('values.code', { code: option.code })}
+                </span>
+              </span>
+              <span className="flex flex-col items-end gap-1">
+                <Badge tone={option.active ? 'success' : 'neutral'}>
+                  {option.active ? t('values.active') : t('values.inactive')}
+                </Badge>
+                <span className="text-sm whitespace-nowrap text-fg-muted">
+                  {t('row.products', { count: option.productCount })}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -352,7 +345,7 @@ function UsedInTab({ detail }: { readonly detail: AttributeDetail }) {
         missing={t('none')}
       />
       {detail.usedIn.length === 0 ? (
-        <p className="text-fg-muted">{t('used-in.empty')}</p>
+        <EmptyState size="compact" icon="columns" title={t('used-in.empty')} />
       ) : (
         <ul className="divide-y divide-line rounded-md border border-line">
           {detail.usedIn.map((use) => (
@@ -382,6 +375,13 @@ function UsedInTab({ detail }: { readonly detail: AttributeDetail }) {
 
 function HistoryTab({ detail }: { readonly detail: AttributeDetail }) {
   const t = useTranslations('attributes');
+  const { locales } = detail;
+  const labels = new Map(
+    detail.options.map((option) => [
+      option.code,
+      textIn(option.labels, locales.default, locales.default, option.code),
+    ]),
+  );
   return (
     <div className="flex flex-col gap-3">
       <ol className="flex flex-col gap-3">
@@ -406,7 +406,11 @@ function HistoryTab({ detail }: { readonly detail: AttributeDetail }) {
               <ul className="mt-2 flex list-disc flex-col gap-1 ps-5 text-sm">
                 {entry.changes.map((change) => (
                   <li key={change.field} className="wrap-anywhere">
-                    <ChangeText change={change} />
+                    <ChangeText
+                      change={change}
+                      supported={locales.supported}
+                      labelOf={(code) => labels.get(code) ?? code}
+                    />
                   </li>
                 ))}
               </ul>
@@ -421,21 +425,52 @@ function HistoryTab({ detail }: { readonly detail: AttributeDetail }) {
   );
 }
 
-function ChangeText({ change }: { readonly change: AttributeChange }) {
+function ChangeText({
+  change,
+  supported,
+  labelOf,
+}: {
+  readonly change: AttributeChange;
+  readonly supported: readonly string[];
+  readonly labelOf: (code: string) => string;
+}) {
   const t = useTranslations('attributes');
-  const line = changeLineOf(change);
+  const line = changeLineOf(change, supported);
   const show = (value: AttributeChange['before']) => {
     if (value === null) return t('history.empty');
-    if (typeof value === 'boolean') return value ? t('yes') : t('no');
+    if (typeof value === 'boolean') {
+      if (line.key === 'option-active') return value ? t('values.active') : t('values.inactive');
+      return value ? t('yes') : t('no');
+    }
     return String(value);
   };
-  if (line.key === 'option-added') return <>{t('history.change.option-added', line)}</>;
-  const what =
-    line.key === 'other'
-      ? line.field
-      : line.key === 'bound'
-        ? t('history.change.bound', { bound: t(`field.${boundKey(line.bound)}`) })
-        : t(`history.change.${line.key}`, line);
+  if (line.key === 'option-added' || line.key === 'option-removed') {
+    return <>{t(`history.change.${line.key}`, { value: labelOf(line.code) })}</>;
+  }
+  let what: string;
+  switch (line.key) {
+    case 'other':
+      what = line.field;
+      break;
+    case 'bound':
+      what = t('history.change.bound', { bound: t(`field.${boundKey(line.bound)}`) });
+      break;
+    case 'name':
+      what = t('history.change.name', { language: line.language });
+      break;
+    case 'option-label':
+      what = t('history.change.option-label', {
+        value: labelOf(line.code),
+        language: line.language,
+      });
+      break;
+    case 'option-active':
+    case 'option-position':
+      what = t(`history.change.${line.key}`, { value: labelOf(line.code) });
+      break;
+    default:
+      what = t(`history.change.${line.key}`);
+  }
   return (
     <>
       {t.rich('history.from-to', {

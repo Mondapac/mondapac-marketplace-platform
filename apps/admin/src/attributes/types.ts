@@ -117,6 +117,7 @@ export interface FeatureSetRow {
 
 export interface FeatureSetList {
   readonly items: readonly FeatureSetRow[];
+  readonly truncated: boolean;
 }
 
 export interface FeatureSetAttribute {
@@ -152,10 +153,20 @@ export type Tab = (typeof TABS)[number];
 export const DETAIL_TABS = ['details', 'values', 'used-in', 'history'] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
-/** The English name of a locale ("Persian"), or the tag itself. */
-export function languageName(locale: string): string {
+/**
+ * The English name of a locale's language ("Persian"), or the tag itself. The region shows only
+ * when another of the Market's locales has the same language ("English (Australia)" next to
+ * "English (United States)").
+ */
+export function languageName(locale: string, supported: readonly string[] = []): string {
+  const base = locale.split('-')[0] ?? locale;
+  const shared = supported.some((other) => other !== locale && other.split('-')[0] === base);
   try {
-    return new Intl.DisplayNames(['en'], { type: 'language' }).of(locale) ?? locale;
+    return (
+      new Intl.DisplayNames(['en'], { type: 'language', languageDisplay: 'standard' }).of(
+        shared ? locale : base,
+      ) ?? locale
+    );
   } catch {
     return locale;
   }

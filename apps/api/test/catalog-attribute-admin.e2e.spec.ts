@@ -255,6 +255,7 @@ describe('admin attribute reads over HTTP (integration)', () => {
             productCount: 0,
           },
         ],
+        truncated: false,
       });
       const set = await http().get(`${FEATURE_SETS}/${FAMILY}`).set(session).expect(200);
       expect(set.body).toMatchObject({ code: 'default', groups: [{ groupCode: 'general' }] });

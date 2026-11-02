@@ -2,7 +2,7 @@
 
 import { Banner, EmptyState, Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AttributesTab } from './attributes-tab.tsx';
 import { FeatureSetsTab } from './feature-sets-tab.tsx';
 import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
@@ -27,7 +27,6 @@ export function AttributesView({
   const t = useTranslations('attributes');
   const [tab, setTab] = useState<Tab>(initialTab);
   const [selected, setSelected] = useState<string | null>(initialId);
-  const [counts, setCounts] = useState<{ attributes?: number; featureSets?: number }>({});
 
   // The address names the tab and the open row, so a link or a reload opens the same view.
   useEffect(() => {
@@ -40,20 +39,9 @@ export function AttributesView({
     }
   }, [tab, selected]);
 
-  const onAttributesCount = useCallback(
-    (count: number) => setCounts((current) => ({ ...current, attributes: count })),
-    [],
-  );
-  const onFeatureSetsCount = useCallback(
-    (count: number) => setCounts((current) => ({ ...current, featureSets: count })),
-    [],
-  );
-
-  const label = (id: Tab, count: number | undefined) =>
-    count === undefined ? t(`tab.${id}`) : `${t(`tab.${id}`)} ${count}`;
   const items = [
-    { id: 'attributes', label: label('attributes', counts.attributes) },
-    { id: 'feature-sets', label: label('feature-sets', counts.featureSets) },
+    { id: 'attributes', label: t('tab.attributes') },
+    { id: 'feature-sets', label: t('tab.feature-sets') },
     ...(canSeeBrands ? [{ id: 'brands', label: t('tab.brands'), href: BRANDS_PATH }] : []),
     { id: 'waiting', label: t('tab.waiting') },
   ];
@@ -75,19 +63,11 @@ export function AttributesView({
           {t('view-only.body')}
         </Banner>
       )}
-      {tab === 'attributes' ? (
-        <AttributesTab
-          selectedId={selected}
-          onSelect={setSelected}
-          onTotal={onAttributesCount}
-          onFeatureSetCount={onFeatureSetsCount}
-        />
-      ) : null}
+      {tab === 'attributes' ? <AttributesTab selectedId={selected} onSelect={setSelected} /> : null}
       {tab === 'feature-sets' ? (
         <FeatureSetsTab
           selectedId={selected}
           onSelect={setSelected}
-          onTotal={onFeatureSetsCount}
           onOpenAttribute={(id) => {
             setTab('attributes');
             setSelected(id);
@@ -95,7 +75,7 @@ export function AttributesView({
         />
       ) : null}
       {tab === 'waiting' ? (
-        <EmptyState size="card" icon="inbox" title={t('waiting.empty')} />
+        <EmptyState size="card" icon="inbox" title={t('waiting.empty')} body={t('waiting.body')} />
       ) : null}
     </div>
   );
