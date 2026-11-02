@@ -3036,7 +3036,9 @@
       "price-hold-opened": "{direction, select, up {A <strong>price increase</strong> is held for approval} down {A <strong>price drop</strong> is held for approval} other {A <strong>price change</strong> is held for approval}}",
       "delivery-fallback-over-cap": "A <strong>different fleet</strong> was booked and its price went over the absorb cap",
       "other": "Something is waiting for your review",
-      "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}"
+      "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
+      "review-held": "A <strong>review</strong> is held for moderation",
+      "review-reported": "A seller reported a <strong>review</strong>"
     },
     "category": {
       "certificates": "Certificates",
@@ -3044,6 +3046,7 @@
       "sellers": "Sellers",
       "prices": "Prices",
       "delivery": "Delivery",
+      "reviews": "Reviews",
       "other": "Reviews"
     },
     "empty": {
