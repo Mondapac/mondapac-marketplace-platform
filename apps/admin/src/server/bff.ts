@@ -70,6 +70,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue',
+    // The category tree and one category with its path and history (catalog), read-only.
+    'catalog/admin/categories',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
   ]),
@@ -237,6 +239,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // One category with its path and history, and the impact of a change on its subtree
+    // (catalog, read-only; the impact takes the `action`).
+    'catalog/admin/categories/:id',
+    'catalog/admin/categories/:id/impact',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // One import and its report CSV (catalog): the report takes the query `kind`.
@@ -369,6 +375,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
+  'catalog/admin/categories/:id/impact': { action: /^(move|merge|archive)$/ },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,
     limit: /^[0-9]{1,3}$/,
@@ -389,6 +396,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
   'catalog/admin/platform-imports/:id/report': ['kind'],
+  'catalog/admin/categories/:id/impact': ['action'],
 };
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -420,7 +428,7 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
         : Object.keys(deleteKeys);
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
-  const shapes = deleteKeys ?? QUERY_SHAPES[target];
+  const shapes = deleteKeys ?? QUERY_SHAPES[target] ?? QUERY_SHAPES[template];
   const kept = new URLSearchParams();
   for (const key of keys) {
     const value = source.get(key);

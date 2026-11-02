@@ -26,6 +26,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'categories',
+      icon: 'layout',
+      labelKey: 'nav.categories',
+      href: '/catalog/categories',
+      group: 'catalogue',
+      anyOf: ['catalog.category-tree.view'],
+    },
+    {
       id: 'offer-reviews',
       icon: 'inbox',
       labelKey: 'nav.offer-reviews',
