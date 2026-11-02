@@ -410,7 +410,12 @@
       "password-invalid": "Check the passwords and try again.",
       "password-throttled": "Too many attempts. Wait a few minutes and try again.",
       "password-failed": "We could not update your password. Try again in a moment.",
-      "delete-account": "Delete account"
+      "delete-account": "Delete account",
+      "language": "Language",
+      "language-hint": "The site, your emails and your texts use this language. Product names and descriptions written by sellers are translated automatically.",
+      "language-en-option": "English (default)",
+      "language-saved": "Language saved to your account",
+      "language-failed": "We could not save your language. Try again in a moment."
     },
     "delete": {
       "title": "Delete account",

@@ -15,7 +15,7 @@ import { loadAccount } from '../src/storefront/source.ts';
 vi.mock('next/navigation', () => ({
   usePathname: () => '/account',
   useSearchParams: () => new URLSearchParams(),
-  useRouter: () => ({ push: () => undefined, replace: () => undefined }),
+  useRouter: () => ({ push: () => undefined, replace: () => undefined, refresh: () => undefined }),
 }));
 
 interface Call {
@@ -270,6 +270,45 @@ describe('settings', () => {
       palette: 'B',
       textSize: 'large',
     });
+  });
+
+  it('keeps the chosen language on the account, and null for English', async () => {
+    signedIn({ 'PUT identity/customer/profile/language': { status: 200 } });
+    renderLive(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} />);
+    await screen.findByLabelText('Full name');
+    const select = within(main()).getByRole('combobox', { name: 'Language' });
+
+    fireEvent.change(select, { target: { value: 'fa' } });
+    await waitFor(() =>
+      expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(1),
+    );
+    expect(called('PUT', 'identity/customer/profile/language')[0]?.body).toEqual({ locale: 'fa' });
+    expect(await within(main()).findByText('Language saved to your account')).toBeTruthy();
+
+    fireEvent.change(select, { target: { value: 'en' } });
+    await waitFor(() =>
+      expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(2),
+    );
+    expect(called('PUT', 'identity/customer/profile/language')[1]?.body).toEqual({ locale: null });
+  });
+
+  it('says so when the language could not be saved', async () => {
+    signedIn({
+      'PUT identity/customer/profile/language': {
+        status: 400,
+        body: { code: 'validation.failed' },
+      },
+    });
+    renderLive(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} />);
+    await screen.findByLabelText('Full name');
+
+    fireEvent.change(within(main()).getByRole('combobox', { name: 'Language' }), {
+      target: { value: 'fa' },
+    });
+
+    expect(
+      await within(main()).findByText('We could not save your language. Try again in a moment.'),
+    ).toBeTruthy();
   });
 
   it.each([

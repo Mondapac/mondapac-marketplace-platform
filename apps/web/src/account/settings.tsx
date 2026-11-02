@@ -2,7 +2,8 @@
 
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useId, useState } from 'react';
 import { Icon } from '../icons/icon.tsx';
 import { PalettePicker } from '../preferences/palette-picker.tsx';
 import type { Palette, TextSize } from '../preferences/preferences.ts';
@@ -11,6 +12,7 @@ import type { EmailChoices } from '../storefront/types.ts';
 import { AccountFrame } from './account-area.tsx';
 import { useAccount, type PasswordOutcome, type Profile } from './account-state.tsx';
 import { DeletionEntry, useDeletion } from './account-deletion.tsx';
+import { saveLanguage } from './customer-api.ts';
 import { AcField, PasswordField } from './fields.tsx';
 
 /**
@@ -23,14 +25,21 @@ import { AcField, PasswordField } from './fields.tsx';
 export function AccountSettings({
   palette,
   textSize,
+  languages = [],
+  language = null,
 }: {
   readonly palette: Palette;
   readonly textSize: TextSize;
+  /** The languages the Market has published, the default first; the Language card shows when there is more than one. */
+  readonly languages?: readonly string[];
+  /** The language kept on the account, or null. */
+  readonly language?: string | null;
 }) {
   const title = useTranslations('account.titles')('settings');
   return (
     <AccountFrame title={title}>
       <ProfileCard />
+      {languages.length > 1 ? <LanguageCard languages={languages} current={language} /> : null}
       <PasswordCard />
       <AppearanceCard palette={palette} textSize={textSize} />
       <EmailsCard />
@@ -81,6 +90,70 @@ function AppearanceCard({
       </p>
       <span className="sr-only" role="status">
         {saved ? t('appearance-saved') : ''}
+      </span>
+    </section>
+  );
+}
+
+/** Each language in its own script, so a reader who cannot read the current one still finds theirs. */
+const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
+  fa: 'فارسی',
+  ar: 'العربية',
+};
+
+/**
+ * Language: the only place a buyer chooses one (no switcher in the header; guests and Google
+ * sign-in read English). Shown only when the Market has published another language. A choice goes
+ * to the account and the page reloads in it.
+ */
+function LanguageCard({
+  languages,
+  current,
+}: {
+  readonly languages: readonly string[];
+  readonly current: string | null;
+}) {
+  const t = useTranslations('account.settings');
+  const router = useRouter();
+  const { source } = useAccount();
+  const [value, setValue] = useState(
+    current !== null && languages.includes(current) ? current : 'en',
+  );
+  const [state, setState] = useState<'idle' | 'saved' | 'failed'>('idle');
+  const id = useId();
+  const nameOf = (code: string) =>
+    code === 'en' ? t('language-en-option') : (LANGUAGE_NAMES[code] ?? code);
+  return (
+    <section className="ac-card" aria-labelledby="settings-language">
+      <h2 id="settings-language">{t('language')}</h2>
+      <div className="ac-fld">
+        <label htmlFor={id}>{t('language')}</label>
+        <select
+          id={id}
+          value={value}
+          aria-describedby={`${id}-hint`}
+          onChange={(event) => {
+            const next = event.target.value;
+            setValue(next);
+            setState('idle');
+            if (!source.live) return;
+            void saveLanguage(next === 'en' ? null : next).then((result) => {
+              if (result.kind !== 'ok') return setState('failed');
+              setState('saved');
+              router.refresh();
+            });
+          }}
+        >
+          {languages.map((code) => (
+            <option key={code} value={code} lang={code === 'en' ? undefined : code}>
+              {nameOf(code)}
+            </option>
+          ))}
+        </select>
+        <small id={`${id}-hint`}>{t('language-hint')}</small>
+      </div>
+      <span className="sr-only" role="status">
+        {state === 'saved' ? t('language-saved') : state === 'failed' ? t('language-failed') : ''}
       </span>
     </section>
   );
