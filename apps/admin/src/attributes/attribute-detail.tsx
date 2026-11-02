@@ -2,32 +2,40 @@
 
 import {
   Badge,
+  Banner,
   Button,
   DataList,
+  Dialog,
   EmptyState,
   LoadError,
   SearchSelect,
   SkeletonRows,
   Tabs,
+  toast,
   type DataListRow,
   type SearchSelectOption,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
+import { AttributeEditForm } from './attribute-edit-form.tsx';
+import type { FieldErrors } from './editor.ts';
 import { changeLineOf } from './history.ts';
 import { useRevealWhenStacked } from './reveal.ts';
 import { useSelectLabels } from './select-labels.ts';
+import { useAttributeCall } from './use-attribute-call.ts';
 import {
   API_ATTRIBUTES,
+  CHOICE_TYPES,
   DETAIL_TABS,
   directionOf,
   languageName,
   textIn,
   type AttributeChange,
   type AttributeDetail,
+  type AttributeWrite,
   type DetailTab,
 } from './types.ts';
 
@@ -37,25 +45,39 @@ type Load =
   | { readonly state: 'missing' }
   | { readonly state: 'failed' };
 
-const CHOICE_TYPES = new Set(['select', 'multi-select']);
+type Confirm = 'publish' | 'discard' | null;
+
+/** Refusals of publish that only an edit of the text clears. */
+const TEXT_FIX: ReadonlySet<string> = new Set(['claim-word', 'locale-uncheckable']);
 
 /**
- * One attribute, read only (plan 16): its name and badges, then four sub-tabs. Details shows the
- * name in a chosen language and the settings; Values lists the options with their product counts
- * and, on request, a second language next to the default; Used in lists the feature sets; History
- * lists the revisions newest first with what changed.
+ * One attribute (plan 16): its name and badges, then four sub-tabs. Details shows the name in a
+ * chosen language and the settings; Values lists the options with their product counts and, on
+ * request, a second language next to the default; Used in lists the feature sets; History lists
+ * the revisions newest first with what changed. An admin with `catalog.attribute.edit` also edits
+ * it, and publishes or discards a draft (attributes A2).
  */
 export function AttributeDetailPanel({
   attributeId,
   onClose,
+  canEdit = false,
+  csrfToken = '',
+  onChanged,
 }: {
   readonly attributeId: string | null;
   readonly onClose: () => void;
+  readonly canEdit?: boolean;
+  readonly csrfToken?: string;
+  /** An attribute was saved, published or discarded: the list reads it again. */
+  readonly onChanged?: () => void;
 }) {
   const t = useTranslations('attributes.detail');
   const tl = useTranslations('load');
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [tab, setTab] = useState<DetailTab>('details');
+  const [editing, setEditing] = useState(false);
+  const [editErrors, setEditErrors] = useState<FieldErrors | undefined>(undefined);
+  const [confirm, setConfirm] = useState<Confirm>(null);
   const latest = useRef(0);
   const panel = useRef<HTMLElement>(null);
   useRevealWhenStacked(panel, attributeId, load.state === 'ready');
@@ -82,8 +104,19 @@ export function AttributeDetailPanel({
 
   useEffect(() => {
     setTab('details');
+    setEditing(false);
+    setConfirm(null);
     void fetchDetail();
   }, [fetchDetail]);
+
+  const changed = (message: string) => {
+    toast.success(message);
+    setEditing(false);
+    setEditErrors(undefined);
+    setConfirm(null);
+    onChanged?.();
+    void fetchDetail();
+  };
 
   if (attributeId === null) {
     return <EmptyState size="card" icon="sliders" title={t('none')} body={t('none-body')} />;
@@ -115,17 +148,78 @@ export function AttributeDetailPanel({
       ) : null}
       {load.state === 'ready' ? (
         <>
-          <Header detail={load.detail} onClose={onClose} />
-          <Tabs
-            label={t('tabs')}
-            items={DETAIL_TABS.map((id) => ({ id, label: t(`tab.${id}`) }))}
-            activeId={tab}
-            onSelect={(id) => setTab(id as DetailTab)}
+          <Header
+            detail={load.detail}
+            onClose={onClose}
+            actions={
+              canEdit && !editing && load.detail.status !== 'archived' ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setEditErrors(undefined);
+                      setEditing(true);
+                    }}
+                  >
+                    {t('edit')}
+                  </Button>
+                  {load.detail.status === 'draft' ? (
+                    <>
+                      <Button onClick={() => setConfirm('publish')}>{t('publish')}</Button>
+                      <Button variant="destructive" onClick={() => setConfirm('discard')}>
+                        {t('discard')}
+                      </Button>
+                    </>
+                  ) : null}
+                </>
+              ) : null
+            }
           />
-          {tab === 'details' ? <DetailsTab detail={load.detail} /> : null}
-          {tab === 'values' ? <ValuesTab detail={load.detail} /> : null}
-          {tab === 'used-in' ? <UsedInTab detail={load.detail} /> : null}
-          {tab === 'history' ? <HistoryTab detail={load.detail} /> : null}
+          {load.detail.status === 'draft' ? <Banner tone="info">{t('draft-note')}</Banner> : null}
+          {confirm === null ? null : (
+            <StatusDialog
+              kind={confirm}
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t(confirm === 'publish' ? 'published' : 'discarded'))}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+              onEdit={(fields) => {
+                setConfirm(null);
+                setEditErrors(fields);
+                setEditing(true);
+              }}
+            />
+          )}
+          {editing ? (
+            <AttributeEditForm
+              detail={load.detail}
+              csrfToken={csrfToken}
+              initialErrors={editErrors}
+              onCancel={() => setEditing(false)}
+              onSaved={() => changed(t('saved'))}
+              onReload={() => {
+                setEditing(false);
+                void fetchDetail();
+              }}
+            />
+          ) : (
+            <>
+              <Tabs
+                label={t('tabs')}
+                items={DETAIL_TABS.map((id) => ({ id, label: t(`tab.${id}`) }))}
+                activeId={tab}
+                onSelect={(id) => setTab(id as DetailTab)}
+              />
+              {tab === 'details' ? <DetailsTab detail={load.detail} /> : null}
+              {tab === 'values' ? <ValuesTab detail={load.detail} /> : null}
+              {tab === 'used-in' ? <UsedInTab detail={load.detail} /> : null}
+              {tab === 'history' ? <HistoryTab detail={load.detail} /> : null}
+            </>
+          )}
         </>
       ) : null}
     </section>
@@ -135,9 +229,11 @@ export function AttributeDetailPanel({
 function Header({
   detail,
   onClose,
+  actions,
 }: {
   readonly detail: AttributeDetail;
   readonly onClose: () => void;
+  readonly actions: ReactNode;
 }) {
   const t = useTranslations('attributes');
   const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
@@ -148,7 +244,15 @@ function Header({
           <h2 tabIndex={-1} className="text-lg font-semibold wrap-anywhere text-fg">
             {name}
           </h2>
-          <Badge tone={detail.status === 'active' ? 'success' : 'neutral'}>
+          <Badge
+            tone={
+              detail.status === 'active'
+                ? 'success'
+                : detail.status === 'draft'
+                  ? 'attention'
+                  : 'neutral'
+            }
+          >
             {t(`status.${detail.status}`)}
           </Badge>
           {detail.material ? <Badge tone="attention">{t('badge.material')}</Badge> : null}
@@ -158,10 +262,96 @@ function Header({
           {detail.code} · {t(`type.${detail.dataType}`)}
         </p>
       </div>
-      <Button variant="secondary" onClick={onClose}>
-        {t('detail.close')}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        {actions}
+        <Button variant="secondary" onClick={onClose}>
+          {t('detail.close')}
+        </Button>
+      </div>
     </div>
+  );
+}
+
+/**
+ * Publish or discard a draft, after the admin confirms. Publishing makes it visible to sellers
+ * wherever a feature set names it, and runs the claim check again; discarding archives a draft
+ * that was never published.
+ */
+function StatusDialog({
+  kind,
+  detail,
+  csrfToken,
+  onClose,
+  onDone,
+  onReload,
+  onEdit,
+}: {
+  readonly kind: 'publish' | 'discard';
+  readonly detail: AttributeDetail;
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly onReload: () => void;
+  /** The text must change first (a claim word): open the editor on the refused fields. */
+  readonly onEdit: (fields: FieldErrors) => void;
+}) {
+  const t = useTranslations('attributes.detail');
+  const te = useTranslations('attributes.editor');
+  const call = useAttributeCall(csrfToken);
+  const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
+  const missing = detail.missingLocales.map((tag) => languageName(tag, detail.locales.supported));
+
+  async function confirm() {
+    const answer = await call.run<AttributeWrite>(
+      'POST',
+      `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/${kind}`,
+      { version: detail.version },
+    );
+    if (answer.ok) onDone();
+  }
+
+  const problem = call.problem;
+  return (
+    <Dialog
+      open
+      title={t(`${kind}-title`, { name })}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+            {te('cancel')}
+          </Button>
+          {problem?.reload === true ? (
+            <Button onClick={onReload}>{te('reload')}</Button>
+          ) : problem !== null && TEXT_FIX.has(problem.key) ? (
+            <Button onClick={() => onEdit(problem.fields)}>{t('edit-attribute')}</Button>
+          ) : (
+            <Button
+              variant={kind === 'discard' ? 'destructive-solid' : 'primary'}
+              loading={call.pending}
+              disabled={call.pending}
+              onClick={() => void confirm()}
+            >
+              {t(kind)}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {problem === null ? null : (
+          <Banner tone="critical">
+            {TEXT_FIX.has(problem.key) ? t(`publish-${problem.key}`) : te(`error.${problem.key}`)}
+          </Banner>
+        )}
+        <p>{t(`${kind}-body`)}</p>
+        {kind === 'publish' && missing.length > 0 ? (
+          <p className="text-sm text-fg-muted">
+            {t('publish-missing', { languages: missing.join(', ') })}
+          </p>
+        ) : null}
+      </div>
+    </Dialog>
   );
 }
 
@@ -194,6 +384,18 @@ function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
     ...(detail.bounds.max === undefined
       ? []
       : [{ label: t('field.max'), value: String(detail.bounds.max) }]),
+    { label: t('field.show-on-product-page'), value: yesNo(detail.display.showOnProductPage) },
+    { label: t('field.searchable'), value: yesNo(detail.display.searchable) },
+    { label: t('field.can-be-filter'), value: yesNo(detail.display.canBeFilter) },
+    { label: t('field.position'), value: String(detail.display.position) },
+    ...(detail.display.internalNote === null
+      ? []
+      : [
+          {
+            label: t('field.internal-note'),
+            value: <span className="wrap-anywhere">{detail.display.internalNote}</span>,
+          },
+        ]),
     { label: t('field.status'), value: t(`status.${detail.status}`) },
     { label: t('field.revision'), value: String(detail.revisionNo) },
     {
@@ -233,6 +435,14 @@ function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
             </span>
           )}
         </div>
+        {detail.display.helpText[locale] === undefined ? null : (
+          <div className="flex flex-col gap-1">
+            <span className="text-sm text-fg-muted">{t('field.help-text')}</span>
+            <span lang={locale} dir={directionOf(locale)} className="wrap-anywhere text-fg">
+              {detail.display.helpText[locale]}
+            </span>
+          </div>
+        )}
         {detail.missingLocales.length > 0 ? (
           <p className="text-sm text-fg-muted">
             {t('detail.missing-anywhere', {
@@ -444,6 +654,7 @@ function ChangeText({
     }
     return String(value);
   };
+  if (line.key === 'internal-note') return <>{t('history.change.internal-note')}</>;
   if (line.key === 'option-added' || line.key === 'option-removed') {
     return <>{t(`history.change.${line.key}`, { value: labelOf(line.code) })}</>;
   }
@@ -457,6 +668,9 @@ function ChangeText({
       break;
     case 'name':
       what = t('history.change.name', { language: line.language });
+      break;
+    case 'help':
+      what = t('history.change.help', { language: line.language });
       break;
     case 'option-label':
       what = t('history.change.option-label', {
