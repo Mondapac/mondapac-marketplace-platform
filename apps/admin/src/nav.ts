@@ -50,6 +50,14 @@ export const adminNav: NavConfig = {
       anyOf: ['pricing.price-hold.view'],
     },
     {
+      id: 'attributes',
+      icon: 'sliders',
+      labelKey: 'nav.attributes',
+      href: '/catalog/attributes',
+      group: 'catalog',
+      anyOf: ['catalog.attribute.view'],
+    },
+    {
       id: 'brands',
       icon: 'tag',
       labelKey: 'nav.brands',

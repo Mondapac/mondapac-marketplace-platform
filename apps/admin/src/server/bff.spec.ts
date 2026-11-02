@@ -1125,6 +1125,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],
     ['PUT', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/attributes'],
+    ['GET', `catalog/admin/attributes/${id}`],
+    ['GET', 'catalog/admin/feature-sets'],
+    ['GET', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1167,6 +1171,11 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
     ['POST', `catalog/admin/business-activities/${id}`],
     ['GET', 'catalog/admin/business-activities/not-a-uuid'],
+    ['POST', 'catalog/admin/attributes'],
+    ['PUT', `catalog/admin/attributes/${id}`],
+    ['GET', 'catalog/admin/attributes/not-a-uuid'],
+    ['POST', 'catalog/admin/feature-sets'],
+    ['GET', 'catalog/admin/feature-sets/not-a-uuid'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1230,6 +1239,23 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/catalog/admin/business-activities',
     );
+  });
+
+  it('passes only the known, well-formed filters of the attribute list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/attributes?search=heat&type=select&status=draft&usedIn=${id}&missing=fa-IR&afterId=${id}&limit=50&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/attributes?search=heat&type=select&status=draft&usedIn=${id}&missing=fa-IR&afterId=${id}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/attributes?search=${'x'.repeat(121)}&type=colour&status=gone&usedIn=nope&missing=Persian&afterId=1&limit=abc`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/attributes');
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {
