@@ -239,6 +239,10 @@ export class FakeOrderingFacade implements OrderingFacade {
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
     return Promise.resolve(ok([]));
   }
+
+  sellerHealthCounts(): ReturnType<OrderingFacade['sellerHealthCounts']> {
+    return Promise.resolve(ok([]));
+  }
 }
 
 /** A connected-account event body, as the Connect endpoint receives it. */

@@ -218,6 +218,10 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
 - `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
   product may hold. The ceiling of 100 keeps the re-key of a moved Offer (inventory design 3.6)
   under the lock helper's 1,000-item cap with 4 sources.
+- `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
+  configurable product may vary on (attributes plan A2). A product whose feature set marks more
+  option attributes is refused by the configurable type's variant check
+  (`variants.too-many-option-attributes`).
 - `productTypes` (required, 1 to 20 entries, no code repeated): the product type codes the Market
   offers (lower-case letters, digits and `-`, as the registry's codes are). A type that is not
   listed, or is listed but not registered, is refused at product creation (`product.type-not-offered`,

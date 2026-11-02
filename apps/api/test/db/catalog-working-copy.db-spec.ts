@@ -74,6 +74,7 @@ describe.each(TEST_MARKETS)(
             throw new Error('not used');
           },
           maxVariantsPerProduct: () => 3,
+          maxVariantAttributes: () => 2,
           productTypes: () => ['simple', 'configurable'],
           defaultFamily: () => 'default',
           conditions: () => ['new'],
@@ -389,6 +390,7 @@ describe.each(TEST_MARKETS)(
               throw new Error('not used');
             },
             maxVariantsPerProduct: () => 3,
+            maxVariantAttributes: () => 2,
             productTypes: () => ['simple', 'configurable'],
             defaultFamily: () => 'default',
             conditions: () => ['new'],
@@ -463,6 +465,7 @@ describe.each(TEST_MARKETS)(
               throw new Error('not used');
             },
             maxVariantsPerProduct: () => 3,
+            maxVariantAttributes: () => 2,
             productTypes: () => ['simple', 'configurable'],
             defaultFamily: () => 'default',
             conditions: () => ['new'],

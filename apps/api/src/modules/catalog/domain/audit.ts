@@ -127,6 +127,60 @@ export const SavedFilterRemovedAudit = defineAuditAction({
   after: { ownedByActor: auditField.boolean() },
 });
 
+/** The audit target type of an attribute definition (attributes plan, package A2). */
+export const CATALOG_ATTRIBUTE_DEFINITION_TARGET = 'catalog.attribute-definition';
+
+const definitionStatus = auditField.enumOf(['draft', 'active', 'archived'] as const);
+
+/** What the audit keeps of a definition's revision: flags and counts, never a name or a label. */
+const definitionShape = {
+  status: definitionStatus,
+  revisionNo: auditField.integer(),
+  material: auditField.boolean(),
+  isVariantOption: auditField.boolean(),
+  optionCount: auditField.integer(),
+  activeOptionCount: auditField.integer(),
+};
+
+/** An admin created a definition as a draft (A2). */
+export const AttributeDefinitionCreatedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.created',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  after: definitionShape,
+});
+
+/**
+ * An admin saved a new revision of a definition (A2; catalog design 8.2). The flags before and
+ * after show a change of `material` or of the variant flag; clearing `material` on a published
+ * definition is not an edit (the two-person request adds its account ids here, A2 part 3).
+ */
+export const AttributeDefinitionRevisedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.revised',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: definitionShape,
+  after: definitionShape,
+});
+
+/** An admin published a draft definition: sellers now see it where a feature set names it. */
+export const AttributeDefinitionPublishedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.published',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['draft'] as const) },
+  after: definitionShape,
+});
+
+/** An admin set aside a draft that was never published; it is archived, never deleted. */
+export const AttributeDefinitionDiscardedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.discarded',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['draft'] as const) },
+  after: { status: auditField.enumOf(['archived'] as const) },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -136,4 +190,8 @@ export const CATALOG_AUDIT_ACTIONS = [
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,
+  AttributeDefinitionCreatedAudit,
+  AttributeDefinitionRevisedAudit,
+  AttributeDefinitionPublishedAudit,
+  AttributeDefinitionDiscardedAudit,
 ] as const;

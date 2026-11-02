@@ -23,6 +23,7 @@ import type {
   ReviewCursor,
   SellerReviewCursor,
   ReviewRepository,
+  ReviewWindow,
   ReviewSort,
   SellerRatingRecord,
   StoredSellerSummary,
@@ -572,6 +573,28 @@ export class MemoryReviews implements ReviewRepository {
       }
     }
     return Promise.resolve({ reviews, ratings });
+  }
+  countPublishedForSeller(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly ReviewWindow[],
+  ) {
+    return Promise.resolve(
+      windows.map((w) => {
+        let reviews = 0;
+        let starsSum = 0;
+        for (const r of this.productReviews.values()) {
+          const at = r.publishedAt;
+          if (r.sellerId !== sellerId || r.status !== 'published' || at === null) continue;
+          if (Temporal.Instant.compare(at, w.from) < 0 || Temporal.Instant.compare(at, w.to) >= 0) {
+            continue;
+          }
+          reviews += 1;
+          starsSum += r.rating;
+        }
+        return { reviews, starsSum };
+      }),
+    );
   }
 }
 

@@ -182,6 +182,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
         variantRemoved: true,
       }),
       maxVariantsPerProduct: () => 100,
+      maxVariantAttributes: () => 2,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

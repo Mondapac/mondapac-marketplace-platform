@@ -1189,6 +1189,12 @@ const catalogSchema = z
      */
     maxVariantsPerProduct: z.number().int().min(1).max(100),
     /**
+     * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
+     * configurable product whose feature set marks more option attributes is refused by the
+     * product type's variant check. Required: a Market never defaults it.
+     */
+    maxVariantAttributes: z.number().int().min(1).max(5),
+    /**
      * Whether a new product revision waits for review (true) or publishes at once when the
      * change is minor (false) (catalog design 4.2 row 1). The interim home of the ADR-0026
      * setting `catalog.approval-required` until that store lands (catalog slice 10).
