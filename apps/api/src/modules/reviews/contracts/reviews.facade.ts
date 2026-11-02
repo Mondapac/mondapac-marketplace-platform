@@ -99,6 +99,8 @@ export interface ReviewsFacade {
     sellerId: Id<'Seller'>,
     windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
   ): Promise<Result<readonly SellerReviewCount[], ReviewsFacadeFailure>>;
+
+  /**
    * The star totals of every product with a published review, a page at a time in product-id
    * order (rule `system`). Search copies them for its staged rating boost. Answers
    * `reviews.disabled` while reviews are off, which is how the boost goes away with the switch.
