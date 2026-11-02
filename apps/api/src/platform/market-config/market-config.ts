@@ -1189,6 +1189,13 @@ const catalogSchema = z
      */
     maxVariantsPerProduct: z.number().int().min(1).max(100),
     /**
+     * The deepest level of the platform category tree (categories plan v7, Q1): 4 levels are
+     * department, group, category and subcategory; products sit on levels 3 and 4, so a Market
+     * that allows fewer than 3 cannot hold products. Required, no default; a value outside 3 to 4
+     * stops the start-up with the rest of the Market file. The editor reads it, never a literal.
+     */
+    maxCategoryDepth: z.number().int().min(3).max(4),
+    /**
      * Whether a new product revision waits for review (true) or publishes at once when the
      * change is minor (false) (catalog design 4.2 row 1). The interim home of the ADR-0026
      * setting `catalog.approval-required` until that store lands (catalog slice 10).

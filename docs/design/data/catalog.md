@@ -205,11 +205,16 @@ database stays the source of truth.
 | `parent_id` | `uuid` | yes | FK `(market_id, parent_id)` → `platform_categories`. CHECK `<> id`. NULL = a root |
 | `vertical_root_code` | `text` | yes | Optional Vertical root marker (CA4); CHECK `vertical_root_code IS NULL OR parent_id IS NULL` |
 | `slug` | `text COLLATE "C"` | no | CHECK `^[a-z0-9]+(-[a-z0-9]+)*$`, 2 to 80. **Unique `(market_id, slug)`** (D 17.1) |
-| `status` | `text` | no | CHECK `active`, `merged`, `archived` |
+| `status` | `text` | no | CHECK `active`, `hidden`, `merged`, `archived` (`hidden` added by categories C2: reversible, the category leaves menus and filters, products stay on sale) |
 | `merged_into_id` | `uuid` | yes | FK to `platform_categories`. CHECK `(status = 'merged') = (merged_into_id IS NOT NULL)` |
 | `published_revision_id` | `uuid` | yes | Current revision (name, parent). FK `(market_id, id, published_revision_id)` → revisions of this category. Nullable (Q-K10, as CE-data 3.1): the creating unit inserts the root with NULL, then revision 1, then sets the pointer; NULL is never visible after commit. Plain FK, no deferred constraint |
 | `created_by_kind` | `text` | no | CHECK `seed`, `admin` (D 17.1 item 4). Never updated |
 | `version`, `created_at` | | no | CA1 |
+| `position` | `integer` | no | Order among siblings (roots are siblings). CHECK `>= 0`. **Unique `(market_id, parent_id, position)`**, `NULLS NOT DISTINCT`, `DEFERRABLE INITIALLY IMMEDIATE` (constraint `platform_categories_market_id_parent_id_position_key`): a reorder defers the check and swaps inside one unit. Backfilled by the order of the first-locale name per parent (lower-case, then slug). A row inserted without one, or with `-1` (the seed repository), goes last among its siblings under a transaction advisory lock on the sibling set (trigger `platform_categories_default_position`, `BEFORE INSERT`), so concurrent inserts take consecutive positions |
+| `show_in_menu` | `boolean` | no | Default `true` |
+| `image_id` | `uuid` | yes | The category image from the product image intake (purpose `category-image`, wired in C3). **No foreign key**: `product_images` rows belong to a product (`product_id NOT NULL`); C3 decides the link |
+| `seo_title`, `seo_description` | `text` | yes | English only. CHECK 1 to 60 and 1 to 160 characters, trimmed, no control or bidi characters |
+| `seo_noindex` | `boolean` | no | Default `false` |
 
 - **No-cycle trigger** `platform_categories_no_cycle` (BEFORE INSERT OR UPDATE OF `parent_id`): walks
   the ancestors of the new parent one PK probe at a time (a loop, not a recursive query) and refuses
@@ -221,10 +226,27 @@ database stays the source of truth.
   sequential read of the Market's rows (2,000 rows: 0.6 ms).
 - `platform_category_revisions` (insert-only): `id` PK; `category_id` FK; `revision_no` unique per
   category; `parent_id` (the parent at that revision, no FK: history may name an archived id, C4);
-  `change_kind` CHECK `created`, `renamed`, `moved`, `merged`, `archived`; `author_kind` CHECK `seed`,
+  `change_kind` CHECK `created`, `renamed`, `moved`, `merged`, `archived`, and (C2) `details-changed`,
+  `reordered`, `hidden`, `shown`, `slug-changed`, `discarded`; `reason text` NULL, CHECK 10 to 500
+  characters, trimmed, no control or bidi characters (required for `moved`, `merged` and `archived` by
+  the use case, not by a CHECK: a seed row has none); `author_kind` CHECK `seed`,
   `admin`; `author_account_id` (NULL iff seed); `created_at`. Unique `(market_id, category_id, id)`.
 - `platform_category_revision_names` (insert-only): PK `(market_id, revision_id, locale)`; `name text`
   1 to 120, CA5.
+- `platform_category_revision_texts` (C2, insert-only): PK `(market_id, revision_id, locale)`; `name`
+  as above (CA5); `short_description` NULL, CHECK 1 to 300; `keywords text[]` NOT NULL default `{}`, CHECK
+  (no function, so PUBLIC executes nothing new: the array is joined with U+0001 and matched against a regex; at most 20, none NULL, each 1 to 40 characters, trimmed). It carries
+  everything a locale says about a revision. The migration copied every existing name into it; the
+  names table is kept (readable, insert-only) and the trigger `platform_category_revision_names_copy_to_texts`
+  copies each new name row (`ON CONFLICT DO NOTHING`) until the editor (C3) writes the texts itself.
+- `platform_category_slug_history` (C2, insert-only): PK `(market_id, slug, retired_at)`; `category_id`
+  FK `(market_id, category_id)`; slug shape as the live slug. A slug retired by one category is not
+  given to another for 12 months: the use case checks, and trigger `platform_categories_slug_not_recently_retired`
+  (`BEFORE INSERT OR UPDATE OF slug`) refuses what it missed (`23514`); the category's own old slug may
+  return. The key lets a slug be retired again after a later reuse; a lookup takes the latest row (the
+  redirect is for a slug nobody holds now). Index `(market_id, category_id)`.
+- **Slug is still not in the application's `UPDATE` list.** The package that builds Change URL name grants
+  it together with the writer of the history row.
 - The seed only inserts (D 7.2, B4): the application has no grant that a seed could use to rewrite a
   category other than the editor's column list, and the seed use case has no update path. A test
   applies the seed twice and asserts no `UPDATE` reached the table (statement counter of the unit).
@@ -344,7 +366,12 @@ revisions, A14).
 
 PK `(market_id, revision_id, category_id)`; FK to `product_revisions`; FK `(market_id, category_id)` →
 `platform_categories` (a revision names only platform categories of its Market, never a shelf: AC 11);
-`position smallint` (order as entered). Insert-only. CHECK "≥ 1 per revision" is cross-row: aggregate.
+`position smallint` (order as entered); `is_primary boolean` NOT NULL default `false` (C2): the revision's
+primary category, **partial unique `product_revision_categories_market_id_revision_id_primary_key`
+`(market_id, revision_id) WHERE is_primary`** (at most one; "exactly one" and "at most 3 categories"
+are domain rules, C5). The migration marked the lowest-position row of every existing revision, with the
+insert-only guard switched off and on again inside it; new revisions mark their first category until C5
+lets the admin choose. Insert-only. CHECK "≥ 1 per revision" is cross-row: aggregate.
 
 **Index `(market_id, category_id, revision_id)`**: the category re-ask and the impact count (A9,
 A10), joined to `products` by the published-revision partial unique. Old revisions stay in it (about
@@ -1218,7 +1245,7 @@ No sequence; no function gets a grant.
 | `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | Never (the guard refuses it for every role) | M-1 |
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |
-| `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version)` | Never | Slug, creator kind immutable; never deleted |
+| `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version, position, show_in_menu, image_id, seo_title, seo_description, seo_noindex)` | Never | Slug (until Change URL name is built), creator kind immutable; never deleted |
 | `attribute_definitions`, `attribute_families` | `SELECT, INSERT`, `UPDATE (status, published_revision_id, version)`; definitions also `archived_by_request_id` (slice 21) | Never: "delete" means archive (Q-K6) | Code, type, localizable immutable |
 | `product_working_copies` | `SELECT, INSERT, UPDATE, DELETE` | 4 (discard and prune, 10.1) | |
 | `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | Never (a discarded draft's Offer becomes `deleted`) | `seller_id` never changes (PRC 2.3) |
@@ -1237,6 +1264,7 @@ No sequence; no function gets a grant.
 | `import_jobs` | `SELECT, INSERT, UPDATE` | 24 (retention) | |
 | `ai_listing_suggestions` | `SELECT, INSERT, DELETE` | 25 | Purged with the draft |
 | `rate_counters` | `SELECT, INSERT, UPDATE, DELETE` | 4 | Counters |
+| `platform_category_revision_texts`, `platform_category_slug_history` | `SELECT, INSERT` | Never | Categories C2; insert-only (CA3) |
 | Every table of the 5.1 insert-only list | `SELECT, INSERT` | Never | CA3 |
 
 **`test:db` assertions** (CE-data 8, Hassan L-a): for each insert-only table, on the application
@@ -1442,7 +1470,8 @@ Backfills never run inside a migration.
   `category_proposals_market_id_created_at_pending_idx`, `import_jobs_market_id_seller_id_running_key`,
   `saved_filters_shared_name_key` (3.28), `platform_import_jobs_market_id_account_running_key`,
   `platform_import_jobs_market_id_queue_idx`, `platform_import_jobs_market_id_file_purge_idx` (3.29),
-  `product_url_keys_market_id_product_id_held_key`, `outbox_market_id_event_id_unpublished_idx`.
+  `product_url_keys_market_id_product_id_held_key`, `outbox_market_id_event_id_unpublished_idx`,
+  `product_revision_categories_market_id_revision_id_primary_key` (C2).
 - Every partial-index predicate is a literal in the SQL Prisma sends as a parameter; the plans hold
   under unnamed statements (platform.md 10.9). This design relies on that section.
 
@@ -1666,4 +1695,5 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | `docs/adr/0029-*` (Proposed 2026-10-07) | Storage lifecycle rule: the intake prefix expires within 24 h (Hassan M3, O7) | With ADR-0029 |
 | `docs/design/domain/catalog.md` | Done: Q-K15 confirmed in D 2.1 (Mohammad); Q-K8 ruled (Ali) | Before slice 1 |
 | `catalog.product_images`, `product_image_renditions`, `product_revision_images` (migration `20261014120000_catalog_product_images`; slice 13, PR #288) | Simplified media path: one row per uploaded photo plus three JPEG renditions (thumb, medium, large) whose bytes live in the `ObjectStore` port (`platform/storage`, local disk stand-in, key `<productId>/<imageId>/<size>`). Images are insert-only into revisions and only `clean` ones may join (trigger). Limits: 8 per product, 4 MiB upload (raw 5800kb body parser on that one route), 24 MP, sides 200 to 12000 px. Takedown (`20261017100000_catalog_image_takedown`): `clean` to `taken-down` only (trigger `product_images_state_guard`), column-level `UPDATE` on the state and the three takedown columns, key `catalog.product.approve` (not `.delete`, undeclared), event `catalog.image-taken-down.v1`; the clean-image trigger locks the photo `FOR SHARE`. Orphan sweep `catalog.sweep-orphan-images` (hourly, 48 h grace, skips photos a draft names). Not built: S3 adapter, scanner, sweep of files without a row (the `ObjectStore` port cannot list), `photoTakenDownAt` flag | Done in PR #288; handoff `catalog-media.md` |
+| Categories C2 (migration `20261102130000_catalog_category_management_model`; plan v7) | Data model of the category editor: `position` (unique per sibling, deferrable), `hidden` status, `show_in_menu`, `image_id`, SEO columns; revision kinds and `reason`; `platform_category_revision_texts` (name, short description, keywords per locale; names copied by backfill and trigger); `platform_category_slug_history` with the 12-month trigger; `product_revision_categories.is_primary` with its partial unique index. Backfills run in the file (nothing deployed, six seed rows): 8.2 forbids that only for large tables. Market config `catalog.maxCategoryDepth` (AU 4, ZZ 3, schema range 3 to 4). Use cases and UI follow in C3 on; test `catalog-category-model.db-spec.ts` | Done in the C2 PR; Mojtaba, Hassan (grants) |
 | Public photo reads (storefront images package; no migration) | Two read-only readers over the slice 13 tables, `PrismaPublishedImagesReader`: the public photos of a published product's `published_revision_id` (revision rows by `position`, joined to the photo's state in one statement, `clean` only, at most 8 per product) and one rendition key of such a photo. Every statement is scoped by `market_id` and the revision's own `product_id`. Uses the existing grants and indexes (`product_revision_images` primary key and `(market_id, revision_id, position)`); no new index needed at this size | Done; `test/db/catalog-published-images.db-spec.ts` |

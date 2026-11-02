@@ -190,7 +190,7 @@ model CatalogPlatformCategory {
   verticalRootCode    String?                           @map("vertical_root_code")
   /// Case-sensitive collation "C" is set in the migration; unique per Market.
   slug                String
-  /// active | merged | archived.
+  /// active | hidden | merged | archived.
   status              String
   mergedIntoId        String?                           @map("merged_into_id") @db.Uuid
   /// The current revision; null only inside the creating unit (Q-K10).
@@ -199,6 +199,17 @@ model CatalogPlatformCategory {
   createdByKind       String                            @map("created_by_kind")
   version             Int
   createdAt           DateTime                          @map("created_at") @db.Timestamptz(6)
+  /// Order among siblings (roots are siblings); unique per parent, deferrable (hand-written).
+  position            Int
+  /// Hidden from menus when false; products stay on sale.
+  showInMenu          Boolean                           @default(true) @map("show_in_menu")
+  /// Category image from the product image intake (purpose category-image, wired in C3). No
+  /// foreign key: product_images belong to a product.
+  imageId             String?                           @map("image_id") @db.Uuid
+  /// English only, at most 60 and 160 characters (CHECKs).
+  seoTitle            String?                           @map("seo_title")
+  seoDescription      String?                           @map("seo_description")
+  seoNoindex          Boolean                           @default(false) @map("seo_noindex")
   parent              CatalogPlatformCategory?          @relation("CategoryParent", fields: [marketId, parentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   children            CatalogPlatformCategory[]         @relation("CategoryParent")
   mergedInto          CatalogPlatformCategory?          @relation("CategoryMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
@@ -207,10 +218,13 @@ model CatalogPlatformCategory {
   publishedRevision   CatalogPlatformCategoryRevision?  @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
   productRevisions    CatalogProductRevisionCategory[]
   businessActivities  CatalogBusinessActivityCategory[]    @relation("ActivityCategory")
+  slugHistory         CatalogPlatformCategorySlugHistory[]
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
   @@unique([marketId, slug])
+  /// One position per sibling (NULLS NOT DISTINCT, DEFERRABLE in the migration).
+  @@unique([marketId, parentId, position])
   /// The child lists of the tree editor.
   @@index([marketId, parentId])
   @@map("platform_categories")
@@ -226,16 +240,20 @@ model CatalogPlatformCategoryRevision {
   categoryId      String                                @map("category_id") @db.Uuid
   revisionNo      Int                                   @map("revision_no")
   parentId        String?                               @map("parent_id") @db.Uuid
-  /// created | renamed | moved | merged | archived.
+  /// created | renamed | moved | merged | archived | details-changed | reordered | hidden | shown |
+  /// slug-changed | discarded.
   changeKind      String                                @map("change_kind")
   /// seed | admin.
   authorKind      String                                @map("author_kind")
   /// Null exactly when the author is the seed.
   authorAccountId String?                               @map("author_account_id") @db.Uuid
   createdAt       DateTime                              @map("created_at") @db.Timestamptz(6)
+  /// 10 to 500 characters; required for moved, merged and archived by the use case.
+  reason          String?
   category        CatalogPlatformCategory               @relation("CategoryRevisions", fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   published       CatalogPlatformCategory[]             @relation("CategoryPublished")
   names           CatalogPlatformCategoryRevisionName[]
+  texts           CatalogPlatformCategoryRevisionText[]
 
   @@unique([marketId, categoryId, revisionNo])
   /// The target of the category's published-revision pointer and of the name rows.
@@ -256,6 +274,42 @@ model CatalogPlatformCategoryRevisionName {
 
   @@id([marketId, revisionId, locale])
   @@map("platform_category_revision_names")
+  @@schema("catalog")
+}
+
+/// The per-locale content of a revision: name, short description and search keywords (insert-only).
+/// Every name row is copied here by a trigger until the editor writes this table itself (C3).
+model CatalogPlatformCategoryRevisionText {
+  marketId         String                          @map("market_id") @db.VarChar(8)
+  tenantId         String                          @map("tenant_id")
+  revisionId       String                          @map("revision_id") @db.Uuid
+  locale           String
+  name             String
+  /// At most 300 characters.
+  shortDescription String?                         @map("short_description")
+  /// At most 20, each 1 to 40 characters (CHECK; the array is matched as one string).
+  keywords         String[]                        @default([])
+  revision         CatalogPlatformCategoryRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, locale])
+  @@map("platform_category_revision_texts")
+  @@schema("catalog")
+}
+
+/// A slug a category used to have (insert-only): it redirects to the category and is not given to
+/// another category for 12 months. A slug may be retired more than once over the years.
+model CatalogPlatformCategorySlugHistory {
+  marketId   String                  @map("market_id") @db.VarChar(8)
+  tenantId   String                  @map("tenant_id")
+  /// Collation "C" is set in the migration.
+  slug       String
+  categoryId String                  @map("category_id") @db.Uuid
+  retiredAt  DateTime                @map("retired_at") @db.Timestamptz(6)
+  category   CatalogPlatformCategory @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, slug, retiredAt])
+  @@index([marketId, categoryId])
+  @@map("platform_category_slug_history")
   @@schema("catalog")
 }
 
@@ -493,6 +547,8 @@ model CatalogProductRevisionCategory {
   categoryId String                  @map("category_id") @db.Uuid
   /// Order as entered.
   position   Int                     @db.SmallInt
+  /// The primary category; one per revision (partial unique index, hand-written).
+  isPrimary  Boolean                 @default(false) @map("is_primary")
   revision   CatalogProductRevision  @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   category   CatalogPlatformCategory @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 

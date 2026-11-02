@@ -36,6 +36,11 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     return this.section(market).maxVariantsPerProduct;
   }
 
+  /** The deepest level of the platform category tree (AU 4, ZZ 3). */
+  maxCategoryDepth(market: MarketContext): number {
+    return this.section(market).maxCategoryDepth;
+  }
+
   productTypes(market: MarketContext): readonly string[] {
     return [...this.section(market).productTypes];
   }
