@@ -71,6 +71,8 @@ export interface ListRequest {
   readonly kind: ListKind | null;
   /** Incomplete only: files whose saved address is outside every area that takes new sellers. */
   readonly outsideArea: boolean;
+  /** A file tab only: files whose service area is this code (an unknown code lists nothing). */
+  readonly areaCode: string | null;
   readonly search: ListSearch | null;
   readonly after: ListCursor | null;
   readonly limit: number;
@@ -86,7 +88,8 @@ export interface ListRequestRefused {
   readonly fields: readonly ListFieldProblem[];
 }
 
-const KEYS = ['tab', 'kind', 'outsideArea', 'search', 'after', 'limit'] as const;
+const KEYS = ['tab', 'kind', 'outsideArea', 'areaCode', 'search', 'after', 'limit'] as const;
+const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 const MAX_ECHOED_UNKNOWN = 10;
 const UNSAFE_NAME = /[\p{Cc}\p{Cf}\p{Cs}]/gu;
 const SEARCH_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Cs}]/u;
@@ -216,6 +219,15 @@ export function parseListRequest(raw: unknown): Result<ListRequest, ListRequestR
     else outsideArea = outsideValue;
   }
 
+  const areaValue = get('areaCode');
+  let areaCode: string | null = null;
+  if (present(areaValue)) {
+    if (typeof areaValue !== 'string') problems.push({ path: 'areaCode', code: 'type' });
+    else if (isStateTab(tab)) problems.push({ path: 'areaCode', code: 'tab' });
+    else if (!AREA_CODE.test(areaValue)) problems.push({ path: 'areaCode', code: 'format' });
+    else areaCode = areaValue;
+  }
+
   const limitValue = get('limit');
   let limit = LIST_DEFAULT_LIMIT;
   if (present(limitValue)) {
@@ -243,7 +255,7 @@ export function parseListRequest(raw: unknown): Result<ListRequest, ListRequestR
   }
 
   if (problems.length > 0) return err({ code: 'validation.failed', fields: problems });
-  return ok({ tab, kind, outsideArea, search, after, limit });
+  return ok({ tab, kind, outsideArea, areaCode, search, after, limit });
 }
 
 /** The facts of one row that decide its status (design 3.3), all already read. */

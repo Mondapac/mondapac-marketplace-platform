@@ -52,6 +52,8 @@ export interface SellerListPage {
   readonly items: readonly SellerRow[];
   readonly next: string | null;
   readonly counts: SellerListCounts;
+  /** Every service area of the Market, for the area filter. */
+  readonly areas: readonly { readonly code: string; readonly name: string }[];
   /** Null when the admin may not see identity's state: the state tabs are then not shown. */
   readonly stateCounts: SellerListStateCounts | null;
 }
