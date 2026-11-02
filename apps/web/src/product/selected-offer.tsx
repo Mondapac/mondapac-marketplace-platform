@@ -7,7 +7,7 @@ import { sealArt } from '../certification/certification-seal.tsx';
 import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
-import { defaultVariantOf } from '../storefront/product-detail.ts';
+import { defaultVariantOf } from '../storefront/variants.ts';
 import type {
   CertificationBadge,
   ProductDetail,

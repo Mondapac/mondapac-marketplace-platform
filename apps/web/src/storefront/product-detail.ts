@@ -1,6 +1,7 @@
 import { formatMoney } from '../format/money.ts';
 import { isBrandSlug } from './brands.ts';
 import { imageIdsOf, type PhotoUrl } from './photos.ts';
+import { defaultVariantOf } from './variants.ts';
 import type {
   CertificationBadge,
   Money,
@@ -223,16 +224,6 @@ function variantsOf(
       },
     ];
   });
-}
-
-/**
- * The Variant the page opens on: the first one in stock in the owner's order, or the first when
- * none is in stock.
- */
-export function defaultVariantOf<V extends { readonly inStock: boolean }>(
-  variants: readonly [V, ...V[]],
-): V {
-  return variants.find((variant) => variant.inStock) ?? variants[0];
 }
 
 /**

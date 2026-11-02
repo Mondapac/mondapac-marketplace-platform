@@ -7,11 +7,11 @@ import { ProductPage } from '../src/product/product-page.tsx';
 import { productStructuredData } from '../src/seo/structured-data.ts';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import {
-  defaultVariantOf,
   productDetailOf,
   variantFromParam,
   type ProductDetailBody,
 } from '../src/storefront/product-detail.ts';
+import { defaultVariantOf } from '../src/storefront/variants.ts';
 
 // The Variant picker of the product page: the default choice, out of stock, the `?v=` link, the
 // swap of price and sellers, the keyboard, and the markup (ProductGroup, canonical).
