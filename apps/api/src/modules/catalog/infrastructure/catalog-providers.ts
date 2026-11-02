@@ -197,6 +197,11 @@ import { PrismaBusinessActivityRepository } from './prisma-business-activity.rep
 import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
+import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
+import {
+  ADMIN_CATEGORY_READER,
+  type AdminCategoryReader,
+} from '../application/ports/admin-category.reader';
 import { PrismaBrandAssigner } from './prisma-brand.assigner';
 
 const CATALOG_SECRET = Symbol('CATALOG_SECRET');
@@ -229,6 +234,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): BrandRepository =>
       new PrismaBrandRepository(prisma, ids),
+  },
+  {
+    provide: ADMIN_CATEGORY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminCategoryReader =>
+      new PrismaAdminCategoryReader(prisma),
   },
   {
     provide: BRAND_READER,

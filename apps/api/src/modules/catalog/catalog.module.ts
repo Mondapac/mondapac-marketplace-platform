@@ -214,6 +214,15 @@ import { OwnProductSaveDraft } from './application/use-cases/own-product-save-dr
 import { OwnProductSubmit } from './application/use-cases/own-product-submit.use-case';
 import { BRAND_ASSIGNER } from './application/ports/brand-assigner';
 import { BRAND_READER } from './application/ports/brand.reader';
+import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
+import type { CategoryActionProbes } from './application/categories/category-admin-views';
+import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
+import { CategoryImportProbe } from './application/use-cases/category-import-probe.use-case';
+import { CategoryRestructureProbe } from './application/use-cases/category-restructure-probe.use-case';
+import { CategoryAdminGet } from './application/use-cases/category-admin-get.use-case';
+import { CategoryAdminTree } from './application/use-cases/category-admin-tree.use-case';
+import { CategoryImpact } from './application/use-cases/category-impact.use-case';
+import { CategoryAdminController } from './presentation/category-admin.controller';
 import { BRAND_REPOSITORY } from './application/ports/brand.repository';
 import { BrandApprove } from './application/use-cases/brand-approve.use-case';
 import { BrandArchive } from './application/use-cases/brand-archive.use-case';
@@ -249,6 +258,9 @@ import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job'
  * The Nest token of each dependency name the use cases of catalog share: a use case's dependency
  * object is built from these by {@link useCaseProvider}, so a name always means the same port.
  */
+/** The three key probes the category reads use for their allowed actions (categories C1). */
+const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
+
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
   categories: PLATFORM_CATEGORY_REPOSITORY,
@@ -320,6 +332,8 @@ const PORT = {
   shareCheck: SavedFilterShareCheck,
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
+  adminCategoryReader: ADMIN_CATEGORY_READER,
+  categoryProbes: CATEGORY_ACTION_PROBES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
@@ -399,6 +413,7 @@ const productTypeProvider: FactoryProvider<string> = {
     PublicCategoryController,
     PublicProductImageController,
     BrandAdminController,
+    CategoryAdminController,
     BusinessActivityAdminController,
     OwnBrandController,
     PublicBrandController,
@@ -511,6 +526,35 @@ const productTypeProvider: FactoryProvider<string> = {
       matcher: true,
       clock: true,
     }),
+    ...[CategoryEditProbe, CategoryRestructureProbe, CategoryImportProbe].map(
+      (probe): FactoryProvider => ({
+        provide: probe,
+        inject: [USE_CASE_GATE],
+        useFactory: (gate: UseCaseGate) => new probe(gate),
+      }),
+    ),
+    {
+      provide: CATEGORY_ACTION_PROBES,
+      inject: [CategoryEditProbe, CategoryRestructureProbe, CategoryImportProbe],
+      useFactory: (
+        edit: CategoryEditProbe,
+        restructure: CategoryRestructureProbe,
+        importing: CategoryImportProbe,
+      ): CategoryActionProbes => ({ edit, restructure, importing }),
+    },
+    useCaseProvider(CategoryAdminTree, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+      categoryProbes: true,
+    }),
+    useCaseProvider(CategoryAdminGet, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+      categoryProbes: true,
+    }),
+    useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),

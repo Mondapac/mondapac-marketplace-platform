@@ -292,6 +292,17 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
   },
   CategoryTreeUnavailableError: { noCustomerText: 'error with a fixed reason' },
+  AdminStoredCategory: {
+    noCustomerText:
+      'admin read copy of stored category rows in any status: ids, slug and the published CategoryName rows, already claim-checked when written',
+  },
+  AdminCategoryRow: {
+    noCustomerText:
+      'admin tree row: ids, slug, status, the published CategoryName rows (already claim-checked when written) and numbers',
+  },
+  CategoryProductFact: { noCustomerText: 'category ids and counts of Offers; no text' },
+  CategoryCounts: { noCustomerText: 'counts only' },
+  CategoryImpactCounts: { noCustomerText: 'counts only' },
   AssistantCategory: {
     noCustomerText:
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
