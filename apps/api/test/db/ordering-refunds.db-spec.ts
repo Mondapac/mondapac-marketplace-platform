@@ -53,6 +53,7 @@ import {
   FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
+  FakeAttemptLimits,
   FakePickupVault,
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
@@ -172,6 +173,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       deliveryMethods: new AllowAllDeliveryMethods(),
       pickupCodes: new PrismaPickupCodeRepository(db.service),
       pickupVault: new FakePickupVault(),
+      attempts: new FakeAttemptLimits(),
     };
   });
 

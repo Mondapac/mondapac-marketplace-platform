@@ -14,6 +14,7 @@ import {
   FakeCommission,
   FakeCustomers,
   FakeLabels,
+  FakeAttemptLimits,
   FakePickupVault,
   AllowAllDeliveryMethods,
   FakeShipping,
@@ -189,6 +190,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deliveryMethods: new AllowAllDeliveryMethods(),
       pickupCodes: new MemoryPickupCodes(),
       pickupVault: new FakePickupVault(),
+      attempts: new FakeAttemptLimits(),
     };
   });
 
