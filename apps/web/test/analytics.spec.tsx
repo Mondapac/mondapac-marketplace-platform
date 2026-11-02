@@ -227,6 +227,31 @@ describe('GA4 tag', () => {
     expect(JSON.stringify(layer())).not.toMatch(/lamb/i);
   });
 
+  it('gives web vitals the cleaned title, location and referrer, not the browser values', () => {
+    document.title = 'Results for “lamb” | Mondapac';
+    Object.defineProperty(document, 'referrer', {
+      configurable: true,
+      value: 'https://shop.example/search?q=lamb',
+    });
+    nav.pathname = '/search';
+    nav.search = 'q=lamb';
+    render(<Ga4 id="G-ABC123XYZ9" nonce={null} enabled />);
+    act(() => vitals.report?.({ name: 'LCP', value: 900, id: 'v1', delta: 900, rating: 'good' }));
+    const vital = layer().find((command) => command[1] === 'LCP')?.[2];
+    expect(vital).toMatchObject({
+      page_title: '/search',
+      page_path: '/search',
+      page_location: 'https://shop.example/search',
+      page_referrer: 'https://shop.example/search',
+    });
+    // `set` makes the cleaned values the defaults of events the tag sends itself.
+    expect(layer().find((command) => command[0] === 'set')?.[1]).toMatchObject({
+      page_title: '/search',
+      page_location: 'https://shop.example/search',
+    });
+    expect(JSON.stringify(layer())).not.toMatch(/lamb/i);
+  });
+
   it('keeps only the origin of a referrer from another site', () => {
     expect(reportedReferrer('https://www.google.com/search?q=halal', 'https://shop.example')).toBe(
       'https://www.google.com',
@@ -263,6 +288,12 @@ describe('GA4 tag', () => {
     expect(reload).not.toHaveBeenCalled();
     view.rerender(<Ga4 id="G-ABC123XYZ9" nonce="n1" enabled={false} />);
     expect(reload).toHaveBeenCalledTimes(1);
+    // The loaded tag is told to stop measuring before the reload removes it.
+    expect(layer().at(-1)).toEqual([
+      'consent',
+      'update',
+      expect.objectContaining({ analytics_storage: 'denied', ad_storage: 'denied' }),
+    ]);
     view.rerender(<Ga4 id="G-ABC123XYZ9" nonce="n1" enabled={false} />);
     expect(reload).toHaveBeenCalledTimes(1);
   });

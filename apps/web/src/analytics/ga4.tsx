@@ -44,27 +44,41 @@ function location(pathname: string, search: string): Record<string, string> {
 function PageEvents() {
   const pathname = usePathname();
   const search = useSearchParams().toString();
-  // Where the buyer came from, as reported: the first page view reads document.referrer, later ones
-  // the previous reported page. gtag would otherwise send the raw referrer, query string included.
-  const previous = useRef<string | null>(null);
-  useEffect(() => {
-    const where = location(pathname, search);
-    gtag('event', 'page_view', {
-      ...where,
-      page_title: reportedTitle(pathname, document.title),
-      page_referrer:
-        previous.current ?? reportedReferrer(document.referrer, window.location.origin),
-    });
-    previous.current = where.page_location ?? null;
-  }, [pathname, search]);
   const here = useRef({ pathname, search });
   here.current = { pathname, search };
+  // The page reported before this one, and the referrer reported for the current page: the first
+  // page view reads document.referrer, later ones the previous reported page. gtag would otherwise
+  // send the raw referrer, query string included.
+  const lastReported = useRef<string | null>(null);
+  const cameFrom = useRef('');
+  /**
+   * Everything gtag would otherwise fill in from the browser: location, title and referrer, with
+   * the query string and the page title cleaned on routes that may carry personal data. Every event
+   * carries it, and `set` makes it the default for events the tag sends on its own.
+   */
+  const context = (): Record<string, string> => ({
+    ...location(here.current.pathname, here.current.search),
+    page_title: reportedTitle(here.current.pathname, document.title),
+    page_referrer: cameFrom.current,
+  });
+  useEffect(() => {
+    cameFrom.current =
+      lastReported.current ?? reportedReferrer(document.referrer, window.location.origin);
+    const where = context();
+    gtag('set', {
+      page_location: where.page_location,
+      page_title: where.page_title,
+      page_referrer: where.page_referrer,
+    });
+    gtag('event', 'page_view', where);
+    lastReported.current = where.page_location ?? null;
+  }, [pathname, search]);
   // Core Web Vitals in the field: LCP, INP and CLS, only while this component is mounted, which
   // is only with consent.
   useReportWebVitals((metric: VitalsMetric) => {
     if (!VITALS.has(metric.name)) return;
     gtag('event', metric.name, {
-      ...location(here.current.pathname, here.current.search),
+      ...context(),
       value: Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value),
       metric_id: metric.id,
       metric_value: metric.value,
@@ -95,7 +109,16 @@ export function Ga4({
 
   useEffect(() => {
     if (!enabled) {
-      if (wasEnabled.current) window.location.reload();
+      if (wasEnabled.current) {
+        // The loaded tag stops measuring at once; the reload then removes it.
+        gtag('consent', 'update', {
+          analytics_storage: 'denied',
+          ad_storage: 'denied',
+          ad_user_data: 'denied',
+          ad_personalization: 'denied',
+        });
+        window.location.reload();
+      }
       return;
     }
     wasEnabled.current = true;
