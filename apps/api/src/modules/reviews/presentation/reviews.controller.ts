@@ -38,6 +38,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { CastHelpfulVote } from '../application/use-cases/cast-helpful-vote.use-case';
+import { RemoveHelpfulVote } from '../application/use-cases/remove-helpful-vote.use-case';
 import { RequiresStepUp } from '../../../platform/authz';
 import { ListModerationQueue } from '../application/use-cases/list-moderation-queue.use-case';
 import { ModerateReview } from '../application/use-cases/moderate-review.use-case';
@@ -57,6 +59,8 @@ import { ViewSellerSummary } from '../application/use-cases/view-seller-summary.
 import { closedBody, closedQuery, refusal } from './http-answers';
 import {
   DeletedReviewBody,
+  HelpfulVoteBody,
+  helpfulVoteBody,
   ModerateRequest,
   ModerationDetailBody,
   moderationDetailBody,
@@ -118,6 +122,8 @@ export class BuyerReviewsController {
     private readonly edit: EditProductReview,
     private readonly remove: DeleteProductReview,
     private readonly rate: RateSellerOrder,
+    private readonly castVote: CastHelpfulVote,
+    private readonly removeVote: RemoveHelpfulVote,
   ) {}
 
   @Get('me/to-review')
@@ -297,6 +303,73 @@ export class BuyerReviewsController {
     return { id: result.value.id, status: result.value.status };
   }
 
+  @Put('products/:publicId/helpful')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Mark a published review helpful',
+    description:
+      'Once per review (voting twice is one vote). Not on your own review, not by a member of ' +
+      "the seller's team, and at most the Market's daily limit. The answer is the count and " +
+      'whether you now have a vote. Answers reviews.disabled (404) while reviews are off.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'publicId', description: 'The id the public list shows.' })
+  @ApiOkResponse({ type: HelpfulVoteBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, request.csrf or reviews.own-review',
+  })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.disabled or reviews.not-found' })
+  @ApiTooManyRequestsResponse({ ...ERROR, description: 'reviews.rate-limited' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'reviews.unavailable' })
+  async markHelpful(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('publicId') publicId: string,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.castVote.execute(context, { reviewId: publicId });
+    logRoute(
+      this.#logger,
+      'reviews.cast-helpful-vote-route',
+      context,
+      result.ok ? 'voted' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return helpfulVoteBody(result.value);
+  }
+
+  @Delete('products/:publicId/helpful')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Take back a helpful vote',
+    description: 'Taking back a vote you never cast answers the same as taking it back.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'publicId', description: 'The id the public list shows.' })
+  @ApiOkResponse({ type: HelpfulVoteBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.disabled or reviews.not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'reviews.unavailable' })
+  async unmarkHelpful(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('publicId') publicId: string,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.removeVote.execute(context, { reviewId: publicId });
+    logRoute(
+      this.#logger,
+      'reviews.remove-helpful-vote-route',
+      context,
+      result.ok ? 'removed' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return helpfulVoteBody(result.value);
+  }
+
   @Post('seller-orders/:sellerOrderId/rating')
   @ApiOperation({
     summary: 'Rate a delivered seller order',
@@ -379,7 +452,11 @@ export class PublicReviewsController {
   })
   @ApiParam({ name: 'productId', format: 'uuid' })
   @ApiQuery({ name: 'stars', required: false, description: '1 to 5: only reviews of that rating.' })
-  @ApiQuery({ name: 'sort', required: false, description: '`recent` (default; the only one now).' })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    description: '`recent` (default) or `helpful` (most helpful first).',
+  })
   @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
   @ApiOkResponse({ type: ProductReviewsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })

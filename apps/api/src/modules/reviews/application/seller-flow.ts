@@ -10,7 +10,11 @@ import { checkText } from '../domain/text-checks';
 import { isActingAs } from './caller';
 import type { ReviewsFailure } from './failures';
 import { activeSettings } from './market-switch';
-import type { ProductReviewRecord, ReplyRecord, ReviewCursor } from './ports/review.repository';
+import type {
+  ProductReviewRecord,
+  ReplyRecord,
+  SellerReviewCursor,
+} from './ports/review.repository';
 import type { ReviewsDependencies } from './reviews-dependencies';
 
 // The seller's side of reviews (buyer reviews and ratings package 4; owner decision N6, design 5.2
@@ -90,8 +94,9 @@ const reviewView = (
 // ---- list -------------------------------------------------------------------------------------
 
 const CURSOR = /^(\d{1,15})_([0-9a-f-]{36})$/;
-const encodeCursor = (c: ReviewCursor): string => `${c.publishedAt.epochMilliseconds}_${c.id}`;
-function decodeCursor(raw: string): ReviewCursor | null {
+const encodeCursor = (c: SellerReviewCursor): string =>
+  `${c.publishedAt.epochMilliseconds}_${c.id}`;
+function decodeCursor(raw: string): SellerReviewCursor | null {
   const match = CURSOR.exec(raw);
   if (match === null) return null;
   const id = parseId<'ProductReview'>(match[2]!);
@@ -115,7 +120,7 @@ export async function listSellerReviews(
   const switched = await activeSettings(deps, context);
   if (!switched.ok) return switched;
   const settings = switched.value;
-  let after: ReviewCursor | null = null;
+  let after: SellerReviewCursor | null = null;
   if (input?.cursor !== undefined) {
     after = typeof input.cursor === 'string' ? decodeCursor(input.cursor) : null;
     if (after === null) {

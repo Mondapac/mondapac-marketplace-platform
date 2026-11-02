@@ -277,6 +277,33 @@ describe('SellerNotifications drawer', () => {
       /Your store is approved/,
       '/',
     ],
+    [
+      'a new review',
+      {
+        kind: 'seller.review-posted',
+        params: { reviewId: VARIANT, productId: PRODUCT, rating: 1 },
+      },
+      /A customer review of one of your products is published: 1\s+star/,
+      '/reviews',
+    ],
+    [
+      'a hidden review',
+      { kind: 'seller.review-hidden', params: { reviewId: VARIANT, productId: PRODUCT } },
+      /A customer review of one of your products was hidden by the platform/,
+      '/reviews',
+    ],
+    [
+      'a restored review',
+      { kind: 'seller.review-restored', params: { reviewId: VARIANT, productId: PRODUCT } },
+      /A customer review of one of your products is visible again/,
+      '/reviews',
+    ],
+    [
+      'an order that did not arrive in good order',
+      { kind: 'seller.delivery-problem', params: { sellerOrderId: ORDER } },
+      /A customer said an order did not arrive in good order/,
+      `/orders/${ORDER}`,
+    ],
   ])('opens %s on its page', async (_label, over, text, href) => {
     counts = [{ unread: 1, newest: null }];
     call.mockImplementation((method, path) =>

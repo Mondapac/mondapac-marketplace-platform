@@ -13,7 +13,7 @@ import type { ProductRatingSummary, SellerRatingSummary } from '../contracts/rev
 import { buyerAccountId } from './caller';
 import { activeSettings } from './market-switch';
 import type { FieldIssue, ReviewsFailure, SummaryFailure } from './failures';
-import type { PublishedReviewRecord, ReviewCursor } from './ports/review.repository';
+import type { PublishedReviewRecord, ReviewCursor, ReviewSort } from './ports/review.repository';
 import { deliveredPurchases, lookbackSince } from './purchases';
 import type { ReviewsDependencies } from './reviews-dependencies';
 import {
@@ -188,7 +188,7 @@ export interface ProductReviewsPage {
 // The cursor of the public list is the random public id of the last review shown: it carries no
 // time (an exact publish time would let a client binary-search it), and an id of another product
 // or a made-up one is refused.
-const PUBLIC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export const PUBLIC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export async function listProductReviews(
   deps: ReviewsDependencies,
@@ -210,9 +210,12 @@ export async function listProductReviews(
     if (parsed === null) fields.push({ path: 'stars', code: 'range' });
     else stars = parsed;
   }
-  // "Most helpful" arrives with helpful votes (not in this package): only `recent` exists.
-  if (input?.sort !== undefined && input.sort !== 'recent')
-    fields.push({ path: 'sort', code: 'value' });
+  // `recent` (default) or `helpful` (most votes first, package 5).
+  let sort: ReviewSort = 'recent';
+  if (input?.sort !== undefined) {
+    if (input.sort === 'recent' || input.sort === 'helpful') sort = input.sort;
+    else fields.push({ path: 'sort', code: 'value' });
+  }
   let cursorId: string | null = null;
   if (input?.cursor !== undefined) {
     if (typeof input.cursor === 'string' && PUBLIC_ID.test(input.cursor)) cursorId = input.cursor;
@@ -238,6 +241,7 @@ export async function listProductReviews(
       }
       return ok(
         await deps.reviews.listPublishedProductReviews(context.market, productId.value, {
+          sort,
           stars,
           after,
           limit: settings.pageSize + 1,
@@ -281,6 +285,7 @@ export async function listProductReviews(
       boughtFrom: { offerId: record.offerId, sellerId: record.sellerId },
       publishedOn: dayOf(record.publishedAt!),
       editedOn: record.editedAt === null ? null : dayOf(record.editedAt),
+      helpfulCount: record.helpfulCount,
     })),
     nextCursor: read.value.length > settings.pageSize && last !== undefined ? last.publicId : null,
   });
