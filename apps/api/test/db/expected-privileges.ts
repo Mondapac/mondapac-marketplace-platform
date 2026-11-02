@@ -326,6 +326,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['valid_to'],
     },
+    // Seller health (package 3): counters and snapshots are set by the rollup and replaced on a
+    // recalculation; never deleted.
+    'sellers.seller_health_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'sellers.seller_health_snapshots': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
@@ -602,6 +606,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'created_at',
         'deleted_at',
         'edited_at',
+        'helpful_count',
         'last_purchase_at',
         'last_seller_order_id',
         'locale',
@@ -643,6 +648,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],
     },
+    // Package 5: a helpful vote is inserted and deleted by its voter (a trigger refuses UPDATE and
+    // keeps `product_reviews.helpful_count` exact).
+    'reviews.helpful_votes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Blog (blog package 1): a post changes its slug, status, pointers, schedule and stamps (never
     // its kind, owner or seller); a version's content and review stamps change while it is a draft
     // or is decided (a trigger refuses the rest); links and tags are rewritten with the draft; an
@@ -994,6 +1002,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'margin_fixed_minor',
         'margin_kind',
         'pickup_enabled',
+        'ready_prep_minutes',
         'rounding_step_minor',
         'same_day_cutoff_minutes',
         'same_day_enabled',
@@ -1060,6 +1069,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'short_text',
         'text_search_config',
       ],
+    },
+    // Search rating boost (buyer reviews and ratings package 5): the star totals of a product,
+    // copied from reviews by a job; upserted and deleted when a product has no published review.
+    'search.product_ratings': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['bayes_times_1000', 'boost_ppm', 'rating_count', 'rating_sum', 'synced_at'],
     },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Tax step 3: a refund is written once and only settles (state, Stripe refund id, attempts,

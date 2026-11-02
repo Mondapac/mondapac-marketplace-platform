@@ -96,6 +96,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           deliveryMethod: 'instant',
           deliveryWindow: null,
           readyAt: null,
+          readyPrepMinutes: null,
           deliveryAttention: null,
           deliveryQuote: null,
         },

@@ -1932,7 +1932,7 @@
     },
     "after": {
       "action": "enumOf(publish|hide|restore|remove|dismiss-reports)",
-      "reasonCode": "enumOf(checked-ok|personal-information|abusive|irrelevant|not-a-purchase|incentivised|spam|other|reinstated|hidden-in-error|illegal|defamatory|not-against-policy|duplicate)",
+      "reasonCode": "enumOf(checked-ok|personal-information|abusive|irrelevant|not-a-purchase|extortion|incentivised|spam|other|reinstated|hidden-in-error|illegal|defamatory|not-against-policy|duplicate)",
       "status": "enumOf(published|held|hidden|removed|deleted-by-author)",
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)"
@@ -2030,6 +2030,7 @@
       "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
       "marginKind": "enumOf(none|percent|fixed)",
       "marginValue": "integer",
+      "readyPrepMinutes": "integer",
       "roundingStepMinor": "integer",
       "sameDayCutoffMinutes": "integer",
       "scheduledDaysAhead": "integer",
@@ -2040,6 +2041,7 @@
       "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
       "marginKind": "enumOf(none|percent|fixed)",
       "marginValue": "integer",
+      "readyPrepMinutes": "integer",
       "roundingStepMinor": "integer",
       "sameDayCutoffMinutes": "integer",
       "scheduledDaysAhead": "integer",

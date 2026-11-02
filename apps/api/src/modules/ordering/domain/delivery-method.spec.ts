@@ -100,6 +100,7 @@ const sellerOrder = (patch: Partial<SellerOrder> = {}): SellerOrder => ({
   deliveryMethod: 'instant',
   deliveryWindow: null,
   readyAt: null,
+  readyPrepMinutes: null,
   deliveryAttention: null,
   deliveryQuote: null,
   ...patch,

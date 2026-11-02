@@ -42,7 +42,11 @@ model ReviewsProductReview {
   deletedAt         DateTime?                 @map("deleted_at") @db.Timestamptz(6)
   /// When the latest qualifying purchase was delivered.
   lastPurchaseAt    DateTime                  @map("last_purchase_at") @db.Timestamptz(6)
+  /// How many accounts voted this review helpful. Kept exact by triggers on `helpful_votes` (never
+  /// written by the application); 0 or more (CHECK).
+  helpfulCount      Int                       @default(0) @map("helpful_count")
   replies           ReviewsReply[]
+  helpfulVotes      ReviewsHelpfulVote[]
   reports           ReviewsReport[]
   moderationActions ReviewsModerationAction[]
 
@@ -57,6 +61,24 @@ model ReviewsProductReview {
   /// The author's own list and the daily limit.
   @@index([marketId, accountId, createdAt(sort: Desc)])
   @@map("product_reviews")
+  @@schema("reviews")
+}
+
+/// One account's "this review was helpful" vote (package 5). One vote per (review, account); the
+/// vote is removed again by the voter, or when the voter's account is deleted. Votes never carry
+/// text and are never shown with their voter.
+model ReviewsHelpfulVote {
+  marketId  String               @map("market_id") @db.VarChar(8)
+  tenantId  String               @map("tenant_id")
+  reviewId  String               @map("review_id") @db.Uuid
+  accountId String               @map("account_id") @db.Uuid
+  createdAt DateTime             @map("created_at") @db.Timestamptz(6)
+  review    ReviewsProductReview @relation(fields: [marketId, reviewId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, reviewId, accountId])
+  /// The voter's own votes (the daily limit and account deletion).
+  @@index([marketId, accountId, createdAt(sort: Desc)])
+  @@map("helpful_votes")
   @@schema("reviews")
 }
 

@@ -11,6 +11,7 @@ import {
   type ProductReviewContent,
   type ReviewStatus,
 } from '../domain/rules';
+import { overlapSignals } from '../domain/seller-overlap';
 import { checkText } from '../domain/text-checks';
 import { buyerAccountId } from './caller';
 import { recordDeliveryProblem, recordHeld, recordPublished } from './review-events';
@@ -87,6 +88,29 @@ function logStatus(
     toStatus: to,
     at,
   };
+}
+
+/**
+ * The same-address and same-payment-fingerprint signals for one purchase (package 5). They only
+ * raise a code: a source that cannot say, or throws, raises none, because it must never stop an
+ * honest buyer. Facade-backed, so asked outside any unit. Nothing compared is kept.
+ */
+async function overlapCodes(
+  deps: ReviewsDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  purchase: { readonly sellerId: Id<'Seller'>; readonly sellerOrderId: Id<'SellerOrder'> },
+): Promise<readonly string[]> {
+  try {
+    const answers = await deps.overlap.answersFor(context, {
+      accountId,
+      sellerId: purchase.sellerId,
+      sellerOrderId: purchase.sellerOrderId,
+    });
+    return answers === null ? [] : overlapSignals(answers);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -190,7 +214,12 @@ export async function submitProductReview(
     return err({ code: 'reviews.own-store' });
   }
 
-  const signals = checkText(content.value, settings.textRules);
+  // A text hit or an overlap with the seller holds the review for a human (design section 6: it
+  // is not in the average until looked at). An overlap never refuses the review.
+  const signals = [
+    ...checkText(content.value, settings.textRules),
+    ...(await overlapCodes(deps, context, accountId, purchase)),
+  ];
   const status = statusForSignals(signals);
 
   return deps.unitOfWork.run<SubmittedReview, ReviewsFailure>(context.market, async () => {
@@ -561,6 +590,9 @@ export async function rateSellerOrder(
   if (await deps.affinity.isTiedToSeller(context, accountId, order.sellerId)) {
     return err({ code: 'reviews.own-store' });
   }
+  // A seller rating has no `held` state: an overlap with the seller is recorded as a signal for
+  // the admin queue and the rating stays as it is.
+  const overlap = await overlapCodes(deps, context, accountId, order);
 
   return deps.unitOfWork.run<OwnSellerRatingView, ReviewsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'reviews.disabled' } as const);
@@ -584,6 +616,12 @@ export async function rateSellerOrder(
     }
     if (!record.arrivedOk) {
       await recordDeliveryProblem(deps, context, record.id, record.sellerId, now);
+    }
+    if (overlap.length > 0) {
+      await deps.reviews.appendSignals(
+        context.market,
+        signalsOf(deps, 'seller-rating', record.id, overlap, now),
+      );
     }
     // The seller summary is not refreshed here: only the repair job writes it, at a coarse
     // interval, so a seller who polls the public endpoint cannot read one rating from one change.
