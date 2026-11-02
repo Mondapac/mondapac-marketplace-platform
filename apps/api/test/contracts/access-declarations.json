@@ -27,6 +27,7 @@
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "catalog.brand-product-ids", "rule": "anonymous" },
+  { "name": "catalog.business-activities-active", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.offer-badges", "rule": "anonymous" },
   { "name": "catalog.offer-listings", "rule": "anonymous" },
@@ -642,6 +643,12 @@
   { "name": "sellers.published-store-slugs", "rule": "anonymous" },
   { "name": "sellers.purge-expired", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
+  {
+    "name": "sellers.seller-business-activities",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  { "name": "sellers.seller-business-activities-system", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },

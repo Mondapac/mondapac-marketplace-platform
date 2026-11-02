@@ -103,8 +103,33 @@ export const SELLERS_BLOG_ACCESS_EDIT = definePermission('sellers', {
   protected: true,
 });
 
+/**
+ * Read the business activities a seller carries and who last changed them and why (ADR-0040
+ * decision 4). Platform scope, not protected. No default role lists it: the Platform Administrator
+ * system role holds every key, so no role-seed bump is needed.
+ */
+export const SELLERS_BUSINESS_ACTIVITY_VIEW = definePermission('sellers', {
+  key: 'sellers.business-activity.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Replace the business activities a seller carries, with a reason (ADR-0040 decision 4). Platform
+ * scope, not protected, like the activity definitions themselves (`catalog.business-activity.edit`):
+ * today an assignment moves no money, certification or access by itself. When the offer rule that
+ * reads it is built (a later package) its security review decides whether the key becomes protected.
+ */
+export const SELLERS_BUSINESS_ACTIVITY_MANAGE = definePermission('sellers', {
+  key: 'sellers.business-activity.manage',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
+  SELLERS_BUSINESS_ACTIVITY_MANAGE,
+  SELLERS_BUSINESS_ACTIVITY_VIEW,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,

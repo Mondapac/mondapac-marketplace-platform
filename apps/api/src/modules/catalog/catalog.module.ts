@@ -133,6 +133,9 @@ import { OfferSellUnitsQuery } from './application/use-cases/offer-sell-units.us
 import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use-case';
 import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
+import { CATALOG_ACTIVITIES_FACADE } from './contracts/catalog-activities.facade';
+import { CatalogActivitiesFacadeImplementation } from './presentation/catalog-activities.facade';
+import { BusinessActivitiesActiveQuery } from './application/use-cases/business-activities-active.use-case';
 import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
 import { CATALOG_INDEX_FACADE } from './contracts/catalog-index.facade';
 import { CATALOG_EVENTS } from './domain/events';
@@ -489,6 +492,14 @@ const productTypeProvider: FactoryProvider<string> = {
       brandAssigner: true,
     }),
     useCaseProvider(BusinessActivityList, { unitOfWork: true, activityReader: true }),
+    // The activity ids that are active, for sellers' assignment check (ADR-0040 decision 4).
+    useCaseProvider(BusinessActivitiesActiveQuery, { unitOfWork: true, activityReader: true }),
+    {
+      provide: CATALOG_ACTIVITIES_FACADE,
+      inject: [BusinessActivitiesActiveQuery],
+      useFactory: (active: BusinessActivitiesActiveQuery) =>
+        new CatalogActivitiesFacadeImplementation(active),
+    },
     useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
     useCaseProvider(BusinessActivityCreate, {
       unitOfWork: true,
@@ -1147,6 +1158,11 @@ const productTypeProvider: FactoryProvider<string> = {
       useFactory: (tree: CategoryTreeQuery) => new CatalogAssistantFacadeImplementation(tree),
     },
   ],
-  exports: [CATALOG_FACADE, CATALOG_INDEX_FACADE, CATALOG_ASSISTANT_FACADE],
+  exports: [
+    CATALOG_FACADE,
+    CATALOG_INDEX_FACADE,
+    CATALOG_ASSISTANT_FACADE,
+    CATALOG_ACTIVITIES_FACADE,
+  ],
 })
 export class CatalogModule {}

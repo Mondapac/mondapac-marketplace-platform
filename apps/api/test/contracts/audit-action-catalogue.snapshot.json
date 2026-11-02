@@ -1952,6 +1952,20 @@
     }
   },
   {
+    "action": "sellers.business-activities.change",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "extraActivityIds": "listOf(id, max 9)",
+      "mainActivityId": "optional(id)"
+    },
+    "after": {
+      "extraActivityIds": "listOf(id, max 9)",
+      "mainActivityId": "id"
+    }
+  },
+  {
     "action": "sellers.business-details.viewed",
     "targetType": "sellers.seller",
     "targetId": "id",

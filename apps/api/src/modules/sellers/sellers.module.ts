@@ -89,6 +89,13 @@ import { BlogAccess } from './application/use-cases/blog-access.use-case';
 import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
 import { BlogAccessController } from './presentation/blog-access.controller';
 import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
+import { BUSINESS_ACTIVITY_DIRECTORY } from './application/ports/business-activity-directory';
+import { SELLER_BUSINESS_ACTIVITY_REPOSITORY } from './application/ports/seller-business-activity.repository';
+import { SellerActivitiesGetUseCase } from './application/use-cases/seller-activities-get.use-case';
+import { SellerActivitiesSetUseCase } from './application/use-cases/seller-activities-set.use-case';
+import { SellerBusinessActivities } from './application/use-cases/seller-business-activities.use-case';
+import { SellerBusinessActivitiesSystem } from './application/use-cases/seller-business-activities-system.use-case';
+import { SellerActivitiesController } from './presentation/seller-activities.controller';
 import { AllowedProductTypesSystem } from './application/use-cases/allowed-product-types-system.use-case';
 import { AllowedProductTypes } from './application/use-cases/allowed-product-types.use-case';
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
@@ -183,6 +190,8 @@ const PORT = {
   flags: ADMIN_FLAG_REPOSITORY,
   sellingFacts: SELLING_FACTS_REPOSITORY,
   blogAccess: BLOG_ACCESS_REPOSITORY,
+  businessActivities: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+  activityDirectory: BUSINESS_ACTIVITY_DIRECTORY,
   storeProfiles: STORE_PROFILE_REPOSITORY,
   publishedStores: PUBLISHED_STORE_REPOSITORY,
   minimumOrderPolicy: MINIMUM_ORDER_POLICY,
@@ -284,6 +293,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewRegisterCheckController,
     ReviewDecisionController,
     BlogAccessController,
+    SellerActivitiesController,
     SellerListController,
     StoreSettingsController,
     OwnZoneController,
@@ -611,6 +621,26 @@ const REVIEW_DECISION_PORTS = {
     // The blog switch of a seller (blog package 1): the read pair and the admin's set.
     useCaseProvider(BlogAccess, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(BlogAccessSystem, { unitOfWork: true, sellingFacts: true }),
+    // A seller's business activities (ADR-0040 decision 4): the admin's get and set, and the read
+    // pair behind the facade's `sellerBusinessActivities`.
+    useCaseProvider(SellerActivitiesGetUseCase, {
+      unitOfWork: true,
+      files: true,
+      businessActivities: true,
+    }),
+    useCaseProvider(SellerActivitiesSetUseCase, {
+      unitOfWork: true,
+      businessActivities: true,
+      activityDirectory: true,
+      audit: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(SellerBusinessActivities, { unitOfWork: true, businessActivities: true }),
+    useCaseProvider(SellerBusinessActivitiesSystem, {
+      unitOfWork: true,
+      businessActivities: true,
+    }),
     // Since when a seller has been approved, for promotions' new-seller rule: the read pair.
     useCaseProvider(ActiveSince, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(ActiveSinceSystem, { unitOfWork: true, sellingFacts: true }),
@@ -649,6 +679,8 @@ const REVIEW_DECISION_PORTS = {
         SellingEligibilitySystem,
         AllowedProductTypes,
         AllowedProductTypesSystem,
+        SellerBusinessActivities,
+        SellerBusinessActivitiesSystem,
         BlogAccess,
         BlogAccessSystem,
         ActiveSince,
@@ -667,6 +699,8 @@ const REVIEW_DECISION_PORTS = {
         sellingEligibilitySystem: SellingEligibilitySystem,
         allowedProductTypes: AllowedProductTypes,
         allowedProductTypesSystem: AllowedProductTypesSystem,
+        sellerBusinessActivities: SellerBusinessActivities,
+        sellerBusinessActivitiesSystem: SellerBusinessActivitiesSystem,
         blogAccess: BlogAccess,
         blogAccessSystem: BlogAccessSystem,
         activeSince: ActiveSince,
@@ -685,6 +719,8 @@ const REVIEW_DECISION_PORTS = {
           sellingEligibilitySystem,
           allowedProductTypes,
           allowedProductTypesSystem,
+          sellerBusinessActivities,
+          sellerBusinessActivitiesSystem,
           blogAccess,
           blogAccessSystem,
           activeSince,
@@ -735,6 +771,12 @@ const REVIEW_DECISION_PORTS = {
     ),
   ],
   // STORE_TEXT_CLAIM_CHECK: SellerStoreProfileModule binds certification to it at start.
-  exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES, STORE_TEXT_CLAIM_CHECK],
+  // STORE_TEXT_CLAIM_CHECK and BUSINESS_ACTIVITY_DIRECTORY: SellerStoreProfileModule binds them.
+  exports: [
+    SELLERS_FACADE,
+    APPROVED_SELLER_ZONES,
+    STORE_TEXT_CLAIM_CHECK,
+    BUSINESS_ACTIVITY_DIRECTORY,
+  ],
 })
 export class SellersModule {}

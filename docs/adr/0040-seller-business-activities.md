@@ -44,3 +44,11 @@ and its search of platform products only show what belongs to that activity.
 - This package (1 of 4) adds the tables, the admin API and the permission keys, and changes no
   seller or offer behaviour. Nothing reads activities yet, so it is safe to merge before the panel.
 - The admin page, the seller assignment and the offer rule follow as separate packages.
+- Package 4a (backend of the seller assignment): `sellers.seller_business_activities` (one main,
+  0-9 extras, no cross-schema key), an insert-only change log with the admin's reason, the admin
+  routes `GET`/`PUT /sellers/admin/:sellerId/business-activities` under the new keys
+  `sellers.business-activity.view` (Viewer role since seed version 25) and `.manage`, and one read
+  contract, `SellersFacade.sellerBusinessActivities`, for the `system` actor and a seller's own
+  account. Activities are checked through `CatalogActivitiesFacade.activeBusinessActivityIds`,
+  bound late by `SellerStoreProfileModule` because catalog imports sellers. Nothing enforces the
+  assignment yet.

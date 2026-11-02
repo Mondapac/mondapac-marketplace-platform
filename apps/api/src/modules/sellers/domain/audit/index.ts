@@ -118,6 +118,26 @@ export const BlogAccessChanged = defineAuditAction({
   after: { enabled: auditField.boolean(), unpublishLive: auditField.boolean() },
 });
 
+/**
+ * An admin replaced a seller's business activities (ADR-0040 decision 4): the main activity and the
+ * extras before and after, as ids. The admin's reason is text, so it is never in the row: it is
+ * kept in the seller's activity change log (`seller_business_activity_changes`) with the same
+ * unit and instant. `mainActivityId` is absent before the first assignment.
+ */
+export const BusinessActivitiesChanged = defineAuditAction({
+  action: 'sellers.business-activities.change',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: {
+    mainActivityId: auditField.optional(auditField.id()),
+    extraActivityIds: auditField.listOf(auditField.id(), 9),
+  },
+  after: {
+    mainActivityId: auditField.id(),
+    extraActivityIds: auditField.listOf(auditField.id(), 9),
+  },
+});
+
 /** Every audited action of sellers, for its module's registration. */
 export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   BusinessDetailsViewed,
@@ -127,4 +147,5 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   StoreImageChanged,
   PickupDetailsReadForCarrier,
   BlogAccessChanged,
+  BusinessActivitiesChanged,
 ]);
