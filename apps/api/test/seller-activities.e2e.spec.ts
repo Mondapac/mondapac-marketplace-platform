@@ -196,6 +196,32 @@ describe('seller business activities over HTTP (integration, package 4a)', () =>
       assignedAt: START,
       version: 1,
     });
+    // Every admin has an active second factor, for the admin step-up of the replace route.
+    for (const [n, accountOf] of [
+      [1, ROOT],
+      [2, VIEWER],
+      [4, SUPPORT],
+      [7, FINANCE],
+    ] as const) {
+      fakes.factors.set(accountOf, {
+        id: id<'SecondFactor'>(`01990000-0000-7000-8000-${n12(0xf300 + n)}`),
+        marketId,
+        accountId: accountOf,
+        state: 'active',
+        secretCiphertext: 'sealed',
+        pendingSecretCiphertext: null,
+        lastAcceptedStep: null,
+        activatedAt: START,
+        lockedAt: null,
+        createdAt: START,
+        recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+          position: index + 1,
+          codeHash: new Uint8Array(32).fill(index + 1),
+          usedAt: null,
+        })),
+        version: 1,
+      });
+    }
     account(3, CUSTOMER, 'customer');
     account(6, SELLER_SESSION_ACCOUNT, 'seller');
   }
@@ -205,8 +231,16 @@ describe('seller business activities over HTTP (integration, package 4a)', () =>
     account: Id<'Account'>,
     n: number,
     population: 'admin' | 'customer' | 'seller' = 'admin',
+    { proved = true } = {},
   ) {
     const issued = tokens.issue();
+    if (population === 'admin' && proved) {
+      // A fresh step-up proof of this session for the replace action (identity's verify route).
+      fakes.stepUpProofs.set(
+        `${code}|01990000-0000-7000-8000-${n12(0xf200 + n)}|sellers.business-activity.change`,
+        clock.now(),
+      );
+    }
     void fakes.sessionRepository.add(
       marketOf(code),
       openSession({
@@ -400,6 +434,25 @@ describe('seller business activities over HTTP (integration, package 4a)', () =>
       expect(financeRead.status).toBe(403);
       expect(financeRead.body).toEqual({ statusCode: 403, code: 'access.denied' });
       expect(visitorRead.status).toBe(401);
+    });
+
+    it('needs a fresh two-step proof of the admin session to replace, but not to read', async () => {
+      await boot();
+      await seeded(code);
+      assignments.sellers.add(`${code}|${sellerId(1)}`);
+      const unproved = sessionHeaders(code, ROOT, 17, 'admin', { proved: false });
+
+      const refused = await put(code, sellerId(1), unproved, {
+        mainActivityId: activityId(1),
+        extraActivityIds: [],
+        reason: 'x',
+      });
+      const read = await get(code, sellerId(1), unproved);
+
+      expect(refused.status).toBeGreaterThanOrEqual(400);
+      expect(refused.status).not.toBe(404);
+      expect(assignments.held.size).toBe(0);
+      expect(read.status).toBe(200);
     });
 
     it('needs the CSRF token to replace', async () => {

@@ -116,14 +116,14 @@ export const SELLERS_BUSINESS_ACTIVITY_VIEW = definePermission('sellers', {
 
 /**
  * Replace the business activities a seller carries, with a reason (ADR-0040 decision 4). Platform
- * scope, not protected, like the activity definitions themselves (`catalog.business-activity.edit`):
- * today an assignment moves no money, certification or access by itself. When the offer rule that
- * reads it is built (a later package) its security review decides whether the key becomes protected.
+ * scope and protected: the assignment decides what a seller may sell once the offer rule reads it,
+ * so only the Platform Administrator system role holds it and no custom role can. The PUT route also
+ * asks for a fresh two-step code (`sellers.business-activity.change`).
  */
 export const SELLERS_BUSINESS_ACTIVITY_MANAGE = definePermission('sellers', {
   key: 'sellers.business-activity.manage',
   scope: 'platform',
-  protected: false,
+  protected: true,
 });
 
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [

@@ -225,6 +225,19 @@ describe.each(TEST_MARKETS)(
       ).toBe('23503');
     });
 
+    it('answers false from the lock when the seller has no settings row, and a use case reads that as not found', async () => {
+      const sellerId = uuid7();
+      created.push(sellerId);
+      await sql.query(
+        `INSERT INTO sellers.seller_files
+           (seller_id, market_id, tenant_id, origin, approval_required_at_registration,
+            draft_complete, last_changed_at, version, created_at)
+         VALUES ($1, $2, $3, 'self', true, false, now(), 1, now())`,
+        [sellerId, market.marketId, market.tenantId],
+      );
+      expect(await inUnit(() => repository.lock(market, sellerId as Id<'Seller'>))).toBe(false);
+    });
+
     it('checks the change log: reason, extras and Market', async () => {
       const sellerId = await insertSeller();
       const insertChange = (overrides: Record<string, unknown> = {}) => {
@@ -262,6 +275,10 @@ describe.each(TEST_MARKETS)(
         '23514',
       );
       expect(await insertChange({ after_extra_ids: null })).toBe('23514');
+      const main = uuid7();
+      expect(await insertChange({ after_main_id: main, after_extra_ids: [main] })).toBe('23514');
+      expect(await insertChange({ before_main_id: main, before_extra_ids: [main] })).toBe('23514');
+      expect(await insertChange({ before_main_id: main, before_extra_ids: [uuid7()] })).toBeNull();
       expect(await insertChange({ market_id: 'bad' })).toBe('23514');
       expect(await insertChange({ tenant_id: 'BAD' })).toBe('23514');
       expect(await insertChange({ seller_id: uuid7() })).toBe('23503');

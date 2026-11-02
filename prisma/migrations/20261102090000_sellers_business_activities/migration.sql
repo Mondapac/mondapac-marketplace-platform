@@ -39,7 +39,7 @@ CREATE TABLE "sellers"."seller_business_activity_changes" (
 CREATE INDEX "seller_business_activities_market_id_activity_id_idx" ON "sellers"."seller_business_activities"("market_id", "activity_id");
 
 -- CreateIndex
-CREATE INDEX "seller_business_activity_changes_seller_idx" ON "sellers"."seller_business_activity_changes"("market_id", "seller_id", "changed_at");
+CREATE INDEX "seller_business_activity_changes_seller_idx" ON "sellers"."seller_business_activity_changes"("market_id", "seller_id", "changed_at", "id");
 
 -- AddForeignKey
 ALTER TABLE "sellers"."seller_business_activities" ADD CONSTRAINT "seller_business_activities_market_id_seller_id_fkey" FOREIGN KEY ("market_id", "seller_id") REFERENCES "sellers"."seller_files"("market_id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -59,7 +59,11 @@ ALTER TABLE "sellers"."seller_business_activity_changes"
   ADD CONSTRAINT "seller_business_activity_changes_before_extras_check" CHECK (
     "before_extra_ids" IS NOT NULL AND cardinality("before_extra_ids") <= 9),
   ADD CONSTRAINT "seller_business_activity_changes_after_extras_check" CHECK (
-    "after_extra_ids" IS NOT NULL AND cardinality("after_extra_ids") <= 9);
+    "after_extra_ids" IS NOT NULL AND cardinality("after_extra_ids") <= 9),
+  ADD CONSTRAINT "seller_business_activity_changes_after_main_check" CHECK (
+    NOT ("after_main_id" = ANY ("after_extra_ids"))),
+  ADD CONSTRAINT "seller_business_activity_changes_before_main_check" CHECK (
+    "before_main_id" IS NULL OR NOT ("before_main_id" = ANY ("before_extra_ids")));
 
 -- At most one MAIN activity per seller in a Market. The "one main, at most nine extras" shape of the
 -- whole set is the use case's invariant, written in one unit; the index is the database's backstop.

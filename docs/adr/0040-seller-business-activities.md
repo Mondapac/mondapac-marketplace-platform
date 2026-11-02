@@ -52,3 +52,10 @@ and its search of platform products only show what belongs to that activity.
   account. Activities are checked through `CatalogActivitiesFacade.activeBusinessActivityIds`,
   bound late by `SellerStoreProfileModule` because catalog imports sellers. Nothing enforces the
   assignment yet.
+- Obligations for the later packages: (1) the offer rule that enforces the assignment re-checks at
+  offer time that every activity it relies on is still ACTIVE, and fails closed on any doubt; the
+  check made when an admin assigns it is not enough. (2) The activity delete or deactivate use case
+  refuses while `sellers.seller_business_activities` references the activity (asked through a
+  `sellers` contract), serialised with the assignment write so the two cannot cross. (3) The
+  reason of an assignment change is free admin text kept in the change log; it must not contain
+  personal data.

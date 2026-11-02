@@ -613,7 +613,7 @@ model SellersSellerBusinessActivityChange {
   afterExtraIds  String[]          @map("after_extra_ids") @db.Uuid
   sellerFile     SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
-  @@index([marketId, sellerId, changedAt], map: "seller_business_activity_changes_seller_idx")
+  @@index([marketId, sellerId, changedAt, id], map: "seller_business_activity_changes_seller_idx")
   @@map("seller_business_activity_changes")
   @@schema("sellers")
 }

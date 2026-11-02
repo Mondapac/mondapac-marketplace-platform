@@ -22,6 +22,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { RequiresStepUp } from '../../../platform/authz';
 import { SellerActivitiesGetUseCase } from '../application/use-cases/seller-activities-get.use-case';
 import { SellerActivitiesSetUseCase } from '../application/use-cases/seller-activities-set.use-case';
 import { errorOf, fail } from './my-file.answer';
@@ -44,7 +45,8 @@ export class SellerActivitiesRequest {
   @ApiProperty({
     minLength: 1,
     maxLength: 300,
-    description: 'Why an admin changes the activities directly. Kept in the change log.',
+    description:
+      'Why an admin changes the activities directly. Kept in the change log. Must not contain personal data.',
   })
   reason!: string;
 }
@@ -67,7 +69,7 @@ export class SellerActivitiesLastChangeBody {
   @ApiProperty({ description: 'An instant in UTC (ISO 8601).' })
   changedAt!: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Free admin text; it must not contain personal data.' })
   reason!: string;
 }
 
@@ -107,7 +109,8 @@ export class SellerActivitiesController {
     summary: 'Read the business activities of a seller (admin)',
     description:
       'The main activity, the extras and the latest change with its reason. A seller with no ' +
-      'activity answers a null main activity. Needs sellers.business-activity.view.',
+      'activity answers a null main activity. Needs sellers.business-activity.view. The reason ' +
+      'is free admin text and must not contain personal data.',
   })
   @ApiParam({ name: 'sellerId', description: 'The seller id (UUID).' })
   @ApiOkResponse({ type: SellerActivitiesBody })
@@ -140,12 +143,14 @@ export class SellerActivitiesController {
   }
 
   @Put(':sellerId/business-activities')
+  @RequiresStepUp('sellers.business-activity.change')
   @ApiOperation({
     summary: 'Replace the business activities of a seller (admin)',
     description:
       'Replaces the whole set: exactly one main activity, up to nine extras, a reason of 1 to ' +
       '300 characters. Every activity must exist and be active in the Market. A repeat of the ' +
-      'set the seller already carries writes nothing. Needs sellers.business-activity.manage.',
+      'set the seller already carries writes nothing. Needs sellers.business-activity.manage ' +
+      '(protected) and a fresh two-step code of the admin session.',
   })
   @ApiParam({ name: 'sellerId', description: 'The seller id (UUID).' })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
