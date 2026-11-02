@@ -117,7 +117,7 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
         select: { id: true },
       });
     } catch (error) {
-      if (isUniqueViolation(error)) throw new AttributeCodeTakenError();
+      if (isCodeViolation(error)) throw new AttributeCodeTakenError();
       throw error;
     }
     await this.#insertRevision(market, state, authorAccountId);
@@ -216,5 +216,31 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
 function isUniqueViolation(error: unknown): boolean {
   return (
     typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002'
+  );
+}
+
+const CODE_KEY = 'attribute_definitions_market_id_code_key';
+
+/**
+ * A unique violation on the Market's code (the only key a new definition can meet: its ids are
+ * new). The constraint is read from the driver adapter's cause, as the platform's error reducer
+ * does: the index name, or the last quoted name of the PostgreSQL message. Any other unique
+ * violation stays an error.
+ */
+function isCodeViolation(error: unknown): boolean {
+  if (!isUniqueViolation(error)) return false;
+  const cause = (
+    error as {
+      meta?: {
+        driverAdapterError?: {
+          cause?: { constraint?: { index?: unknown }; originalMessage?: unknown };
+        };
+      };
+    }
+  ).meta?.driverAdapterError?.cause;
+  if (cause?.constraint?.index === CODE_KEY) return true;
+  return (
+    typeof cause?.originalMessage === 'string' &&
+    cause.originalMessage.endsWith(`constraint "${CODE_KEY}"`)
   );
 }

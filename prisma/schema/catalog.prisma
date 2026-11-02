@@ -206,7 +206,7 @@ model CatalogPlatformCategory {
   revisions           CatalogPlatformCategoryRevision[] @relation("CategoryRevisions")
   publishedRevision   CatalogPlatformCategoryRevision?  @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
   productRevisions    CatalogProductRevisionCategory[]
-  businessActivities  CatalogBusinessActivityCategory[]    @relation("ActivityCategory")
+  businessActivities  CatalogBusinessActivityCategory[] @relation("ActivityCategory")
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
@@ -336,17 +336,19 @@ model CatalogAttributeDefinitionRevision {
 
 /// An option of a select definition at one revision; deactivated, never deleted (insert-only).
 model CatalogAttributeDefinitionRevisionOption {
-  marketId   String                             @map("market_id") @db.VarChar(8)
-  tenantId   String                             @map("tenant_id")
-  revisionId String                             @map("revision_id") @db.Uuid
-  optionCode String                             @map("option_code")
+  marketId     String                                     @map("market_id") @db.VarChar(8)
+  tenantId     String                                     @map("tenant_id")
+  revisionId   String                                     @map("revision_id") @db.Uuid
+  optionCode   String                                     @map("option_code")
   /// Locale to label (CA6).
-  labels     Json                               @db.JsonB
-  active     Boolean
-  position   Int                                @db.SmallInt
-  /// The value this one was merged into (attributes A8); null otherwise.
-  mergedInto String?                            @map("merged_into")
-  revision   CatalogAttributeDefinitionRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  labels       Json                                       @db.JsonB
+  active       Boolean
+  position     Int                                        @db.SmallInt
+  /// The value this one was merged into (attributes A8); null otherwise. A value of the same revision.
+  mergedInto   String?                                    @map("merged_into")
+  revision     CatalogAttributeDefinitionRevision         @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedTarget CatalogAttributeDefinitionRevisionOption?  @relation("OptionMergedInto", fields: [marketId, revisionId, mergedInto], references: [marketId, revisionId, optionCode], onDelete: Restrict, onUpdate: Restrict, map: "attribute_definition_revision_options_merged_into_fkey")
+  mergedFrom   CatalogAttributeDefinitionRevisionOption[] @relation("OptionMergedInto")
 
   @@id([marketId, revisionId, optionCode])
   @@map("attribute_definition_revision_options")
@@ -1136,17 +1138,17 @@ model CatalogBrandMergeCandidate {
 /// default locale is required by the use cases). The CHECKs, the name index and the grants are
 /// hand-written in the migration.
 model CatalogBusinessActivity {
-  id          String                         @id @db.Uuid
-  marketId    String                         @map("market_id") @db.VarChar(8)
-  tenantId    String                         @map("tenant_id")
+  id          String                            @id @db.Uuid
+  marketId    String                            @map("market_id") @db.VarChar(8)
+  tenantId    String                            @map("tenant_id")
   /// Lowercase ASCII words joined by hyphens; unique per Market; never updated.
   code        String
   description String?
   /// active | inactive. An inactive activity gives a seller no scope but keeps its links.
   status      String
-  createdBy   String                         @map("created_by") @db.Uuid
-  createdAt   DateTime                       @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime                       @map("updated_at") @db.Timestamptz(6)
+  createdBy   String                            @map("created_by") @db.Uuid
+  createdAt   DateTime                          @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                          @map("updated_at") @db.Timestamptz(6)
   /// Optimistic version (P 10); 1 at insert.
   version     Int
   names       CatalogBusinessActivityName[]

@@ -5,6 +5,7 @@ SET statement_timeout = '60s';
 -- the earlier schema, so the status check is restored only when none exists (it fails otherwise:
 -- archive or publish the drafts first).
 ALTER TABLE "catalog"."attribute_definition_revision_options"
+  DROP CONSTRAINT "attribute_definition_revision_options_merged_into_fkey",
   DROP CONSTRAINT "attribute_definition_revision_options_merged_into_check",
   DROP COLUMN "merged_into";
 

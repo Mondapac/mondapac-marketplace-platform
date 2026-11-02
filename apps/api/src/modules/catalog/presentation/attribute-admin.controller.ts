@@ -281,10 +281,14 @@ export class AttributeAdminController {
     type: ApiErrorBody,
     description:
       'attribute-definition.default-name-required, .default-label-required (details.fields) ' +
-      'or .active-option-required',
+      'or .active-option-required; attribute.claim-word or .locale-uncheckable (details.fields): ' +
+      'the claim check runs again on publish',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim-text.check-unavailable',
+  })
   async publish(
     @Call() context: CallContext,
     @Req() request: Request,

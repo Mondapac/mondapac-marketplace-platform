@@ -564,6 +564,8 @@ const productTypeProvider: FactoryProvider<string> = {
       attributeStore: true,
       policy: true,
       audit: true,
+      matcher: true,
+      claimLocales: true,
     }),
     useCaseProvider(AttributeDefinitionDiscard, {
       unitOfWork: true,

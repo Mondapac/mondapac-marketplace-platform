@@ -63,6 +63,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
   let allow: boolean;
   let covered: Result<readonly string[], { code: 'claim-text.check-unavailable' }>;
   let matcherDown: boolean;
+  let claimWords: RegExp;
   let matched: ClaimTextToMatch[];
   let unitOpen: boolean;
   let claimInsideUnit: boolean;
@@ -95,7 +96,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
       return Promise.resolve(
         ok(
           texts.map((t) =>
-            /halal/i.test(t.text)
+            claimWords.test(t.text)
               ? [{ typeCode: 'halal', span: { fromToken: 0, toToken: 0 } }]
               : [],
           ),
@@ -146,6 +147,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
     allow = true;
     covered = ok([...locales.supported]);
     matcherDown = false;
+    claimWords = /halal/i;
     matched = [];
     unitOpen = false;
     claimInsideUnit = false;
@@ -300,6 +302,77 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
       store.raceNext = true;
       expect(await build().create.execute(context(), selectBody({ code: 'fresh' }))).toEqual(
         err({ code: 'attribute.code-taken' }),
+      );
+    });
+
+    it('never derives a code that a later value names explicitly', async () => {
+      const created = await createdSelect({
+        options: [
+          { labels: { [english]: 'Red' } },
+          { code: 'red', labels: { [english]: 'Crimson' } },
+        ],
+      });
+      expect(store.rows.get(created.id)!.state.options.map((o) => o.code)).toEqual([
+        'red-2',
+        'red',
+      ]);
+    });
+
+    it('needs a code for a name or a value label with no Latin letters or digits', async () => {
+      const { create } = build();
+      expect(
+        await create.execute(context(), selectBody({ names: { [english]: 'パックサイズ' } })),
+      ).toEqual(err({ code: 'validation.failed', fields: [{ path: 'code', code: 'required' }] }));
+      expect(
+        await create.execute(
+          context(),
+          selectBody({ code: 'pack', options: [{ labels: { [english]: '大きい' } }] }),
+        ),
+      ).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'options[0].code', code: 'required' }] }),
+      );
+      const named = await createdSelect({
+        code: 'pack-jp',
+        names: { [english]: 'パックサイズ' },
+        options: [{ code: 'large', labels: { [english]: '大きい' } }],
+      });
+      expect(named.code).toBe('pack-jp');
+    });
+
+    it('refuses a text longer than any the domain keeps before it is checked', async () => {
+      const answer = await build().create.execute(
+        context(),
+        selectBody({ names: { [english]: 'x'.repeat(301) } }),
+      );
+      expect(answer).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [{ path: `names.${english}`, code: 'too-long' }],
+        }),
+      );
+      expect(matched).toEqual([]);
+    });
+
+    it('points an invalid text at the name or at the value whose label it is', async () => {
+      const { create } = build();
+      expect(
+        await create.execute(context(), selectBody({ code: 'pad', names: { [english]: ' Pack' } })),
+      ).toEqual(
+        err({
+          code: 'attribute-definition.text-invalid',
+          fields: [{ path: `names.${english}`, code: 'invalid' }],
+        }),
+      );
+      expect(
+        await create.execute(
+          context(),
+          selectBody({ code: 'pad', options: [{ code: 'kg1', labels: { [english]: '1 kg ' } }] }),
+        ),
+      ).toEqual(
+        err({
+          code: 'attribute-definition.text-invalid',
+          fields: [{ path: `options.kg1.labels.${english}`, code: 'invalid' }],
+        }),
       );
     });
 
@@ -501,6 +574,40 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
       expect(await publish.execute(context(), { attributeId: created.id, version: 2 })).toEqual(
         err({ code: 'attribute-definition.not-draft' }),
       );
+    });
+
+    it('runs the claim check again on publish, outside any unit (a term added after the save)', async () => {
+      const created = await createdSelect({ names: { [english]: 'Zabiha cut' } });
+      claimWords = /halal|zabiha/i;
+      matched = [];
+      const { publish } = build();
+      expect(await publish.execute(context(), { attributeId: created.id, version: 1 })).toEqual(
+        err({
+          code: 'attribute.claim-word',
+          fields: [{ path: `names.${english}`, code: 'claim-word' }],
+        }),
+      );
+      expect(matched.map((t) => t.text)).toEqual(['Zabiha cut', '500 g', '1 kg']);
+      expect(claimInsideUnit).toBe(false);
+      matcherDown = true;
+      expect(await publish.execute(context(), { attributeId: created.id, version: 1 })).toEqual(
+        err({ code: 'claim-text.check-unavailable' }),
+      );
+      covered = err({ code: 'claim-text.check-unavailable' });
+      expect(await publish.execute(context(), { attributeId: created.id, version: 1 })).toEqual(
+        err({ code: 'claim-text.check-unavailable' }),
+      );
+      expect(store.rows.get(created.id)!.state.status).toBe('draft');
+      expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.created']);
+    });
+
+    it('does not run the claim check for a caller who is not an editor', async () => {
+      const created = await createdSelect();
+      matched = [];
+      expect(
+        await build().publish.execute(actingAs(), { attributeId: created.id, version: 1 }),
+      ).toEqual(err({ code: 'access.denied' }));
+      expect(matched).toEqual([]);
     });
 
     it('needs an active value before a select type is published', async () => {

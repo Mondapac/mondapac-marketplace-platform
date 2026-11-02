@@ -78,7 +78,11 @@ export function versionOf(raw: unknown): Result<number, ValidationFailure> {
 }
 
 const CODE = /^[a-z][a-z0-9_-]{0,63}$/;
-const MAX_TEXT_INPUT = 2_000;
+// The domain's longest customer text is a help text (300 characters); anything longer is refused
+// here, before the claim check sends it anywhere.
+const MAX_TEXT_INPUT = 300;
+// The admin-only note is never sent to the matcher; the domain caps it at 1,000.
+const MAX_NOTE_INPUT = 2_000;
 
 /** The keys of the content an editor sends, on create and on edit (the whole content). */
 export const CONTENT_KEYS = [
@@ -137,7 +141,7 @@ export function parseEditorContent(
   if (note !== undefined && note !== null && typeof note !== 'string') {
     return invalid('internalNote', 'type');
   }
-  if (typeof note === 'string' && note.length > MAX_TEXT_INPUT) {
+  if (typeof note === 'string' && note.length > MAX_NOTE_INPUT) {
     return invalid('internalNote', 'too-long');
   }
   const position = body['position'] ?? 0;
@@ -174,7 +178,7 @@ function localizedOf(
     if (!supported.includes(locale))
       return invalid(`${path}.${locale.slice(0, 16)}`, 'unsupported');
     if (typeof text !== 'string') return invalid(`${path}.${locale}`, 'type');
-    if (text.length > MAX_TEXT_INPUT) return invalid(`${path}.${locale}`, 'too-long');
+    if ([...text].length > MAX_TEXT_INPUT) return invalid(`${path}.${locale}`, 'too-long');
     // An empty entry is a language not entered yet: it is left out, never stored empty.
     if (text.trim() === '') continue;
     out[locale] = text;
@@ -207,6 +211,12 @@ function optionsOf(
   if (!Array.isArray(raw)) return invalid('options', 'type');
   if (raw.length > ATTRIBUTE_OPTIONS_MAX) return invalid('options', 'too-many');
   const out: AttributeOption[] = [];
+  // Explicit codes are reserved first, so a derived code never takes one a later value names.
+  const explicit = new Set<string>();
+  for (const entry of raw as readonly unknown[]) {
+    const code = (entry as { code?: unknown } | null)?.code;
+    if (typeof code === 'string' && code !== '') explicit.add(code);
+  }
   const taken = new Set<string>();
   for (const [index, entry] of (raw as readonly unknown[]).entries()) {
     const path = `options[${index}]`;
@@ -225,7 +235,10 @@ function optionsOf(
     if (typeof active !== 'boolean') return invalid(`${path}.active`, 'type');
     let code = item['code'];
     if (code === undefined || code === null || code === '') {
-      code = freeCode(codeFrom(labels.value[locales.default] ?? ''), taken);
+      code = freeCode(
+        codeFrom(labels.value[locales.default] ?? ''),
+        new Set([...taken, ...explicit]),
+      );
       if (code === null) return invalid(`${path}.code`, 'required');
     }
     if (typeof code !== 'string' || !CODE.test(code)) return invalid(`${path}.code`, 'format');
@@ -392,7 +405,9 @@ export function domainFailureOf(refusal: AttributeDefinitionRefusal): DomainFail
     case 'attribute-definition.default-label-required':
       return at(`options.${refusal.option}.labels.${refusal.locale}`, 'required');
     case 'attribute-definition.text-invalid':
-      return at(`locale.${refusal.locale}`, 'invalid');
+      return refusal.option === undefined
+        ? at(`names.${refusal.locale}`, 'invalid')
+        : at(`options.${refusal.option}.labels.${refusal.locale}`, 'invalid');
     case 'attribute-definition.help-invalid':
       return at(`helpText.${refusal.locale}`, 'invalid');
     case 'attribute-definition.option-removed':

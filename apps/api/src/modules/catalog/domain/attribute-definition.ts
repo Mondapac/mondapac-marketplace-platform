@@ -80,7 +80,12 @@ export type AttributeDefinitionRefusal =
   | { readonly code: 'attribute-definition.code-invalid' }
   | { readonly code: 'attribute-definition.data-type-invalid' }
   | { readonly code: 'attribute-definition.name-required' }
-  | { readonly code: 'attribute-definition.text-invalid'; readonly locale: string }
+  | {
+      readonly code: 'attribute-definition.text-invalid';
+      readonly locale: string;
+      /** The value whose label it is; absent for the attribute's name. */
+      readonly option?: string;
+    }
   | { readonly code: 'attribute-definition.locale-invalid' }
   | { readonly code: 'attribute-definition.bounds-invalid' }
   | { readonly code: 'attribute-definition.options-required' }
@@ -111,10 +116,14 @@ function validText(text: string): boolean {
   return text === text.trim() && length >= 1 && length <= TEXT_MAX && parsePlainText(text).ok;
 }
 
-function validLocalized(map: LocalizedText): AttributeDefinitionRefusal | null {
+function validLocalized(map: LocalizedText, option?: string): AttributeDefinitionRefusal | null {
   for (const [locale, text] of Object.entries(map)) {
     if (!LOCALE.test(locale)) return { code: 'attribute-definition.locale-invalid' };
-    if (!validText(text)) return { code: 'attribute-definition.text-invalid', locale };
+    if (!validText(text)) {
+      return option === undefined
+        ? { code: 'attribute-definition.text-invalid', locale }
+        : { code: 'attribute-definition.text-invalid', locale, option };
+    }
   }
   return null;
 }
@@ -195,7 +204,7 @@ function checkContent(input: {
     if (Object.keys(option.labels).length === 0) {
       return { code: 'attribute-definition.option-invalid' };
     }
-    const labelProblem = validLocalized(option.labels);
+    const labelProblem = validLocalized(option.labels, option.code);
     if (labelProblem !== null) return labelProblem;
   }
   return checkDisplay(input.display);

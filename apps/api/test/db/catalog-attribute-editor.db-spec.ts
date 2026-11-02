@@ -7,6 +7,7 @@ import {
   DEFAULT_DISPLAY_SETTINGS,
 } from '../../src/modules/catalog/domain/attribute-definition';
 import { PrismaAttributeDefinitionStore } from '../../src/modules/catalog/infrastructure/prisma-attribute-definition.store';
+import { PrismaAttributeRepository } from '../../src/modules/catalog/infrastructure/prisma-attribute.repository';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -21,7 +22,8 @@ import { ownerTestDatabaseUrl } from './test-database';
 // fixtures, as the API role: a draft with its first revision, display settings and author; the
 // next revision behind the version, and a stale write that leaves nothing behind; publish and
 // discard; a code race; the Market boundary; and the hand-written constraints of the migration
-// (draft status, help text an object, note length, a value never merged into itself). Each test
+// (draft status, help text an object, note length, a value merged only into another value of
+// its revision); and that a draft stays out of what sellers read. Each test
 // works on its own codes, because other specs share the database.
 
 const T0 = Temporal.Instant.from('2026-11-02T00:00:00Z');
@@ -174,6 +176,23 @@ describe.each(TEST_MARKETS)('catalog attribute editor store in market %s (databa
     );
   });
 
+  it('keeps a draft out of what sellers read until it is published', async () => {
+    const sellers = new PrismaAttributeRepository(db.service);
+    const draft = draftOf(unique());
+    await write(market, () => store.addDraft(market, draft, author));
+    const codes = [draft.state.code];
+    expect(await read(market, () => sellers.activeDefinitionCodes(market, codes))).toEqual(
+      new Set(),
+    );
+    const published = draft.publish(locale);
+    if (!published.ok) throw new Error(published.error.code);
+    await write(market, () => store.saveStatus(market, published.value));
+    expect(await read(market, () => sellers.activeDefinitionCodes(market, codes))).toEqual(
+      new Set(codes),
+    );
+    expect(await read(other, () => sellers.activeDefinitionCodes(other, codes))).toEqual(new Set());
+  });
+
   it('answers a code taken by a concurrent draft with AttributeCodeTakenError', async () => {
     const codeName = unique();
     await write(market, () => store.addDraft(market, draftOf(codeName), author));
@@ -222,6 +241,21 @@ describe.each(TEST_MARKETS)('catalog attribute editor store in market %s (databa
         [market.marketId, market.tenantId, draft.state.revisionId],
       ),
     ).rejects.toThrow(/merged_into_check/);
+    // A value is merged only into a value of the same revision.
+    await expect(
+      owner.query(
+        `INSERT INTO catalog.attribute_definition_revision_options
+           (market_id, tenant_id, revision_id, option_code, labels, active, position, merged_into)
+         VALUES ($1, $2, $3, 'gone', '{"x":"y"}', false, 6, 'missing')`,
+        [market.marketId, market.tenantId, draft.state.revisionId],
+      ),
+    ).rejects.toThrow(/merged_into_fkey/);
+    await owner.query(
+      `INSERT INTO catalog.attribute_definition_revision_options
+         (market_id, tenant_id, revision_id, option_code, labels, active, position, merged_into)
+       VALUES ($1, $2, $3, 'old500', '{"x":"y"}', false, 7, 'g500')`,
+      [market.marketId, market.tenantId, draft.state.revisionId],
+    );
     await expect(
       owner.query('UPDATE catalog.attribute_definitions SET status = $1 WHERE id = $2', [
         'pending',

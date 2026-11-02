@@ -29,3 +29,12 @@ ALTER TABLE "catalog"."attribute_definition_revisions"
 ALTER TABLE "catalog"."attribute_definition_revision_options"
   ADD CONSTRAINT "attribute_definition_revision_options_merged_into_check" CHECK (
     "merged_into" IS NULL OR ("merged_into" ~ '^[a-z][a-z0-9_-]{0,63}$' AND "merged_into" <> "option_code"));
+
+-- Hand-written (database-designer review of #649): a value is merged only into another value of the
+-- same revision. Checked at the end of the statement, so one createMany may hold both rows; a
+-- null merged_into is not checked (MATCH SIMPLE). The column is new and empty, so no NOT VALID.
+ALTER TABLE "catalog"."attribute_definition_revision_options"
+  ADD CONSTRAINT "attribute_definition_revision_options_merged_into_fkey"
+  FOREIGN KEY ("market_id", "revision_id", "merged_into")
+  REFERENCES "catalog"."attribute_definition_revision_options"("market_id", "revision_id", "option_code")
+  ON DELETE RESTRICT ON UPDATE RESTRICT;
