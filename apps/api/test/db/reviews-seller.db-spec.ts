@@ -22,6 +22,7 @@ import {
   FakeAffinity,
   FakeDeliveries,
   FakeNames,
+  FakeOverlap,
   FakeOffers,
   FakeStepUp,
 } from '../support/reviews-fakes';
@@ -98,6 +99,7 @@ describe.each(TEST_MARKETS)('seller reviews in market %s (database)', (code) => 
       names: new FakeNames(),
       affinity: new FakeAffinity(),
       audit: { record: () => Promise.resolve() },
+      overlap: new FakeOverlap(),
       stepUp: new FakeStepUp(),
       ids,
       clock,
