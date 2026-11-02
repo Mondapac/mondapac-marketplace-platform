@@ -694,7 +694,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     const { rows } = await sql.query<{ before: unknown; after: unknown }>(
       `SELECT before, after FROM platform.audit_log
         WHERE market_id = $1 AND target_id = $2 AND action = 'identity.role.seed-applied'
-          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '11'
+          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '12'
         ORDER BY occurred_at`,
       [marketId, roleId],
     );
@@ -707,7 +707,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     expect(registry.get(EDIT)).toMatchObject({ key: EDIT, scope: 'platform', protected: false });
   });
 
-  it('upgrades a Market seeded at catalogue-moderator version 1 to 11 with the keys, in every hosted Market', async () => {
+  it('upgrades a Market seeded at catalogue-moderator version 1 to 12 with the keys, in every hosted Market', async () => {
     // Every hosted Market has its roles (first run creates them, if no other file did yet).
     await expect(runSeedJob()).resolves.toEqual({ outcome: 'ran', failedMarkets: [] });
 
@@ -730,6 +730,8 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
             code,
             role.id,
             [
+              'catalog.category-tree.edit',
+              'catalog.category-tree.view',
               'catalog.platform-import.run',
               EDIT,
               'catalog.product.approve',
@@ -758,8 +760,10 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
 
     for (const code of TEST_MARKETS) {
       const role = await moderatorOf(code);
-      expect(role.seed_version).toBe(11);
+      expect(role.seed_version).toBe(12);
       expect(await keysOf(code, role.id)).toEqual([
+        'catalog.category-tree.edit',
+        'catalog.category-tree.view',
         'catalog.platform-import.run',
         EDIT,
         'catalog.product.approve',
@@ -779,8 +783,10 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
       expect(rows.at(-1)).toEqual({
         before: { seedVersion: 1 },
         after: {
-          seedVersion: 11,
+          seedVersion: 12,
           addedKeys: [
+            'catalog.category-tree.edit',
+            'catalog.category-tree.view',
             'catalog.platform-import.run',
             EDIT,
             'catalog.product.approve',
