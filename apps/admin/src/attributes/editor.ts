@@ -1,0 +1,319 @@
+// The attribute editor's form (attributes A2, part 2): the form state built from an attribute,
+// the request body built from the form, the checks the panel makes before sending, and how a
+// refusal of the API reads. Pure functions, tested without a browser.
+
+import type { ApiFailure } from '../api/client.ts';
+import { CHOICE_TYPES, type AttributeDetail, type DataType, type Localized } from './types.ts';
+
+/** The longest name or value label the API keeps (domain TEXT_MAX). */
+export const NAME_MAX = 120;
+/** The longest help text (domain HELP_MAX). */
+export const HELP_MAX = 300;
+/** The longest internal note (domain NOTE_MAX). */
+export const NOTE_MAX = 1000;
+/** The most values one attribute has. */
+export const OPTIONS_MAX = 200;
+/** A code: lower-case ASCII, digits, `-` and `_`, starting with a letter. */
+export const CODE_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+
+export interface ValueRow {
+  /** A stable key for React; the code for a saved value, a counter for a new one. */
+  readonly key: string;
+  /** The saved code; empty for a new value, which gets one from its label. */
+  readonly code: string;
+  /** Saved before: never removed, only deactivated. */
+  readonly saved: boolean;
+  readonly labels: Readonly<Record<string, string>>;
+  readonly active: boolean;
+}
+
+export interface EditorForm {
+  readonly names: Readonly<Record<string, string>>;
+  readonly helpText: Readonly<Record<string, string>>;
+  readonly material: boolean;
+  readonly isVariantOption: boolean;
+  readonly maxLength: string;
+  readonly min: string;
+  readonly max: string;
+  readonly values: readonly ValueRow[];
+  readonly showOnProductPage: boolean;
+  readonly searchable: boolean;
+  readonly canBeFilter: boolean;
+  readonly internalNote: string;
+  readonly position: string;
+}
+
+const numberText = (value: number | undefined): string =>
+  value === undefined ? '' : String(value);
+
+/** The form of a saved attribute. */
+export function formOf(detail: AttributeDetail): EditorForm {
+  return {
+    names: { ...detail.names },
+    helpText: { ...detail.display.helpText },
+    material: detail.material,
+    isVariantOption: detail.isVariantOption,
+    maxLength: numberText(detail.bounds.maxLength),
+    min: numberText(detail.bounds.min),
+    max: numberText(detail.bounds.max),
+    values: [...detail.options]
+      .sort((a, b) => a.position - b.position)
+      .map((option) => ({
+        key: option.code,
+        code: option.code,
+        saved: true,
+        labels: { ...option.labels },
+        active: option.active,
+      })),
+    showOnProductPage: detail.display.showOnProductPage,
+    searchable: detail.display.searchable,
+    canBeFilter: detail.display.canBeFilter,
+    internalNote: detail.display.internalNote ?? '',
+    position: String(detail.display.position),
+  };
+}
+
+/** A new attribute's form: shown on the product page, nothing else switched on. */
+export function emptyForm(): EditorForm {
+  return {
+    names: {},
+    helpText: {},
+    material: false,
+    isVariantOption: false,
+    maxLength: '',
+    min: '',
+    max: '',
+    values: [],
+    showOnProductPage: true,
+    searchable: false,
+    canBeFilter: false,
+    internalNote: '',
+    position: '0',
+  };
+}
+
+let nextKey = 0;
+/** A new, empty value row. */
+export function newValue(): ValueRow {
+  nextKey += 1;
+  return { key: `new-${nextKey}`, code: '', saved: false, labels: {}, active: true };
+}
+
+/** Values from text with one value per line (the Add dialog); blank lines are left out. */
+export function valuesFromLines(text: string, locale: string): ValueRow[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((label) => ({ ...newValue(), labels: { [locale]: label } }));
+}
+
+/**
+ * The code the API derives from a text (same rule as the API's `codeFrom`): lower-case ASCII
+ * letters and digits joined by `-`, `v-` before a leading digit; empty when nothing is left (a
+ * text in another script, where the admin types the code).
+ */
+export function suggestCode(text: string): string {
+  const ascii = text
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 56)
+    .replace(/-+$/, '');
+  if (ascii === '') return '';
+  return /^[a-z]/.test(ascii) ? ascii : `v-${ascii}`;
+}
+
+/** The entries with text, trimmed: an empty entry is a language not entered yet. */
+function filled(map: Readonly<Record<string, string>>): Localized {
+  const out: Record<string, string> = {};
+  for (const [locale, text] of Object.entries(map)) {
+    const trimmed = text.trim();
+    if (trimmed !== '') out[locale] = trimmed;
+  }
+  return out;
+}
+
+const NUMERIC: ReadonlySet<string> = new Set(['integer', 'decimal']);
+const TEXTUAL: ReadonlySet<string> = new Set(['text', 'long-text']);
+
+function boundsOf(form: EditorForm, dataType: DataType) {
+  const out: { maxLength?: number; min?: number; max?: number } = {};
+  if (TEXTUAL.has(dataType) && form.maxLength.trim() !== '') {
+    out.maxLength = Number(form.maxLength);
+  }
+  if (NUMERIC.has(dataType)) {
+    if (form.min.trim() !== '') out.min = Number(form.min);
+    if (form.max.trim() !== '') out.max = Number(form.max);
+  }
+  return out;
+}
+
+/**
+ * The whole content the API takes on create and on edit: every key is sent, because an edit
+ * replaces the content (a key left out would be read as its default).
+ */
+export function contentOf(form: EditorForm, dataType: DataType) {
+  const note = form.internalNote.trim();
+  return {
+    names: filled(form.names),
+    material: form.material,
+    isVariantOption: dataType === 'select' ? form.isVariantOption : false,
+    bounds: boundsOf(form, dataType),
+    options: CHOICE_TYPES.has(dataType)
+      ? form.values.map((value) => ({
+          ...(value.code === '' ? {} : { code: value.code }),
+          labels: filled(value.labels),
+          active: value.active,
+        }))
+      : [],
+    helpText: filled(form.helpText),
+    showOnProductPage: form.showOnProductPage,
+    searchable: form.searchable,
+    canBeFilter: form.canBeFilter,
+    internalNote: note === '' ? null : note,
+    position: form.position.trim() === '' ? 0 : Number(form.position),
+  };
+}
+
+/** Field errors by path (`names.en-AU`, `options[2].labels.fa-IR`, `code`, ...), a reason each. */
+export type FieldErrors = Readonly<Record<string, string>>;
+
+const DECIMAL = /^-?\d+(\.\d+)?$/;
+const WHOLE = /^\d+$/;
+
+/** The panel's own checks before a save: the default-language name, labels, numbers. */
+export function checkForm(
+  form: EditorForm,
+  dataType: DataType,
+  defaultLocale: string,
+): FieldErrors {
+  const errors: Record<string, string> = {};
+  if ((form.names[defaultLocale] ?? '').trim() === '') {
+    errors[`names.${defaultLocale}`] = 'required';
+  }
+  if (CHOICE_TYPES.has(dataType)) {
+    form.values.forEach((value, index) => {
+      if ((value.labels[defaultLocale] ?? '').trim() === '') {
+        errors[`options[${index}].labels.${defaultLocale}`] = 'required';
+      }
+    });
+  }
+  if (TEXTUAL.has(dataType) && form.maxLength.trim() !== '' && !WHOLE.test(form.maxLength.trim())) {
+    errors['bounds.maxLength'] = 'number';
+  }
+  if (NUMERIC.has(dataType)) {
+    const pattern = dataType === 'integer' ? /^-?\d+$/ : DECIMAL;
+    for (const key of ['min', 'max'] as const) {
+      const text = form[key].trim();
+      if (text !== '' && !pattern.test(text)) errors[`bounds.${key}`] = 'number';
+    }
+  }
+  if (form.position.trim() !== '' && !WHOLE.test(form.position.trim())) {
+    errors['position'] = 'number';
+  }
+  return errors;
+}
+
+/** The languages with a missing name or a missing label of an active value. */
+export function missingLocales(
+  form: EditorForm,
+  dataType: DataType,
+  supported: readonly string[],
+): readonly string[] {
+  return supported.filter((locale) => {
+    if ((form.names[locale] ?? '').trim() === '') return true;
+    if (!CHOICE_TYPES.has(dataType)) return false;
+    return form.values.some((value) => value.active && (value.labels[locale] ?? '').trim() === '');
+  });
+}
+
+/** What the panel shows for a refused write. */
+export interface EditorProblem {
+  /** Message key under `attributes.editor.error`. */
+  readonly key: string;
+  /** The attribute changed, vanished or is no longer a draft: read it again. */
+  readonly reload: boolean;
+  readonly fields: FieldErrors;
+}
+
+const BY_CODE: Readonly<Record<string, string>> = {
+  'validation.failed': 'invalid',
+  'attribute.stale': 'stale',
+  'attribute.not-found': 'gone',
+  'attribute.code-taken': 'code-taken',
+  'attribute.claim-word': 'claim-word',
+  'attribute.locale-uncheckable': 'locale-uncheckable',
+  'claim-text.check-unavailable': 'check-unavailable',
+  'attribute-definition.not-draft': 'not-draft',
+  'attribute-definition.archived': 'archived',
+  'attribute-definition.option-removed': 'option-removed',
+  'attribute-definition.variant-locked': 'variant-locked',
+  'attribute-definition.material-relaxation-required': 'material-relaxation',
+  'attribute-definition.default-name-required': 'default-name-required',
+  'attribute-definition.default-label-required': 'default-label-required',
+  'attribute-definition.active-option-required': 'active-option-required',
+  'access.denied': 'denied',
+  'request.csrf': 'csrf',
+  'request.throttled': 'throttled',
+};
+
+const RELOAD: ReadonlySet<string> = new Set(['stale', 'gone', 'not-draft', 'archived']);
+
+/**
+ * A refusal as the panel shows it. A value the API names by its code (`options.<code>...`) is
+ * pointed at by its row (`options[<index>]...`), as the panel's own checks are.
+ */
+export function problemOf(failure: ApiFailure, values: readonly ValueRow[] = []): EditorProblem {
+  let key = BY_CODE[failure.code];
+  if (key === undefined) {
+    if (failure.status === 0 || failure.status >= 500) key = 'unavailable';
+    else if (failure.code.startsWith('attribute-definition.')) key = 'content';
+    else key = 'unknown';
+  }
+  const fields: Record<string, string> = {};
+  for (const field of failure.details?.fields ?? []) {
+    fields[rowPath(field.path, values)] = field.code;
+  }
+  if (failure.code === 'attribute.code-taken') fields['code'] = 'taken';
+  return { key, reload: RELOAD.has(key), fields };
+}
+
+const BY_CODE_PATH = /^options\.([a-z][a-z0-9_-]{0,63})(\..*)?$/;
+
+function rowPath(path: string, values: readonly ValueRow[]): string {
+  const match = BY_CODE_PATH.exec(path);
+  if (match === null) return path;
+  const index = values.findIndex((value) => value.code === match[1]);
+  return index < 0 ? path : `options[${index}]${match[2] ?? ''}`;
+}
+
+/** A field reason as a message key under `attributes.editor.field`. */
+export function fieldKey(reason: string): string {
+  switch (reason) {
+    case 'required':
+    case 'claim-word':
+    case 'locale-uncheckable':
+    case 'too-long':
+    case 'invalid':
+    case 'format':
+    case 'repeated':
+    case 'taken':
+    case 'removed':
+    case 'number':
+      return reason;
+    default:
+      return 'other';
+  }
+}
+
+/** The values moved: the row at `from` goes to `to`. */
+export function moved<T>(rows: readonly T[], from: number, to: number): T[] {
+  const next = [...rows];
+  if (to < 0 || to >= next.length) return next;
+  const [row] = next.splice(from, 1);
+  if (row !== undefined) next.splice(to, 0, row);
+  return next;
+}

@@ -14,6 +14,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { AddAttributeDialog } from './add-attribute-dialog.tsx';
 import { AttributeDetailPanel } from './attribute-detail.tsx';
 import { useSelectLabels } from './select-labels.ts';
 import {
@@ -48,9 +49,13 @@ const NO_FILTERS: Filters = { search: '', type: '', status: '', usedIn: '', miss
 export function AttributesTab({
   selectedId,
   onSelect,
+  canEdit = false,
+  csrfToken = '',
 }: {
   readonly selectedId: string | null;
   readonly onSelect: (id: string | null) => void;
+  readonly canEdit?: boolean;
+  readonly csrfToken?: string;
 }) {
   const t = useTranslations('attributes');
   const tl = useTranslations('load');
@@ -60,6 +65,7 @@ export function AttributesTab({
   const [page, setPage] = useState<AttributePage | null>(null);
   const [load, setLoad] = useState<Load>('loading');
   const [more, setMore] = useState(false);
+  const [adding, setAdding] = useState(false);
   const latest = useRef(0);
 
   // The search acts after a short pause.
@@ -138,6 +144,11 @@ export function AttributesTab({
         aria-label={t('list-label')}
         className="flex min-w-0 flex-col rounded-lg border border-line bg-surface"
       >
+        {canEdit && locales !== null ? (
+          <div className="flex justify-end border-b border-line px-4 py-3">
+            <Button onClick={() => setAdding(true)}>{t('add.open')}</Button>
+          </div>
+        ) : null}
         <div
           role="search"
           aria-label={t('filters')}
@@ -260,7 +271,26 @@ export function AttributesTab({
           </div>
         ) : null}
       </section>
-      <AttributeDetailPanel attributeId={selectedId} onClose={() => onSelect(null)} />
+      <AttributeDetailPanel
+        attributeId={selectedId}
+        onClose={() => onSelect(null)}
+        canEdit={canEdit}
+        csrfToken={csrfToken}
+        onChanged={() => void fetchRows()}
+      />
+      {adding && locales !== null ? (
+        <AddAttributeDialog
+          locales={locales}
+          csrfToken={csrfToken}
+          onClose={() => setAdding(false)}
+          onCreated={(id) => {
+            setAdding(false);
+            toast.success(t('add.created'));
+            void fetchRows();
+            onSelect(id);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

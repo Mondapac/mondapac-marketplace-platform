@@ -3,12 +3,18 @@ import { languageName, type AttributeChange } from './types.ts';
 /**
  * How one History change reads, as a message key and its values. The API names a change by
  * field (`name.{locale}`, `material`, `isVariantOption`, `bounds.{key}`, `option.{code}.added`,
- * `option.{code}.label.{locale}`, `option.{code}.active`, `option.{code}.position`); an unknown
- * field still shows, by its raw name.
+ * `option.{code}.label.{locale}`, `option.{code}.active`, `option.{code}.position`, and from
+ * package A2 `help.{locale}`, the display flags, `position` and `internalNote`, whose value is
+ * never sent); an unknown field still shows, by its raw name.
  */
 export type ChangeLine =
   | { readonly key: 'name'; readonly language: string }
   | { readonly key: 'material' | 'variant' }
+  | { readonly key: 'help'; readonly language: string }
+  | {
+      readonly key:
+        'show-on-product-page' | 'searchable' | 'can-be-filter' | 'position' | 'internal-note';
+    }
   | { readonly key: 'bound'; readonly bound: string }
   | { readonly key: 'option-added' | 'option-removed'; readonly code: string }
   | { readonly key: 'option-label'; readonly code: string; readonly language: string }
@@ -27,6 +33,13 @@ export function changeLineOf(
     return { key: 'name', language: languageName(field.slice(5), supported) };
   if (field === 'material') return { key: 'material' };
   if (field === 'isVariantOption') return { key: 'variant' };
+  if (field.startsWith('help.'))
+    return { key: 'help', language: languageName(field.slice(5), supported) };
+  if (field === 'showOnProductPage') return { key: 'show-on-product-page' };
+  if (field === 'searchable') return { key: 'searchable' };
+  if (field === 'canBeFilter') return { key: 'can-be-filter' };
+  if (field === 'position') return { key: 'position' };
+  if (field === 'internalNote') return { key: 'internal-note' };
   if (field.startsWith('bounds.')) return { key: 'bound', bound: field.slice(7) };
   const label = OPTION_LABEL.exec(field);
   if (label !== null) {

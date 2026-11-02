@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
+import { expectToast } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -71,6 +72,14 @@ const detail = (
   createdAt: '2026-10-01T01:00:00.000Z',
   version: 1,
   bounds: {},
+  display: {
+    helpText: {},
+    showOnProductPage: true,
+    searchable: false,
+    canBeFilter: false,
+    internalNote: null,
+    position: 0,
+  },
   options: [
     {
       code: 'mild',
@@ -212,6 +221,7 @@ function mount(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <AttributesView
         canEdit={options.canEdit ?? false}
+        csrfToken="csrf-1"
         canSeeBrands={options.canSeeBrands ?? true}
         initialTab={options.initialTab ?? 'attributes'}
         initialId={options.initialId ?? null}
@@ -226,6 +236,12 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.history.replaceState(null, '', '/catalog/attributes');
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
     window.matchMedia = ((query: string) => ({
       matches: false,
       media: query,
@@ -544,6 +560,278 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(screen.queryByRole('link', { name: 'Brands' })).toBeNull();
   });
 
+  const writes = (method: string) =>
+    call.mock.calls
+      .filter(([m]) => m === method)
+      .map(([, path, body, csrf]) => ({ path, body, csrf }));
+
+  it('adds a draft in two steps and opens it with its Draft badge and Publish', async () => {
+    const created = detail(locales, 9, {
+      status: 'draft',
+      code: 'pack-size',
+      names: { [locales.default]: 'Pack size' },
+      missingLocales: other === null ? [] : [other],
+    });
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      'POST catalog/admin/attributes': {
+        ok: true,
+        status: 201,
+        body: {
+          attribute: { id: id(9), code: 'pack-size', status: 'draft', version: 1, revisionNo: 1 },
+        },
+      },
+      [`GET catalog/admin/attributes/${id(9)}`]: ok(created),
+    });
+    mount({ canEdit: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add attribute' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add attribute' });
+    expect(within(dialog).getByText(/Size: Small, Medium, Large/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
+    const name = within(dialog).getByRole('textbox', { name: /^Name in/ });
+    expect(name.getAttribute('lang')).toBe(locales.default);
+    expect(within(dialog).queryByText('Fill this in.')).toBeNull();
+    fireEvent.change(name, { target: { value: 'Pack size' } });
+    expect(within(dialog).getByRole('textbox', { name: /^Code/ }).getAttribute('placeholder')).toBe(
+      'pack-size',
+    );
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Values in/ }), {
+      target: { value: '500 g\n\n1 kg\n' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add as draft' }));
+
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(panel).findByRole('heading', { name: 'Pack size' });
+    expect(within(panel).getAllByText('Draft').length).toBeGreaterThan(0);
+    expect(within(panel).getByRole('button', { name: 'Publish' })).toBeTruthy();
+    expect(within(panel).getByText(/sellers and buyers do not see this attribute/)).toBeTruthy();
+    const [post] = writes('POST');
+    expect(post).toEqual({
+      path: 'catalog/admin/attributes',
+      csrf: 'csrf-1',
+      body: {
+        dataType: 'select',
+        names: { [locales.default]: 'Pack size' },
+        material: false,
+        isVariantOption: false,
+        bounds: {},
+        options: [
+          { labels: { [locales.default]: '500 g' }, active: true },
+          { labels: { [locales.default]: '1 kg' }, active: true },
+        ],
+        helpText: {},
+        showOnProductPage: true,
+        searchable: false,
+        canBeFilter: false,
+        internalNote: null,
+        position: 0,
+      },
+    });
+    expect(window.location.search).toBe(`?id=${id(9)}`);
+  });
+
+  it('asks for a code when the name has no Latin letters, and shows a claim word on its field', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [])),
+      'POST catalog/admin/attributes': {
+        ok: false,
+        failure: {
+          status: 422,
+          code: 'attribute.claim-word',
+          details: { fields: [{ path: `names.${locales.default}`, code: 'claim-word' }] },
+        },
+      },
+    });
+    mount({ canEdit: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add attribute' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add attribute' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Yes or no/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
+    const name = within(dialog).getByRole('textbox', { name: /^Name in/ });
+    fireEvent.change(name, { target: { value: 'パック' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add as draft' }));
+    expect(await within(dialog).findByText(/Use lower-case letters|Fill this in/)).toBeTruthy();
+    expect(writes('POST')).toEqual([]);
+    expect(within(dialog).queryByRole('textbox', { name: /^Values in/ })).toBeNull();
+
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Code/ }), {
+      target: { value: 'halal-pack' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add as draft' }));
+    expect(await within(dialog).findByText(/^A name or value names a certification/)).toBeTruthy();
+    const name2 = within(dialog).getByRole('textbox', { name: /^Name in/ });
+    expect(name2.getAttribute('aria-invalid')).toBe('true');
+    expect(within(dialog).getByText(/^This text names a certification/)).toBeTruthy();
+  });
+
+  it('edits the whole content with the version seen; a newer version asks to reload', async () => {
+    let version = 3;
+    const saved = () =>
+      detail(locales, 1, {
+        version,
+        status: 'active',
+        names: { [locales.default]: 'Heat' },
+      });
+    let refuse409 = true;
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      [`GET catalog/admin/attributes/${id(1)}`]: () => ok(saved()),
+      [`PUT catalog/admin/attributes/${id(1)}`]: () => {
+        if (refuse409) {
+          refuse409 = false;
+          return refuse(409, 'attribute.stale');
+        }
+        version += 1;
+        return ok({
+          attribute: { id: id(1), code: 'attr-1', status: 'active', version, revisionNo: 3 },
+        });
+      },
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(panel).findByRole('heading', { name: 'Heat' });
+    expect(within(panel).queryByRole('button', { name: 'Publish' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
+    const form = within(panel).getByRole('form', { name: 'Edit attribute' });
+    expect(within(form).getByRole('checkbox', { name: /Variant option/ })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(within(form).getByRole('button', { name: 'Add value' }));
+    const labels = within(form).getAllByRole('textbox', { name: /^Value 3 in/ });
+    fireEvent.change(labels[0]!, { target: { value: 'Extra hot' } });
+    if (other !== null) {
+      await choose(within(form), 'Language', /Persian/);
+      fireEvent.change(within(form).getByRole('textbox', { name: /^Name in Persian/ }), {
+        target: { value: 'تندی' },
+      });
+      expect(
+        within(form)
+          .getByRole('textbox', { name: /^Name in Persian/ })
+          .getAttribute('dir'),
+      ).toBe('rtl');
+    }
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    expect(
+      await within(panel).findByText('This attribute changed since you opened it. Reload.'),
+    ).toBeTruthy();
+    const [first] = writes('PUT');
+    expect(first?.body).toMatchObject({
+      version: 3,
+      names: {
+        [locales.default]: 'Heat',
+        ...(other === null ? {} : { [other]: 'تندی' }),
+      },
+      options: [
+        { code: 'mild', labels: { [locales.default]: 'Mild' }, active: true },
+        { code: 'hot', labels: { [locales.default]: 'Hot' }, active: false },
+        { labels: { [locales.default]: 'Extra hot' }, active: true },
+      ],
+    });
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Reload' }));
+    await within(panel).findByRole('button', { name: 'Edit' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
+    fireEvent.click(
+      within(within(panel).getByRole('form', { name: 'Edit attribute' })).getByRole('button', {
+        name: 'Save',
+      }),
+    );
+    await expectToast('Attribute saved.');
+    expect(writes('PUT')[1]?.body).toMatchObject({ version: 3 });
+  });
+
+  it('points a refused value label at its row, and keeps a saved value from being removed', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { status: 'draft' })),
+      [`PUT catalog/admin/attributes/${id(1)}`]: {
+        ok: false,
+        failure: {
+          status: 422,
+          code: 'attribute-definition.text-invalid',
+          details: { fields: [{ path: `options.hot.labels.${locales.default}`, code: 'invalid' }] },
+        },
+      },
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Edit' }));
+    const form = within(panel).getByRole('form', { name: 'Edit attribute' });
+    expect(within(form).queryByRole('button', { name: 'Remove' })).toBeNull();
+    fireEvent.click(within(form).getByRole('button', { name: 'Move value 2 up' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    expect(await within(form).findByText(/Use plain text without spaces/)).toBeTruthy();
+    const field = within(form).getAllByRole('textbox', { name: /^Value 1 in/ })[0]!;
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(
+      (writes('PUT')[0]?.body as { options: { code: string }[] }).options.map((o) => o.code),
+    ).toEqual(['hot', 'mild']);
+  });
+
+  it('publishes a draft after confirming; a claim word found on publish is shown', async () => {
+    let published = false;
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { status: 'draft' })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: () =>
+        ok(detail(locales, 1, { status: published ? 'active' : 'draft' })),
+      [`POST catalog/admin/attributes/${id(1)}/publish`]: () => {
+        if (call.mock.calls.filter(([m]) => m === 'POST').length === 1) {
+          return refuse(422, 'attribute.claim-word');
+        }
+        published = true;
+        return ok({
+          attribute: { id: id(1), code: 'attr-1', status: 'active', version: 2, revisionNo: 1 },
+        });
+      },
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Publish' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publish Attribute 1?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publish' }));
+    expect(await within(dialog).findByText(/names a certification/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publish' }));
+    await expectToast('Attribute published.');
+    expect(writes('POST').map((w) => [w.path, w.body, w.csrf])).toEqual([
+      [`catalog/admin/attributes/${id(1)}/publish`, { version: 1 }, 'csrf-1'],
+      [`catalog/admin/attributes/${id(1)}/publish`, { version: 1 }, 'csrf-1'],
+    ]);
+    await waitFor(() =>
+      expect(within(panel).queryByRole('button', { name: 'Publish' })).toBeNull(),
+    );
+  });
+
+  it('discards a draft after confirming', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { status: 'draft' })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { status: 'draft' })),
+      [`POST catalog/admin/attributes/${id(1)}/discard`]: ok({
+        attribute: { id: id(1), code: 'attr-1', status: 'archived', version: 2, revisionNo: 1 },
+      }),
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    await expectToast('Draft discarded.');
+    expect(writes('POST')[0]?.path).toBe(`catalog/admin/attributes/${id(1)}/discard`);
+  });
+
+  it('offers no Add, Edit or Publish without catalog.attribute.edit', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { status: 'draft' })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { status: 'draft' })),
+    });
+    mount({ initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(panel).findByRole('heading', { name: 'Attribute 1' });
+    expect(screen.queryByRole('button', { name: 'Add attribute' })).toBeNull();
+    expect(within(panel).queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(within(panel).queryByRole('button', { name: 'Publish' })).toBeNull();
+  });
+
   it('sends a signed-out admin to the session-ended page', async () => {
     const assign = vi.fn();
     const original = window.location;
@@ -580,6 +868,10 @@ describe('history change lines', () => {
     });
     expect(line('option.hot.active')).toEqual({ key: 'option-active', code: 'hot' });
     expect(line('option.hot.position')).toEqual({ key: 'option-position', code: 'hot' });
+    expect(line('help.fa-IR')).toEqual({ key: 'help', language: 'Persian' });
+    expect(line('showOnProductPage')).toEqual({ key: 'show-on-product-page' });
+    expect(line('canBeFilter')).toEqual({ key: 'can-be-filter' });
+    expect(line('internalNote')).toEqual({ key: 'internal-note' });
     expect(line('weird')).toEqual({ key: 'other', field: 'weird' });
   });
 });

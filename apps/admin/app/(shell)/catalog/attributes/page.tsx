@@ -21,8 +21,8 @@ const one = (value: string | readonly string[] | undefined): string | undefined 
   typeof value === 'string' ? value : undefined;
 
 /**
- * Catalogue > Attributes (attributes plan, package A1): the attributes and feature sets of the
- * Market, read only. `?tab=` opens a tab and `?id=` an attribute or a feature set, so a link can
+ * Catalogue > Attributes (attributes plan, packages A1 and A2): the attributes and feature sets of
+ * the Market; an admin with `catalog.attribute.edit` adds and edits attributes. `?tab=` opens a tab and `?id=` an attribute or a feature set, so a link can
  * point at one. The Brands tab is the existing brands page.
  */
 export default async function AttributesPage({
@@ -47,13 +47,14 @@ export default async function AttributesPage({
   const rawId = one(query.id);
   const selectedId = rawId !== undefined && UUID.test(rawId) ? rawId : null;
   const title = t('attributes.title');
-  const { permissionKeys } = gate.session;
+  const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="attributes" title={title}>
       <h1 className="text-2xl font-semibold">{title}</h1>
       {permissionKeys.includes(VIEW_PERMISSION) ? (
         <AttributesView
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
+          csrfToken={csrfToken}
           canSeeBrands={permissionKeys.includes(BRANDS_READ_PERMISSION)}
           initialTab={tab}
           initialId={selectedId}

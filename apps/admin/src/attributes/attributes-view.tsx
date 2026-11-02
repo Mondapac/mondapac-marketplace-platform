@@ -10,16 +10,18 @@ import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
 /**
  * The Attributes page (attributes plan 16, package A1): four tabs. Attributes and Feature sets
  * are a list with the chosen row's details beside it (below it on a narrow screen); Brands is the
- * brands page; Waiting for you is empty until package A5. Read only: an admin without
- * `catalog.attribute.edit` sees the view-only notice, and no write exists yet for anyone.
+ * brands page; Waiting for you is empty until package A5. An admin with `catalog.attribute.edit`
+ * adds and edits attributes (package A2); any other admin sees the view-only notice.
  */
 export function AttributesView({
   canEdit,
+  csrfToken,
   canSeeBrands,
   initialTab,
   initialId,
 }: {
   readonly canEdit: boolean;
+  readonly csrfToken: string;
   readonly canSeeBrands: boolean;
   readonly initialTab: Tab;
   readonly initialId: string | null;
@@ -63,7 +65,14 @@ export function AttributesView({
           {t('view-only.body')}
         </Banner>
       )}
-      {tab === 'attributes' ? <AttributesTab selectedId={selected} onSelect={setSelected} /> : null}
+      {tab === 'attributes' ? (
+        <AttributesTab
+          selectedId={selected}
+          onSelect={setSelected}
+          canEdit={canEdit}
+          csrfToken={csrfToken}
+        />
+      ) : null}
       {tab === 'feature-sets' ? (
         <FeatureSetsTab
           selectedId={selected}

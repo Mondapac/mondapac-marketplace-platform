@@ -137,6 +137,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/brands/merge-queue/dismiss',
     // A new business activity (catalog).
     'catalog/admin/business-activities',
+    // Add an attribute as a draft (catalog, attributes package A2).
+    'catalog/admin/attributes',
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
     // the chosen products (at most 200 ids) or the whole filter; the body is capped at 16 KB.
     'catalog/admin/products/bulk',
@@ -179,6 +181,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/brands/:id/approve',
     'catalog/admin/brands/:id/archive',
     'catalog/admin/brands/:id/merge',
+    // Publish or discard a draft attribute, with the version seen (catalog, attributes A2).
+    'catalog/admin/attributes/:id/publish',
+    'catalog/admin/attributes/:id/discard',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
@@ -226,6 +231,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
     'catalog/admin/business-activities/:id',
+    // The whole content of an attribute, a new revision, with the version seen (attributes A2).
+    'catalog/admin/attributes/:id',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
   ],

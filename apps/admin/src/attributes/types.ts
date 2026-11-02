@@ -10,6 +10,20 @@ export const API_ATTRIBUTES = 'catalog/admin/attributes';
 export const API_FEATURE_SETS = 'catalog/admin/feature-sets';
 export const PAGE_SIZE = 50;
 
+/** What a write answers (attributes A2): enough to read the attribute again. */
+export interface AttributeWrite {
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly status: AttributeStatus;
+    readonly version: number;
+    readonly revisionNo: number;
+  };
+}
+
+/** The types whose values are a list the admin keeps. */
+export const CHOICE_TYPES: ReadonlySet<string> = new Set(['select', 'multi-select']);
+
 export const DATA_TYPES = [
   'text',
   'long-text',
@@ -92,11 +106,22 @@ export interface HistoryEntry {
   readonly changes: readonly AttributeChange[];
 }
 
+/** How the attribute shows and behaves (attributes A2). The internal note is admin-only. */
+export interface AttributeDisplay {
+  readonly helpText: Localized;
+  readonly showOnProductPage: boolean;
+  readonly searchable: boolean;
+  readonly canBeFilter: boolean;
+  readonly internalNote: string | null;
+  readonly position: number;
+}
+
 export interface AttributeDetail extends AttributeSummary {
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;
   readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  readonly display: AttributeDisplay;
   readonly options: readonly AttributeOption[];
   readonly productCount: number;
   readonly usedIn: readonly FeatureSetUse[];
