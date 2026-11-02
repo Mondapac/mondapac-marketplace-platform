@@ -104,6 +104,14 @@ export interface SellerOrderDelivered {
   readonly source: DeliverySource;
 }
 
+/** The disputes a seller lost in one window (the seller health feed). */
+export interface SellerLostDisputeCount {
+  readonly lost: number;
+}
+
+/** Why the seller health feed failed. */
+export type SellerLostDisputesFailure = AccessDenied | { readonly code: 'validation.failed' };
+
 /**
  * What `ordering` calls. Each method takes the caller's `CallContext` unchanged and is not
  * exposed over HTTP.
@@ -148,6 +156,18 @@ export interface CommissionPayoutsFacade {
     context: CallContext,
     delivered: SellerOrderDelivered,
   ): Promise<Result<'anchored' | 'already-anchored', CommissionPayoutsFailure>>;
+
+  /**
+   * The seller health feed (rule `system`): for each window `[from, to)` the disputes the seller
+   * lost, counted from the seller-fault decisions an admin took in it that no later decision
+   * reversed, in one read (at most 8 windows). The caller works the windows out in the seller's
+   * own zone (ADR-0005). Counters only.
+   */
+  sellerLostDisputes(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<Result<readonly SellerLostDisputeCount[], SellerLostDisputesFailure>>;
 }
 
 /** Nest token of the {@link CommissionPayoutsFacade}, provided by `CommissionPayoutsModule`. */

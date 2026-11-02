@@ -1,5 +1,5 @@
 import { AllowingStepUp } from '../../../../test/support/commission-payouts-fakes';
-import { money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
+import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -35,6 +35,7 @@ import { ListDisputes } from './use-cases/list-disputes.use-case';
 import { ListOwnDisputes } from './use-cases/list-own-disputes.use-case';
 import { SyncDispute } from './use-cases/sync-dispute.use-case';
 import { ViewDispute } from './use-cases/view-dispute.use-case';
+import { SellerLostDisputes } from './use-cases/seller-lost-disputes.use-case';
 
 // Dispute effects (package 8b) in memory on both Market fixtures: the consumer holds and releases
 // by the state payments returns, an admin decision writes its ledger row once, the seller reads
@@ -629,6 +630,72 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
           error: { code: 'access.denied' },
         });
       }
+    });
+  });
+
+  describe('the seller health feed', () => {
+    const count = (input: object, context = system) =>
+      new SellerLostDisputes(gate, deps).execute(context, input);
+    const around = {
+      from: T0.subtract({ hours: 1 }).toString(),
+      to: T0.add({ hours: 1 }).toString(),
+    };
+    const before = {
+      from: T0.subtract({ hours: 48 }).toString(),
+      to: T0.subtract({ hours: 24 }).toString(),
+    };
+
+    beforeEach(async () => {
+      publish({ version: 1 });
+      await sync();
+      lost();
+      await sync();
+    });
+
+    it('counts the disputes the seller was charged for, in the window of the decision', async () => {
+      await decide(SO_A, 'seller', '400');
+
+      expect(await count({ sellerId: SELLER_A, windows: [around, before] })).toEqual(
+        ok([{ lost: 1 }, { lost: 0 }]),
+      );
+      // Another seller, and the time after the decision, count nothing.
+      expect(await count({ sellerId: SELLER_B, windows: [around] })).toEqual(ok([{ lost: 0 }]));
+    });
+
+    it('leaves out a loss the platform bears', async () => {
+      await decide(SO_A, 'platform', undefined, 'card-fraud-not-seller');
+
+      expect(await count({ sellerId: SELLER_A, windows: [around] })).toEqual(ok([{ lost: 0 }]));
+    });
+
+    it('leaves out a seller decision the bank reversed', async () => {
+      await decide(SO_A, 'seller', '400');
+      lost({ version: 4, fundsReinstated: true, fundsReinstatedAt: T0.add({ minutes: 5 }) });
+      await sync();
+      await decide(SO_A, 'platform', undefined, 'other');
+
+      expect(await count({ sellerId: SELLER_A, windows: [around] })).toEqual(ok([{ lost: 0 }]));
+    });
+
+    it('answers only the system and refuses bad windows', async () => {
+      const input = { sellerId: SELLER_A, windows: [around] };
+      for (const context of [admin, sellerA, customer]) {
+        expect((await count(input, context)).ok).toBe(false);
+      }
+      for (const windows of [
+        [],
+        'x',
+        [{ from: 'nope', to: T0.toString() }],
+        [{ from: T0.toString(), to: T0.toString() }],
+        Array.from({ length: 9 }, () => around),
+      ]) {
+        expect(await count({ sellerId: SELLER_A, windows })).toEqual(
+          err({ code: 'validation.failed' }),
+        );
+      }
+      expect(await count({ sellerId: 'not-an-id', windows: [around] })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
     });
   });
 
