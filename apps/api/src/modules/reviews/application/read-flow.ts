@@ -360,3 +360,54 @@ export async function viewSellerSummary(
     arrivedOkBps: meetsMinimum ? shareBps(summary.arrivedOkYes, summary.ratedSellerOrders) : null,
   });
 }
+
+/** What the seller health feed counts for one window: published reviews and their stars. */
+export interface SellerReviewCount {
+  readonly reviews: number;
+  readonly starsSum: number;
+}
+
+/**
+ * The seller health feed: the seller's reviews published in `[from, to)` and the sum of their
+ * stars, counted by their status now. The window is a pair of instants the caller worked out in
+ * the seller's own zone (ADR-0005); this module knows no zone. Read only, and answers
+ * `reviews.disabled` while the Market has reviews off.
+ */
+export async function countSellerReviews(
+  deps: ReviewsDependencies,
+  context: CallContext,
+  input: { readonly sellerId?: unknown; readonly from?: unknown; readonly to?: unknown },
+): Promise<Result<SellerReviewCount, SummaryFailure>> {
+  const switched = await activeSettings(deps, context);
+  if (!switched.ok) return switched;
+  const sellerId = typeof input?.sellerId === 'string' ? parseId<'Seller'>(input.sellerId) : null;
+  const fields: FieldIssue[] = [];
+  if (sellerId === null || !sellerId.ok) fields.push({ path: 'sellerId', code: 'format' });
+  const from = instantOf(input?.from);
+  const to = instantOf(input?.to);
+  if (from === null) fields.push({ path: 'from', code: 'format' });
+  if (to === null) fields.push({ path: 'to', code: 'format' });
+  if (from !== null && to !== null && Temporal.Instant.compare(from, to) >= 0) {
+    fields.push({ path: 'to', code: 'range' });
+  }
+  if (fields.length > 0 || sellerId === null || !sellerId.ok || from === null || to === null) {
+    return err({ code: 'validation.failed', fields });
+  }
+  const read = await deps.unitOfWork.run(
+    context.market,
+    async () =>
+      ok(await deps.reviews.countPublishedForSeller(context.market, sellerId.value, from, to)),
+    { readOnly: true },
+  );
+  if (!read.ok) return err({ code: 'reviews.unavailable' });
+  return ok(read.value);
+}
+
+function instantOf(value: unknown): Temporal.Instant | null {
+  if (typeof value !== 'string') return null;
+  try {
+    return Temporal.Instant.from(value);
+  } catch {
+    return null;
+  }
+}

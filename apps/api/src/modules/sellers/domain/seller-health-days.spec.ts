@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import { computeSellerHealth, type SellerHealthSettings } from './seller-health';
 import {
+  localDayBounds,
   sellerHealthInputFromDays,
   windowStart,
   type SellerHealthDay,
@@ -133,5 +134,26 @@ describe('sellerHealthInputFromDays', () => {
     const health = computeSellerHealth(input, settings);
     expect(health).toMatchObject({ kind: 'scored', lowestMetric: 'late-ready', band: 'healthy' });
     expect(health.metrics[0]).toEqual({ metric: 'seller-cancellations', kind: 'no-data' });
+  });
+});
+
+describe('localDayBounds', () => {
+  it('runs from midnight to midnight in the seller zone', () => {
+    const b = localDayBounds(Temporal.PlainDate.from('2026-11-10'), 'Australia/Brisbane');
+    expect(b.from.toString()).toBe('2026-11-09T14:00:00Z');
+    expect(b.to.toString()).toBe('2026-11-10T14:00:00Z');
+  });
+
+  it('is 25 and 23 hours long on the days a zone changes its clock', () => {
+    const long = localDayBounds(Temporal.PlainDate.from('2026-10-25'), 'Europe/Berlin');
+    const short = localDayBounds(Temporal.PlainDate.from('2026-03-29'), 'Europe/Berlin');
+    expect(long.to.epochMilliseconds - long.from.epochMilliseconds).toBe(25 * 3_600_000);
+    expect(short.to.epochMilliseconds - short.from.epochMilliseconds).toBe(23 * 3_600_000);
+  });
+
+  it('gives neighbouring days that touch without a gap or overlap', () => {
+    const a = localDayBounds(Temporal.PlainDate.from('2026-11-10'), 'America/New_York');
+    const b = localDayBounds(Temporal.PlainDate.from('2026-11-11'), 'America/New_York');
+    expect(a.to.toString()).toBe(b.from.toString());
   });
 });

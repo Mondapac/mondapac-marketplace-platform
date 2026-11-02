@@ -29,6 +29,7 @@ import { ModerateReview } from './application/use-cases/moderate-review.use-case
 import { RemoveReview } from './application/use-cases/remove-review.use-case';
 import { ViewModerationReview } from './application/use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from './application/use-cases/delete-product-review.use-case';
+import { CountSellerReviews } from './application/use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from './application/use-cases/detach-author.use-case';
 import { EditProductReview } from './application/use-cases/edit-product-review.use-case';
 import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case';
@@ -142,6 +143,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RemoveReview,
       RebuildRatingSummaries,
       DetachAuthor,
+      CountSellerReviews,
       ListSellerReviews,
       ReplyToReview,
       EditReviewReply,
@@ -149,9 +151,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: REVIEWS_FACADE,
-      inject: [ViewProductSummary, ViewSellerSummary, DetachAuthor],
-      useFactory: (product: ViewProductSummary, seller: ViewSellerSummary, detach: DetachAuthor) =>
-        new ReviewsFacadeImplementation(product, seller, detach),
+      inject: [ViewProductSummary, ViewSellerSummary, DetachAuthor, CountSellerReviews],
+      useFactory: (
+        product: ViewProductSummary,
+        seller: ViewSellerSummary,
+        detach: DetachAuthor,
+        count: CountSellerReviews,
+      ) => new ReviewsFacadeImplementation(product, seller, detach, count),
     },
     registerJobsFrom(
       'reviews',

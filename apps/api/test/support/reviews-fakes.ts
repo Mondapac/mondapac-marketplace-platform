@@ -493,6 +493,23 @@ export class MemoryReviews implements ReviewRepository {
     }
     return Promise.resolve({ reviews, ratings });
   }
+  countPublishedForSeller(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+  ) {
+    let reviews = 0;
+    let starsSum = 0;
+    for (const r of this.productReviews.values()) {
+      const at = r.publishedAt;
+      if (r.sellerId !== sellerId || r.status !== 'published' || at === null) continue;
+      if (Temporal.Instant.compare(at, from) < 0 || Temporal.Instant.compare(at, to) >= 0) continue;
+      reviews += 1;
+      starsSum += r.rating;
+    }
+    return Promise.resolve({ reviews, starsSum });
+  }
 }
 
 export class MemoryReviewsSetting implements MarketSettingRepository {

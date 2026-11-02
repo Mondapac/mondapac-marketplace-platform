@@ -539,6 +539,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "reviews.count-seller-reviews", "rule": "system" },
   {
     "name": "reviews.delete-product-review",
     "rule": "own-resources",

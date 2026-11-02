@@ -24,4 +24,5 @@ export {
   type ReviewsFacade,
   type ReviewsFacadeFailure,
   type SellerRatingSummary,
+  type SellerReviewCount,
 } from './reviews.facade';

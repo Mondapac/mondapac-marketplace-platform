@@ -906,4 +906,25 @@ export class PrismaReviewRepository implements ReviewRepository {
     });
     return { reviews: reviews.count, ratings: ratings.count };
   }
+
+  // ---- seller health feed -------------------------------------------------------------------
+
+  async countPublishedForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+  ) {
+    const sum = await this.prisma.tx(market).reviewsProductReview.aggregate({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        status: 'published',
+        publishedAt: { gte: toDate(from), lt: toDate(to) },
+      },
+      _count: { _all: true },
+      _sum: { rating: true },
+    });
+    return { reviews: sum._count._all, starsSum: sum._sum.rating ?? 0 };
+  }
 }

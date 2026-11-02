@@ -406,6 +406,18 @@ export interface ReviewRepository {
     market: MarketContext,
     accountId: Id<'Account'>,
   ): Promise<{ readonly reviews: number; readonly ratings: number }>;
+
+  /**
+   * Seller health feed: the seller's product reviews that were published in `[from, to)`
+   * (`publishedAt`), counted by what they are now: a review hidden, removed or deleted later no
+   * longer counts. `starsSum` is the sum of their 1 to 5 ratings.
+   */
+  countPublishedForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+  ): Promise<{ readonly reviews: number; readonly starsSum: number }>;
 }
 
 export const REVIEW_REPOSITORY = Symbol('REVIEW_REPOSITORY');
