@@ -1,13 +1,40 @@
 import type { MetadataRoute } from 'next';
+import { LISTING_FILTER_PARAMS } from '../src/catalog/listing-state.ts';
+import { SELLERS_FILTER_PARAMS } from '../src/sellers/sellers-state.ts';
+import { indexingOn } from '../src/seo/indexing.ts';
+import { sitemapHost } from '../src/seo/sitemap.ts';
 
 // Read per request, like the noindex header, so the file follows the switch without a rebuild.
 export const dynamic = 'force-dynamic';
 
+/** Pages that are never worth a crawl, whatever their meta tags say. */
+const BLOCKED_PATHS = ['/search', '/cart', '/checkout', '/account'];
+
 /**
- * Allows every crawler on every path, whether indexing is on or off. Never `Disallow: /`: a page
- * blocked here is never fetched, so its noindex is never seen and its URL can still be listed.
- * Disallow rules and the sitemap come with SEO package 4.
+ * A listing URL that carries a filter or sort parameter is a copy of its plain page. `?page=` is
+ * not blocked: paged listings stay indexable (SEO package 1). The names come from the listing
+ * and sellers state files, which read them.
  */
-export default function robots(): MetadataRoute.Robots {
-  return { rules: { userAgent: '*', allow: '/' } };
+function filterRules(): string[] {
+  const names = [...new Set([...LISTING_FILTER_PARAMS, ...SELLERS_FILTER_PARAMS])];
+  return names.flatMap((name) => [`/*?${name}=`, `/*&${name}=`]);
+}
+
+/**
+ * With indexing off: allow every crawler on every path and add no rule. Never `Disallow: /`, and
+ * no other Disallow either: a blocked page is never fetched, so its noindex is never seen and its
+ * URL can still be listed. With indexing on, the Disallow rules and, on a listed AU host, the
+ * Sitemap line (SEO plan, package 4).
+ */
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  if (!indexingOn()) return { rules: { userAgent: '*', allow: '/' } };
+  const host = await sitemapHost();
+  return {
+    rules: {
+      userAgent: '*',
+      allow: '/',
+      disallow: [...BLOCKED_PATHS, ...filterRules()],
+    },
+    ...(host === undefined ? {} : { sitemap: `${host.origin}/sitemap.xml` }),
+  };
 }
