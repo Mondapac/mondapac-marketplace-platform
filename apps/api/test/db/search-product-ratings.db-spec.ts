@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
@@ -33,6 +34,13 @@ const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TE
 const T0 = Temporal.Instant.from('2026-10-15T10:00:00Z');
 const CHECK = '23514';
 
+// Words are unique to this run and every document made here is deleted by its own id, so this
+// spec never touches the Market-wide rows other specs read in parallel.
+const TOKEN = `zq${randomUUID()
+  .replace(/[^a-f]/g, '')
+  .slice(0, 8)}`;
+const w = (word: string): string => `${TOKEN}${word}`;
+
 let counter = 0;
 const id = <T extends string>(): Id<T> => {
   counter += 1;
@@ -59,16 +67,21 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
   let reader: RawOfferSearchReader;
   let sql: Client;
 
-  const doc = (name: string, productId: Id<'Product'> = id<'Product'>()): OfferDocument => ({
-    offerId: id<'Offer'>(),
-    productId,
-    sellerId: id<'Seller'>(),
-    locale: settings.locale,
-    name,
-    shortText: null,
-    categoryIds: [],
-    textSearchConfig: settings.textSearchConfig,
-  });
+  const made: string[] = [];
+  const doc = (name: string, productId: Id<'Product'> = id<'Product'>()): OfferDocument => {
+    const offerId = id<'Offer'>();
+    made.push(offerId);
+    return {
+      offerId,
+      productId,
+      sellerId: id<'Seller'>(),
+      locale: settings.locale,
+      name,
+      shortText: null,
+      categoryIds: [],
+      textSearchConfig: settings.textSearchConfig,
+    };
+  };
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
     const result = await db.unitOfWork.run(target, async () => ok(await work()), { readOnly });
     if (!result.ok) throw new Error('unit failed');
@@ -118,8 +131,10 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
     await db.close();
     await sql.end();
   });
-  beforeEach(async () => {
-    await sql.query('DELETE FROM "search"."offer_documents"');
+  afterEach(async () => {
+    await sql.query('DELETE FROM "search"."offer_documents" WHERE offer_id = ANY($1::uuid[])', [
+      made.splice(0),
+    ]);
     await sql.query('DELETE FROM "search"."product_ratings"');
   });
   const seed = (target: MarketContext, ...docs: OfferDocument[]) =>
@@ -128,12 +143,12 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
     });
 
   it('breaks a relevance tie by stars, and a rating never lifts a worse text match far', async () => {
-    const good = doc('Mock olive oil');
-    const poor = doc('Mock olive oil');
+    const good = doc(`${w('olive')} oil`);
+    const poor = doc(`${w('olive')} oil`);
     await seed(market, good, poor);
     await rate(market, good.productId, 40, 190);
     await rate(market, poor.productId, 40, 60);
-    const hits = await find('olive');
+    const hits = await find(w('olive'));
     expect(hits.map((h) => h.offerId)).toEqual([good.offerId, poor.offerId]);
     // The factor stays inside the Market weight.
     const stored = await sql.query<{ boost_ppm: number }>(
@@ -146,26 +161,26 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
   });
 
   it('keeps an unrated product neutral: a name match beats a mid rating on a weaker match', async () => {
-    const inName = doc('Mock dates');
-    const inShort: OfferDocument = { ...doc('Fruit box'), shortText: 'Mock dates' };
+    const inName = doc(`${w('dates')} x`);
+    const inShort: OfferDocument = { ...doc('Fruit box'), shortText: `${w('dates')} x` };
     await seed(market, inShort, inName);
     await rate(market, inShort.productId, 50, 250);
-    const hits = await find('dates');
+    const hits = await find(w('dates'));
     expect(hits.map((h) => h.offerId)).toEqual([inName.offerId, inShort.offerId]);
   });
 
   it('orders Top rated by the stored Bayesian average, and one five-star review does not win', async () => {
     const category = id<'Category'>();
     const inCategory = (d: OfferDocument): OfferDocument => ({ ...d, categoryIds: [category] });
-    const five = inCategory(doc('Mock rice'));
-    const four = inCategory(doc('Mock rice'));
-    const none = inCategory(doc('Mock rice'));
-    const lonely = inCategory(doc('Mock rice'));
+    const five = inCategory(doc(`${w('rice')} x`));
+    const four = inCategory(doc(`${w('rice')} x`));
+    const none = inCategory(doc(`${w('rice')} x`));
+    const lonely = inCategory(doc(`${w('rice')} x`));
     await seed(market, none, four, lonely, five);
     await rate(market, five.productId, 200, 940);
     await rate(market, four.productId, 20, 80);
     await rate(market, lonely.productId, 1, 5);
-    const hits = await find('rice', 'top-rated');
+    const hits = await find(w('rice'), 'top-rated');
     // One five-star review is not better than 200 good ones.
     expect(hits[0]!.offerId).toBe(five.offerId);
     expect(hits.slice(-1)[0]!.offerId).not.toBe(five.offerId);
@@ -176,13 +191,13 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
   });
 
   it('ignores a rating row of another Market', async () => {
-    const a = doc('Mock tea');
-    const b = doc('Mock tea');
+    const a = doc(`${w('tea')} x`);
+    const b = doc(`${w('tea')} x`);
     await seed(market, a, b);
-    await seed(other, { ...doc('Mock tea'), productId: a.productId });
+    await seed(other, { ...doc(`${w('tea')} x`), productId: a.productId });
     await rate(other, a.productId, 100, 500);
     await rate(market, b.productId, 100, 480);
-    const hits = await find('tea', 'top-rated');
+    const hits = await find(w('tea'), 'top-rated');
     expect(hits[0]!.offerId).toBe(b.offerId);
   });
 
@@ -220,7 +235,7 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
   });
 
   it('treats hostile query text as data', async () => {
-    await seed(market, doc('Mock honey'));
+    await seed(market, doc(`${w('honey')} x`));
     for (const text of ["'; DROP TABLE search.product_ratings; --", '(((', '& | !', '\\']) {
       await expect(find(text)).resolves.toBeDefined();
       await expect(find(text, 'top-rated')).resolves.toBeDefined();
