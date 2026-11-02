@@ -7,6 +7,7 @@ import {
   moved,
   problemOf,
   remapValueErrors,
+  sentCodes,
   suggestCode,
   valuesFromLines,
   type EditorForm,
@@ -87,10 +88,7 @@ describe.each(['en-AU', 'ja-JP'])('attribute editor form (%s)', (locale) => {
   });
 
   it('reads a refusal: a value named by code points at its row; stale asks to reload', () => {
-    const values = [
-      { key: 'a', code: 'mild', saved: true, labels: {}, active: true },
-      { key: 'b', code: 'hot', saved: true, labels: {}, active: true },
-    ];
+    const values = ['mild', 'hot'];
     expect(
       problemOf(
         {
@@ -132,6 +130,30 @@ describe.each(['en-AU', 'ja-JP'])('attribute editor form (%s)', (locale) => {
       locale,
     );
     expect(body.options.map((o) => o.code)).toEqual(['value-1', 'value-2', undefined]);
+  });
+
+  it('knows the code the API saves each value under, to point a refusal at its row', () => {
+    const rows = valuesFromLines('Red\n小\nRed\nBlue', locale);
+    const codes = sentCodes(
+      [
+        { ...rows[0]!, code: 'red', saved: true },
+        rows[1]!,
+        rows[2]!,
+        { ...rows[3]!, code: 'red-2' },
+      ],
+      locale,
+    );
+    expect(codes).toEqual(['red', 'value-1', 'red-3', 'red-2']);
+    expect(
+      problemOf(
+        {
+          status: 422,
+          code: 'attribute-definition.text-invalid',
+          details: { fields: [{ path: `options.red-3.labels.${locale}`, code: 'invalid' }] },
+        },
+        codes,
+      ).fields,
+    ).toEqual({ [`options[2].labels.${locale}`]: 'invalid' });
   });
 
   it('refuses a highest value below the lowest, and a bad code on a new value', () => {

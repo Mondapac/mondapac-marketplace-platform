@@ -199,6 +199,32 @@ function optionsOf(values: readonly ValueRow[], defaultLocale: string) {
   });
 }
 
+/**
+ * The code each value is saved under, by row: its own or `value-N` code, else the API's rule
+ * (attribute-editor `freeCode`): the code from the default-language label, made unique with
+ * `-2`, `-3`... against the codes before it and every code given. A refusal that names a value by
+ * code is pointed at its row through this list.
+ */
+export function sentCodes(values: readonly ValueRow[], defaultLocale: string): string[] {
+  const options = optionsOf(values, defaultLocale);
+  const given = new Set(
+    options.flatMap((option) => (option.code === undefined ? [] : [option.code])),
+  );
+  const taken = new Set<string>();
+  return options.map((option, index) => {
+    let code = option.code;
+    if (code === undefined) {
+      const base = suggestCode(values[index]?.labels[defaultLocale] ?? '');
+      const used = (candidate: string) => taken.has(candidate) || given.has(candidate);
+      code = base;
+      for (let n = 2; base !== '' && used(code) && n <= OPTIONS_MAX + 1; n += 1)
+        code = `${base}-${n}`;
+    }
+    taken.add(code);
+    return code;
+  });
+}
+
 /** Field errors by path (`names.en-AU`, `options[2].labels.fa-IR`, `code`, ...), a reason each. */
 export type FieldErrors = Readonly<Record<string, string>>;
 
@@ -305,7 +331,7 @@ const RELOAD: ReadonlySet<string> = new Set(['stale', 'gone', 'not-draft', 'arch
  * A refusal as the panel shows it. A value the API names by its code (`options.<code>...`) is
  * pointed at by its row (`options[<index>]...`), as the panel's own checks are.
  */
-export function problemOf(failure: ApiFailure, values: readonly ValueRow[] = []): EditorProblem {
+export function problemOf(failure: ApiFailure, codes: readonly string[] = []): EditorProblem {
   let key = BY_CODE[failure.code];
   if (key === undefined) {
     if (failure.status === 0 || failure.status >= 500) key = 'unavailable';
@@ -314,7 +340,7 @@ export function problemOf(failure: ApiFailure, values: readonly ValueRow[] = [])
   }
   const fields: Record<string, string> = {};
   for (const field of failure.details?.fields ?? []) {
-    fields[rowPath(field.path, values)] = field.code;
+    fields[rowPath(field.path, codes)] = field.code;
   }
   if (failure.code === 'attribute.code-taken') fields['code'] = 'taken';
   return { key, reload: RELOAD.has(key), fields };
@@ -322,15 +348,10 @@ export function problemOf(failure: ApiFailure, values: readonly ValueRow[] = [])
 
 const BY_CODE_PATH = /^options\.([a-z][a-z0-9_-]{0,63})(\..*)?$/;
 
-function rowPath(path: string, values: readonly ValueRow[]): string {
+function rowPath(path: string, codes: readonly string[]): string {
   const match = BY_CODE_PATH.exec(path);
   if (match === null) return path;
-  const index = values.findIndex(
-    (value) =>
-      value.code === match[1] ||
-      (value.code === '' &&
-        Object.values(value.labels).some((label) => suggestCode(label) === match[1])),
-  );
+  const index = codes.indexOf(match[1] ?? '');
   return index < 0 ? path : `options[${index}]${match[2] ?? ''}`;
 }
 

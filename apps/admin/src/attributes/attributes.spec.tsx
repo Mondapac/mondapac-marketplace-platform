@@ -893,6 +893,57 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(second.getAttribute('aria-invalid')).not.toBe('true');
   });
 
+  it('keeps focus where the admin types or moves a value while errors show', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { status: 'draft' })),
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Edit' }));
+    const form = within(panel).getByRole('form', { name: 'Edit attribute' });
+    const name = within(form).getAllByRole('textbox', { name: /^Name in/ })[0]!;
+    const label = within(form).getAllByRole('textbox', { name: /^Value 2 in/ })[0]!;
+    fireEvent.change(name, { target: { value: '' } });
+    fireEvent.change(label, { target: { value: '' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(document.activeElement).toBe(name));
+    label.focus();
+    fireEvent.change(label, { target: { value: 'H' } });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(document.activeElement).toBe(label);
+    expect(name.getAttribute('aria-invalid')).toBe('true');
+    fireEvent.click(within(form).getByRole('button', { name: 'Move value 2 up' }));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Move value 1 down'),
+    );
+  });
+
+  it('moves focus to the next value, or to Add value, after removing one', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { status: 'draft' })),
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Edit' }));
+    const form = within(panel).getByRole('form', { name: 'Edit attribute' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Add value' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Add value' }));
+    fireEvent.change(within(form).getAllByRole('textbox', { name: /^Value 4 in/ })[0]!, {
+      target: { value: 'Last' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Remove value 3' }));
+    await waitFor(() =>
+      expect((document.activeElement as HTMLInputElement | null)?.value).toBe('Last'),
+    );
+    expect(within(form).getByText('Value removed.')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'Remove value 3' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(form).getByRole('button', { name: 'Add value' })),
+    );
+  });
+
   it('discards a draft after confirming', async () => {
     serve({
       'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { status: 'draft' })])),

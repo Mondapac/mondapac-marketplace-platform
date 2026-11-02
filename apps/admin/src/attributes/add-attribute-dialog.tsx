@@ -20,6 +20,7 @@ import {
   contentOf,
   emptyForm,
   fieldKey,
+  sentCodes,
   suggestCode,
   valuesFromLines,
   type FieldErrors,
@@ -105,7 +106,7 @@ export function AddAttributeDialog({
         ...(typed === '' ? {} : { code: typed }),
         ...contentOf(form, dataType, locale),
       },
-      rows,
+      sentCodes(rows, locale),
     );
     if (!answer.ok) {
       if (answer.problem !== null) setErrors(answer.problem.fields);

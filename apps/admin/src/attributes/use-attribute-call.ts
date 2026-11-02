@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { problemOf, type EditorProblem, type ValueRow } from './editor.ts';
+import { problemOf, type EditorProblem } from './editor.ts';
 
 export type Outcome<T> =
   | { readonly ok: true; readonly body: T }
@@ -23,7 +23,8 @@ export function useAttributeCall(csrfToken: string) {
       method: 'POST' | 'PUT',
       path: string,
       body: unknown,
-      values: readonly ValueRow[] = [],
+      /** The code each value row is sent under (`sentCodes`), to point a value's refusal at its row. */
+      codes: readonly string[] = [],
     ): Promise<Outcome<T>> => {
       if (busy.current) return { ok: false, problem: null };
       busy.current = true;
@@ -37,7 +38,7 @@ export function useAttributeCall(csrfToken: string) {
         window.location.assign('/session-ended');
         return { ok: false, problem: null };
       }
-      const next = problemOf(result.failure, values);
+      const next = problemOf(result.failure, codes);
       setProblem(next);
       return { ok: false, problem: next };
     },

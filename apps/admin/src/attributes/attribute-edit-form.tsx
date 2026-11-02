@@ -27,6 +27,7 @@ import {
   moved,
   newValue,
   remapValueErrors,
+  sentCodes,
   suggestCode,
   type EditorForm,
   type FieldErrors,
@@ -80,7 +81,10 @@ export function AttributeEditForm({
   );
   const [announcement, setAnnouncement] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
-  useFocusFirstInvalid(formRef, errors);
+  // Focus goes to the first invalid field on opening and after each save attempt only: clearing
+  // an error while typing, or moving a value, keeps focus where the admin is.
+  const [attempt, setAttempt] = useState<FieldErrors>(initialErrors ?? {});
+  useFocusFirstInvalid(formRef, attempt);
   const call = useAttributeCall(csrfToken);
   const published = detail.status !== 'draft';
   const choice = CHOICE_TYPES.has(dataType);
@@ -167,6 +171,28 @@ export function AttributeEditForm({
       target?.focus();
     });
   };
+  /** Removes a new value; focus goes to the value now in its place, or to "Add value". */
+  const remove = (index: number) => {
+    const next = form.values[index + 1];
+    patch({ values: form.values.filter((_, at) => at !== index) });
+    setErrors((current) =>
+      remapValueErrors(
+        current,
+        form.values.map((_, at) => at).filter((at) => at !== index),
+      ),
+    );
+    setAnnouncement(t('values.removed'));
+    requestAnimationFrame(() => {
+      const root = formRef.current;
+      const field =
+        next === undefined
+          ? null
+          : root?.querySelector<HTMLInputElement>(
+              `input[name="value-${next.key}-${locales.default}"]`,
+            );
+      (field ?? root?.querySelector<HTMLButtonElement>('[data-add-value]'))?.focus();
+    });
+  };
   const secondOptions: readonly SearchSelectOption[] = locales.supported
     .filter((tag) => tag !== locales.default)
     .map((tag) => ({ value: tag, label: nameOf(tag) }));
@@ -175,6 +201,7 @@ export function AttributeEditForm({
     event.preventDefault();
     const found = checkForm(form, dataType, locales.default);
     setErrors(found);
+    setAttempt(found);
     if (Object.keys(found).length > 0) {
       reveal(found);
       return;
@@ -183,11 +210,12 @@ export function AttributeEditForm({
       'PUT',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}`,
       { version: detail.version, ...contentOf(form, dataType, locales.default) },
-      form.values,
+      sentCodes(form.values, locales.default),
     );
     if (!answer.ok) {
       if (answer.problem !== null) {
         setErrors(answer.problem.fields);
+        setAttempt(answer.problem.fields);
         reveal(answer.problem.fields);
       }
       return;
@@ -348,15 +376,7 @@ export function AttributeEditForm({
                       <Button
                         variant="secondary"
                         aria-label={t('values.remove-one', { number: index + 1 })}
-                        onClick={() => {
-                          patch({ values: form.values.filter((_, at) => at !== index) });
-                          setErrors((current) =>
-                            remapValueErrors(
-                              current,
-                              form.values.map((_, at) => at).filter((at) => at !== index),
-                            ),
-                          );
-                        }}
+                        onClick={() => remove(index)}
                       >
                         {t('values.remove')}
                       </Button>
@@ -429,6 +449,7 @@ export function AttributeEditForm({
           <span>
             <Button
               variant="secondary"
+              data-add-value
               disabled={form.values.length >= OPTIONS_MAX}
               onClick={() => patch({ values: [...form.values, newValue()] })}
             >

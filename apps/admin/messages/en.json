@@ -4780,6 +4780,7 @@
         "add": "Add value",
         "moved": "Value moved to position {number}.",
         "remove-one": "Remove value {number}",
+        "removed": "Value removed.",
         "code-label": "Code of value {number}",
         "code-help": "Lower-case letters, digits and hyphens. It never changes. Left empty, it is made from the label.",
         "code-auto": "made automatically"
@@ -4842,7 +4843,7 @@
         "throttled": "Too many changes at once. Wait a moment and try again.",
         "unavailable": "We could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again.",
-        "too-large": "Too many values or too much text to save at once. Save fewer changes at a time."
+        "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive."
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}."
