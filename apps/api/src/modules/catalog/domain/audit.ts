@@ -152,15 +152,20 @@ export const AttributeDefinitionCreatedAudit = defineAuditAction({
 
 /**
  * An admin saved a new revision of a definition (A2; catalog design 8.2). The flags before and
- * after show a change of `material` or of the variant flag; clearing `material` on a published
- * definition is not an edit (the two-person request adds its account ids here, A2 part 3).
+ * after show a change of `material` or of the variant flag. Clearing `material` on a published
+ * definition is not an edit: it is the confirm of a two-person request, and then the row names the
+ * request and its requester; the actor is the confirming admin, so both account ids are here.
  */
 export const AttributeDefinitionRevisedAudit = defineAuditAction({
   action: 'catalog.attribute-definition.revised',
   targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
   actors: ['authenticated'],
   before: definitionShape,
-  after: definitionShape,
+  after: {
+    ...definitionShape,
+    relaxationRequestId: auditField.optional(auditField.id()),
+    requestedByAccountId: auditField.optional(auditField.id()),
+  },
 });
 
 /** An admin published a draft definition: sellers now see it where a feature set names it. */
@@ -181,6 +186,53 @@ export const AttributeDefinitionDiscardedAudit = defineAuditAction({
   after: { status: auditField.enumOf(['archived'] as const) },
 });
 
+const relaxationKind = auditField.enumOf([
+  'clear-material',
+  'archive',
+  'remove-from-family',
+] as const);
+
+/**
+ * An admin asked to relax a `material` attribute (catalog design 8.2): a different admin must
+ * confirm before `expiresAt`. The target is the definition.
+ */
+export const AttributeRelaxationRequestedAudit = defineAuditAction({
+  action: 'catalog.attribute-relaxation.requested',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    requestId: auditField.id(),
+    kind: relaxationKind,
+    definitionVersion: auditField.integer(),
+    expiresAt: auditField.instant(),
+  },
+});
+
+/**
+ * A relaxation request was cancelled: by its requester, or because the definition was revised
+ * while it was open (Q-K14; the actor is then the admin who saved that revision).
+ */
+export const AttributeRelaxationCancelledAudit = defineAuditAction({
+  action: 'catalog.attribute-relaxation.cancelled',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    requestId: auditField.id(),
+    reason: auditField.enumOf(['requester', 'definition-changed'] as const),
+  },
+});
+
+/**
+ * A relaxation request ran out of time unconfirmed: closed by the expiry job (system), or by the
+ * unit of a new request for the same attribute (the admin asking again).
+ */
+export const AttributeRelaxationExpiredAudit = defineAuditAction({
+  action: 'catalog.attribute-relaxation.expired',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated', 'system'],
+  after: { requestId: auditField.id(), requestedByAccountId: auditField.id() },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -194,4 +246,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeDefinitionRevisedAudit,
   AttributeDefinitionPublishedAudit,
   AttributeDefinitionDiscardedAudit,
+  AttributeRelaxationRequestedAudit,
+  AttributeRelaxationCancelledAudit,
+  AttributeRelaxationExpiredAudit,
 ] as const;

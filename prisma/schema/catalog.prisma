@@ -282,6 +282,7 @@ model CatalogAttributeDefinition {
   createdAt           DateTime                             @map("created_at") @db.Timestamptz(6)
   revisions           CatalogAttributeDefinitionRevision[] @relation("DefinitionRevisions")
   publishedRevision   CatalogAttributeDefinitionRevision?  @relation("DefinitionPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
+  relaxationRequests  CatalogAttributeRelaxationRequest[]  @relation("DefinitionRelaxationRequests")
 
   @@unique([marketId, id])
   @@unique([marketId, code])
@@ -319,17 +320,21 @@ model CatalogAttributeDefinitionRevision {
   authorKind          String                                     @map("author_kind")
   /// Null exactly when the author is the seed.
   authorAccountId     String?                                    @map("author_account_id") @db.Uuid
-  /// Slice 21: the confirmed request that allowed clearing `material`; its foreign key arrives there.
+  /// The confirmed `clear-material` request of this definition that allowed clearing `material`
+  /// (catalog data design 3.5, 3.21); a request is used once.
   relaxationRequestId String?                                    @map("relaxation_request_id") @db.Uuid
   createdAt           DateTime                                   @map("created_at") @db.Timestamptz(6)
   definition          CatalogAttributeDefinition                 @relation("DefinitionRevisions", fields: [marketId, definitionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   published           CatalogAttributeDefinition[]               @relation("DefinitionPublished")
+  relaxationRequest   CatalogAttributeRelaxationRequest?         @relation("RevisionRelaxationRequest", fields: [marketId, definitionId, relaxationRequestId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
   options             CatalogAttributeDefinitionRevisionOption[]
 
   @@unique([marketId, definitionId, revisionNo])
   /// The target of the definition's published-revision pointer.
   @@unique([marketId, definitionId, id])
   @@unique([marketId, id])
+  /// A confirmed request clears `material` once.
+  @@unique([marketId, relaxationRequestId])
   @@map("attribute_definition_revisions")
   @@schema("catalog")
 }
@@ -369,11 +374,50 @@ model CatalogAttributeFamily {
   version             Int
   createdAt           DateTime                         @map("created_at") @db.Timestamptz(6)
   revisions           CatalogAttributeFamilyRevision[] @relation("FamilyRevisions")
+  relaxationRequests  CatalogAttributeRelaxationRequest[] @relation("FamilyRelaxationRequests")
   publishedRevision   CatalogAttributeFamilyRevision?  @relation("FamilyPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, familyId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, id])
   @@unique([marketId, code])
   @@map("attribute_families")
+  @@schema("catalog")
+}
+
+/// A two-admin request to relax a `material` attribute (catalog design 8.2, data design 3.21):
+/// one admin asks, a different admin with `catalog.attribute.edit` confirms. The status moves once,
+/// out of `open` (`confirmed`, `cancelled` or `expired`), with `version` checked by a conditional
+/// update; a guard trigger keeps every other column as inserted.
+model CatalogAttributeRelaxationRequest {
+  id                   String                               @db.Uuid
+  marketId             String                               @map("market_id") @db.VarChar(8)
+  tenantId             String                               @map("tenant_id")
+  definitionId         String                               @map("definition_id") @db.Uuid
+  /// The definition's version the request names; the confirm unit refuses if it changed.
+  definitionVersion    Int                                  @map("definition_version")
+  /// clear-material | archive | remove-from-family.
+  kind                 String
+  /// Only for remove-from-family.
+  familyId             String?                              @map("family_id") @db.Uuid
+  /// open | confirmed | cancelled | expired; no default (the application writes open).
+  status               String
+  requestedByAccountId String                               @map("requested_by_account_id") @db.Uuid
+  requestedAt          DateTime                             @map("requested_at") @db.Timestamptz(6)
+  expiresAt            DateTime                             @map("expires_at") @db.Timestamptz(6)
+  confirmedByAccountId String?                              @map("confirmed_by_account_id") @db.Uuid
+  /// When the status left open.
+  closedAt             DateTime?                            @map("closed_at") @db.Timestamptz(6)
+  /// requester | definition-changed; set exactly when cancelled.
+  cancelReason         String?                              @map("cancel_reason")
+  version              Int
+  definition           CatalogAttributeDefinition           @relation("DefinitionRelaxationRequests", fields: [marketId, definitionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  family               CatalogAttributeFamily?              @relation("FamilyRelaxationRequests", fields: [marketId, familyId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  revisions            CatalogAttributeDefinitionRevision[] @relation("RevisionRelaxationRequest")
+
+  @@id([marketId, id])
+  /// The target of the revisions' same-definition foreign key.
+  @@unique([marketId, definitionId, id])
+  @@index([marketId, status, expiresAt, id])
+  @@map("attribute_relaxation_requests")
   @@schema("catalog")
 }
 
