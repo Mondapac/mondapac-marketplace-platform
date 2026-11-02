@@ -4635,7 +4635,10 @@
       "publish-body": "Sellers will see it in every feature set that uses it. A published attribute cannot go back to draft.",
       "publish-missing": "Still missing in: {languages}. Buyers do not see it in those languages until they are filled in.",
       "discard-title": "Discard {name}?",
-      "discard-body": "The draft is archived and can never be published. Its history is kept."
+      "discard-body": "The draft is archived and can never be published. Its history is kept.",
+      "edit-attribute": "Edit attribute",
+      "publish-claim-word": "A name or value names a certification, such as halal. Edit it before publishing.",
+      "publish-locale-uncheckable": "Some text is in a language that cannot be checked for certification words yet. Edit it before publishing."
     },
     "values": {
       "not-choice": "This attribute has no list of values: sellers type or pick its value.",
@@ -4741,7 +4744,10 @@
       "code-help": "Lower-case letters, digits and hyphens. It never changes. Left empty, it is made from the name.",
       "optional": "Optional",
       "values": "Values in {language}",
-      "values-help": "One value per line. You can add more, and other languages, after it is added."
+      "values-help": "One value per line. You can add more, and other languages, after it is added.",
+      "step-1": "Step 1 of 2: Type",
+      "step-2": "Step 2 of 2: Name and values",
+      "line": "Line {number}: {message}"
     },
     "editor": {
       "label": "Edit attribute",
@@ -4771,19 +4777,24 @@
         "missing": "Missing",
         "active": "Active",
         "active-help": "Inactive values stay on existing products but cannot be picked again.",
-        "add": "Add value"
+        "add": "Add value",
+        "moved": "Value moved to position {number}.",
+        "remove-one": "Remove value {number}",
+        "code-label": "Code of value {number}",
+        "code-help": "Lower-case letters, digits and hyphens. It never changes. Left empty, it is made from the label.",
+        "code-auto": "made automatically"
       },
       "settings": {
         "title": "Settings",
-        "max-length": "Longest text",
+        "max-length": "Maximum length (characters)",
         "min": "Lowest value",
         "max": "Highest value",
         "variant": "Variant option",
         "variant-help": "Products can come in versions that differ by this value, such as size.",
         "variant-locked": "Fixed once the attribute is published.",
         "material": "Material",
-        "material-help": "A material attribute matters to buyers' decisions; changes to it are reviewed.",
-        "material-locked": "Turning Material off needs a second administrator. This is not available yet.",
+        "material-help": "A material attribute matters to buyers' decisions. Turning it off needs a second administrator's approval.",
+        "material-locked": "Turning Material off needs a second administrator's approval, which is not available yet.",
         "show-on-product-page": "Show on the product page",
         "searchable": "Searchable",
         "can-be-filter": "Can be a filter",
@@ -4799,24 +4810,26 @@
         "claim-word": "This text names a certification, such as halal. Certifications are shown only from verified certificates.",
         "locale-uncheckable": "Text in this language cannot be checked for certification words yet, so it cannot be saved.",
         "too-long": "This text is too long.",
-        "invalid": "Use plain text without spaces at the start or end.",
+        "invalid": "Use plain text only: no formatting, and no spaces at the start or end.",
         "format": "Use lower-case letters, digits and hyphens, starting with a letter.",
         "repeated": "Another value has this code.",
         "taken": "Another attribute has this code.",
         "removed": "A saved value cannot be removed. Make it inactive instead.",
         "number": "Enter a number.",
-        "other": "Check this field."
+        "other": "Check this field.",
+        "below-min": "The highest value must not be below the lowest.",
+        "unavailable": "We could not check this text. Try again."
       },
       "error": {
         "invalid": "Some fields need a change.",
-        "stale": "This attribute changed since you opened it. Reload.",
-        "gone": "This attribute no longer exists. Reload.",
+        "stale": "This attribute changed since you opened it. Reload to see the latest version.",
+        "gone": "This attribute no longer exists. Reload to update the list.",
         "code-taken": "Another attribute already has this code.",
         "claim-word": "A name or value names a certification, such as halal. Change the marked text.",
         "locale-uncheckable": "Some text is in a language that cannot be checked for certification words yet.",
         "check-unavailable": "We could not check the text for certification words. Try again in a moment.",
-        "not-draft": "This attribute is no longer a draft. Reload.",
-        "archived": "This attribute is archived. Reload.",
+        "not-draft": "This attribute is no longer a draft. Reload to see the latest version.",
+        "archived": "This attribute is archived. Reload to see the latest version.",
         "option-removed": "A saved value cannot be removed. Make it inactive instead.",
         "variant-locked": "The variant option cannot change after the attribute is published.",
         "material-relaxation": "Turning Material off needs a second administrator.",
@@ -4828,8 +4841,11 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "throttled": "Too many changes at once. Wait a moment and try again.",
         "unavailable": "We could not reach the server. Try again.",
-        "unknown": "Something went wrong. Try again."
-      }
+        "unknown": "Something went wrong. Try again.",
+        "too-large": "Too many values or too much text to save at once. Save fewer changes at a time."
+      },
+      "has-error": "Needs a change",
+      "check-languages": "Check the text in: {languages}."
     }
   }
 }

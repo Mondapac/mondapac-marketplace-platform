@@ -6,6 +6,7 @@ import {
   missingLocales,
   moved,
   problemOf,
+  remapValueErrors,
   suggestCode,
   valuesFromLines,
   type EditorForm,
@@ -38,6 +39,7 @@ describe.each(['en-AU', 'ja-JP'])('attribute editor form (%s)', (locale) => {
         min: '1',
       }),
       'select',
+      locale,
     );
     expect(body).toEqual({
       names: { [locale]: 'Pack size' },
@@ -55,9 +57,9 @@ describe.each(['en-AU', 'ja-JP'])('attribute editor form (%s)', (locale) => {
       internalNote: null,
       position: 0,
     });
-    expect(contentOf(form({ isVariantOption: true, min: '2', max: '9' }), 'integer')).toMatchObject(
-      { isVariantOption: false, bounds: { min: 2, max: 9 }, options: [] },
-    );
+    expect(
+      contentOf(form({ isVariantOption: true, min: '2', max: '9' }), 'integer', locale),
+    ).toMatchObject({ isVariantOption: false, bounds: { min: 2, max: 9 }, options: [] });
   });
 
   it('checks the default name, each label and the numbers before sending', () => {
@@ -120,5 +122,33 @@ describe.each(['en-AU', 'ja-JP'])('attribute editor form (%s)', (locale) => {
   it('moves a value up or down, and not past either end', () => {
     expect(moved(['a', 'b', 'c'], 2, 1)).toEqual(['a', 'c', 'b']);
     expect(moved(['a', 'b'], 0, -1)).toEqual(['a', 'b']);
+  });
+
+  it('makes value-N codes for values in another script, never one already taken', () => {
+    const rows = valuesFromLines('小\n中\nRed', locale);
+    const body = contentOf(
+      form({ values: [{ ...rows[0]!, code: 'value-1' }, rows[1]!, rows[2]!] }),
+      'select',
+      locale,
+    );
+    expect(body.options.map((o) => o.code)).toEqual(['value-1', 'value-2', undefined]);
+  });
+
+  it('refuses a highest value below the lowest, and a bad code on a new value', () => {
+    expect(checkForm(form({ min: '9', max: '2' }), 'integer', locale)).toEqual({
+      'bounds.max': 'below-min',
+    });
+    const [row] = valuesFromLines('A', locale);
+    expect(checkForm(form({ values: [{ ...row!, code: 'Bad Code' }] }), 'select', locale)).toEqual({
+      'options[0].code': 'format',
+    });
+  });
+
+  it('moves value errors with their rows and drops a removed row', () => {
+    const errors = { 'options[0].code': 'format', 'options[2].labels.x': 'required', names: 'x' };
+    expect(remapValueErrors(errors, [2, 1])).toEqual({
+      'options[0].labels.x': 'required',
+      names: 'x',
+    });
   });
 });

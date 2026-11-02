@@ -12,7 +12,8 @@ import {
   type SearchSelectOption,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import {
   HELP_MAX,
   NAME_MAX,
@@ -25,6 +26,8 @@ import {
   missingLocales,
   moved,
   newValue,
+  remapValueErrors,
+  suggestCode,
   type EditorForm,
   type FieldErrors,
   type ValueRow,
@@ -54,20 +57,30 @@ export function AttributeEditForm({
   onCancel,
   onSaved,
   onReload,
+  initialErrors,
 }: {
   readonly detail: AttributeDetail;
   readonly csrfToken: string;
   readonly onCancel: () => void;
   readonly onSaved: (write: AttributeWrite) => void;
   readonly onReload: () => void;
+  /** Field refusals to show on opening (a claim word found on publish). */
+  readonly initialErrors?: FieldErrors;
 }) {
   const t = useTranslations('attributes.editor');
   const selectLabels = useSelectLabels();
   const { locales, dataType } = detail;
   const [form, setForm] = useState<EditorForm>(() => formOf(detail));
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [locale, setLocale] = useState(locales.default);
-  const [second, setSecond] = useState('');
+  const [errors, setErrors] = useState<FieldErrors>(initialErrors ?? {});
+  const [locale, setLocale] = useState(
+    () => textErrorLocale(initialErrors ?? {}) ?? locales.default,
+  );
+  const [second, setSecond] = useState(
+    () => labelErrorLocale(initialErrors ?? {}, locales.default) ?? '',
+  );
+  const [announcement, setAnnouncement] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
+  useFocusFirstInvalid(formRef, errors);
   const call = useAttributeCall(csrfToken);
   const published = detail.status !== 'draft';
   const choice = CHOICE_TYPES.has(dataType);
@@ -107,11 +120,53 @@ export function AttributeEditForm({
     clearError(`options[${index}].labels.${tag}`);
   };
 
+  const errorLocales = localesWithErrors(errors);
   const languageOptions: readonly SearchSelectOption[] = locales.supported.map((tag) => ({
     value: tag,
     label: nameOf(tag),
-    description: missing.includes(tag) ? t('missing-short') : tag,
+    description: errorLocales.includes(tag)
+      ? t('has-error')
+      : missing.includes(tag)
+        ? t('missing-short')
+        : tag,
   }));
+
+  /** Shows the languages where the refused fields are: the text language and the value column. */
+  const reveal = (found: FieldErrors) => {
+    const text = textErrorLocale(found);
+    if (text !== null) setLocale(text);
+    const label = labelErrorLocale(found, locales.default);
+    if (label !== null) setSecond(label);
+  };
+
+  /** Moves a value and keeps focus on the moved value's button, announcing its new place. */
+  const move = (index: number, to: number, key: string, direction: 'up' | 'down') => {
+    patch({ values: moved(form.values, index, to) });
+    setErrors((current) =>
+      remapValueErrors(
+        current,
+        moved(
+          form.values.map((_, at) => at),
+          index,
+          to,
+        ),
+      ),
+    );
+    setAnnouncement(t('values.moved', { number: to + 1 }));
+    requestAnimationFrame(() => {
+      const root = formRef.current;
+      const own = root?.querySelector<HTMLButtonElement>(
+        `[data-row="${key}"][data-move="${direction}"]`,
+      );
+      const target =
+        own !== null && own !== undefined && !own.disabled
+          ? own
+          : root?.querySelector<HTMLButtonElement>(
+              `[data-row="${key}"][data-move="${direction === 'up' ? 'down' : 'up'}"]`,
+            );
+      target?.focus();
+    });
+  };
   const secondOptions: readonly SearchSelectOption[] = locales.supported
     .filter((tag) => tag !== locales.default)
     .map((tag) => ({ value: tag, label: nameOf(tag) }));
@@ -121,17 +176,20 @@ export function AttributeEditForm({
     const found = checkForm(form, dataType, locales.default);
     setErrors(found);
     if (Object.keys(found).length > 0) {
-      setLocale(locales.default);
+      reveal(found);
       return;
     }
     const answer = await call.run<AttributeWrite>(
       'PUT',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}`,
-      { version: detail.version, ...contentOf(form, dataType) },
+      { version: detail.version, ...contentOf(form, dataType, locales.default) },
       form.values,
     );
     if (!answer.ok) {
-      if (answer.problem !== null) setErrors(answer.problem.fields);
+      if (answer.problem !== null) {
+        setErrors(answer.problem.fields);
+        reveal(answer.problem.fields);
+      }
       return;
     }
     onSaved(answer.body);
@@ -139,22 +197,34 @@ export function AttributeEditForm({
 
   const formId = 'attribute-edit-form';
   const problem = call.problem;
-  const otherErrors = Object.keys(errors).filter(
-    (path) => !path.startsWith(`names.${locale}`) && !path.startsWith(`helpText.${locale}`),
-  );
+  // A refusal with no field (a newer version, the server unreachable) is read from its banner.
+  useEffect(() => {
+    if (problem === null || Object.keys(problem.fields).length > 0) return;
+    formRef.current?.querySelector<HTMLElement>('[data-form-problem]')?.focus();
+  }, [problem]);
+  const hasErrors = Object.keys(errors).length > 0;
 
   return (
     <form
+      ref={formRef}
       id={formId}
       aria-label={t('label')}
       className="flex flex-col gap-5"
       onSubmit={(event) => void submit(event)}
       noValidate
     >
+      <p className="sr-only" aria-live="polite">
+        {announcement}
+      </p>
       {problem === null ? null : (
         <Banner tone="critical">
           <span className="flex flex-col items-start gap-2">
-            <span>{t(`error.${problem.key}`)}</span>
+            <span data-form-problem tabIndex={-1}>
+              {t(`error.${problem.key}`)}
+              {errorLocales.length > 0
+                ? ` ${t('check-languages', { languages: errorLocales.map(nameOf).join(', ') })}`
+                : ''}
+            </span>
             {problem.reload ? (
               <Button variant="secondary" onClick={onReload}>
                 {t('reload')}
@@ -163,8 +233,12 @@ export function AttributeEditForm({
           </span>
         </Banner>
       )}
-      {otherErrors.length > 0 && problem === null ? (
-        <Banner tone="critical">{t('fix-fields')}</Banner>
+      {hasErrors && problem === null ? (
+        <Banner tone="critical">
+          {errorLocales.length > 0
+            ? t('check-languages', { languages: errorLocales.map(nameOf).join(', ') })
+            : t('fix-fields')}
+        </Banner>
       ) : null}
 
       <section aria-labelledby="editor-text" className="flex flex-col gap-3">
@@ -238,10 +312,13 @@ export function AttributeEditForm({
             </div>
           ) : null}
           {msg('options') === undefined ? null : (
-            <p className="text-sm text-critical-fg">{msg('options')}</p>
+            <p id="editor-values-error" role="alert" className="text-sm text-critical-fg">
+              {msg('options')}
+            </p>
           )}
           <ul
             aria-label={t('values.title')}
+            aria-describedby={msg('options') === undefined ? undefined : 'editor-values-error'}
             className="divide-y divide-line rounded-md border border-line"
           >
             {form.values.map((row, index) => (
@@ -254,21 +331,32 @@ export function AttributeEditForm({
                     <IconButton
                       icon="chevron-up"
                       label={t('values.up', { number: index + 1 })}
+                      data-row={row.key}
+                      data-move="up"
                       disabled={index === 0}
-                      onClick={() => patch({ values: moved(form.values, index, index - 1) })}
+                      onClick={() => move(index, index - 1, row.key, 'up')}
                     />
                     <IconButton
                       icon="chevron-down"
                       label={t('values.down', { number: index + 1 })}
+                      data-row={row.key}
+                      data-move="down"
                       disabled={index === form.values.length - 1}
-                      onClick={() => patch({ values: moved(form.values, index, index + 1) })}
+                      onClick={() => move(index, index + 1, row.key, 'down')}
                     />
                     {row.saved ? null : (
                       <Button
                         variant="secondary"
-                        onClick={() =>
-                          patch({ values: form.values.filter((_, at) => at !== index) })
-                        }
+                        aria-label={t('values.remove-one', { number: index + 1 })}
+                        onClick={() => {
+                          patch({ values: form.values.filter((_, at) => at !== index) });
+                          setErrors((current) =>
+                            remapValueErrors(
+                              current,
+                              form.values.map((_, at) => at).filter((at) => at !== index),
+                            ),
+                          );
+                        }}
                       >
                         {t('values.remove')}
                       </Button>
@@ -285,7 +373,7 @@ export function AttributeEditForm({
                     dir={directionOf(locales.default)}
                     error={
                       msg(`options[${index}].labels.${locales.default}`) ??
-                      msg(`options[${index}].code`) ??
+                      (row.saved ? msg(`options[${index}].code`) : undefined) ??
                       msg(`options[${index}]`)
                     }
                     autoComplete="off"
@@ -310,9 +398,28 @@ export function AttributeEditForm({
                     />
                   )}
                 </div>
+                {row.saved ? null : (
+                  <TextField
+                    name={`value-${row.key}-code`}
+                    label={t('values.code-label', { number: index + 1 })}
+                    help={t('values.code-help')}
+                    optionalLabel={t('optional')}
+                    value={row.code}
+                    placeholder={
+                      suggestCode(row.labels[locales.default] ?? '') || t('values.code-auto')
+                    }
+                    maxLength={64}
+                    error={msg(`options[${index}].code`)}
+                    autoComplete="off"
+                    onChange={(event) => {
+                      setValue(index, { code: event.target.value });
+                      clearError(`options[${index}].code`);
+                    }}
+                  />
+                )}
                 <CheckboxRow
                   label={t('values.active')}
-                  help={row.saved ? t('values.active-help') : undefined}
+                  help={row.saved && !row.active ? t('values.active-help') : undefined}
                   checked={row.active}
                   onChange={(event) => setValue(index, { active: event.target.checked })}
                 />
@@ -436,4 +543,35 @@ export function AttributeEditForm({
       </div>
     </form>
   );
+}
+
+const TEXT_PATH = /^(?:names|helpText)\.([A-Za-z0-9-]+)$/;
+const LABEL_PATH = /^options\[\d+\]\.labels\.([A-Za-z0-9-]+)$/;
+
+/** The language of the first refused name or help text, if any. */
+function textErrorLocale(errors: FieldErrors): string | null {
+  for (const path of Object.keys(errors)) {
+    const match = TEXT_PATH.exec(path);
+    if (match?.[1] !== undefined) return match[1];
+  }
+  return null;
+}
+
+/** The language of the first refused value label outside the default language, if any. */
+function labelErrorLocale(errors: FieldErrors, defaultLocale: string): string | null {
+  for (const path of Object.keys(errors)) {
+    const match = LABEL_PATH.exec(path);
+    if (match?.[1] !== undefined && match[1] !== defaultLocale) return match[1];
+  }
+  return null;
+}
+
+/** Every language with a refused text, in the order the refusals came. */
+function localesWithErrors(errors: FieldErrors): string[] {
+  const out: string[] = [];
+  for (const path of Object.keys(errors)) {
+    const match = TEXT_PATH.exec(path) ?? LABEL_PATH.exec(path);
+    if (match?.[1] !== undefined && !out.includes(match[1])) out.push(match[1]);
+  }
+  return out;
 }

@@ -21,6 +21,7 @@ import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
+import type { FieldErrors } from './editor.ts';
 import { changeLineOf } from './history.ts';
 import { useRevealWhenStacked } from './reveal.ts';
 import { useSelectLabels } from './select-labels.ts';
@@ -45,6 +46,9 @@ type Load =
   | { readonly state: 'failed' };
 
 type Confirm = 'publish' | 'discard' | null;
+
+/** Refusals of publish that only an edit of the text clears. */
+const TEXT_FIX: ReadonlySet<string> = new Set(['claim-word', 'locale-uncheckable']);
 
 /**
  * One attribute (plan 16): its name and badges, then four sub-tabs. Details shows the name in a
@@ -72,6 +76,7 @@ export function AttributeDetailPanel({
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [tab, setTab] = useState<DetailTab>('details');
   const [editing, setEditing] = useState(false);
+  const [editErrors, setEditErrors] = useState<FieldErrors | undefined>(undefined);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const latest = useRef(0);
   const panel = useRef<HTMLElement>(null);
@@ -107,6 +112,7 @@ export function AttributeDetailPanel({
   const changed = (message: string) => {
     toast.success(message);
     setEditing(false);
+    setEditErrors(undefined);
     setConfirm(null);
     onChanged?.();
     void fetchDetail();
@@ -148,7 +154,13 @@ export function AttributeDetailPanel({
             actions={
               canEdit && !editing && load.detail.status !== 'archived' ? (
                 <>
-                  <Button variant="secondary" onClick={() => setEditing(true)}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setEditErrors(undefined);
+                      setEditing(true);
+                    }}
+                  >
                     {t('edit')}
                   </Button>
                   {load.detail.status === 'draft' ? (
@@ -175,12 +187,18 @@ export function AttributeDetailPanel({
                 setConfirm(null);
                 void fetchDetail();
               }}
+              onEdit={(fields) => {
+                setConfirm(null);
+                setEditErrors(fields);
+                setEditing(true);
+              }}
             />
           )}
           {editing ? (
             <AttributeEditForm
               detail={load.detail}
               csrfToken={csrfToken}
+              initialErrors={editErrors}
               onCancel={() => setEditing(false)}
               onSaved={() => changed(t('saved'))}
               onReload={() => {
@@ -266,6 +284,7 @@ function StatusDialog({
   onClose,
   onDone,
   onReload,
+  onEdit,
 }: {
   readonly kind: 'publish' | 'discard';
   readonly detail: AttributeDetail;
@@ -273,6 +292,8 @@ function StatusDialog({
   readonly onClose: () => void;
   readonly onDone: () => void;
   readonly onReload: () => void;
+  /** The text must change first (a claim word): open the editor on the refused fields. */
+  readonly onEdit: (fields: FieldErrors) => void;
 }) {
   const t = useTranslations('attributes.detail');
   const te = useTranslations('attributes.editor');
@@ -302,6 +323,8 @@ function StatusDialog({
           </Button>
           {problem?.reload === true ? (
             <Button onClick={onReload}>{te('reload')}</Button>
+          ) : problem !== null && TEXT_FIX.has(problem.key) ? (
+            <Button onClick={() => onEdit(problem.fields)}>{t('edit-attribute')}</Button>
           ) : (
             <Button
               variant={kind === 'discard' ? 'destructive-solid' : 'primary'}
@@ -316,7 +339,11 @@ function StatusDialog({
       }
     >
       <div className="flex flex-col gap-3">
-        {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
+        {problem === null ? null : (
+          <Banner tone="critical">
+            {TEXT_FIX.has(problem.key) ? t(`publish-${problem.key}`) : te(`error.${problem.key}`)}
+          </Banner>
+        )}
         <p>{t(`${kind}-body`)}</p>
         {kind === 'publish' && missing.length > 0 ? (
           <p className="text-sm text-fg-muted">

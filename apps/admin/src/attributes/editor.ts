@@ -155,20 +155,14 @@ function boundsOf(form: EditorForm, dataType: DataType) {
  * The whole content the API takes on create and on edit: every key is sent, because an edit
  * replaces the content (a key left out would be read as its default).
  */
-export function contentOf(form: EditorForm, dataType: DataType) {
+export function contentOf(form: EditorForm, dataType: DataType, defaultLocale: string) {
   const note = form.internalNote.trim();
   return {
     names: filled(form.names),
     material: form.material,
     isVariantOption: dataType === 'select' ? form.isVariantOption : false,
     bounds: boundsOf(form, dataType),
-    options: CHOICE_TYPES.has(dataType)
-      ? form.values.map((value) => ({
-          ...(value.code === '' ? {} : { code: value.code }),
-          labels: filled(value.labels),
-          active: value.active,
-        }))
-      : [],
+    options: CHOICE_TYPES.has(dataType) ? optionsOf(form.values, defaultLocale) : [],
     helpText: filled(form.helpText),
     showOnProductPage: form.showOnProductPage,
     searchable: form.searchable,
@@ -176,6 +170,33 @@ export function contentOf(form: EditorForm, dataType: DataType) {
     internalNote: note === '' ? null : note,
     position: form.position.trim() === '' ? 0 : Number(form.position),
   };
+}
+
+/**
+ * The values as the API takes them. A new value whose label gives no code (a label in another
+ * script, such as 小) and that has none typed gets `value-N`, the first number free: codes are
+ * the admin's identifiers and never shown to sellers or buyers.
+ */
+function optionsOf(values: readonly ValueRow[], defaultLocale: string) {
+  const taken = new Set<string>();
+  for (const value of values) {
+    const code = value.code.trim() || suggestCode(value.labels[defaultLocale] ?? '');
+    if (code !== '') taken.add(code);
+  }
+  let next = 1;
+  return values.map((value) => {
+    let code = value.code.trim();
+    if (code === '' && suggestCode(value.labels[defaultLocale] ?? '') === '') {
+      while (taken.has(`value-${next}`)) next += 1;
+      code = `value-${next}`;
+      taken.add(code);
+    }
+    return {
+      ...(code === '' ? {} : { code }),
+      labels: filled(value.labels),
+      active: value.active,
+    };
+  });
 }
 
 /** Field errors by path (`names.en-AU`, `options[2].labels.fa-IR`, `code`, ...), a reason each. */
@@ -199,6 +220,10 @@ export function checkForm(
       if ((value.labels[defaultLocale] ?? '').trim() === '') {
         errors[`options[${index}].labels.${defaultLocale}`] = 'required';
       }
+      const code = value.code.trim();
+      if (!value.saved && code !== '' && !CODE_PATTERN.test(code)) {
+        errors[`options[${index}].code`] = 'format';
+      }
     });
   }
   if (TEXTUAL.has(dataType) && form.maxLength.trim() !== '' && !WHOLE.test(form.maxLength.trim())) {
@@ -208,10 +233,23 @@ export function checkForm(
     const pattern = dataType === 'integer' ? /^-?\d+$/ : DECIMAL;
     for (const key of ['min', 'max'] as const) {
       const text = form[key].trim();
-      if (text !== '' && !pattern.test(text)) errors[`bounds.${key}`] = 'number';
+      if (text !== '' && (!pattern.test(text) || !Number.isFinite(Number(text)))) {
+        errors[`bounds.${key}`] = 'number';
+      }
+    }
+    const [min, max] = [form.min.trim(), form.max.trim()];
+    if (
+      errors['bounds.min'] === undefined &&
+      errors['bounds.max'] === undefined &&
+      min !== '' &&
+      max !== '' &&
+      Number(min) > Number(max)
+    ) {
+      errors['bounds.max'] = 'below-min';
     }
   }
-  if (form.position.trim() !== '' && !WHOLE.test(form.position.trim())) {
+  const position = form.position.trim();
+  if (position !== '' && (!WHOLE.test(position) || Number(position) > 32_767)) {
     errors['position'] = 'number';
   }
   return errors;
@@ -258,6 +296,7 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'access.denied': 'denied',
   'request.csrf': 'csrf',
   'request.throttled': 'throttled',
+  'request.too-large': 'too-large',
 };
 
 const RELOAD: ReadonlySet<string> = new Set(['stale', 'gone', 'not-draft', 'archived']);
@@ -286,7 +325,12 @@ const BY_CODE_PATH = /^options\.([a-z][a-z0-9_-]{0,63})(\..*)?$/;
 function rowPath(path: string, values: readonly ValueRow[]): string {
   const match = BY_CODE_PATH.exec(path);
   if (match === null) return path;
-  const index = values.findIndex((value) => value.code === match[1]);
+  const index = values.findIndex(
+    (value) =>
+      value.code === match[1] ||
+      (value.code === '' &&
+        Object.values(value.labels).some((label) => suggestCode(label) === match[1])),
+  );
   return index < 0 ? path : `options[${index}]${match[2] ?? ''}`;
 }
 
@@ -303,6 +347,8 @@ export function fieldKey(reason: string): string {
     case 'taken':
     case 'removed':
     case 'number':
+    case 'below-min':
+    case 'unavailable':
       return reason;
     default:
       return 'other';
@@ -316,4 +362,22 @@ export function moved<T>(rows: readonly T[], from: number, to: number): T[] {
   const [row] = next.splice(from, 1);
   if (row !== undefined) next.splice(to, 0, row);
   return next;
+}
+
+/**
+ * The field errors after the values moved: `order[i]` is the old index of the row now at `i`; an
+ * error of a row that is gone is dropped.
+ */
+export function remapValueErrors(errors: FieldErrors, order: readonly number[]): FieldErrors {
+  const out: Record<string, string> = {};
+  for (const [path, reason] of Object.entries(errors)) {
+    const match = /^options\[(\d+)\](.*)$/.exec(path);
+    if (match === null) {
+      out[path] = reason;
+      continue;
+    }
+    const at = order.indexOf(Number(match[1]));
+    if (at >= 0) out[`options[${at}]${match[2] ?? ''}`] = reason;
+  }
+  return out;
 }

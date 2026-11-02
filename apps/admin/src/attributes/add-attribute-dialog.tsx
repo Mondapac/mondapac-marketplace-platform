@@ -10,7 +10,8 @@ import {
   TextField,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import {
   CODE_PATTERN,
   NAME_MAX,
@@ -64,6 +65,12 @@ export function AddAttributeDialog({
   const [material, setMaterial] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const call = useAttributeCall(csrfToken);
+  const formRef = useRef<HTMLFormElement>(null);
+  useFocusFirstInvalid(formRef, errors);
+  // Step 2 opens on the name.
+  useEffect(() => {
+    if (step === 2) formRef.current?.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
+  }, [step]);
   const locale = locales.default;
   const language = languageName(locale, locales.supported);
   const choice = CHOICE_TYPES.has(dataType);
@@ -96,7 +103,7 @@ export function AddAttributeDialog({
       {
         dataType,
         ...(typed === '' ? {} : { code: typed }),
-        ...contentOf(form, dataType),
+        ...contentOf(form, dataType, locale),
       },
       rows,
     );
@@ -108,12 +115,19 @@ export function AddAttributeDialog({
   }
 
   const formId = 'add-attribute-form';
-  const valueErrors = Object.entries(errors).filter(([path]) => path.startsWith('options'));
+  // A value's refusal names its line in the box (values are the non-blank lines, in order).
+  const valueErrors = Object.entries(errors)
+    .filter(([path]) => path.startsWith('options'))
+    .map(([path, reason]) => {
+      const line = /^options\[(\d+)\]/.exec(path)?.[1];
+      const text = te(`field.${fieldKey(reason)}`);
+      return line === undefined ? text : t('line', { number: Number(line) + 1, message: text });
+    });
 
   return (
     <Dialog
       open
-      title={t('title')}
+      title={`${t('title')} · ${t(step === 1 ? 'step-1' : 'step-2')}`}
       onClose={onClose}
       actions={
         step === 1 ? (
@@ -158,6 +172,7 @@ export function AddAttributeDialog({
         />
       ) : (
         <form
+          ref={formRef}
           id={formId}
           className="flex flex-col gap-4"
           onSubmit={(event) => void submit(event)}
@@ -202,11 +217,7 @@ export function AddAttributeDialog({
               value={values}
               lang={locale}
               dir={directionOf(locale)}
-              error={
-                valueErrors.length === 0
-                  ? undefined
-                  : te(`field.${fieldKey(valueErrors[0]?.[1] ?? '')}`)
-              }
+              error={valueErrors.length === 0 ? undefined : valueErrors.join(' ')}
               onChange={(event) => setValues(event.target.value)}
             />
           ) : null}
