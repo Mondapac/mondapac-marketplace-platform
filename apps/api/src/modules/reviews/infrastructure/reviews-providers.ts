@@ -9,10 +9,15 @@ import { REVIEW_REPOSITORY, type ReviewRepository } from '../application/ports/r
 import { REVIEWER_NAMES, type ReviewerNames } from '../application/ports/reviewer-names';
 import { REVIEWS_POLICY, type ReviewsPolicy } from '../application/ports/reviews-policy';
 import { SELLER_AFFINITY, type SellerAffinity } from '../application/ports/seller-affinity';
-import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
+import {
+  SELLER_OVERLAP_SOURCE,
+  type SellerOverlapSource,
+} from '../application/ports/seller-overlap';
 import { ConfigReviewsPolicy } from './config-reviews-policy';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaReviewRepository } from './prisma-review.repository';
+import { UnavailableSellerOverlap } from './unavailable-seller-overlap';
+import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
 import { IdentitySellerAffinity } from './identity-seller-affinity';
 import { UnavailableReviewerNames } from './unavailable-reviewer-names';
 
@@ -42,5 +47,9 @@ export const reviewsProviders: readonly FactoryProvider[] = [
     provide: SELLER_AFFINITY,
     inject: [IDENTITY_FACADE],
     useFactory: (identity: IdentityFacade): SellerAffinity => new IdentitySellerAffinity(identity),
+  },
+  {
+    provide: SELLER_OVERLAP_SOURCE,
+    useFactory: (): SellerOverlapSource => new UnavailableSellerOverlap(),
   },
 ];
