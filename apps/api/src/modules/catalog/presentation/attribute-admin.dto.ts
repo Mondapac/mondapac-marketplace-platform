@@ -315,6 +315,8 @@ export class OpenRelaxationBody {
   @ApiProperty({ enum: ['clear-material', 'archive', 'remove-from-family'] }) kind!: string;
   @ApiProperty({ type: RelaxationAttributeBody }) attribute!: RelaxationAttributeBody;
   @ApiProperty({ description: "The reader's own request: cancel, not confirm." }) mine!: boolean;
+  @ApiProperty({ format: 'uuid', description: 'The requesting administrator.' })
+  requestedByAccountId!: string;
   @ApiProperty({ format: 'date-time' }) requestedAt!: string;
   @ApiProperty({ format: 'date-time' }) expiresAt!: string;
   @ApiProperty({ type: RelaxationActionsBody }) allowedActions!: RelaxationActionsBody;

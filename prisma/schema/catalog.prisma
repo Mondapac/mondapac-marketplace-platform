@@ -416,7 +416,7 @@ model CatalogAttributeRelaxationRequest {
   @@id([marketId, id])
   /// The target of the revisions' same-definition foreign key.
   @@unique([marketId, definitionId, id])
-  @@index([marketId, status, expiresAt, id])
+  @@index([marketId, status, expiresAt, id], map: "attribute_relaxation_requests_market_id_status_expires_at_idx")
   @@map("attribute_relaxation_requests")
   @@schema("catalog")
 }

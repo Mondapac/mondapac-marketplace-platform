@@ -20,7 +20,9 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import { CATALOG_ATTRIBUTE_EDIT } from '../../contracts/permissions';
+import { AttributeRelaxationRequest } from '../../domain/attribute-relaxation-request';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import { AttributeDefinitionCreate } from './attribute-definition-create.use-case';
 import { AttributeDefinitionEdit } from './attribute-definition-edit.use-case';
@@ -238,6 +240,23 @@ describe.each(['AU', 'ZZ'] as const)('material relaxation in market %s', (code) 
       ]);
     });
 
+    it('goes on when the lapsed request was closed meanwhile by the job (Sajad 2)', async () => {
+      const { attribute, request } = await opened();
+      clock.advance(Temporal.Duration.from({ hours: 72 }));
+      // The job wins the race: the row is expired by then, so this unit's move finds it moved.
+      jest.spyOn(relaxations, 'saveMove').mockImplementationOnce((_market, lapsed) => {
+        relaxations.rows.set(request.id, lapsed);
+        return Promise.reject(new StaleAggregateError('attribute-relaxation-request', request.id));
+      });
+      const answer = await build().request.execute(admin(SECOND), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        kind: 'clear-material',
+      });
+      expect(answer).toMatchObject({ ok: true, value: { request: { status: 'open' } } });
+      expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-relaxation.requested']);
+    });
+
     it('is refused without the key and in an acting-as session', async () => {
       const attribute = await publishedMaterial();
       const input = {
@@ -318,6 +337,34 @@ describe.each(['AU', 'ZZ'] as const)('material relaxation in market %s', (code) 
       expect(store.rows.get(attribute.id)!.state.material).toBe(true);
     });
 
+    it('refuses after the job expired it, with expired (Sajad 1)', async () => {
+      const { request } = await opened();
+      clock.advance(Temporal.Duration.from({ hours: 72 }));
+      await build().expire.execute(testCallContext(market, 'system'), {});
+      expect(
+        await build().confirm.execute(admin(SECOND), { requestId: request.id, version: 2 }),
+      ).toMatchObject({ ok: false, error: { code: 'relaxation.expired' } });
+    });
+
+    it('refuses when the attribute changed since the request', async () => {
+      const { attribute, request } = await opened();
+      const stored = relaxations.rows.get(request.id)!;
+      relaxations.rows.set(
+        request.id,
+        AttributeRelaxationRequest.rehydrate({
+          ...stored.state,
+          definitionVersion: stored.state.definitionVersion - 1,
+        }),
+      );
+      expect(
+        await build().confirm.execute(admin(SECOND), {
+          requestId: request.id,
+          version: request.version,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'relaxation.attribute-changed' } });
+      expect(store.rows.get(attribute.id)!.state.material).toBe(true);
+    });
+
     it('refuses in an acting-as session', async () => {
       const { request } = await opened();
       expect(
@@ -351,10 +398,29 @@ describe.each(['AU', 'ZZ'] as const)('material relaxation in market %s', (code) 
         'catalog.attribute-definition.revised',
         'catalog.attribute-relaxation.cancelled',
       ]);
+      // Hassan L1: the cancel row names the requester, not only the editor.
+      expect(JSON.stringify(audits[1])).toContain(FIRST);
       expect(
         await uc.confirm.execute(admin(SECOND), { requestId: request.id, version: 2 }),
       ).toMatchObject({ ok: false, error: { code: 'relaxation.closed' } });
       expect(store.rows.get(attribute.id)!.state.material).toBe(true);
+    });
+
+    it('goes on when the request was closed meanwhile by its requester (Sajad 3)', async () => {
+      const { attribute, request } = await opened();
+      jest
+        .spyOn(relaxations, 'saveMove')
+        .mockRejectedValueOnce(new StaleAggregateError('attribute-relaxation-request', request.id));
+      const edited = await build().edit.execute(admin(SECOND), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        names: { [english]: 'Allergens list' },
+        material: true,
+        isVariantOption: false,
+        options: [{ code: 'nuts', labels: { [english]: 'Nuts' } }],
+      });
+      expect(edited.ok).toBe(true);
+      expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.revised']);
     });
 
     it('still refuses clearing material by an edit of a published attribute', async () => {
@@ -390,6 +456,21 @@ describe.each(['AU', 'ZZ'] as const)('material relaxation in market %s', (code) 
       expect(relaxations.rows.get(request.id)!.state.cancelReason).toBe('requester');
       expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-relaxation.cancelled']);
     });
+
+    it('is refused once its time ran out, and in an acting-as session', async () => {
+      const { request } = await opened();
+      const input = { requestId: request.id, version: request.version };
+      expect(await build().cancel.execute(actingAs(), input)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      clock.advance(Temporal.Duration.from({ hours: 72 }));
+      expect(await build().cancel.execute(admin(FIRST), input)).toMatchObject({
+        ok: false,
+        error: { code: 'relaxation.expired' },
+      });
+      expect(relaxations.rows.get(request.id)!.state.status).toBe('open');
+    });
   });
 
   describe('list open ("Waiting for you")', () => {
@@ -410,6 +491,7 @@ describe.each(['AU', 'ZZ'] as const)('material relaxation in market %s', (code) 
                 version: attribute.version,
               },
               mine: false,
+              requestedByAccountId: FIRST,
               requestedAt: '2026-11-02T10:00:00Z',
               expiresAt: '2026-11-05T10:00:00Z',
               allowedActions: {
@@ -430,6 +512,10 @@ describe.each(['AU', 'ZZ'] as const)('material relaxation in market %s', (code) 
       });
       clock.advance(Temporal.Duration.from({ hours: 72 }));
       expect(await build().list.execute(admin(SECOND), {})).toEqual(ok({ requests: [] }));
+      expect(await build().list.execute(actingAs(), {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
   });
 

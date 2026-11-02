@@ -1,6 +1,7 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AttributeRelaxationRequest } from '../../domain/attribute-relaxation-request';
 import { AttributeRelaxationCancelledAudit } from '../../domain/audit';
@@ -50,7 +51,8 @@ export function relaxationViewOf(request: AttributeRelaxationRequest): Relaxatio
 /**
  * Q-K14: the unit that revised a definition cancels its open relaxation request, which named a
  * version that no longer exists. Runs in that unit after the revision (definition, then request:
- * the confirm unit's lock order). A request that another move closed first is left as it is.
+ * the confirm unit's lock order). A request that another move closed first, before or during this
+ * unit, is left as it is and the edit goes on.
  */
 export async function cancelOpenRelaxation(
   deps: Pick<AttributeRelaxationDependencies, 'relaxations' | 'audit' | 'clock'>,
@@ -62,11 +64,22 @@ export async function cancelOpenRelaxation(
   if (open === null) return;
   const cancelled = open.cancelForChange(deps.clock.now());
   if (!cancelled.ok) return;
-  await deps.relaxations.saveMove(market, cancelled.value);
+  try {
+    await deps.relaxations.saveMove(market, cancelled.value);
+  } catch (error) {
+    // Closed meanwhile by its requester or the expiry job (neither locks the definition): it can
+    // no longer be confirmed, which is all this cancel is for, so the edit goes on.
+    if (error instanceof StaleAggregateError) return;
+    throw error;
+  }
   await deps.audit.record(
     context,
     AttributeRelaxationCancelledAudit.entry(definitionId, {
-      after: { requestId: open.state.id, reason: 'definition-changed' },
+      after: {
+        requestId: open.state.id,
+        reason: 'definition-changed',
+        requestedByAccountId: open.state.requestedByAccountId,
+      },
     }),
   );
 }

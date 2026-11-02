@@ -25,6 +25,8 @@ export interface OpenRelaxationView {
   };
   /** The reader's own request: they may cancel it, not confirm it. */
   readonly mine: boolean;
+  /** The requester's account id (design 8.2); their display name waits for an identity read. */
+  readonly requestedByAccountId: string;
   readonly requestedAt: string;
   readonly expiresAt: string;
   readonly allowedActions: {
@@ -43,7 +45,7 @@ export type AttributeRelaxationListOpenFailure =
  * part 3): the Market's open relaxation requests still in time, oldest first, with the attribute's
  * code, names and version and what the reader may do: confirm another admin's request, cancel
  * their own (`relaxation.same-admin` and `relaxation.not-requester` otherwise). The requester is
- * shown only as `mine` or not: the admin name lookup is a later identity read. Rule: the key
+ * shown by account id and as `mine` or not: the admin name lookup is a later identity read. Rule: the key
  * `catalog.attribute.edit` (protected), the admin population, never in an acting-as session.
  */
 export class AttributeRelaxationListOpen extends UseCase<
@@ -99,6 +101,7 @@ export class AttributeRelaxationListOpen extends UseCase<
               version: definition.state.version,
             },
             mine,
+            requestedByAccountId: state.requestedByAccountId,
             requestedAt: state.requestedAt.toString(),
             expiresAt: state.expiresAt.toString(),
             allowedActions: {

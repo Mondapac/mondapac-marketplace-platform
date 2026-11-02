@@ -7,6 +7,12 @@ import { ATTRIBUTE_DEFINITION_STORE } from '../src/modules/catalog/application/p
 import { ATTRIBUTE_RELAXATION_STORE } from '../src/modules/catalog/application/ports/attribute-relaxation.store';
 import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
 import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
+import type { ExpireRelaxationRequests } from '../src/modules/catalog/application/use-cases/expire-relaxation-requests.use-case';
+import { RELAXATION_STATUS } from '../src/modules/catalog/presentation/attribute-relaxation.controller';
+import {
+  EXPIRE_RELAXATION_REQUESTS_JOB,
+  expireRelaxationRequestsJob,
+} from '../src/modules/catalog/presentation/jobs/expire-relaxation-requests.job';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -47,6 +53,30 @@ const SECOND = id<'Account'>(0xb703);
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
+
+it('maps each relaxation refusal to its HTTP status', () => {
+  expect(RELAXATION_STATUS).toMatchObject({
+    'relaxation.not-found': 404,
+    'relaxation.same-admin': 403,
+    'relaxation.not-requester': 403,
+    'relaxation.already-open': 409,
+    'relaxation.stale': 409,
+    'relaxation.closed': 409,
+    'relaxation.expired': 409,
+    'relaxation.attribute-changed': 409,
+    'attribute-definition.not-material': 409,
+    'attribute.not-found': 404,
+    'attribute.stale': 409,
+    'validation.failed': 400,
+  });
+});
+
+it('runs the expiry job every 15 minutes under its name', () => {
+  const job = expireRelaxationRequestsJob({} as ExpireRelaxationRequests);
+  expect(job.name).toBe(EXPIRE_RELAXATION_REQUESTS_JOB);
+  expect(job.name).toBe('catalog.expire-relaxation-requests');
+  expect(job.every.total({ unit: 'minutes' })).toBe(15);
+});
 
 describe('material relaxation over HTTP (integration)', () => {
   let app: NestExpressApplication;

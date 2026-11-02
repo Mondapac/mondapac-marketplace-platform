@@ -188,7 +188,7 @@ export class AttributeRelaxationController {
   @ReadsSession()
   @ApiOperation({
     summary: 'Withdraw your own request',
-    description: `${EDITS} Only the requester (relaxation.not-requester).`,
+    description: `${EDITS} Only the requester (relaxation.not-requester), and only in time.`,
   })
   @ApiParam(REQUEST_PARAM)
   @ApiHeader(CSRF)
@@ -201,7 +201,10 @@ export class AttributeRelaxationController {
     description: 'access.denied, request.csrf or relaxation.not-requester',
   })
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'relaxation.not-found' })
-  @ApiConflictResponse({ type: ApiErrorBody, description: 'relaxation.stale or relaxation.closed' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'relaxation.stale, relaxation.closed or relaxation.expired',
+  })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   async cancel(
     @Call() context: CallContext,

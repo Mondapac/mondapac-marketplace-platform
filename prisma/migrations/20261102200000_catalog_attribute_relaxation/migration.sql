@@ -22,7 +22,7 @@ CREATE TABLE "catalog"."attribute_relaxation_requests" (
 );
 
 -- CreateIndex
-CREATE INDEX "attribute_relaxation_requests_market_id_status_expires_at_i_idx" ON "catalog"."attribute_relaxation_requests"("market_id", "status", "expires_at", "id");
+CREATE INDEX "attribute_relaxation_requests_market_id_status_expires_at_idx" ON "catalog"."attribute_relaxation_requests"("market_id", "status", "expires_at", "id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "attribute_relaxation_requests_market_id_definition_id_id_key" ON "catalog"."attribute_relaxation_requests"("market_id", "definition_id", "id");
@@ -89,6 +89,14 @@ BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'catalog.attribute_relaxation_requests: DELETE is not allowed' USING ERRCODE = 'restrict_violation';
   END IF;
+  -- Mojtaba M1, Hassan M3: a request is born open, so a confirmed row only ever comes from a move.
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'open' OR NEW.version <> 1 OR NEW.confirmed_by_account_id IS NOT NULL
+       OR NEW.closed_at IS NOT NULL OR NEW.cancel_reason IS NOT NULL THEN
+      RAISE EXCEPTION 'catalog.attribute_relaxation_requests: a new request is open at version 1' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
   IF OLD.status <> 'open' THEN
     RAISE EXCEPTION 'catalog.attribute_relaxation_requests: a closed request never changes' USING ERRCODE = 'restrict_violation';
   END IF;
@@ -108,7 +116,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END; $$;
-CREATE TRIGGER "attribute_relaxation_requests_guard" BEFORE UPDATE OR DELETE
+CREATE TRIGGER "attribute_relaxation_requests_guard" BEFORE INSERT OR UPDATE OR DELETE
   ON "catalog"."attribute_relaxation_requests"
   FOR EACH ROW EXECUTE FUNCTION "catalog"."attribute_relaxation_requests_guard"();
 CREATE TRIGGER "attribute_relaxation_requests_no_truncate" BEFORE TRUNCATE
@@ -116,8 +124,10 @@ CREATE TRIGGER "attribute_relaxation_requests_no_truncate" BEFORE TRUNCATE
   FOR EACH STATEMENT EXECUTE FUNCTION "catalog"."reject_mutation"();
 
 -- 3.5 (Hassan M2). A published (not draft) definition whose current revision is `material` gets a
--- revision without it only with a confirmed clear-material request of the same definition; any
--- other revision names no request. A draft was never shown to sellers, so its flag is free.
+-- revision without it only with a confirmed clear-material request of the same definition, written
+-- by the confirming admin; any other revision names no request. A draft was never shown to
+-- sellers, so its flag is free; the status trigger below keeps a published definition from
+-- turning back into a draft.
 CREATE FUNCTION "catalog"."relaxation_confirmed"(p_market varchar, p_request uuid, p_definition uuid, p_kind text)
   RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   SELECT EXISTS (SELECT 1 FROM "catalog"."attribute_relaxation_requests" r
@@ -135,7 +145,11 @@ BEGIN
    WHERE d.market_id = NEW.market_id AND d.id = NEW.definition_id AND d.status <> 'draft';
   IF prev_material AND NOT NEW.material THEN
     IF NEW.relaxation_request_id IS NULL OR NOT "catalog"."relaxation_confirmed"(
-         NEW.market_id, NEW.relaxation_request_id, NEW.definition_id, 'clear-material') THEN
+         NEW.market_id, NEW.relaxation_request_id, NEW.definition_id, 'clear-material')
+       -- Hassan M3: the revision is the confirming admin's own.
+       OR NEW.author_account_id IS DISTINCT FROM (
+         SELECT r.confirmed_by_account_id FROM "catalog"."attribute_relaxation_requests" r
+          WHERE r.market_id = NEW.market_id AND r.id = NEW.relaxation_request_id) THEN
       RAISE EXCEPTION 'catalog.attribute_definition_revisions: clearing material needs a confirmed clear-material request'
         USING ERRCODE = 'check_violation';
     END IF;
@@ -148,6 +162,37 @@ END; $$;
 CREATE TRIGGER "attribute_definition_revisions_relaxation" BEFORE INSERT
   ON "catalog"."attribute_definition_revisions"
   FOR EACH ROW EXECUTE FUNCTION "catalog"."attribute_definition_revisions_relaxation"();
+
+-- Hassan M1, Mojtaba M2: the draft exception above holds only if a definition never goes back to
+-- draft, and nothing comes back from archived. Moves the status CHECK already refuses are left to
+-- it. Hassan M2: the published pointer only moves forward, to a revision numbered at least as high,
+-- so no older revision without `material` can be pointed at again. A pointer at another
+-- definition's revision is left to the foreign key.
+CREATE FUNCTION "catalog"."attribute_definitions_guard"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE old_no integer; new_no integer;
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND (NEW.status = 'draft' OR OLD.status = 'archived') THEN
+    RAISE EXCEPTION 'catalog.attribute_definitions: % to % is not allowed', OLD.status, NEW.status
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.published_revision_id IS DISTINCT FROM OLD.published_revision_id
+     AND OLD.published_revision_id IS NOT NULL THEN
+    SELECT r.revision_no INTO old_no FROM "catalog"."attribute_definition_revisions" r
+     WHERE r.market_id = OLD.market_id AND r.id = OLD.published_revision_id;
+    SELECT r.revision_no INTO new_no FROM "catalog"."attribute_definition_revisions" r
+     WHERE r.market_id = NEW.market_id AND r.definition_id = NEW.id AND r.id = NEW.published_revision_id;
+    IF NEW.published_revision_id IS NULL OR (new_no IS NOT NULL AND new_no < old_no) THEN
+      RAISE EXCEPTION 'catalog.attribute_definitions: the published revision only moves forward'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END; $$;
+CREATE TRIGGER "attribute_definitions_guard" BEFORE UPDATE OF "status", "published_revision_id"
+  ON "catalog"."attribute_definitions"
+  FOR EACH ROW EXECUTE FUNCTION "catalog"."attribute_definitions_guard"();
 
 -- Grants (data design 7): the status moves once; nothing else is updated and nothing is deleted.
 GRANT SELECT, INSERT, UPDATE ("status", "confirmed_by_account_id", "closed_at", "cancel_reason", "version")

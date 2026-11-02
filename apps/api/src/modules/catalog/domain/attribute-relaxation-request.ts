@@ -112,26 +112,38 @@ export class AttributeRelaxationRequest {
   }
 
   /**
-   * Confirmed by a second admin. Refused when it is not open, when its time ran out (whatever the
-   * expiry job has done: the clock decides), and when the confirmer is the requester.
+   * Expired, or still open with its time run out: a confirm or a cancel answers
+   * `relaxation.expired` whatever the expiry job has done (catalog design 8.2: the clock decides).
+   */
+  #ranOut(now: Temporal.Instant): boolean {
+    return this.#state.status === 'expired' || this.isExpiredAt(now);
+  }
+
+  /**
+   * Confirmed by a second admin. Refused when its time ran out (expired, by the job or not), when
+   * it is otherwise closed, and when the confirmer is the requester.
    */
   confirm(
     by: Id<'Account'>,
     now: Temporal.Instant,
   ): Result<AttributeRelaxationRequest, RelaxationRefusal> {
     const current = this.#state;
+    if (this.#ranOut(now)) return err({ code: 'relaxation.expired' });
     if (current.status !== 'open') return err({ code: 'relaxation.closed' });
-    if (this.isExpiredAt(now)) return err({ code: 'relaxation.expired' });
     if (by === current.requestedByAccountId) return err({ code: 'relaxation.same-admin' });
     return ok(this.#close({ status: 'confirmed', confirmedByAccountId: by, closedAt: now }));
   }
 
-  /** Cancelled by its requester while open. */
+  /**
+   * Cancelled by its requester while open and in time. Once its time ran out it is expired, not
+   * cancelled (the job, or the requester's next request, records it so).
+   */
   cancel(
     by: Id<'Account'>,
     now: Temporal.Instant,
   ): Result<AttributeRelaxationRequest, RelaxationRefusal> {
     const current = this.#state;
+    if (this.#ranOut(now)) return err({ code: 'relaxation.expired' });
     if (current.status !== 'open') return err({ code: 'relaxation.closed' });
     if (by !== current.requestedByAccountId) return err({ code: 'relaxation.not-requester' });
     return ok(this.#close({ status: 'cancelled', cancelReason: 'requester', closedAt: now }));

@@ -66,6 +66,24 @@ describe.each(['AU', 'ZZ'])('AttributeRelaxationRequest in market %s', (market) 
     });
   });
 
+  it('answers expired, not closed, once its time ran out, whether or not the job has run', () => {
+    const request = open();
+    const late = T0.add({ hours: 72 });
+    expect(request.cancel(A, late)).toEqual({ ok: false, error: { code: 'relaxation.expired' } });
+    const expired = request.expire(late);
+    if (!expired.ok) throw new Error(expired.error.code);
+    // Sajad 1: after the job, a confirm still answers expired (catalog design 8.2), even if the
+    // admin's clock reads earlier than the job's.
+    expect(expired.value.confirm(B, T0)).toEqual({
+      ok: false,
+      error: { code: 'relaxation.expired' },
+    });
+    expect(expired.value.cancel(A, T0)).toEqual({
+      ok: false,
+      error: { code: 'relaxation.expired' },
+    });
+  });
+
   it('expires only once its time ran out', () => {
     const request = open();
     expect(request.expire(T0.add({ hours: 71 })).ok).toBe(false);

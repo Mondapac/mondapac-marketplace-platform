@@ -219,6 +219,7 @@ export const AttributeRelaxationCancelledAudit = defineAuditAction({
   after: {
     requestId: auditField.id(),
     reason: auditField.enumOf(['requester', 'definition-changed'] as const),
+    requestedByAccountId: auditField.id(),
   },
 });
 

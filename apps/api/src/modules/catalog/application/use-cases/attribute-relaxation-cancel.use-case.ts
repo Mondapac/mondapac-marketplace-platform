@@ -100,7 +100,7 @@ export class AttributeRelaxationCancel extends UseCase<
         await deps.audit.record(
           context,
           AttributeRelaxationCancelledAudit.entry(request.state.definitionId, {
-            after: { requestId, reason: 'requester' },
+            after: { requestId, reason: 'requester', requestedByAccountId: accountId },
           }),
         );
         return ok({ request: relaxationViewOf(cancelled.value) });

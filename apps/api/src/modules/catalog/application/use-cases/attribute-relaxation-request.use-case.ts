@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import { CATALOG_ATTRIBUTE_EDIT } from '../../contracts/permissions';
 import { AttributeRelaxationRequest } from '../../domain/attribute-relaxation-request';
 import {
@@ -23,7 +24,10 @@ import {
   type AttributeRelaxationDependencies,
   type RelaxationWriteView,
 } from '../attributes/attribute-relaxation';
-import { RelaxationAlreadyOpenError } from '../ports/attribute-relaxation.store';
+import {
+  RelaxationAlreadyOpenError,
+  type AttributeRelaxationStore,
+} from '../ports/attribute-relaxation.store';
 
 export interface AttributeRelaxationRequestInput {
   readonly [key: string]: unknown;
@@ -119,16 +123,17 @@ export class AttributeRelaxationRequestCreate extends UseCase<
         if (open !== null) {
           const expired = open.expire(now);
           if (!expired.ok) return err({ code: 'relaxation.already-open' } as const);
-          await deps.relaxations.saveMove(market, expired.value);
-          await deps.audit.record(
-            context,
-            AttributeRelaxationExpiredAudit.entry(id, {
-              after: {
-                requestId: open.state.id,
-                requestedByAccountId: open.state.requestedByAccountId,
-              },
-            }),
-          );
+          if (await expireLapsed(deps.relaxations, market, expired.value)) {
+            await deps.audit.record(
+              context,
+              AttributeRelaxationExpiredAudit.entry(id, {
+                after: {
+                  requestId: open.state.id,
+                  requestedByAccountId: open.state.requestedByAccountId,
+                },
+              }),
+            );
+          }
         }
         const request = AttributeRelaxationRequest.open({
           id: deps.ids.next<'AttributeRelaxationRequest'>(),
@@ -159,5 +164,24 @@ export class AttributeRelaxationRequestCreate extends UseCase<
       }
       throw error;
     }
+  }
+}
+
+/**
+ * Store the lapsed request as expired, unless its requester or the expiry job closed it meanwhile
+ * (neither locks the definition): then there is nothing to record and the new request goes on. The
+ * open partial unique still refuses a second open request.
+ */
+async function expireLapsed(
+  store: AttributeRelaxationStore,
+  market: MarketContext,
+  expired: AttributeRelaxationRequest,
+): Promise<boolean> {
+  try {
+    await store.saveMove(market, expired);
+    return true;
+  } catch (error) {
+    if (error instanceof StaleAggregateError) return false;
+    throw error;
   }
 }

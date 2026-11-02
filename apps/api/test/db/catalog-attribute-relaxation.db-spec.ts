@@ -327,6 +327,99 @@ describe.each(TEST_MARKETS)('catalog attribute relaxation in market %s (database
     ).toBe('23001');
   });
 
+  it('takes a new request only open, and the clearing revision only from the confirmer', async () => {
+    const definition = await publishedMaterial();
+    // Mojtaba M1, Hassan M3: a row born confirmed by two different admins is refused.
+    expect(
+      await sqlState(
+        owner.query(
+          `INSERT INTO catalog.attribute_relaxation_requests
+             (id, market_id, tenant_id, definition_id, definition_version, kind, status,
+              requested_by_account_id, requested_at, expires_at, confirmed_by_account_id,
+              closed_at, version)
+           VALUES ($1, $2, $3, $4, 2, 'clear-material', 'confirmed', $5, now(),
+                   now() + interval '72 hours', $6, now(), 2)`,
+          [uuid7(), market.marketId, market.tenantId, definition.state.id, first, second],
+        ),
+      ),
+    ).toBe('23514');
+    const request = requestFor(definition);
+    await write(market, () => relaxations.add(market, request));
+    const confirmed = request.confirm(second, now());
+    if (!confirmed.ok) throw new Error(confirmed.error.code);
+    await write(market, () => relaxations.saveMove(market, confirmed.value));
+    // The requester writes the revision with the other admin's confirmation: refused.
+    expect(
+      await driverCode(
+        write(market, () =>
+          definitions.saveRevision(market, cleared(definition), first, request.state.id),
+        ),
+      ),
+    ).toBe('23514');
+    // The definition's version did not move, so lockAtVersion answers false only for another.
+    expect(
+      await write(market, () =>
+        definitions.lockAtVersion(market, definition.state.id, definition.state.version + 1),
+      ),
+    ).toBe(false);
+    await write(market, () =>
+      definitions.saveRevision(market, cleared(definition), second, request.state.id),
+    );
+  });
+
+  it('never turns a definition back into a draft and moves its published pointer only forward', async () => {
+    const definition = await publishedMaterial();
+    const id = definition.state.id;
+    const { rows } = await owner.query<{ id: string }>(
+      `SELECT id FROM catalog.attribute_definition_revisions
+        WHERE market_id = $1 AND definition_id = $2 ORDER BY revision_no`,
+      [market.marketId, id],
+    );
+    const firstRevision = rows[0]!.id;
+    expect(
+      await sqlState(
+        owner.query(
+          "UPDATE catalog.attribute_definitions SET status = 'draft' WHERE market_id = $1 AND id = $2",
+          [market.marketId, id],
+        ),
+      ),
+    ).toBe('23001');
+    // A newer revision (a rename), then the pointer cannot go back to the first one.
+    const renamed = definition.revise({
+      revisionId: uuid7() as Id<'AttributeDefinitionRevision'>,
+      names: { [locale]: 'Allergen list' },
+      material: true,
+      isVariantOption: false,
+      bounds: {},
+      options: definition.state.options,
+      display: definition.state.display,
+      now: now(),
+    });
+    if (!renamed.ok) throw new Error(renamed.error.code);
+    await write(market, () => definitions.saveRevision(market, renamed.value, first));
+    expect(
+      await sqlState(
+        owner.query(
+          `UPDATE catalog.attribute_definitions SET published_revision_id = $3
+            WHERE market_id = $1 AND id = $2`,
+          [market.marketId, id, firstRevision],
+        ),
+      ),
+    ).toBe('23001');
+    await owner.query(
+      "UPDATE catalog.attribute_definitions SET status = 'archived' WHERE market_id = $1 AND id = $2",
+      [market.marketId, id],
+    );
+    expect(
+      await sqlState(
+        owner.query(
+          "UPDATE catalog.attribute_definitions SET status = 'active' WHERE market_id = $1 AND id = $2",
+          [market.marketId, id],
+        ),
+      ),
+    ).toBe('23001');
+  });
+
   it('lists open requests in time and those whose time ran out, apart', async () => {
     const fresh = await publishedMaterial();
     const old = await publishedMaterial();
