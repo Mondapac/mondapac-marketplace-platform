@@ -95,16 +95,19 @@ function AppearanceCard({
   );
 }
 
-/** Each language in its own script, so a reader who cannot read the current one still finds theirs. */
+/** Each language in its own script with its English name, so a reader finds theirs and the way back. */
 const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
-  fa: 'فارسی',
-  ar: 'العربية',
+  en: 'English',
+  fa: 'فارسی (Persian)',
+  ar: 'العربية (Arabic)',
 };
 
 /**
  * Language: the only place a buyer chooses one (no switcher in the header; guests and Google
- * sign-in read English). Shown only when the Market has published another language. A choice goes
- * to the account and the page reloads in it.
+ * sign-in read English). Shown only when the Market has published another language. The choice is
+ * saved with a button, never on change (changing a select is not a request to change context);
+ * the page reloads in the language only after the save worked, and a refused save leaves the
+ * saved language in the select.
  */
 function LanguageCard({
   languages,
@@ -116,45 +119,74 @@ function LanguageCard({
   const t = useTranslations('account.settings');
   const router = useRouter();
   const { source } = useAccount();
-  const [value, setValue] = useState(
-    current !== null && languages.includes(current) ? current : 'en',
-  );
-  const [state, setState] = useState<'idle' | 'saved' | 'failed'>('idle');
+  const kept = current !== null && languages.includes(current) ? current : 'en';
+  const [saved, setSaved] = useState(kept);
+  const [value, setValue] = useState(kept);
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
   const id = useId();
-  const nameOf = (code: string) =>
-    code === 'en' ? t('language-en-option') : (LANGUAGE_NAMES[code] ?? code);
   return (
     <section className="ac-card" aria-labelledby="settings-language">
       <h2 id="settings-language">{t('language')}</h2>
-      <div className="ac-fld">
-        <label htmlFor={id}>{t('language')}</label>
-        <select
-          id={id}
-          value={value}
-          aria-describedby={`${id}-hint`}
-          onChange={(event) => {
-            const next = event.target.value;
-            setValue(next);
-            setState('idle');
-            if (!source.live) return;
-            void saveLanguage(next === 'en' ? null : next).then((result) => {
-              if (result.kind !== 'ok') return setState('failed');
-              setState('saved');
-              router.refresh();
-            });
-          }}
-        >
-          {languages.map((code) => (
-            <option key={code} value={code} lang={code === 'en' ? undefined : code}>
-              {nameOf(code)}
-            </option>
-          ))}
-        </select>
-        <small id={`${id}-hint`}>{t('language-hint')}</small>
-      </div>
-      <span className="sr-only" role="status">
-        {state === 'saved' ? t('language-saved') : state === 'failed' ? t('language-failed') : ''}
-      </span>
+      <form
+        className="ac-f"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (value === saved || state === 'saving') return;
+          if (!source.live) {
+            setSaved(value);
+            return setState('saved');
+          }
+          setState('saving');
+          void saveLanguage(value === 'en' ? null : value).then((result) => {
+            if (result.kind !== 'ok') {
+              setValue(saved);
+              return setState('failed');
+            }
+            setSaved(value);
+            setState('saved');
+            router.refresh();
+          });
+        }}
+      >
+        <div className="ac-fld">
+          <label htmlFor={id}>{t('language-label')}</label>
+          <select
+            id={id}
+            value={value}
+            aria-describedby={`${id}-hint`}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setState('idle');
+            }}
+          >
+            {languages.map((code) => (
+              <option key={code} value={code} lang={code}>
+                {LANGUAGE_NAMES[code] ?? code}
+              </option>
+            ))}
+          </select>
+          <small id={`${id}-hint`}>{t('language-hint')}</small>
+        </div>
+        {state === 'failed' ? (
+          <p className="ac-note ac-warn" role="alert">
+            <Icon name="info" />
+            <span>{t('language-failed')}</span>
+          </p>
+        ) : null}
+        <div className="ac-acts ac-mid">
+          <button className="btn" type="submit" disabled={state === 'saving' || value === saved}>
+            {t('language-save')}
+          </button>
+          <span className="ac-live" role="status">
+            {state === 'saved' ? (
+              <span className="ac-badge ok">
+                <Icon name="check" />
+                {t('language-saved')}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      </form>
     </section>
   );
 }

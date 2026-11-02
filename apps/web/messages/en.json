@@ -412,10 +412,11 @@
       "password-failed": "We could not update your password. Try again in a moment.",
       "delete-account": "Delete account",
       "language": "Language",
-      "language-hint": "The site, your emails and your texts use this language. Product names and descriptions written by sellers are translated automatically.",
-      "language-en-option": "English (default)",
+      "language-hint": "The site, your emails and your texts use this language. Seller names, addresses and the text on product labels (ingredients, allergens) stay as the seller wrote them, and product names and descriptions are translated automatically.",
       "language-saved": "Language saved to your account",
-      "language-failed": "We could not save your language. Try again in a moment."
+      "language-failed": "We could not save your language. Your choice was not changed. Try again in a moment.",
+      "language-label": "Site language",
+      "language-save": "Save language"
     },
     "delete": {
       "title": "Delete account",

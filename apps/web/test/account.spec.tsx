@@ -585,11 +585,13 @@ describe('settings language', () => {
 
   it('shows the card with each language in its own script once another is published', () => {
     renderStore(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa', 'ar']} />);
-    const select = within(main()).getByRole<HTMLSelectElement>('combobox', { name: 'Language' });
+    const select = within(main()).getByRole<HTMLSelectElement>('combobox', {
+      name: 'Site language',
+    });
     expect([...select.options].map((o) => o.textContent)).toEqual([
-      'English (default)',
-      'فارسی',
-      'العربية',
+      'English',
+      'فارسی (Persian)',
+      'العربية (Arabic)',
     ]);
     expect(select.value).toBe('en');
   });
@@ -599,14 +601,14 @@ describe('settings language', () => {
       <AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} language="fa" />,
     );
     expect(
-      within(main()).getByRole<HTMLSelectElement>('combobox', { name: 'Language' }).value,
+      within(main()).getByRole<HTMLSelectElement>('combobox', { name: 'Site language' }).value,
     ).toBe('fa');
     unmount();
     renderStore(
       <AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} language="ar" />,
     );
     expect(
-      within(main()).getByRole<HTMLSelectElement>('combobox', { name: 'Language' }).value,
+      within(main()).getByRole<HTMLSelectElement>('combobox', { name: 'Site language' }).value,
     ).toBe('en');
   });
 });

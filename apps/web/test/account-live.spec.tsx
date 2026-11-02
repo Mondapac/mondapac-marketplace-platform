@@ -272,13 +272,17 @@ describe('settings', () => {
     });
   });
 
-  it('keeps the chosen language on the account, and null for English', async () => {
+  it('keeps the chosen language on the account only when Save is pressed, and null for English', async () => {
     signedIn({ 'PUT identity/customer/profile/language': { status: 200 } });
     renderLive(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} />);
     await screen.findByLabelText('Full name');
-    const select = within(main()).getByRole('combobox', { name: 'Language' });
+    const select = within(main()).getByRole('combobox', { name: 'Site language' });
+    const save = within(main()).getByRole('button', { name: 'Save language' });
+    expect(save).toHaveProperty('disabled', true);
 
     fireEvent.change(select, { target: { value: 'fa' } });
+    expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(0);
+    fireEvent.click(save);
     await waitFor(() =>
       expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(1),
     );
@@ -286,13 +290,14 @@ describe('settings', () => {
     expect(await within(main()).findByText('Language saved to your account')).toBeTruthy();
 
     fireEvent.change(select, { target: { value: 'en' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Save language' }));
     await waitFor(() =>
       expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(2),
     );
     expect(called('PUT', 'identity/customer/profile/language')[1]?.body).toEqual({ locale: null });
   });
 
-  it('says so when the language could not be saved', async () => {
+  it('shows a refused save and puts the saved language back in the select', async () => {
     signedIn({
       'PUT identity/customer/profile/language': {
         status: 400,
@@ -301,14 +306,16 @@ describe('settings', () => {
     });
     renderLive(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} />);
     await screen.findByLabelText('Full name');
-
-    fireEvent.change(within(main()).getByRole('combobox', { name: 'Language' }), {
-      target: { value: 'fa' },
+    const select = within(main()).getByRole<HTMLSelectElement>('combobox', {
+      name: 'Site language',
     });
 
-    expect(
-      await within(main()).findByText('We could not save your language. Try again in a moment.'),
-    ).toBeTruthy();
+    fireEvent.change(select, { target: { value: 'fa' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Save language' }));
+
+    const alert = await within(main()).findByRole('alert');
+    expect(alert.textContent).toContain('We could not save your language');
+    expect(select.value).toBe('en');
   });
 
   it.each([
