@@ -217,6 +217,13 @@ import { BRAND_READER } from './application/ports/brand.reader';
 import { BRAND_REPOSITORY } from './application/ports/brand.repository';
 import { BrandApprove } from './application/use-cases/brand-approve.use-case';
 import { BrandArchive } from './application/use-cases/brand-archive.use-case';
+import { BUSINESS_ACTIVITY_READER } from './application/ports/business-activity.reader';
+import { BUSINESS_ACTIVITY_REPOSITORY } from './application/ports/business-activity.repository';
+import { BusinessActivityCreate } from './application/use-cases/business-activity-create.use-case';
+import { BusinessActivityEdit } from './application/use-cases/business-activity-edit.use-case';
+import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
+import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
+import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
 import { BrandCreate } from './application/use-cases/brand-create.use-case';
 import { BrandEdit } from './application/use-cases/brand-edit.use-case';
 import { BrandGet } from './application/use-cases/brand-get.use-case';
@@ -314,6 +321,8 @@ const PORT = {
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
   brandAssigner: BRAND_ASSIGNER,
+  activities: BUSINESS_ACTIVITY_REPOSITORY,
+  activityReader: BUSINESS_ACTIVITY_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -390,6 +399,7 @@ const productTypeProvider: FactoryProvider<string> = {
     PublicCategoryController,
     PublicProductImageController,
     BrandAdminController,
+    BusinessActivityAdminController,
     OwnBrandController,
     PublicBrandController,
   ],
@@ -477,6 +487,25 @@ const productTypeProvider: FactoryProvider<string> = {
       requests: true,
       audit: true,
       brandAssigner: true,
+    }),
+    useCaseProvider(BusinessActivityList, { unitOfWork: true, activityReader: true }),
+    useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
+    useCaseProvider(BusinessActivityCreate, {
+      unitOfWork: true,
+      activities: true,
+      treeReader: true,
+      policy: true,
+      matcher: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(BusinessActivityEdit, {
+      unitOfWork: true,
+      activities: true,
+      treeReader: true,
+      policy: true,
+      matcher: true,
+      clock: true,
     }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),

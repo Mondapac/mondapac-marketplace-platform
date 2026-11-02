@@ -997,6 +997,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'margin_fixed_minor',
         'margin_kind',
         'pickup_enabled',
+        'ready_prep_minutes',
         'rounding_step_minor',
         'same_day_cutoff_minutes',
         'same_day_enabled',
@@ -1207,6 +1208,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.brand_merge_candidates': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['resolution', 'resolved_at', 'resolved_by', 'status'],
+    },
+    // Catalog business-activity package: the code and creator never change; names and category links
+    // are replaced as a set, so they may be deleted (as the activity itself, while unused).
+    'catalog.business_activities': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['description', 'status', 'updated_at', 'version'],
+    },
+    'catalog.business_activity_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'catalog.business_activity_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
     },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],

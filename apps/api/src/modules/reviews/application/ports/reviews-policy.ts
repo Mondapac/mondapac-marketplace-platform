@@ -15,6 +15,9 @@ export interface ReviewsSettings {
   readonly maxHelpfulVotesPerAccountPerDay: number;
   readonly titleMaxLength: number;
   readonly bodyMaxLength: number;
+  /** A seller may edit its reply this many days after writing it. */
+  readonly replyEditWindowDays: number;
+  readonly replyMaxLength: number;
   /** Reviews per public page. */
   readonly pageSize: number;
   readonly defaultLocale: string;

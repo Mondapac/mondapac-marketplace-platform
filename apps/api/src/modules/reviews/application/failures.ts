@@ -29,6 +29,8 @@ export type ReviewsFailure =
   | { readonly code: 'reviews.rate-limited' }
   /** A buyer does not vote on their own review. */
   | { readonly code: 'reviews.own-review' }
+  /** The review already has the shop's one public reply. */
+  | { readonly code: 'reviews.already-replied' }
   /** The account is tied to the seller (a member of its team): nobody reviews their own shop. */
   | { readonly code: 'reviews.own-store' };
 

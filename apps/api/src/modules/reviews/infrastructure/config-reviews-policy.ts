@@ -18,6 +18,8 @@ export class ConfigReviewsPolicy implements ReviewsPolicy {
       maxHelpfulVotesPerAccountPerDay: reviews.maxHelpfulVotesPerAccountPerDay,
       titleMaxLength: reviews.titleMaxLength,
       bodyMaxLength: reviews.bodyMaxLength,
+      replyEditWindowDays: reviews.replyEditWindowDays,
+      replyMaxLength: reviews.replyMaxLength,
       pageSize: reviews.pageSize,
       defaultLocale: config.defaultLocale,
       supportedLocales: config.supportedLocales,

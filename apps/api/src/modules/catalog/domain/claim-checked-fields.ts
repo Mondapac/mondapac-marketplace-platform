@@ -202,6 +202,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   BrandContent: { noCustomerText: 'the editable text of a brand; see BrandState' },
   BrandFieldProblem: { noCustomerText: 'field path and a problem code' },
+  ActivityFieldProblem: { noCustomerText: 'field path and a problem code' },
+  ActivityLocales: { noCustomerText: 'locale codes' },
+  BusinessActivityContent: {
+    noCustomerText:
+      'panel-only names and description of a business activity (admin and seller panels); refused when they assert a certification; see BusinessActivityState',
+  },
+  BusinessActivityState: {
+    noCustomerText: 'a business activity as stored; panel-only text, see BusinessActivityContent',
+  },
   RateVerdict: { noCustomerText: 'numbers' },
   SavedFilter: {
     noCustomerText:

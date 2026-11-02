@@ -30,9 +30,28 @@ export type ReadFailure =
   /** Stripe refused the read (unknown session, wrong key): it will not succeed on a retry. */
   | { readonly code: 'payment.provider-rejected' };
 
-/** Reads a Checkout session from Stripe; the webhook payload itself is never trusted. */
+/** What payments needs of a PaymentIntent made by the card payment on the MondaPac page. */
+export interface PaymentIntentSnapshot {
+  readonly id: string;
+  readonly livemode: boolean;
+  /** requires_capture (held), requires_payment_method (failed), canceled, ... */
+  readonly status: string;
+  /** Lowercase ISO 4217, as Stripe sends it. */
+  readonly currency: string;
+  readonly amountCapturable: bigint;
+  readonly metadataOrderId: string | null;
+  readonly metadataMarketId: string | null;
+  /** `card-intent` on every PaymentIntent of that flow. */
+  readonly metadataPaymentFlow: string | null;
+  /** The payment method the PaymentIntent holds now (null when none): its type and card brand. */
+  readonly paymentMethodType: string | null;
+  readonly cardBrand: string | null;
+}
+
+/** Reads a Checkout session or a PaymentIntent from Stripe; the webhook payload is never trusted. */
 export interface StripeSessionReader {
   readCheckoutSession(sessionId: string): Promise<Result<CheckoutSessionSnapshot, ReadFailure>>;
+  readPaymentIntent(intentId: string): Promise<Result<PaymentIntentSnapshot, ReadFailure>>;
 }
 
 export const STRIPE_SESSION_READER = Symbol('STRIPE_SESSION_READER');

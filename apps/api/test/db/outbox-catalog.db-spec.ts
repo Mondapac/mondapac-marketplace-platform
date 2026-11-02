@@ -283,6 +283,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_files_market_id_decision_intent_since_idx ON sellers.seller_files USING btree (market_id, decision_intent_since) WHERE (decision_intent IS NOT NULL)',
   'sellers.admin_flags_market_id_seller_id_code_open_key':
     'CREATE UNIQUE INDEX admin_flags_market_id_seller_id_code_open_key ON sellers.admin_flags USING btree (market_id, seller_id, code) WHERE (cleared_at IS NULL)',
+  'reviews.review_replies_market_id_review_id_published_key':
+    "CREATE UNIQUE INDEX review_replies_market_id_review_id_published_key ON reviews.review_replies USING btree (market_id, review_id) WHERE (status = 'published'::text)",
   'sellers.admin_flags_market_id_raised_at_open_idx':
     'CREATE INDEX admin_flags_market_id_raised_at_open_idx ON sellers.admin_flags USING btree (market_id, raised_at, id) WHERE (cleared_at IS NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
