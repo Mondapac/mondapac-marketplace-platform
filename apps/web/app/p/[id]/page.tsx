@@ -11,6 +11,7 @@ import {
   seoDescription,
 } from '../../../src/seo/metadata.ts';
 import { productPageStructuredData } from '../../../src/seo/structured-data.ts';
+import { variantFromParam } from '../../../src/storefront/product-detail.ts';
 import {
   loadProduct,
   loadStorefrontContent,
@@ -19,6 +20,8 @@ import {
 
 interface Props {
   readonly params: Promise<{ id: string }>;
+  /** `?v=` names a Variant to open on; the canonical link never carries it. */
+  readonly searchParams?: Promise<{ v?: string | string[] }>;
 }
 
 // The current path; a later URL shape changes only this line (SEO plan, package 5).
@@ -62,11 +65,16 @@ export async function generateMetadata({ params }: Props) {
   });
 }
 
-export default async function ProductRoute({ params }: Props) {
-  const [found, { id }] = await Promise.all([resolve(params), params]);
+export default async function ProductRoute({ params, searchParams }: Props) {
+  const [found, { id }, query] = await Promise.all([
+    resolve(params),
+    params,
+    searchParams ?? Promise.resolve({}),
+  ]);
   // A removed product is noindex: no structured data.
   if (!found.product) return <UnavailableProductView product={found.removed} />;
   const { product } = found;
+  const initialVariantId = variantFromParam(product, (query as { v?: string | string[] }).v);
   const [content, origin, t, reviews] = await Promise.all([
     loadStorefrontContent(),
     requestOrigin(),
@@ -95,7 +103,12 @@ export default async function ProductRoute({ params }: Props) {
   return (
     <>
       <JsonLd data={data} />
-      <ProductPage product={product} category={category} reviews={reviews} />
+      <ProductPage
+        product={product}
+        category={category}
+        reviews={reviews}
+        initialVariantId={initialVariantId}
+      />
     </>
   );
 }

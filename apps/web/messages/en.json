@@ -759,7 +759,9 @@
     "certificate-checked": "{name} certificate checked",
     "seller-page": "View seller page",
     "loading": "Loading product",
-    "buy-options": "Buy options"
+    "buy-options": "Buy options",
+    "variant-choose": "Choose an option",
+    "variant-n": "Option {n}"
   },
   "cart": {
     "title": "Cart",
