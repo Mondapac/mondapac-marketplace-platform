@@ -409,8 +409,10 @@ export interface ReviewRepository {
 
   /**
    * Seller health feed: the seller's product reviews that were published in `[from, to)`
-   * (`publishedAt`), counted by what they are now: a review hidden, removed or deleted later no
-   * longer counts. `starsSum` is the sum of their 1 to 5 ratings.
+   * (`publishedAt`), counted by their status at the time of the call: a review hidden, removed
+   * or deleted later no longer counts when the window is read again. A moderator `publish` sets
+   * `publishedAt` to the time of that action, so a review published again counts in the window of
+   * its last publication. `starsSum` is the sum of their 1 to 5 ratings.
    */
   countPublishedForSeller(
     market: MarketContext,

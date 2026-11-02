@@ -156,4 +156,12 @@ describe('localDayBounds', () => {
     const b = localDayBounds(Temporal.PlainDate.from('2026-11-11'), 'America/New_York');
     expect(a.to.toString()).toBe(b.from.toString());
   });
+
+  it('starts a day at the first moment after a midnight gap and refuses an unknown zone', () => {
+    const gap = localDayBounds(Temporal.PlainDate.from('2018-11-04'), 'America/Sao_Paulo');
+    expect(gap.from.toString()).toBe('2018-11-04T03:00:00Z');
+    expect(() => localDayBounds(Temporal.PlainDate.from('2026-11-10'), 'Not/AZone')).toThrow(
+      RangeError,
+    );
+  });
 });
