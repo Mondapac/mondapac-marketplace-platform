@@ -498,6 +498,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "ordering.seller-health-counts", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
