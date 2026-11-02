@@ -34,6 +34,7 @@ import type {
   OrderPage,
   OrderRepository,
   SellerOrderFilter,
+  SellerOrderSort,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
@@ -237,6 +238,37 @@ export class MemoryOrders implements OrderRepository {
           .map((seller) => this.recordOf(order, seller)),
       );
   }
+  private matches(r: SellerOrderRecord, filter: SellerOrderFilter): boolean {
+    return (
+      (filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment) &&
+      (filter.from === null || Temporal.Instant.compare(r.confirmedAt, filter.from) >= 0) &&
+      (filter.to === null || Temporal.Instant.compare(r.confirmedAt, filter.to) < 0)
+    );
+  }
+  pageForSeller(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    sort: SellerOrderSort,
+    offset: number,
+    limit: number,
+  ) {
+    const sign = sort.direction === 'asc' ? 1 : -1;
+    const key = (r: SellerOrderRecord) =>
+      sort.key === 'total' ? Number(r.sellerOrder.total) : r.confirmedAt.epochMilliseconds;
+    return Promise.resolve(
+      this.paid(sellerId)
+        .filter((r) => this.matches(r, filter))
+        .sort(
+          (a, b) =>
+            sign * (key(a) - key(b)) || sign * a.sellerOrder.id.localeCompare(b.sellerOrder.id),
+        )
+        .slice(offset, offset + limit),
+    );
+  }
+  countMatchingForSeller(_m: MarketContext, sellerId: Id<'Seller'>, filter: SellerOrderFilter) {
+    return Promise.resolve(this.paid(sellerId).filter((r) => this.matches(r, filter)).length);
+  }
   listForSeller(
     _m: MarketContext,
     sellerId: Id<'Seller'>,
@@ -246,7 +278,7 @@ export class MemoryOrders implements OrderRepository {
     const after = page.after;
     return Promise.resolve(
       this.paid(sellerId)
-        .filter((r) => filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment)
+        .filter((r) => this.matches(r, filter))
         .sort(
           (a, b) =>
             b.confirmedAt.epochMilliseconds - a.confirmedAt.epochMilliseconds ||

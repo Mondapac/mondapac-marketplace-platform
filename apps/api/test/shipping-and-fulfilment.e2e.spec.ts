@@ -270,6 +270,38 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       expect(calls).toEqual([{ name: 'list', input: { cursor: 'abc', limit: 10 } }]);
     });
 
+    it('passes the page-mode query and answers the total, page and page size', async () => {
+      await boot();
+      next = ok({
+        sellerOrders: [detail(currency)],
+        nextCursor: null,
+        paging: { total: 41, page: 2, pageSize: 20 },
+      });
+
+      const res = await call(
+        'get',
+        'seller',
+        `${ORDERS}?page=2&pageSize=20&sort=total&direction=asc&from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z`,
+        seller(),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ nextCursor: null, total: 41, page: 2, pageSize: 20 });
+      expect(calls).toEqual([
+        {
+          name: 'list',
+          input: {
+            page: 2,
+            pageSize: 20,
+            sort: 'total',
+            direction: 'asc',
+            from: '2026-01-01T00:00:00Z',
+            to: '2026-02-01T00:00:00Z',
+          },
+        },
+      ]);
+    });
+
     it('reads one order and maps not found, a bad id and a denial', async () => {
       await boot();
       const session = seller();

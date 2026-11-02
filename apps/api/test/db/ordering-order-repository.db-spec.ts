@@ -688,7 +688,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       repository.listForSeller(
         market,
         seller.sellerId,
-        { fulfilment: null },
+        { fulfilment: null, from: null, to: null },
         { limit: 10, after: null },
       ),
     );
@@ -696,7 +696,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       repository.listForSeller(
         market,
         seller.sellerId,
-        { fulfilment: 'to-ship' },
+        { fulfilment: 'to-ship', from: null, to: null },
         { limit: 10, after: null },
       ),
     );
@@ -704,7 +704,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       repository.listForSeller(
         market,
         seller.sellerId,
-        { fulfilment: 'shipped' },
+        { fulfilment: 'shipped', from: null, to: null },
         { limit: 10, after: null },
       ),
     );
@@ -732,6 +732,55 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(foreign).toBeNull();
     expect(notPaid).toBeNull();
     expect(elsewhere).toBeNull();
+  });
+
+  it("pages a seller's paid seller orders by offset with a total, a date range and a sort", async () => {
+    const paid = await paidOrder();
+    const unpaid = newOrder();
+    await value(market, () => repository.insert(market, unpaid));
+    const seller = paid.sellerOrders[0]!;
+    const all = { fulfilment: null, from: null, to: null } as const;
+    const sort = { key: 'paid', direction: 'desc' } as const;
+    const page = (
+      filter:
+        | typeof all
+        | { fulfilment: null; from: Temporal.Instant | null; to: Temporal.Instant | null },
+      offset = 0,
+    ) =>
+      value(market, () =>
+        repository.pageForSeller(market, seller.sellerId, filter, sort, offset, 10),
+      );
+    const paidAt = paid.confirmedAt!;
+
+    expect((await page(all)).map((r) => r.sellerOrder.id)).toEqual([seller.id]);
+    expect(await page(all, 10)).toEqual([]);
+    expect(
+      (await page({ fulfilment: null, from: paidAt, to: null })).map((r) => r.sellerOrder.id),
+    ).toEqual([seller.id]);
+    // The range is half open: `to` equal to the payment time leaves it out.
+    expect(await page({ fulfilment: null, from: null, to: paidAt })).toEqual([]);
+    expect(await page({ fulfilment: null, from: paidAt.add({ seconds: 1 }), to: null })).toEqual(
+      [],
+    );
+    expect(
+      await value(market, () => repository.countMatchingForSeller(market, seller.sellerId, all)),
+    ).toBe(1);
+    expect(
+      await value(market, () =>
+        repository.countMatchingForSeller(market, seller.sellerId, {
+          ...all,
+          fulfilment: 'shipped',
+        }),
+      ),
+    ).toBe(0);
+    expect(
+      await value(market, () =>
+        repository.countMatchingForSeller(market, unpaid.sellerOrders[0]!.sellerId, all),
+      ),
+    ).toBe(0);
+    expect(
+      await value(other, () => repository.countMatchingForSeller(other, seller.sellerId, all)),
+    ).toBe(0);
   });
 
   it('queues shipped orders for inventory once and marks them recorded', async () => {

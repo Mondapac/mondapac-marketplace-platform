@@ -1519,6 +1519,78 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
     });
 
+    describe('page mode', () => {
+      const refused = (fields: { path: string; code: string }[]) => ({
+        ok: false,
+        error: { code: 'validation.failed', fields },
+      });
+
+      it('answers an offset page with the total of the filter and no cursor', async () => {
+        const order = await paid();
+        await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+        const first = await list(sellerA, {
+          page: 1,
+          pageSize: 10,
+          sort: 'total',
+          direction: 'asc',
+        });
+        const shipped = await list(sellerA, { page: 1, status: 'shipped' });
+        const toShip = await list(sellerA, { page: 1, status: 'to-ship' });
+        const beyond = await list(sellerA, { page: 2, pageSize: 10 });
+
+        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.nextCursor).toBeNull();
+        expect(shipped.ok && shipped.value.sellerOrders).toHaveLength(1);
+        expect(toShip.ok && toShip.value.paging?.total).toBe(0);
+        expect(beyond.ok && beyond.value.sellerOrders).toEqual([]);
+        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+      });
+
+      it('keeps the cursor page free of paging and refuses stray or deep params', async () => {
+        await paid();
+
+        const cursorMode = await list(sellerA, {});
+        expect(cursorMode.ok && cursorMode.value.paging).toBeNull();
+        expect(await list(sellerA, { sort: 'total' })).toEqual(
+          refused([{ path: 'sort', code: 'needs-page' }]),
+        );
+        expect(await list(sellerA, { page: 400, pageSize: 25 })).toMatchObject({ ok: true });
+        expect(await list(sellerA, { page: 401, pageSize: 25 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+        expect(await list(sellerA, { page: 0 })).toEqual(
+          refused([{ path: 'page', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, sort: 'created' })).toEqual(
+          refused([{ path: 'sort', code: 'value' }]),
+        );
+      });
+
+      it('filters by payment time and refuses a backwards or malformed range', async () => {
+        await paid();
+        const far = '2999-01-01T00:00:00Z';
+
+        const before = await list(sellerA, { page: 1, to: '2000-01-01T00:00:00Z' });
+        const after = await list(sellerA, { page: 1, from: far });
+        const inside = await list(sellerA, {
+          page: 1,
+          from: '2000-01-01T00:00:00Z',
+          to: far,
+        });
+
+        expect(before.ok && before.value.paging?.total).toBe(0);
+        expect(after.ok && after.value.paging?.total).toBe(0);
+        expect(inside.ok && inside.value.paging?.total).toBe(1);
+        expect(await list(sellerA, { from: far, to: '2000-01-01T00:00:00Z' })).toEqual(
+          refused([{ path: 'to', code: 'range' }]),
+        );
+        expect(await list(sellerA, { from: 'yesterday' })).toEqual(
+          refused([{ path: 'from', code: 'format' }]),
+        );
+      });
+    });
+
     it('names the lines of the list, the detail and each step, with one call per page', async () => {
       const order = await paid();
       labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');

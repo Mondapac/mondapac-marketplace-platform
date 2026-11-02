@@ -7,6 +7,7 @@ import type {
   OrderPage,
   OrderRepository,
   SellerOrderFilter,
+  SellerOrderSort,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../application/ports/order.repository';
@@ -443,18 +444,39 @@ export class PrismaOrderRepository implements OrderRepository {
     page: SellerOrderPage,
   ) {
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
-      where: {
-        marketId: market.marketId,
-        sellerId,
-        ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
-        order: { status: 'confirmed' },
-        ...sellerCursor(page),
-      },
+      where: { ...sellerWhere(market, sellerId, filter), ...sellerCursor(page) },
       include: SELLER_INCLUDE,
       orderBy: [{ order: { confirmedAt: 'desc' } }, { id: 'desc' }],
       take: page.limit,
     });
     return rows.map(toRecord);
+  }
+
+  async pageForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    sort: SellerOrderSort,
+    offset: number,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: sellerWhere(market, sellerId, filter),
+      include: SELLER_INCLUDE,
+      orderBy:
+        sort.key === 'total'
+          ? [{ totalAmount: sort.direction }, { id: sort.direction }]
+          : [{ order: { confirmedAt: sort.direction } }, { id: sort.direction }],
+      skip: offset,
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  countMatchingForSeller(market: MarketContext, sellerId: Id<'Seller'>, filter: SellerOrderFilter) {
+    return this.prisma
+      .tx(market)
+      .orderingSellerOrder.count({ where: sellerWhere(market, sellerId, filter) });
   }
 
   async countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts> {
@@ -650,6 +672,24 @@ export class PrismaOrderRepository implements OrderRepository {
 const SELLER_INCLUDE = { lines: true, order: true } as const;
 
 /** Rows paid before the cursor, newest first: `(confirmed_at, id) < (cursor)`. */
+/** The seller list's filter as a Market-scoped `where`: paid orders of this seller only. */
+const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: SellerOrderFilter) => ({
+  marketId: market.marketId,
+  sellerId,
+  ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
+  order: {
+    status: 'confirmed',
+    ...(filter.from === null && filter.to === null
+      ? {}
+      : {
+          confirmedAt: {
+            ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+            ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+          },
+        }),
+  },
+});
+
 const sellerCursor = (page: SellerOrderPage) =>
   page.after === null
     ? {}
