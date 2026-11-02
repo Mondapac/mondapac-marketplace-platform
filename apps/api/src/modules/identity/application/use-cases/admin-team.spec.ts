@@ -85,6 +85,7 @@ const UNKNOWN = accountId(99);
 const LEAD_KEYS = [
   'catalog.attribute.view',
   'catalog.brand.read',
+  'catalog.category-tree.view',
   'catalog.product.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
