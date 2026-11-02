@@ -111,10 +111,10 @@ function languageBody(
 }
 
 /**
- * The signed-in customer's own profile over HTTP (buyer account backend): the display name and
- * the storefront look kept on the account. Reads the customer session cookie and needs its CSRF
+ * The signed-in customer's own profile over HTTP (buyer account backend): the display name, the
+ * language and the storefront look kept on the account. Reads the customer session cookie and needs its CSRF
  * token. The use cases take the account from the session, so no body names one. The name is
- * personal data and is never logged; the look is read back from `GET identity/customer/session`.
+ * personal data and is never logged; the language and look are read back from `GET identity/customer/session`.
  */
 @ApiTags('identity')
 @RoutePopulation('customer')

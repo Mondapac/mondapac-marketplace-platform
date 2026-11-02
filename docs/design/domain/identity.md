@@ -577,7 +577,7 @@ token and name no account in the body.
 | Display name | `PUT /identity/customer/profile/display-name` (`{displayName}`), the same use case and rules as the panels' route (`ChangeDisplayName`, now open to customers). A customer's name starts NULL and is never cleared again; records `identity.account-display-name-changed.v1` (ids and codes only) |
 | Buyer language | `PUT /identity/customer/profile/language` (`{locale}`: `en`, `fa`, `ar` or null for no choice; `identity.change-customer-language`, customers only). Kept in `accounts.locale` and read back as `locale` from `GET identity/customer/session`. Keeping a language does not publish it: the storefront serves only languages the Market has published (pre-publish gate), otherwise English. No event |
 | Storefront look | `PUT /identity/customer/profile/appearance` (`{palette, textSize}`, each a known id or null for no choice; `identity.change-storefront-appearance`, customers only). Columns `accounts.storefront_palette` and `storefront_text_size`; CHECKs keep the known ids and refuse a look on a non-customer row. No event |
-| Read back | `GET /identity/customer/session` carries `displayName` and `appearance` (`{palette, textSize}` or null) |
+| Read back | `GET /identity/customer/session` carries `displayName`, `locale` (the kept language or null; `en` and null both mean English) and `appearance` (`{palette, textSize}` or null) |
 
 **Email verification as built in slice 3 (Hossein, 2026-10-08).** Choices made where this
 design left room; reviewers may overturn any of them.

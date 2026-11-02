@@ -6,6 +6,7 @@ import { err, ok, type Result } from '@mondapac/shared-kernel';
  * publishing it: the storefront serves a language only once the Market has published it (the
  * pre-publish gate), and until then every request reads in English.
  */
+// Temporary: replaced by the Market's language registry when the admin language module (W3) exists.
 export const CUSTOMER_LANGUAGES = ['en', 'fa', 'ar'] as const;
 
 export type CustomerLanguage = (typeof CUSTOMER_LANGUAGES)[number];

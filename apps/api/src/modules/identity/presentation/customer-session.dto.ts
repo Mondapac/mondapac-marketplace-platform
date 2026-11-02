@@ -144,8 +144,8 @@ export class CustomerSessionSummary {
     nullable: true,
     enum: CUSTOMER_LANGUAGES,
     description:
-      'The language kept on the profile; null when none was chosen. The storefront serves it ' +
-      'only when the Market has published it.',
+      'The language kept on the profile; null when none was chosen. `en` and null both mean ' +
+      'English. The storefront serves another language only when the Market has published it.',
   })
   locale!: string | null;
 
