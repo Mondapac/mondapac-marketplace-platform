@@ -45,6 +45,33 @@ const log = (line: Readonly<Record<string, unknown>>): void => {
   console.log(JSON.stringify(line));
 };
 
+/** How long a built answer is kept. The gate (switch and host) is checked before every use. */
+export const CACHE_MS = 10 * 60 * 1000;
+const MAX_CACHED = 32;
+const built = new Map<string, { until: number; value: Promise<unknown> }>();
+
+/** Drops every kept answer (tests). */
+export function clearSitemapCache(): void {
+  built.clear();
+}
+
+/**
+ * One build per key and CACHE_MS: requests that arrive meanwhile share it, so an anonymous caller
+ * cannot turn each fetch into 20 to 100 API reads. A failed build is dropped at once (503 is
+ * never kept). Callers run it only after the gate, keyed by the Market origin.
+ */
+export function cached<T>(key: string, build: () => Promise<T>, now = Date.now()): Promise<T> {
+  const kept = built.get(key);
+  if (kept !== undefined && kept.until > now) return kept.value as Promise<T>;
+  if (built.size >= MAX_CACHED) built.clear();
+  const value = build();
+  built.set(key, { until: now + CACHE_MS, value });
+  value.catch(() => {
+    if (built.get(key)?.value === value) built.delete(key);
+  });
+  return value;
+}
+
 /** A reader that asks the category tree once per request (route handlers get no React cache). */
 export function memoReader(read: Reader = apiGet): Reader {
   const kept = new Map<string, ReturnType<Reader>>();
@@ -92,6 +119,8 @@ async function treeRows(read: Reader): Promise<TreeRow[]> {
 }
 
 const CATEGORY_BATCH = 8;
+/** Most category pages checked for one sitemap; a Market's tree is far smaller. */
+export const MAX_CATEGORY_NODES = 400;
 
 /**
  * The category pages that are not empty: every top-level category and each of its direct children
@@ -112,6 +141,7 @@ export async function categoryPaths(read: Reader = memoReader()): Promise<string
       nodes.push({ category: top.slug, sub: child.slug });
     }
   }
+  nodes.length = Math.min(nodes.length, MAX_CATEGORY_NODES);
   const paths: string[] = [];
   try {
     for (let i = 0; i < nodes.length; i += CATEGORY_BATCH) {
@@ -173,6 +203,16 @@ export async function productPaths(
   }
   return [...ids].map(productHref);
 }
+
+/** The index children, kept per Market origin for CACHE_MS. */
+export const cachedChildNames = (origin: string): Promise<string[]> =>
+  cached(`${origin}|index`, () => childNames());
+
+/** The URL paths of a child, kept per Market origin for CACHE_MS; null for an unknown child. */
+export const cachedChildPaths = (origin: string, name: string): Promise<string[] | null> =>
+  /^(pages|categories)\.xml$|^products-[1-9][0-9]?\.xml$/u.test(name)
+    ? cached(`${origin}|${name}`, () => childPaths(name))
+    : Promise.resolve(null);
 
 /** The children the index lists: pages, categories and each products child that has a product. */
 export async function childNames(read: Reader = memoReader()): Promise<string[]> {

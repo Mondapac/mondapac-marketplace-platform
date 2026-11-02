@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic';
 /** Pages that are never worth a crawl, whatever their meta tags say. */
 const BLOCKED_PATHS = ['/search', '/cart', '/checkout', '/account'];
 
+/** The path itself, its sub-paths and its query, but not a longer name such as `/searchable`. */
+const blockRules = (path: string): string[] => [`${path}$`, `${path}/`, `${path}?`];
+
 /**
  * A listing URL that carries a filter or sort parameter is a copy of its plain page. `?page=` is
  * not blocked: paged listings stay indexable (SEO package 1). The names come from the listing
@@ -33,7 +36,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: [...BLOCKED_PATHS, ...filterRules()],
+      disallow: [...BLOCKED_PATHS.flatMap(blockRules), ...filterRules()],
     },
     ...(host === undefined ? {} : { sitemap: `${host.origin}/sitemap.xml` }),
   };

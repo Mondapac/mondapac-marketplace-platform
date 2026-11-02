@@ -1,4 +1,9 @@
-import { indexXml, childNames, sitemapHost, SitemapReadFailed } from '../../src/seo/sitemap.ts';
+import {
+  indexXml,
+  cachedChildNames,
+  sitemapHost,
+  SitemapReadFailed,
+} from '../../src/seo/sitemap.ts';
 import {
   xmlResponse,
   notFoundResponse,
@@ -12,7 +17,7 @@ export async function GET(): Promise<Response> {
   const host = await sitemapHost();
   if (host === undefined) return notFoundResponse();
   try {
-    return xmlResponse(indexXml(host.origin, await childNames()));
+    return xmlResponse(indexXml(host.origin, await cachedChildNames(host.origin)));
   } catch (error) {
     if (error instanceof SitemapReadFailed) return unavailableResponse();
     throw error;

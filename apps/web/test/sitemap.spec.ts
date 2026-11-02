@@ -38,6 +38,7 @@ vi.mock('../src/storefront/api.ts', async (importOriginal) => ({
 }));
 
 const { default: robots } = await import('../app/robots.ts');
+const { clearSitemapCache, CACHE_MS } = await import('../src/seo/sitemap.ts');
 const { GET: indexRoute } = await import('../app/sitemap.xml/route.ts');
 const { GET: childRoute } = await import('../app/sitemaps/[name]/route.ts');
 
@@ -75,6 +76,7 @@ const locs = async (response: Response): Promise<string[]> =>
   [...(await response.text()).matchAll(/<loc>([^<]*)<\/loc>/gu)].map((m) => m[1] ?? '');
 
 beforeEach(() => {
+  clearSitemapCache();
   vi.stubEnv('STOREFRONT_INDEXING', 'on');
   request.host = 'shop.example';
   request.sampleData = false;
@@ -91,7 +93,9 @@ describe('robots.txt with indexing on', () => {
   it('blocks private pages and filter or sort URLs, and names the sitemap of the host', async () => {
     const text = await body();
     for (const path of ['/search', '/cart', '/checkout', '/account'])
-      expect(text).toContain(`Disallow: ${path}\n`);
+      for (const rule of [`${path}$`, `${path}/`, `${path}?`])
+        expect(text).toContain(`Disallow: ${rule}\n`);
+    expect(text).not.toMatch(/^Disallow: \/(search|cart|checkout|account)\n/mu);
     for (const name of ['sort', 'special', 'sameday', 'low', 'cert', 'seller', 'price', 'new'])
       expect(text).toContain(`Disallow: /*?${name}=\n`);
     expect(text).toContain('Disallow: /*&sort=\n');
@@ -112,6 +116,22 @@ describe('robots.txt with indexing on', () => {
     expect(text).not.toContain('Sitemap:');
     expect(text).toContain('Disallow: /search');
   });
+
+  it.each(['shop.example:8443', 'shop.example<x>', 'shop.example evil', ''])(
+    'gives the Host %j no Sitemap line',
+    async (host) => {
+      request.host = host;
+      expect(await body()).not.toContain('Sitemap:');
+    },
+  );
+
+  it.each(['SHOP.example', 'shop.example.'])(
+    'names the configured origin, not the typed Host %j',
+    async (host) => {
+      request.host = host;
+      expect(await body()).toContain('Sitemap: https://shop.example/sitemap.xml');
+    },
+  );
 
   it('gives a host of another Market no Sitemap line', async () => {
     request.host = 'nz.example';
@@ -286,5 +306,69 @@ describe('sitemap children', () => {
     expect(text).not.toMatch(/&(?!amp;|lt;|gt;|quot;|apos;)/u);
     expect(text).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
     expect(text).not.toMatch(/lastmod|priority|changefreq/u);
+  });
+});
+
+describe('sitemap host and cache', () => {
+  const child = (name: string) =>
+    childRoute(new Request('https://shop.example/'), { params: Promise.resolve({ name }) });
+
+  it.each(['shop.example:8443', 'shop.example<x>', 'shop.example evil', 'shop.example.evil'])(
+    'answers 404 for the Host %j',
+    async (host) => {
+      serve();
+      request.host = host;
+      expect((await indexRoute()).status).toBe(404);
+      expect((await child('pages.xml')).status).toBe(404);
+    },
+  );
+
+  it('accepts the listed host in other case or with a trailing dot', async () => {
+    serve();
+    for (const host of ['SHOP.EXAMPLE', 'shop.example.']) {
+      request.host = host;
+      expect((await child('pages.xml')).status).toBe(200);
+    }
+  });
+
+  it('reads the API once for repeated fetches inside the cache time', async () => {
+    const reads = serve({ pages: 2 });
+    await child('products-1.xml');
+    const first = reads.length;
+    await child('products-1.xml');
+    await indexRoute();
+    await indexRoute();
+    expect(reads.length - first).toBeLessThanOrEqual(3);
+    const again = reads.length;
+    await indexRoute();
+    expect(reads.length).toBe(again);
+  });
+
+  it('reads again after the cache time', async () => {
+    vi.useFakeTimers();
+    try {
+      const reads = serve();
+      await child('categories.xml');
+      const first = reads.length;
+      vi.advanceTimersByTime(CACHE_MS + 1);
+      await child('categories.xml');
+      expect(reads.length).toBeGreaterThan(first);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not keep a failure', async () => {
+    request.api = () => ({ kind: 'failed', status: 500 });
+    expect((await child('categories.xml')).status).toBe(503);
+    serve();
+    expect((await child('categories.xml')).status).toBe(200);
+  });
+
+  it('checks the switch on every request, cached or not', async () => {
+    serve();
+    expect((await child('pages.xml')).status).toBe(200);
+    vi.stubEnv('STOREFRONT_INDEXING', 'off');
+    expect((await child('pages.xml')).status).toBe(404);
   });
 });

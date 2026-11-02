@@ -1,4 +1,9 @@
-import { childPaths, sitemapHost, urlSetXml, SitemapReadFailed } from '../../../src/seo/sitemap.ts';
+import {
+  cachedChildPaths,
+  sitemapHost,
+  urlSetXml,
+  SitemapReadFailed,
+} from '../../../src/seo/sitemap.ts';
 import {
   notFoundResponse,
   unavailableResponse,
@@ -15,7 +20,7 @@ export async function GET(_request: Request, { params }: Props): Promise<Respons
   const host = await sitemapHost();
   if (host === undefined) return notFoundResponse();
   try {
-    const paths = await childPaths((await params).name);
+    const paths = await cachedChildPaths(host.origin, (await params).name);
     return paths === null ? notFoundResponse() : xmlResponse(urlSetXml(host.origin, paths));
   } catch (error) {
     if (error instanceof SitemapReadFailed) return unavailableResponse();
