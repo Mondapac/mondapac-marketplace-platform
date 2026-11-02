@@ -13,6 +13,9 @@ interface Input {
 }
 
 /** The most windows one call may ask for (a few local days). */
+/** The longest one window may be (a local day is at most 25 hours) and the widest span of a read. */
+export const SELLER_LOST_DISPUTES_MAX_WINDOW_HOURS = 26;
+export const SELLER_LOST_DISPUTES_MAX_SPAN_HOURS = 24 * 10;
 export const SELLER_LOST_DISPUTES_MAX_WINDOWS = 8;
 
 /** The most seller-fault decisions of one seller read for the windows; past it the read fails. */
@@ -85,6 +88,19 @@ export class SellerLostDisputes extends UseCase<
       (a, w) => (Temporal.Instant.compare(w.to, a) > 0 ? w.to : a),
       windows[0]!.to,
     );
+    // A local day is 23 to 25 hours; a read is a few days at most, never a wide scan.
+    if (
+      windows.some(
+        (w) =>
+          Temporal.Instant.compare(
+            w.to,
+            w.from.add({ hours: SELLER_LOST_DISPUTES_MAX_WINDOW_HOURS }),
+          ) > 0,
+      ) ||
+      Temporal.Instant.compare(last, first.add({ hours: SELLER_LOST_DISPUTES_MAX_SPAN_HOURS })) > 0
+    ) {
+      return err({ code: 'validation.failed' });
+    }
     return this.deps.unitOfWork.run<readonly SellerLostDisputeCount[], SellerLostDisputesFailure>(
       context.market,
       async () => {
