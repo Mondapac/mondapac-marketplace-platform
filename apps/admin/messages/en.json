@@ -656,7 +656,9 @@
       "filter": {
         "kind": "Submission",
         "all-kinds": "All submissions",
-        "outside-area": "Outside the service area only"
+        "outside-area": "Outside the service area only",
+        "area": "Service area",
+        "all-areas": "All areas"
       },
       "kind": {
         "onboarding": "New application",

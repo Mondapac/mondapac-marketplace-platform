@@ -53,6 +53,8 @@ export interface OnboardingAreas {
    * names no area of the Market (an area removed from configuration): the caller falls back.
    */
   nameOf(market: MarketContext, code: string): string | null;
+  /** Every area of the Market (open or not) with its English name, for the list's area filter. */
+  all(market: MarketContext): readonly { readonly code: string; readonly name: string }[];
 }
 
 export const ONBOARDING_AREAS = Symbol('ONBOARDING_AREAS');

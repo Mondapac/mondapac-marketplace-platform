@@ -169,6 +169,7 @@ describe('admin seller review page', () => {
       items: [row],
       next: null,
       counts: { awaitingReview: { onboarding: 1, identityChange: 0 }, incomplete: 0, all: 1 },
+      areas: [],
       stateCounts: null,
     };
     for (const canReview of [true, false]) {
