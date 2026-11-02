@@ -576,3 +576,39 @@ describe('settings', () => {
     expect(await within(page).findByText('Your password has been updated.')).toBeTruthy();
   });
 });
+
+describe('settings language', () => {
+  it('shows no Language card while only English is published', () => {
+    renderStore(<AccountSettings palette="B" textSize="auto" languages={['en']} />);
+    expect(within(main()).queryByRole('heading', { name: 'Language' })).toBeNull();
+  });
+
+  it('shows the card with each language in its own script once another is published', () => {
+    renderStore(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa', 'ar']} />);
+    const select = within(main()).getByRole<HTMLSelectElement>('combobox', {
+      name: 'Site language',
+    });
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      'English',
+      'فارسی (Persian)',
+      'العربية (Arabic)',
+    ]);
+    expect(select.value).toBe('en');
+  });
+
+  it('starts on the language kept on the account, and falls back to English for an unpublished one', () => {
+    const { unmount } = renderStore(
+      <AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} language="fa" />,
+    );
+    expect(
+      within(main()).getByRole<HTMLSelectElement>('combobox', { name: 'Site language' }).value,
+    ).toBe('fa');
+    unmount();
+    renderStore(
+      <AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} language="ar" />,
+    );
+    expect(
+      within(main()).getByRole<HTMLSelectElement>('combobox', { name: 'Site language' }).value,
+    ).toBe('en');
+  });
+});
