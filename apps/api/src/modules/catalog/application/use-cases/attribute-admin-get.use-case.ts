@@ -4,7 +4,11 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
-import type { AttributeBounds, LocalizedText } from '../../domain/attribute-definition';
+import type {
+  AttributeBounds,
+  AttributeDisplaySettings,
+  LocalizedText,
+} from '../../domain/attribute-definition';
 import {
   ATTRIBUTE_HISTORY_MAX,
   FEATURE_SET_LOAD_MAX,
@@ -49,6 +53,8 @@ export interface AttributeAdminGetOutput extends AttributeSummaryView {
   readonly createdAt: string;
   readonly version: number;
   readonly bounds: AttributeBounds;
+  /** Help text, page and search settings, the internal note (admin only) and the order. */
+  readonly display: AttributeDisplaySettings;
   readonly options: readonly AttributeOptionView[];
   readonly productCount: number;
   readonly usedIn: readonly FeatureSetUse[];
@@ -157,6 +163,10 @@ export class AttributeAdminGet extends UseCase<
       createdAt: definition.createdAt.toString(),
       version: definition.version,
       bounds: { ...definition.revision.bounds },
+      display: {
+        ...definition.revision.display,
+        helpText: { ...definition.revision.display.helpText },
+      },
       options: [...definition.revision.options]
         .sort((a, b) => a.position - b.position || a.code.localeCompare(b.code))
         .map((option) => ({

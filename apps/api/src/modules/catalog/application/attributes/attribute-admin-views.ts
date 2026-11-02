@@ -237,6 +237,8 @@ const BOUND_KEYS: readonly (keyof AttributeBounds)[] = ['maxLength', 'min', 'max
  * revision of a definition has no `before`: its changes are empty and the History tab shows it as
  * "Created". Options are compared by code: added, label per locale, active and position.
  */
+const DISPLAY_FLAGS = ['showOnProductPage', 'searchable', 'canBeFilter', 'position'] as const;
+
 export function changesBetween(
   before: AttributeRevisionRecord,
   after: AttributeRevisionRecord,
@@ -255,6 +257,14 @@ export function changesBetween(
   push('material', before.material, after.material);
   push('isVariantOption', before.isVariantOption, after.isVariantOption);
   for (const key of BOUND_KEYS) push(`bounds.${key}`, before.bounds[key], after.bounds[key]);
+  for (const locale of localeKeys(before.display.helpText, after.display.helpText)) {
+    push(`help.${locale}`, before.display.helpText[locale], after.display.helpText[locale]);
+  }
+  for (const key of DISPLAY_FLAGS) push(key, before.display[key], after.display[key]);
+  // The note's text stays out of the history: only that it changed.
+  if (before.display.internalNote !== after.display.internalNote) {
+    changes.push({ field: 'internalNote', before: null, after: null });
+  }
   const old = new Map(before.options.map((option) => [option.code, option]));
   for (const option of after.options) {
     const previous = old.get(option.code);

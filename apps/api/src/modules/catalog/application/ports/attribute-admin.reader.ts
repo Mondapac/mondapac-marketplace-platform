@@ -1,6 +1,7 @@
 import type { AttributeDataType, Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
   AttributeBounds,
+  AttributeDisplaySettings,
   AttributeOption,
   LocalizedText,
 } from '../../domain/attribute-definition';
@@ -30,6 +31,8 @@ export interface AttributeRevisionRecord {
   readonly bounds: AttributeBounds;
   readonly names: LocalizedText;
   readonly options: readonly AttributeOption[];
+  /** Help text, page and search settings, the internal note and the order (package A2). */
+  readonly display: AttributeDisplaySettings;
   readonly authorKind: CategoryAuthorKind;
   /** Null exactly when the author is the seed. */
   readonly authorAccountId: Id<'Account'> | null;

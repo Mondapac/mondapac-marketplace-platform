@@ -35,6 +35,13 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
+import {
+  ATTRIBUTE_DEFINITION_STORE,
+  type AttributeDefinitionStore,
+} from '../application/ports/attribute-definition.store';
+import { CertificationClaimTermLocales } from './certification-claim-term-locales';
+import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
 import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
 import { OWN_OFFER_FINDER } from '../application/ports/own-offer-finder';
 import { CLAIM_EVALUATOR, type ClaimEvaluator } from '../application/ports/claim-evaluator';
@@ -217,6 +224,18 @@ export const catalogProviders: readonly Provider[] = [
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
       new CertificationClaimTextMatcher(certification),
+  },
+  {
+    provide: CLAIM_TERM_LOCALES,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): ClaimTermLocales =>
+      new CertificationClaimTermLocales(certification),
+  },
+  {
+    provide: ATTRIBUTE_DEFINITION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeDefinitionStore =>
+      new PrismaAttributeDefinitionStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,
