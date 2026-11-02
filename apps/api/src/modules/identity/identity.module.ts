@@ -126,6 +126,7 @@ import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
 import { ChangePanelPreferences } from './application/use-cases/change-panel-preferences.use-case';
+import { ChangeCustomerLanguage } from './application/use-cases/change-customer-language.use-case';
 import { ChangeStorefrontAppearance } from './application/use-cases/change-storefront-appearance.use-case';
 import { ListOwnSessions } from './application/use-cases/list-own-sessions.use-case';
 import { SignOutOtherSessions } from './application/use-cases/sign-out-other-sessions.use-case';
@@ -994,6 +995,11 @@ function useCaseProvider<D, U>(
     }),
     // Buyer account backend: a customer keeps the own storefront look on the account.
     useCaseProvider(ChangeStorefrontAppearance, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    // Buyer profile: a customer keeps the own language on the account.
+    useCaseProvider(ChangeCustomerLanguage, {
       unitOfWork: true,
       accounts: true,
     }),

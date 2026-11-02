@@ -20,6 +20,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { ChangeDisplayName } from '../application/use-cases/change-display-name.use-case';
+import { ChangeCustomerLanguage } from '../application/use-cases/change-customer-language.use-case';
 import { ChangeStorefrontAppearance } from '../application/use-cases/change-storefront-appearance.use-case';
 import type { FieldProblem } from '../application/use-cases/register-customer.use-case';
 import { adminBody, adminFailure } from './admin.answer';
@@ -30,7 +31,12 @@ import {
   MORE_FIELDS,
 } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
-import { AppearanceChanged, ChangeAppearanceRequest } from './customer-session.dto';
+import {
+  AppearanceChanged,
+  ChangeAppearanceRequest,
+  ChangeLanguageRequest,
+  LanguageChanged,
+} from './customer-session.dto';
 import { ChangeDisplayNameRequest, DisplayNameChanged } from './profile.dto';
 
 const APPEARANCE_FIELDS = ['palette', 'textSize'] as const;
@@ -74,6 +80,36 @@ function appearanceBody(
   };
 }
 
+/** The language body: exactly `locale`, a string or null; the value is checked by the use case. */
+function languageBody(
+  request: Request,
+  body: unknown,
+): { readonly locale: string | null } | HttpException {
+  if (request.is('application/json') !== 'application/json') {
+    return fail(415, 'request.body-unsupported');
+  }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return fail(400, 'validation.failed', { fields: [{ path: '', code: 'type' }] });
+  }
+  const record = body as Record<string, unknown>;
+  const unknown = Object.keys(record)
+    .filter((key) => key !== 'locale')
+    .sort();
+  const problems: FieldProblem[] = unknown
+    .slice(0, MAX_ECHOED_UNKNOWN_FIELDS)
+    .map((key) => ({ path: echoedFieldName(key), code: 'unknown-field' }));
+  if (unknown.length > MAX_ECHOED_UNKNOWN_FIELDS) {
+    problems.push({ path: MORE_FIELDS, code: 'unknown-field' });
+  }
+  const value = Object.hasOwn(record, 'locale') ? record.locale : undefined;
+  if (value === undefined) problems.push({ path: 'locale', code: 'required' });
+  else if (value !== null && typeof value !== 'string') {
+    problems.push({ path: 'locale', code: 'type' });
+  }
+  if (problems.length > 0) return fail(400, 'validation.failed', { fields: problems });
+  return { locale: value as string | null };
+}
+
 /**
  * The signed-in customer's own profile over HTTP (buyer account backend): the display name and
  * the storefront look kept on the account. Reads the customer session cookie and needs its CSRF
@@ -89,6 +125,7 @@ export class CustomerProfileController {
   constructor(
     private readonly changeDisplayName: ChangeDisplayName,
     private readonly changeAppearance: ChangeStorefrontAppearance,
+    private readonly changeLanguage: ChangeCustomerLanguage,
   ) {}
 
   @Put('profile/display-name')
@@ -167,6 +204,43 @@ export class CustomerProfileController {
       } else outcome = adminFailure(response, result.error);
     }
     return this.settle('identity.customer-change-appearance', context, outcome);
+  }
+
+  @Put('profile/language')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({ summary: 'Keep the language of the signed-in customer account' })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiBody({ type: ChangeLanguageRequest })
+  @ApiOkResponse({ type: LanguageChanged })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description: 'validation.failed (details.fields: locale not supported)',
+  })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'request.csrf or access.denied' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async changeOwnLanguage(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<LanguageChanged> {
+    const input = languageBody(request, body);
+    let outcome: LanguageChanged | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.changeLanguage.execute(context, { locale: input.locale });
+      if (result.ok) {
+        response.setHeader('Cache-Control', 'no-store');
+        outcome = result.value;
+      } else outcome = adminFailure(response, result.error);
+    }
+    return this.settle('identity.customer-change-language', context, outcome);
   }
 
   /** Logs the outcome code with the correlation id, then answers or throws. */
