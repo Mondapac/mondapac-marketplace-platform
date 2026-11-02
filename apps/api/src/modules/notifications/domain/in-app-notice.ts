@@ -308,7 +308,7 @@ const PARAM_SHAPES: Readonly<
   [SELLER_REVIEW_POSTED]: { ids: ['reviewId', 'productId'], enums: {}, counts: ['rating'] },
   [SELLER_REVIEW_HIDDEN]: { ids: ['reviewId', 'productId'], enums: {} },
   [SELLER_REVIEW_RESTORED]: { ids: ['reviewId', 'productId'], enums: {} },
-  [SELLER_DELIVERY_PROBLEM]: { ids: ['sellerOrderId'], enums: {} },
+  [SELLER_DELIVERY_PROBLEM]: { ids: [], enums: {} },
   [ADMIN_REVIEW_HELD]: { ids: ['reviewId'], enums: {} },
   [ADMIN_REVIEW_REPORTED]: { ids: ['reviewId'], enums: {} },
   [ADMIN_SELLER_REINSTATED_HOLD_REMAINS]: { ids: ['sellerId'], enums: {} },

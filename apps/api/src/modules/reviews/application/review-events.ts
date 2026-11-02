@@ -97,7 +97,6 @@ export async function recordDeliveryProblem(
   context: CallContext,
   ratingId: Id<'SellerRating'>,
   sellerId: Id<'Seller'>,
-  sellerOrderId: Id<'SellerOrder'>,
   at: Temporal.Instant,
 ): Promise<void> {
   await deps.outbox.append(context, [
@@ -105,7 +104,7 @@ export async function recordDeliveryProblem(
       aggregateId: ratingId,
       aggregateVersion: 1,
       occurredAt: at,
-      payload: { sellerId, sellerOrderId },
+      payload: { sellerId },
     }),
   ]);
 }

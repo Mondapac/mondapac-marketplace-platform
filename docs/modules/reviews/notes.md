@@ -276,7 +276,5 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
   threshold" notices need a counting job and a Market threshold; the day-2 and day-7 review-request
   email waits for the brand name, ABN and the Spam Act wording; the optional daily digest. The reply
   event is not written until the buyer notice exists.
-- Privacy note for review: a delivery-problem notice names the seller order, so the seller can tell
-  which order was rated "not in good order" (the summaries are rebuilt coarsely so that one rating
-  cannot be read from one change; this notice does read it). The design lists this notice, so it is
-  built; say if it should name nothing but a count.
+- Delivery-problem notice (owner decision 2 Nov 2026): the event and the notice carry the seller only,
+  never the order, so the seller cannot tie a "not in good order" answer to one buyer.

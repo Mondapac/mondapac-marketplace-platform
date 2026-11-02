@@ -1271,7 +1271,7 @@ describe.each([['AU'], ['ZZ']] as const)('seller notices (package 4) in market %
         {
           kind: SELLER_DELIVERY_PROBLEM,
           owner: { by: 'seller' as const, sellerId: SELLER_A },
-          params: { sellerOrderId: id<'SellerOrder'>(0x93) },
+          params: {},
         },
       ];
       for (const item of items) {
@@ -1307,7 +1307,6 @@ describe.each([['AU'], ['ZZ']] as const)('seller notices (package 4) in market %
         'reviewId',
         'reviewId',
         'reviewId',
-        'sellerOrderId',
       ]);
     });
 

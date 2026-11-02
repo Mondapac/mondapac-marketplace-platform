@@ -18,7 +18,6 @@ const IDS = {
   productId: '01990000-0000-7000-8000-000000000072',
   sellerId: '01990000-0000-7000-8000-000000000051',
   reportId: '01990000-0000-7000-8000-000000000073',
-  sellerOrderId: '01990000-0000-7000-8000-000000000074',
 };
 
 function subscriptions(refuse = false) {
@@ -83,10 +82,10 @@ describe('review notice subscriptions', () => {
     ]);
   });
 
-  it('turns a delivery problem into a seller notice naming the seller order only', async () => {
+  it('turns a delivery problem into a seller notice naming nothing', async () => {
     const { seen, named } = subscriptions();
     await named(REVIEW_NOTICE_SUBSCRIBERS.sellerDeliveryProblem).handle(
-      { payload: { sellerId: IDS.sellerId, sellerOrderId: IDS.sellerOrderId } } as never,
+      { payload: { sellerId: IDS.sellerId } } as never,
       delivery,
       context,
     );
@@ -96,7 +95,7 @@ describe('review notice subscriptions', () => {
         item: {
           kind: 'seller.delivery-problem',
           owner: { by: 'seller', sellerId: IDS.sellerId },
-          params: { sellerOrderId: IDS.sellerOrderId },
+          params: {},
         },
       },
     ]);

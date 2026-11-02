@@ -664,10 +664,8 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
         true,
       );
       expect(outbox.types).toEqual(['reviews.delivery-problem-flagged.v1']);
-      expect(outbox.appended[0]!.payload).toEqual({
-        sellerId: SELLER,
-        sellerOrderId: sellerOrder(2),
-      });
+      // The seller only, never the order: the seller cannot tie the answer to one buyer.
+      expect(outbox.appended[0]!.payload).toEqual({ sellerId: SELLER });
       // A second rating of the same order is refused and writes nothing more.
       clock.set(T0.add({ hours: 25 }));
       expect(await rate(2, { arrivedOk: false })).toEqual(err({ code: 'reviews.already-rated' }));

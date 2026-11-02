@@ -118,7 +118,7 @@ export function reviewNoticeSubscriptions(
           {
             kind: SELLER_DELIVERY_PROBLEM,
             owner: { by: 'seller', sellerId: event.payload.sellerId },
-            params: { sellerOrderId: event.payload.sellerOrderId },
+            params: {},
           },
           delivery,
           context,

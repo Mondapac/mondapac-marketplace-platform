@@ -65,13 +65,13 @@ export const ReviewReported = defineEvent({
   },
 });
 
-/** A buyer said an order did not arrive in good order (the "arrived OK" answer was no). */
+/** A buyer said an order did not arrive in good order (the "arrived OK" answer was no).
+ * It names the seller only, never the order: the seller must not be able to tie the answer to one buyer. */
 export const DeliveryProblemFlagged = defineEvent({
   type: 'reviews.delivery-problem-flagged.v1',
   aggregateType: 'seller-rating',
   payload: {
     sellerId: eventField.id(),
-    sellerOrderId: eventField.id(),
   },
 });
 

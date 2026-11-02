@@ -583,14 +583,7 @@ export async function rateSellerOrder(
       return err({ code: 'reviews.already-rated' } as const);
     }
     if (!record.arrivedOk) {
-      await recordDeliveryProblem(
-        deps,
-        context,
-        record.id,
-        record.sellerId,
-        order.sellerOrderId,
-        now,
-      );
+      await recordDeliveryProblem(deps, context, record.id, record.sellerId, now);
     }
     // The seller summary is not refreshed here: only the repair job writes it, at a coarse
     // interval, so a seller who polls the public endpoint cannot read one rating from one change.

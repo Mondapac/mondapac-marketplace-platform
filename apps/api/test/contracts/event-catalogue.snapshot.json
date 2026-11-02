@@ -890,8 +890,7 @@
     "type": "reviews.delivery-problem-flagged.v1",
     "aggregateType": "seller-rating",
     "fields": {
-      "sellerId": "id",
-      "sellerOrderId": "id"
+      "sellerId": "id"
     }
   },
   {
