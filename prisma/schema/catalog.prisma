@@ -272,7 +272,7 @@ model CatalogAttributeDefinition {
   /// text | long-text | integer | decimal | boolean | select | multi-select | date.
   dataType            String                               @map("data_type")
   localizable         Boolean
-  /// active | archived.
+  /// draft | active | archived (attributes A2: a draft is invisible to sellers and buyers).
   status              String
   /// The current revision; null only inside the creating unit (Q-K10).
   publishedRevisionId String?                              @map("published_revision_id") @db.Uuid
@@ -303,6 +303,18 @@ model CatalogAttributeDefinitionRevision {
   bounds              Json                                       @db.JsonB
   /// Locale to name (CA6).
   names               Json                                       @db.JsonB
+  /// Locale to help text shown to sellers next to the field (attributes A2).
+  helpText            Json                                       @default("{}") @map("help_text") @db.JsonB
+  /// Shown in the product page's specifications (A6 reads it).
+  showOnProductPage   Boolean                                    @default(true) @map("show_on_product_page")
+  /// Its values are searched (A7 reads it).
+  searchable          Boolean                                    @default(false)
+  /// May be offered as a category filter (A7 reads it).
+  canBeFilter         Boolean                                    @default(false) @map("can_be_filter")
+  /// A note for administrators; never shown to sellers or buyers.
+  internalNote        String?                                    @map("internal_note")
+  /// Order among attributes in admin lists and forms.
+  position            Int                                        @default(0) @db.SmallInt
   /// seed | admin.
   authorKind          String                                     @map("author_kind")
   /// Null exactly when the author is the seed.
@@ -332,6 +344,8 @@ model CatalogAttributeDefinitionRevisionOption {
   labels     Json                               @db.JsonB
   active     Boolean
   position   Int                                @db.SmallInt
+  /// The value this one was merged into (attributes A8); null otherwise.
+  mergedInto String?                            @map("merged_into")
   revision   CatalogAttributeDefinitionRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, revisionId, optionCode])

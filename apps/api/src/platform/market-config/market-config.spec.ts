@@ -2101,6 +2101,7 @@ describe('loadMarketConfigs', () => {
         variantRemoved: true,
       },
       maxVariantsPerProduct: 100,
+      maxVariantAttributes: 2,
       approvalRequired: true,
       productTypes: ['simple', 'configurable'],
       defaultFamily: 'default',
@@ -2128,6 +2129,8 @@ describe('loadMarketConfigs', () => {
 
       expect(au?.maxVariantsPerProduct).toBe(100);
       expect(zz?.maxVariantsPerProduct).toBe(3);
+      expect(au?.maxVariantAttributes).toBe(2);
+      expect(zz?.maxVariantAttributes).toBe(3);
       expect(au?.approvalRequired).toBe(true);
       expect(zz?.approvalRequired).toBe(false);
       expect(au?.taxCategories.map((c) => c.code)).not.toEqual(
@@ -2180,6 +2183,9 @@ describe('loadMarketConfigs', () => {
       ['a variant limit above the lock set', { ...VALID_CATALOG, maxVariantsPerProduct: 101 }],
       ['a fractional variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: 2.5 }],
       ['a string variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: '100' }],
+      ['no variant attribute limit', without('maxVariantAttributes')],
+      ['a zero variant attribute limit', { ...VALID_CATALOG, maxVariantAttributes: 0 }],
+      ['a variant attribute limit above 5', { ...VALID_CATALOG, maxVariantAttributes: 6 }],
       ['no approval setting', without('approvalRequired')],
       ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
       ['no product types', without('productTypes')],

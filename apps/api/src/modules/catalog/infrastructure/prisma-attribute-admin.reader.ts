@@ -23,6 +23,12 @@ interface RevisionRow {
   readonly isVariantOption: boolean;
   readonly bounds: Prisma.JsonValue;
   readonly names: Prisma.JsonValue;
+  readonly helpText: Prisma.JsonValue;
+  readonly showOnProductPage: boolean;
+  readonly searchable: boolean;
+  readonly canBeFilter: boolean;
+  readonly internalNote: string | null;
+  readonly position: number;
   readonly authorKind: string;
   readonly authorAccountId: string | null;
   readonly createdAt: Date;
@@ -47,6 +53,14 @@ const revisionOf = (row: RevisionRow): AttributeRevisionRecord => ({
     active: option.active,
     position: option.position,
   })),
+  display: {
+    helpText: (row.helpText ?? {}) as LocalizedText,
+    showOnProductPage: row.showOnProductPage,
+    searchable: row.searchable,
+    canBeFilter: row.canBeFilter,
+    internalNote: row.internalNote,
+    position: row.position,
+  },
   authorKind: row.authorKind as CategoryAuthorKind,
   authorAccountId: row.authorAccountId as Id<'Account'> | null,
   createdAt: toInstant(row.createdAt),

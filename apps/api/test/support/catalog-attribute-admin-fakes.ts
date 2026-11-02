@@ -7,9 +7,10 @@ import type {
   CountedField,
   FeatureSetRecord,
 } from '../../src/modules/catalog/application/ports/attribute-admin.reader';
-import type {
-  AttributeOption,
-  LocalizedText,
+import {
+  DEFAULT_DISPLAY_SETTINGS,
+  type AttributeOption,
+  type LocalizedText,
 } from '../../src/modules/catalog/domain/attribute-definition';
 import type { FamilyGroup } from '../../src/modules/catalog/domain/attribute-family';
 
@@ -32,6 +33,7 @@ export function revisionRecord(
     bounds: {},
     names: { 'en-AU': 'Name' },
     options: [],
+    display: DEFAULT_DISPLAY_SETTINGS,
     authorKind: 'seed',
     authorAccountId: null,
     createdAt: T0,

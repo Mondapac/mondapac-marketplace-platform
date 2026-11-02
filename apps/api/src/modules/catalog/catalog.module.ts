@@ -237,6 +237,12 @@ import { PublicBrandQuery } from './application/use-cases/public-brand.use-case'
 import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.use-case';
 import { BrandAdminController } from './presentation/brand-admin.controller';
 import { AttributeAdminController } from './presentation/attribute-admin.controller';
+import { AttributeDefinitionCreate } from './application/use-cases/attribute-definition-create.use-case';
+import { AttributeDefinitionEdit } from './application/use-cases/attribute-definition-edit.use-case';
+import { AttributeDefinitionDiscard } from './application/use-cases/attribute-definition-discard.use-case';
+import { AttributeDefinitionPublish } from './application/use-cases/attribute-definition-publish.use-case';
+import { ATTRIBUTE_DEFINITION_STORE } from './application/ports/attribute-definition.store';
+import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
@@ -327,6 +333,8 @@ const PORT = {
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
+  attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
@@ -531,6 +539,38 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
     }),
     useCaseProvider(FeatureSetAdminList, { unitOfWork: true, attributeAdminReader: true }),
+    useCaseProvider(AttributeDefinitionCreate, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeDefinitionEdit, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeDefinitionPublish, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      audit: true,
+    }),
+    useCaseProvider(AttributeDefinitionDiscard, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      audit: true,
+    }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
       attributeAdminReader: true,
