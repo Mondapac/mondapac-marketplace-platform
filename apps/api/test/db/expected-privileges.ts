@@ -590,6 +590,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Reviews (buyer reviews and ratings, package 1): the moderation log and the signals are
     // insert-only (triggers refuse more for every role); the rest change only the columns named
     // and are never deleted (a trigger refuses DELETE and TRUNCATE for every role).
+    'reviews.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'reviews.moderation_actions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.review_signals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.product_reviews': {

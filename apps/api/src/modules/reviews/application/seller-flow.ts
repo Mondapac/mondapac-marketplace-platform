@@ -11,6 +11,7 @@ import { isActingAs } from './caller';
 import type { ReviewsFailure } from './failures';
 import { activeSettings } from './market-switch';
 import type { ProductReviewRecord, ReplyRecord, ReviewCursor } from './ports/review.repository';
+import { recordReported } from './review-events';
 import type { ReviewsDependencies } from './reviews-dependencies';
 
 // The seller's side of reviews (buyer reviews and ratings package 4; owner decision N6, design 5.2
@@ -250,13 +251,16 @@ export async function reportReview(
       if (found === null || found.review.status === 'deleted-by-author') {
         return err({ code: 'reviews.not-found' });
       }
-      await deps.reviews.insertReportIfAbsent(context.market, {
-        id: deps.ids.next<'ReviewReport'>(),
+      const reportId = deps.ids.next<'ReviewReport'>();
+      const inserted = await deps.reviews.insertReportIfAbsent(context.market, {
+        id: reportId,
         reviewId,
         reporterAccountId: seller.accountId,
         reasonCode: reason.value,
         createdAt: now,
       });
+      // A second report by the same account changes nothing, so it makes no second notice.
+      if (inserted) await recordReported(deps, context, reviewId, reportId, now);
       return ok({ reported: true } as const);
     },
   );

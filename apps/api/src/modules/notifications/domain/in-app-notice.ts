@@ -62,6 +62,18 @@ export const SELLER_ORDER_DISPUTED = 'seller.order-disputed';
 /** The seller's payout terms were set or cleared by an admin (package 6d). No ids, no amounts. */
 export const SELLER_PAYOUT_TERMS_CHANGED = 'seller.payout-terms-changed';
 
+/** A buyer's review of the seller's product became visible (buyer reviews, package 4b). */
+export const SELLER_REVIEW_POSTED = 'seller.review-posted';
+/** An admin hid or removed a review of the seller's product. No reason: it stays in the log. */
+export const SELLER_REVIEW_HIDDEN = 'seller.review-hidden';
+/** An admin restored a hidden review of the seller's product. */
+export const SELLER_REVIEW_RESTORED = 'seller.review-restored';
+/**
+ * A buyer said an order did not arrive in good order. It names the seller order and nothing of
+ * the buyer; the star answers stay in the ratings.
+ */
+export const SELLER_DELIVERY_PROBLEM = 'seller.delivery-problem';
+
 export const CERTIFICATE_OUTCOMES = ['approved', 'changes-requested', 'declined'] as const;
 export const CERTIFICATE_END_CAUSES = ['expired', 'revoked'] as const;
 export const ISSUER_REQUEST_OUTCOMES = ['issuer-added', 'not-accepted'] as const;
@@ -101,7 +113,11 @@ export type SellerNoticeKind =
   | typeof SELLER_PRICE_HOLD_DECIDED
   | typeof SELLER_ACCESS_CHANGED
   | typeof SELLER_ORDER_DISPUTED
-  | typeof SELLER_PAYOUT_TERMS_CHANGED;
+  | typeof SELLER_PAYOUT_TERMS_CHANGED
+  | typeof SELLER_REVIEW_POSTED
+  | typeof SELLER_REVIEW_HIDDEN
+  | typeof SELLER_REVIEW_RESTORED
+  | typeof SELLER_DELIVERY_PROBLEM;
 export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_ORDER_PAID,
   SELLER_LOW_STOCK,
@@ -119,6 +135,10 @@ export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_ACCESS_CHANGED,
   SELLER_ORDER_DISPUTED,
   SELLER_PAYOUT_TERMS_CHANGED,
+  SELLER_REVIEW_POSTED,
+  SELLER_REVIEW_HIDDEN,
+  SELLER_REVIEW_RESTORED,
+  SELLER_DELIVERY_PROBLEM,
 ];
 
 /** The seller kinds that ring the new-order sound (plan 6b): orders only. */
@@ -149,6 +169,11 @@ export const ADMIN_DELIVERY_FALLBACK_OVER_CAP = 'admin.delivery-fallback-over-ca
  * 14a). The notice holds the import's id and its outcome only; the counts are in the import's report.
  */
 export const ADMIN_PLATFORM_IMPORT_FINISHED = 'admin.platform-import-finished';
+
+/** A review waits in the held tab of the moderation queue (buyer reviews, package 4b). */
+export const ADMIN_REVIEW_HELD = 'admin.review-held';
+/** A seller reported a review; it waits in the reported tab. */
+export const ADMIN_REVIEW_REPORTED = 'admin.review-reported';
 
 export const PLATFORM_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
 export const CERTIFICATE_SUBMISSIONS = ['initial', 'resubmission', 'renewal'] as const;
@@ -195,7 +220,9 @@ export type AdminNoticeKind =
   | typeof ADMIN_PRICE_HOLD_OPENED
   | typeof ADMIN_SELLER_REINSTATED_HOLD_REMAINS
   | typeof ADMIN_DELIVERY_FALLBACK_OVER_CAP
-  | typeof ADMIN_PLATFORM_IMPORT_FINISHED;
+  | typeof ADMIN_PLATFORM_IMPORT_FINISHED
+  | typeof ADMIN_REVIEW_HELD
+  | typeof ADMIN_REVIEW_REPORTED;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -204,6 +231,8 @@ export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PLATFORM_IMPORT_FINISHED,
+  ADMIN_REVIEW_HELD,
+  ADMIN_REVIEW_REPORTED,
 ];
 
 /**
@@ -276,6 +305,12 @@ const PARAM_SHAPES: Readonly<
   [SELLER_ACCESS_CHANGED]: { ids: [], enums: { change: ACCESS_CHANGES } },
   [SELLER_ORDER_DISPUTED]: { ids: ['sellerOrderId', 'orderId'], enums: {} },
   [SELLER_PAYOUT_TERMS_CHANGED]: { ids: [], enums: {} },
+  [SELLER_REVIEW_POSTED]: { ids: ['reviewId', 'productId'], enums: {}, counts: ['rating'] },
+  [SELLER_REVIEW_HIDDEN]: { ids: ['reviewId', 'productId'], enums: {} },
+  [SELLER_REVIEW_RESTORED]: { ids: ['reviewId', 'productId'], enums: {} },
+  [SELLER_DELIVERY_PROBLEM]: { ids: ['sellerOrderId'], enums: {} },
+  [ADMIN_REVIEW_HELD]: { ids: ['reviewId'], enums: {} },
+  [ADMIN_REVIEW_REPORTED]: { ids: ['reviewId'], enums: {} },
   [ADMIN_SELLER_REINSTATED_HOLD_REMAINS]: { ids: ['sellerId'], enums: {} },
   [ADMIN_SELLER_CERTIFICATE_SUBMITTED]: {
     ids: ['sellerId', 'sellerCertificationId'],

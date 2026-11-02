@@ -2,6 +2,14 @@
 // and the audit actions. Other modules may import only what this file exports, through
 // ../index.ts.
 export { REVIEWS_AUDIT_ACTIONS } from '../domain/audit';
+export {
+  DeliveryProblemFlagged,
+  ReviewHeld,
+  ReviewHidden,
+  ReviewPublished,
+  ReviewReported,
+  ReviewRestored,
+} from '../domain/events';
 export { REVIEWS_STATUSES, type ReviewsStatus } from '../domain/market-status';
 export {
   REVIEW_STATUSES,
@@ -14,6 +22,7 @@ export {
   REVIEWS_MODERATION_REMOVE,
   REVIEWS_MODERATION_QUEUE,
   REVIEWS_PERMISSIONS,
+  REVIEWS_SELLER_VIEW,
   REVIEWS_SETTINGS_MANAGE,
   REVIEWS_SETTINGS_VIEW,
 } from './permissions';

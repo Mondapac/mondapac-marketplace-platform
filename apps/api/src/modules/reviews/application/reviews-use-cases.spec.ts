@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { RecordingOutbox } from '../../../../test/support/catalog-tag-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import {
   FakeAffinity,
@@ -97,6 +98,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
   let affinity: FakeAffinity;
   let stepUp: FakeStepUp;
   let audit: RecordingAudit;
+  let outbox: RecordingOutbox;
   let deps: ReviewsDependencies;
 
   const customerCtx = (accountId = BUYER) =>
@@ -142,6 +144,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
     affinity = new FakeAffinity();
     stepUp = new FakeStepUp();
     audit = new RecordingAudit();
+    outbox = new RecordingOutbox();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reviews,
@@ -152,6 +155,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       names,
       affinity,
       audit,
+      outbox,
       stepUp,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -651,6 +655,25 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(await sellerSummary()).toMatchObject({ ok: true, value: { count: 1 } });
     });
 
+    it('writes delivery-problem-flagged only when the buyer says it did not arrive in good order', async () => {
+      bought(1);
+      bought(2);
+      expect((await rate(1)).ok).toBe(true);
+      expect(outbox.types).toEqual([]);
+      expect((await rate(2, { arrivedOk: false, reasonCode: 'damaged', satisfaction: 2 })).ok).toBe(
+        true,
+      );
+      expect(outbox.types).toEqual(['reviews.delivery-problem-flagged.v1']);
+      expect(outbox.appended[0]!.payload).toEqual({
+        sellerId: SELLER,
+        sellerOrderId: sellerOrder(2),
+      });
+      // A second rating of the same order is refused and writes nothing more.
+      clock.set(T0.add({ hours: 25 }));
+      expect(await rate(2, { arrivedOk: false })).toEqual(err({ code: 'reviews.already-rated' }));
+      expect(outbox.types).toHaveLength(1);
+    });
+
     it('gives only the count while the seller is below the Market minimum', async () => {
       bought(1);
       await rate(1);
@@ -914,6 +937,91 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
 
     beforeEach(async () => {
       await switchOn();
+    });
+
+    describe('events for the notices (package 4b)', () => {
+      const events = () => outbox.appended.map((event) => event.type);
+      const lastPayload = () => outbox.appended[outbox.appended.length - 1]!.payload;
+
+      it('writes review-published for a clean review and review-held for a held one, ids only', async () => {
+        const liveId = await live(1);
+        expect(events()).toEqual(['reviews.review-published.v1']);
+        expect(lastPayload()).toEqual({
+          reviewId: liveId,
+          productId: product(1),
+          sellerId: SELLER,
+          rating: 5,
+        });
+        const heldId = await held(2);
+        expect(events()).toEqual(['reviews.review-published.v1', 'reviews.review-held.v1']);
+        expect(lastPayload()).toEqual({
+          reviewId: heldId,
+          productId: product(2),
+          sellerId: SELLER,
+        });
+        // The text appears in no event.
+        expect(JSON.stringify(outbox.appended)).not.toContain(blocked);
+        expect(JSON.stringify(outbox.appended)).not.toContain('Arrived fresh');
+      });
+
+      it('writes review-held again only when an edit sends a visible review back to the admins', async () => {
+        const liveId = await live(1);
+        outbox.appended.length = 0;
+        const clean = await new EditProductReview(gate, deps).execute(customerCtx(), {
+          reviewId: liveId,
+          body: 'Still good',
+        });
+        expect(clean.ok).toBe(true);
+        expect(events()).toEqual([]);
+        clock.set(T0.add({ hours: 25 }));
+        const flagged = await new EditProductReview(gate, deps).execute(customerCtx(), {
+          reviewId: liveId,
+          body: `This is ${blocked} now`,
+        });
+        expect(flagged).toMatchObject({ ok: true, value: { status: 'held' } });
+        expect(events()).toEqual(['reviews.review-held.v1']);
+        // Held and edited again: the admins already have it.
+        clock.set(T0.add({ hours: 50 }));
+        await new EditProductReview(gate, deps).execute(customerCtx(), {
+          reviewId: liveId,
+          body: `Still ${blocked}`,
+        });
+        expect(events()).toEqual(['reviews.review-held.v1']);
+      });
+
+      it('writes review-published when an admin releases a held review', async () => {
+        const heldId = await held(1);
+        outbox.appended.length = 0;
+        expect((await moderate(heldId, 'publish', 'checked-ok')).ok).toBe(true);
+        expect(events()).toEqual(['reviews.review-published.v1']);
+      });
+
+      it('writes review-hidden for a visible review that is hidden or removed, and review-restored', async () => {
+        const a = await live(1);
+        const b = await live(2, OTHER);
+        outbox.appended.length = 0;
+        expect((await moderate(a, 'hide', 'spam')).ok).toBe(true);
+        expect(events()).toEqual(['reviews.review-hidden.v1']);
+        expect((await moderate(a, 'restore', 'hidden-in-error')).ok).toBe(true);
+        expect(events()).toEqual(['reviews.review-hidden.v1', 'reviews.review-restored.v1']);
+        expect((await removeIt(b, 'illegal')).ok).toBe(true);
+        expect(events()).toHaveLength(3);
+        expect(events()[2]).toBe('reviews.review-hidden.v1');
+        // A hidden review that is removed later is no news to the seller.
+        expect((await moderate(a, 'hide', 'spam')).ok).toBe(true);
+        outbox.appended.length = 0;
+        expect((await removeIt(a, 'abusive')).ok).toBe(true);
+        expect(events()).toEqual([]);
+      });
+
+      it('writes nothing when a moderation action is refused', async () => {
+        const a = await live(1);
+        outbox.appended.length = 0;
+        stepUp.proofs = 0;
+        const refused = await moderate(a, 'hide', 'spam');
+        expect(refused.ok).toBe(false);
+        expect(events()).toEqual([]);
+      });
     });
 
     it('lists held, reported and actioned reviews with counts, newest first, in pages', async () => {
