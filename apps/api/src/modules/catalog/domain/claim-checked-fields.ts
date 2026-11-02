@@ -265,13 +265,20 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   PublishedProduct: {
     noCustomerText:
-      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
+      'read copy of the published revision texts, Variant labels and specifications, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
   },
   BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
   },
   PublishedImageRef: { noCustomerText: 'a photo id and its pixel size; no text' },
+  PublishedSpecificationGroup: {
+    noCustomerText: 'a family group code and its items; no text of its own',
+  },
+  PublishedSpecification: {
+    noCustomerText:
+      'read copy of an attribute name, option labels and text value, already claim-checked when the revision was frozen (attribute-definition.name, attribute-definition.option-label, product.attribute-text-value), with the attribute code',
+  },
   ProductLinkFacts: { noCustomerText: 'two flags (on sale, sold by the asked seller); no text' },
   OfferListingTag: { noCustomerText: 'tag status, basis code and the OfferListingBadge copy' },
   OfferBadge: {
