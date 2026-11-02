@@ -95,6 +95,10 @@ BEGIN
        OR NEW.closed_at IS NOT NULL OR NEW.cancel_reason IS NOT NULL THEN
       RAISE EXCEPTION 'catalog.attribute_relaxation_requests: a new request is open at version 1' USING ERRCODE = 'check_violation';
     END IF;
+    -- Hassan Low-a: a request is not dated ahead, which would keep it open longer.
+    IF NEW.requested_at > statement_timestamp() + interval '5 minutes' THEN
+      RAISE EXCEPTION 'catalog.attribute_relaxation_requests: requested_at is in the future' USING ERRCODE = 'check_violation';
+    END IF;
     RETURN NEW;
   END IF;
   IF OLD.status <> 'open' THEN
@@ -134,6 +138,10 @@ CREATE FUNCTION "catalog"."relaxation_confirmed"(p_market varchar, p_request uui
     WHERE r.market_id = p_market AND r.id = p_request AND r.definition_id = p_definition
       AND r.kind = p_kind AND r.status = 'confirmed');
 $$;
+-- Not a trigger function, so PUBLIC does not execute it (platform 10.5 guard 1); the trigger runs
+-- as the API role, which does.
+REVOKE EXECUTE ON FUNCTION "catalog"."relaxation_confirmed"(varchar, uuid, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION "catalog"."relaxation_confirmed"(varchar, uuid, uuid, text) TO "mondapac_app";
 CREATE FUNCTION "catalog"."attribute_definition_revisions_relaxation"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE prev_material boolean;

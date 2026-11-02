@@ -36,6 +36,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX carts_market_id_account_id_active_key ON cart.carts USING btree (market_id, account_id) WHERE ((account_id IS NOT NULL) AND (status = 'active'::text))",
   'cart.carts_market_id_guest_token_hash_key':
     'CREATE UNIQUE INDEX carts_market_id_guest_token_hash_key ON cart.carts USING btree (market_id, guest_token_hash) WHERE (guest_token_hash IS NOT NULL)',
+  // Attributes A2: one open relaxation request per attribute definition (data design 3.21).
+  'catalog.attribute_relaxation_requests_open_definition_key':
+    "CREATE UNIQUE INDEX attribute_relaxation_requests_open_definition_key ON catalog.attribute_relaxation_requests USING btree (market_id, definition_id) WHERE (status = 'open'::text)",
   'catalog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/catalog.md 3.15 (slice 12): the selection indexes of the certification-event

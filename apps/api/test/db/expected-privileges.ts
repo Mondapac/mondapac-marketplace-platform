@@ -1250,6 +1250,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'status', 'version'],
     },
     'catalog.attribute_definition_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Attributes A2: the status moves once, in these columns only (data design 3.21).
+    'catalog.attribute_relaxation_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
+    },
     'catalog.attribute_definition_revision_options': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [],

@@ -1059,6 +1059,11 @@ BEGIN
   RETURN NEW;
 END; $$;
 
+-- As built (migration 20261102200000, after the A2 reviews) the guard above also runs on INSERT
+-- (a new row is open at version 1), the revision trigger below also requires author_account_id =
+-- the confirmer and skips a draft, attribute_definitions_guard refuses moves into draft, out of
+-- archived and of the published pointer backwards, and relaxation_confirmed() is executable by
+-- mondapac_app only. The migration is the reference for those bodies.
 -- 3.5 (Hassan M2): helper and the definition-revision trigger; the archive and family triggers follow
 -- the same shape (family: EXCEPT of the codes of the current and the new `groups`, joined to
 -- definitions by (market_id, code) and to their current revision, `WHERE material`)

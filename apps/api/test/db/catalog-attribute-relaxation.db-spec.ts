@@ -343,6 +343,13 @@ describe.each(TEST_MARKETS)('catalog attribute relaxation in market %s (database
         ),
       ),
     ).toBe('23514');
+    expect(
+      await driverCode(
+        write(market, () =>
+          relaxations.add(market, requestFor(definition, now().add({ hours: 1 }))),
+        ),
+      ),
+    ).toBe('23514');
     const request = requestFor(definition);
     await write(market, () => relaxations.add(market, request));
     const confirmed = request.confirm(second, now());
@@ -403,6 +410,15 @@ describe.each(TEST_MARKETS)('catalog attribute relaxation in market %s (database
           `UPDATE catalog.attribute_definitions SET published_revision_id = $3
             WHERE market_id = $1 AND id = $2`,
           [market.marketId, id, firstRevision],
+        ),
+      ),
+    ).toBe('23001');
+    expect(
+      await sqlState(
+        owner.query(
+          `UPDATE catalog.attribute_definitions SET published_revision_id = NULL
+            WHERE market_id = $1 AND id = $2`,
+          [market.marketId, id],
         ),
       ),
     ).toBe('23001');
