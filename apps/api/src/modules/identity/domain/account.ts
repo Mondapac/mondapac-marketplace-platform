@@ -480,6 +480,25 @@ export class Account {
   }
 
   /**
+   * A customer keeps the own language on the account (buyer profile), already parsed by the
+   * caller. The same value changes nothing; the answer says whether this call changed it.
+   * Records no event: only the storefront reads it, from the session summary.
+   */
+  setLanguage(locale: string | null): Result<boolean, AccountNotEligible> {
+    const state = this.#state;
+    if (
+      state.population !== 'customer' ||
+      state.status !== 'active' ||
+      state.emailVerifiedAt === null
+    ) {
+      return err({ code: 'account.not-eligible' });
+    }
+    if ((state.locale ?? null) === locale) return ok(false);
+    this.#state = Object.freeze({ ...state, locale, version: state.version + 1 });
+    return ok(true);
+  }
+
+  /**
    * A customer keeps the own storefront look on the account (buyer account Settings), both parts
    * already parsed by the caller. Same values change nothing; the answer says whether this call
    * changed them. Records no event: only the storefront reads it, from the session summary.

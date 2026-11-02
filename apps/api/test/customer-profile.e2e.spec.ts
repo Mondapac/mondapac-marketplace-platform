@@ -7,8 +7,8 @@ import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
 
-// The signed-in customer's own profile over HTTP (buyer account backend): the display name and
-// the storefront look, read back from the session summary. The real guards, controllers and use
+// The signed-in customer's own profile over HTTP (buyer account backend): the display name, the
+// language and the storefront look, read back from the session summary. The real guards, controllers and use
 // cases, with identity's database ports as in-memory fakes (no database in `pnpm test`). The
 // columns' PostgreSQL round trip is in test/db/customer-profile.db-spec.ts. nestjs-pino captures
 // the log lines of a file's first application only, so the logging test comes first.
@@ -291,9 +291,97 @@ describe('customer profile over HTTP (integration)', () => {
         .send('palette=A');
       expect(text.status).toBe(415);
     });
+
+    it('keeps the language, reads it back from the session summary and clears it with null', async () => {
+      await boot();
+      seed(code);
+      const { cookie, csrfToken } = await signedIn(code);
+      const auth = { cookie, 'x-csrf-token': csrfToken };
+      const summary = () =>
+        http().get('/identity/customer/session').set({ 'x-market-id': code, cookie });
+
+      expect((await summary()).body).toMatchObject({ locale: null });
+
+      const fa = await put(code, 'profile/language', { locale: 'fa' }, auth);
+      expect(fa.status).toBe(200);
+      expect(fa.body).toEqual({ code: 'customer-language-changed', changed: true });
+      expect(fa.headers['cache-control']).toBe('no-store');
+      expect((await summary()).body).toMatchObject({ locale: 'fa' });
+
+      const same = await put(code, 'profile/language', { locale: 'fa' }, auth);
+      expect(same.body).toEqual({ code: 'customer-language-changed', changed: false });
+
+      const cleared = await put(code, 'profile/language', { locale: null }, auth);
+      expect(cleared.body).toEqual({ code: 'customer-language-changed', changed: true });
+      expect((await summary()).body).toMatchObject({ locale: null });
+    });
+
+    it.each([
+      [{ locale: 'de' }, [{ path: 'locale', code: 'invalid' }]],
+      [{ locale: 'FA' }, [{ path: 'locale', code: 'invalid' }]],
+      [{ locale: 1 }, [{ path: 'locale', code: 'type' }]],
+      [{}, [{ path: 'locale', code: 'required' }]],
+      [{ locale: 'fa', accountId: 'x' }, [{ path: 'accountId', code: 'unknown-field' }]],
+      [[], [{ path: '', code: 'type' }]],
+    ])('refuses the language %j', async (body, fields) => {
+      await boot();
+      seed(code);
+      const { cookie, csrfToken } = await signedIn(code);
+
+      const response = await put(code, 'profile/language', body, {
+        cookie,
+        'x-csrf-token': csrfToken,
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields },
+      });
+      expect(fakes.accounts.get(ACCOUNT_ID(code))!.locale ?? null).toBeNull();
+    });
+
+    it('refuses the language without CSRF, without a session, from a seller session, of another media type and for an unverified customer', async () => {
+      await boot();
+      seed(code);
+      const { cookie, csrfToken } = await signedIn(code);
+      const auth = { cookie, 'x-csrf-token': csrfToken };
+
+      const noToken = await put(code, 'profile/language', { locale: 'ar' }, { cookie });
+      expect(noToken.status).toBe(403);
+      expect(noToken.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+
+      const noSession = await put(code, 'profile/language', { locale: 'ar' }, {});
+      expect(noSession.status).toBe(401);
+
+      const sellerCookie = cookie.replace('__Host-session-customer-', '__Host-session-seller-');
+      const seller = await put(
+        code,
+        'profile/language',
+        { locale: 'ar' },
+        { cookie: sellerCookie, 'x-csrf-token': csrfToken },
+      );
+      expect(seller.status).toBe(401);
+
+      const text = await http()
+        .put('/identity/customer/profile/language')
+        .set({ 'x-market-id': code, ...auth, 'content-type': 'text/plain' })
+        .send('locale=ar');
+      expect(text.status).toBe(415);
+      expect(fakes.accounts.get(ACCOUNT_ID(code))!.locale ?? null).toBeNull();
+
+      fakes.accounts.set(ACCOUNT_ID(code), {
+        ...fakes.accounts.get(ACCOUNT_ID(code))!,
+        emailVerifiedAt: null,
+      });
+      const unverified = await put(code, 'profile/language', { locale: 'ar' }, auth);
+      expect(unverified.status).toBe(403);
+      expect(unverified.body).toEqual({ statusCode: 403, code: 'access.denied' });
+    });
   });
 
-  it('documents both routes in the OpenAPI document', async () => {
+  it('documents the routes in the OpenAPI document', async () => {
     ({ app } = await createTestApp({
       env: { API_DOCS_ENABLED: 'true' },
       override: (builder) => fakes.override(builder),
@@ -304,5 +392,6 @@ describe('customer profile over HTTP (integration)', () => {
 
     expect(paths['/identity/customer/profile/display-name']?.put).toBeDefined();
     expect(paths['/identity/customer/profile/appearance']?.put).toBeDefined();
+    expect(paths['/identity/customer/profile/language']?.put).toBeDefined();
   });
 });
