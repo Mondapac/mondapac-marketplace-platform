@@ -48,6 +48,11 @@ export const SERVICE_AREAS = Symbol('SERVICE_AREAS');
  */
 export interface OnboardingAreas {
   openCodes(market: MarketContext): readonly string[];
+  /**
+   * The English display name of an area (admin panels are English only), or null when the code
+   * names no area of the Market (an area removed from configuration): the caller falls back.
+   */
+  nameOf(market: MarketContext, code: string): string | null;
 }
 
 export const ONBOARDING_AREAS = Symbol('ONBOARDING_AREAS');

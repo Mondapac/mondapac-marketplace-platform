@@ -27,6 +27,8 @@ export interface SellerRow {
   readonly kind: string | null;
   readonly submittedAt: string | null;
   readonly serviceAreaCode: string | null;
+  /** English display name of the area from Market configuration; null when none. */
+  readonly serviceAreaName?: string | null;
   readonly timezone: string | null;
   readonly createdAt: string;
   readonly lastChangedAt: string;

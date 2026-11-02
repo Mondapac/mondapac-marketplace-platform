@@ -196,7 +196,10 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     },
   };
   const unitOfWork: UnitOfWork = { run: (_market, work) => work(), runOnce: noRunOnce };
-  const areas: OnboardingAreas = { openCodes: () => ['open-area'] };
+  const areas: OnboardingAreas = {
+    openCodes: () => ['open-area'],
+    nameOf: (_market, code) => (code === 'open-area' ? 'Open Area' : null),
+  };
 
   function setUp() {
     const repository = new FakeListRepository();
@@ -434,6 +437,27 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     );
   });
 
+  it('gives the display name of the area, and null for no area or a code left in no area', async () => {
+    const t = setUp();
+    const named = row({ draftComplete: false });
+    const removed = row({ draftComplete: false, serviceAreaCode: 'removed-area' });
+    const none = row({ draftComplete: false, hasAddress: false, serviceAreaCode: null });
+    for (const r of [named, removed, none]) {
+      t.repository.add(code, r);
+      t.access.set(r.sellerId, 'pending');
+    }
+
+    const result = await t.useCase.execute(admin(), { tab: 'incomplete' });
+
+    const nameOf = (id: Id<'Seller'>) =>
+      result.ok
+        ? result.value.items.find((item) => item.sellerId === id)?.serviceAreaName
+        : undefined;
+    expect(nameOf(named.sellerId)).toBe('Open Area');
+    expect(nameOf(removed.sellerId)).toBeNull();
+    expect(nameOf(none.sellerId)).toBeNull();
+  });
+
   it('lists all sellers newest first, with the slug held else the draft slug', async () => {
     const t = setUp();
     const older = row({
@@ -486,6 +510,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         'origin',
         'owner',
         'serviceAreaCode',
+        'serviceAreaName',
         'sellerId',
         'slug',
         'status',

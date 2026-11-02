@@ -67,6 +67,8 @@ export interface SellerListRow {
   /** ISO instant the pending submission was made, or null. */
   readonly submittedAt: string | null;
   readonly serviceAreaCode: string | null;
+  /** The area's English display name, or null when no code or the area left the configuration. */
+  readonly serviceAreaName: string | null;
   /** IANA zone of the seller (ADR-0005), never an offset. */
   readonly timezone: string | null;
   readonly createdAt: string;
@@ -329,7 +331,14 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     const openCodes = new Set(this.deps.onboardingAreas.openCodes(context.market));
     return ok(
       page.map((row) =>
-        rowOf(row, showStatus ? (accounts.get(row.sellerId) ?? null) : 'hidden', openCodes),
+        rowOf(
+          row,
+          showStatus ? (accounts.get(row.sellerId) ?? null) : 'hidden',
+          openCodes,
+          row.serviceAreaCode === null
+            ? null
+            : this.deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode),
+        ),
       ),
     );
   }
@@ -384,6 +393,7 @@ function rowOf(
   row: ListedSeller,
   account: SellerAccountEntry | null | 'hidden',
   openCodes: ReadonlySet<string>,
+  areaName: string | null,
 ): SellerListRow {
   const outside = row.hasAddress
     ? !(row.serviceAreaCode !== null && openCodes.has(row.serviceAreaCode))
@@ -408,6 +418,7 @@ function rowOf(
     kind: row.pending?.kind ?? null,
     submittedAt: row.pending?.submittedAt.toString() ?? null,
     serviceAreaCode: row.serviceAreaCode,
+    serviceAreaName: areaName,
     timezone: row.operatingTimezone,
     createdAt: row.createdAt.toString(),
     lastChangedAt: row.lastChangedAt.toString(),
