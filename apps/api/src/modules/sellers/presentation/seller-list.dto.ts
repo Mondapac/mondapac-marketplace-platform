@@ -133,6 +133,13 @@ export class SellerListRowView {
   @ApiProperty({ type: String, nullable: true })
   serviceAreaCode!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'English display name of the service area; null when none is configured.',
+  })
+  serviceAreaName!: string | null;
+
   @ApiProperty({ type: String, nullable: true, description: 'IANA zone id of the seller.' })
   timezone!: string | null;
 

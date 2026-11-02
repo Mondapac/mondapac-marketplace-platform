@@ -66,6 +66,24 @@ describe('admin seller list', () => {
     expect(screen.getAllByText('New application').length).toBe(2); // the filter option and the row
   });
 
+  it('shows the area display name from the API, else a readable form of its code', async () => {
+    answer(
+      page([
+        row({ serviceAreaName: 'Greater Brisbane', serviceAreaCode: 'greater-brisbane' }),
+        row({
+          sellerId: '0190a000-0000-7000-8000-000000000002',
+          storeName: 'Old Area Store',
+          serviceAreaName: null,
+          serviceAreaCode: 'old-area',
+        }),
+      ]),
+    );
+    mount();
+    expect(await screen.findByText('Cedar Lane Halal Meats')).toBeTruthy();
+    expect(screen.getAllByText('Greater Brisbane').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Old Area').length).toBeGreaterThan(0);
+  });
+
   it('switches tab and asks for that tab', async () => {
     answer(page([row()]));
     mount();
