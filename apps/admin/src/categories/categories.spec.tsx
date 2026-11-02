@@ -207,6 +207,15 @@ describe('CategoriesView', () => {
     ]);
   });
 
+  it('says the status has no categories when only the status filter is set', async () => {
+    serve({ 'catalog/admin/categories': ok(tree()) });
+    view(<CategoriesView canEdit />);
+    await screen.findAllByRole('treeitem');
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'merged' } });
+    expect(await screen.findByText('No categories have this status.')).toBeTruthy();
+    expect(screen.queryByText(/No categories match/)).toBeNull();
+  });
+
   it('says so when there are no categories, and offers a retry on a failed load', async () => {
     serve({ 'catalog/admin/categories': ok(tree({ categories: [] })) });
     view(<CategoriesView canEdit />);

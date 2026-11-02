@@ -34,13 +34,7 @@ function useCount(complete: boolean) {
  * would reach (Products) and its revisions (History). Read only. A category that is gone, or that
  * belongs to another Market, reads as "not found" and nothing more.
  */
-export function CategoryDetails({
-  id,
-  canEdit,
-}: {
-  readonly id: string;
-  readonly canEdit: boolean;
-}) {
+export function CategoryDetails({ id }: { readonly id: string }) {
   const t = useTranslations('categories');
   const tl = useTranslations('load');
   const [tab, setTab] = useState<DetailTab>('details');
@@ -104,7 +98,7 @@ export function CategoryDetails({
         activeId={tab}
         onSelect={(value) => setTab(value as DetailTab)}
       />
-      {tab === 'details' ? <DetailsTab body={body} canEdit={canEdit} /> : null}
+      {tab === 'details' ? <DetailsTab body={body} /> : null}
       {tab === 'products' ? <ProductsTab body={body} /> : null}
       {tab === 'history' ? <HistoryTab body={body} /> : null}
     </div>
@@ -113,14 +107,14 @@ export function CategoryDetails({
 
 function Row({ term, children }: { readonly term: string; readonly children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5 border-b border-line py-2 sm:flex-row sm:gap-4">
-      <dt className="text-sm text-fg-muted sm:w-40 sm:shrink-0">{term}</dt>
+    <div className="flex flex-col gap-0.5 border-b border-line py-2">
+      <dt className="text-sm text-fg-muted">{term}</dt>
       <dd className="m-0 min-w-0 break-words">{children}</dd>
     </div>
   );
 }
 
-function DetailsTab({ body, canEdit }: { readonly body: DetailBody; readonly canEdit: boolean }) {
+function DetailsTab({ body }: { readonly body: DetailBody }) {
   const t = useTranslations('categories');
   const { category } = body;
   const count = useCount(body.complete);
@@ -131,7 +125,6 @@ function DetailsTab({ body, canEdit }: { readonly body: DetailBody; readonly can
   ];
   return (
     <div className="flex flex-col gap-3">
-      {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
       {body.missingLocales.length > 0 ? (
         <Banner tone="attention">
           {t('details.missing-locales', { locales: body.missingLocales.join(', ') })}

@@ -144,7 +144,10 @@ export function CategoriesView({ canEdit }: { readonly canEdit: boolean }) {
             </div>
           </div>
           {list.length === 0 ? (
-            <EmptyState icon="layout" title={t('empty-search', { q })} />
+            <EmptyState
+              icon="layout"
+              title={q === '' ? t('empty-status') : t('empty-search', { q })}
+            />
           ) : (
             <div className="rounded-lg border border-line bg-surface">
               <CategoryTree
@@ -168,7 +171,7 @@ export function CategoriesView({ canEdit }: { readonly canEdit: boolean }) {
           {selectedId === null ? (
             <p className="text-fg-muted">{t('details.pick')}</p>
           ) : (
-            <CategoryDetails key={selectedId} id={selectedId} canEdit={canEdit} />
+            <CategoryDetails key={selectedId} id={selectedId} />
           )}
         </aside>
       </div>

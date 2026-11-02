@@ -129,7 +129,7 @@ export function CategoryTree({
             style={{ paddingInlineStart: `${row.depth * 1.25 + 0.5}rem` }}
             className={[
               'flex min-h-11 cursor-pointer items-center gap-2 border-b border-line py-1 pe-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus',
-              selected ? 'bg-accent-subtle font-medium' : 'hover:bg-surface-muted',
+              selected ? 'bg-selected font-medium' : 'hover:bg-muted',
             ].join(' ')}
           >
             {hasChildren ? (

@@ -4136,6 +4136,7 @@
     "load-error": "We couldn't load categories. Try again.",
     "empty": "No categories yet.",
     "empty-search": "No categories match \"{q}\".",
+    "empty-status": "No categories have this status.",
     "no-access": "Your role cannot see categories.",
     "back-home": "Back to the home page",
     "back": "Back to the category tree",

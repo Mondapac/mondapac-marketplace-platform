@@ -1,5 +1,6 @@
 'use client';
 
+import { Banner } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { CategoryDetails } from './category-details.tsx';
 import { CATEGORIES_PATH } from './types.ts';
@@ -20,7 +21,8 @@ export function CategoryPageView({
           {t('back')}
         </a>
       </p>
-      <CategoryDetails id={id} canEdit={canEdit} />
+      {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
+      <CategoryDetails id={id} />
     </div>
   );
 }
