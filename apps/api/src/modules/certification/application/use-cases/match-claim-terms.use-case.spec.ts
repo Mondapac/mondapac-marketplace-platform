@@ -91,6 +91,7 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
     evaluateClaimsSystem: undefined as never,
     matchClaimTerms: new MatchClaimTerms(gate, reader),
     matchClaimTermsSystem: new MatchClaimTermsSystem(gate, reader),
+    claimTermLocales: undefined as never,
     certificationTypes: new CertificationTypes(gate, reader),
     certificationTypesSystem: new CertificationTypesSystem(gate, reader),
     sellerCertificateOverview: undefined as never,

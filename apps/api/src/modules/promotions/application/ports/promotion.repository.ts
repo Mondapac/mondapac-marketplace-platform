@@ -65,6 +65,15 @@ export interface PromotionRepository {
     scope: LiveScope,
   ): Promise<readonly PromotionRecord[]>;
   /**
+   * ACTIVE promotions of these types that have started and not ended at `now`, any owner, by id.
+   * For the wallet-credit types, which are not tied to a cart's sellers or products.
+   */
+  listLiveOfTypes(
+    market: MarketContext,
+    now: Temporal.Instant,
+    types: readonly PromotionRecord['type'][],
+  ): Promise<readonly PromotionRecord[]>;
+  /**
    * How many promotions of the seller count against the Market maximum: ACTIVE or PENDING_APPROVAL
    * and not ended at `now`. Paused, rejected and ended promotions do not.
    */

@@ -78,6 +78,7 @@
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.certified-categories", "rule": "anonymous" },
+  { "name": "certification.claim-term-locales", "rule": "anonymous" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.expire-product-certificates", "rule": "system" },
@@ -244,6 +245,11 @@
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   {
+    "name": "identity.change-customer-language",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "identity.change-display-name",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
@@ -317,6 +323,11 @@
   },
   { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.notify-access-reviewers", "rule": "system" },
+  {
+    "name": "identity.own-account-tied-to-seller",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.own-owner-email", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "identity.purge-expired", "rule": "system" },
   { "name": "identity.purge-unverified-accounts", "rule": "system" },
@@ -475,6 +486,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "ordering.pay-by-card", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-delivery-anchor", "rule": "system" },
@@ -486,6 +498,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "ordering.seller-health-counts", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -519,8 +532,26 @@
   { "name": "pricing.retire-series-for-removed-offer", "rule": "system" },
   { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
   { "name": "pricing.specials-in-force", "rule": "anonymous" },
+  {
+    "name": "promotions.apply-referral-code",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
+  { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
+  {
+    "name": "promotions.view-my-referral",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "reviews.cast-helpful-vote",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "reviews.count-seller-reviews", "rule": "system" },
   {
     "name": "reviews.delete-product-review",
     "rule": "own-resources",
@@ -533,10 +564,16 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "reviews.list-my-reviews", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "reviews.list-product-rating-totals", "rule": "system" },
   { "name": "reviews.list-product-reviews", "rule": "anonymous" },
   { "name": "reviews.list-to-review", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "reviews.rate-seller-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "reviews.rebuild-rating-summaries", "rule": "system" },
+  {
+    "name": "reviews.remove-helpful-vote",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "reviews.submit-product-review",
     "rule": "own-resources",
@@ -558,6 +595,7 @@
   { "name": "search.rebuild-offer-index", "rule": "system" },
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
+  { "name": "search.sync-product-ratings", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
   { "name": "sellers.active-since", "rule": "anonymous" },
   { "name": "sellers.active-since-system", "rule": "system" },

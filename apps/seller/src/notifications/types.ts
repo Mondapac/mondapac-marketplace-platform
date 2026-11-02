@@ -17,6 +17,11 @@ export const OFFER_TAG_CHANGED = 'seller.offer-tag-changed';
 export const IMAGE_TAKEN_DOWN = 'seller.image-taken-down';
 export const PRICE_HOLD_DECIDED = 'seller.price-hold-decided';
 export const ACCESS_CHANGED = 'seller.access-changed';
+// Buyer reviews (package 4b).
+export const REVIEW_POSTED = 'seller.review-posted';
+export const REVIEW_HIDDEN = 'seller.review-hidden';
+export const REVIEW_RESTORED = 'seller.review-restored';
+export const DELIVERY_PROBLEM = 'seller.delivery-problem';
 
 /** The kinds that play the new-order sound (plan 6b): orders only. */
 export const RINGING_KINDS: ReadonlySet<string> = new Set([ORDER_PAID]);
@@ -33,6 +38,7 @@ export const NOTICES_PERMISSIONS: readonly string[] = [
   'catalog.own-product.view',
   'pricing.price.view',
   'identity.team-member.invite',
+  'reviews.seller.view',
 ];
 
 /** Whether the member holds a permission behind at least one notice kind (shows the bell). */
@@ -51,6 +57,9 @@ export interface NoticeParams {
   readonly revisionId?: string;
   readonly recordId?: string;
   readonly tagId?: string;
+  /** Review kinds: the review, and for seller.review-posted its stars. */
+  readonly reviewId?: string;
+  readonly rating?: number;
   readonly imageId?: string;
   /** seller.low-stock: units left. */
   readonly onlyLeft?: number;

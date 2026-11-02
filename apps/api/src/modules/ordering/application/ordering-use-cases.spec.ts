@@ -14,6 +14,7 @@ import {
   FakeCommission,
   FakeCustomers,
   FakeLabels,
+  FakeAttemptLimits,
   FakePickupVault,
   AllowAllDeliveryMethods,
   FakeShipping,
@@ -57,6 +58,7 @@ import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
 import type { OrderState } from '../domain/order';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
+import { SellerHealthCountsQuery } from './use-cases/seller-health-counts.use-case';
 import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-delivery.use-case';
 import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
@@ -189,6 +191,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deliveryMethods: new AllowAllDeliveryMethods(),
       pickupCodes: new MemoryPickupCodes(),
       pickupVault: new FakePickupVault(),
+      attempts: new FakeAttemptLimits(),
     };
   });
 
@@ -435,6 +438,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method) => {
             asked.push([sellerId, method]);
             return Promise.resolve(!(sellerId === SELLER_B && method === 'instant'));
@@ -465,6 +469,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method, window) => {
             seen.push([
               sellerId,
@@ -495,6 +500,23 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(seen).toEqual([
         [SELLER_A, 'scheduled', `${windowStart.toString()}/${windowEnd.toString()}`],
         [SELLER_B, 'instant', null],
+      ]);
+    });
+
+    it('freezes the preparation minutes of each seller order as the policy gave them', async () => {
+      deps = {
+        ...deps,
+        deliveryMethods: {
+          readyPrepMinutes: (_c, sellerId) => Promise.resolve(sellerId === SELLER_A ? 45 : 120),
+          allows: () => Promise.resolve(true),
+        },
+      };
+
+      const order = await placed();
+
+      expect(order.sellerOrders.map((s) => [s.sellerId, s.readyPrepMinutes])).toEqual([
+        [SELLER_A, 45],
+        [SELLER_B, 120],
       ]);
     });
   });
@@ -1343,6 +1365,105 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     it('keeps no one else out: an anonymous caller is denied', async () => {
       const result = await options(anonymous);
       expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('seller-health-counts', () => {
+    const sellerCtx = (sellerId: Id<'Seller'>, n: number) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: id<'Account'>(n),
+          sessionId: id<'Session'>(n + 0x100),
+          sellerId,
+        }),
+        `health-seller-${n}`,
+      );
+    const counts = (input: unknown, context: CallContext = system) =>
+      new SellerHealthCountsQuery(gate, deps).execute(context, input as never);
+    const windowOf = (hoursBefore: number, hoursAfter: number) => ({
+      from: T0.subtract({ hours: hoursBefore }).toString(),
+      to: T0.add({ hours: hoursAfter }).toString(),
+    });
+
+    it('counts paid, ready and late-ready per seller and per window', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      const idOf = (sellerId: Id<'Seller'>) =>
+        orders.rows.get(order.id)!.sellerOrders.find((s) => s.sellerId === sellerId)!.id;
+      // Seller A is ready at once; seller B is ready two hours later, past any prep promise.
+      const a = await new SellerMarkOrderReady(gate, deps).execute(sellerCtx(SELLER_A, 0x71), {
+        sellerOrderId: idOf(SELLER_A),
+      });
+      expect(a.ok).toBe(true);
+      clock.advance(Temporal.Duration.from({ hours: 2 }));
+      const b = await new SellerMarkOrderReady(gate, deps).execute(sellerCtx(SELLER_B, 0x72), {
+        sellerOrderId: idOf(SELLER_B),
+      });
+      expect(b.ok).toBe(true);
+
+      const wide = {
+        from: T0.subtract({ hours: 1 }).toString(),
+        to: T0.add({ hours: 5 }).toString(),
+      };
+      const narrow = {
+        from: T0.subtract({ hours: 1 }).toString(),
+        to: T0.add({ hours: 1 }).toString(),
+      };
+      const resultA = await counts({ sellerId: SELLER_A, windows: [wide, narrow] });
+      const resultB = await counts({ sellerId: SELLER_B, windows: [wide, narrow] });
+
+      expect(resultA.ok && resultA.value.map((w) => w.paid)).toEqual([1, 1]);
+      expect(resultA.ok && resultA.value.map((w) => w.lateReady)).toEqual([0, 0]);
+      // Seller B was ready only in the wide window.
+      expect(resultA).toEqual(
+        ok([
+          { paid: 1, ready: 1, lateReady: 0 },
+          { paid: 1, ready: 1, lateReady: 0 },
+        ]),
+      );
+      // Seller B was ready two hours late, and only inside the wide window.
+      expect(resultB).toEqual(
+        ok([
+          { paid: 1, ready: 1, lateReady: 1 },
+          { paid: 1, ready: 0, lateReady: 0 },
+        ]),
+      );
+    });
+
+    it('counts nothing for a seller without orders and for a window before the order', async () => {
+      const order = await placed();
+      await confirm(order.id);
+      const other = await counts({ sellerId: id<'Seller'>(0x99), windows: [windowOf(1, 5)] });
+      const before = await counts({
+        sellerId: SELLER_A,
+        windows: [
+          { from: T0.subtract({ hours: 10 }).toString(), to: T0.subtract({ hours: 5 }).toString() },
+        ],
+      });
+      expect(other.ok && other.value[0]).toMatchObject({ paid: 0, ready: 0, lateReady: 0 });
+      expect(before.ok && before.value[0]).toMatchObject({ paid: 0, ready: 0, lateReady: 0 });
+    });
+
+    it('is for the system only and refuses bad windows', async () => {
+      expect((await counts({ sellerId: SELLER_A, windows: [windowOf(1, 1)] }, anonymous)).ok).toBe(
+        false,
+      );
+      for (const windows of [
+        [],
+        'x',
+        [{ from: 'nope', to: T0.toString() }],
+        [{ from: T0.toString(), to: T0.toString() }],
+        Array.from({ length: 9 }, () => windowOf(1, 1)),
+      ]) {
+        expect(await counts({ sellerId: SELLER_A, windows })).toEqual(
+          err({ code: 'validation.failed' }),
+        );
+      }
+      expect(await counts({ sellerId: 'not-an-id', windows: [windowOf(1, 1)] })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
     });
   });
 

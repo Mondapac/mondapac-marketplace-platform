@@ -58,4 +58,52 @@ describe('CryptoBatchCodeCrypto', () => {
     expect(new CryptoBatchCodeCrypto('x'.repeat(32)).available).toBe(true);
     expect(crypto.available).toBe(true);
   });
+
+  describe('referral codes', () => {
+    const subject = 'AU|01990000-0000-7000-8000-0000000000c1';
+
+    it('derives the same code for the same customer, of the asked length and alphabet', () => {
+      const code = crypto.referralCode(subject, ALPHABET, 12);
+      expect(code).toHaveLength(12);
+      expect([...code].every((ch) => ALPHABET.includes(ch))).toBe(true);
+      expect(crypto.referralCode(subject, ALPHABET, 12)).toBe(code);
+    });
+
+    it('gives another customer, another Market and another pepper another code', () => {
+      const code = crypto.referralCode(subject, ALPHABET, 12);
+      expect(crypto.referralCode(`${subject}1`, ALPHABET, 12)).not.toBe(code);
+      expect(crypto.referralCode(subject.replace('AU', 'ZZ'), ALPHABET, 12)).not.toBe(code);
+      const other = new CryptoBatchCodeCrypto(`${TEST_CODE_PEPPER}-other`);
+      expect(other.referralCode(subject, ALPHABET, 12)).not.toBe(code);
+    });
+
+    it('spreads over the alphabet and does not repeat across many customers', () => {
+      const seen = new Set<string>();
+      const counts = new Map<string, number>();
+      for (let i = 0; i < 3000; i++) {
+        const code = crypto.referralCode(`AU|customer-${i}`, ALPHABET, 12);
+        seen.add(code);
+        for (const ch of code) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+      }
+      expect(seen.size).toBe(3000);
+      expect(counts.size).toBe(ALPHABET.length);
+      for (const count of counts.values()) {
+        expect(count).toBeGreaterThan(900);
+        expect(count).toBeLessThan(1500);
+      }
+    });
+
+    it('hashes under its own label, apart from a batch code of the same text', () => {
+      const code = crypto.referralCode(subject, ALPHABET, 12);
+      expect(crypto.referralHash(code)).toMatch(/^[0-9a-f]{64}$/);
+      expect(crypto.referralHash(code)).not.toBe(crypto.hash(code));
+      expect(crypto.referralHash(code)).toBe(crypto.referralHash(code));
+    });
+
+    it('refuses without a pepper', () => {
+      const none = new CryptoBatchCodeCrypto(null);
+      expect(() => none.referralCode(subject, ALPHABET, 12)).toThrow();
+      expect(() => none.referralHash('ABC')).toThrow();
+    });
+  });
 });

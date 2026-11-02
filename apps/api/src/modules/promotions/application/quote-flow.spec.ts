@@ -64,6 +64,9 @@ describe.each([['AU'], ['ZZ']] as const)('promotions for a cart in market %s', (
     maxRepeatsPerOrder: null,
     flashUnitLimit: null,
     flashTimeZone: null,
+    segmentKind: null,
+    segmentMinDays: null,
+    refereeRewardMinor: null,
     ...extra,
   });
   const cart = (

@@ -1,13 +1,21 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { QuoteRequest, QuoteResult } from '../contracts/promotions.facade';
 import { calculateDiscounts, validatePhase2 } from '../domain/calculation/engine';
-import type { CalculationInput, CalculationPromotion } from '../domain/calculation/types';
+import { wholeDaysBetween } from '../domain/credit';
+import type {
+  Audience,
+  CalculationInput,
+  CalculationPromotion,
+  CustomerFacts,
+} from '../domain/calculation/types';
 import {
+  isCreditType,
   layerOf,
   normaliseCode,
   platformShareBps,
+  type DiscountType,
   type PromotionRecord,
 } from '../domain/promotion';
 import type { PromotionsFailure } from './failures';
@@ -35,9 +43,30 @@ export interface PromotionExtras {
   readonly codeUsed?: boolean;
 }
 
+/** A stored promotion that is a discount (the credit types never reach the calculation). */
+export type DiscountRecord = PromotionRecord & { readonly type: DiscountType };
+export const isDiscount = (record: PromotionRecord): record is DiscountRecord =>
+  !isCreditType(record.type);
+
+/**
+ * Who a customer-group or store-follower promotion is for. A row without the terms its type needs
+ * has no audience here and is left out of the quote by the caller.
+ */
+export function audienceOf(record: PromotionRecord): Audience | null {
+  if (record.type === 'STORE_FOLLOWER') return { kind: 'STORE_FOLLOWER' };
+  if (record.type !== 'CUSTOMER_GROUP') return null;
+  if (record.segmentKind === 'RETURNING_CUSTOMER' && record.segmentMinDays !== null) {
+    return { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: record.segmentMinDays };
+  }
+  if (record.segmentKind === 'DELIVERY_ZONE' && record.zones.length > 0) {
+    return { kind: 'DELIVERY_ZONE', zones: record.zones };
+  }
+  return null;
+}
+
 /** The plain input of a promotion for the pure calculation (a stored promotion with its facts). */
 export function calculationPromotionOf(
-  record: PromotionRecord,
+  record: DiscountRecord,
   usage: UsageRecord | undefined,
   optedInSellers: readonly Id<'Seller'>[],
   settings: PromotionsSettings,
@@ -111,8 +140,10 @@ export function calculationPromotionOf(
     minSpend: record.minSpendMinor,
     productIds: record.productIds.length > 0 ? record.productIds : null,
     sellerIds,
-    zones: record.zones.length > 0 ? record.zones : null,
+    // The zones of a customer-group promotion are its audience, not a shipping target.
+    zones: record.type !== 'CUSTOMER_GROUP' && record.zones.length > 0 ? record.zones : null,
     firstOrderOnly: false,
+    audience: audienceOf(record),
   };
 }
 
@@ -143,6 +174,8 @@ export function promotionsForCart(args: {
   const platformMoneyAllowed = settings.rules.gstRulingConfirmed || testMode;
   const out: CalculationPromotion[] = [];
   for (const record of args.records) {
+    // Wallet credit is a payment instrument, not a discount: never in a quote.
+    if (!isDiscount(record)) continue;
     if (record.currency !== settings.currency) continue;
     if (record.testMode && !testMode) continue;
     if (record.funding !== 'SELLER' && !platformMoneyAllowed) continue;
@@ -155,6 +188,12 @@ export function promotionsForCart(args: {
     if (record.type === 'BUY_X_GET_Y' && (record.buyQty === null || record.getQty === null))
       continue;
     if (record.type === 'MULTI_BUY' && record.groupQty === null) continue;
+    if (
+      (record.type === 'CUSTOMER_GROUP' || record.type === 'STORE_FOLLOWER') &&
+      audienceOf(record) === null
+    ) {
+      continue;
+    }
     // One code per order: when the entered text is a generated single-use code, a public code
     // with the same text is not a candidate, so the single-use code is the one that counts.
     if (
@@ -259,6 +298,7 @@ function toInput(
   currency: string,
   promotions: CalculationPromotion[],
   lineDiscountCapBps: number,
+  customer: CustomerFacts | null = null,
 ): CalculationInput {
   return {
     currency,
@@ -278,9 +318,54 @@ function toInput(
     promotions,
     code: request.code,
     isFirstOrder: request.isFirstOrder,
+    customer,
     orderCommission: request.orderCommission.amount,
     rules: { lineDiscountCapBps },
   };
+}
+
+/**
+ * What is known about the customer, for the promotions aimed at a segment or at the followers of a
+ * store: read only when a live promotion needs it, from the modules that own the facts (outside
+ * any unit). A fact that cannot be read, or a quote without a customer, is unknown, and the
+ * promotions that need it do not apply (fail closed).
+ */
+async function customerFactsOf(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  request: QuoteRequest,
+  records: readonly PromotionRecord[],
+  now: Temporal.Instant,
+): Promise<CustomerFacts | null> {
+  const accountId = request.customerAccountId ?? null;
+  if (accountId === null) return null;
+  const needsHistory = records.some(
+    (record) => record.type === 'CUSTOMER_GROUP' && record.segmentKind === 'RETURNING_CUSTOMER',
+  );
+  const needsFollows = records.some((record) => record.type === 'STORE_FOLLOWER');
+  if (!needsHistory && !needsFollows) return null;
+  let daysSinceLastOrder: number | null = null;
+  if (needsHistory) {
+    try {
+      const last = await deps.orderHistory.lastOrderAt(context, accountId);
+      if (last.known && last.value !== null) {
+        daysSinceLastOrder = wholeDaysBetween(last.value, now);
+      }
+    } catch {
+      daysSinceLastOrder = null;
+    }
+  }
+  let followedSellerIds: readonly string[] | null = null;
+  if (needsFollows) {
+    try {
+      const sellers = [...new Set(request.lines.map((line) => line.sellerId))].sort();
+      const followed = await deps.storeFollows.followedAmong(context, accountId, sellers);
+      followedSellerIds = followed.known ? followed.value : null;
+    } catch {
+      followedSellerIds = null;
+    }
+  }
+  return { daysSinceLastOrder, followedSellerIds };
 }
 
 function checkShape(
@@ -310,6 +395,8 @@ export async function quote(
   context: CallContext,
   request: QuoteRequest,
   strict: boolean,
+  /** The admin preview states the customer's facts itself; the facade reads them from their owners. */
+  simulated: CustomerFacts | null = null,
 ): Promise<Result<QuoteResult, PromotionsFailure>> {
   // The shape of the cart comes first, with the switch on or off: every amount in the Market's
   // currency (when the Market has no settings, in one currency), and the sizes in bounds.
@@ -383,6 +470,9 @@ export async function quote(
     flashRemaining.set(record.id, Math.max(0, record.flashUnitLimit - count));
   }
 
+  const customer =
+    simulated ?? (await customerFactsOf(deps, context, request, loaded.value.records, now));
+
   const promotions = promotionsForCart({
     records: loaded.value.records,
     usage: loaded.value.usage,
@@ -403,7 +493,13 @@ export async function quote(
           },
   });
   const result = calculateDiscounts(
-    toInput({ ...request, code }, settings.currency, promotions, settings.lineDiscountCapBps),
+    toInput(
+      { ...request, code },
+      settings.currency,
+      promotions,
+      settings.lineDiscountCapBps,
+      customer,
+    ),
   );
   if (!result.ok) {
     return err({ code: 'validation.failed', fields: [{ path: result.error.path, code: 'value' }] });

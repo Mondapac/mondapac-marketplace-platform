@@ -133,6 +133,52 @@ export const CATALOG_BRAND_EDIT = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read business activities (catalog business-activity package; ADR-0040). Platform scope;
+ * unprotected, so a custom role may grant it; no default role lists it yet: the Platform
+ * Administrator holds every key.
+ */
+export const CATALOG_BUSINESS_ACTIVITY_READ = definePermission('catalog', {
+  key: 'catalog.business-activity.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit business activities, their names and the category branches they reach. Platform
+ * scope; unprotected: a definition moves no money and no certification, and the scope it gives a
+ * seller is enforced by a later package that is itself access-checked.
+ */
+export const CATALOG_BUSINESS_ACTIVITY_EDIT = definePermission('catalog', {
+  key: 'catalog.business-activity.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Read attributes, feature sets (attribute families), their product counts, where each attribute
+ * is used and its revision history (attributes plan 14, package A1). Platform scope; unprotected,
+ * so Catalogue Moderator, Operations and Viewer receive it by identity's seed.
+ */
+export const CATALOG_ATTRIBUTE_VIEW = definePermission('catalog', {
+  key: 'catalog.attribute.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Add, edit and publish attributes and their values, edit feature sets and turn `material` on
+ * (catalog design 8.1; attributes plan 14). Platform scope; **protected**: an attribute names what
+ * a seller must declare and which changes recheck certificates, so no default role lists it and
+ * the Platform Administrator grants it in a custom role. Package A1 declares it so the read-only
+ * screen can tell a viewer from an editor; its use cases arrive with package A2.
+ */
+export const CATALOG_ATTRIBUTE_EDIT = definePermission('catalog', {
+  key: 'catalog.attribute.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -146,4 +192,8 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_SAVED_FILTER_SHARE,
   CATALOG_BRAND_READ,
   CATALOG_BRAND_EDIT,
+  CATALOG_BUSINESS_ACTIVITY_READ,
+  CATALOG_BUSINESS_ACTIVITY_EDIT,
+  CATALOG_ATTRIBUTE_VIEW,
+  CATALOG_ATTRIBUTE_EDIT,
 ]);
