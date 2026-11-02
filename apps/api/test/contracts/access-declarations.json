@@ -78,6 +78,7 @@
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.certified-categories", "rule": "anonymous" },
+  { "name": "certification.claim-term-locales", "rule": "anonymous" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.expire-product-certificates", "rule": "system" },
@@ -497,6 +498,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "ordering.seller-health-counts", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -549,6 +551,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "reviews.count-seller-reviews", "rule": "system" },
   {
     "name": "reviews.delete-product-review",
     "rule": "own-resources",

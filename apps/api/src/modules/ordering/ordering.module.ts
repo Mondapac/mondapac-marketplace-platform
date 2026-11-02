@@ -40,6 +40,7 @@ import { AdminViewOrder } from './application/use-cases/admin-view-order.use-cas
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
+import { SellerHealthCountsQuery } from './application/use-cases/seller-health-counts.use-case';
 import { MyDeliveredSellerOrders } from './application/use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
@@ -234,6 +235,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OpenObligationsOfQuery,
       AdminOpenObligationsOfQuery,
       MyDeliveredSellerOrders,
+      SellerHealthCountsQuery,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
@@ -255,6 +257,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         MyDeliveredSellerOrders,
         OrderPaymentRefQuery,
         AdminOpenObligationsOfQuery,
+        SellerHealthCountsQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -267,6 +270,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         delivered: MyDeliveredSellerOrders,
         paymentRef: OrderPaymentRefQuery,
         adminOpenObligations: AdminOpenObligationsOfQuery,
+        healthCounts: SellerHealthCountsQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -279,6 +283,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           delivered,
           paymentRef,
           adminOpenObligations,
+          healthCounts,
         ),
     },
     {

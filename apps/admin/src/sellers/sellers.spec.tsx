@@ -34,6 +34,10 @@ const page = (items: SellerRow[], next: string | null = null): SellerListPage =>
   items,
   next,
   counts: { awaitingReview: { onboarding: 2, identityChange: 1 }, incomplete: 4, all: 9 },
+  areas: [
+    { code: 'greater-brisbane', name: 'Greater Brisbane' },
+    { code: 'gold-coast', name: 'Gold Coast' },
+  ],
   stateCounts: { changesNeeded: 3, notApproved: 2, approved: 7, suspended: 1 },
 });
 const answer = (body: SellerListPage) =>
@@ -169,6 +173,40 @@ describe('admin seller list', () => {
       ),
     );
     expect(screen.getByLabelText<HTMLSelectElement>('Submission').value).toBe('');
+  });
+
+  it('filters by service area, and starts the next tab unfiltered', async () => {
+    answer(page([row()]));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    answer({ ...page([row()]), tab: 'awaiting-review' });
+    fireEvent.change(screen.getByLabelText('Service area'), { target: { value: 'gold-coast' } });
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'sellers/admin/list',
+        { tab: 'awaiting-review', limit: 25, areaCode: 'gold-coast' },
+        'csrf-1',
+      ),
+    );
+    answer({ ...page([row()]), tab: 'all' });
+    fireEvent.click(screen.getByRole('button', { name: /^All sellers/ }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'sellers/admin/list',
+        { tab: 'all', limit: 25 },
+        'csrf-1',
+      ),
+    );
+    expect(screen.getByLabelText<HTMLSelectElement>('Service area').value).toBe('');
+  });
+
+  it('hides the area filter when the Market has a single area', async () => {
+    answer({ ...page([row()]), areas: [{ code: 'greater-brisbane', name: 'Greater Brisbane' }] });
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(screen.queryByLabelText('Service area')).toBeNull();
   });
 
   it('does not search for one character', async () => {

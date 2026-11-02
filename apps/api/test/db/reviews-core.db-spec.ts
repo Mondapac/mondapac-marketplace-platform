@@ -8,6 +8,7 @@ import {
 import { Client } from 'pg';
 import { DeleteProductReview } from '../../src/modules/reviews/application/use-cases/delete-product-review.use-case';
 import { EditProductReview } from '../../src/modules/reviews/application/use-cases/edit-product-review.use-case';
+import { CountSellerReviews } from '../../src/modules/reviews/application/use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from '../../src/modules/reviews/application/use-cases/detach-author.use-case';
 import { ListProductReviews } from '../../src/modules/reviews/application/use-cases/list-product-reviews.use-case';
 import { RateSellerOrder } from '../../src/modules/reviews/application/use-cases/rate-seller-order.use-case';
@@ -743,6 +744,51 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
         ok: true,
         value: { reviews: [{ author: { kind: 'former-customer' }, body: 'Arrived well' }] },
       });
+    });
+
+    it('counts the published reviews of one seller per window for the health feed', async () => {
+      const seller = ids.next<'Seller'>();
+      const first = ids.next<'Account'>();
+      const second = ids.next<'Account'>();
+      const productA = ids.next<'Product'>();
+      const productB = ids.next<'Product'>();
+      bought(first, productA, seller);
+      bought(second, productB, seller);
+      await submit(first, productA, { rating: 5 });
+      const gone = await submit(second, productB, { rating: 2 });
+      const now = clock.now();
+      const windows = [
+        { from: now.subtract({ hours: 1 }).toString(), to: now.add({ hours: 1 }).toString() },
+        {
+          from: now.subtract({ hours: 49 }).toString(),
+          to: now.subtract({ hours: 25 }).toString(),
+        },
+      ];
+      const count = (sellerId = seller) =>
+        new CountSellerReviews(gate, deps).execute(system, { sellerId, windows });
+
+      expect(await count()).toEqual(
+        ok([
+          { reviews: 2, starsSum: 7 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
+      if (!gone.ok) throw new Error();
+      await new DeleteProductReview(gate, deps).execute(customer(second), {
+        reviewId: gone.value.review.id,
+      });
+      expect(await count()).toEqual(
+        ok([
+          { reviews: 1, starsSum: 5 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
+      expect(await count(ids.next<'Seller'>())).toEqual(
+        ok([
+          { reviews: 0, starsSum: 0 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
     });
   });
 });

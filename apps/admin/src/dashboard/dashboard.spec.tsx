@@ -47,6 +47,7 @@ const sellers: SellerListPage = {
   ],
   next: null,
   counts: { awaitingReview: { onboarding: 7, identityChange: 2 }, incomplete: 0, all: 20 },
+  areas: [],
   stateCounts: { changesNeeded: 1, notApproved: 0, approved: 9, suspended: 1 },
 };
 const full: AdminDashboardData = {

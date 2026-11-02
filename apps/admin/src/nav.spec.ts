@@ -89,6 +89,7 @@ describe('admin nav: daily work only', () => {
       'offer-reviews',
       'review-moderation',
       'price-holds',
+      'attributes',
       'brands',
       'business-activities',
       'content',
@@ -214,6 +215,28 @@ describe('admin nav: Brands', () => {
   it('is hidden without it, also with the edit key alone', () => {
     expect(ids([])).not.toContain('brands');
     expect(ids(['catalog.brand.edit'])).not.toContain('brands');
+  });
+});
+
+describe('admin nav: Attributes', () => {
+  it('is there for catalog.attribute.view, in the Catalog group before Brands', () => {
+    expect(ids(['catalog.attribute.view'])).toEqual(['home', 'attributes']);
+    expect(ids(['catalog.attribute.view', 'catalog.brand.read'])).toEqual([
+      'home',
+      'attributes',
+      'brands',
+    ]);
+    expect(adminNav.items.find((item) => item.id === 'attributes')).toMatchObject({
+      icon: 'sliders',
+      href: '/catalog/attributes',
+      labelKey: 'nav.attributes',
+      group: 'catalog',
+    });
+  });
+
+  it('is hidden without it, also with the protected edit key alone', () => {
+    expect(ids([])).not.toContain('attributes');
+    expect(ids(['catalog.attribute.edit'])).not.toContain('attributes');
   });
 });
 
