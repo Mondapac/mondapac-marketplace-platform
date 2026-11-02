@@ -20,6 +20,7 @@ import type {
   SellerReviewRow,
   ReviewCursor,
   ReviewRepository,
+  ReviewWindow,
   SellerRatingRecord,
   StoredSellerSummary,
   StoredStarSummary,
@@ -496,19 +497,24 @@ export class MemoryReviews implements ReviewRepository {
   countPublishedForSeller(
     _m: MarketContext,
     sellerId: Id<'Seller'>,
-    from: Temporal.Instant,
-    to: Temporal.Instant,
+    windows: readonly ReviewWindow[],
   ) {
-    let reviews = 0;
-    let starsSum = 0;
-    for (const r of this.productReviews.values()) {
-      const at = r.publishedAt;
-      if (r.sellerId !== sellerId || r.status !== 'published' || at === null) continue;
-      if (Temporal.Instant.compare(at, from) < 0 || Temporal.Instant.compare(at, to) >= 0) continue;
-      reviews += 1;
-      starsSum += r.rating;
-    }
-    return Promise.resolve({ reviews, starsSum });
+    return Promise.resolve(
+      windows.map((w) => {
+        let reviews = 0;
+        let starsSum = 0;
+        for (const r of this.productReviews.values()) {
+          const at = r.publishedAt;
+          if (r.sellerId !== sellerId || r.status !== 'published' || at === null) continue;
+          if (Temporal.Instant.compare(at, w.from) < 0 || Temporal.Instant.compare(at, w.to) >= 0) {
+            continue;
+          }
+          reviews += 1;
+          starsSum += r.rating;
+        }
+        return { reviews, starsSum };
+      }),
+    );
   }
 }
 

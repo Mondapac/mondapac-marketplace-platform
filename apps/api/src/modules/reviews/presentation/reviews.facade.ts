@@ -26,16 +26,14 @@ export class ReviewsFacadeImplementation implements ReviewsFacade {
     return this.detach.execute(context, { accountId });
   }
 
-  sellerReviewCount(
+  sellerReviewCounts(
     context: CallContext,
     sellerId: Id<'Seller'>,
-    from: Temporal.Instant,
-    to: Temporal.Instant,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
   ) {
     return this.countReviews.execute(context, {
       sellerId,
-      from: from.toString(),
-      to: to.toString(),
+      windows: windows.map((w) => ({ from: w.from.toString(), to: w.to.toString() })),
     });
   }
 }

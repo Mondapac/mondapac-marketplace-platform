@@ -72,16 +72,16 @@ export interface ReviewsFacade {
   ): Promise<Result<SellerRatingSummary, ReviewsFacadeFailure>>;
 
   /**
-   * The seller health feed (rule `system`): a seller's reviews published in `[from, to)` and their
-   * stars, counted by status now. The caller works the window out in the seller's own zone
-   * (ADR-0005). Counters only; no text, no author.
+   * The seller health feed (rule `system`): for each window `[from, to)` a seller's reviews
+   * published in it and their stars, counted by status now, in one read (at most 8 windows). The
+   * caller works the windows out in the seller's own zone (ADR-0005). Counters only; no text, no
+   * author.
    */
-  sellerReviewCount(
+  sellerReviewCounts(
     context: CallContext,
     sellerId: Id<'Seller'>,
-    from: Temporal.Instant,
-    to: Temporal.Instant,
-  ): Promise<Result<SellerReviewCount, ReviewsFacadeFailure>>;
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<Result<readonly SellerReviewCount[], ReviewsFacadeFailure>>;
 
   /**
    * A deleted account's reviews and ratings lose their author link and stay as "Former

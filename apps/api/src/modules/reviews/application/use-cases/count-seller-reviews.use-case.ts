@@ -6,16 +6,19 @@ import type { ReviewsDependencies } from '../reviews-dependencies';
 
 interface Input {
   readonly sellerId?: unknown;
-  readonly from?: unknown;
-  readonly to?: unknown;
+  readonly windows?: unknown;
 }
 
 /**
  * `reviews.count-seller-reviews`: the seller health feed (rule `system`): how many reviews of a
- * seller were published in a window, and their stars. Counters only, never text or author. The
+ * seller were published in each of a few windows, and their stars, in one read. Counters only, never text or author. The
  * nightly health job of `sellers` calls it through the reviews facade.
  */
-export class CountSellerReviews extends UseCase<Input, SellerReviewCount, SummaryFailure> {
+export class CountSellerReviews extends UseCase<
+  Input,
+  readonly SellerReviewCount[],
+  SummaryFailure
+> {
   static override readonly access: AccessDeclaration = {
     name: 'reviews.count-seller-reviews',
     rule: { kind: 'system' },

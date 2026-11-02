@@ -1206,26 +1206,35 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
   describe('seller health feed', () => {
     const count = (input: object, context = system) =>
       new CountSellerReviews(gate, deps).execute(context, input);
-    const window = (from: Temporal.Instant, to: Temporal.Instant) => ({
-      sellerId: SELLER,
+    const win = (from: Temporal.Instant, to: Temporal.Instant) => ({
       from: from.toString(),
       to: to.toString(),
     });
+    const around = win(T0.subtract({ hours: 1 }), T0.add({ hours: 1 }));
 
-    it('counts the seller reviews published in the window and their stars', async () => {
+    it('counts the seller reviews published in each window and their stars, in order', async () => {
       await switchOn();
       bought(1);
       bought(2);
       await submitted(1, { rating: 5 });
       await submitted(2, { rating: 3 });
 
-      const inside = await count(window(T0.subtract({ hours: 1 }), T0.add({ hours: 1 })));
-      const before = await count(window(T0.subtract({ hours: 48 }), T0.subtract({ hours: 24 })));
-      const edge = await count(window(T0.add({ hours: 1 }), T0.add({ hours: 2 })));
+      const read = await count({
+        sellerId: SELLER,
+        windows: [
+          around,
+          win(T0.subtract({ hours: 48 }), T0.subtract({ hours: 24 })),
+          win(T0.add({ hours: 1 }), T0.add({ hours: 2 })),
+        ],
+      });
 
-      expect(inside).toEqual(ok({ reviews: 2, starsSum: 8 }));
-      expect(before).toEqual(ok({ reviews: 0, starsSum: 0 }));
-      expect(edge).toEqual(ok({ reviews: 0, starsSum: 0 }));
+      expect(read).toEqual(
+        ok([
+          { reviews: 2, starsSum: 8 },
+          { reviews: 0, starsSum: 0 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
     });
 
     it('counts only the asked seller', async () => {
@@ -1234,26 +1243,32 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       await submitted(1, { rating: 4 });
 
       const other = await count({
-        ...window(T0.subtract({ hours: 1 }), T0.add({ hours: 1 })),
         sellerId: 'a0000000-0000-7000-8000-000000000999',
+        windows: [around],
       });
 
-      expect(other).toEqual(ok({ reviews: 0, starsSum: 0 }));
+      expect(other).toEqual(ok([{ reviews: 0, starsSum: 0 }]));
     });
 
-    it('answers only the system, refuses a bad window and is off while reviews are off', async () => {
-      const w = window(T0.subtract({ hours: 1 }), T0.add({ hours: 1 }));
-      expect(await count(w)).toEqual(err({ code: 'reviews.disabled' }));
+    it('answers only the system, refuses bad windows and is off while reviews are off', async () => {
+      const input = { sellerId: SELLER, windows: [around] };
+      expect(await count(input)).toEqual(err({ code: 'reviews.disabled' }));
       await switchOn();
-      expect(await count(w, customerCtx())).toEqual(err({ code: 'access.denied' }));
-      expect(await count(w, anonymous)).toEqual(err({ code: 'access.denied' }));
-      expect(await count({ ...w, to: w.from })).toMatchObject({
+      expect(await count(input, customerCtx())).toEqual(err({ code: 'access.denied' }));
+      expect(await count(input, anonymous)).toEqual(err({ code: 'access.denied' }));
+      expect(await count({ sellerId: SELLER, windows: [win(T0, T0)] })).toMatchObject({
         ok: false,
-        error: { code: 'validation.failed', fields: [{ path: 'to', code: 'range' }] },
+        error: { code: 'validation.failed', fields: [{ path: 'windows.0.to', code: 'range' }] },
       });
-      expect(await count({ ...w, from: 'yesterday' })).toMatchObject({
+      expect(
+        await count({ sellerId: SELLER, windows: [{ from: 'yesterday', to: 'today' }] }),
+      ).toMatchObject({
         ok: false,
         error: { code: 'validation.failed' },
+      });
+      expect(await count({ sellerId: SELLER, windows: [] })).toMatchObject({ ok: false });
+      expect(await count({ sellerId: SELLER, windows: Array(9).fill(around) })).toMatchObject({
+        ok: false,
       });
     });
   });

@@ -408,18 +408,24 @@ export interface ReviewRepository {
   ): Promise<{ readonly reviews: number; readonly ratings: number }>;
 
   /**
-   * Seller health feed: the seller's product reviews that were published in `[from, to)`
-   * (`publishedAt`), counted by their status at the time of the call: a review hidden, removed
-   * or deleted later no longer counts when the window is read again. A moderator `publish` sets
-   * `publishedAt` to the time of that action, so a review published again counts in the window of
-   * its last publication. `starsSum` is the sum of their 1 to 5 ratings.
+   * Seller health feed: for each window `[from, to)` (in the order given) how many of the seller's
+   * product reviews were published in it (`publishedAt`) and the sum of their 1 to 5 ratings,
+   * counted by their status at the time of the call: a review hidden, removed or deleted later no
+   * longer counts when the window is read again. A moderator `publish` sets `publishedAt` to the
+   * time of that action, so a review published again counts in the window of its last
+   * publication. One read for all windows.
    */
   countPublishedForSeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    from: Temporal.Instant,
-    to: Temporal.Instant,
-  ): Promise<{ readonly reviews: number; readonly starsSum: number }>;
+    windows: readonly ReviewWindow[],
+  ): Promise<readonly { readonly reviews: number; readonly starsSum: number }[]>;
+}
+
+/** A half-open window of instants: `from` included, `to` excluded. */
+export interface ReviewWindow {
+  readonly from: Temporal.Instant;
+  readonly to: Temporal.Instant;
 }
 
 export const REVIEW_REPOSITORY = Symbol('REVIEW_REPOSITORY');

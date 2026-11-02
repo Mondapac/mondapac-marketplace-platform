@@ -726,7 +726,7 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       });
     });
 
-    it('counts the published reviews of one seller in a window for the health feed', async () => {
+    it('counts the published reviews of one seller per window for the health feed', async () => {
       const seller = ids.next<'Seller'>();
       const first = ids.next<'Account'>();
       const second = ids.next<'Account'>();
@@ -736,28 +736,39 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       bought(second, productB, seller);
       await submit(first, productA, { rating: 5 });
       const gone = await submit(second, productB, { rating: 2 });
-      const from = clock.now().subtract({ hours: 1 });
-      const to = clock.now().add({ hours: 1 });
-      const count = () =>
-        new CountSellerReviews(gate, deps).execute(system, {
-          sellerId: seller,
-          from: from.toString(),
-          to: to.toString(),
-        });
+      const now = clock.now();
+      const windows = [
+        { from: now.subtract({ hours: 1 }).toString(), to: now.add({ hours: 1 }).toString() },
+        {
+          from: now.subtract({ hours: 49 }).toString(),
+          to: now.subtract({ hours: 25 }).toString(),
+        },
+      ];
+      const count = (sellerId = seller) =>
+        new CountSellerReviews(gate, deps).execute(system, { sellerId, windows });
 
-      expect(await count()).toEqual(ok({ reviews: 2, starsSum: 7 }));
+      expect(await count()).toEqual(
+        ok([
+          { reviews: 2, starsSum: 7 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
       if (!gone.ok) throw new Error();
       await new DeleteProductReview(gate, deps).execute(customer(second), {
         reviewId: gone.value.review.id,
       });
-      expect(await count()).toEqual(ok({ reviews: 1, starsSum: 5 }));
-      expect(
-        await new CountSellerReviews(gate, deps).execute(system, {
-          sellerId: ids.next<'Seller'>(),
-          from: from.toString(),
-          to: to.toString(),
-        }),
-      ).toEqual(ok({ reviews: 0, starsSum: 0 }));
+      expect(await count()).toEqual(
+        ok([
+          { reviews: 1, starsSum: 5 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
+      expect(await count(ids.next<'Seller'>())).toEqual(
+        ok([
+          { reviews: 0, starsSum: 0 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
     });
   });
 });
