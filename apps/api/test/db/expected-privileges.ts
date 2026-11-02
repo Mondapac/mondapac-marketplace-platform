@@ -757,9 +757,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'paused_by',
         'platform_split_bps',
         'prior_approved',
+        'referee_reward_minor',
         'reward_amount_minor',
         'reward_bps',
         'reward_kind',
+        'segment_kind',
+        'segment_min_days',
         'special_campaign',
         'starts_at',
         'status',
@@ -777,6 +780,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 3: a referral code is insert-only; a referral and a credit change state only and are
+    // never deleted; the inbox of the delivery-credit handlers is appended to.
+    'promotions.referral_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.referrals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'qualifying_order_id',
+        'qualifying_seller_order_id',
+        'reject_reason',
+        'status',
+      ],
+    },
+    'promotions.credit_issuances': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['failure_code', 'settled_at', 'status', 'wallet_journal_id'],
+    },
+    'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['decided_by_account_id', 'opted_in_at', 'withdrawn_at'],
@@ -976,6 +997,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'margin_fixed_minor',
         'margin_kind',
         'pickup_enabled',
+        'ready_prep_minutes',
         'rounding_step_minor',
         'same_day_cutoff_minutes',
         'same_day_enabled',
@@ -1142,6 +1164,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'matched_into_product_id',
         'owner_seller_id',
         'own_brand',
+        'paused_at',
+        'paused_by_account_id',
         'pending_revision_id',
         'pending_submitted_at',
         'promoted_at',
@@ -1178,6 +1202,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.brand_merge_candidates': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['resolution', 'resolved_at', 'resolved_by', 'status'],
+    },
+    // Catalog business-activity package: the code and creator never change; names and category links
+    // are replaced as a set, so they may be deleted (as the activity itself, while unused).
+    'catalog.business_activities': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['description', 'status', 'updated_at', 'version'],
+    },
+    'catalog.business_activity_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'catalog.business_activity_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
     },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],
@@ -1250,6 +1288,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'listed',
         'off_sale_description_claim_text',
         'off_sale_product_not_listed',
+        'off_sale_product_paused',
         'off_sale_product_retired',
         'off_sale_tag_suspended',
         'off_sale_type_not_allowed',
@@ -1302,6 +1341,37 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.offer_owner_notices': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
+    },
+    // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
+    // the application deletes it; only the name and who can use it change.
+    'catalog.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
+    // docs/design/data/catalog.md 3.29: the admin product import. A job moves through its states by
+    // column and a row records its result as the run goes; DELETE belongs to the purge (old jobs,
+    // and with them their rows).
+    'catalog.platform_import_jobs': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'added_rows',
+        'failed_rows',
+        'file_deleted_at',
+        'finished_at',
+        'lease_until',
+        'not_before',
+        'skip_errors',
+        'start_as',
+        'started_at',
+        'state',
+        'stop_reason',
+        'to_import',
+        'version',
+      ],
+    },
+    'catalog.platform_import_rows': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['product_code', 'product_id', 'run_code', 'run_state'],
     },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller

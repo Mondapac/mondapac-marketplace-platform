@@ -1,6 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { REVIEWS_STATUSES } from '../domain/market-status';
 import { REVIEW_STATUSES, SELLER_RATING_REASONS } from '../domain/rules';
+import { MODERATOR_ACTIONS, QUEUE_TABS } from '../domain/moderation';
+import type {
+  ModerationQueuePage,
+  ModerationReviewView,
+} from '../application/use-cases/list-moderation-queue.use-case';
+import type { ModerationDetailView } from '../application/use-cases/view-moderation-review.use-case';
 import type { ProductRatingSummary, SellerRatingSummary } from '../contracts';
 import type { MyReviewsView } from '../application/use-cases/list-my-reviews.use-case';
 import type { ProductReviewsPage } from '../application/use-cases/list-product-reviews.use-case';
@@ -308,4 +314,101 @@ export const sellerSummaryBody = (summary: SellerRatingSummary): SellerSummaryBo
 export const settingsBody = (view: SettingsView): SettingsBody => ({
   status: view.status,
   updatedAt: isoOrNull(view.updatedAt),
+});
+
+// ---- the moderator queue (package 2) ----------------------------------------------------------
+
+export class ModerationReviewBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ format: 'uuid' }) offerId!: string;
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ minimum: 1, maximum: 5 }) rating!: number;
+  @ApiProperty({ nullable: true, type: String }) title!: string | null;
+  @ApiProperty({ nullable: true, type: String }) body!: string | null;
+  @ApiProperty() locale!: string;
+  @ApiProperty({ enum: [...REVIEW_STATUSES] }) status!: string;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) editedAt!: string | null;
+  @ApiProperty({ minimum: 0 }) openReports!: number;
+  @ApiProperty({ type: [String], description: 'Automatic-check and abuse signal codes.' })
+  signalCodes!: string[];
+}
+
+export class ModerationReportReasonBody {
+  @ApiProperty() reasonCode!: string;
+  @ApiProperty({ minimum: 1 }) count!: number;
+}
+
+export class ModerationHistoryBody {
+  @ApiProperty() action!: string;
+  @ApiProperty() reasonCode!: string;
+  @ApiProperty({ enum: [...REVIEW_STATUSES], nullable: true, type: String })
+  fromStatus!: string | null;
+  @ApiProperty({ enum: [...REVIEW_STATUSES] }) toStatus!: string;
+  @ApiProperty({ description: 'True for a moderator; the moderator is not named.' })
+  byModerator!: boolean;
+  @ApiProperty({ format: 'date-time' }) at!: string;
+}
+
+export class ModerationDetailBody extends ModerationReviewBody {
+  @ApiProperty({ type: [ModerationReportReasonBody] }) reportReasons!: ModerationReportReasonBody[];
+  @ApiProperty({ type: [ModerationHistoryBody] }) history!: ModerationHistoryBody[];
+  @ApiProperty({ enum: [...MODERATOR_ACTIONS], isArray: true })
+  allowedActions!: string[];
+}
+
+export class ModerationCountsBody {
+  @ApiProperty() held!: number;
+  @ApiProperty() reported!: number;
+  @ApiProperty() actioned!: number;
+}
+
+export class ModerationQueueBody {
+  @ApiProperty({ enum: [...QUEUE_TABS] }) tab!: string;
+  @ApiProperty({ type: [ModerationReviewBody] }) items!: ModerationReviewBody[];
+  @ApiProperty({ nullable: true, type: String }) nextCursor!: string | null;
+  @ApiProperty({ type: ModerationCountsBody }) counts!: ModerationCountsBody;
+}
+
+export class ModerateRequest {
+  @ApiProperty({ description: 'A reason code of the action (a closed list; never free text).' })
+  reasonCode!: string;
+}
+
+const moderationReviewBody = (view: ModerationReviewView): ModerationReviewBody => ({
+  id: view.id,
+  productId: view.productId,
+  offerId: view.offerId,
+  sellerId: view.sellerId,
+  rating: view.rating,
+  title: view.title,
+  body: view.body,
+  locale: view.locale,
+  status: view.status,
+  createdAt: iso(view.createdAt),
+  editedAt: isoOrNull(view.editedAt),
+  openReports: view.openReports,
+  signalCodes: [...view.signalCodes],
+});
+
+export const moderationQueueBody = (page: ModerationQueuePage): ModerationQueueBody => ({
+  tab: page.tab,
+  items: page.items.map(moderationReviewBody),
+  nextCursor: page.nextCursor,
+  counts: { ...page.counts },
+});
+
+export const moderationDetailBody = (view: ModerationDetailView): ModerationDetailBody => ({
+  ...moderationReviewBody(view),
+  reportReasons: view.reportReasons.map((r) => ({ reasonCode: r.reasonCode, count: r.count })),
+  history: view.history.map((h) => ({
+    action: h.action,
+    reasonCode: h.reasonCode,
+    fromStatus: h.fromStatus,
+    toStatus: h.toStatus,
+    byModerator: h.byModerator,
+    at: iso(h.at),
+  })),
+  allowedActions: [...view.allowedActions],
 });

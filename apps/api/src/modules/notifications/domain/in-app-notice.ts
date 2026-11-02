@@ -144,6 +144,13 @@ export const ADMIN_SELLER_REINSTATED_HOLD_REMAINS = 'admin.seller-reinstated-hol
  */
 export const ADMIN_DELIVERY_FALLBACK_OVER_CAP = 'admin.delivery-fallback-over-cap';
 
+/**
+ * An admin's platform import (a CSV of new products) finished or stopped part way (catalog design
+ * 14a). The notice holds the import's id and its outcome only; the counts are in the import's report.
+ */
+export const ADMIN_PLATFORM_IMPORT_FINISHED = 'admin.platform-import-finished';
+
+export const PLATFORM_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
 export const CERTIFICATE_SUBMISSIONS = ['initial', 'resubmission', 'renewal'] as const;
 export const SELLER_FILE_KINDS = ['onboarding', 'identity-change'] as const;
 export const HOLD_DIRECTIONS = ['up', 'down'] as const;
@@ -164,6 +171,11 @@ export interface SellerFileSubmittedParams {
   readonly fileKind: (typeof SELLER_FILE_KINDS)[number];
 }
 
+export interface PlatformImportFinishedParams {
+  readonly importId: Id<'PlatformImport'>;
+  readonly outcome: (typeof PLATFORM_IMPORT_OUTCOMES)[number];
+}
+
 export interface DeliveryFallbackOverCapParams {
   readonly sellerOrderId: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
@@ -182,7 +194,8 @@ export type AdminNoticeKind =
   | typeof ADMIN_SELLER_FILE_SUBMITTED
   | typeof ADMIN_PRICE_HOLD_OPENED
   | typeof ADMIN_SELLER_REINSTATED_HOLD_REMAINS
-  | typeof ADMIN_DELIVERY_FALLBACK_OVER_CAP;
+  | typeof ADMIN_DELIVERY_FALLBACK_OVER_CAP
+  | typeof ADMIN_PLATFORM_IMPORT_FINISHED;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -190,6 +203,7 @@ export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+  ADMIN_PLATFORM_IMPORT_FINISHED,
 ];
 
 /**
@@ -205,7 +219,8 @@ export type NoticeParams =
   | ProductRevisionSubmittedParams
   | SellerFileSubmittedParams
   | PriceHoldOpenedParams
-  | DeliveryFallbackOverCapParams;
+  | DeliveryFallbackOverCapParams
+  | PlatformImportFinishedParams;
 
 interface ParamShape {
   readonly ids: readonly string[];
@@ -273,6 +288,10 @@ const PARAM_SHAPES: Readonly<
     enums: { direction: HOLD_DIRECTIONS },
   },
   [ADMIN_DELIVERY_FALLBACK_OVER_CAP]: { ids: ['sellerOrderId', 'sellerId'], enums: {} },
+  [ADMIN_PLATFORM_IMPORT_FINISHED]: {
+    ids: ['importId'],
+    enums: { outcome: PLATFORM_IMPORT_OUTCOMES },
+  },
 };
 
 /**

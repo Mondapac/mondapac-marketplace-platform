@@ -70,6 +70,8 @@ model IdentityAccount {
   emailVerifiedAt         DateTime?                   @map("email_verified_at") @db.Timestamptz(6)
   /// The last "you already have an account" notice (D 6.7).
   existingAccountNoticeAt DateTime?                   @map("existing_account_notice_at") @db.Timestamptz(6)
+  /// The latest bulk end of the account's sessions for a reason other than a sign-out; NULL = never. A job a session started stops once this is later than the session's creation (M-585-1).
+  sessionsInvalidatedAt   DateTime?                   @map("sessions_invalidated_at") @db.Timestamptz(6)
   /// The latest sign-up: the anchor of the 7-day purge (M5).
   signedUpAt              DateTime                    @map("signed_up_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate (P 10); 1 at insert.

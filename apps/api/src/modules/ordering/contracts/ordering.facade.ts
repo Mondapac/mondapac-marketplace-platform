@@ -5,10 +5,21 @@ import type { AccessDenied } from '../../../platform/authz';
 export interface AuthorisedPayment {
   readonly orderId: string;
   readonly paymentIntentId: string;
-  /** The Checkout session that created the payment; it must be the one stored on the order. */
-  readonly sessionId: string;
+  /**
+   * The Checkout session that created the payment; it must be the one stored on the order. `null`
+   * for a card payment made on the MondaPac page (a PaymentIntent with no session): the order must
+   * have no session, and no other PaymentIntent.
+   */
+  readonly sessionId: string | null;
   /** What the provider holds; it must equal the order total or the payment is voided. */
   readonly amount: Money;
+  /**
+   * The payment method the provider holds, read from the provider. Required for a card payment
+   * on the MondaPac page (`sessionId: null`): it is checked again here, because the browser can
+   * confirm the same PaymentIntent with another card after the first token was checked. A
+   * method that is not an accepted card is voided, never captured. Ignored for a hosted session.
+   */
+  readonly card?: { readonly methodType: string; readonly brand: string | null } | null;
 }
 
 export type PaymentFailure =

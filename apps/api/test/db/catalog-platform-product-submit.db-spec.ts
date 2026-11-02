@@ -47,6 +47,8 @@ describe.each(TEST_MARKETS)(
     let copies: PrismaWorkingCopyRepository;
     let revisions: PrismaProductRevisionRepository;
     let appended: string[];
+    let audited: string[];
+    let auditFails = false;
     let submit: SubmitProduct;
     let familyRevisionId: string;
     let categoryId: string;
@@ -189,10 +191,19 @@ describe.each(TEST_MARKETS)(
           next: <K extends string>() => uuid7() as Id<K>,
         }),
         requests: new PrismaTagReevaluationRequests(persistence.service),
+        audit: {
+          record: (_context, entry) => {
+            if (auditFails) return Promise.reject(new Error('audit down'));
+            audited.push(entry.action);
+            return Promise.resolve();
+          },
+        },
       });
     });
     beforeEach(() => {
       appended = [];
+      audited = [];
+      auditFails = false;
     });
     afterAll(async () => {
       await app.end();
@@ -271,6 +282,58 @@ describe.each(TEST_MARKETS)(
       });
       expect(revision?.content.texts['en']?.name).toBe('Dates');
       expect(appended).toContain('catalog.product-revision-submitted.v1');
+    });
+
+    // Design 14a: an Inactive start publishes and pauses in ONE unit, never briefly published.
+    it('publishes and pauses in one unit for an Inactive import row: both events and the audit together', async () => {
+      const product = await draftedProduct();
+      const result = await submit.execute(adminContext(), {
+        productId: product.state.id,
+        replacePending: false,
+        pauseOnPublish: true,
+      });
+      if (!result.ok) throw new Error(result.error.code);
+      expect(result.value).toMatchObject({ revisionNo: 1, published: true });
+      const stored = await inUnit(() => products.findById(market, product.state.id));
+      expect(stored?.state.status).toBe('published');
+      expect(stored?.state.pausedAt).not.toBeNull();
+      expect(stored?.state.publishedRevisionId).toBe(result.value.revisionId);
+      expect(appended).toEqual(
+        expect.arrayContaining([
+          'catalog.product-revision-submitted.v1',
+          'catalog.product-paused.v1',
+        ]),
+      );
+      expect(audited).toEqual(['catalog.product.paused']);
+    });
+
+    it('rolls the publish back when the pause cannot be completed: no published product, no revision', async () => {
+      const product = await draftedProduct();
+      auditFails = true;
+      await expect(
+        submit.execute(adminContext(), {
+          productId: product.state.id,
+          replacePending: false,
+          pauseOnPublish: true,
+        }),
+      ).rejects.toThrow('audit down');
+      const stored = await inUnit(() => products.findById(market, product.state.id));
+      expect(stored?.state.status).toBe('draft');
+      expect(stored?.state.pausedAt).toBeNull();
+      expect(await rowCount('product_revisions', product.state.id)).toBe(0);
+    });
+
+    it('does not pause a plain submit (Active start)', async () => {
+      const product = await draftedProduct();
+      const result = await submit.execute(adminContext(), {
+        productId: product.state.id,
+        replacePending: false,
+        pauseOnPublish: false,
+      });
+      expect(result.ok).toBe(true);
+      const stored = await inUnit(() => products.findById(market, product.state.id));
+      expect(stored?.state.pausedAt).toBeNull();
+      expect(appended).not.toContain('catalog.product-paused.v1');
     });
 
     async function rowCount(table: string, productId: string): Promise<number> {

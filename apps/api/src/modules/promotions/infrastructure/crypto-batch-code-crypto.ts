@@ -26,6 +26,33 @@ export class CryptoBatchCodeCrypto implements BatchCodeCrypto {
     return code;
   }
 
+  referralCode(subject: string, alphabet: string, length: number): string {
+    const pepper = this.requirePepper();
+    const digest = createHmac('sha256', pepper).update(`referral-code|${subject}`, 'utf8').digest();
+    // 256 bits of digest as one number, read off in base `alphabet.length`: the bias from the
+    // remainder is below 2^-150 for any alphabet and length the config allows.
+    let n = BigInt(`0x${digest.toString('hex')}`);
+    const base = BigInt(alphabet.length);
+    let code = '';
+    for (let i = 0; i < length; i++) {
+      code += alphabet[Number(n % base)];
+      n /= base;
+    }
+    return code;
+  }
+
+  referralHash(code: string): string {
+    const pepper = this.requirePepper();
+    return createHmac('sha256', pepper).update(`referral-hash|${code}`, 'utf8').digest('hex');
+  }
+
+  private requirePepper(): string {
+    if (!this.available || this.pepper === null) {
+      throw new Error('batch code pepper is not configured');
+    }
+    return this.pepper;
+  }
+
   hash(code: string): string {
     if (!this.available || this.pepper === null) {
       throw new Error('batch code pepper is not configured');

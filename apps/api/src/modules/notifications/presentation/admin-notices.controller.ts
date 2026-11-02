@@ -53,7 +53,7 @@ export class AdminNoticesController {
   @ApiOperation({
     summary: 'The admin notices of the signed-in admin, newest first',
     description:
-      'Each kind is listed only while the admin holds its permission (admin.seller-certificate-submitted: certification.seller-certificate.review; admin.product-revision-submitted: catalog.product.approve; admin.seller-file-submitted: sellers.seller-file.review; admin.price-hold-opened: pricing.price-hold.decide; admin.delivery-fallback-over-cap: shipping.delivery-settings.view). Kept 90 days. customerShortName is always null.',
+      'Each kind is listed only while the admin holds its permission (admin.seller-certificate-submitted: certification.seller-certificate.review; admin.product-revision-submitted: catalog.product.approve; admin.seller-file-submitted: sellers.seller-file.review; admin.price-hold-opened: pricing.price-hold.decide; admin.delivery-fallback-over-cap: shipping.delivery-settings.view; admin.platform-import-finished: catalog.platform-import.run). Kept 90 days. customerShortName is always null.',
   })
   @ApiQuery({ name: 'before', required: false, description: 'The `next` of the previous page.' })
   @ApiQuery({

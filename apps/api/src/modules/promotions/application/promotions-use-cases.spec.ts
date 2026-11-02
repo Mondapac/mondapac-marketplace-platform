@@ -21,6 +21,7 @@ import {
   MemoryPromotionsSetting,
   MemoryReviewQueue,
   MemoryThresholds,
+  phase3Fakes,
 } from '../../../../test/support/promotions-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
@@ -198,6 +199,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       flashSales,
       sellerActivity: activity,
       priceHistory: history,
+      ...phase3Fakes(),
       stepUp,
       audit,
       ids: new SequenceIdGenerator(clock),

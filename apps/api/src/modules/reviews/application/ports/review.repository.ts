@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { QueueTab } from '../../domain/moderation';
 import type { ReviewStatus, SellerRatingReason, SellerRatingStatus } from '../../domain/rules';
 import type { SellerSummary, StarSummary } from '../../domain/summary';
 
@@ -87,6 +88,65 @@ export interface NewSignal {
   readonly at: Temporal.Instant;
 }
 
+/** The queue position of the moderator list: newest submitted first. */
+export interface QueueCursor {
+  readonly createdAt: Temporal.Instant;
+  readonly id: Id<'ProductReview'>;
+}
+
+/** A line of the moderator queue: the review, how many reports are open, the signal codes. */
+export interface QueueRow {
+  readonly review: ProductReviewRecord;
+  readonly openReports: number;
+  readonly signalCodes: readonly string[];
+}
+
+/** One line of a review's history, as the insert-only log holds it (codes only). */
+export interface HistoryRow {
+  readonly action: ModerationActionName;
+  readonly reasonCode: string;
+  readonly fromStatus: ReviewStatus | null;
+  readonly toStatus: ReviewStatus;
+  /** Set for a moderator's action; null for the system and the author's own changes. */
+  readonly byModerator: boolean;
+  readonly at: Temporal.Instant;
+}
+
+/** Everything a moderator sees about one review. No author identity. */
+export interface ModerationDetailRecord {
+  readonly review: ProductReviewRecord;
+  /** Open reports by reason code, e.g. `[{ reasonCode: 'abusive', count: 2 }]`. */
+  readonly openReports: readonly { readonly reasonCode: string; readonly count: number }[];
+  readonly signalCodes: readonly string[];
+  readonly history: readonly HistoryRow[];
+}
+
+/** A seller's one public reply to a review (`reviews.review_replies`). */
+export interface ReplyRecord {
+  readonly id: Id<'ReviewReply'>;
+  readonly reviewId: Id<'ProductReview'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly body: string;
+  readonly status: 'published' | 'hidden' | 'removed' | 'superseded';
+  readonly createdAt: Temporal.Instant;
+  readonly editedAt: Temporal.Instant | null;
+}
+
+/** A report of a review by a member of the seller's team (reason code only, never text). */
+export interface NewReportRecord {
+  readonly id: Id<'ReviewReport'>;
+  readonly reviewId: Id<'ProductReview'>;
+  readonly reporterAccountId: Id<'Account'>;
+  readonly reasonCode: string;
+  readonly createdAt: Temporal.Instant;
+}
+
+/** One line of the seller's review list: the review and the shop's reply, if any. */
+export interface SellerReviewRow {
+  readonly review: ProductReviewRecord;
+  readonly reply: ReplyRecord | null;
+}
+
 export type SummarySubject = 'product' | 'seller';
 
 /** A stored (rebuilt) summary; null count means no row. */
@@ -140,6 +200,13 @@ export interface ReviewRepository {
   ): Promise<'saved' | 'stale'>;
 
   /**
+   * Takes the account's review-write lock until the unit ends, so two parallel writes of one
+   * account count the daily limit one after the other (`reviews.lock-account`). Call it first,
+   * before {@link countSubmissionsSince}, in the read-write unit that writes.
+   */
+  lockAccount(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
+
+  /**
    * The account's own writes at or after `since`: its submits, edits and deletes of product
    * reviews (counted in the insert-only log, through the review's author) plus its seller ratings.
    */
@@ -184,6 +251,84 @@ export interface ReviewRepository {
     productId: Id<'Product'>,
     publicId: string,
   ): Promise<ReviewCursor | null>;
+
+  // ---- the moderator queue (package 2) -------------------------------------------------------
+
+  /**
+   * One page of the queue, newest submitted first, `limit` rows. Tabs: `held` (status held),
+   * `reported` (an open report on a review that is not deleted), `actioned` (hidden or removed).
+   */
+  listModerationQueue(
+    market: MarketContext,
+    query: { readonly tab: QueueTab; readonly after: QueueCursor | null; readonly limit: number },
+  ): Promise<readonly QueueRow[]>;
+
+  /** How many reviews wait in each tab (held, reported, actioned). */
+  countModerationQueue(market: MarketContext): Promise<Readonly<Record<QueueTab, number>>>;
+
+  /** The review by its internal id with its open reports, signals and history, or null. */
+  findForModeration(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<ModerationDetailRecord | null>;
+
+  /**
+   * Marks the open reports of a review `actioned` or `dismissed` (the reports table keeps no
+   * text). Returns how many changed.
+   */
+  closeOpenReports(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    status: 'actioned' | 'dismissed',
+  ): Promise<number>;
+
+  // ---- the seller's side (package 4) ---------------------------------------------------------
+
+  /** The shop's published reviews, newest published first, `limit` rows. */
+  listSellerReviews(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    query: { readonly after: ReviewCursor | null; readonly limit: number },
+  ): Promise<readonly SellerReviewRow[]>;
+
+  /** A review of this shop by its internal id (any status) with its reply; null if not the shop's. */
+  findSellerReview(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<SellerReviewRow | null>;
+
+  /**
+   * The shop's PUBLISHED reply to a review leaves (becomes `superseded`: history, never shown or
+   * edited) because the review moved to another seller or was written again. Replies of
+   * `exceptSellerId` are kept (null: none is kept). Hidden and removed replies are a moderator's
+   * decision and are not touched. Returns how many.
+   */
+  supersedeReplies(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    exceptSellerId: Id<'Seller'> | null,
+  ): Promise<number>;
+
+  /**
+   * Locks the row of a published review of this shop until the unit ends (a no-op write) and says
+   * whether it is still the shop's: false when it moved, is not published or is not the shop's.
+   * A reply is written or edited only after this, so it cannot slip in beside a concurrent move.
+   */
+  lockPublishedReviewOf(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<boolean>;
+
+  /** False when the review already has a reply (the unique key): two submits make one reply. */
+  insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord): Promise<boolean>;
+
+  /** Writes body and edit time of a reply while it still stands at `expectedBody`'s status. */
+  saveReply(market: MarketContext, reply: ReplyRecord): Promise<void>;
+
+  /** False when this account already reported the review (the unique key). */
+  insertReportIfAbsent(market: MarketContext, report: NewReportRecord): Promise<boolean>;
 
   // ---- seller ratings -----------------------------------------------------------------------
 

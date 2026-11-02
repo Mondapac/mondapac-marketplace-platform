@@ -16,6 +16,7 @@ import { callApi } from '../api/client.ts';
 import {
   CERTIFICATE_SUBMITTED,
   DELIVERY_FALLBACK_OVER_CAP,
+  PLATFORM_IMPORT_FINISHED,
   PRICE_HOLD_OPENED,
   PRODUCT_REVISION_SUBMITTED,
   RINGING_KINDS,
@@ -36,6 +37,7 @@ const LOOK: Readonly<
   [SELLER_FILE_SUBMITTED]: { icon: 'store', tone: 'neutral', category: 'sellers' },
   [PRICE_HOLD_OPENED]: { icon: 'tag', tone: 'attention', category: 'prices' },
   [DELIVERY_FALLBACK_OVER_CAP]: { icon: 'map-pin', tone: 'attention', category: 'delivery' },
+  [PLATFORM_IMPORT_FINISHED]: { icon: 'package', tone: 'info', category: 'products' },
 };
 const UNKNOWN_LOOK = { icon: 'bell', tone: 'neutral', category: 'other' } as const;
 
@@ -49,6 +51,9 @@ function hrefOf(notice: AdminNotice): string | null {
   }
   if (notice.kind === PRICE_HOLD_OPENED) return '/price-holds';
   if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/settings/delivery';
+  if (notice.kind === PLATFORM_IMPORT_FINISHED && notice.params.importId !== undefined) {
+    return `/catalog/products/import?id=${notice.params.importId}`;
+  }
   return null;
 }
 
@@ -107,6 +112,11 @@ export function AdminNotifications({ csrfToken }: { readonly csrfToken: string }
         });
       case DELIVERY_FALLBACK_OVER_CAP:
         return t.rich('kind.delivery-fallback-over-cap', { strong });
+      case PLATFORM_IMPORT_FINISHED:
+        return t.rich('kind.platform-import-finished', {
+          strong,
+          outcome: notice.params.outcome ?? 'completed',
+        });
       default:
         return t('kind.other');
     }

@@ -86,11 +86,11 @@ export function forgetCsrfToken(): void {
   csrfToken = null;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-async function call<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+export async function call<T>(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body: object | undefined,
   read: (json: Record<string, unknown>) => T | undefined,
@@ -111,7 +111,7 @@ async function call<T>(
  * with no session goes without a token; the API then uses the guest-cart cookie.
  */
 async function callOnce<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body: object | undefined,
   read: (json: Record<string, unknown>) => T | undefined,
@@ -154,9 +154,11 @@ async function callOnce<T>(
     }
     // A 409 is a refusal to show only for the deletion request (its blockers and states); every
     // other route keeps answering `failed` for it, as before.
-    const refusals = path.startsWith('customers/me/deletion-requests')
-      ? [400, 403, 404, 409, 422]
-      : [400, 403, 404, 422];
+    // The reviews routes also answer 409 for a closed window or a review that exists already.
+    const refusals =
+      path.startsWith('customers/me/deletion-requests') || path.startsWith('reviews/')
+        ? [400, 403, 404, 409, 422]
+        : [400, 403, 404, 422];
     if (refusals.includes(response.status)) {
       const fields = Array.isArray(details.fields)
         ? details.fields.flatMap((f: unknown) =>
@@ -173,7 +175,7 @@ async function callOnce<T>(
   }
 }
 
-const text = (value: unknown): string | undefined =>
+export const text = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
 const orNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 

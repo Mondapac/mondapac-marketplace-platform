@@ -205,6 +205,16 @@
     }
   },
   {
+    "type": "catalog.platform-import-finished.v1",
+    "aggregateType": "platform-import",
+    "fields": {
+      "importId": "id",
+      "outcome": "enumOf(completed|stopped)",
+      "added": "integer",
+      "failed": "integer"
+    }
+  },
+  {
     "type": "catalog.product-revision-changes-requested.v1",
     "aggregateType": "product",
     "fields": {
@@ -247,6 +257,34 @@
     "fields": {
       "productId": "id",
       "variantId": "id"
+    }
+  },
+  {
+    "type": "catalog.product-paused.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
+    }
+  },
+  {
+    "type": "catalog.product-resumed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
+    }
+  },
+  {
+    "type": "catalog.product-retired.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
+    }
+  },
+  {
+    "type": "catalog.product-withdrawn.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id"
     }
   },
   {

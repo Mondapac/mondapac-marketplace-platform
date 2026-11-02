@@ -3,14 +3,21 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   NewModerationAction,
+  NewReportRecord,
+  ReplyRecord,
+  HistoryRow,
+  ModerationDetailRecord,
   NewSignal,
   ProductReviewRecord,
+  QueueCursor,
+  QueueRow,
   ReviewCursor,
   ReviewRepository,
   SellerRatingRecord,
   StoredSellerSummary,
   StoredStarSummary,
 } from '../application/ports/review.repository';
+import type { QueueTab } from '../domain/moderation';
 import type { ReviewStatus, SellerRatingReason, SellerRatingStatus } from '../domain/rules';
 import {
   summariseSellerGroups,
@@ -107,6 +114,29 @@ const toRating = (row: {
   createdAt: fromDate(row.createdAt),
 });
 
+const toReply = (
+  row: {
+    readonly id: string;
+    readonly reviewId: string;
+    readonly sellerId: string;
+    readonly body: string;
+    readonly status: string;
+    readonly createdAt: Date;
+    readonly editedAt: Date | null;
+  } | null,
+): ReplyRecord | null =>
+  row === null
+    ? null
+    : {
+        id: row.id as Id<'ReviewReply'>,
+        reviewId: row.reviewId as Id<'ProductReview'>,
+        sellerId: row.sellerId as Id<'Seller'>,
+        body: row.body,
+        status: row.status as ReplyRecord['status'],
+        createdAt: fromDate(row.createdAt),
+        editedAt: row.editedAt === null ? null : fromDate(row.editedAt),
+      };
+
 /** The columns of one stored summary row. */
 type SummaryRow = Awaited<ReturnType<PrismaService['tx']>>['reviewsRatingSummary'] extends {
   findMany(...args: never[]): Promise<(infer R)[]>;
@@ -146,6 +176,21 @@ const starsOf = (row: {
   sum: row.sum,
   histogram: [row.histogram1, row.histogram2, row.histogram3, row.histogram4, row.histogram5],
 });
+
+/** The rows a queue tab lists (the status and report conditions of each tab). */
+const tabWhere = (tab: QueueTab) => {
+  switch (tab) {
+    case 'held':
+      return { status: 'held' };
+    case 'reported':
+      return {
+        status: { in: ['published', 'held', 'hidden'] },
+        reports: { some: { status: 'open' } },
+      };
+    case 'actioned':
+      return { status: { in: ['hidden', 'removed'] } };
+  }
+};
 
 /** {@link ReviewRepository} on the `reviews` schema, scoped by `marketId`. */
 export class PrismaReviewRepository implements ReviewRepository {
@@ -203,6 +248,10 @@ export class PrismaReviewRepository implements ReviewRepository {
     return updated.count === 0 ? ('stale' as const) : ('saved' as const);
   }
 
+  async lockAccount(market: MarketContext, accountId: Id<'Account'>) {
+    await this.prisma.namedQuery(market, 'reviews.lock-account', { accountId });
+  }
+
   async countSubmissionsSince(
     market: MarketContext,
     accountId: Id<'Account'>,
@@ -215,6 +264,8 @@ export class PrismaReviewRepository implements ReviewRepository {
           marketId: market.marketId,
           createdAt: { gte: toDate(since) },
           action: { in: ['publish', 'auto-hold', 'author-edit', 'author-delete'] },
+          // A moderator's own rows (publish of a held review) are not the author's writes.
+          actorAccountId: null,
           review: { accountId },
         },
       }),
@@ -223,6 +274,116 @@ export class PrismaReviewRepository implements ReviewRepository {
       }),
     ]);
     return actions + ratings;
+  }
+
+  async listModerationQueue(
+    market: MarketContext,
+    query: { readonly tab: QueueTab; readonly after: QueueCursor | null; readonly limit: number },
+  ): Promise<readonly QueueRow[]> {
+    const tx = this.prisma.tx(market);
+    const after = query.after;
+    const rows = await tx.reviewsProductReview.findMany({
+      where: {
+        marketId: market.marketId,
+        ...tabWhere(query.tab),
+        ...(after === null
+          ? {}
+          : {
+              OR: [
+                { createdAt: { lt: toDate(after.createdAt) } },
+                { createdAt: toDate(after.createdAt), id: { lt: after.id } },
+              ],
+            }),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit,
+    });
+    if (rows.length === 0) return [];
+    const ids = rows.map((row) => row.id);
+    const [reports, signals] = await Promise.all([
+      tx.reviewsReport.groupBy({
+        by: ['reviewId'],
+        where: { marketId: market.marketId, reviewId: { in: ids }, status: 'open' },
+        _count: { _all: true },
+      }),
+      tx.reviewsSignal.findMany({
+        where: { marketId: market.marketId, subjectKind: 'product-review', subjectId: { in: ids } },
+        select: { subjectId: true, code: true },
+        orderBy: [{ at: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+    const open = new Map(reports.map((r) => [r.reviewId, r._count._all]));
+    return rows.map((row) => ({
+      review: toReview(row),
+      openReports: open.get(row.id) ?? 0,
+      signalCodes: [...new Set(signals.filter((s) => s.subjectId === row.id).map((s) => s.code))],
+    }));
+  }
+
+  async countModerationQueue(market: MarketContext) {
+    const tx = this.prisma.tx(market);
+    const count = (tab: QueueTab) =>
+      tx.reviewsProductReview.count({ where: { marketId: market.marketId, ...tabWhere(tab) } });
+    const [held, reported, actioned] = await Promise.all([
+      count('held'),
+      count('reported'),
+      count('actioned'),
+    ]);
+    return { held, reported, actioned };
+  }
+
+  async findForModeration(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+  ): Promise<ModerationDetailRecord | null> {
+    const tx = this.prisma.tx(market);
+    const row = await tx.reviewsProductReview.findFirst({
+      where: { marketId: market.marketId, id: reviewId },
+    });
+    if (row === null) return null;
+    const [reports, signals, actions] = await Promise.all([
+      tx.reviewsReport.groupBy({
+        by: ['reasonCode'],
+        where: { marketId: market.marketId, reviewId, status: 'open' },
+        _count: { _all: true },
+      }),
+      tx.reviewsSignal.findMany({
+        where: { marketId: market.marketId, subjectKind: 'product-review', subjectId: reviewId },
+        select: { code: true },
+        orderBy: [{ at: 'asc' }, { id: 'asc' }],
+      }),
+      tx.reviewsModerationAction.findMany({
+        where: { marketId: market.marketId, reviewId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+    return {
+      review: toReview(row),
+      openReports: reports
+        .map((r) => ({ reasonCode: r.reasonCode, count: r._count._all }))
+        .sort((a, b) => b.count - a.count || a.reasonCode.localeCompare(b.reasonCode)),
+      signalCodes: [...new Set(signals.map((s) => s.code))],
+      history: actions.map((a) => ({
+        action: a.action as HistoryRow['action'],
+        reasonCode: a.reasonCode,
+        fromStatus: a.fromStatus as ReviewStatus | null,
+        toStatus: a.toStatus as ReviewStatus,
+        byModerator: a.actorAccountId !== null,
+        at: fromDate(a.createdAt),
+      })),
+    };
+  }
+
+  async closeOpenReports(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    status: 'actioned' | 'dismissed',
+  ) {
+    const result = await this.prisma.tx(market).reviewsReport.updateMany({
+      where: { marketId: market.marketId, reviewId, status: 'open' },
+      data: { status },
+    });
+    return result.count;
   }
 
   async wasDeletedAfterModeration(market: MarketContext, reviewId: Id<'ProductReview'>) {
@@ -306,6 +467,142 @@ export class PrismaReviewRepository implements ReviewRepository {
     });
     if (row === null || row.publishedAt === null) return null;
     return { publishedAt: fromDate(row.publishedAt), id: row.id as Id<'ProductReview'> };
+  }
+
+  // ---- the seller's side (package 4) ---------------------------------------------------------
+
+  async listSellerReviews(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    query: { readonly after: ReviewCursor | null; readonly limit: number },
+  ) {
+    const rows = await this.prisma.tx(market).reviewsProductReview.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        status: 'published',
+        ...(query.after === null
+          ? {}
+          : {
+              OR: [
+                { publishedAt: { lt: toDate(query.after.publishedAt) } },
+                { publishedAt: toDate(query.after.publishedAt), id: { lt: query.after.id } },
+              ],
+            }),
+      },
+      include: {
+        replies: {
+          where: { sellerId, status: { not: 'superseded' } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit,
+    });
+    return rows.map((row) => ({ review: toReview(row), reply: toReply(row.replies[0] ?? null) }));
+  }
+
+  async findSellerReview(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ) {
+    const row = await this.prisma.tx(market).reviewsProductReview.findFirst({
+      where: { marketId: market.marketId, sellerId, id: reviewId },
+      include: {
+        replies: {
+          where: { sellerId, status: { not: 'superseded' } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    return row === null ? null : { review: toReview(row), reply: toReply(row.replies[0] ?? null) };
+  }
+
+  async supersedeReplies(
+    market: MarketContext,
+    reviewId: Id<'ProductReview'>,
+    exceptSellerId: Id<'Seller'> | null,
+  ) {
+    const changed = await this.prisma.tx(market).reviewsReply.updateMany({
+      where: {
+        marketId: market.marketId,
+        reviewId,
+        status: 'published',
+        ...(exceptSellerId === null ? {} : { sellerId: { not: exceptSellerId } }),
+      },
+      data: { status: 'superseded' },
+    });
+    return changed.count;
+  }
+
+  async lockPublishedReviewOf(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewId: Id<'ProductReview'>,
+  ) {
+    // The row is rewritten with its own value: the write takes the row lock a concurrent move
+    // (which also updates the row) must wait for, and the count says whether it is still ours.
+    const locked = await this.prisma.tx(market).reviewsProductReview.updateMany({
+      where: { marketId: market.marketId, id: reviewId, sellerId, status: 'published' },
+      data: { status: 'published' },
+    });
+    return locked.count > 0;
+  }
+
+  async insertReplyIfAbsent(market: MarketContext, reply: ReplyRecord) {
+    const created = await this.prisma.tx(market).reviewsReply.createMany({
+      data: [
+        {
+          id: reply.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          reviewId: reply.reviewId,
+          sellerId: reply.sellerId,
+          body: reply.body,
+          status: reply.status,
+          createdAt: toDate(reply.createdAt),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count > 0;
+  }
+
+  async saveReply(market: MarketContext, reply: ReplyRecord) {
+    // Only the shop's own published reply changes, and only its text and edit time: a
+    // moderator's status is never written from here.
+    await this.prisma.tx(market).reviewsReply.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: reply.id,
+        sellerId: reply.sellerId,
+        status: 'published',
+      },
+      data: {
+        body: reply.body,
+        editedAt: reply.editedAt === null ? null : toDate(reply.editedAt),
+      },
+    });
+  }
+
+  async insertReportIfAbsent(market: MarketContext, report: NewReportRecord) {
+    const created = await this.prisma.tx(market).reviewsReport.createMany({
+      data: [
+        {
+          id: report.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          reviewId: report.reviewId,
+          reporterAccountId: report.reporterAccountId,
+          reasonCode: report.reasonCode,
+          status: 'open',
+          createdAt: toDate(report.createdAt),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count > 0;
   }
 
   // ---- seller ratings -----------------------------------------------------------------------

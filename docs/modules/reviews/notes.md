@@ -80,7 +80,26 @@ Public (anonymous, reasons in `http-reachable-anonymous-system.json`):
 `GET /reviews/products/:productId` (published only, newest first, `stars` filter, keyset cursor,
 page size from Market config; `sort=helpful` is refused until helpful votes exist),
 `GET /reviews/products/:productId/summary`, `GET /reviews/sellers/:sellerId/summary`.
-Admin: settings, above. Bodies and queries are closed (an unknown field is a 400).
+Admin: settings, above (the switch change needs a fresh step-up proof, action
+`reviews.settings.change`). Bodies and queries are closed (an unknown field is a 400).
+
+## Package 2: admin moderation queue
+
+Routes under `/reviews/admin/moderation` (admin host, English LTR panel at `/reviews/moderation`):
+`GET` queue (tabs held, reported, actioned; keyset cursor; counts), `GET :id` one review with
+report reasons and history, `POST :id/{publish,hide,restore,remove}` and `POST :id/dismiss-reports`.
+Permission `reviews.moderation.queue`. It is named so it is not a `.view` key: the Viewer role
+would otherwise get it automatically (open owner question, Viewer role). Moderation works whether
+the review switch is on or off.
+- Publish, hide, restore and remove each need a fresh step-up proof of the one action
+  `reviews.review.moderate`, spent once inside the unit of work. Dismissing reports needs none.
+- `moderation_actions` is insert-only and holds the moderator id and a reason code, never text.
+- Daily cap: the write flow takes advisory lock class 1703 (`reviews.lock-account`) before counting
+  the account's submissions of the day, so two parallel submits cannot both pass. Moderator
+  publish rows do not count against the author's cap.
+- Own store: `identity.ownAccountTiedToSeller` answers a boolean (same normalised email between
+  the customer and an active member of the seller). The reviews module fails closed if it cannot answer.
+- Switch stays OFF. Real use still needs the review policy text and the Viewer-role decision.
 
 ## Open questions for the owner
 
@@ -170,3 +189,65 @@ package that needs them).
 
 Any UI, the admin moderation queue, seller reply endpoint, notifications, search ranking, photos
 and helpful votes.
+
+## Package 3: buyer web pages (apps/web)
+
+Owner approved the build 2026-11-01. Everything is behind the runtime switch above: while it is
+`off` the API answers `reviews.disabled` (404) and the web draws nothing about reviews.
+
+- Product page: a "Customer reviews" section (stars summary, five-row chart that filters the list,
+  published reviews newest first, "Show more"). Server-read by `src/reviews/reviews-source.ts`;
+  the filter and "Show more" go through the site's own `app/api/product-reviews/[id]` route (the
+  session relay drops query strings, and these reads are anonymous). Text is shown as plain text.
+- "Bought from" is resolved from the product's own offers (seller id to store name); a seller who
+  no longer offers the product leaves the label out. The public body has no seller name.
+- Reviewer names: the page shows what the API sends. Until open question 1 is decided every
+  non-anonymous review reads "Verified buyer"; a "named" author without a usable name does too.
+- Account: `/account/reviews` (not in the account menu yet: the switch is runtime and the menu is
+  static; Orders shows a "N waiting for your review" link when the switch is on). Lists what waits
+  for a review, the review form (stars, title, text, "show me as Verified buyer"), edit and delete
+  of the buyer's own reviews, and the seller-order rating (satisfaction, as described, arrived ok,
+  optional reason). Product and seller names come from the account's orders.
+- Relay: GET `reviews/me`, `reviews/me/to-review`; POST `reviews/products`,
+  `reviews/seller-orders/:id/rating`; PATCH and DELETE `reviews/products/:id`. PATCH is a new method
+  for the relay and the `/api` route. Admin and public reads do not cross.
+- Messages are in `messages/en.json` (`reviews`); the layout uses logical CSS properties only, so
+  a Persian catalogue (W3) needs no other change. Review text carries `dir="auto"`.
+- Length limits are Market config in the API; the forms do not hard-code them and show the API's
+  field refusals.
+- Not in this package: seller rings on the seller page (`SELLER_RATINGS_SHOWN` stays false), the
+  "Top rated" sort and card stars (package 5), seller replies (package 4), helpful votes, photos.
+- Agent reviews (Hassan, Reza) of the PR are folded in: the site list route answers 404 only for
+  "off", 429 with `retry-after` for a throttle and 503 for a fault, all `no-store`; author names sit
+  in `<bdi>`; averages and percents use the language's number format; a saved form leaves a page
+  notice; a failed star filter goes back to the earlier filter.
+- Differences from design section 7, on purpose: the star chart filters the list instead of the
+  "With text / 1-2 star" chips, and one review count is shown (the API has no separate rating
+  count). A hidden review shows "Not shown" only: the API does not return the reason yet.
+
+## Package 4a: the seller's side of the API (backend)
+
+- New seller permissions, not protected: `reviews.seller.view`, `reviews.seller.reply`,
+  `reviews.seller.report`. Routes under `reviews/seller`: GET list, POST and PATCH
+  `:reviewId/reply`, POST `:reviewId/report`. Writes are refused in an acting-as session.
+- A seller sees only its own published reviews and an order reference (the seller order id); never
+  the buyer's name, email or address. One reply per review (unique key, so a race makes one row).
+  Editing a reply is allowed for `reviews.replyEditWindowDays` (default 7) after it was written;
+  `reviews.replyMaxLength` defaults to 2000. Both are Market config.
+- A reply goes through the same text checks as a review (contact details, links, markup, the
+  Market's blocked words). Unlike a review it is refused, not held: a reply has no queue.
+- A report stores a reason code from a closed list (`personal-information`, `abusive`, `irrelevant`,
+  `not-a-purchase`, `extortion`) in `review_reports`, one per team member; it opens the existing
+  "reported" tab of the admin queue. The seller can never hide or remove a review.
+- A review moves to another seller when the buyer buys the product again from someone else. The
+  earlier seller's reply (and, when the author deletes and writes the review again, every published
+  reply) is then set to `superseded` (kept as history, never shown or edited) and
+  the new seller starts clean; a seller only ever reads and edits its own reply. The one-reply
+  rule is "one published reply per review" (partial unique index, migration
+  `20261101230000_reviews_reply_per_seller`). Open question for the owner: keep the old reply
+  instead? Clearing is the safe default. Hidden and
+  removed replies are a moderator's decision and are never superseded. A reply is written or edited
+  only after the review row is locked, so it cannot slip in beside a concurrent move.
+- Reply max length is capped at 2000 in Market config, matching the table CHECK.
+- Not in 4a: the public reply under a review on the product page (package 3 list), notices for the
+  seller, buyer and admin (4b), the seller panel screens (4c), the daily digest, appeals.

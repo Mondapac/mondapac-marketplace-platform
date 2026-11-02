@@ -90,9 +90,9 @@ function logStatus(
 
 /**
  * The author's own writes in the last 24 hours: counted in the insert-only log (submits, edits,
- * deletes) plus seller ratings, so delete-and-resubmit and edits are limited too. Soft limit: the
- * count and the insert are in one READ COMMITTED unit, so parallel requests of one account can
- * overshoot by the number in flight.
+ * deletes) plus seller ratings, so delete-and-resubmit and edits are limited too. The account's
+ * lock (`reviews.lock-account`) is taken before the count and held to the end of the unit, so
+ * parallel requests of one account cannot overshoot the limit.
  */
 async function overDailyLimit(
   deps: ReviewsDependencies,
@@ -101,6 +101,8 @@ async function overDailyLimit(
   now: Temporal.Instant,
   settings: ReviewsSettings,
 ): Promise<boolean> {
+  // The lock first: a parallel write of this account waits here, then counts what this one wrote.
+  await deps.reviews.lockAccount(context.market, accountId);
   const recent = await deps.reviews.countSubmissionsSince(
     context.market,
     accountId,
@@ -256,6 +258,8 @@ export async function submitProductReview(
       ) {
         return err({ code: 'reviews.already-reviewed' } as const);
       }
+      // A new text starts over: the shop's reply was to the deleted one, so it leaves (history).
+      await deps.reviews.supersedeReplies(context.market, existing.id, null);
       await afterWrite(
         deps,
         context,
@@ -284,6 +288,11 @@ export async function submitProductReview(
       if (
         (await deps.reviews.saveProductReview(context.market, moved, existing.status)) === 'saved'
       ) {
+        // The review now says "Bought from" another shop: the earlier shop's reply is cleared, so
+        // the new shop never reads or edits it and can write its own (package 4a).
+        if (purchase.sellerId !== existing.sellerId) {
+          await deps.reviews.supersedeReplies(context.market, existing.id, purchase.sellerId);
+        }
         return ok({
           outcome: 'purchase-recorded',
           review: ownReviewView(moved, settings.editWindowDays),

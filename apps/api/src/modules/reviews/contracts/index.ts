@@ -9,7 +9,15 @@ export {
   type ReviewStatus,
   type SellerRatingReason,
 } from '../domain/rules';
-export { REVIEWS_PERMISSIONS, REVIEWS_SETTINGS_MANAGE, REVIEWS_SETTINGS_VIEW } from './permissions';
+export {
+  REVIEWS_MODERATION_MODERATE,
+  REVIEWS_MODERATION_REMOVE,
+  REVIEWS_MODERATION_QUEUE,
+  REVIEWS_PERMISSIONS,
+  REVIEWS_SETTINGS_MANAGE,
+  REVIEWS_SETTINGS_VIEW,
+} from './permissions';
+export { REVIEWS_STEP_UP_ACTIONS } from './step-up';
 export {
   REVIEWS_FACADE,
   type ProductRatingSummary,

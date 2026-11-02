@@ -72,14 +72,25 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 7 adds `certification.claim-policy.view` (certification slice 13: the claim basis
     // policies; the protected `certification.claim-policy.edit` is not listed). Version 8 adds
     // `certification.product-certificate.view` (certification slice 14: manufacturer certificates
-    // and their coverage; the protected `.edit` and `.approve` are not listed).
-    seedVersion: 8,
+    // and their coverage; the protected `.edit` and `.approve` are not listed). Version 9 adds
+    // `catalog.product.pause` and `catalog.product.delete` (catalog design 4.1, 4.1a, 8.1: the
+    // bulk Deactivate, Activate and Delete of the Products page; both unprotected). The protected
+    // `catalog.platform-product.retire` is not listed. Version 10 adds `catalog.saved-filter.share`
+    // (catalog design 9.2d: save a filter for every admin of the Market; unprotected). Version 11
+    // adds `catalog.platform-import.run` (catalog design 14a: the admin Import products page;
+    // unprotected, since every row still needs `catalog.platform-product.edit`, which this role
+    // holds).
+    seedVersion: 11,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
       'catalog.platform-product.edit',
       'catalog.product.view',
       'catalog.product.approve',
+      'catalog.product.pause',
+      'catalog.product.delete',
+      'catalog.saved-filter.share',
+      'catalog.platform-import.run',
       'sellers.seller.view',
       'pricing.price-hold.view',
       'certification.type.view',

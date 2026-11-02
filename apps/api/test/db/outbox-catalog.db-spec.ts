@@ -65,6 +65,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 3.27 (certification slice 15): the sender job's claim order.
   'catalog.offer_owner_notices_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX offer_owner_notices_market_id_next_attempt_at_pending_idx ON catalog.offer_owner_notices USING btree (market_id, next_attempt_at, id) WHERE (state = 'pending'::text)",
+  // docs/design/data/catalog.md 3.28: a shared filter name is unique per list among the filters
+  // shared with everyone.
+  'catalog.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
+  // docs/design/data/catalog.md 3.29: the admin product import. One queued or running import per
+  // admin, the worker's claim order, and the purge's reach for files still stored.
+  'catalog.platform_import_jobs_market_id_file_purge_idx':
+    'CREATE INDEX platform_import_jobs_market_id_file_purge_idx ON catalog.platform_import_jobs USING btree (market_id, checked_at, id) WHERE (file_deleted_at IS NULL)',
+  'catalog.platform_import_jobs_market_id_queue_idx':
+    "CREATE INDEX platform_import_jobs_market_id_queue_idx ON catalog.platform_import_jobs USING btree (market_id, created_at, id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+  'catalog.platform_import_jobs_market_id_account_running_key':
+    "CREATE UNIQUE INDEX platform_import_jobs_market_id_account_running_key ON catalog.platform_import_jobs USING btree (market_id, started_by_account_id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
   // docs/design/data/catalog.md 3.18 (slice 11): one pending fan-out request per product, one
   // request per published revision, one per consumed event, and the job's claim order.
   'catalog.tag_reevaluation_requests_market_id_created_at_pending_idx':
@@ -271,6 +283,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_files_market_id_decision_intent_since_idx ON sellers.seller_files USING btree (market_id, decision_intent_since) WHERE (decision_intent IS NOT NULL)',
   'sellers.admin_flags_market_id_seller_id_code_open_key':
     'CREATE UNIQUE INDEX admin_flags_market_id_seller_id_code_open_key ON sellers.admin_flags USING btree (market_id, seller_id, code) WHERE (cleared_at IS NULL)',
+  'reviews.review_replies_market_id_review_id_published_key':
+    "CREATE UNIQUE INDEX review_replies_market_id_review_id_published_key ON reviews.review_replies USING btree (market_id, review_id) WHERE (status = 'published'::text)",
   'sellers.admin_flags_market_id_raised_at_open_idx':
     'CREATE INDEX admin_flags_market_id_raised_at_open_idx ON sellers.admin_flags USING btree (market_id, raised_at, id) WHERE (cleared_at IS NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
@@ -305,6 +319,16 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_rating_idx':
     "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  // Promotions: the real and the RECORDED credits each have a partial unique key over kind and
+  // source, and over the idempotency key (the plain lookup index by source is not partial).
+  'promotions.credit_issuances_real_idempotency_key':
+    "CREATE UNIQUE INDEX credit_issuances_real_idempotency_key ON promotions.credit_issuances USING btree (market_id, idempotency_key) WHERE (status <> 'RECORDED'::text)",
+  'promotions.credit_issuances_real_source_key':
+    "CREATE UNIQUE INDEX credit_issuances_real_source_key ON promotions.credit_issuances USING btree (market_id, kind, source_id) WHERE (status <> 'RECORDED'::text)",
+  'promotions.credit_issuances_recorded_idempotency_key':
+    "CREATE UNIQUE INDEX credit_issuances_recorded_idempotency_key ON promotions.credit_issuances USING btree (market_id, idempotency_key) WHERE (status = 'RECORDED'::text)",
+  'promotions.credit_issuances_recorded_source_key':
+    "CREATE UNIQUE INDEX credit_issuances_recorded_source_key ON promotions.credit_issuances USING btree (market_id, kind, source_id) WHERE (status = 'RECORDED'::text)",
   // Promotions: a promotion has at most one open review entry (a unique key over open rows only).
   'promotions.promotion_reviews_one_open_idx':
     "CREATE UNIQUE INDEX promotion_reviews_one_open_idx ON promotions.promotion_reviews USING btree (market_id, promotion_id) WHERE (status = 'OPEN'::text)",

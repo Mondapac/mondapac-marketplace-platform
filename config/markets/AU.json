@@ -96,6 +96,15 @@
       "maxPerBatch": 5000,
       "maxPerPromotion": 50000
     },
+    "customerGroup": { "defaultReturningDays": 60 },
+    "referral": {
+      "maxRewardMinor": 2000,
+      "maxRewardedPerReferrer": 10,
+      "qualifyWithinDays": 30,
+      "codeLength": 12,
+      "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    },
+    "cashback": { "maxBps": 1000, "maxCapMinor": 5000 },
     "firstOrder": {
       "enabled": true,
       "kind": "FIXED",

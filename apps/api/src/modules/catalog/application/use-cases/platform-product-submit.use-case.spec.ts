@@ -102,6 +102,8 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       approvalThrows?: boolean;
       noSchema?: boolean;
       gateOverride?: AuthorisationCheck;
+      /** Wires the audit writer, which an Inactive start (`pauseOnPublish`) needs. */
+      withAudit?: boolean;
     } = {},
   ) {
     const stored = new Map<string, Product>();
@@ -253,6 +255,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       ids,
       offers: NO_OFFERS_ON_PRODUCT,
       requests: fanOut,
+      ...(options.withAudit === true ? { audit: { write: () => Promise.resolve() } as never } : {}),
     });
     const useCase = new PlatformProductSubmit(
       options.gateOverride === undefined ? gate : createUseCaseGate(markets, options.gateOverride),
@@ -271,7 +274,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
         });
       }
     };
-    return { useCase, stored, copies, revisions, matched, events, seed };
+    return { useCase, submit, stored, copies, revisions, matched, events, seed };
   }
 
   const request = (productId: string, replacePending = false): PlatformProductSubmitInput => ({
@@ -295,6 +298,42 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
     });
     expect(r.stored.get(product.state.id)?.state.publishedRevisionId).toBe(revision.id);
     expect(r.events.length).toBeGreaterThan(0);
+  });
+
+  it('refuses an Inactive start that would not publish, before any write (Hassan L-585-2)', async () => {
+    const r = rig(undefined, { withAudit: true });
+    const product = newProduct();
+    r.seed(product);
+    // Today an admin's submit always publishes; a policy that asks for a review would not.
+    const original = Reflect.get(Product.prototype, 'submitRevision');
+    const spy = jest.spyOn(Product.prototype, 'submitRevision').mockImplementation(function (
+      this: Product,
+      input,
+    ) {
+      const result = original.call(this, input);
+      return result.ok
+        ? { ok: true as const, value: { ...result.value, published: false } }
+        : result;
+    });
+    try {
+      const context = contextOf('admin');
+      const refused = await r.submit.execute(context, {
+        productId: product.state.id,
+        replacePending: false,
+        pauseOnPublish: true,
+      });
+      expect(refused).toEqual({ ok: false, error: { code: 'product.not-published' } });
+      expect(r.revisions.size).toBe(0);
+      expect(r.stored.get(product.state.id)?.state.pendingRevisionId).toBeNull();
+      // Without the Inactive start the same outcome is the ordinary pending submit.
+      const plain = await r.submit.execute(context, {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      expect(plain.ok && plain.value.published).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('numbers the next revision after the published one and names it as the base', async () => {
