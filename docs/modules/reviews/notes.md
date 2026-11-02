@@ -273,3 +273,30 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
 - Reply max length is capped at 2000 in Market config, matching the table CHECK.
 - Not in 4a: the public reply under a review on the product page (package 3 list), notices for the
   seller, buyer and admin (4b), the seller panel screens (4c), the daily digest, appeals.
+
+## Package 4b: events and in-app notices (seller and admin)
+
+- Reviews now has an outbox (`reviews.outbox`, migration `20261102000000_reviews_outbox`) and
+  publishes six events, written in the unit of the change: `review-published`, `review-held`,
+  `review-hidden`, `review-restored`, `review-reported`, `delivery-problem-flagged`. Payloads are
+  ids and the star count only; never a title, text, name or reason text. A review has no version
+  counter, so each event is its own aggregate at version 1 (the moderation action, report or rating
+  id, or a fresh id); nothing orders two events of one review.
+- When they are written: a new or restarted review that passes the checks (published) or is held
+  by them (held); an edit that sends a visible review back to the admins (held, once); an admin
+  releasing a held review (published); an admin hiding or removing a visible review (hidden) or
+  restoring one (restored); a seller's first report of a review (reported); a seller rating whose
+  "arrived in good order" answer is no (delivery problem). Hiding a held or hidden review is no news
+  to the seller and writes nothing.
+- Notifications turns them into in-app notices (ids only, no review text, no buyer):
+  seller `seller.review-posted` (with the stars), `seller.review-hidden`, `seller.review-restored`,
+  `seller.delivery-problem`, shown to members holding `reviews.seller.view`; admin
+  `admin.review-held` and `admin.review-reported`, shown to admins holding
+  `reviews.moderation.queue`.
+- Not in 4b, and why: the buyer's notices (published, held, hidden, the seller's reply) need a
+  customer audience in the notice store, which does not exist; the admin "surge" and "not arrived OK
+  threshold" notices need a counting job and a Market threshold; the day-2 and day-7 review-request
+  email waits for the brand name, ABN and the Spam Act wording; the optional daily digest. The reply
+  event is not written until the buyer notice exists.
+- Delivery-problem notice (owner decision 2 Nov 2026): the event and the notice carry the seller only,
+  never the order, so the seller cannot tie a "not in good order" answer to one buyer.

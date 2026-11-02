@@ -300,9 +300,9 @@ describe('SellerNotifications drawer', () => {
     ],
     [
       'an order that did not arrive in good order',
-      { kind: 'seller.delivery-problem', params: { sellerOrderId: ORDER } },
+      { kind: 'seller.delivery-problem', params: {} },
       /A customer said an order did not arrive in good order/,
-      `/orders/${ORDER}`,
+      '/reviews',
     ],
   ])('opens %s on its page', async (_label, over, text, href) => {
     counts = [{ unread: 1, newest: null }];

@@ -2,6 +2,8 @@ import { Temporal } from '@mondapac/shared-kernel';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import {
   registerPermissions,
   registerStepUpActions,
@@ -55,6 +57,7 @@ import {
   REVIEWS_PERMISSIONS,
   REVIEWS_STEP_UP_ACTIONS,
 } from './contracts';
+import { REVIEWS_EVENTS } from './domain/events';
 import { reviewsProviders } from './infrastructure/reviews-providers';
 import { rebuildRatingSummariesJob } from './presentation/jobs/rebuild-rating-summaries.job';
 import {
@@ -79,6 +82,7 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
   ['affinity', SELLER_AFFINITY],
   ['overlap', SELLER_OVERLAP_SOURCE],
   ['audit', AUDIT_WRITER],
+  ['outbox', OUTBOX_WRITER],
   ['stepUp', STEP_UP_CONSUMER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -124,7 +128,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellerReviewsController,
   ],
   providers: [
+    PersistenceModule.outboxWriterFor('reviews'),
     PersistenceModule.auditWriterFor('reviews'),
+    registerEvents('reviews', REVIEWS_EVENTS),
     registerAuditActions('reviews', REVIEWS_AUDIT_ACTIONS),
     registerPermissions('reviews', REVIEWS_PERMISSIONS),
     registerStepUpActions('reviews', REVIEWS_STEP_UP_ACTIONS),

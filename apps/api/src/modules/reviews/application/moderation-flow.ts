@@ -22,6 +22,7 @@ import type {
   QueueRow,
 } from './ports/review.repository';
 import type { ReviewsDependencies } from './reviews-dependencies';
+import { recordModerated, recordPublished } from './review-events';
 import { stepUpFailure } from './settings-flow';
 
 // The admin moderation queue (buyer reviews and ratings package 2; design section 5). A moderator
@@ -285,8 +286,9 @@ export async function moderateReview(
       ) {
         return err({ code: 'reviews.not-moderatable' } as const);
       }
+      const actionId = deps.ids.next<'ModerationAction'>();
       await deps.reviews.appendModerationAction(context.market, {
-        id: deps.ids.next<'ModerationAction'>(),
+        id: actionId,
         reviewId: review.id,
         actorAccountId: moderatorId,
         action,
@@ -297,6 +299,13 @@ export async function moderateReview(
       });
       if (action === 'hide' || action === 'remove') {
         await deps.reviews.closeOpenReports(context.market, review.id, 'actioned');
+      }
+      // Package 4b: the seller hears when a review becomes visible or leaves (ids only).
+      if (action === 'publish') await recordPublished(deps, context, changed, now);
+      else if (action === 'restore') {
+        await recordModerated(deps, context, changed, actionId, 'restored', now);
+      } else if (review.status === 'published' && (action === 'hide' || action === 'remove')) {
+        await recordModerated(deps, context, changed, actionId, 'hidden', now);
       }
       await deps.reviews.rebuildSummaries(
         context.market,

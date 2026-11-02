@@ -31,6 +31,7 @@ import {
 } from '../support/reviews-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import { reviewsOutbox } from './reviews-outbox-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Package 5 on the real tables, in both Market fixtures: helpful votes (the triggers that keep the
@@ -89,6 +90,7 @@ describe.each(TEST_MARKETS)('reviews package 5 in market %s (database)', (code) 
       unitOfWork: db.unitOfWork,
       reviews: new PrismaReviewRepository(db.service),
       settings: new PrismaMarketSettingRepository(db.service),
+      outbox: reviewsOutbox(db, ids),
       policy: new ConfigReviewsPolicy(markets),
       ordering: new FakeDeliveries().facade(),
       catalog: new FakeOffers().facade(),

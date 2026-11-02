@@ -33,6 +33,7 @@ import {
   FakeStepUp,
 } from '../support/reviews-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import { reviewsOutbox } from './reviews-outbox-support';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
@@ -115,6 +116,7 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       affinity: new FakeAffinity(),
       overlap: new FakeOverlap(),
       audit: { record: () => Promise.resolve() },
+      outbox: reviewsOutbox(db, ids),
       stepUp: new FakeStepUp(),
       ids,
       clock,
@@ -489,6 +491,22 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
         [created.value.review.id],
       );
       expect(log).toEqual([{ action: 'publish', to_status: 'published' }]);
+
+      // The event is written in the same unit: ids and the stars, never the text.
+      const events = await rows(
+        `SELECT type, aggregate_version, payload FROM reviews.outbox WHERE payload ->> 'reviewId' = $1`,
+        [created.value.review.id],
+      );
+      expect(events.map((event) => [event.type, event.aggregate_version])).toEqual([
+        ['reviews.review-published.v1', 1],
+      ]);
+      expect(events[0]!.payload).toEqual({
+        reviewId: created.value.review.id,
+        productId,
+        sellerId: seller,
+        rating: 4,
+      });
+      expect(JSON.stringify(events)).not.toContain('Arrived well');
 
       const removed = await new DeleteProductReview(gate, deps).execute(customer(account), {
         reviewId: created.value.review.id,

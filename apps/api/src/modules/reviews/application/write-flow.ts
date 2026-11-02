@@ -14,6 +14,7 @@ import {
 import { overlapSignals } from '../domain/seller-overlap';
 import { checkText } from '../domain/text-checks';
 import { buyerAccountId } from './caller';
+import { recordDeliveryProblem, recordHeld, recordPublished } from './review-events';
 import { activeSettings, isStillActive } from './market-switch';
 import type {
   NewModerationAction,
@@ -361,6 +362,8 @@ async function afterWrite(
       signalsOf(deps, 'product-review', review.id, signals, now),
     );
   }
+  if (review.status === 'held') await recordHeld(deps, context, review, now);
+  else if (review.status === 'published') await recordPublished(deps, context, review, now);
   await deps.reviews.rebuildSummaries(
     context.market,
     { products: [review.productId], sellers: [] },
@@ -452,6 +455,10 @@ export async function editProductReview(
         context.market,
         signalsOf(deps, 'product-review', edited.id, signals, now),
       );
+    }
+    // A flagged edit sends a visible review back to the admins; a held one is already there.
+    if (status === 'held' && existing.status !== 'held') {
+      await recordHeld(deps, context, edited, now);
     }
     await deps.reviews.rebuildSummaries(
       context.market,
@@ -606,6 +613,9 @@ export async function rateSellerOrder(
     };
     if (!(await deps.reviews.insertSellerRatingIfAbsent(context.market, record))) {
       return err({ code: 'reviews.already-rated' } as const);
+    }
+    if (!record.arrivedOk) {
+      await recordDeliveryProblem(deps, context, record.id, record.sellerId, now);
     }
     if (overlap.length > 0) {
       await deps.reviews.appendSignals(

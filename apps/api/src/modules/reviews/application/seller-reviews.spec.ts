@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { RecordingOutbox } from '../../../../test/support/catalog-tag-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import {
   FakeAffinity,
@@ -56,6 +57,7 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
   let clock: FixedClock;
   let reviews: MemoryReviews;
   let deps: ReviewsDependencies;
+  let outbox: RecordingOutbox;
   let deliveries: FakeDeliveries;
   let offers: FakeOffers;
   let gate: ReturnType<typeof createUseCaseGate>;
@@ -134,6 +136,7 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
     const setting = new MemoryReviewsSetting();
     deliveries = new FakeDeliveries();
     offers = new FakeOffers();
+    outbox = new RecordingOutbox();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reviews,
@@ -144,6 +147,7 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
       names: new FakeNames(),
       affinity: new FakeAffinity(),
       audit: { record: () => Promise.resolve() },
+      outbox,
       overlap: new FakeOverlap(),
       stepUp: new FakeStepUp(),
       ids: new SequenceIdGenerator(clock),
@@ -394,6 +398,12 @@ describe.each([['AU'], ['ZZ']] as const)('seller reviews in market %s', (code) =
       expect((await report(review.id, 'extortion')).ok).toBe(true);
       expect(reviews.sellerReports).toHaveLength(1);
       expect(reviews.sellerReports[0]!.reasonCode).toBe('extortion');
+      // One report, one event: the repeat by the same member makes no second notice.
+      expect(outbox.types).toEqual(['reviews.review-reported.v1']);
+      expect(outbox.appended[0]!.payload).toEqual({
+        reviewId: review.id,
+        reportId: reviews.sellerReports[0]!.id,
+      });
       expect(reviews.productReviews.get(review.id)!.status).toBe('published');
     });
 
