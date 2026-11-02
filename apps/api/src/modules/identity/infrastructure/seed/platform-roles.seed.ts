@@ -79,8 +79,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // (catalog design 9.2d: save a filter for every admin of the Market; unprotected). Version 11
     // adds `catalog.platform-import.run` (catalog design 14a: the admin Import products page;
     // unprotected, since every row still needs `catalog.platform-product.edit`, which this role
-    // holds).
-    seedVersion: 11,
+    // holds). Version 12 adds `catalog.attribute.view` (attributes package A1: the read-only
+    // Attributes page; the protected `catalog.attribute.edit` is not listed).
+    seedVersion: 12,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -91,6 +92,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.product.delete',
       'catalog.saved-filter.share',
       'catalog.platform-import.run',
+      'catalog.attribute.view',
       'sellers.seller.view',
       'pricing.price-hold.view',
       'certification.type.view',
@@ -104,8 +106,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     kind: 'default',
     seedCode: 'operations-support',
     // Version 2 adds `sellers.seller.view` (the admin seller list, sellers slice 6). Version 3
-    // adds `certification.type.view` (certification slice 12).
-    seedVersion: 3,
+    // adds `certification.type.view` (certification slice 12). Version 4 adds
+    // `catalog.attribute.view` (attributes package A1: the read-only Attributes page).
+    seedVersion: 4,
     nameKey: 'identity.role.operations-support',
     permissionKeys: [
       'identity.seller-access.view',
@@ -114,6 +117,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'identity.seller-account.reset-second-factor',
       'sellers.seller.view',
       'certification.type.view',
+      'catalog.attribute.view',
     ],
   },
   {
@@ -169,7 +173,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // package 5c); the protected `customers.buyer-account.delete` is not listed.
     // Version 24 adds `catalog.brand.read`, likewise unprotected (catalog brand package); the
     // brand edit key is not a viewer key.
-    seedVersion: 24,
+    // Version 25 adds `catalog.attribute.view`, likewise unprotected (attributes package A1); the
+    // protected `catalog.attribute.edit` is not a viewer key.
+    seedVersion: 25,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -197,6 +203,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'promotions.promotion.view',
       'customers.account-deletion-requests.view',
       'catalog.brand.read',
+      'catalog.attribute.view',
     ],
   },
   {

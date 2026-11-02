@@ -236,6 +236,12 @@ import { BrandProductIdsQuery } from './application/use-cases/brand-product-ids.
 import { PublicBrandQuery } from './application/use-cases/public-brand.use-case';
 import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.use-case';
 import { BrandAdminController } from './presentation/brand-admin.controller';
+import { AttributeAdminController } from './presentation/attribute-admin.controller';
+import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
+import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
+import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
+import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-list.use-case';
+import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
 import { OwnBrandController } from './presentation/own-brand.controller';
 import { PublicBrandController } from './presentation/public-brand.controller';
 import { catalogProviders } from './infrastructure/catalog-providers';
@@ -320,6 +326,7 @@ const PORT = {
   shareCheck: SavedFilterShareCheck,
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
+  attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
@@ -399,6 +406,7 @@ const productTypeProvider: FactoryProvider<string> = {
     PublicCategoryController,
     PublicProductImageController,
     BrandAdminController,
+    AttributeAdminController,
     BusinessActivityAdminController,
     OwnBrandController,
     PublicBrandController,
@@ -512,6 +520,22 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
     }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(AttributeAdminList, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AttributeAdminGet, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(FeatureSetAdminList, { unitOfWork: true, attributeAdminReader: true }),
+    useCaseProvider(FeatureSetAdminGet, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),
     useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true }),

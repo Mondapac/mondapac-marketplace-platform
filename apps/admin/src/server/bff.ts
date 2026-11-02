@@ -72,6 +72,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/brands/merge-queue',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
+    // The attributes (catalog; query: `search`, `type`, `status`, `usedIn`, `missing`, `afterId`,
+    // `limit`) and the feature sets (attribute families), read only (attributes package A1).
+    'catalog/admin/attributes',
+    'catalog/admin/feature-sets',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -244,6 +248,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/platform-imports/:id/report',
     // One business activity (catalog), read again after a conflict.
     'catalog/admin/business-activities/:id',
+    // One attribute with its values, uses and history, and one feature set (catalog, package A1).
+    'catalog/admin/attributes/:id',
+    'catalog/admin/feature-sets/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).

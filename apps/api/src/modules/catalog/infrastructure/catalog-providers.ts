@@ -184,6 +184,11 @@ import {
 import { PrismaPublishedImagesReader } from './prisma-published-images.reader';
 import { BRAND_REPOSITORY, type BrandRepository } from '../application/ports/brand.repository';
 import { BRAND_READER, type BrandReader } from '../application/ports/brand.reader';
+import {
+  ATTRIBUTE_ADMIN_READER,
+  type AttributeAdminReader,
+} from '../application/ports/attribute-admin.reader';
+import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
 import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
 import {
   BUSINESS_ACTIVITY_REPOSITORY,
@@ -234,6 +239,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: BRAND_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
+  },
+  {
+    provide: ATTRIBUTE_ADMIN_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeAdminReader =>
+      new PrismaAttributeAdminReader(prisma),
   },
   {
     provide: BUSINESS_ACTIVITY_REPOSITORY,
