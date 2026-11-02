@@ -33,6 +33,10 @@ import { DetachAuthor } from './application/use-cases/detach-author.use-case';
 import { EditProductReview } from './application/use-cases/edit-product-review.use-case';
 import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case';
 import { ListProductReviews } from './application/use-cases/list-product-reviews.use-case';
+import { EditReviewReply } from './application/use-cases/edit-review-reply.use-case';
+import { ListSellerReviews } from './application/use-cases/list-seller-reviews.use-case';
+import { ReplyToReview } from './application/use-cases/reply-to-review.use-case';
+import { ReportReview } from './application/use-cases/report-review.use-case';
 import { ListToReview } from './application/use-cases/list-to-review.use-case';
 import { RateSellerOrder } from './application/use-cases/rate-seller-order.use-case';
 import { RebuildRatingSummaries } from './application/use-cases/rebuild-rating-summaries.use-case';
@@ -55,6 +59,7 @@ import {
   BuyerReviewsController,
   PublicReviewsController,
 } from './presentation/reviews.controller';
+import { SellerReviewsController } from './presentation/seller-reviews.controller';
 import { ReviewsFacadeImplementation } from './presentation/reviews.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ReviewsDependencies) => U;
@@ -102,7 +107,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * checks, the insert-only moderation log and rebuilt rating summaries, in the `reviews` schema.
  * Eligibility is asked of ordering through its facade at write time. The Market switch (off by
  * default) is moved at runtime by an admin. The admin moderation queue (package 2) publishes, hides, restores or removes a review with a reason
- * code, behind the admin's two-step proof. Sellers' replies and reports come in later packages.
+ * code, behind the admin's two-step proof. The seller's side (package 4) lists the shop's reviews, writes and edits one public reply and reports a review.
  */
 @Module({
   imports: [OrderingModule, CatalogModule, IdentityModule],
@@ -111,6 +116,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PublicReviewsController,
     AdminReviewsController,
     AdminModerationController,
+    SellerReviewsController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('reviews'),
@@ -136,6 +142,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RemoveReview,
       RebuildRatingSummaries,
       DetachAuthor,
+      ListSellerReviews,
+      ReplyToReview,
+      EditReviewReply,
+      ReportReview,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: REVIEWS_FACADE,

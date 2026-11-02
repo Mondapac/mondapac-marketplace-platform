@@ -98,14 +98,15 @@ model ReviewsReply {
   reviewId  String               @map("review_id") @db.Uuid
   sellerId  String               @map("seller_id") @db.Uuid
   body      String
-  /// published, hidden or removed (CHECK).
+  /// published, hidden, removed or superseded (CHECK).
   status    String
   createdAt DateTime             @map("created_at") @db.Timestamptz(6)
   editedAt  DateTime?            @map("edited_at") @db.Timestamptz(6)
   review    ReviewsProductReview @relation(fields: [marketId, reviewId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
-  /// One reply per review.
-  @@unique([marketId, reviewId])
+  /// One published reply per review: a partial unique index written by
+  /// hand in the migration. A reply of an earlier seller is 'superseded' when the review moves.
+  @@index([marketId, reviewId])
   @@map("review_replies")
   @@schema("reviews")
 }

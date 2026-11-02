@@ -224,3 +224,30 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
 - Differences from design section 7, on purpose: the star chart filters the list instead of the
   "With text / 1-2 star" chips, and one review count is shown (the API has no separate rating
   count). A hidden review shows "Not shown" only: the API does not return the reason yet.
+
+## Package 4a: the seller's side of the API (backend)
+
+- New seller permissions, not protected: `reviews.seller.view`, `reviews.seller.reply`,
+  `reviews.seller.report`. Routes under `reviews/seller`: GET list, POST and PATCH
+  `:reviewId/reply`, POST `:reviewId/report`. Writes are refused in an acting-as session.
+- A seller sees only its own published reviews and an order reference (the seller order id); never
+  the buyer's name, email or address. One reply per review (unique key, so a race makes one row).
+  Editing a reply is allowed for `reviews.replyEditWindowDays` (default 7) after it was written;
+  `reviews.replyMaxLength` defaults to 2000. Both are Market config.
+- A reply goes through the same text checks as a review (contact details, links, markup, the
+  Market's blocked words). Unlike a review it is refused, not held: a reply has no queue.
+- A report stores a reason code from a closed list (`personal-information`, `abusive`, `irrelevant`,
+  `not-a-purchase`, `extortion`) in `review_reports`, one per team member; it opens the existing
+  "reported" tab of the admin queue. The seller can never hide or remove a review.
+- A review moves to another seller when the buyer buys the product again from someone else. The
+  earlier seller's reply (and, when the author deletes and writes the review again, every published
+  reply) is then set to `superseded` (kept as history, never shown or edited) and
+  the new seller starts clean; a seller only ever reads and edits its own reply. The one-reply
+  rule is "one published reply per review" (partial unique index, migration
+  `20261101230000_reviews_reply_per_seller`). Open question for the owner: keep the old reply
+  instead? Clearing is the safe default. Hidden and
+  removed replies are a moderator's decision and are never superseded. A reply is written or edited
+  only after the review row is locked, so it cannot slip in beside a concurrent move.
+- Reply max length is capped at 2000 in Market config, matching the table CHECK.
+- Not in 4a: the public reply under a review on the product page (package 3 list), notices for the
+  seller, buyer and admin (4b), the seller panel screens (4c), the daily digest, appeals.
