@@ -12,7 +12,7 @@ import {
   toast,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
-import { useId, useState } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortInstant } from '../catalog/format.ts';
 import { reviewProblemOf } from './errors.ts';
@@ -70,7 +70,7 @@ function ReviewCard({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [reported, setReported] = useState(false);
-  const reasonId = useId();
+  const card = useRef<HTMLElement>(null);
 
   const { reply } = review;
   const editable = reply !== null && Date.parse(reply.editableUntil) > Date.now();
@@ -92,6 +92,11 @@ function ReviewCard({
     return null;
   }
 
+  /** The form and its opening button unmount on success: keep keyboard focus on this review. */
+  function focusCard() {
+    queueMicrotask(() => card.current?.focus());
+  }
+
   async function saveReply() {
     const sent = await send(
       mode === 'edit' ? 'PATCH' : 'POST',
@@ -103,6 +108,7 @@ function ReviewCard({
     if (sent === null) return;
     onChanged(sent as SellerReview);
     setMode('idle');
+    focusCard();
     toast.success(t(mode === 'edit' ? 'reply.saved-edit' : 'reply.saved'));
   }
 
@@ -111,15 +117,13 @@ function ReviewCard({
     if (sent === null) return;
     setReported(true);
     setMode('idle');
+    focusCard();
     toast.success(t('report.sent'));
   }
 
   return (
     <Card>
-      <article
-        className="flex flex-col gap-3"
-        aria-label={t('review-label', { rating: review.rating })}
-      >
+      <article ref={card} tabIndex={-1} className="flex flex-col gap-3 outline-none">
         <header className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <Stars rating={review.rating} />
           {review.publishedAt === null ? null : (
@@ -137,7 +141,7 @@ function ReviewCard({
           )}
         </header>
         {review.title === null ? null : (
-          <h3 className="break-words text-base font-medium">{review.title}</h3>
+          <h2 className="break-words text-base font-medium">{review.title}</h2>
         )}
         {review.body === null ? (
           <p className="text-sm text-fg-muted">{t('no-text')}</p>
@@ -154,6 +158,7 @@ function ReviewCard({
               help={t('reply.help')}
               value={text}
               onChange={(event) => setText(event.target.value)}
+              disabled={pending}
               error={problem === null ? undefined : t(`error.${problem}`)}
             />
             <div className="flex flex-wrap gap-2">
@@ -177,6 +182,7 @@ function ReviewCard({
             <Select
               label={t('report.reason-label')}
               value={reason}
+              disabled={pending}
               onChange={(event) => setReason(event.target.value as ReportReason)}
               options={REPORT_REASONS.map((id) => ({ value: id, label: t(`report.reason.${id}`) }))}
             />
@@ -192,9 +198,7 @@ function ReviewCard({
         ) : null}
 
         {problem !== null && mode !== 'reply' && mode !== 'edit' ? (
-          <Banner tone="critical">
-            <span id={reasonId}>{t(`error.${problem}`)}</span>
-          </Banner>
+          <Banner tone="critical">{t(`error.${problem}`)}</Banner>
         ) : null}
 
         {mode === 'idle' ? (

@@ -1731,7 +1731,6 @@
     "title": "Reviews",
     "intro": "What customers wrote about your products. You can answer each review once in public and report one that breaks the rules. Only the platform can hide or remove a review.",
     "stars": "{rating} out of 5 stars",
-    "review-label": "Review, {rating} out of 5 stars",
     "product-link": "View product",
     "order-link": "View order",
     "no-text": "The customer left a rating without a text.",
@@ -1743,7 +1742,7 @@
     },
     "off": {
       "title": "Reviews are not switched on yet",
-      "body": "Customer reviews have not been opened to the public. They will show up here once they are."
+      "body": "Customer reviews are not available yet. They will appear here once the platform turns them on."
     },
     "reply": {
       "title": "Your reply",
@@ -1751,7 +1750,7 @@
       "edit": "Edit reply",
       "label": "Your public reply",
       "edit-label": "Edit your public reply",
-      "help": "Everyone who reads the review sees your reply. Keep it polite and leave out phone numbers, emails, links and addresses. You can answer once.",
+      "help": "Everyone who reads the review sees your reply. Keep it polite and leave out phone numbers, emails, links and addresses. You can post one reply and edit it for a limited time.",
       "save": "Post reply",
       "save-edit": "Save changes",
       "saved": "Reply posted",
@@ -1784,7 +1783,7 @@
       "throttled": "Too many requests. Wait a moment and try again.",
       "csrf": "Your session changed. Reload the page and try again.",
       "denied": "You do not have permission to do this.",
-      "unavailable": "Reviews could not be reached. Try again in a moment.",
+      "unavailable": "Reviews could not be loaded. Try again in a moment.",
       "unknown": "Something went wrong. Try again."
     }
   },

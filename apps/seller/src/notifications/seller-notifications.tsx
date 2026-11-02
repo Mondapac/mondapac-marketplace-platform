@@ -103,7 +103,7 @@ function lookOf(notice: ListedNotice): Look {
     case REVIEW_RESTORED:
       return { icon: 'star', tone: 'neutral', category: 'reviews' };
     case DELIVERY_PROBLEM:
-      return { icon: 'alert-triangle', tone: 'attention', category: 'reviews' };
+      return { icon: 'alert-triangle', tone: 'attention', category: 'orders' };
     default:
       return { icon: 'bell', tone: 'neutral', category: 'other' };
   }
