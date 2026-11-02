@@ -53,8 +53,8 @@ the words). The text is never logged, audited, evented, put in a signal row or i
 - Daily limit: counted from the author's own rows in the insert-only log (submit, edit, delete) plus seller ratings, so delete-and-resubmit and edits are limited too. Submit, edit and rate are refused at the limit; a delete never is, and a buyer at the limit still gets the real answer for a review that exists. It is a soft limit: the count and the insert share one READ COMMITTED unit, so parallel requests of one account can overshoot by the number in flight.
 - Refused: a member of the seller (`SellerAffinity`, `reviews.own-store`); more than
   `maxSubmissionsPerAccountPerDay` reviews plus ratings in 24 hours (`reviews.rate-limited`, 429).
-- Signal, not refuse, for the same address or payment fingerprint as the seller: NOT built, see
-  the package 5 TODO below.
+- Signal, not refuse, for the same address or payment fingerprint as the seller: built in package 5
+  (see "Package 5" below).
 
 ## Tables (schema `reviews`)
 
@@ -116,13 +116,35 @@ the review switch is on or off.
    only; the same known gap as the wallet switch. Add `@RequiresStepUp` when admin step-up lands.
 4. Account deletion has no event or hook in identity; `detachAuthor` is ready for it.
 
-## TODO for package 5 (anti-abuse signals)
+## Package 5 (1 Nov 2026): helpful votes, overlap signals, rating totals
 
-Raise a `review_signals` row (code `same-address-as-seller`, `same-payment-fingerprint`) when the
-buyer's delivery address or payment fingerprint matches the seller's. It needs an address and a
-fingerprint comparison from ordering and payments that is not cheap today, so it is left out of
-package 1. Also then: a `held` queue and moderation endpoints (package 2), helpful votes, seller
-replies (package 4), notifications, search ranking and photos.
+All of it sits behind the reviews Market switch (off). Mock data is synthetic and lives only in test
+fixtures and the DB specs, on both Market fixtures (AU and ZZ); nothing is seeded into a real database.
+
+- **Helpful votes:** `PUT` and `DELETE /reviews/products/:publicId/helpful` (signed-in buyer, CSRF,
+  `no-store`). A vote is on a PUBLISHED review only, once per account (a repeat is the same answer), not
+  on your own review (`reviews.own-review`, 403), not by a member of the seller (`reviews.own-store`),
+  and at most `maxHelpfulVotesPerAccountPerDay` (AU 200, ZZ 3; over it the vote is rolled back,
+  `reviews.rate-limited`). Table `reviews.helpful_votes` (insert and delete only; an update is refused);
+  `product_reviews.helpful_count` is kept exact by database triggers in the same transaction, and the
+  the application role holds a column grant on `helpful_count` because the triggers run as the invoker; a guard trigger (`pg_trigger_depth() < 2`) refuses any direct write, and a review is born with 0. A vote is never shown with its
+  voter. `detachAuthor` deletes the votes of the deleted account. The public list shows `helpfulCount`
+  and takes `sort=helpful` (keyset on helpful count, published time, id; partial index
+  `product_reviews_public_list_helpful_idx`).
+- **Overlap signals:** `same-address-as-seller` (ordering decides, with at least two shared address fields after folding case
+  and spacing) and `same-payment-fingerprint`. A signal only: it holds the review for a moderator like
+  the other submit signals and is recorded on seller ratings, and never refuses a buyer. The port `SellerOverlapSource` returns only two yes or no answers
+  (`sameAddress`, `samePaymentFingerprint`); the comparison is made in ordering and payments. **Open:** ordering and payments publish no such comparison yet,
+  so the bound source is `UnavailableSellerOverlap` (answers "cannot say", no signal). Wiring it is a
+  follow-up with ordering and payments; reviews never receives an address or card detail.
+- **Rating totals for search:** facade `productRatingTotals` (rule system, at most 1000 per page, from
+  the rebuilt summaries). Search copies them (see docs/modules/search/search.md).
+- **UI follow-ups (not in this package):** packages 2 and 3 are not merged. The review list should show
+  the vote button and `helpfulCount` (vote state per viewer needs a small read for "did I vote", not
+  built), and the admin queue should show the overlap signals on a held review.
+- **Still open from the older list:** look-alike letters in contact checks (UTS #39), a very short
+  paid-to-delivered time on pickup, many reviews of one seller from fresh accounts, notifications,
+  photos, seller replies (package 4).
 
 ## Privacy and moderation notes (after the Opus review)
 
@@ -160,7 +182,7 @@ package that needs them).
 - Settings: two admins switching at once can write a duplicate audit row (no row lock on the
   switch); take `SELECT ... FOR UPDATE` when the moderation package touches it.
 - A moderator `hold` (package 2) must also block delete-and-resubmit, as `hidden` and `removed` do.
-- Contact-detail checks do not fold look-alike letters (Cyrillic, Greek); add a UTS #39 skeleton in
+- Contact-detail checks do not fold look-alike letters (Cyrillic, Greek); add a UTS #39 skeleton in a
   package 5. Package 5 should also signal a very short paid-to-delivered time on pickup and many
   reviews of one seller from fresh accounts.
 - Deleting a `removed` review clears its text; ask whether removed text must be kept for a period.
@@ -224,3 +246,30 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
 - Differences from design section 7, on purpose: the star chart filters the list instead of the
   "With text / 1-2 star" chips, and one review count is shown (the API has no separate rating
   count). A hidden review shows "Not shown" only: the API does not return the reason yet.
+
+## Package 4a: the seller's side of the API (backend)
+
+- New seller permissions, not protected: `reviews.seller.view`, `reviews.seller.reply`,
+  `reviews.seller.report`. Routes under `reviews/seller`: GET list, POST and PATCH
+  `:reviewId/reply`, POST `:reviewId/report`. Writes are refused in an acting-as session.
+- A seller sees only its own published reviews and an order reference (the seller order id); never
+  the buyer's name, email or address. One reply per review (unique key, so a race makes one row).
+  Editing a reply is allowed for `reviews.replyEditWindowDays` (default 7) after it was written;
+  `reviews.replyMaxLength` defaults to 2000. Both are Market config.
+- A reply goes through the same text checks as a review (contact details, links, markup, the
+  Market's blocked words). Unlike a review it is refused, not held: a reply has no queue.
+- A report stores a reason code from a closed list (`personal-information`, `abusive`, `irrelevant`,
+  `not-a-purchase`, `extortion`) in `review_reports`, one per team member; it opens the existing
+  "reported" tab of the admin queue. The seller can never hide or remove a review.
+- A review moves to another seller when the buyer buys the product again from someone else. The
+  earlier seller's reply (and, when the author deletes and writes the review again, every published
+  reply) is then set to `superseded` (kept as history, never shown or edited) and
+  the new seller starts clean; a seller only ever reads and edits its own reply. The one-reply
+  rule is "one published reply per review" (partial unique index, migration
+  `20261101230000_reviews_reply_per_seller`). Open question for the owner: keep the old reply
+  instead? Clearing is the safe default. Hidden and
+  removed replies are a moderator's decision and are never superseded. A reply is written or edited
+  only after the review row is locked, so it cannot slip in beside a concurrent move.
+- Reply max length is capped at 2000 in Market config, matching the table CHECK.
+- Not in 4a: the public reply under a review on the product page (package 3 list), notices for the
+  seller, buyer and admin (4b), the seller panel screens (4c), the daily digest, appeals.

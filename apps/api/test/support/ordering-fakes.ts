@@ -16,9 +16,13 @@ import type {
   SellerOrderDelivered,
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
+import type { PaymentAttemptLimits } from '../../src/modules/ordering/application/ports/payment-attempt-limits';
 import type {
+  CardPaymentFailure,
   CheckoutGateway,
+  ConfirmationTokenFacts,
   GatewayFailure,
+  PayByCardRequest,
   RefundAnswer,
 } from '../../src/modules/ordering/application/ports/checkout-gateway';
 import {
@@ -455,12 +459,19 @@ export class FakeShipping implements ShippingFacade {
       readonly window: { readonly start: string; readonly end: string } | null;
     },
   ): Promise<
-    Result<{ readonly allowed: boolean; readonly reason: ChoiceRefusal | null }, ShippingFailure>
+    Result<
+      {
+        readonly allowed: boolean;
+        readonly reason: ChoiceRefusal | null;
+        readonly readyPrepMinutes: number;
+      },
+      ShippingFailure
+    >
   > {
     this.deliveryChoicesAsked.push(request);
     if (this.deliveryChoiceDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     const reason = this.deliveryRefused.get(`${request.sellerId}|${request.method}`) ?? null;
-    return Promise.resolve(ok({ allowed: reason === null, reason }));
+    return Promise.resolve(ok({ allowed: reason === null, reason, readyPrepMinutes: 60 }));
   }
   priceDelivery(_c: CallContext, quote: Money): Promise<Result<PricedDelivery, ShippingFailure>> {
     return Promise.resolve(
@@ -793,6 +804,35 @@ export class FakeGateway implements CheckoutGateway {
     this.statusReads.push(stripeRefundId);
     if (this.refundFails !== null) return Promise.resolve(err(this.refundFails));
     return Promise.resolve(ok({ refundId: stripeRefundId, status: this.readAnswers }));
+  }
+  /** The ConfirmationToken facts a read answers (a Visa card unless a test says otherwise). */
+  tokenFacts: ConfirmationTokenFacts = { livemode: false, methodType: 'card', cardBrand: 'visa' };
+  tokenReadFails: GatewayFailure | null = null;
+  tokenReads: string[] = [];
+  readConfirmationToken(confirmationToken: string) {
+    this.tokenReads.push(confirmationToken);
+    if (this.tokenReadFails !== null) return Promise.resolve(err(this.tokenReadFails));
+    return Promise.resolve(ok(this.tokenFacts));
+  }
+  /** The card payments asked for, and how the next one ends. */
+  cardPayments: PayByCardRequest[] = [];
+  cardFails: CardPaymentFailure | null = null;
+  cardStatus: 'authorised' | 'requires-action' = 'authorised';
+  payByCard(request: PayByCardRequest) {
+    this.cardPayments.push(request);
+    if (this.cardFails !== null) return Promise.resolve(err(this.cardFails));
+    const paymentIntentId = `pi_card_${this.cardPayments.length}`;
+    return Promise.resolve(
+      ok(
+        this.cardStatus === 'authorised'
+          ? { status: 'authorised' as const, paymentIntentId }
+          : {
+              status: 'requires-action' as const,
+              paymentIntentId,
+              clientSecret: `${paymentIntentId}_secret_test`,
+            },
+      ),
+    );
   }
 }
 
@@ -1169,5 +1209,20 @@ export class FakePickupVault implements PickupCodeVault {
 export class AllowAllDeliveryMethods implements DeliveryMethodPolicy {
   allows(): Promise<boolean> {
     return Promise.resolve(true);
+  }
+  readyPrepMinutes(): Promise<number | null> {
+    return Promise.resolve(60);
+  }
+}
+
+/** Counts card payment attempts per subject, like the shared counters; `breaks` makes it fail. */
+export class FakeAttemptLimits implements PaymentAttemptLimits {
+  readonly counts = new Map<string, number>();
+  breaks = false;
+  count(subject: string) {
+    if (this.breaks) return Promise.reject(new Error('counter down'));
+    const count = (this.counts.get(subject) ?? 0) + 1;
+    this.counts.set(subject, count);
+    return Promise.resolve({ count, retryAfterSeconds: 120 });
   }
 }

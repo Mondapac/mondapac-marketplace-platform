@@ -283,6 +283,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_files_market_id_decision_intent_since_idx ON sellers.seller_files USING btree (market_id, decision_intent_since) WHERE (decision_intent IS NOT NULL)',
   'sellers.admin_flags_market_id_seller_id_code_open_key':
     'CREATE UNIQUE INDEX admin_flags_market_id_seller_id_code_open_key ON sellers.admin_flags USING btree (market_id, seller_id, code) WHERE (cleared_at IS NULL)',
+  'reviews.review_replies_market_id_review_id_published_key':
+    "CREATE UNIQUE INDEX review_replies_market_id_review_id_published_key ON reviews.review_replies USING btree (market_id, review_id) WHERE (status = 'published'::text)",
   'sellers.admin_flags_market_id_raised_at_open_idx':
     'CREATE INDEX admin_flags_market_id_raised_at_open_idx ON sellers.admin_flags USING btree (market_id, raised_at, id) WHERE (cleared_at IS NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
@@ -313,6 +315,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'wallet.lots_market_id_expires_at_id_idx':
     "CREATE INDEX lots_market_id_expires_at_id_idx ON wallet.lots USING btree (market_id, expires_at, id) WHERE ((source = 'promo'::text) AND (remaining_minor > 0))",
   // Reviews: public list pages read published reviews only (newest first, optionally by rating).
+  'reviews.product_reviews_public_list_helpful_idx':
+    "CREATE INDEX product_reviews_public_list_helpful_idx ON reviews.product_reviews USING btree (market_id, product_id, helpful_count DESC, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_idx':
     "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_rating_idx':

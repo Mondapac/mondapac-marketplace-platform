@@ -54,6 +54,7 @@
     "bodyMaxLength": 300,
     "pageSize": 2,
     "summaryRebuildMinutes": 720,
+    "maxHelpfulVotesPerAccountPerDay": 3,
     "autoChecks": {
       "blockedTerms": ["zork", "blarg"],
       "repeatedCharRun": 5,
@@ -93,7 +94,13 @@
     "invoice": { "enabled": false }
   },
   "search": {
-    "textSearchConfig": "simple"
+    "textSearchConfig": "simple",
+    "ratingBoost": {
+      "enabled": true,
+      "weightBps": 500,
+      "priorCount": 5,
+      "priorMeanTimes100": 300
+    }
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
