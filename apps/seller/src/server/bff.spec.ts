@@ -1026,3 +1026,62 @@ describe('relay of the store profile', () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe('relay allowlist for the seller reviews', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const send = (method: string, path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+
+  it('relays the list read with its cursor and drops other query keys', async () => {
+    const upstream = upstreamOk();
+    const cursor = `1760000000000_${ID}`;
+    const response = await relay(
+      config,
+      send('GET', `reviews/seller?cursor=${cursor}&limit=500&x=1`),
+      ['reviews', 'seller'],
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/reviews/seller?cursor=${cursor}`);
+    const bad = upstreamOk();
+    await relay(config, send('GET', 'reviews/seller?cursor=nonsense'), ['reviews', 'seller'], bad);
+    expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/reviews/seller');
+  });
+
+  it('relays reply (POST and PATCH) and report (POST) by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const ok = [
+      ['POST', ['reviews', 'seller', ID, 'reply']],
+      ['PATCH', ['reviews', 'seller', ID, 'reply']],
+      ['POST', ['reviews', 'seller', ID, 'report']],
+    ] as const;
+    for (const [method, path] of ok) {
+      expect((await relay(config, send(method, 'x'), [...path], upstream)).status).toBe(200);
+    }
+    for (const [method, path] of [
+      ['PUT', ['reviews', 'seller', ID, 'reply']],
+      ['DELETE', ['reviews', 'seller', ID, 'reply']],
+      ['PATCH', ['reviews', 'seller', ID, 'report']],
+      ['POST', ['reviews', 'seller', 'not-a-uuid', 'reply']],
+      ['POST', ['reviews', 'seller', ID, 'hide']],
+      ['POST', ['reviews', 'admin', 'settings']],
+      ['POST', ['reviews', 'products']],
+    ] as const) {
+      expect((await relay(config, send(method, 'x'), [...path], upstream)).status).toBe(404);
+    }
+  });
+
+  it('refuses a cross-site PATCH of a reply', async () => {
+    const request = new Request(`http://seller.localhost:3001/api/reviews/seller/${ID}/reply`, {
+      method: 'PATCH',
+      headers: { ...sameOrigin, 'sec-fetch-site': 'cross-site' },
+      body: '{}',
+    });
+    const response = await relay(config, request, ['reviews', 'seller', ID, 'reply'], upstreamOk());
+    expect(response.status).toBe(403);
+  });
+});
