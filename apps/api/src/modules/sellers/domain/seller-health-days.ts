@@ -48,6 +48,21 @@ export function windowStart(today: Temporal.PlainDate, length: number): Temporal
   return today.subtract({ days: length - 1 });
 }
 
+/**
+ * The instants a local day of the seller covers: `[from, to)`, from the first moment of the day in
+ * the seller's IANA zone to the first moment of the next day (ADR-0005). A day of a zone that
+ * changes its clock is 23 or 25 hours long; nothing here assumes 24.
+ */
+export function localDayBounds(
+  day: Temporal.PlainDate,
+  zone: string,
+): { readonly from: Temporal.Instant; readonly to: Temporal.Instant } {
+  return {
+    from: day.toZonedDateTime(zone).toInstant(),
+    to: day.add({ days: 1 }).toZonedDateTime(zone).toInstant(),
+  };
+}
+
 const inWindow = (day: SellerHealthDay, today: Temporal.PlainDate, length: number): boolean =>
   Temporal.PlainDate.compare(day.day, windowStart(today, length)) >= 0 &&
   Temporal.PlainDate.compare(day.day, today) <= 0;

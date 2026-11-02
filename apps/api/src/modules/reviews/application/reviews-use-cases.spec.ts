@@ -35,6 +35,7 @@ import { ModerateReview } from './use-cases/moderate-review.use-case';
 import { RemoveReview } from './use-cases/remove-review.use-case';
 import { ViewModerationReview } from './use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from './use-cases/delete-product-review.use-case';
+import { CountSellerReviews } from './use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from './use-cases/detach-author.use-case';
 import { EditProductReview } from './use-cases/edit-product-review.use-case';
 import { ListMyReviews } from './use-cases/list-my-reviews.use-case';
@@ -1302,6 +1303,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
         new ViewSellerSummary(gate, deps),
         new DetachAuthor(gate, deps),
         new ListProductRatingTotals(gate, deps),
+        new CountSellerReviews(gate, deps),
       );
       expect(await facade.productSummary(anonymous, product(1))).toMatchObject({
         ok: true,
@@ -1314,6 +1316,77 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(await facade.detachAuthor(system, BUYER)).toEqual(ok({ reviews: 1, ratings: 0 }));
     });
   });
+
+  describe('seller health feed', () => {
+    const count = (input: object, context = system) =>
+      new CountSellerReviews(gate, deps).execute(context, input);
+    const win = (from: Temporal.Instant, to: Temporal.Instant) => ({
+      from: from.toString(),
+      to: to.toString(),
+    });
+    const around = win(T0.subtract({ hours: 1 }), T0.add({ hours: 1 }));
+
+    it('counts the seller reviews published in each window and their stars, in order', async () => {
+      await switchOn();
+      bought(1);
+      bought(2);
+      await submitted(1, { rating: 5 });
+      await submitted(2, { rating: 3 });
+
+      const read = await count({
+        sellerId: SELLER,
+        windows: [
+          around,
+          win(T0.subtract({ hours: 48 }), T0.subtract({ hours: 24 })),
+          win(T0.add({ hours: 1 }), T0.add({ hours: 2 })),
+        ],
+      });
+
+      expect(read).toEqual(
+        ok([
+          { reviews: 2, starsSum: 8 },
+          { reviews: 0, starsSum: 0 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
+    });
+
+    it('counts only the asked seller', async () => {
+      await switchOn();
+      bought(1);
+      await submitted(1, { rating: 4 });
+
+      const other = await count({
+        sellerId: 'a0000000-0000-7000-8000-000000000999',
+        windows: [around],
+      });
+
+      expect(other).toEqual(ok([{ reviews: 0, starsSum: 0 }]));
+    });
+
+    it('answers only the system, refuses bad windows and is off while reviews are off', async () => {
+      const input = { sellerId: SELLER, windows: [around] };
+      expect(await count(input)).toEqual(err({ code: 'reviews.disabled' }));
+      await switchOn();
+      expect(await count(input, customerCtx())).toEqual(err({ code: 'access.denied' }));
+      expect(await count(input, anonymous)).toEqual(err({ code: 'access.denied' }));
+      expect(await count({ sellerId: SELLER, windows: [win(T0, T0)] })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'windows.0.to', code: 'range' }] },
+      });
+      expect(
+        await count({ sellerId: SELLER, windows: [{ from: 'yesterday', to: 'today' }] }),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await count({ sellerId: SELLER, windows: [] })).toMatchObject({ ok: false });
+      expect(await count({ sellerId: SELLER, windows: Array(9).fill(around) })).toMatchObject({
+        ok: false,
+      });
+    });
+  });
+
   // ---- package 5: helpful votes, overlap signals, rating totals ----------------------------
 
   describe('package 5', () => {
