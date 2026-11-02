@@ -70,6 +70,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue',
+    // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
+    'catalog/admin/business-activities',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -129,6 +131,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // A new brand (catalog), and keeping a group of the merge queue apart.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue/dismiss',
+    // A new business activity (catalog).
+    'catalog/admin/business-activities',
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
     // the chosen products (at most 200 ids) or the whole filter; the body is capped at 16 KB.
     'catalog/admin/products/bulk',
@@ -216,6 +220,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id',
     // The whole content of a brand, with the version seen (catalog).
     'catalog/admin/brands/:id',
+    // The whole content of a business activity, with the version seen (catalog).
+    'catalog/admin/business-activities/:id',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
   ],
@@ -236,6 +242,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One import and its report CSV (catalog): the report takes the query `kind`.
     'catalog/admin/platform-imports/:id',
     'catalog/admin/platform-imports/:id/report',
+    // One business activity (catalog), read again after a conflict.
+    'catalog/admin/business-activities/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -297,6 +305,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -357,6 +366,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/business-activities': {
+    status: /^(active|inactive)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
