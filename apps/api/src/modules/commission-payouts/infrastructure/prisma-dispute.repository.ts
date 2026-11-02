@@ -256,6 +256,31 @@ export class PrismaDisputeRepository implements DisputeRepository {
     return rows.map(toDecision);
   }
 
+  async sellerFaultDecisionTimes(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).commissionPayoutsDisputeDecision.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        bearer: 'seller',
+        decidedAt: { gte: toDate(from), lt: toDate(to) },
+        reversedBy: { none: {} },
+      },
+      select: { decidedAt: true },
+      take: limit + 1,
+    });
+    // A cut-off count would be a wrong score, so a seller past the limit fails the read instead.
+    if (rows.length > limit) {
+      throw new RangeError('commission-payouts.seller-health: too many decisions in the span');
+    }
+    return rows.map((row) => toInstant(row.decidedAt));
+  }
+
   async lockForDecision(
     market: MarketContext,
     disputeId: Id<'Dispute'>,

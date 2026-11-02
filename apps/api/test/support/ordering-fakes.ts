@@ -766,6 +766,13 @@ export class FakeCommission implements CommissionPayoutsFacade {
     this.delivered.push(delivered);
     return Promise.resolve(ok('anchored' as const));
   }
+  sellerLostDisputes(
+    _c: CallContext,
+    _sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    return Promise.resolve(ok(windows.map(() => ({ lost: 0 }))));
+  }
   recordRefund(
     _c: CallContext,
     refund: RefundedSellerOrder,
