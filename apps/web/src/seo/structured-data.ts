@@ -94,12 +94,19 @@ export function productStructuredData(
   const images = product.photos.flatMap((photo) => imageUrl(photo, origin) ?? []);
   const description = Array.from(plainText(product.description)).slice(0, DESCRIPTION_MAX).join('');
   const certifications = offer.certifications.flatMap((badge) => certificationOf(badge) ?? []);
+  // The specifications as schema.org PropertyValue, the same rows the page shows.
+  const properties = product.specifications.flatMap((row) => {
+    const name = plainText(row.label);
+    const value = plainText(row.value);
+    return name === '' || value === '' ? [] : [{ '@type': 'PropertyValue', name, value }];
+  });
   return {
     '@type': 'Product',
     name: plainText(product.name),
     ...(images.length === 0 ? {} : { image: images }),
     ...(description === '' ? {} : { description }),
     ...(certifications.length === 0 ? {} : { hasCertification: certifications }),
+    ...(properties.length === 0 ? {} : { additionalProperty: properties }),
     // The brand entity of the product (its active brand's page), never a text a seller typed.
     ...(product.brand === undefined
       ? {}

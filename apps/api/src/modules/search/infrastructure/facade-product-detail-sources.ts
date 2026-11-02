@@ -45,6 +45,7 @@ export class FacadeProductDetailSources implements ProductDetailSources {
           categoryIds: published.categoryIds,
           variants: published.variants.map(({ variantId, label }) => ({ variantId, label })),
           brand: published.brand,
+          specifications: published.specifications,
         },
       };
     } catch {

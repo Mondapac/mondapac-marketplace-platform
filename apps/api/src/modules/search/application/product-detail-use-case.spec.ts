@@ -185,6 +185,7 @@ describe.each([
     description: null,
     categoryIds: [CATEGORY],
     brand: null,
+    specifications: [],
     variants: [
       { variantId: variant(1), label: '500 g' },
       { variantId: variant(2), label: null },
@@ -255,6 +256,27 @@ describe.each([
 
     expect(branded.ok && branded.value.brand).toEqual({ slug: 'saffron-co', name: 'Saffron & Co' });
     expect(plain.ok && plain.value.brand).toBeNull();
+  });
+
+  it("carries the product's specifications from catalog unchanged, empty when it has none", async () => {
+    shelves.documents = [hit(1)];
+    price(1, 1, 900n);
+    const specifications = [
+      {
+        groupCode: 'details',
+        items: [
+          { code: 'organic', name: 'Organic', value: { kind: 'boolean' as const, value: true } },
+        ],
+      },
+    ];
+    sources.product_ = { product: { ...content(), specifications } };
+
+    const withSpecs = await run();
+    sources.product_ = { product: content() };
+    const without = await run();
+
+    expect(withSpecs.ok && withSpecs.value.specifications).toEqual(specifications);
+    expect(without.ok && without.value.specifications).toEqual([]);
   });
 
   describe('photos', () => {

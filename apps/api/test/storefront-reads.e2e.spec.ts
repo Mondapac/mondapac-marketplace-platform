@@ -97,6 +97,16 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       description: 'Beef',
       categoryIds: [CATEGORY],
       brand: { slug: 'kedron-farms', name: 'Kedron Farms' },
+      specifications: [
+        {
+          groupCode: 'details',
+          items: [
+            { code: 'origin', name: 'Origin', value: { kind: 'text', text: 'Queensland' } },
+            { code: 'tags', name: 'Tags', value: { kind: 'list', items: ['Fresh', 'Local'] } },
+            { code: 'organic', name: 'Organic', value: { kind: 'boolean', value: true } },
+          ],
+        },
+      ],
       images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
       offers: [
         {
@@ -201,6 +211,16 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       description: 'Beef',
       categoryIds: [CATEGORY],
       brand: { slug: 'kedron-farms', name: 'Kedron Farms' },
+      specifications: [
+        {
+          groupCode: 'details',
+          items: [
+            { code: 'origin', name: 'Origin', value: { kind: 'text', text: 'Queensland' } },
+            { code: 'tags', name: 'Tags', value: { kind: 'list', items: ['Fresh', 'Local'] } },
+            { code: 'organic', name: 'Organic', value: { kind: 'boolean', value: true } },
+          ],
+        },
+      ],
       images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
       offers: [
         {

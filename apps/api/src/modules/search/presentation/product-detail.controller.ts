@@ -81,6 +81,17 @@ export class ProductDetailController {
       description: detail.description,
       categoryIds: [...detail.categoryIds],
       brand: detail.brand === null ? null : { slug: detail.brand.slug, name: detail.brand.name },
+      specifications: detail.specifications.map((group) => ({
+        groupCode: group.groupCode,
+        items: group.items.map((item) => ({
+          code: item.code,
+          name: item.name,
+          value:
+            item.value.kind === 'list'
+              ? { kind: 'list' as const, items: [...item.value.items] }
+              : { ...item.value },
+        })),
+      })),
       images: detail.images.map(({ imageId, width, height, alt }) => ({
         imageId,
         width,

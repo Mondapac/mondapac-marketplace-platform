@@ -1,4 +1,5 @@
 import type { CallContext, Id, Money, Temporal } from '@mondapac/shared-kernel';
+import type { PublishedSpecificationGroup } from '../../../catalog';
 
 /** One Variant of the published product, in position order. */
 export interface DetailVariant {
@@ -15,6 +16,8 @@ export interface DetailProduct {
   readonly variants: readonly DetailVariant[];
   /** The product's active brand (page slug and name), or null. */
   readonly brand: { readonly slug: string; readonly name: string } | null;
+  /** The specifications (attribute values by family group), as catalog tells them; escape them. */
+  readonly specifications: readonly PublishedSpecificationGroup[];
 }
 
 /** One (Offer, Variant) a price or a stock state is asked for. */

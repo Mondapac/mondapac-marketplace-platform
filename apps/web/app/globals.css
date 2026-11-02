@@ -3369,6 +3369,15 @@ svg {
 .spec > div:nth-child(odd) {
   background: var(--sf-surface);
 }
+.spec-group + .spec-group {
+  margin-block-start: 16px;
+}
+.spec-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sf-slate);
+}
 .spec dt {
   color: var(--sf-slate);
   overflow-wrap: anywhere;

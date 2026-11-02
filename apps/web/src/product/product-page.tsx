@@ -11,6 +11,7 @@ import type {
   CertificationBadge,
   ProductDetail,
   ProductOffer,
+  ProductSpecification,
 } from '../storefront/types.ts';
 import { ProductReviews } from '../reviews/product-reviews.tsx';
 import type { ProductReviews as ProductReviewsData } from '../reviews/reviews-source.ts';
@@ -97,14 +98,7 @@ export function ProductPage({
               ) : null}
               {product.specifications.length > 0 ? (
                 <Collapsible title={t('specifications')} level={product.description ? 'h3' : 'h2'}>
-                  <dl className="spec">
-                    {product.specifications.map((s) => (
-                      <div key={s.label}>
-                        <dt>{s.label}</dt>
-                        <dd>{s.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                  <Specifications rows={product.specifications} />
                 </Collapsible>
               ) : null}
             </section>
@@ -340,5 +334,46 @@ export function ProductLoading({ label }: { readonly label: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** `country-of-origin` as "Country of origin": the family group code as a heading. */
+const groupTitle = (code: string): string => {
+  const words = code.replace(/[-_]+/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+/**
+ * The rows as tables of terms, one per family group in the API's order; a heading names a group
+ * only when there is more than one. Rows without a group (sample data) are one table.
+ */
+function Specifications({ rows }: { readonly rows: readonly ProductSpecification[] }) {
+  const groups: { code: string | undefined; rows: ProductSpecification[] }[] = [];
+  for (const row of rows) {
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.code === row.group) last.rows.push(row);
+    else groups.push({ code: row.group, rows: [row] });
+  }
+  const titled = groups.length > 1 && groups.every((g) => g.code !== undefined);
+  return (
+    <>
+      {groups.map((group) => (
+        <div key={group.code ?? ''} className="spec-group">
+          {titled ? (
+            <p className="spec-title" id={`spec-${group.code}`}>
+              {groupTitle(group.code!)}
+            </p>
+          ) : null}
+          <dl className="spec" aria-labelledby={titled ? `spec-${group.code}` : undefined}>
+            {group.rows.map((s) => (
+              <div key={s.label}>
+                <dt>{s.label}</dt>
+                <dd>{s.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
+    </>
   );
 }

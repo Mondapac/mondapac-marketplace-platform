@@ -65,6 +65,18 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
     texts: Record<string, { name: string; shortDescription?: string; description?: string }>;
     /** Variants of the revision in position order; `state` is the registry state. */
     variants: { state: 'proposed' | 'published' | 'retired'; labels: Record<string, string> }[];
+    /** The schema and values of the revision's attributes (specifications). */
+    attributes?: {
+      groups: { groupCode: string; attributes: { code: string }[] }[];
+      definitions: {
+        code: string;
+        dataType: string;
+        localizable?: boolean;
+        names: Record<string, string>;
+        options?: Record<string, Record<string, string>>;
+      }[];
+      values: Record<string, unknown>;
+    };
   }
 
   /** A product; `published` becomes the published revision, `draft` a newer one. */
@@ -104,10 +116,56 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       ...base,
       family_id: familyId,
       revision_no: 1,
-      groups: '[]',
+      groups: JSON.stringify(published?.attributes?.groups ?? []),
       author_kind: 'seed',
       created_at: T0.toString(),
     });
+    const definitionRevisionIds: string[] = [];
+    for (const definition of published?.attributes?.definitions ?? []) {
+      const definitionId = uuid7();
+      const definitionRevisionId = uuid7();
+      await insert('attribute_definitions', {
+        id: definitionId,
+        ...base,
+        code: definition.code,
+        data_type: definition.dataType,
+        localizable: definition.localizable ?? false,
+        status: 'active',
+        created_by_kind: 'seed',
+        version: 1,
+        created_at: T0.toString(),
+      });
+      await insert('attribute_definition_revisions', {
+        id: definitionRevisionId,
+        ...base,
+        definition_id: definitionId,
+        revision_no: 1,
+        material: false,
+        is_variant_option: false,
+        bounds: '{}',
+        names: JSON.stringify(definition.names),
+        author_kind: 'seed',
+        created_at: T0.toString(),
+      });
+      for (const [index, [optionCode, labels]] of Object.entries(
+        definition.options ?? {},
+      ).entries()) {
+        await insert('attribute_definition_revision_options', {
+          ...base,
+          revision_id: definitionRevisionId,
+          option_code: optionCode,
+          labels: JSON.stringify(labels),
+          active: true,
+          position: index,
+        });
+      }
+      await owner.query(
+        `UPDATE catalog.attribute_definitions SET published_revision_id = $3
+          WHERE market_id = $1 AND id = $2`,
+        [target.marketId, definitionId, definitionRevisionId],
+      );
+      definitionRevisionIds.push(definitionRevisionId);
+    }
     const categoryIds: string[] = [];
     for (let index = 0; index < 2; index++) {
       const category = PlatformCategory.create({
@@ -153,9 +211,9 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         base_revision_id: null,
         reverted_from_revision_id: null,
         family_revision_id: familyRevisionId,
-        definition_revision_ids: [],
+        definition_revision_ids: spec.attributes === undefined ? [] : definitionRevisionIds,
         tax_category_code: 'standard',
-        attribute_values: '{}',
+        attribute_values: JSON.stringify(spec.attributes?.values ?? {}),
         field_provenance: null,
         sensitive: false,
         sensitive_reasons: [],
@@ -252,8 +310,62 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         { variantId: a.variantIds[1], position: 1, label: '1 kg' },
       ],
       brand: null,
+      specifications: [],
     });
     expect(JSON.stringify(answer)).not.toContain('DRAFT');
+  });
+
+  it('carries the specifications of the published revision by family group, never a draft one', async () => {
+    const withSpecs = await product(
+      market,
+      {
+        ...SPEC_BASE,
+        attributes: {
+          groups: [
+            { groupCode: 'details', attributes: [{ code: 'origin' }, { code: 'pack' }] },
+            { groupCode: 'more', attributes: [{ code: 'organic' }, { code: 'weight' }] },
+          ],
+          definitions: [
+            { code: 'origin', dataType: 'text', localizable: true, names: { 'en-AU': 'Origin' } },
+            {
+              code: 'pack',
+              dataType: 'select',
+              names: { 'en-AU': 'Pack size', 'ja-JP': 'Size' },
+              options: { g250: { 'en-AU': '250 g' }, kg1: { 'en-AU': '1 kg' } },
+            },
+            { code: 'organic', dataType: 'boolean', names: { 'en-AU': 'Organic' } },
+            { code: 'weight', dataType: 'decimal', names: { 'en-AU': 'Weight' } },
+          ],
+          values: { origin: { 'en-AU': 'Queensland' }, pack: 'kg1', organic: true },
+        },
+      },
+      {
+        ...SPEC_BASE,
+        attributes: {
+          groups: [],
+          definitions: [],
+          values: { origin: { 'en-AU': 'DRAFT ORIGIN' } },
+        },
+      },
+    );
+
+    const answer = await read(withSpecs.productId);
+
+    expect(answer?.specifications).toEqual([
+      {
+        groupCode: 'details',
+        items: [
+          { code: 'origin', name: 'Origin', value: { kind: 'text', text: 'Queensland' } },
+          { code: 'pack', name: 'Pack size', value: { kind: 'text', text: '1 kg' } },
+        ],
+      },
+      {
+        groupCode: 'more',
+        items: [{ code: 'organic', name: 'Organic', value: { kind: 'boolean', value: true } }],
+      },
+    ]);
+    expect(JSON.stringify(answer)).not.toContain('DRAFT');
+    expect((await read((await product(market, SPEC_BASE)).productId))?.specifications).toEqual([]);
   });
 
   /** A brand row (brands are shared by every Market); `draft` needs the seller who proposed it. */
@@ -279,6 +391,10 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         WHERE market_id = $1 AND id = $2`,
       [target.marketId, productId, slug],
     );
+  const SPEC_BASE: Spec = {
+    texts: { 'en-AU': { name: 'Specified' } },
+    variants: [{ state: 'published', labels: { 'en-AU': 'A' } }],
+  };
   const SPEC: Spec = {
     texts: { 'en-AU': { name: 'Branded' } },
     variants: [{ state: 'published', labels: { 'en-AU': 'A' } }],

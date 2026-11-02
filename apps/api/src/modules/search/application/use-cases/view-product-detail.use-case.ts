@@ -3,6 +3,7 @@ import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { SearchValidationFailed } from '../../domain/search-query';
 import type { ProductDetailDependencies } from '../product-detail-dependencies';
+import type { PublishedSpecificationGroup } from '../../../catalog';
 import type { ImageRef } from '../../domain/image-ref';
 import { imageRefsOf } from '../product-images';
 import { detailKeyOf, type DetailBadge, type DetailKey } from '../ports/product-detail-sources';
@@ -51,6 +52,8 @@ export interface ProductDetail {
   readonly categoryIds: readonly Id<'Category'>[];
   /** The product's active brand (the brand page's slug and name), or null. */
   readonly brand: { readonly slug: string; readonly name: string } | null;
+  /** The specifications of the published revision, by family group; empty when none. */
+  readonly specifications: readonly PublishedSpecificationGroup[];
   /** The product's public photos in the published revision's order, at most 8; may be empty. */
   readonly images: readonly ImageRef[];
   readonly offers: readonly [ProductDetailOffer, ...ProductDetailOffer[]];
@@ -208,6 +211,7 @@ export class ViewProductDetail extends UseCase<
       description: product.description,
       categoryIds: product.categoryIds,
       brand: product.brand,
+      specifications: product.specifications,
       images: imageRefs.get(productId) ?? [],
       offers: [first, ...rest],
     });

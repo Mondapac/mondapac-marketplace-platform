@@ -1,11 +1,17 @@
 import { formatMoney } from '../format/money.ts';
 import { isBrandSlug } from './brands.ts';
 import { imageIdsOf, type PhotoUrl } from './photos.ts';
-import type { CertificationBadge, Money, ProductDetail, ProductOffer } from './types.ts';
+import type {
+  CertificationBadge,
+  Money,
+  ProductDetail,
+  ProductOffer,
+  ProductSpecification,
+} from './types.ts';
 
 // The product page's read of the API (`GET search/product-detail/:productId`, PR #450) and its
 // mapping to the page's own shape. What the API does not have yet stays empty and the page hides
-// it: specifications, the regular price beside a special, similar products, the seller's city, "selling since",
+// it: the regular price beside a special, similar products, the seller's city, "selling since",
 // ratings and delivery window.
 
 /** Money as the API sends it: minor units as a decimal string. */
@@ -22,6 +28,8 @@ export interface ProductDetailBody {
   readonly categoryIds: readonly string[];
   /** The product's active brand (`slug`, `name`) or null; untrusted, read through {@link brandRefOf}. */
   readonly brand?: unknown;
+  /** Specifications by family group (`groupCode`, `items`); untrusted, read through {@link specificationsOf}. */
+  readonly specifications?: unknown;
   /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
   readonly images?: unknown;
   readonly offers: readonly {
@@ -51,6 +59,9 @@ export interface ProductDetailBody {
 export interface ProductDetailLabels {
   readonly minimum: (amount: string) => string;
   readonly noMinimum: string;
+  /** The yes/no words of a yes-or-no specification; absent in a caller that has no such rows. */
+  readonly yes?: string;
+  readonly no?: string;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -125,6 +136,54 @@ export function brandRefOf(raw: unknown): ProductDetail['brand'] {
   return isBrandSlug(slug) && isText(name) ? { slug, name } : undefined;
 }
 
+const MAX_SPEC_GROUPS = 20;
+const MAX_SPEC_ITEMS = 100;
+const MAX_SPEC_LIST = 50;
+const GROUP_CODE = /^[a-z][a-z0-9_-]{0,63}$/u;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** The shown text of one value, or null when it is empty or out of shape (never half a row). */
+function specValueText(raw: unknown, labels: ProductDetailLabels): string | null {
+  if (!isRecord(raw)) return null;
+  if (raw.kind === 'text')
+    return typeof raw.text === 'string' && isText(raw.text) ? raw.text : null;
+  if (raw.kind === 'boolean') {
+    if (typeof raw.value !== 'boolean') return null;
+    return (raw.value ? labels.yes : labels.no) ?? null;
+  }
+  if (raw.kind === 'list' && Array.isArray(raw.items)) {
+    const items = (raw.items as unknown[]).filter(isText).slice(0, MAX_SPEC_LIST);
+    return items.length === 0 ? null : items.join(', ');
+  }
+  return null;
+}
+
+/**
+ * The specification rows from the untrusted body, in the API's order (family groups, then
+ * attributes): a group or row of the wrong shape, an empty one, or a yes/no without its words is
+ * dropped whole. A name or value over {@link MAX_TEXT} is dropped, never cut.
+ */
+export function specificationsOf(
+  raw: unknown,
+  labels: ProductDetailLabels,
+): ProductSpecification[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProductSpecification[] = [];
+  for (const group of (raw as unknown[]).slice(0, MAX_SPEC_GROUPS)) {
+    if (!isRecord(group) || typeof group.groupCode !== 'string') continue;
+    if (!GROUP_CODE.test(group.groupCode) || !Array.isArray(group.items)) continue;
+    for (const item of (group.items as unknown[]).slice(0, MAX_SPEC_ITEMS)) {
+      if (!isRecord(item) || !isText(item.name)) continue;
+      const value = specValueText(item.value, labels);
+      if (value === null || out.length >= MAX_SPEC_ITEMS) continue;
+      out.push({ label: item.name, value, group: group.groupCode });
+    }
+  }
+  return out;
+}
+
 /** API money as the page's; null when the amount is not a safe whole number of minor units. */
 function moneyOf(body: MoneyBody): Money | null {
   if (!/^[0-9]{1,15}$/u.test(body.amount)) return null;
@@ -193,7 +252,7 @@ export function productDetailOf(
     name: body.name,
     category: body.categoryIds[0] ?? '',
     description: body.description ?? body.shortDescription ?? '',
-    specifications: [],
+    specifications: specificationsOf(body.specifications, labels),
     ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
     photos: shots.map((shot) => shot.large),
     ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),

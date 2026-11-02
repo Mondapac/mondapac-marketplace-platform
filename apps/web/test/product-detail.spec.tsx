@@ -21,6 +21,8 @@ const PRODUCT = '01990000-0000-7000-8000-000000000900';
 const labels = {
   minimum: (amount: string) => `${amount} minimum order`,
   noMinimum: 'No minimum order',
+  yes: 'Yes',
+  no: 'No',
 };
 
 const unit = (
@@ -470,5 +472,105 @@ describe('certification badges from the API', () => {
       renderOffer([{ ...GOOD, typeCode: 'NOPE' }]);
       expect(screen.queryByRole('heading', { name: 'Certificates' })).toBeNull();
     });
+  });
+});
+
+// The specifications of the published revision (the API's `specifications`, untrusted): rows in
+// the API's order by family group, a malformed row dropped whole.
+describe('specifications', () => {
+  const GROUPS = [
+    {
+      groupCode: 'general',
+      items: [
+        { code: 'origin', name: 'Country of origin', value: { kind: 'text', text: 'Australia' } },
+      ],
+    },
+    {
+      groupCode: 'details',
+      items: [
+        { code: 'tags', name: 'Tags', value: { kind: 'list', items: ['Fresh', 'Local'] } },
+        { code: 'organic', name: 'Organic', value: { kind: 'boolean', value: false } },
+      ],
+    },
+  ];
+
+  const renderPage = (specifications: unknown) => {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('min-width: 1000px'),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf({ ...TWO_SELLERS, specifications }, 'en', labels)!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+  };
+
+  it('maps the rows in order with the group, joins a list and words a yes or no', () => {
+    expect(
+      productDetailOf({ ...TWO_SELLERS, specifications: GROUPS }, 'en', labels)!.specifications,
+    ).toEqual([
+      { label: 'Country of origin', value: 'Australia', group: 'general' },
+      { label: 'Tags', value: 'Fresh, Local', group: 'details' },
+      { label: 'Organic', value: 'No', group: 'details' },
+    ]);
+  });
+
+  it('drops a malformed group, row or value whole and takes none from a non-list', () => {
+    const noWords = { minimum: labels.minimum, noMinimum: labels.noMinimum };
+    expect(
+      productDetailOf({ ...TWO_SELLERS, specifications: 'x' }, 'en', labels)!.specifications,
+    ).toEqual([]);
+    expect(
+      productDetailOf(
+        {
+          ...TWO_SELLERS,
+          specifications: [
+            null,
+            { groupCode: 'Bad Code', items: [{ name: 'A', value: { kind: 'text', text: 'a' } }] },
+            {
+              groupCode: 'details',
+              items: [
+                { name: '', value: { kind: 'text', text: 'a' } },
+                { name: 'No value', value: { kind: 'text', text: ' ' } },
+                { name: 'Unknown', value: { kind: 'html', text: 'a' } },
+                { name: 'Empty list', value: { kind: 'list', items: [] } },
+                { name: 'Long', value: { kind: 'text', text: 'x'.repeat(201) } },
+                { name: 'Yes without words', value: { kind: 'boolean', value: true } },
+                { name: 'Kept', value: { kind: 'text', text: 'ok' } },
+              ],
+            },
+          ],
+        },
+        'en',
+        noWords,
+      )!.specifications,
+    ).toEqual([{ label: 'Kept', value: 'ok', group: 'details' }]);
+  });
+
+  it('shows one table per group with its heading when there are several groups', () => {
+    renderPage(GROUPS);
+    const titles = Array.from(document.querySelectorAll('.spec-title')).map((e) => e.textContent);
+    expect(titles).toEqual(['General', 'Details']);
+    const tables = Array.from(document.querySelectorAll('dl.spec'));
+    expect(tables).toHaveLength(2);
+    expect(tables[0]!.getAttribute('aria-labelledby')).toBe('spec-general');
+    expect(within(tables[1] as HTMLElement).getByText('Fresh, Local')).toBeTruthy();
+  });
+
+  it('shows no group heading for a single group and no section for none', () => {
+    renderPage([GROUPS[0]]);
+    expect(document.querySelector('.spec-title')).toBeNull();
+    expect(screen.getByText('Australia')).toBeTruthy();
+    cleanup();
+    renderPage([]);
+    expect(screen.queryByRole('heading', { name: 'Specifications' })).toBeNull();
+    expect(document.querySelector('dl.spec')).toBeNull();
   });
 });

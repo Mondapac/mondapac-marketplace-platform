@@ -161,7 +161,34 @@ export interface PublishedProduct {
   readonly variants: readonly PublishedProductVariant[];
   /** The product's ACTIVE brand (its public page slug and name), or null: none, or not active. */
   readonly brand: { readonly slug: string; readonly name: string } | null;
+  /**
+   * The specifications of the published revision: attribute values with names and option labels in
+   * the asked locale (INTL-13 fallback), grouped by the family's groups in the family's order, each
+   * group's items in the family's order. Empty values and groups are left out; so are long texts
+   * (shown as the description) and the `brand` attribute (shown as the brand). Seller-entered
+   * text: escape it.
+   */
+  readonly specifications: readonly PublishedSpecificationGroup[];
 }
+
+/** One family group of a product's specifications. */
+export interface PublishedSpecificationGroup {
+  readonly groupCode: string;
+  readonly items: readonly PublishedSpecification[];
+}
+
+/** One attribute of a product with its value. */
+export interface PublishedSpecification {
+  readonly code: string;
+  readonly name: string;
+  readonly value: PublishedSpecificationValue;
+}
+
+/** Text (also numbers and ISO dates, Latin digits), a list of option labels, or a yes/no. */
+export type PublishedSpecificationValue =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'list'; readonly items: readonly string[] }
+  | { readonly kind: 'boolean'; readonly value: boolean };
 
 /** The most product ids {@link CatalogFacade.brandProductIds} returns. */
 export const MAX_BRAND_PRODUCT_IDS = 1000;
@@ -312,7 +339,7 @@ export interface CatalogFacade {
    * Texts are in `locale` with the INTL-13 fallback (the Market's default locale, then the first
    * locale in code order), exactly as `offerListings` picks them; they are seller-entered text:
    * escape it. Variants are the rows of the published revision whose registry variant is
-   * `published` (not proposed, not retired). No image, attribute or tag is read: images wait for
+   * `published` (not proposed, not retired). No image or tag is read (attributes only as `specifications`): images wait for
    * the media slice, and a tag is never read by an anonymous rule. In-process only.
    */
   publishedProduct(

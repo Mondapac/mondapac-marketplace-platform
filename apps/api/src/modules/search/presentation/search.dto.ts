@@ -205,6 +205,29 @@ export class ProductDetailBrandBody {
   @ApiProperty() name!: string;
 }
 
+export class ProductDetailSpecificationValueBody {
+  @ApiProperty({ enum: ['text', 'list', 'boolean'] }) kind!: 'text' | 'list' | 'boolean';
+  @ApiProperty({ required: false, description: 'kind text: the shown text (Latin digits).' })
+  text?: string;
+  @ApiProperty({ required: false, type: [String], description: 'kind list: option labels.' })
+  items?: string[];
+  @ApiProperty({ required: false, description: 'kind boolean: yes or no.' }) value?: boolean;
+}
+
+export class ProductDetailSpecificationBody {
+  @ApiProperty({ description: 'The attribute code.' }) code!: string;
+  @ApiProperty({ description: 'The attribute name in the page locale (default-locale fallback).' })
+  name!: string;
+  @ApiProperty({ type: ProductDetailSpecificationValueBody })
+  value!: ProductDetailSpecificationValueBody;
+}
+
+export class ProductDetailSpecificationGroupBody {
+  @ApiProperty({ description: 'The family group code, in the family order.' }) groupCode!: string;
+  @ApiProperty({ type: [ProductDetailSpecificationBody] })
+  items!: ProductDetailSpecificationBody[];
+}
+
 export class ProductDetailBody {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ description: 'The published name in the Market default locale.' })
@@ -219,6 +242,13 @@ export class ProductDetailBody {
     description: "The product's brand while it is active; null for none.",
   })
   brand!: ProductDetailBrandBody | null;
+  @ApiProperty({
+    type: [ProductDetailSpecificationGroupBody],
+    description:
+      'The specifications of the published revision by family group, in the family order; ' +
+      'empty values and groups are left out; empty when there are none.',
+  })
+  specifications!: ProductDetailSpecificationGroupBody[];
   @ApiProperty({
     type: [ProductImageRefBody],
     description:

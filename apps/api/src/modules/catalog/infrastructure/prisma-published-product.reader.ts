@@ -2,13 +2,23 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { PublishedProductReader } from '../application/ports/published-product.reader';
 import type { PublishedProduct } from '../contracts/catalog.facade';
+import {
+  publishedSpecificationsOf,
+  type SpecificationDefinition,
+  type SpecificationFamilyGroup,
+} from '../application/published-specifications';
 import { asTexts, pick } from './prisma-offer-listings.reader';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /**
  * {@link PublishedProductReader}: the product by `(market_id, id)` with status `published`, then
  * its published revision's texts, categories and variants, then the variant registry, then the
- * active brand of the product (by id; brands are shared by every Market). Up to six
- * statements, no join, every one scoped by `market_id`; no image, attribute or tag is read.
+ * active brand of the product (by id; brands are shared by every Market), then the specifications
+ * (the revision's attribute values with the family revision and the definition revisions it was
+ * validated against, so names and labels are those of that time). Up to eleven statements, no
+ * join, every one scoped by `market_id`; no image or tag is read.
  */
 export class PrismaPublishedProductReader implements PublishedProductReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -71,6 +81,7 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
             where: { id: product.brandId, status: 'active' },
             select: { slug: true, name: true },
           });
+    const specifications = await this.specifications(tx, market, revisionId, locales);
     return {
       productId,
       publishedRevisionId: revisionId as Id<'ProductRevision'>,
@@ -89,6 +100,76 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
           };
         }),
       brand,
+      specifications,
     };
+  }
+
+  private async specifications(
+    tx: ReturnType<PrismaService['tx']>,
+    market: MarketContext,
+    revisionId: string,
+    locales: { readonly requested: string; readonly fallback: string },
+  ): Promise<PublishedProduct['specifications']> {
+    const revision = await tx.catalogProductRevision.findFirst({
+      where: { marketId: market.marketId, id: revisionId },
+      select: { attributeValues: true, familyRevisionId: true, definitionRevisionIds: true },
+    });
+    if (revision === null || !isRecord(revision.attributeValues)) return [];
+    const values = revision.attributeValues;
+    if (Object.keys(values).length === 0) return [];
+    const family = await tx.catalogAttributeFamilyRevision.findFirst({
+      where: { marketId: market.marketId, id: revision.familyRevisionId },
+      select: { groups: true },
+    });
+    if (family === null || !Array.isArray(family.groups)) return [];
+    const groups = (family.groups as unknown[]).flatMap((group): SpecificationFamilyGroup[] => {
+      if (!isRecord(group) || typeof group.groupCode !== 'string') return [];
+      const attributes = Array.isArray(group.attributes) ? (group.attributes as unknown[]) : [];
+      return [
+        {
+          groupCode: group.groupCode,
+          attributes: attributes.flatMap((attribute) =>
+            isRecord(attribute) && typeof attribute.code === 'string'
+              ? [{ code: attribute.code }]
+              : [],
+          ),
+        },
+      ];
+    });
+    const revisions = await tx.catalogAttributeDefinitionRevision.findMany({
+      where: { marketId: market.marketId, id: { in: [...revision.definitionRevisionIds] } },
+      select: { id: true, definitionId: true, names: true },
+    });
+    if (revisions.length === 0) return [];
+    const roots = await tx.catalogAttributeDefinition.findMany({
+      where: { marketId: market.marketId, id: { in: revisions.map((row) => row.definitionId) } },
+      select: { id: true, code: true, dataType: true, localizable: true },
+    });
+    const options = await tx.catalogAttributeDefinitionRevisionOption.findMany({
+      where: { marketId: market.marketId, revisionId: { in: revisions.map((row) => row.id) } },
+      select: { revisionId: true, optionCode: true, labels: true },
+    });
+    const rootOf = new Map(roots.map((root) => [root.id, root]));
+    const definitions = new Map<string, SpecificationDefinition>();
+    for (const row of revisions) {
+      const root = rootOf.get(row.definitionId);
+      const names = asTexts(row.names);
+      if (root === undefined || names === null) continue;
+      definitions.set(root.code, {
+        code: root.code,
+        dataType: root.dataType,
+        localizable: root.localizable,
+        names,
+        options: new Map(
+          options
+            .filter((option) => option.revisionId === row.id)
+            .flatMap((option) => {
+              const labels = asTexts(option.labels);
+              return labels === null ? [] : [[option.optionCode, labels] as const];
+            }),
+        ),
+      });
+    }
+    return publishedSpecificationsOf(groups, definitions, values, locales);
   }
 }

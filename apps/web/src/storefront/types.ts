@@ -203,6 +203,8 @@ export interface ProductOffer {
 export interface ProductSpecification {
   readonly label: string;
   readonly value: string;
+  /** The family group code the row belongs to (`general`, `details`); absent for sample rows. */
+  readonly group?: string;
 }
 
 /** The product page: the product, its offers (the featured one first) and similar products. */
