@@ -85,7 +85,7 @@ const UNKNOWN = accountId(99);
 const LEAD_KEYS = [
   'catalog.attribute.view',
   'catalog.brand.read',
-  'settings.market-setting.view',
+  'catalog.category-tree.view',
   'catalog.product.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
@@ -116,6 +116,7 @@ const LEAD_KEYS = [
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
+  'settings.market-setting.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {

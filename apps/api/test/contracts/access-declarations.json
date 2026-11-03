@@ -178,6 +178,7 @@
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   { "name": "commission-payouts.run-payouts", "rule": "system" },
+  { "name": "commission-payouts.seller-lost-disputes", "rule": "system" },
   { "name": "commission-payouts.sync-dispute", "rule": "system" },
   {
     "name": "commission-payouts.view-next-payout",
@@ -650,6 +651,7 @@
   { "name": "sellers.published-store-slugs", "rule": "anonymous" },
   { "name": "sellers.purge-expired", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
+  { "name": "sellers.run-seller-health", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
