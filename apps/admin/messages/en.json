@@ -4584,8 +4584,31 @@
       "body": "You can view attributes. Ask a Platform Administrator to change them."
     },
     "waiting": {
+      "label": "Requests waiting for a second administrator",
+      "loading": "Loading requests",
+      "load-error": "We could not load the requests.",
       "empty": "Nothing is waiting for you.",
-      "body": "Change requests for attributes will show here."
+      "body": "When an administrator asks to turn off Material for an attribute, the request shows here for a different administrator to confirm.",
+      "kind": {
+        "clear-material": "Turn off Material",
+        "archive": "Archive",
+        "remove-from-family": "Remove from feature set"
+      },
+      "mine": "Your request",
+      "requested": "Requested",
+      "expires": "Expires",
+      "open-attribute": "Open attribute",
+      "confirm": "Confirm",
+      "withdraw": "Withdraw",
+      "confirm-title": "Turn off Material for {name}?",
+      "confirm-body": "Material is turned off at once. After that, a change to this attribute's value on a product no longer sends its product certifications for a new check.",
+      "withdraw-title": "Withdraw your request for {name}?",
+      "withdraw-body": "The request closes and Material stays on.",
+      "confirmed": "Material turned off.",
+      "withdrawn": "Request withdrawn.",
+      "reload": "Reload",
+      "cancel": "Cancel",
+      "same-admin-note": "A different administrator must confirm your request."
     },
     "list-label": "Attributes",
     "filters": "Filter attributes",
@@ -4709,7 +4732,12 @@
       "discard-body": "The draft is archived and can never be published. Its history is kept.",
       "edit-attribute": "Edit attribute",
       "publish-claim-word": "A name or value names a certification, such as halal. Edit it before publishing.",
-      "publish-locale-uncheckable": "Some text is in a language that cannot be checked for certification words yet. Edit it before publishing."
+      "publish-locale-uncheckable": "Some text is in a language that cannot be checked for certification words yet. Edit it before publishing.",
+      "turn-off-material": "Turn off Material",
+      "relax-title": "Ask to turn off Material for {name}?",
+      "relax-body": "Changing a Material attribute on a product sends its product certifications for a new check. A different administrator must confirm within 72 hours before Material is turned off. Nothing changes until then.",
+      "relax-send": "Send request",
+      "relax-sent": "Request sent. Another administrator can confirm it under Waiting for you."
     },
     "values": {
       "not-choice": "This attribute has no list of values: sellers type or pick its value.",
@@ -4914,7 +4942,15 @@
         "throttled": "Too many changes at once. Wait a moment and try again.",
         "unavailable": "We could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again.",
-        "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive."
+        "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive.",
+        "not-material": "This attribute is not Material any more. Reload to see the latest version.",
+        "relaxation-already-open": "Another administrator already asked to turn off Material for this attribute. Reload, then find it under Waiting for you.",
+        "relaxation-gone": "This request no longer exists. Reload the list.",
+        "relaxation-moved": "This request was already confirmed, withdrawn or closed. Reload the list.",
+        "relaxation-expired": "This request expired. The requester can ask again.",
+        "relaxation-attribute-changed": "The attribute changed after the request, so it was withdrawn. Reload the list.",
+        "relaxation-same-admin": "You made this request. A different administrator must confirm it.",
+        "relaxation-not-requester": "Only the administrator who made this request can withdraw it."
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}."

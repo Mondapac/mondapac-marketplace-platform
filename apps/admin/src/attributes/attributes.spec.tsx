@@ -17,6 +17,7 @@ import type {
   FeatureSetDetail,
   FeatureSetRow,
   MarketLocales,
+  OpenRelaxation,
   Tab,
 } from './types.ts';
 
@@ -959,6 +960,169 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
     await expectToast('Draft discarded.');
     expect(writes('POST')[0]?.path).toBe(`catalog/admin/attributes/${id(1)}/discard`);
+  });
+
+  const relaxation = (n: number, mine: boolean): OpenRelaxation => ({
+    id: id(800 + n),
+    version: 1,
+    kind: 'clear-material',
+    attribute: {
+      id: id(n),
+      code: `attr-${n}`,
+      names: { [locales.default]: `Attribute ${n}` },
+      version: 2,
+    },
+    mine,
+    requestedByAccountId: id(mine ? 900 : 901),
+    requestedAt: '2026-11-02T10:00:00.000Z',
+    expiresAt: '2026-11-05T10:00:00.000Z',
+    allowedActions: mine
+      ? {
+          confirm: { allowed: false, reason: 'relaxation.same-admin' },
+          cancel: { allowed: true },
+        }
+      : {
+          confirm: { allowed: true },
+          cancel: { allowed: false, reason: 'relaxation.not-requester' },
+        },
+  });
+
+  it('asks a second admin to turn off Material; nothing changes until it is confirmed', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { material: true })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(
+        detail(locales, 1, { material: true, version: 2 }),
+      ),
+      [`POST catalog/admin/attributes/${id(1)}/relaxation-requests`]: ok({
+        request: { id: id(801), attributeId: id(1), kind: 'clear-material', status: 'open' },
+      }),
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Turn off Material' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Ask to turn off Material for Attribute 1?',
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send request' }));
+    await expectToast('Request sent. Another administrator can confirm it under Waiting for you.');
+    expect(writes('POST').map((w) => [w.path, w.body, w.csrf])).toEqual([
+      [
+        `catalog/admin/attributes/${id(1)}/relaxation-requests`,
+        { version: 2, kind: 'clear-material' },
+        'csrf-1',
+      ],
+    ]);
+  });
+
+  it('says when a request is already open, and offers no request for a non-material attribute', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { material: true })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { material: true })),
+      [`GET catalog/admin/attributes/${id(2)}`]: ok(detail(locales, 2)),
+      [`POST catalog/admin/attributes/${id(1)}/relaxation-requests`]: refuse(
+        409,
+        'relaxation.already-open',
+      ),
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Turn off Material' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send request' }));
+    expect(
+      await within(dialog).findByText(/already asked to turn off Material for this attribute/),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Reload' })).toBeTruthy();
+    cleanup();
+    mount({ canEdit: true, initialId: id(2) });
+    const plain = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(plain).findByRole('button', { name: 'Edit' });
+    expect(within(plain).queryByRole('button', { name: 'Turn off Material' })).toBeNull();
+  });
+
+  it("lists waiting requests: confirms another admin's, withdraws one's own", async () => {
+    let open = [relaxation(1, false), relaxation(2, true)];
+    serve({
+      'GET catalog/admin/attribute-relaxations': () => ok({ requests: open }),
+      [`POST catalog/admin/attribute-relaxations/${id(801)}/confirm`]: () => {
+        open = open.filter((r) => r.id !== id(801));
+        return ok({ request: { id: id(801), status: 'confirmed' } });
+      },
+      [`POST catalog/admin/attribute-relaxations/${id(802)}/cancel`]: () => {
+        open = open.filter((r) => r.id !== id(802));
+        return ok({ request: { id: id(802), status: 'cancelled' } });
+      },
+    });
+    mount({ canEdit: true, initialTab: 'waiting' });
+    const list = await screen.findByRole('region', {
+      name: 'Requests waiting for a second administrator',
+    });
+    const rows = await within(list).findAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText('Attribute 1')).toBeTruthy();
+    expect(within(rows[0]!).queryByRole('button', { name: 'Withdraw' })).toBeNull();
+    expect(within(rows[1]!).getByText('Your request')).toBeTruthy();
+    expect(within(rows[1]!).queryByRole('button', { name: 'Confirm' })).toBeNull();
+
+    fireEvent.click(within(rows[0]!).getByRole('button', { name: 'Confirm' }));
+    const confirm = await screen.findByRole('dialog', {
+      name: 'Turn off Material for Attribute 1?',
+    });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }));
+    await expectToast('Material turned off.');
+
+    const left = await within(list).findAllByRole('listitem');
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
+    fireEvent.click(within(left.at(-1)!).getByRole('button', { name: 'Withdraw' }));
+    const withdraw = await screen.findByRole('dialog', {
+      name: 'Withdraw your request for Attribute 2?',
+    });
+    fireEvent.click(within(withdraw).getByRole('button', { name: 'Withdraw' }));
+    await expectToast('Request withdrawn.');
+    expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
+    expect(writes('POST').map((w) => [w.path, w.body, w.csrf])).toEqual([
+      [`catalog/admin/attribute-relaxations/${id(801)}/confirm`, { version: 1 }, 'csrf-1'],
+      [`catalog/admin/attribute-relaxations/${id(802)}/cancel`, { version: 1 }, 'csrf-1'],
+    ]);
+  });
+
+  it('says a request expired and reloads the list; opens the attribute from a request', async () => {
+    serve({
+      'GET catalog/admin/attribute-relaxations': ok({ requests: [relaxation(1, false)] }),
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { material: true })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { material: true })),
+      [`POST catalog/admin/attribute-relaxations/${id(801)}/confirm`]: refuse(
+        409,
+        'relaxation.expired',
+      ),
+    });
+    mount({ canEdit: true, initialTab: 'waiting' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+    expect(await within(dialog).findByText(/This request expired/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reload' }));
+    await waitFor(() => expect(calls('catalog/admin/attribute-relaxations')).toHaveLength(2));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open attribute' }));
+    expect(await screen.findByRole('region', { name: 'Attribute details' })).toBeTruthy();
+    expect(window.location.search).toBe(`?id=${id(1)}`);
+  });
+
+  it('reads no requests without catalog.attribute.edit, and retries a failed list', async () => {
+    let fail = true;
+    serve({
+      'GET catalog/admin/attribute-relaxations': () =>
+        fail ? refuse(500, 'x') : ok({ requests: [] }),
+    });
+    mount({ canEdit: false, initialTab: 'waiting' });
+    expect(screen.getByText('Nothing is waiting for you.')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    cleanup();
+    mount({ canEdit: true, initialTab: 'waiting' });
+    expect(await screen.findByText('We could not load the requests.')).toBeTruthy();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
   });
 
   it('offers no Add, Edit or Publish without catalog.attribute.edit', async () => {
