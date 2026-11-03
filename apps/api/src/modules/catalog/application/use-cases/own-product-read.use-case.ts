@@ -36,6 +36,8 @@ export interface OwnProductReadOutput {
   /** `single`: one fixed variant, no options; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: ProductStatus;
+  /** The seller marked the product as carrying their own brand (it lets them propose a brand). */
+  readonly ownBrand: boolean;
   readonly variants: readonly { variantId: string; state: VariantState }[];
   /** The Market's cap on non-retired variants. */
   readonly maxVariants: number;
@@ -167,6 +169,7 @@ export class OwnProductRead extends UseCase<
       familyCode: state.familyCode,
       variantModel: state.variantModel,
       status: state.status,
+      ownBrand: state.ownBrand,
       variants: state.variants.map((variant) => ({
         variantId: variant.id,
         state: variant.state,

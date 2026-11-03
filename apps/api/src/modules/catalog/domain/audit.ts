@@ -234,6 +234,85 @@ export const AttributeRelaxationExpiredAudit = defineAuditAction({
   after: { requestId: auditField.id(), requestedByAccountId: auditField.id() },
 });
 
+/** The audit target type of a brand (catalog brand package; attributes package A5). */
+export const CATALOG_BRAND_TARGET = 'catalog.brand';
+
+const brandStatus = auditField.enumOf(['draft', 'active', 'archived'] as const);
+const brandOrigin = auditField.enumOf(['admin', 'seller'] as const);
+
+/** An admin created an active brand. Ids, the origin and a status only: never the name. */
+export const BrandCreatedAudit = defineAuditAction({
+  action: 'catalog.brand.created',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: { status: brandStatus, origin: brandOrigin },
+});
+
+/** A seller proposed a brand; it is a draft until an admin approves it. */
+export const BrandProposedAudit = defineAuditAction({
+  action: 'catalog.brand.proposed',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: { status: brandStatus, origin: brandOrigin },
+});
+
+/** An admin replaced the content of a brand; which parts changed, never the text. */
+export const BrandEditedAudit = defineAuditAction({
+  action: 'catalog.brand.edited',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  before: { status: brandStatus },
+  after: {
+    status: brandStatus,
+    nameChanged: auditField.boolean(),
+    slugChanged: auditField.boolean(),
+    summaryChanged: auditField.boolean(),
+    originCountryChanged: auditField.boolean(),
+    imagesChanged: auditField.boolean(),
+  },
+});
+
+/** An admin approved a draft brand, normally a seller's proposal. */
+export const BrandApprovedAudit = defineAuditAction({
+  action: 'catalog.brand.approved',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['draft'] as const) },
+  after: { status: auditField.enumOf(['active'] as const), proposedBySeller: auditField.boolean() },
+});
+
+/** An admin archived a brand; it keeps its row, slug and aliases. */
+export const BrandArchivedAudit = defineAuditAction({
+  action: 'catalog.brand.archived',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  before: { status: brandStatus },
+  after: { status: auditField.enumOf(['archived'] as const) },
+});
+
+/**
+ * An admin merged brands into this one (the target). Counts only: how many brands, how many
+ * products moved and how many spellings were added.
+ */
+export const BrandMergedAudit = defineAuditAction({
+  action: 'catalog.brand.merged',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sourceCount: auditField.integer(),
+    productsMoved: auditField.integer(),
+    aliasesAdded: auditField.integer(),
+  },
+});
+
+/** An admin decided that the brands of a merge-queue group are different brands. One row per brand. */
+export const BrandMergeDismissedAudit = defineAuditAction({
+  action: 'catalog.brand.merge-dismissed',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: { groupSize: auditField.integer() },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -250,4 +329,11 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,
+  BrandCreatedAudit,
+  BrandProposedAudit,
+  BrandEditedAudit,
+  BrandApprovedAudit,
+  BrandArchivedAudit,
+  BrandMergedAudit,
+  BrandMergeDismissedAudit,
 ] as const;

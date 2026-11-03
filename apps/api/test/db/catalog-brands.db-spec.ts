@@ -410,8 +410,8 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
             now: T1,
           }),
         );
-      expect(await dismiss()).toBe(2);
-      expect(await dismiss()).toBe(0);
+      expect(await dismiss()).toEqual([one.state.id, two.state.id].sort());
+      expect(await dismiss()).toEqual([]);
       const rows = await app.query<{ resolution: string }>(
         'SELECT resolution FROM catalog.brand_merge_candidates WHERE group_key = $1',
         [groupKey],

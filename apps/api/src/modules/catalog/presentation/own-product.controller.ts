@@ -44,6 +44,7 @@ import {
 import { OwnProductCreate } from '../application/use-cases/own-product-create.use-case';
 import { OwnProductOptions as OwnProductOptionsUseCase } from '../application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from '../application/use-cases/own-product-save-draft.use-case';
+import { OwnProductSetOwnBrand } from '../application/use-cases/own-product-set-own-brand.use-case';
 import { OwnProductSubmit } from '../application/use-cases/own-product-submit.use-case';
 import { OwnProductRead } from '../application/use-cases/own-product-read.use-case';
 import { OwnProductsList } from '../application/use-cases/own-products-list.use-case';
@@ -56,7 +57,12 @@ import {
   PlatformProductSubmitRequest,
   PlatformProductSubmitted,
 } from './platform-product.dto';
-import { OwnProductCreated, OwnProductCreateRequest } from './own-offer.dto';
+import {
+  OwnProductCreated,
+  OwnProductCreateRequest,
+  OwnProductOwnBrandRequest,
+  OwnProductOwnBrandSet,
+} from './own-offer.dto';
 import { PLATFORM_PRODUCT_STATUS } from './platform-product.controller';
 
 /**
@@ -121,6 +127,7 @@ export class OwnProductController {
     private readonly listProducts: OwnProductsList,
     private readonly readProduct: OwnProductRead,
     private readonly productOptions: OwnProductOptionsUseCase,
+    private readonly setOwnBrand: OwnProductSetOwnBrand,
   ) {}
 
   @Get()
@@ -344,6 +351,59 @@ export class OwnProductController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.own-product-save-draft', context, outcome);
+  }
+
+  @Put(':productId/own-brand')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: "Mark an own product as carrying the seller's own brand",
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. The mark lets the seller ' +
+      'propose a brand (POST catalog/seller/brands). It is a flag of the product, not part of ' +
+      'a revision: it needs no review and changes nothing buyers see. Setting the value it ' +
+      'already has changes nothing. A product of another seller, a PLATFORM product and an ' +
+      'unknown id are product.not-found.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: OwnProductOwnBrandRequest })
+  @ApiOkResponse({ type: OwnProductOwnBrandSet })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'conflict.stale or product.not-editable',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async setProductOwnBrand(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+    @Body() body: unknown,
+  ): Promise<OwnProductOwnBrandSet> {
+    const productId = productIdOf(rawProductId, response);
+    const input = closedBody(request, body, ['ownBrand']);
+    let outcome: OwnProductOwnBrandSet | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.setOwnBrand.execute(context, {
+        productId,
+        ownBrand: input['ownBrand'],
+      });
+      outcome = result.ok
+        ? { productId: result.value.productId, ownBrand: result.value.ownBrand }
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.own-product-set-own-brand', context, outcome);
   }
 
   @Post(':productId/submit')

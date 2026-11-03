@@ -211,6 +211,7 @@ import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
+import { OwnProductSetOwnBrand } from './application/use-cases/own-product-set-own-brand.use-case';
 import { OwnProductSubmit } from './application/use-cases/own-product-submit.use-case';
 import { BRAND_ASSIGNER } from './application/ports/brand-assigner';
 import { BRAND_READER } from './application/ports/brand.reader';
@@ -670,13 +671,24 @@ const productTypeProvider: FactoryProvider<string> = {
     }),
     useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
-    useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),
-    useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true }),
-    useCaseProvider(BrandArchive, { unitOfWork: true, brands: true, clock: true }),
-    useCaseProvider(BrandApprove, { unitOfWork: true, brands: true, clock: true }),
-    useCaseProvider(BrandMerge, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandCreate, {
+      unitOfWork: true,
+      brands: true,
+      clock: true,
+      audit: true,
+      ids: true,
+    }),
+    useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandArchive, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandApprove, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandMerge, { unitOfWork: true, brands: true, clock: true, audit: true }),
     useCaseProvider(BrandMergeQueueList, { unitOfWork: true, brandReader: true }),
-    useCaseProvider(BrandMergeQueueDismiss, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandMergeQueueDismiss, {
+      unitOfWork: true,
+      brands: true,
+      clock: true,
+      audit: true,
+    }),
     useCaseProvider(OwnBrandPropose, {
       unitOfWork: true,
       brands: true,
@@ -684,6 +696,7 @@ const productTypeProvider: FactoryProvider<string> = {
       eligibility: true,
       clock: true,
       ids: true,
+      audit: true,
     }),
     useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
@@ -1000,6 +1013,12 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(OwnProductSaveDraft, { saveDraft: true, eligibility: true }),
+    useCaseProvider(OwnProductSetOwnBrand, {
+      unitOfWork: true,
+      products: true,
+      eligibility: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductSubmit, {
       unitOfWork: true,
       products: true,
