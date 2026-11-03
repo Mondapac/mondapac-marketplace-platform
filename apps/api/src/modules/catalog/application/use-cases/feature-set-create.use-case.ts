@@ -32,7 +32,10 @@ import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import { FeatureSetCodeTakenError, type FeatureSetStore } from '../ports/feature-set.store';
-import { featureSetWriteViewOf, type FeatureSetWriteView } from './feature-set-write-view';
+import {
+  featureSetWriteViewOf,
+  type FeatureSetWriteView,
+} from '../attributes/feature-set-write-view';
 
 export interface FeatureSetCreateInput {
   readonly [key: string]: unknown;

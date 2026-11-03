@@ -30,7 +30,10 @@ import {
 } from '../attributes/feature-set-editor';
 import type { AttributeRelaxationStore } from '../ports/attribute-relaxation.store';
 import type { FeatureSetWriteDependencies } from './feature-set-create.use-case';
-import { featureSetWriteViewOf, type FeatureSetWriteView } from './feature-set-write-view';
+import {
+  featureSetWriteViewOf,
+  type FeatureSetWriteView,
+} from '../attributes/feature-set-write-view';
 
 export interface FeatureSetEditDependencies extends FeatureSetWriteDependencies {
   readonly relaxations: AttributeRelaxationStore;
