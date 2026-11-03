@@ -5,7 +5,8 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
-import { directionOf } from './tree-model.ts';
+import { CategoryToolbar } from './category-toolbar.tsx';
+import { directionOf, indexOf } from './tree-model.ts';
 import {
   API_CATEGORIES,
   DETAIL_TABS,
@@ -13,12 +14,14 @@ import {
   type DetailBody,
   type DetailTab,
   type ImpactBody,
+  type TreeBody,
 } from './types.ts';
 
 type Load = 'loading' | 'ready' | 'failed' | 'missing';
 
 const STATUS_TONE: Record<CategoryStatus, 'success' | 'neutral' | 'attention'> = {
   active: 'success',
+  hidden: 'neutral',
   merged: 'attention',
   archived: 'neutral',
 };
@@ -34,7 +37,21 @@ function useCount(complete: boolean) {
  * would reach (Products) and its revisions (History). Read only. A category that is gone, or that
  * belongs to another Market, reads as "not found" and nothing more.
  */
-export function CategoryDetails({ id }: { readonly id: string }) {
+export function CategoryDetails({
+  id,
+  tree,
+  canEdit = false,
+  csrfToken = '',
+  onChanged,
+}: {
+  readonly id: string;
+  /** The tree the page shows: with it (and the permission) the category can be changed here. */
+  readonly tree?: TreeBody | null;
+  readonly canEdit?: boolean;
+  readonly csrfToken?: string;
+  /** A change was saved: the owner reads the tree again and remounts this view. */
+  readonly onChanged?: () => void;
+}) {
   const t = useTranslations('categories');
   const tl = useTranslations('load');
   const [tab, setTab] = useState<DetailTab>('details');
@@ -92,6 +109,15 @@ export function CategoryDetails({ id }: { readonly id: string }) {
           {body.path.map((entry) => entry.name ?? entry.slug).join(' › ')}
         </p>
       </div>
+      {tree !== undefined && tree !== null && canEdit && onChanged !== undefined ? (
+        <ToolbarFor
+          body={body}
+          tree={tree}
+          csrfToken={csrfToken}
+          title={title}
+          onChanged={onChanged}
+        />
+      ) : null}
       <Tabs
         label={t('details.tabs')}
         items={DETAIL_TABS.map((value) => ({ id: value, label: t(`details.tab.${value}`) }))}
@@ -102,6 +128,46 @@ export function CategoryDetails({ id }: { readonly id: string }) {
       {tab === 'products' ? <ProductsTab body={body} /> : null}
       {tab === 'history' ? <HistoryTab body={body} /> : null}
     </div>
+  );
+}
+
+function ToolbarFor({
+  body,
+  tree,
+  csrfToken,
+  title,
+  onChanged,
+}: {
+  readonly body: DetailBody;
+  readonly tree: TreeBody;
+  readonly csrfToken: string;
+  readonly title: string;
+  readonly onChanged: () => void;
+}) {
+  const { category } = body;
+  const { children } = indexOf(tree.categories);
+  const siblings = children.get(category.parentId) ?? [];
+  let descendants = 0;
+  const walk = (parent: string): void => {
+    for (const child of children.get(parent) ?? []) {
+      descendants += 1;
+      walk(child.id);
+    }
+  };
+  walk(category.id);
+  return (
+    <CategoryToolbar
+      body={body}
+      canEdit
+      csrfToken={csrfToken}
+      supportedLocales={tree.supportedLocales}
+      firstSibling={siblings[0]?.id === category.id}
+      lastSibling={siblings[siblings.length - 1]?.id === category.id}
+      hasChildren={descendants > 0}
+      descendants={descendants}
+      title={title}
+      onChanged={onChanged}
+    />
   );
 }
 
@@ -146,6 +212,12 @@ function DetailsTab({ body }: { readonly body: DetailBody }) {
             )}
           </Row>
         ))}
+        <Row term={t('details.in-menu')}>
+          {body.details.showInMenu ? t('details.yes') : t('details.no')}
+        </Row>
+        <Row term={t('details.seo-title')}>
+          {body.details.seo.title ?? <span className="text-fg-muted">{t('details.not-set')}</span>}
+        </Row>
         <Row term={t('details.live-products')}>{count(category.counts.liveProducts)}</Row>
         <Row term={t('details.live-products-direct')}>
           {count(category.counts.liveProductsDirect)}

@@ -4124,12 +4124,14 @@
       "all": "All statuses",
       "active": "Active",
       "merged": "Merged",
-      "archived": "Archived"
+      "archived": "Archived",
+      "hidden": "Hidden"
     },
     "status": {
       "active": "Active",
       "merged": "Merged",
-      "archived": "Archived"
+      "archived": "Archived",
+      "hidden": "Hidden"
     },
     "filter-note": "Matching categories are shown with the categories above them.",
     "loading": "Loading categories",
@@ -4160,7 +4162,12 @@
       "live-products": "Live products",
       "live-products-direct": "Live products directly in it",
       "offers": "Offers",
-      "version": "Version"
+      "version": "Version",
+      "in-menu": "Shown in the menu",
+      "yes": "Yes",
+      "no": "No",
+      "seo-title": "Search title",
+      "not-set": "Not set"
     },
     "products": {
       "intro": "What a change to this category would reach: the published products in it and under it.",
@@ -4178,6 +4185,121 @@
       "revision": "Revision {no}",
       "by-seed": "Set up with the platform",
       "by-admin": "Changed by an admin"
+    },
+    "intro-edit": "The category tree of this Market. Products and Offers sit in the categories below it. New categories start hidden until you show them.",
+    "missing-label": "Missing a name",
+    "missing-none": "All languages",
+    "missing-option": "Missing: {language} ({count})",
+    "add-category": "Add category",
+    "edit-on-wide": "To change this category, open the Categories page in a wider window.",
+    "toolbar": {
+      "label": "Change this category",
+      "edit": "Edit details",
+      "add-child": "Add child",
+      "move-up": "Move up",
+      "move-down": "Move down",
+      "hide": "Hide",
+      "show": "Show",
+      "change-slug": "Change URL name",
+      "discard": "Discard"
+    },
+    "form": {
+      "tabs": "Sections",
+      "tab-content": "Content",
+      "tab-seo": "Search engines",
+      "cancel": "Cancel",
+      "save": "Save",
+      "create": "Add category",
+      "reload": "Read again",
+      "edit-title": "Edit details",
+      "create-title": "Add category",
+      "create-child-title": "Add a child of {parent}",
+      "created-hidden": "A new category starts hidden. Show it from its page when it is ready.",
+      "language": "Language",
+      "language-help": "Each language is filled in on its own. A language without a name is marked Missing and is not shown to buyers.",
+      "required-mark": "Required",
+      "missing-mark": "Missing",
+      "other-language-error": "Another language has a problem. Pick it from the language list.",
+      "name": "Name ({language})",
+      "name-optional": "Optional. Leave empty to keep this language Missing.",
+      "short-description": "Short description",
+      "optional": "Optional",
+      "keywords": "Keywords",
+      "keywords-help": "Separate with commas. At most {max}.",
+      "show-in-menu": "Show in the menu",
+      "show-in-menu-help": "When off, buyers can still reach the category by its link.",
+      "slug": "URL name",
+      "slug-help": "English words in lower case with hyphens, for example dried-fruit.",
+      "slug-title": "Change URL name",
+      "slug-save": "Change URL name",
+      "slug-warning": "The old URL name keeps working and redirects to the new one. Links already shared and search engines need time to learn the new address, so change it only when you must.",
+      "seo-help": "Search engines read English only. Leave empty to use the category name and short description.",
+      "seo-title": "Search title",
+      "seo-description": "Search description",
+      "noindex": "Keep out of search engines",
+      "noindex-help": "Buyers can still open the page.",
+      "preview-label": "How it may look in a search result",
+      "preview-host": "www.example.com",
+      "preview-slug": "url-name",
+      "error": {
+        "required": "This is required.",
+        "format": "Check this text: it is too long or has characters that are not allowed.",
+        "english-only": "Use English letters only here.",
+        "claim-word": "This word names a certification or a similar claim. Remove it; certificates are shown on the Offer.",
+        "locale-uncheckable": "This language can not be checked for certification words yet, so it can not be saved.",
+        "locale-unsupported": "This language is not supported in this Market.",
+        "sibling-name-taken": "Another category with the same parent already has this name.",
+        "required-locale-missing": "A name is required in this language.",
+        "slug-taken": "This URL name is used or was used by another category.",
+        "unchanged": "This is the current URL name.",
+        "type": "Check this value.",
+        "unknown": "Check this value."
+      }
+    },
+    "confirm": {
+      "cancel": "Cancel",
+      "reload": "Read again",
+      "hide": {
+        "title": "Hide {name}?",
+        "action": "Hide",
+        "body": "{name} and the {count, plural, one {# category} other {# categories}} below it leave the menu and their pages. Products stay on sale. Show brings back exactly the ones this Hide hid."
+      },
+      "show": {
+        "title": "Show {name}?",
+        "action": "Show",
+        "body": "{name} and the categories this Hide hid come back to the menu and get their pages again."
+      },
+      "discard": {
+        "title": "Discard {name}?",
+        "action": "Discard",
+        "body": "{name} never went live. It will be archived and its URL name stays reserved. This can not be undone here."
+      }
+    },
+    "error": {
+      "unknown": "The change was not saved. Try again.",
+      "conflict_stale": "Someone changed the categories while this page was open. Read them again, then repeat your change.",
+      "validation_failed": "Some fields need attention.",
+      "category_not-found": "This category is gone. Read the tree again.",
+      "category_parent-not-found": "The parent category is gone. Read the tree again.",
+      "category_slug-taken": "This URL name is used or was used by another category.",
+      "category_slug-unchanged": "This is already the URL name.",
+      "category_sibling-name-taken": "Another category with the same parent already has this name.",
+      "category_already-hidden": "This category is already hidden. Read it again.",
+      "category_not-hidden": "This category is not hidden. Read it again.",
+      "category_parent-hidden": "The parent is hidden. Show the parent first.",
+      "category_not-editable": "This category can not be changed in its state. Read it again.",
+      "category_reorder-edge": "It is already at the end. Read the tree again.",
+      "category_not-discardable": "Only a hidden category that never went live, with no child and no product that named it, can be discarded.",
+      "category_depth-exceeded": "The tree is at most {max} levels deep here.",
+      "category_required-locale-missing": "A name is required in the required languages.",
+      "category_cascade-too-large": "Hiding this would reach more than {max} categories. Hide the branches one by one.",
+      "category_claim-word": "A text names a certification or a similar claim. Remove it; certificates are shown on the Offer.",
+      "category_locale-uncheckable": "A language can not be checked for certification words yet, so nothing was saved.",
+      "claim-text_check-unavailable": "The word check is not available now, so nothing was saved. Try again later.",
+      "access_permission-missing": "Your role can not change categories.",
+      "access_acting-as-refused": "Categories can not be changed while acting as someone else.",
+      "access_unavailable": "The service is not available now. Try again.",
+      "catalog_categories-unavailable": "Categories are not available now. Try again."
     }
   },
   "brands": {

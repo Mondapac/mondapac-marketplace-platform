@@ -21,7 +21,11 @@ export function CategoryPageView({
           {t('back')}
         </a>
       </p>
-      {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
+      {canEdit ? (
+        <Banner tone="info">{t('edit-on-wide')}</Banner>
+      ) : (
+        <Banner tone="info">{t('view-only')}</Banner>
+      )}
       <CategoryDetails id={id} />
     </div>
   );

@@ -1,0 +1,158 @@
+'use client';
+
+import { Button } from '@mondapac/ui';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import {
+  ChangeSlugDialog,
+  ConfirmCategoryDialog,
+  CreateCategoryDialog,
+  EditDetailsDialog,
+  type ConfirmKind,
+} from './category-dialogs.tsx';
+import { useCategoryCall } from './use-category-call.ts';
+import { CategoryProblemBanner } from './category-problem.tsx';
+import { API_CATEGORIES, type DetailBody, type WriteWrap } from './types.ts';
+
+type Open = 'edit' | 'add-child' | 'slug' | ConfirmKind | null;
+
+/** What an admin may do to the picked category: edit, add a child, move, hide or show, rename its URL, discard. */
+export function CategoryToolbar({
+  body,
+  canEdit,
+  csrfToken,
+  supportedLocales,
+  firstSibling,
+  lastSibling,
+  hasChildren,
+  descendants,
+  title,
+  onChanged,
+}: {
+  readonly body: DetailBody;
+  readonly canEdit: boolean;
+  readonly csrfToken: string;
+  readonly supportedLocales: readonly string[];
+  readonly firstSibling: boolean;
+  readonly lastSibling: boolean;
+  readonly hasChildren: boolean;
+  readonly descendants: number;
+  readonly title: string;
+  /** A write is done (or the page read old data): read the tree and the category again. */
+  readonly onChanged: () => void;
+}) {
+  const t = useTranslations('categories.toolbar');
+  const [open, setOpen] = useState<Open>(null);
+  const move = useCategoryCall(csrfToken);
+  const { category } = body;
+  // A hidden category is edited like an active one; the API refuses an archived or merged one.
+  const editable = category.status === 'active' || category.status === 'hidden';
+  const isHidden = category.status === 'hidden';
+  const closeAndRefresh = () => {
+    setOpen(null);
+    onChanged();
+  };
+
+  async function reorder(direction: 'up' | 'down') {
+    const answer = await move.run<WriteWrap>('POST', `${API_CATEGORIES}/${category.id}/reorder`, {
+      direction,
+      treeVersion: body.treeVersion,
+    });
+    if (answer.ok || answer.problem?.reload === true) onChanged();
+  }
+
+  if (!canEdit) return null;
+  // The action map marks only `active` categories as allowed, and a hidden one is edited too, so
+  // the buttons follow the permission and the status; the API checks both again on every write.
+  const rename = editable;
+  const canDiscard = isHidden && category.counts.liveProducts === 0 && !hasChildren;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <CategoryProblemBanner problem={move.problem} />
+      <div className="flex flex-wrap gap-2" role="group" aria-label={t('label')}>
+        <Button variant="secondary" disabled={!rename} onClick={() => setOpen('edit')}>
+          {t('edit')}
+        </Button>
+        <Button variant="secondary" disabled={!rename} onClick={() => setOpen('add-child')}>
+          {t('add-child')}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={!rename || firstSibling || move.pending}
+          onClick={() => void reorder('up')}
+        >
+          {t('move-up')}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={!rename || lastSibling || move.pending}
+          onClick={() => void reorder('down')}
+        >
+          {t('move-down')}
+        </Button>
+        {isHidden ? (
+          <Button variant="secondary" disabled={!rename} onClick={() => setOpen('show')}>
+            {t('show')}
+          </Button>
+        ) : (
+          <Button variant="secondary" disabled={!rename} onClick={() => setOpen('hide')}>
+            {t('hide')}
+          </Button>
+        )}
+        <Button variant="secondary" disabled={!rename} onClick={() => setOpen('slug')}>
+          {t('change-slug')}
+        </Button>
+        {canDiscard ? (
+          <Button variant="destructive" onClick={() => setOpen('discard')}>
+            {t('discard')}
+          </Button>
+        ) : null}
+      </div>
+      {open === 'edit' ? (
+        <EditDetailsDialog
+          body={body}
+          supportedLocales={supportedLocales}
+          csrfToken={csrfToken}
+          onClose={() => setOpen(null)}
+          onSaved={closeAndRefresh}
+          onReload={closeAndRefresh}
+        />
+      ) : null}
+      {open === 'add-child' ? (
+        <CreateCategoryDialog
+          parent={category.id}
+          parentName={title}
+          treeVersion={body.treeVersion}
+          supportedLocales={supportedLocales}
+          requiredLocales={body.requiredLocales}
+          csrfToken={csrfToken}
+          onClose={() => setOpen(null)}
+          onCreated={closeAndRefresh}
+          onReload={closeAndRefresh}
+        />
+      ) : null}
+      {open === 'slug' ? (
+        <ChangeSlugDialog
+          body={body}
+          csrfToken={csrfToken}
+          onClose={() => setOpen(null)}
+          onSaved={closeAndRefresh}
+          onReload={closeAndRefresh}
+        />
+      ) : null}
+      {open === 'hide' || open === 'show' || open === 'discard' ? (
+        <ConfirmCategoryDialog
+          kind={open}
+          body={body}
+          name={title}
+          descendants={descendants}
+          csrfToken={csrfToken}
+          onClose={() => setOpen(null)}
+          onDone={closeAndRefresh}
+          onReload={closeAndRefresh}
+        />
+      ) : null}
+    </div>
+  );
+}

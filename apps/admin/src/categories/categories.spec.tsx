@@ -76,6 +76,19 @@ const detail = (r: CategoryRow, over: Partial<DetailBody> = {}): DetailBody => (
   ],
   complete: true,
   actions: {},
+  details: {
+    texts: r.names.map((entry) => ({
+      locale: entry.locale,
+      name: entry.name,
+      shortDescription: null,
+      keywords: [],
+    })),
+    seo: { title: null, description: null, noindex: false },
+    showInMenu: true,
+    imageId: null,
+    hiddenById: null,
+  },
+  treeVersion: 1,
   ...over,
 });
 const ok = (body: unknown): ApiResult<unknown> => ({ ok: true, status: 200, body });

@@ -15,6 +15,7 @@ import type { CategoryStatus } from './types.ts';
 
 const STATUS_TONE: Record<CategoryStatus, 'success' | 'neutral' | 'attention'> = {
   active: 'success',
+  hidden: 'neutral',
   merged: 'attention',
   archived: 'neutral',
 };
