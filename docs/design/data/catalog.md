@@ -286,8 +286,11 @@ revision).
 
 `attribute_families` (root): `id`; `code` unique per Market; `status`; `published_revision_id`;
 `created_by_kind`; `version`; `created_at`. `attribute_family_revisions` (insert-only): `id`;
-`family_id`; `revision_no`; `groups jsonb` (array of `{ groupCode, attributes: [{ code, required,
-isVariantOption }] }`), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
+`family_id`; `revision_no`; `names jsonb` (the feature set's name per locale, `{}` for the seeded
+family; attributes A4, `jsonb_typeof = 'object'`); `groups jsonb` (array of `{ groupCode, names?,
+attributes: [{ code, required, isVariantOption, level? }] }`; `level` is `required`, `recommended`
+or `optional` and `required` is true exactly for the first, both written by the editor of attributes
+A4; the Core group `core` comes first and holds the brand and the country of origin), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
 `(market_id, family_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 family_id, id)`; unique per Market), `created_at`.
 

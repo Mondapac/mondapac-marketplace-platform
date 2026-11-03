@@ -234,6 +234,41 @@ export const AttributeRelaxationExpiredAudit = defineAuditAction({
   after: { requestId: auditField.id(), requestedByAccountId: auditField.id() },
 });
 
+/** The audit target type of a feature set, stored as an attribute family (package A4). */
+export const CATALOG_ATTRIBUTE_FAMILY_TARGET = 'catalog.attribute-family';
+
+/** What the audit keeps of a feature set revision: counts, never a name. */
+const familyShape = {
+  revisionNo: auditField.integer(),
+  groupCount: auditField.integer(),
+  attributeCount: auditField.integer(),
+  requiredCount: auditField.integer(),
+  recommendedCount: auditField.integer(),
+  optionalCount: auditField.integer(),
+};
+
+/** An admin created a feature set (A4). */
+export const AttributeFamilyCreatedAudit = defineAuditAction({
+  action: 'catalog.attribute-family.created',
+  targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
+  actors: ['authenticated'],
+  after: familyShape,
+});
+
+/**
+ * An admin saved a new revision of a feature set (A4; catalog design 8.2). `requiredRelaxed`
+ * counts the fields that were required and no longer are, dropped or lowered: a relaxation the
+ * audit must show. Removing a `material` attribute is not an edit (it needs the two-person
+ * request), so it never reaches this row.
+ */
+export const AttributeFamilyRevisedAudit = defineAuditAction({
+  action: 'catalog.attribute-family.revised',
+  targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
+  actors: ['authenticated'],
+  before: familyShape,
+  after: { ...familyShape, requiredRelaxed: auditField.integer() },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -250,4 +285,6 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,
+  AttributeFamilyCreatedAudit,
+  AttributeFamilyRevisedAudit,
 ] as const;

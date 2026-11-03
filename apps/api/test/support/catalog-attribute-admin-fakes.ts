@@ -85,6 +85,8 @@ export function featureSetRecord(
     createdByKind: 'seed',
     createdAt: T0,
     revisionNo: 1,
+    version: 1,
+    names: {},
     groups,
   };
 }

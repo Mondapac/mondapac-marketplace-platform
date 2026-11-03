@@ -153,6 +153,8 @@ export class FeatureSetListItemBody {
   @ApiProperty() code!: string;
   @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
   @ApiProperty() revisionNo!: number;
+  @ApiProperty({ ...LOCALIZED, description: 'Empty for the seeded feature set.' })
+  names!: Record<string, string>;
   @ApiProperty() groupCount!: number;
   @ApiProperty() attributeCount!: number;
   @ApiProperty({ description: 'Published products whose current revision uses it.' })
@@ -168,6 +170,7 @@ export class FeatureSetListBody {
 export class FeatureSetAttributeBody {
   @ApiProperty() code!: string;
   @ApiProperty() required!: boolean;
+  @ApiProperty({ enum: ['required', 'recommended', 'optional'] }) level!: string;
   @ApiProperty() isVariantOption!: boolean;
   @ApiProperty({ nullable: true, type: String, format: 'uuid' }) attributeId!: string | null;
   @ApiProperty({ ...LOCALIZED, nullable: true }) names!: Record<string, string> | null;
@@ -178,6 +181,8 @@ export class FeatureSetAttributeBody {
 
 export class FeatureSetGroupBody {
   @ApiProperty() groupCode!: string;
+  @ApiProperty({ ...LOCALIZED, description: 'Empty before package A4.' })
+  names!: Record<string, string>;
   @ApiProperty({ type: [FeatureSetAttributeBody] }) attributes!: FeatureSetAttributeBody[];
 }
 
@@ -186,6 +191,9 @@ export class FeatureSetDetailBody {
   @ApiProperty() code!: string;
   @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
   @ApiProperty() revisionNo!: number;
+  @ApiProperty({ description: 'The version the editor names when it saves.' }) version!: number;
+  @ApiProperty({ ...LOCALIZED, description: 'Empty for the seeded feature set.' })
+  names!: Record<string, string>;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: [FeatureSetGroupBody] }) groups!: FeatureSetGroupBody[];
   @ApiProperty() productCount!: number;
@@ -324,4 +332,55 @@ export class OpenRelaxationBody {
 
 export class OpenRelaxationListBody {
   @ApiProperty({ type: [OpenRelaxationBody] }) requests!: OpenRelaxationBody[];
+}
+
+// Requests and answers of the feature-set editor (attributes plan, package A4).
+
+export class FeatureSetEntryRequest {
+  @ApiProperty({ description: 'The code of an active attribute.' }) code!: string;
+  @ApiProperty({ enum: ['required', 'recommended', 'optional'] }) level!: string;
+}
+
+export class FeatureSetGroupRequest {
+  @ApiProperty({
+    required: false,
+    description:
+      'Lower-case code; left out, it comes from the default-locale name. The Core group is `core`.',
+  })
+  groupCode?: string;
+  @ApiProperty({ ...LOCALIZED, description: 'Locale to name; the default locale is required.' })
+  names!: Record<string, string>;
+  @ApiProperty({ type: [FeatureSetEntryRequest], description: 'In order.' })
+  attributes!: FeatureSetEntryRequest[];
+}
+
+export class FeatureSetContentRequest {
+  @ApiProperty({ ...LOCALIZED, description: 'Locale to name; the default locale is required.' })
+  names!: Record<string, string>;
+  @ApiProperty({
+    type: [FeatureSetGroupRequest],
+    description: 'In order. The first is the Core group (brand and country of origin).',
+  })
+  groups!: FeatureSetGroupRequest[];
+}
+
+export class FeatureSetCreateRequest extends FeatureSetContentRequest {
+  @ApiProperty({ required: false, description: 'Left out, it comes from the default-locale name.' })
+  code?: string;
+}
+
+export class FeatureSetEditRequest extends FeatureSetContentRequest {
+  @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
+}
+
+export class FeatureSetWriteBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty() revisionNo!: number;
+}
+
+export class FeatureSetWriteWrapBody {
+  @ApiProperty({ type: FeatureSetWriteBody }) featureSet!: FeatureSetWriteBody;
 }

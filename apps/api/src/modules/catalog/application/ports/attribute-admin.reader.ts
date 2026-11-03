@@ -47,6 +47,10 @@ export interface FeatureSetRecord {
   readonly createdByKind: CategoryAuthorKind;
   readonly createdAt: Temporal.Instant;
   readonly revisionNo: number;
+  /** The family's version, which a later edit names (package A4). */
+  readonly version: number;
+  /** The name per locale; empty for the seeded family. */
+  readonly names: LocalizedText;
   readonly groups: readonly FamilyGroup[];
 }
 
