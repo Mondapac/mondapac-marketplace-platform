@@ -71,6 +71,9 @@ class MemoryStore implements SellerHealthStore {
   snapshots() {
     return Promise.resolve([...this.snapshotRows.values()]);
   }
+  purgeBefore() {
+    return Promise.resolve({ days: 0, snapshots: 0 });
+  }
 }
 
 function setUp(code: 'AU' | 'ZZ') {

@@ -327,9 +327,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['valid_to'],
     },
     // Seller health (package 3): counters and snapshots are set by the rollup and replaced on a
-    // recalculation; never deleted.
-    'sellers.seller_health_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
-    'sellers.seller_health_snapshots': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // recalculation; deleted only by the retention purge (400 days).
+    'sellers.seller_health_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'sellers.seller_health_snapshots': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
