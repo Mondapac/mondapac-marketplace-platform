@@ -61,8 +61,46 @@
       "isVariantOption": "boolean",
       "material": "boolean",
       "optionCount": "integer",
+      "relaxationRequestId": "optional(id)",
+      "requestedByAccountId": "optional(id)",
       "revisionNo": "integer",
       "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.cancelled",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(requester|definition-changed)",
+      "requestId": "id",
+      "requestedByAccountId": "id"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.expired",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "requestId": "id",
+      "requestedByAccountId": "id"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.requested",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "definitionVersion": "integer",
+      "expiresAt": "instant",
+      "kind": "enumOf(clear-material|archive|remove-from-family)",
+      "requestId": "id"
     }
   },
   {

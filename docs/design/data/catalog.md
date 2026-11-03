@@ -274,8 +274,11 @@ INVOKER`, fixed `search_path`, schema-qualified, through one helper
 `catalog.relaxation_confirmed(market, request, definition, kind)` (a `STABLE` SQL function, no grant):
 - `attribute_definition_revisions_relaxation` (`BEFORE INSERT`): when the definition's current
   revision has `material = true` and the new one `false`, `relaxation_request_id` must name a
-  `confirmed` `clear-material` request of this definition (`23514`); any other revision with a
-  request id is refused.
+  `confirmed` `clear-material` request of this definition, and `author_account_id` must be its
+  confirmer (`23514`); any other revision with a request id is refused. A definition still in
+  `draft` is exempt (never shown to sellers); `attribute_definitions_guard` keeps a definition
+  from moving back into `draft` or out of `archived`, and its published pointer from moving to an
+  older revision, so the exemption cannot be reused (A2 reviews, 2026-11-02).
 - `attribute_definitions_archive_relaxation` (`BEFORE UPDATE OF status, archived_by_request_id`):
   `active → archived` of a definition whose current revision is `material` needs
   `archived_by_request_id` naming a `confirmed` `archive` request of this definition (`23514`);
@@ -1056,6 +1059,11 @@ BEGIN
   RETURN NEW;
 END; $$;
 
+-- As built (migration 20261102200000, after the A2 reviews) the guard above also runs on INSERT
+-- (a new row is open at version 1), the revision trigger below also requires author_account_id =
+-- the confirmer and skips a draft, attribute_definitions_guard refuses moves into draft, out of
+-- archived and of the published pointer backwards, and relaxation_confirmed() is executable by
+-- mondapac_app only. The migration is the reference for those bodies.
 -- 3.5 (Hassan M2): helper and the definition-revision trigger; the archive and family triggers follow
 -- the same shape (family: EXCEPT of the codes of the current and the new `groups`, joined to
 -- definitions by (market_id, code) and to their current revision, `WHERE material`)
@@ -1293,7 +1301,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 10 | 12 | `catalog_tag_selection` | Three selection indexes and the reconciliation index of 3.15 (issuer and type-code indexes with their handlers); request `cause`, `subject_id`; F1 |
 | 11 | 13 | `catalog_images` | `product_images` (raw-key and master-prefix CHECKs, raw-key partial index, delete guard, column-level `UPDATE` grant), renditions, `product_revision_images`; `products.photo_taken_down_at` |
 | 12 | 18 | `catalog_claim_text_rescan` | `claim_text_rescans`; `products.claim_text_flagged_at` |
-| 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the two FK-target uniques, the status index, the open partial unique and the guard trigger; `attribute_definitions.archived_by_request_id` with its FK, unique and CHECK; the same-definition and same-family FKs from the revisions' `relaxation_request_id` and their uniques (`NOT VALID`, then `VALIDATE`); `relaxation_confirmed()` and the three M2 triggers. `down.sql`: drop the M2 triggers and functions, the FKs, uniques and the root column, then the guard trigger, its function and the table |
+| 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the two FK-target uniques, the status index, the open partial unique and the guard trigger; `attribute_definitions.archived_by_request_id` with its FK, unique and CHECK; the same-definition and same-family FKs from the revisions' `relaxation_request_id` and their uniques (`NOT VALID`, then `VALIDATE`); `relaxation_confirmed()` and the three M2 triggers. `down.sql`: drop the M2 triggers and functions, the FKs, uniques and the root column, then the guard trigger, its function and the table. **Built in part (2026-11-02, attributes A2 part 3, `20261102200000_catalog_attribute_relaxation`):** the table with every CHECK, the definition FK-target unique, the status index, the open partial unique, the guard and TRUNCATE triggers, the revisions' same-definition FK and its unique, `relaxation_confirmed()` and the definition-revision M2 trigger (a draft clears `material` freely; the clearing revision's author must be the confirmer). After the A2 reviews (Mojtaba M1 and M2, Hassan M1 to M3): the guard also runs on INSERT and admits only an `open` row at version 1; `attribute_definitions_guard` refuses any status move into `draft` or out of `archived` and any move of `published_revision_id` to a lower `revision_no` or to NULL. The status index is named `attribute_relaxation_requests_market_id_status_expires_at_idx`. `archived_by_request_id`, the same-family FK-target unique and FK, and the archive and family M2 triggers come with the use cases that archive a published definition and change a family's members |
 | 14 | 22 | `catalog_url_keys` | `product_url_keys` (Q-K9) |
 | 15 | 23 | `catalog_seller_categories` | The tables of 3.22; `offers.shelf_category_id` and its FK (`NOT VALID`, `VALIDATE`) |
 | 16 | 24 | `catalog_import` | 3.24 |

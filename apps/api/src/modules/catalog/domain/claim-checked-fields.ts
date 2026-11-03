@@ -214,6 +214,12 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CheckedRow: { noCustomerText: 'the admin check result of a row' },
   AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
   AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
+  AttributeRelaxationRequest: {
+    noCustomerText: 'aggregate class around AttributeRelaxationRequestState',
+  },
+  AttributeRelaxationRequestState: {
+    noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
+  },
   LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
   OfferMovedPayloadRefused: { noCustomerText: 'refusal code with fixed paths' },
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },

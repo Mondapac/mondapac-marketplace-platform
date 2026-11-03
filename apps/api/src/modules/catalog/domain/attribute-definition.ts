@@ -102,6 +102,8 @@ export type AttributeDefinitionRefusal =
   | { readonly code: 'attribute-definition.option-removed'; readonly option: string }
   | { readonly code: 'attribute-definition.variant-locked' }
   | { readonly code: 'attribute-definition.material-relaxation-required' }
+  /** A relaxation was asked of a definition that is not a published `material` one. */
+  | { readonly code: 'attribute-definition.not-material' }
   | { readonly code: 'attribute-definition.default-name-required'; readonly locale: string }
   | {
       readonly code: 'attribute-definition.default-label-required';
@@ -434,6 +436,43 @@ export class AttributeDefinition {
     if (problem !== null) return err(problem);
     return ok(
       new AttributeDefinition({ ...current, status: 'active', version: current.version + 1 }),
+    );
+  }
+
+  /**
+   * Whether `material` may be cleared on this definition through a two-person request (catalog
+   * design 8.2): only a published definition that is `material` now. A draft clears it by an edit.
+   */
+  relaxableMaterial(): AttributeDefinitionRefusal | null {
+    const current = this.#state;
+    if (current.status === 'archived') return { code: 'attribute-definition.archived' };
+    if (current.status !== 'active' || !current.material) {
+      return { code: 'attribute-definition.not-material' };
+    }
+    return null;
+  }
+
+  /**
+   * The next revision with `material` cleared and nothing else changed, applied by a confirmed
+   * two-person request (catalog design 8.2). The store records the request on the revision, and
+   * the database refuses the revision without a confirmed request of this definition.
+   */
+  clearMaterial(input: {
+    readonly revisionId: Id<'AttributeDefinitionRevision'>;
+    readonly now: Temporal.Instant;
+  }): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const problem = this.relaxableMaterial();
+    if (problem !== null) return err(problem);
+    const current = this.#state;
+    return ok(
+      new AttributeDefinition({
+        ...current,
+        revisionId: input.revisionId,
+        revisionNo: current.revisionNo + 1,
+        material: false,
+        version: current.version + 1,
+        revisedAt: input.now,
+      }),
     );
   }
 

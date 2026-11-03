@@ -237,10 +237,18 @@ import { PublicBrandQuery } from './application/use-cases/public-brand.use-case'
 import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.use-case';
 import { BrandAdminController } from './presentation/brand-admin.controller';
 import { AttributeAdminController } from './presentation/attribute-admin.controller';
+import { AttributeRelaxationController } from './presentation/attribute-relaxation.controller';
 import { AttributeDefinitionCreate } from './application/use-cases/attribute-definition-create.use-case';
 import { AttributeDefinitionEdit } from './application/use-cases/attribute-definition-edit.use-case';
 import { AttributeDefinitionDiscard } from './application/use-cases/attribute-definition-discard.use-case';
 import { AttributeDefinitionPublish } from './application/use-cases/attribute-definition-publish.use-case';
+import { AttributeRelaxationRequestCreate } from './application/use-cases/attribute-relaxation-request.use-case';
+import { AttributeRelaxationConfirm } from './application/use-cases/attribute-relaxation-confirm.use-case';
+import { AttributeRelaxationCancel } from './application/use-cases/attribute-relaxation-cancel.use-case';
+import { AttributeRelaxationListOpen } from './application/use-cases/attribute-relaxation-list-open.use-case';
+import { ExpireRelaxationRequests } from './application/use-cases/expire-relaxation-requests.use-case';
+import { expireRelaxationRequestsJob } from './presentation/jobs/expire-relaxation-requests.job';
+import { ATTRIBUTE_RELAXATION_STORE } from './application/ports/attribute-relaxation.store';
 import { ATTRIBUTE_DEFINITION_STORE } from './application/ports/attribute-definition.store';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
@@ -348,6 +356,7 @@ const PORT = {
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  relaxations: ATTRIBUTE_RELAXATION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
@@ -429,6 +438,7 @@ const productTypeProvider: FactoryProvider<string> = {
     PublicProductImageController,
     BrandAdminController,
     AttributeAdminController,
+    AttributeRelaxationController,
     CategoryAdminController,
     BusinessActivityAdminController,
     OwnBrandController,
@@ -567,12 +577,49 @@ const productTypeProvider: FactoryProvider<string> = {
     useCaseProvider(AttributeDefinitionEdit, {
       unitOfWork: true,
       attributeStore: true,
+      relaxations: true,
       policy: true,
       matcher: true,
       claimLocales: true,
       audit: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationRequestCreate, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationConfirm, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationCancel, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationListOpen, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      clock: true,
+    }),
+    useCaseProvider(ExpireRelaxationRequests, {
+      unitOfWork: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
     }),
     useCaseProvider(AttributeDefinitionPublish, {
       unitOfWork: true,
@@ -1085,6 +1132,7 @@ const productTypeProvider: FactoryProvider<string> = {
         SendOfferOwnerNotices,
         PlatformImportRun,
         PlatformImportPurge,
+        ExpireRelaxationRequests,
       ],
       (
         categories: SeedCategoryTree,
@@ -1095,6 +1143,7 @@ const productTypeProvider: FactoryProvider<string> = {
         notices: SendOfferOwnerNotices,
         importRun: PlatformImportRun,
         importPurge: PlatformImportPurge,
+        expireRelaxations: ExpireRelaxationRequests,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -1104,6 +1153,7 @@ const productTypeProvider: FactoryProvider<string> = {
         sendOfferOwnerNoticesJob(notices),
         platformImportRunJob(importRun),
         purgePlatformImportsJob(importPurge),
+        expireRelaxationRequestsJob(expireRelaxations),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).

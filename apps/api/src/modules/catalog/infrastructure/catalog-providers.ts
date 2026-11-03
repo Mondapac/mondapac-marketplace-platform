@@ -42,6 +42,11 @@ import {
 } from '../application/ports/attribute-definition.store';
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
+import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
+import {
+  ATTRIBUTE_RELAXATION_STORE,
+  type AttributeRelaxationStore,
+} from '../application/ports/attribute-relaxation.store';
 import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
 import { OWN_OFFER_FINDER } from '../application/ports/own-offer-finder';
 import { CLAIM_EVALUATOR, type ClaimEvaluator } from '../application/ports/claim-evaluator';
@@ -241,6 +246,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeDefinitionStore =>
       new PrismaAttributeDefinitionStore(prisma),
+  },
+  {
+    provide: ATTRIBUTE_RELAXATION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeRelaxationStore =>
+      new PrismaAttributeRelaxationStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,
