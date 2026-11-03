@@ -140,6 +140,11 @@ export function brandRefOf(raw: unknown): ProductDetail['brand'] {
   return isBrandSlug(slug) && isText(name) ? { slug, name } : undefined;
 }
 
+const spelledOut = (code: string): string => {
+  const words = code.replaceAll(/[-_]+/gu, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
 const MAX_SPECS = 60;
 const MAX_LIST = 20;
 const GROUP_CODE = /^[a-z][a-z0-9_-]{0,63}$/u;
@@ -147,6 +152,19 @@ const DECIMAL = /^-?[0-9]{1,15}(\.[0-9]{1,9})?$/u;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * A decimal string (up to 15 integer and 9 fraction digits) as the language writes it, Latin
+ * digits, without passing through a floating point number: the digits shown are the digits stored.
+ */
+function decimalText(value: string, locale: string): string {
+  const negative = value.startsWith('-');
+  const [whole = '0', fraction] = (negative ? value.slice(1) : value).split('.');
+  const format = new Intl.NumberFormat(intlLocale(locale), { numberingSystem: 'latn' });
+  const point = format.formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? '.';
+  const text = format.format(BigInt(whole)) + (fraction === undefined ? '' : point + fraction);
+  return negative ? `-${text}` : text;
+}
 
 /** One specification value as the line a buyer reads; null when it is malformed (never half a row). */
 function specificationValueOf(
@@ -161,15 +179,14 @@ function specificationValueOf(
     case 'list': {
       if (!Array.isArray(raw.items)) return null;
       const items = (raw.items as unknown[]).filter(isText).slice(0, MAX_LIST);
-      return items.length === 0 ? null : items.join(', ');
+      // The language's own separator and "and" (a Persian list uses «،»).
+      return items.length === 0
+        ? null
+        : new Intl.ListFormat(intlLocale(locale), { style: 'short', type: 'unit' }).format(items);
     }
     case 'number':
-      // Latin digits whatever the language; the number is shown as the admin's own digits.
       return typeof raw.value === 'string' && DECIMAL.test(raw.value)
-        ? new Intl.NumberFormat(intlLocale(locale), {
-            numberingSystem: 'latn',
-            maximumFractionDigits: 9,
-          }).format(Number(raw.value))
+        ? decimalText(raw.value, locale)
         : null;
     case 'boolean':
       return typeof raw.value === 'boolean'
@@ -200,7 +217,9 @@ export function specificationsOf(
   for (const group of raw as unknown[]) {
     if (!isRecord(group) || typeof group.groupCode !== 'string') continue;
     if (!GROUP_CODE.test(group.groupCode) || !Array.isArray(group.specifications)) continue;
-    const heading = labels.group?.(group.groupCode);
+    // A group the page has no word for is spelled out from its code ("nutrition-facts" is
+    // "Nutrition facts"), so no group in a list of several is left without a heading.
+    const heading = labels.group?.(group.groupCode) ?? spelledOut(group.groupCode);
     for (const item of group.specifications as unknown[]) {
       if (out.length >= MAX_SPECS) return out;
       if (!isRecord(item) || typeof item.code !== 'string' || seen.has(item.code)) continue;
@@ -208,10 +227,11 @@ export function specificationsOf(
       if (!isText(item.name) || value === null) continue;
       seen.add(item.code);
       out.push({
+        code: item.code,
         label: item.name,
         value,
         group: group.groupCode,
-        ...(heading === undefined ? {} : { groupLabel: heading }),
+        groupLabel: heading,
       });
     }
   }

@@ -35,7 +35,8 @@ interface SpecGroup {
 
 /**
  * The specification rows in runs of one group. A heading shows only when there are several
- * groups and the group has a word; one group is one plain table, as before.
+ * groups (every group then has one: its word, else its code spelled out); one group is one plain
+ * table, as before. The group heading is one level under the section's own.
  */
 function specGroups(rows: readonly ProductSpecification[]): SpecGroup[] {
   const groups: SpecGroup[] = [];
@@ -120,12 +121,14 @@ export function ProductPage({
                 <Collapsible title={t('specifications')} level={product.description ? 'h3' : 'h2'}>
                   {specGroups(product.specifications).map((group, index) => (
                     <div key={group.code ?? index} className="spec-group">
-                      {group.label === undefined ? null : (
+                      {group.label === undefined ? null : product.description ? (
                         <h4 className="spec-title">{group.label}</h4>
+                      ) : (
+                        <h3 className="spec-title">{group.label}</h3>
                       )}
                       <dl className="spec">
                         {group.rows.map((s) => (
-                          <div key={s.label}>
+                          <div key={s.code ?? s.label}>
                             <dt>{s.label}</dt>
                             <dd>{s.value}</dd>
                           </div>

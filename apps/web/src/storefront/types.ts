@@ -201,6 +201,8 @@ export interface ProductOffer {
 }
 
 export interface ProductSpecification {
+  /** The attribute's code: unique among the rows (a name may repeat across groups). */
+  readonly code?: string;
   readonly label: string;
   readonly value: string;
   /** The family group's code; rows of one group are next to each other. */
