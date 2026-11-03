@@ -82,6 +82,8 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
   let audits: AuditEntry[];
   let events: PendingEvent[];
   let allow: boolean;
+  const coveredAll = (): Result<readonly string[], never> =>
+    ok([...new Set([...locales.supported, 'en'])]);
   let covered: Result<readonly string[], { code: 'claim-text.check-unavailable' }>;
   let matcherDown: boolean;
   let claimWords: RegExp;
@@ -226,7 +228,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
     audits = [];
     events = [];
     allow = true;
-    covered = ok([...locales.supported]);
+    covered = coveredAll();
     matcherDown = false;
     claimWords = /halal/i;
     matched = [];
@@ -251,6 +253,24 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
         err({ code: 'access.denied' }),
       );
       expect(store.rows.size).toBe(0);
+    });
+    it('declares the same permission rule on all seven write use cases', () => {
+      const expected = { kind: 'permissions', allOf: [CATALOG_CATEGORY_TREE_EDIT.key] };
+      const names = new Map<unknown, string>([
+        [CategoryCreate, 'catalog.category-create'],
+        [CategoryEditDetails, 'catalog.category-edit-details'],
+        [CategoryReorder, 'catalog.category-reorder'],
+        [CategoryHide, 'catalog.category-hide'],
+        [CategoryShow, 'catalog.category-show'],
+        [CategoryChangeSlug, 'catalog.category-change-slug'],
+        [CategoryDiscard, 'catalog.category-discard'],
+      ]);
+      expect(names.size).toBe(7);
+      for (const [useCase, name] of names) {
+        const { access } = useCase as { access: { name: string; rule: unknown } };
+        expect(access.name).toBe(name);
+        expect(access.rule).toEqual(expected);
+      }
     });
     it('refuses an unknown key in the input', async () => {
       const answer = await build().create.execute(context(), { ...body(), status: 'active' });
@@ -329,7 +349,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
 
     it('fails closed when the vocabulary does not cover a locale, or cannot be read', async () => {
       if (second !== null) {
-        covered = ok([english]);
+        covered = ok([english, 'en']);
         const answer = await build().create.execute(context(), {
           slug: 'rice',
           texts: { ...text('Rice'), [second]: { name: 'Second' } },
@@ -350,7 +370,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
           treeVersion: 1,
         }),
       ).toEqual(err({ code: 'claim-text.check-unavailable' }));
-      covered = ok([...locales.supported]);
+      covered = coveredAll();
       matcherDown = true;
       expect(
         await build().create.execute(context(), {
@@ -359,6 +379,76 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
           treeVersion: 1,
         }),
       ).toEqual(err({ code: 'claim-text.check-unavailable' }));
+      expect(store.rows.size).toBe(0);
+    });
+
+    it('reads the depth cap from the Market: 4 in AU, 3 in ZZ', () => {
+      expect(maxDepth).toBe(code === 'AU' ? 4 : 3);
+    });
+
+    it('requires the default locale name when no text is sent at all', async () => {
+      const answer = await build().create.execute(context(), {
+        slug: 'rice',
+        texts: {},
+        treeVersion: 1,
+      });
+      expect(answer).toEqual(
+        err({
+          code: 'category.required-locale-missing',
+          fields: [{ path: `texts.${english}.name`, code: 'required' }],
+        }),
+      );
+      expect(store.rows.size).toBe(0);
+    });
+
+    it('refuses a name in a locale the vocabulary does not cover, in every Market', async () => {
+      covered = ok(['en']);
+      const answer = await build().create.execute(context(), {
+        slug: 'rice',
+        texts: text('Rice'),
+        treeVersion: 1,
+      });
+      if (english === 'en') {
+        expect(answer.ok).toBe(true);
+      } else {
+        expect(answer).toEqual(
+          err({
+            code: 'category.locale-uncheckable',
+            fields: [{ path: `texts.${english}.name`, code: 'locale-uncheckable' }],
+          }),
+        );
+      }
+    });
+
+    it('checks the search fields and the slug with the English vocabulary, not the default locale', async () => {
+      const answer = await build().create.execute(context(), {
+        slug: 'rice',
+        texts: text('Rice'),
+        seo: { title: 'Rice', description: 'Long grain' },
+        treeVersion: 1,
+      });
+      expect(answer.ok).toBe(true);
+      expect(matched.filter((m) => m.text === 'Rice' || m.text === 'Long grain')).toEqual(
+        expect.arrayContaining([
+          { locale: 'en', text: 'Rice' },
+          { locale: 'en', text: 'Long grain' },
+        ]),
+      );
+      expect(matched.find((m) => m.text === 'rice')).toEqual({ locale: 'en', text: 'rice' });
+    });
+
+    it('keeps the search fields in the Latin script, so Japanese or Persian cannot slip past the English check', async () => {
+      for (const title of ['お米', 'برنج', 'Рис']) {
+        const answer = await build().create.execute(context(), {
+          slug: 'rice',
+          texts: text('Rice'),
+          seo: { title },
+          treeVersion: 1,
+        });
+        expect(answer).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'seo.title', code: 'english-only' }] }),
+        );
+      }
       expect(store.rows.size).toBe(0);
     });
 

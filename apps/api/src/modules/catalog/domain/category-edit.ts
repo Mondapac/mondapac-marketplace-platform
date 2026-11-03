@@ -77,8 +77,14 @@ const invalid = (path: string, code: string): Result<never, CategoryEditRefusal>
   err({ code: 'validation.failed', fields: [{ path, code }] });
 
 const CONTROL = /[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
-/** Persian, Arabic and related blocks: the search-result fields are English only (decision 14). */
-const NON_ENGLISH = /[֐-ࣿיִ-﷿ﹰ-ﻼ]/u;
+/**
+ * The search-result fields and the slug are English (decision 14), so they must be written in the
+ * Latin script: a letter of any other script is refused. Digits, punctuation, symbols and spaces
+ * (script Common) pass. This is what makes the English claim vocabulary enough to check them.
+ */
+const NON_ENGLISH = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
+/** The locale whose vocabulary checks the search-result fields and the slug. */
+export const SEARCH_TEXT_LOCALE = 'en';
 
 const lengthOf = (value: string): number => [...value].length;
 

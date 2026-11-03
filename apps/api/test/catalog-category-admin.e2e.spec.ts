@@ -375,6 +375,27 @@ describe.each(TEST_MARKETS)(
         expect(editStore.rows.size).toBe(0);
       });
 
+      it('refuses a Viewer with 403 on every write route, and writes nothing', async () => {
+        const viewer = adminSession(VIEWER, 24);
+        const target = '01990000-0000-7000-8000-0000000000c9';
+        await http()
+          .patch(`${BASE}/${target}`)
+          .set(viewer)
+          .send({ version: 1, texts: {} })
+          .expect(403);
+        const posts: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+          ['reorder', { direction: 'up', treeVersion: 1 }],
+          ['hide', { treeVersion: 1 }],
+          ['show', { treeVersion: 1 }],
+          ['change-slug', { slug: 'other', treeVersion: 1 }],
+          ['discard', { treeVersion: 1 }],
+        ];
+        for (const [action, payload] of posts) {
+          await http().post(`${BASE}/${target}/${action}`).set(viewer).send(payload).expect(403);
+        }
+        expect(editStore.rows.size).toBe(0);
+      });
+
       it('adds a category (201, hidden), shows it, saves its details and reorders', async () => {
         const session = adminSession(MODERATOR, 22);
         const created = await http().post(BASE).set(session).send(body()).expect(201);
@@ -418,11 +439,12 @@ describe.each(TEST_MARKETS)(
       it('answers 409 for a stale tree and a taken slug, 422 for a claim word, 400 for an unknown field', async () => {
         const session = adminSession(MODERATOR, 23);
         await http().post(BASE).set(session).send(body()).expect(201);
-        await http()
+        const stale = await http()
           .post(BASE)
           .set(session)
-          .send(body({ treeVersion: 1 }))
+          .send(body({ slug: 'rice-2', treeVersion: 1 }))
           .expect(409);
+        expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.stale' });
         const taken = await http()
           .post(BASE)
           .set(session)

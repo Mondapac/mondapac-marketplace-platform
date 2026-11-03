@@ -22,8 +22,10 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 // the slug history keeps a retired slug from another category for 12 months; positions swap
 // without a gap or a clash; the discard facts; and the Market boundary.
 
-const T0 = Temporal.Instant.from('2026-11-03T00:00:00Z');
-const NOW = Temporal.Instant.from('2026-11-04T00:00:00Z');
+// The slug history keeps a retired slug for 12 months of the database's own clock, so the
+// instants of this spec follow today: a fixed date would stop proving it a year from now.
+const T0 = Temporal.Now.instant();
+const NOW = T0.add({ hours: 24 });
 let sequence = 0;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
@@ -201,6 +203,35 @@ describe.each(TEST_MARKETS)('catalog category editor store in market %s (databas
     ).rejects.toThrow();
     const detail = await read(market, () => reader.detail(market, child));
     expect(detail?.hiddenById).toBeNull();
+  });
+
+  it('refuses a cascade marker that breaks the CHECK or crosses a Market, by code and constraint', async () => {
+    const parent = await add(market, null, 'Marker parent');
+    const child = await add(market, parent, 'Marker child');
+    const foreign = await add(other, null, 'Marker foreign');
+    const set = (status: string, hiddenBy: string, id: string) =>
+      owner.query(
+        `UPDATE catalog.platform_categories SET status = $1, hidden_by_id = $2
+          WHERE market_id = $3 AND id = $4`,
+        [status, hiddenBy, market.marketId, id],
+      );
+    // Active with a marker: the CHECK says only a hidden category carries one.
+    await expect(set('active', parent, child)).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'platform_categories_hidden_by_check',
+    });
+    // A category cannot have hidden itself.
+    await expect(set('hidden', child, child)).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'platform_categories_hidden_by_check',
+    });
+    // A category of another Market is not a valid hider: the composite FK includes market_id.
+    await expect(set('hidden', foreign, child)).rejects.toMatchObject({
+      code: '23503',
+      constraint: 'platform_categories_market_id_hidden_by_id_fkey',
+    });
+    // The valid shape is accepted.
+    await expect(set('hidden', parent, child)).resolves.toBeTruthy();
   });
 
   it('changes the slug, keeps the old one in the history and refuses another category taking it', async () => {
