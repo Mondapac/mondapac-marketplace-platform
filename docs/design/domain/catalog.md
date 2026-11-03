@@ -749,6 +749,7 @@ path (SL 4 pattern).
 | `reconcileAtLocalTime` | `03:00` | `04:00` | 5.6 |
 | `maxCategoryChangeTags` | `50000` (Q-K4) | `10` | 4.6, 9.2a |
 | `maxVariantsPerProduct` | `100` (Ali, Phase 4 ruling) | `3` (so tests reach the limit) | 2.1, 4.2, 9.4 (`offer-moved`), 14 |
+| `maxCategoryDepth` | `4` (categories plan v7, Q1) | `3` | Categories plan; the editor of C3 |
 | `reviewChecks` | The four check codes and their label keys of 8.3a | Two codes | 8.3a |
 
 Locales come from the Market's `supportedLocales` (INTL-10); the language tab is hidden when the

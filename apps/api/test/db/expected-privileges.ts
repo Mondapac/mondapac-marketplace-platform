@@ -1238,10 +1238,25 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.category_trees': { table: ['INSERT', 'SELECT'], columnUpdate: ['version'] },
     'catalog.platform_categories': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['merged_into_id', 'parent_id', 'published_revision_id', 'status', 'version'],
+      columnUpdate: [
+        'image_id',
+        'merged_into_id',
+        'parent_id',
+        'position',
+        'published_revision_id',
+        'seo_description',
+        'seo_noindex',
+        'seo_title',
+        'show_in_menu',
+        'status',
+        'version',
+      ],
     },
     'catalog.platform_category_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_revision_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C2: per-locale content and the slug history are insert-only.
+    'catalog.platform_category_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.platform_category_slug_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.
