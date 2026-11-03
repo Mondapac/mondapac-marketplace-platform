@@ -127,7 +127,6 @@ export class CategoryCreate extends UseCase<
         texts: texts.value,
         seo: seo.value,
         slug,
-        defaultLocale: locales.default,
       }),
     );
     if (claim !== null) return err(claim);

@@ -83,17 +83,7 @@ export class CategoryChangeSlug extends UseCase<
     const { store, ids, clock } = this.deps;
     const slug = body.value['slug'];
     if (!isCategorySlug(slug)) return invalid('slug', 'format');
-    let defaultLocale: string;
-    try {
-      defaultLocale = this.deps.policy.locales(market).default;
-    } catch {
-      return err({ code: 'access.unavailable' });
-    }
-    const claim = await refuseClaimTexts(
-      this.deps,
-      context,
-      checkedPlaces({ slug, defaultLocale }),
-    );
+    const claim = await refuseClaimTexts(this.deps, context, checkedPlaces({ slug }));
     if (claim !== null) return err(claim);
     return runStructural(this.deps, market, treeVersion.value, async (nodes, nextTreeVersion) => {
       const target = nodes.find((node) => node.id === id.value);

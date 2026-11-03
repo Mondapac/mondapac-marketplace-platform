@@ -14,6 +14,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { isActingAsSession } from '../acting-as';
 import {
   CATEGORY_CASCADE_MAX,
+  SEARCH_TEXT_LOCALE,
   type CategoryEditRefusal,
   type CategorySeo,
   type CategoryText,
@@ -99,13 +100,12 @@ interface CheckedPlace {
 /**
  * Every name, short description and keyword in every filled locale, the search-result fields and
  * the slug (plan section 8a; catalog design 6.2). Search-result fields and the slug are English,
- * so they are checked in the Market's default locale.
+ * so they are checked with the English vocabulary whatever the Market's default locale is.
  */
 export function checkedPlaces(input: {
   readonly texts?: readonly CategoryText[];
   readonly seo?: CategorySeo;
   readonly slug?: string;
-  readonly defaultLocale: string;
 }): readonly CheckedPlace[] {
   const places: CheckedPlace[] = [];
   for (const text of input.texts ?? []) {
@@ -126,17 +126,17 @@ export function checkedPlaces(input: {
     });
   }
   if (input.seo?.title) {
-    places.push({ path: 'seo.title', locale: input.defaultLocale, text: input.seo.title });
+    places.push({ path: 'seo.title', locale: SEARCH_TEXT_LOCALE, text: input.seo.title });
   }
   if (input.seo?.description) {
     places.push({
       path: 'seo.description',
-      locale: input.defaultLocale,
+      locale: SEARCH_TEXT_LOCALE,
       text: input.seo.description,
     });
   }
   if (input.slug !== undefined) {
-    places.push({ path: 'slug', locale: input.defaultLocale, text: input.slug });
+    places.push({ path: 'slug', locale: SEARCH_TEXT_LOCALE, text: input.slug });
   }
   return places;
 }

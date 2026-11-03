@@ -113,7 +113,7 @@ export class CategoryEditDetails extends UseCase<
     const claim = await refuseClaimTexts(
       this.deps,
       context,
-      checkedPlaces({ texts: texts.value, seo: seo.value, defaultLocale: locales.default }),
+      checkedPlaces({ texts: texts.value, seo: seo.value }),
     );
     if (claim !== null) return err(claim);
 

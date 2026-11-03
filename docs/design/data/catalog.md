@@ -210,7 +210,7 @@ database stays the source of truth.
 | `published_revision_id` | `uuid` | yes | Current revision (name, parent). FK `(market_id, id, published_revision_id)` → revisions of this category. Nullable (Q-K10, as CE-data 3.1): the creating unit inserts the root with NULL, then revision 1, then sets the pointer; NULL is never visible after commit. Plain FK, no deferred constraint |
 | `created_by_kind` | `text` | no | CHECK `seed`, `admin` (D 17.1 item 4). Never updated |
 | `version`, `created_at` | | no | CA1 |
-| `position` | `integer` | no | Order among siblings (roots are siblings). CHECK `>= 0`. **Unique `(market_id, parent_id, position)`**, `NULLS NOT DISTINCT`, `DEFERRABLE INITIALLY IMMEDIATE` (constraint `platform_categories_market_id_parent_id_position_key`): a reorder defers the check and swaps inside one unit. Backfilled by the order of the first-locale name per parent (lower-case, then slug). A row inserted without one, or with `-1` (the seed repository), goes last among its siblings under a transaction advisory lock on the sibling set (trigger `platform_categories_default_position`, `BEFORE INSERT`), so concurrent inserts take consecutive positions |
+| `position` | `integer` | no | Order among siblings (roots are siblings). CHECK `>= 0`. **Unique `(market_id, parent_id, position)`**, `NULLS NOT DISTINCT`, `DEFERRABLE INITIALLY IMMEDIATE` (constraint `platform_categories_market_id_parent_id_position_key`): a reorder swaps in one unit through a parking value (2 000 000 000) so no check is deferred in the C3a code; the constraint stays deferrable. Backfilled by the order of the first-locale name per parent (lower-case, then slug). A row inserted without one, or with `-1` (the seed repository), goes last among its siblings under a transaction advisory lock on the sibling set (trigger `platform_categories_default_position`, `BEFORE INSERT`), so concurrent inserts take consecutive positions |
 | `hidden_by_id` | `uuid` | yes | C3a. The category whose Hide cascaded to this one; NULL when hidden on its own. FK `(market_id, hidden_by_id)` → `platform_categories`; CHECK `hidden_by_id IS NULL OR (status = 'hidden' AND hidden_by_id <> id)`. Show restores exactly the descendants that name the shown category here |
 | `show_in_menu` | `boolean` | no | Default `true` |
 | `image_id` | `uuid` | yes | The category image from the product image intake (purpose `category-image`, wired in C3). **No foreign key**: `product_images` rows belong to a product (`product_id NOT NULL`); C3 decides the link |
@@ -246,8 +246,9 @@ database stays the source of truth.
   (`BEFORE INSERT OR UPDATE OF slug`) refuses what it missed (`23514`); the category's own old slug may
   return. The key lets a slug be retired again after a later reuse; a lookup takes the latest row (the
   redirect is for a slug nobody holds now). Index `(market_id, category_id)`.
-- **Slug is still not in the application's `UPDATE` list.** The package that builds Change URL name grants
-  it together with the writer of the history row.
+- **Slug is in the application's `UPDATE` list since C3a** (`GRANT UPDATE ("slug", "hidden_by_id")`). The
+  Change URL name use case writes the old slug into this history in the same unit as the update; the
+  trigger above refuses a slug another category retired in the last 12 months.
 - The seed only inserts (D 7.2, B4): the application has no grant that a seed could use to rewrite a
   category other than the editor's column list, and the seed use case has no update path. A test
   applies the seed twice and asserts no `UPDATE` reached the table (statement counter of the unit).
