@@ -82,8 +82,10 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
   let audits: AuditEntry[];
   let events: PendingEvent[];
   let allow: boolean;
+  // The real vocabularies are per full locale (AU: en-AU; ZZ: en-US and ja-JP), never a bare `en`.
+  const englishVocabulary = code === 'AU' ? 'en-AU' : 'en-US';
   const coveredAll = (): Result<readonly string[], never> =>
-    ok([...new Set([...locales.supported, 'en'])]);
+    ok([...new Set([...locales.supported, englishVocabulary])]);
   let covered: Result<readonly string[], { code: 'claim-text.check-unavailable' }>;
   let matcherDown: boolean;
   let claimWords: RegExp;
@@ -349,7 +351,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
 
     it('fails closed when the vocabulary does not cover a locale, or cannot be read', async () => {
       if (second !== null) {
-        covered = ok([english, 'en']);
+        covered = ok([english]);
         const answer = await build().create.execute(context(), {
           slug: 'rice',
           texts: { ...text('Rice'), [second]: { name: 'Second' } },
@@ -358,7 +360,13 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
         expect(answer).toEqual(
           err({
             code: 'category.locale-uncheckable',
-            fields: [{ path: `texts.${second}.name`, code: 'locale-uncheckable' }],
+            // The slug is English too, and this vocabulary has no English: also uncheckable.
+            fields: [
+              { path: `texts.${second}.name`, code: 'locale-uncheckable' },
+              ...(english === englishVocabulary
+                ? []
+                : [{ path: 'slug', code: 'locale-uncheckable' }]),
+            ],
           }),
         );
       }
@@ -402,13 +410,13 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
     });
 
     it('refuses a name in a locale the vocabulary does not cover, in every Market', async () => {
-      covered = ok(['en']);
+      covered = ok([englishVocabulary]);
       const answer = await build().create.execute(context(), {
         slug: 'rice',
         texts: text('Rice'),
         treeVersion: 1,
       });
-      if (english === 'en') {
+      if (english === englishVocabulary) {
         expect(answer.ok).toBe(true);
       } else {
         expect(answer).toEqual(
@@ -420,7 +428,8 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       }
     });
 
-    it('checks the search fields and the slug with the English vocabulary, not the default locale', async () => {
+    it('creates a category with the real vocabulary list, which has no bare "en"', async () => {
+      expect(coveredAll()).toEqual(ok(expect.not.arrayContaining(['en'])));
       const answer = await build().create.execute(context(), {
         slug: 'rice',
         texts: text('Rice'),
@@ -428,13 +437,43 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
         treeVersion: 1,
       });
       expect(answer.ok).toBe(true);
-      expect(matched.filter((m) => m.text === 'Rice' || m.text === 'Long grain')).toEqual(
+    });
+
+    it('refuses the slug and the search fields when the Market has no English vocabulary', async () => {
+      covered = ok(['ja-JP', 'fa']);
+      const answer = await build().create.execute(context(), {
+        slug: 'rice',
+        texts: text('Rice'),
+        seo: { title: 'Rice' },
+        treeVersion: 1,
+      });
+      expect(answer.ok).toBe(false);
+      const fields = !answer.ok && 'fields' in answer.error ? answer.error.fields : [];
+      expect(fields).toEqual(
         expect.arrayContaining([
-          { locale: 'en', text: 'Rice' },
-          { locale: 'en', text: 'Long grain' },
+          { path: 'seo.title', code: 'locale-uncheckable' },
+          { path: 'slug', code: 'locale-uncheckable' },
         ]),
       );
-      expect(matched.find((m) => m.text === 'rice')).toEqual({ locale: 'en', text: 'rice' });
+      expect(store.rows.size).toBe(0);
+    });
+
+    it('checks the search fields and the slug with the Market English vocabulary, not the default locale', async () => {
+      const answer = await build().create.execute(context(), {
+        slug: 'rice',
+        texts: text('Rice'),
+        seo: { title: 'Rice', description: 'Long grain' },
+        treeVersion: 1,
+      });
+      expect(answer.ok).toBe(true);
+      expect(matched.find((m) => m.text === 'Long grain')).toEqual({
+        locale: englishVocabulary,
+        text: 'Long grain',
+      });
+      expect(matched.find((m) => m.text === 'rice')).toEqual({
+        locale: englishVocabulary,
+        text: 'rice',
+      });
     });
 
     it('keeps the search fields in the Latin script, so Japanese or Persian cannot slip past the English check', async () => {
