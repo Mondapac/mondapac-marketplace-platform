@@ -300,6 +300,22 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
   },
+  PublishedSpecification: {
+    noCustomerText:
+      'read copy of a published revision attribute value (seller text already claim-checked when the revision was frozen) and the attribute name or option label (admin text, claim-checked when written)',
+  },
+  SpecificationOption: {
+    noCustomerText:
+      'read copy of a published definition option label (admin text, claim-checked when written) and a merge target code',
+  },
+  SpecificationDefinition: {
+    noCustomerText:
+      'read copy of a published definition: type, flags, names and options (admin text, claim-checked when written)',
+  },
+  SpecificationLocales: { noCustomerText: 'two locale tags' },
+  PublishedSpecificationGroup: {
+    noCustomerText: 'a family group code and its PublishedSpecification rows',
+  },
   BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
