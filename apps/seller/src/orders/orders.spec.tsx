@@ -186,6 +186,61 @@ describe('SellerOrders list', () => {
   });
 });
 
+describe('SellerOrders list in page mode', () => {
+  const pagesPage = (total: number, pageNo = 1): SellerOrderPage => ({
+    ...page([order()]),
+    total,
+    page: pageNo,
+    pageSize: 25,
+  });
+  const mountPages = (initial = pagesPage(60)) =>
+    render(wrap(<SellerOrders initial={initial} paging="pages" />));
+
+  it('shows the range, page buttons and no "Show more"', () => {
+    mountPages();
+    expect(screen.getByText('1 to 1 of 60')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Page 3' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Show more orders' })).toBeNull();
+    expect(screen.getByLabelText('Sort by')).toBeTruthy();
+  });
+
+  it('asks the API for the page, the sort and the days that were chosen', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(60, 2) });
+    mountPages();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[1]).toBe(
+      'ordering/seller/orders?page=2&pageSize=25&sort=paid&direction=desc',
+    );
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'total-high' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls[1]?.[1]).toBe(
+      'ordering/seller/orders?page=1&pageSize=25&sort=total&direction=desc',
+    );
+    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call.mock.calls[2]?.[1]).toContain('from=2026-10-01T00%3A00%3A00.000Z');
+  });
+
+  it('asks nothing for a backwards range and says so', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(0) });
+    mountPages();
+    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-05' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    call.mockClear();
+    fireEvent.change(screen.getByLabelText('Paid until (UTC)'), {
+      target: { value: '2026-10-01' },
+    });
+    expect(await screen.findByText('The end day is before the start day.')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('says that page numbers stop at 10,000 orders', () => {
+    mountPages(pagesPage(12_000));
+    expect(screen.getByText(/Page numbers stop at the first 10,000 orders/)).toBeTruthy();
+  });
+});
+
 describe('OrderDetail', () => {
   it('shows the product name and variant for a line, its money and the totals', () => {
     mountDetail();
