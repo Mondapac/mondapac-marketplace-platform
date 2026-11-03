@@ -20,12 +20,15 @@ import {
   COMMISSION_PAYOUTS_EARNINGS_VIEW,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
 } from '../../commission-payouts';
+import { REVIEWS_MODERATION_QUEUE, REVIEWS_SELLER_VIEW } from '../../reviews';
 import { PRICING_PRICE_HOLD_DECIDE, PRICING_PRICE_VIEW } from '../../pricing';
 import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../shipping';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
   ADMIN_NOTICE_KINDS,
   ADMIN_PLATFORM_IMPORT_FINISHED,
+  ADMIN_REVIEW_HELD,
+  ADMIN_REVIEW_REPORTED,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
@@ -49,6 +52,10 @@ import {
   SELLER_ORDER_DISPUTED,
   SELLER_ORDER_PAID,
   SELLER_PAYOUT_TERMS_CHANGED,
+  SELLER_REVIEW_POSTED,
+  SELLER_REVIEW_HIDDEN,
+  SELLER_REVIEW_RESTORED,
+  SELLER_DELIVERY_PROBLEM,
   SELLER_PRICE_HOLD_DECIDED,
   SELLER_PRODUCT_CHANGES_REQUESTED,
   SELLER_PRODUCT_PUBLISHED,
@@ -115,10 +122,15 @@ const SELLER_KIND_ACCESS: Readonly<Record<SellerNoticeKind, AccessDeclaration>> 
   const stock = seeing('stock', INVENTORY_STOCK_VIEW.key);
   const certificate = seeing('certificate', CERTIFICATION_OWN_CERTIFICATE_VIEW.key);
   const catalog = seeing('catalog', CATALOG_OWN_PRODUCT_VIEW.key);
+  const reviews = seeing('review', REVIEWS_SELLER_VIEW.key);
   return {
     [SELLER_ORDER_PAID]: order,
     [SELLER_ORDER_DISPUTED]: order,
     [SELLER_PAYOUT_TERMS_CHANGED]: seeing('earnings', COMMISSION_PAYOUTS_EARNINGS_VIEW.key),
+    [SELLER_REVIEW_POSTED]: reviews,
+    [SELLER_REVIEW_HIDDEN]: reviews,
+    [SELLER_REVIEW_RESTORED]: reviews,
+    [SELLER_DELIVERY_PROBLEM]: reviews,
     [SELLER_LOW_STOCK]: stock,
     [SELLER_CERTIFICATE_DECIDED]: certificate,
     [SELLER_CERTIFICATE_EXPIRING]: certificate,
@@ -141,6 +153,11 @@ const SELLER_KIND_ACCESS: Readonly<Record<SellerNoticeKind, AccessDeclaration>> 
  * The permission an admin must hold to see each admin kind (package 3): the one that works the
  * queue the notice points at. Checked on every read, as {@link SELLER_KIND_ACCESS}.
  */
+const ADMIN_REVIEW_QUEUE_ACCESS: AccessDeclaration = {
+  name: 'notifications.see-admin-review-notices',
+  rule: { kind: 'permissions', allOf: [REVIEWS_MODERATION_QUEUE.key] },
+};
+
 const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = {
   [ADMIN_SELLER_CERTIFICATE_SUBMITTED]: {
     name: 'notifications.see-admin-certificate-notices',
@@ -175,6 +192,9 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
     name: 'notifications.see-admin-platform-import-notices',
     rule: { kind: 'permissions', allOf: [CATALOG_PLATFORM_IMPORT_RUN.key] },
   },
+  // The admins who work the moderation queue see what waits in its held and reported tabs.
+  [ADMIN_REVIEW_HELD]: ADMIN_REVIEW_QUEUE_ACCESS,
+  [ADMIN_REVIEW_REPORTED]: ADMIN_REVIEW_QUEUE_ACCESS,
 };
 
 const logger = new Logger('InAppNotices');

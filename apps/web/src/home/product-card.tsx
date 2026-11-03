@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { CertificationSeal } from '../certification/certification-seal.tsx';
 import { formatMoney } from '../format/money.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
+import { productHref } from '../storefront/links.ts';
 import type { ShelfCard } from '../storefront/types.ts';
 import { AddControl } from './add-control.tsx';
 import { CardPhoto } from './card-photo.tsx';
@@ -41,7 +42,7 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
         </>
       )}
       <h3 className="nm">
-        <Link href={`/p/${product.id}`}>{product.name}</Link>
+        <Link href={productHref(product.id)}>{product.name}</Link>
       </h3>
       {product.sellerName === '' ? null : <div className="by">{product.sellerName}</div>}
       {product.lowStock !== undefined ? (

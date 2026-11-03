@@ -8,7 +8,7 @@
 export const LAYERS = ['ITEM', 'SELLER_CART', 'PLATFORM_CART', 'SHIPPING'] as const;
 export type Layer = (typeof LAYERS)[number];
 
-/** The promotion types: phase 1, then the phase 2 types after CO_FUNDED_CAMPAIGN. */
+/** The promotion types: phase 1, then the phase 2 types after CO_FUNDED_CAMPAIGN, then phase 3. */
 export const PROMOTION_TYPES = [
   /** A seller's sale price on products: percent or fixed amount per unit off. */
   'SELLER_SALE',
@@ -34,6 +34,10 @@ export const PROMOTION_TYPES = [
   'FLASH_SALE',
   /** A platform cart discount that applies once per generated single-use code. */
   'BATCH_CODE',
+  /** A platform cart discount for a customer segment (a returning customer, a delivery zone). */
+  'CUSTOMER_GROUP',
+  /** A seller's cart discount for the customers who follow its store. */
+  'STORE_FOLLOWER',
 ] as const;
 export type PromotionType = (typeof PROMOTION_TYPES)[number];
 
@@ -45,6 +49,30 @@ export type Reward =
    * off the whole base.
    */
   | { readonly kind: 'FIXED'; readonly amount: bigint };
+
+/**
+ * Who a promotion is for, beyond the cart. The customer facts come from other modules and may be
+ * unknown; a promotion with an audience applies only when the fact it needs is known and says yes
+ * (fail closed).
+ */
+export type Audience =
+  /** A customer whose last order was at least this many whole days ago (never ordered: not eligible). */
+  | { readonly kind: 'RETURNING_CUSTOMER'; readonly minDaysSinceLastOrder: number }
+  /** A cart that is delivered to one of these delivery zones (the cart's shipping charges say which). */
+  | { readonly kind: 'DELIVERY_ZONE'; readonly zones: readonly string[] }
+  /** A customer who follows the promotion's seller (a promotion with a seller owner only). */
+  | { readonly kind: 'STORE_FOLLOWER' };
+
+/**
+ * What is known about the customer of the order. A field that is null (or a customer that is
+ * null) is unknown: the audience promotions that need it are left out, never guessed.
+ */
+export interface CustomerFacts {
+  /** Whole days since the customer's last order; null when unknown or the customer never ordered. */
+  readonly daysSinceLastOrder: number | null;
+  /** The sellers (of the cart) whose store the customer follows; null when unknown. */
+  readonly followedSellerIds: readonly string[] | null;
+}
 
 /** One promotion as the calculation sees it (already filtered to the live ones by the caller). */
 export interface CalculationPromotion {
@@ -135,6 +163,8 @@ export interface CalculationPromotion {
   readonly unitLimit?: number | null;
   /** The promotion's single-use code was already redeemed: the entered code matches but gives nothing. */
   readonly codeUsed?: boolean;
+  /** Who the promotion is for; absent or null is every customer. */
+  readonly audience?: Audience | null;
 }
 
 /** One tier of a tiered cart discount. */
@@ -175,6 +205,8 @@ export interface CalculationInput {
   /** The one code the customer entered, normalised; null for none. */
   readonly code: string | null;
   readonly isFirstOrder: boolean;
+  /** What is known about the customer; absent or null is nothing (audience promotions do not apply). */
+  readonly customer?: CustomerFacts | null;
   /** The commission of this order: the platform's share of its discounts is capped by it. */
   readonly orderCommission: bigint;
   readonly rules: CalculationRules;

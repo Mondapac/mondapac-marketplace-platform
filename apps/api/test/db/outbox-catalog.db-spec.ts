@@ -15,6 +15,8 @@ import { testDatabaseUrl } from './test-database';
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Blog (blog package 1): one open and one live version per post, one featured post per Market,
   // the public list and the worker's due-posts index, and the outbox's unpublished index.
+  'reviews.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON reviews.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON blog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.post_versions_market_id_category_id_idx':
@@ -205,6 +207,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // least-failed first.
   'ordering.seller_orders_unrecorded_ledger_idx':
     "CREATE INDEX seller_orders_unrecorded_ledger_idx ON ordering.seller_orders USING btree (market_id, ledger_attempts, order_id) WHERE (ledger_state = 'pending'::text)",
+  // Seller health: the nightly feed reads the seller's orders marked ready in a few days.
+  'ordering.seller_orders_seller_ready_at_idx':
+    'CREATE INDEX seller_orders_seller_ready_at_idx ON ordering.seller_orders USING btree (market_id, seller_id, ready_at) WHERE (ready_at IS NOT NULL)',
   // Phase 5 package 4: the worker's queue of shipments inventory has not recorded yet.
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",
@@ -283,6 +288,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_files_market_id_decision_intent_since_idx ON sellers.seller_files USING btree (market_id, decision_intent_since) WHERE (decision_intent IS NOT NULL)',
   'sellers.admin_flags_market_id_seller_id_code_open_key':
     'CREATE UNIQUE INDEX admin_flags_market_id_seller_id_code_open_key ON sellers.admin_flags USING btree (market_id, seller_id, code) WHERE (cleared_at IS NULL)',
+  'reviews.review_replies_market_id_review_id_published_key':
+    "CREATE UNIQUE INDEX review_replies_market_id_review_id_published_key ON reviews.review_replies USING btree (market_id, review_id) WHERE (status = 'published'::text)",
   'sellers.admin_flags_market_id_raised_at_open_idx':
     'CREATE INDEX admin_flags_market_id_raised_at_open_idx ON sellers.admin_flags USING btree (market_id, raised_at, id) WHERE (cleared_at IS NULL)',
   'sellers.shop_slugs_market_id_seller_id_held_key':
@@ -313,10 +320,22 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'wallet.lots_market_id_expires_at_id_idx':
     "CREATE INDEX lots_market_id_expires_at_id_idx ON wallet.lots USING btree (market_id, expires_at, id) WHERE ((source = 'promo'::text) AND (remaining_minor > 0))",
   // Reviews: public list pages read published reviews only (newest first, optionally by rating).
+  'reviews.product_reviews_public_list_helpful_idx':
+    "CREATE INDEX product_reviews_public_list_helpful_idx ON reviews.product_reviews USING btree (market_id, product_id, helpful_count DESC, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_idx':
     "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_rating_idx':
     "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  // Promotions: the real and the RECORDED credits each have a partial unique key over kind and
+  // source, and over the idempotency key (the plain lookup index by source is not partial).
+  'promotions.credit_issuances_real_idempotency_key':
+    "CREATE UNIQUE INDEX credit_issuances_real_idempotency_key ON promotions.credit_issuances USING btree (market_id, idempotency_key) WHERE (status <> 'RECORDED'::text)",
+  'promotions.credit_issuances_real_source_key':
+    "CREATE UNIQUE INDEX credit_issuances_real_source_key ON promotions.credit_issuances USING btree (market_id, kind, source_id) WHERE (status <> 'RECORDED'::text)",
+  'promotions.credit_issuances_recorded_idempotency_key':
+    "CREATE UNIQUE INDEX credit_issuances_recorded_idempotency_key ON promotions.credit_issuances USING btree (market_id, idempotency_key) WHERE (status = 'RECORDED'::text)",
+  'promotions.credit_issuances_recorded_source_key':
+    "CREATE UNIQUE INDEX credit_issuances_recorded_source_key ON promotions.credit_issuances USING btree (market_id, kind, source_id) WHERE (status = 'RECORDED'::text)",
   // Promotions: a promotion has at most one open review entry (a unique key over open rows only).
   'promotions.promotion_reviews_one_open_idx':
     "CREATE UNIQUE INDEX promotion_reviews_one_open_idx ON promotions.promotion_reviews USING btree (market_id, promotion_id) WHERE (status = 'OPEN'::text)",

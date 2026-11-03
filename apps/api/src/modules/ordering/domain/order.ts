@@ -110,6 +110,11 @@ export interface SellerOrder {
   /** When the seller told the platform the order is ready; null until then. */
   readonly readyAt: Temporal.Instant | null;
   /**
+   * The minutes the Market gave the seller to get this order ready, frozen at placement (seller
+   * health, late ready). Null for orders placed before it was recorded: they have no promise.
+   */
+  readonly readyPrepMinutes: number | null;
+  /**
    * Set by the platform when no carrier could take the order: it needs the platform's attention.
    * The seller is never asked to deliver instead.
    */
@@ -367,6 +372,22 @@ export function addShipping(
   }));
   const total = sellers.reduce((sum, seller) => sum + seller.subtotal + seller.shipping, 0n);
   return { ok: true, plan: { ...plan, sellers, total } };
+}
+
+/**
+ * When the seller promised to have a paid seller order ready: the window start of a scheduled
+ * order, otherwise the payment time plus the frozen preparation minutes. Null while the order is
+ * not paid or has no promise (placed before the minutes were recorded).
+ */
+export function readyByOf(
+  order: Pick<OrderState, 'confirmedAt'>,
+  sellerOrder: Pick<SellerOrder, 'deliveryMethod' | 'deliveryWindow' | 'readyPrepMinutes'>,
+): Temporal.Instant | null {
+  if (order.confirmedAt === null || sellerOrder.readyPrepMinutes === null) return null;
+  if (sellerOrder.deliveryMethod === 'scheduled' && sellerOrder.deliveryWindow !== null) {
+    return sellerOrder.deliveryWindow.start;
+  }
+  return order.confirmedAt.add({ minutes: sellerOrder.readyPrepMinutes });
 }
 
 /** Pending to confirmed once the money is captured. Anything else is refused. */

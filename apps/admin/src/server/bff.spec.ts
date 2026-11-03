@@ -1121,6 +1121,21 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/archive`],
     ['POST', `catalog/admin/brands/${id}/merge`],
     ['POST', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['GET', 'catalog/admin/categories'],
+    ['GET', `catalog/admin/categories/${id}`],
+    ['GET', `catalog/admin/categories/${id}/impact`],
+    ['GET', 'catalog/admin/business-activities'],
+    ['GET', `catalog/admin/business-activities/${id}`],
+    ['POST', 'catalog/admin/business-activities'],
+    ['PUT', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/attributes'],
+    ['GET', `catalog/admin/attributes/${id}`],
+    ['POST', 'catalog/admin/attributes'],
+    ['PUT', `catalog/admin/attributes/${id}`],
+    ['POST', `catalog/admin/attributes/${id}/publish`],
+    ['POST', `catalog/admin/attributes/${id}/discard`],
+    ['GET', 'catalog/admin/feature-sets'],
+    ['GET', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1158,6 +1173,27 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/delete`],
     ['POST', 'catalog/admin/brands/merge-queue'],
     ['GET', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['POST', 'catalog/admin/categories'],
+    ['PUT', `catalog/admin/categories/${id}`],
+    ['DELETE', `catalog/admin/categories/${id}`],
+    ['GET', 'catalog/admin/categories/not-a-uuid'],
+    ['GET', `catalog/admin/categories/${id}/extra`],
+    ['POST', `catalog/admin/categories/${id}/impact`],
+    ['DELETE', `catalog/admin/business-activities/${id}`],
+    ['PUT', 'catalog/admin/business-activities'],
+    ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
+    ['POST', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/business-activities/not-a-uuid'],
+    ['PUT', 'catalog/admin/attributes'],
+    ['PUT', 'catalog/admin/attributes/not-a-uuid'],
+    ['POST', `catalog/admin/attributes/${id}`],
+    ['DELETE', `catalog/admin/attributes/${id}`],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/publish'],
+    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['GET', `catalog/admin/attributes/${id}/publish`],
+    ['GET', 'catalog/admin/attributes/not-a-uuid'],
+    ['POST', 'catalog/admin/feature-sets'],
+    ['GET', 'catalog/admin/feature-sets/not-a-uuid'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1202,6 +1238,63 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands');
+  });
+
+  it('passes only status, search, afterId and limit of the business activity list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/business-activities?status=inactive&search=gro&afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/business-activities?status=inactive&search=gro&afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/business-activities?status=draft&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/business-activities',
+    );
+  });
+
+  it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=merge&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=merge`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=delete`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact`,
+    );
+    const tree = await run('GET', 'catalog/admin/categories?q=x&limit=3', readHeaders);
+    expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+  });
+
+  it('passes only the known, well-formed filters of the attribute list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/attributes?search=heat&type=select&status=draft&usedIn=${id}&missing=fa-IR&afterId=${id}&limit=50&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/attributes?search=heat&type=select&status=draft&usedIn=${id}&missing=fa-IR&afterId=${id}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/attributes?search=${'x'.repeat(121)}&type=colour&status=gone&usedIn=nope&missing=Persian&afterId=1&limit=abc`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/attributes');
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {
