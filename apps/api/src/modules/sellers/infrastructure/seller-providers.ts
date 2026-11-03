@@ -27,6 +27,26 @@ import {
 } from '../application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX, type IdentifierIndex } from '../application/ports/identifier-index';
 import {
+  SELLER_HEALTH_POLICY,
+  type SellerHealthPolicy,
+} from '../application/ports/seller-health-policy';
+import {
+  SELLER_HEALTH_ROSTER,
+  type SellerHealthRoster,
+} from '../application/ports/seller-health-roster';
+import {
+  SELLER_HEALTH_SIGNALS,
+  type SellerHealthSignals,
+} from '../application/ports/seller-health-signals';
+import {
+  SELLER_HEALTH_STORE,
+  type SellerHealthStore,
+} from '../application/ports/seller-health.store';
+import { DefaultSellerHealthPolicy } from './default-seller-health-policy';
+import { LateBoundSellerHealthSignals } from './late-bound-seller-health-signals';
+import { PrismaSellerHealthRoster } from './prisma-seller-health-roster';
+import { PrismaSellerHealthStore } from './prisma-seller-health.store';
+import {
   ADMIN_FLAG_REPOSITORY,
   type AdminFlagRepository,
 } from '../application/ports/admin-flag.repository';
@@ -404,5 +424,25 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [SELLER_ACCESS_CONTRACT],
     useFactory: (identity: SellerAccessContract): SellerAccessDecider =>
       new IdentitySellerAccessDecider(identity),
+  },
+  {
+    provide: SELLER_HEALTH_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerHealthStore => new PrismaSellerHealthStore(prisma),
+  },
+  {
+    provide: SELLER_HEALTH_ROSTER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerHealthRoster => new PrismaSellerHealthRoster(prisma),
+  },
+  {
+    // The editable Market settings (ADM-06) replace this default in a later package.
+    provide: SELLER_HEALTH_POLICY,
+    useFactory: (): SellerHealthPolicy => new DefaultSellerHealthPolicy(),
+  },
+  {
+    // The feeds sit in modules that import sellers; SellerHealthModule binds them at start.
+    provide: SELLER_HEALTH_SIGNALS,
+    useFactory: (): SellerHealthSignals => new LateBoundSellerHealthSignals(),
   },
 ];

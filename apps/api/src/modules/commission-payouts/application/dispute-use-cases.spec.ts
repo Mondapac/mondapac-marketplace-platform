@@ -688,6 +688,15 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
         [{ from: 'nope', to: T0.toString() }],
         [{ from: T0.toString(), to: T0.toString() }],
         Array.from({ length: 9 }, () => around),
+        // One window longer than a local day, and a span wider than ten days.
+        [{ from: T0.toString(), to: T0.add({ hours: 27 }).toString() }],
+        [
+          {
+            from: T0.subtract({ hours: 24 * 11 }).toString(),
+            to: T0.subtract({ hours: 24 * 11 - 20 }).toString(),
+          },
+          around,
+        ],
       ]) {
         expect(await count({ sellerId: SELLER_A, windows })).toEqual(
           err({ code: 'validation.failed' }),
