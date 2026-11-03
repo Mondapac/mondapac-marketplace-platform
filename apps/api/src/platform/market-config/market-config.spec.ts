@@ -2102,6 +2102,7 @@ describe('loadMarketConfigs', () => {
       },
       maxVariantsPerProduct: 100,
       maxCategoryDepth: 4,
+      maxVariantAttributes: 2,
       approvalRequired: true,
       productTypes: ['simple', 'configurable'],
       defaultFamily: 'default',
@@ -2131,6 +2132,8 @@ describe('loadMarketConfigs', () => {
       expect(zz?.maxVariantsPerProduct).toBe(3);
       expect(au?.maxCategoryDepth).toBe(4);
       expect(zz?.maxCategoryDepth).toBe(3);
+      expect(au?.maxVariantAttributes).toBe(2);
+      expect(zz?.maxVariantAttributes).toBe(3);
       expect(au?.approvalRequired).toBe(true);
       expect(zz?.approvalRequired).toBe(false);
       expect(au?.taxCategories.map((c) => c.code)).not.toEqual(
@@ -2191,6 +2194,9 @@ describe('loadMarketConfigs', () => {
       ['a category depth of 5', { ...VALID_CATALOG, maxCategoryDepth: 5 }],
       ['a fractional category depth', { ...VALID_CATALOG, maxCategoryDepth: 3.5 }],
       ['a string category depth', { ...VALID_CATALOG, maxCategoryDepth: '4' }],
+      ['no variant attribute limit', without('maxVariantAttributes')],
+      ['a zero variant attribute limit', { ...VALID_CATALOG, maxVariantAttributes: 0 }],
+      ['a variant attribute limit above 5', { ...VALID_CATALOG, maxVariantAttributes: 6 }],
       ['no approval setting', without('approvalRequired')],
       ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
       ['no product types', without('productTypes')],

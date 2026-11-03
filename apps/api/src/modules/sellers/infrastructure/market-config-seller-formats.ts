@@ -74,6 +74,12 @@ export class DirectoryServiceAreas implements ServiceAreas, OnboardingAreas {
       .map((area) => area.code);
   }
 
+  all(market: MarketContext): readonly { readonly code: string; readonly name: string }[] {
+    return this.directory
+      .areasOf(market.marketId)
+      .map((area) => ({ code: area.code, name: area.names['en'] ?? area.code }));
+  }
+
   nameOf(market: MarketContext, code: string): string | null {
     const area = this.directory.areasOf(market.marketId).find((entry) => entry.code === code);
     return area?.names['en'] ?? null;

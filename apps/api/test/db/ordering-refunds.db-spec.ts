@@ -992,6 +992,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           recordRefund: (context, facts) =>
             new RecordRefund(gate, ledgerDeps).execute(context, facts),
           recordSellerOrderDelivered: () => Promise.reject(new Error('not used')),
+          sellerLostDisputes: () => Promise.reject(new Error('not used')),
         },
       };
     });

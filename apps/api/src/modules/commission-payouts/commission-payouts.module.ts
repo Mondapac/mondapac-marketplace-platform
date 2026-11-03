@@ -77,6 +77,7 @@ import { NoteSellerReinstated } from './application/use-cases/note-seller-reinst
 import { PlacePayoutHold } from './application/use-cases/place-payout-hold.use-case';
 import { PlaceSellerSuspendedHold } from './application/use-cases/place-seller-suspended-hold.use-case';
 import { RecordRefund } from './application/use-cases/record-refund.use-case';
+import { SellerLostDisputes } from './application/use-cases/seller-lost-disputes.use-case';
 import { RecordSellerOrderDelivered } from './application/use-cases/record-seller-order-delivered.use-case';
 import { RecordSellerOrderPaid } from './application/use-cases/record-seller-order-paid.use-case';
 import { ReleasePayoutHold } from './application/use-cases/release-payout-hold.use-case';
@@ -276,9 +277,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewSellerLedger,
       ViewOwnLedger,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
-    ...[SyncDispute, ListDisputes, ViewDispute, DecideDispute, ListOwnDisputes].map((type) =>
-      disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>),
-    ),
+    ...[
+      SyncDispute,
+      ListDisputes,
+      ViewDispute,
+      DecideDispute,
+      ListOwnDisputes,
+      SellerLostDisputes,
+    ].map((type) => disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>)),
     ...[
       RunPayouts,
       ReconcileInstructions,
@@ -302,13 +308,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ),
     {
       provide: COMMISSION_PAYOUTS_FACADE,
-      inject: [CommissionRates, RecordSellerOrderPaid, RecordRefund, RecordSellerOrderDelivered],
+      inject: [
+        CommissionRates,
+        RecordSellerOrderPaid,
+        RecordRefund,
+        RecordSellerOrderDelivered,
+        SellerLostDisputes,
+      ],
       useFactory: (
         rates: CommissionRates,
         record: RecordSellerOrderPaid,
         refund: RecordRefund,
         delivered: RecordSellerOrderDelivered,
-      ) => new CommissionPayoutsFacadeImplementation(rates, record, refund, delivered),
+        lost: SellerLostDisputes,
+      ) => new CommissionPayoutsFacadeImplementation(rates, record, refund, delivered, lost),
     },
   ],
   // The dispute pieces are exported for the binding module of the same folder only (they are not

@@ -256,7 +256,9 @@ database stays the source of truth.
 `attribute_definitions` (root): `id`; `code` CA4, **unique `(market_id, code)`**, never updated;
 `data_type` CHECK `text`, `long-text`, `integer`, `decimal`, `boolean`, `select`, `multi-select`,
 `date` (D 3.3; no `image`, no money), never updated; `localizable boolean`, never updated; `status`
-CHECK `active`, `archived`; `published_revision_id` (same-definition FK, nullable as 3.4, Q-K10; families the same);
+CHECK `draft`, `active`, `archived` (`draft` from attributes A2: created by an admin, never seen by a
+seller; `draft → active` on publish, `draft → archived` on discard; transitions are the use case's,
+no trigger yet); `published_revision_id` (same-definition FK, nullable as 3.4, Q-K10; families the same);
 `archived_by_request_id uuid` (slice 21; FK `(market_id, id, archived_by_request_id)` →
 `attribute_relaxation_requests (market_id, definition_id, id)`, unique `(market_id,
 archived_by_request_id)`, CHECK `archived_by_request_id IS NULL OR status = 'archived'`; set once, at
@@ -269,11 +271,18 @@ boolean NOT NULL` (ADR-0012 d3; set by people, D 2.1); `is_variant_option boolea
 `(market_id, definition_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 definition_id, id)`; unique `(market_id, relaxation_request_id)`: a request is used once; NULL unless
 this revision clears `material`); CHECK `NOT is_variant_option OR` the root's type is `select` cannot be expressed
-across tables: aggregate (5). `created_at`.
+across tables: aggregate (5). Attributes A2 adds the display settings: `help_text jsonb NOT NULL
+DEFAULT '{}'` (locale → help text; CHECK an object; length and plain text are the domain's);
+`show_on_product_page`, `searchable`, `can_be_filter boolean NOT NULL`; `internal_note text` (admin
+only, never claim-checked, never in history; CHECK 1 to 1,000 characters); `position smallint NOT
+NULL DEFAULT 0` (CHECK `>= 0`). `created_at`.
 
 `attribute_definition_revision_options` (insert-only): PK `(market_id, revision_id, option_code)`;
 `labels jsonb`; `active boolean` (an option is deactivated, never deleted, D 2.1); `position
-smallint`.
+smallint`; `merged_into text` (attributes A2 column, used by A8: the value this one was merged
+into; CHECK code format and not its own code; self-FK `(market_id, revision_id, merged_into)` →
+`(market_id, revision_id, option_code)`, `RESTRICT`, so the target is a value of the same
+revision).
 
 `attribute_families` (root): `id`; `code` unique per Market; `status`; `published_revision_id`;
 `created_by_kind`; `version`; `created_at`. `attribute_family_revisions` (insert-only): `id`;

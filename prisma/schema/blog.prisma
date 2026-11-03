@@ -14,44 +14,44 @@
 /// Public reads answer only the live version of a `published` post; an `unpublished` or `archived`
 /// slug that was live answers 410.
 model BlogPost {
-  id             String             @id @db.Uuid
-  marketId       String             @map("market_id") @db.VarChar(8)
-  tenantId       String             @map("tenant_id")
+  id             String            @id @db.Uuid
+  marketId       String            @map("market_id") @db.VarChar(8)
+  tenantId       String            @map("tenant_id")
   /// product, brand, event or news (CHECK).
   kind           String
   /// Lower-case words joined by hyphens, 3 to 80 characters, not a reserved word (CHECK). Unique
   /// per Market; an old slug lives in `redirects` and is never another post's (trigger).
   slug           String
   /// platform or seller (CHECK); `sellerId` exactly when seller.
-  ownerType      String             @map("owner_type")
-  sellerId       String?            @map("seller_id") @db.Uuid
+  ownerType      String            @map("owner_type")
+  sellerId       String?           @map("seller_id") @db.Uuid
   status         String
-  liveVersionId  String?            @map("live_version_id") @db.Uuid
-  draftVersionId String?            @map("draft_version_id") @db.Uuid
-  scheduledAt    DateTime?          @map("scheduled_at") @db.Timestamptz(6)
+  liveVersionId  String?           @map("live_version_id") @db.Uuid
+  draftVersionId String?           @map("draft_version_id") @db.Uuid
+  scheduledAt    DateTime?         @map("scheduled_at") @db.Timestamptz(6)
   /// The admin who set `scheduledAt`; set exactly with it (CHECK), credited as the publisher.
-  scheduledBy    String?            @map("scheduled_by") @db.Uuid
+  scheduledBy    String?           @map("scheduled_by") @db.Uuid
   /// The first time a version went live; kept after an unpublish.
-  publishedAt    DateTime?          @map("published_at") @db.Timestamptz(6)
-  unpublishedAt  DateTime?          @map("unpublished_at") @db.Timestamptz(6)
+  publishedAt    DateTime?         @map("published_at") @db.Timestamptz(6)
+  unpublishedAt  DateTime?         @map("unpublished_at") @db.Timestamptz(6)
   /// Why the post was taken off the site; set exactly while unpublished (or archived after it).
-  pausedReason   String?            @map("paused_reason")
+  pausedReason   String?           @map("paused_reason")
   /// At most one featured post per Market (partial unique index); only a published post.
   featured       Boolean
   /// The calendar month ("YYYY-MM", in the Market's time zone) whose seller quota this post used
   /// when it was first submitted; null for a platform post and until the first submit.
-  quotaPeriod    String?            @map("quota_period")
-  createdAt      DateTime           @map("created_at") @db.Timestamptz(6)
-  createdBy      String             @map("created_by") @db.Uuid
-  updatedAt      DateTime           @map("updated_at") @db.Timestamptz(6)
-  updatedBy      String             @map("updated_by") @db.Uuid
+  quotaPeriod    String?           @map("quota_period")
+  createdAt      DateTime          @map("created_at") @db.Timestamptz(6)
+  createdBy      String            @map("created_by") @db.Uuid
+  updatedAt      DateTime          @map("updated_at") @db.Timestamptz(6)
+  updatedBy      String            @map("updated_by") @db.Uuid
   /// Raised by every lock of the row (`lockPost`), so a lock never writes an older `updatedAt`.
-  rowVersion     Int                @default(0) @map("row_version")
-  versions       BlogPostVersion[]  @relation("PostVersions")
+  rowVersion     Int               @default(0) @map("row_version")
+  versions       BlogPostVersion[] @relation("PostVersions")
   redirects      BlogRedirect[]
   /// The version pointers are composite foreign keys into this post's own versions.
-  liveVersion    BlogPostVersion?   @relation("PostLive", fields: [marketId, id, liveVersionId], references: [marketId, postId, id], onDelete: Restrict, onUpdate: Restrict)
-  draftVersion   BlogPostVersion?   @relation("PostDraft", fields: [marketId, id, draftVersionId], references: [marketId, postId, id], onDelete: Restrict, onUpdate: Restrict)
+  liveVersion    BlogPostVersion?  @relation("PostLive", fields: [marketId, id, liveVersionId], references: [marketId, postId, id], onDelete: Restrict, onUpdate: Restrict)
+  draftVersion   BlogPostVersion?  @relation("PostDraft", fields: [marketId, id, draftVersionId], references: [marketId, postId, id], onDelete: Restrict, onUpdate: Restrict)
 
   /// The foreign-key target of the versions and redirects.
   @@unique([marketId, id])
@@ -69,46 +69,46 @@ model BlogPost {
 /// version in review is a new version flagged `editedByReviewer`. `body` is the closed block list
 /// (application validated; array and size CHECKs).
 model BlogPostVersion {
-  id               String           @id @db.Uuid
-  marketId         String           @map("market_id") @db.VarChar(8)
-  tenantId         String           @map("tenant_id")
-  postId           String           @map("post_id") @db.Uuid
+  id               String         @id @db.Uuid
+  marketId         String         @map("market_id") @db.VarChar(8)
+  tenantId         String         @map("tenant_id")
+  postId           String         @map("post_id") @db.Uuid
   /// 1 to 100 (CHECK), per post, in creation order; raising the cap needs a migration.
-  versionNo        Int              @map("version_no")
+  versionNo        Int            @map("version_no")
   state            String
   title            String
   /// At most 160 characters (CHECK); it is also the page description when no SEO text is given.
   excerpt          String
   body             Json
-  coverImageId     String?          @map("cover_image_id") @db.Uuid
-  coverAlt         String?          @map("cover_alt")
-  seoTitle         String?          @map("seo_title")
-  seoDescription   String?          @map("seo_description")
+  coverImageId     String?        @map("cover_image_id") @db.Uuid
+  coverAlt         String?        @map("cover_alt")
+  seoTitle         String?        @map("seo_title")
+  seoDescription   String?        @map("seo_description")
   /// A display override of the byline; null: the Market default for a platform post.
-  authorDisplay    String?          @map("author_display")
-  categoryId       String?          @map("category_id") @db.Uuid
-  createdAt        DateTime         @map("created_at") @db.Timestamptz(6)
-  createdBy        String           @map("created_by") @db.Uuid
-  updatedAt        DateTime         @map("updated_at") @db.Timestamptz(6)
+  authorDisplay    String?        @map("author_display")
+  categoryId       String?        @map("category_id") @db.Uuid
+  createdAt        DateTime       @map("created_at") @db.Timestamptz(6)
+  createdBy        String         @map("created_by") @db.Uuid
+  updatedAt        DateTime       @map("updated_at") @db.Timestamptz(6)
   /// True when a reviewer changed the text of a submitted version (a new version, not an edit).
-  editedByReviewer Boolean          @map("edited_by_reviewer")
-  submittedAt      DateTime?        @map("submitted_at") @db.Timestamptz(6)
+  editedByReviewer Boolean        @map("edited_by_reviewer")
+  submittedAt      DateTime?      @map("submitted_at") @db.Timestamptz(6)
   /// The account that sent the version for review; kept on a reviewer's edit, so the approver can
   /// differ from both the submitter and the editor (separation of duties).
-  submittedBy      String?          @map("submitted_by") @db.Uuid
-  decidedAt        DateTime?        @map("decided_at") @db.Timestamptz(6)
-  decidedBy        String?          @map("decided_by") @db.Uuid
+  submittedBy      String?        @map("submitted_by") @db.Uuid
+  decidedAt        DateTime?      @map("decided_at") @db.Timestamptz(6)
+  decidedBy        String?        @map("decided_by") @db.Uuid
   /// approved or changes_requested (CHECK); with `decidedBy` and `decidedAt` (all or none).
   decision         String?
-  decisionNote     String?          @map("decision_note")
+  decisionNote     String?        @map("decision_note")
   /// True when the approver also wrote or submitted the version (single-admin Market, step-up).
-  selfApproved     Boolean          @map("self_approved")
-  publishedAt      DateTime?        @map("published_at") @db.Timestamptz(6)
-  publishedBy      String?          @map("published_by") @db.Uuid
-  post             BlogPost         @relation("PostVersions", fields: [marketId, postId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  liveOf           BlogPost[]       @relation("PostLive")
-  draftOf          BlogPost[]       @relation("PostDraft")
-  category         BlogCategory?    @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  selfApproved     Boolean        @map("self_approved")
+  publishedAt      DateTime?      @map("published_at") @db.Timestamptz(6)
+  publishedBy      String?        @map("published_by") @db.Uuid
+  post             BlogPost       @relation("PostVersions", fields: [marketId, postId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  liveOf           BlogPost[]     @relation("PostLive")
+  draftOf          BlogPost[]     @relation("PostDraft")
+  category         BlogCategory?  @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   event            BlogPostEvent?
   links            BlogPostLink[]
   tags             BlogPostTag[]

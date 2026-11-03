@@ -155,6 +155,74 @@ export const CATALOG_BUSINESS_ACTIVITY_EDIT = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read the platform category tree, its details, counts, history and the impact of a change
+ * (categories package C1; plan section 11). Platform scope; unprotected, so Catalogue Moderator,
+ * Operations Support and Viewer receive it by identity's seed. No step-up.
+ */
+export const CATALOG_CATEGORY_TREE_VIEW = definePermission('catalog', {
+  key: 'catalog.category-tree.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Add, edit, reorder, hide and show categories and change a URL name (plan section 11). Declared
+ * with C1 so the page can say what the caller may do; its use cases arrive with C3. Platform scope;
+ * unprotected, so Catalogue Moderator receives it by identity's seed.
+ */
+export const CATALOG_CATEGORY_TREE_EDIT = definePermission('catalog', {
+  key: 'catalog.category-tree.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Move, merge and archive categories and move products in bulk (plan section 11). A mistake here
+ * can take sellers' certification badges off for a while, so the key is protected: the Platform
+ * Administrator grants it in a custom role and no default role lists it. Declared with C1; its
+ * use cases arrive with C4.
+ */
+export const CATALOG_CATEGORY_TREE_RESTRUCTURE = definePermission('catalog', {
+  key: 'catalog.category-tree.restructure',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Import and export the category tree from a file (plan section 11). Protected: an import is a
+ * bulk write. Declared with C1; its use cases arrive with C7. No default role lists it.
+ */
+export const CATALOG_CATEGORY_TREE_IMPORT = definePermission('catalog', {
+  key: 'catalog.category-tree.import',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Read attributes, feature sets (attribute families), their product counts, where each attribute
+ * is used and its revision history (attributes plan 14, package A1). Platform scope; unprotected,
+ * so Catalogue Moderator, Operations and Viewer receive it by identity's seed.
+ */
+export const CATALOG_ATTRIBUTE_VIEW = definePermission('catalog', {
+  key: 'catalog.attribute.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Add, edit and publish attributes and their values, edit feature sets and turn `material` on
+ * (catalog design 8.1; attributes plan 14). Platform scope; **protected**: an attribute names what
+ * a seller must declare and which changes recheck certificates, so no default role lists it and
+ * the Platform Administrator grants it in a custom role. Package A1 declares it so the read-only
+ * screen can tell a viewer from an editor; its use cases arrive with package A2.
+ */
+export const CATALOG_ATTRIBUTE_EDIT = definePermission('catalog', {
+  key: 'catalog.attribute.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -170,4 +238,10 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_BRAND_EDIT,
   CATALOG_BUSINESS_ACTIVITY_READ,
   CATALOG_BUSINESS_ACTIVITY_EDIT,
+  CATALOG_ATTRIBUTE_VIEW,
+  CATALOG_ATTRIBUTE_EDIT,
+  CATALOG_CATEGORY_TREE_VIEW,
+  CATALOG_CATEGORY_TREE_EDIT,
+  CATALOG_CATEGORY_TREE_RESTRUCTURE,
+  CATALOG_CATEGORY_TREE_IMPORT,
 ]);

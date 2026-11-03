@@ -341,6 +341,7 @@
     },
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,
+    "maxVariantAttributes": 3,
     "approvalRequired": false,
     "productTypes": ["simple"],
     "defaultFamily": "default",

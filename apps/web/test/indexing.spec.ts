@@ -90,14 +90,14 @@ describe('root metadata', () => {
 
 describe('robots.txt', () => {
   // The text Next serves for app/robots.ts.
-  const body = (): string => resolveRobots(robots());
+  const body = async (): Promise<string> => resolveRobots(await robots());
 
-  it('allows everything, with no sitemap, while off', () => {
-    expect(body()).toBe('User-Agent: *\nAllow: /\n\n');
+  it('allows everything, with no sitemap, while off', async () => {
+    expect(await body()).toBe('User-Agent: *\nAllow: /\n\n');
   });
 
-  it.each(['off', 'on'])('never disallows the whole site while %s', (state) => {
+  it.each(['off', 'on'])('never disallows the whole site while %s', async (state) => {
     if (state === 'on') switchOn();
-    expect(body()).not.toMatch(/^Disallow: \/$/m);
+    expect(await body()).not.toMatch(/^Disallow: \/$/m);
   });
 });

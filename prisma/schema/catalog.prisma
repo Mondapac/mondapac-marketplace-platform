@@ -181,41 +181,41 @@ model CatalogCategoryTree {
 /// parent live in insert-only revisions; this root holds the lifecycle, the slug and the pointer
 /// to the current revision. The CHECKs, the no-cycle trigger and the grants are hand-written.
 model CatalogPlatformCategory {
-  id                  String                            @id @db.Uuid
-  marketId            String                            @map("market_id") @db.VarChar(8)
-  tenantId            String                            @map("tenant_id")
+  id                  String                               @id @db.Uuid
+  marketId            String                               @map("market_id") @db.VarChar(8)
+  tenantId            String                               @map("tenant_id")
   /// Null for a root of the tree; never equal to the id (CHECK).
-  parentId            String?                           @map("parent_id") @db.Uuid
+  parentId            String?                              @map("parent_id") @db.Uuid
   /// Optional Vertical root marker (CA4); only on a root (CHECK).
-  verticalRootCode    String?                           @map("vertical_root_code")
+  verticalRootCode    String?                              @map("vertical_root_code")
   /// Case-sensitive collation "C" is set in the migration; unique per Market.
   slug                String
   /// active | hidden | merged | archived.
   status              String
-  mergedIntoId        String?                           @map("merged_into_id") @db.Uuid
+  mergedIntoId        String?                              @map("merged_into_id") @db.Uuid
   /// The current revision; null only inside the creating unit (Q-K10).
-  publishedRevisionId String?                           @map("published_revision_id") @db.Uuid
+  publishedRevisionId String?                              @map("published_revision_id") @db.Uuid
   /// seed | admin; never updated.
-  createdByKind       String                            @map("created_by_kind")
+  createdByKind       String                               @map("created_by_kind")
   version             Int
-  createdAt           DateTime                          @map("created_at") @db.Timestamptz(6)
+  createdAt           DateTime                             @map("created_at") @db.Timestamptz(6)
   /// Order among siblings (roots are siblings); unique per parent, deferrable (hand-written).
   position            Int
   /// Hidden from menus when false; products stay on sale.
-  showInMenu          Boolean                           @default(true) @map("show_in_menu")
+  showInMenu          Boolean                              @default(true) @map("show_in_menu")
   /// Category image from the product image intake (purpose category-image, wired in C3). No
   /// foreign key: product_images belong to a product.
-  imageId             String?                           @map("image_id") @db.Uuid
+  imageId             String?                              @map("image_id") @db.Uuid
   /// English only, at most 60 and 160 characters (CHECKs).
-  seoTitle            String?                           @map("seo_title")
-  seoDescription      String?                           @map("seo_description")
-  seoNoindex          Boolean                           @default(false) @map("seo_noindex")
-  parent              CatalogPlatformCategory?          @relation("CategoryParent", fields: [marketId, parentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  children            CatalogPlatformCategory[]         @relation("CategoryParent")
-  mergedInto          CatalogPlatformCategory?          @relation("CategoryMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  mergedFrom          CatalogPlatformCategory[]         @relation("CategoryMerge")
-  revisions           CatalogPlatformCategoryRevision[] @relation("CategoryRevisions")
-  publishedRevision   CatalogPlatformCategoryRevision?  @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
+  seoTitle            String?                              @map("seo_title")
+  seoDescription      String?                              @map("seo_description")
+  seoNoindex          Boolean                              @default(false) @map("seo_noindex")
+  parent              CatalogPlatformCategory?             @relation("CategoryParent", fields: [marketId, parentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  children            CatalogPlatformCategory[]            @relation("CategoryParent")
+  mergedInto          CatalogPlatformCategory?             @relation("CategoryMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom          CatalogPlatformCategory[]            @relation("CategoryMerge")
+  revisions           CatalogPlatformCategoryRevision[]    @relation("CategoryRevisions")
+  publishedRevision   CatalogPlatformCategoryRevision?     @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
   productRevisions    CatalogProductRevisionCategory[]
   businessActivities  CatalogBusinessActivityCategory[]    @relation("ActivityCategory")
   slugHistory         CatalogPlatformCategorySlugHistory[]
@@ -326,7 +326,7 @@ model CatalogAttributeDefinition {
   /// text | long-text | integer | decimal | boolean | select | multi-select | date.
   dataType            String                               @map("data_type")
   localizable         Boolean
-  /// active | archived.
+  /// draft | active | archived (attributes A2: a draft is invisible to sellers and buyers).
   status              String
   /// The current revision; null only inside the creating unit (Q-K10).
   publishedRevisionId String?                              @map("published_revision_id") @db.Uuid
@@ -357,6 +357,18 @@ model CatalogAttributeDefinitionRevision {
   bounds              Json                                       @db.JsonB
   /// Locale to name (CA6).
   names               Json                                       @db.JsonB
+  /// Locale to help text shown to sellers next to the field (attributes A2).
+  helpText            Json                                       @default("{}") @map("help_text") @db.JsonB
+  /// Shown in the product page's specifications (A6 reads it).
+  showOnProductPage   Boolean                                    @default(true) @map("show_on_product_page")
+  /// Its values are searched (A7 reads it).
+  searchable          Boolean                                    @default(false)
+  /// May be offered as a category filter (A7 reads it).
+  canBeFilter         Boolean                                    @default(false) @map("can_be_filter")
+  /// A note for administrators; never shown to sellers or buyers.
+  internalNote        String?                                    @map("internal_note")
+  /// Order among attributes in admin lists and forms.
+  position            Int                                        @default(0) @db.SmallInt
   /// seed | admin.
   authorKind          String                                     @map("author_kind")
   /// Null exactly when the author is the seed.
@@ -378,15 +390,19 @@ model CatalogAttributeDefinitionRevision {
 
 /// An option of a select definition at one revision; deactivated, never deleted (insert-only).
 model CatalogAttributeDefinitionRevisionOption {
-  marketId   String                             @map("market_id") @db.VarChar(8)
-  tenantId   String                             @map("tenant_id")
-  revisionId String                             @map("revision_id") @db.Uuid
-  optionCode String                             @map("option_code")
+  marketId     String                                     @map("market_id") @db.VarChar(8)
+  tenantId     String                                     @map("tenant_id")
+  revisionId   String                                     @map("revision_id") @db.Uuid
+  optionCode   String                                     @map("option_code")
   /// Locale to label (CA6).
-  labels     Json                               @db.JsonB
-  active     Boolean
-  position   Int                                @db.SmallInt
-  revision   CatalogAttributeDefinitionRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  labels       Json                                       @db.JsonB
+  active       Boolean
+  position     Int                                        @db.SmallInt
+  /// The value this one was merged into (attributes A8); null otherwise. A value of the same revision.
+  mergedInto   String?                                    @map("merged_into")
+  revision     CatalogAttributeDefinitionRevision         @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedTarget CatalogAttributeDefinitionRevisionOption?  @relation("OptionMergedInto", fields: [marketId, revisionId, mergedInto], references: [marketId, revisionId, optionCode], onDelete: Restrict, onUpdate: Restrict, map: "attribute_definition_revision_options_merged_into_fkey")
+  mergedFrom   CatalogAttributeDefinitionRevisionOption[] @relation("OptionMergedInto")
 
   @@id([marketId, revisionId, optionCode])
   @@map("attribute_definition_revision_options")
@@ -1178,17 +1194,17 @@ model CatalogBrandMergeCandidate {
 /// default locale is required by the use cases). The CHECKs, the name index and the grants are
 /// hand-written in the migration.
 model CatalogBusinessActivity {
-  id          String                         @id @db.Uuid
-  marketId    String                         @map("market_id") @db.VarChar(8)
-  tenantId    String                         @map("tenant_id")
+  id          String                            @id @db.Uuid
+  marketId    String                            @map("market_id") @db.VarChar(8)
+  tenantId    String                            @map("tenant_id")
   /// Lowercase ASCII words joined by hyphens; unique per Market; never updated.
   code        String
   description String?
   /// active | inactive. An inactive activity gives a seller no scope but keeps its links.
   status      String
-  createdBy   String                         @map("created_by") @db.Uuid
-  createdAt   DateTime                       @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime                       @map("updated_at") @db.Timestamptz(6)
+  createdBy   String                            @map("created_by") @db.Uuid
+  createdAt   DateTime                          @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                          @map("updated_at") @db.Timestamptz(6)
   /// Optimistic version (P 10); 1 at insert.
   version     Int
   names       CatalogBusinessActivityName[]

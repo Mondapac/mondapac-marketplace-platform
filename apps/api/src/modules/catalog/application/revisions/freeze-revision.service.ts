@@ -77,6 +77,7 @@ export class FreezeRevision {
 
     const locales = this.deps.policy.locales(market);
     const maxVariants = this.deps.policy.maxVariantsPerProduct(market);
+    const maxOptionAttributes = this.deps.policy.maxVariantAttributes(market);
     const frozen = freezeWorkingCopy({
       content: copy.content,
       defaultLocale: locales.default,
@@ -109,7 +110,7 @@ export class FreezeRevision {
       const drafts: VariantDraft[] = frozen.value.variants.map((variant) => ({
         optionValues: variant.optionValues,
       }));
-      const variants = handler.validateVariants(schema, drafts, maxVariants);
+      const variants = handler.validateVariants(schema, drafts, maxVariants, maxOptionAttributes);
       if (!variants.ok) {
         issues.push(...variants.issues.map((issue) => ({ path: issue.path, code: issue.code })));
       }

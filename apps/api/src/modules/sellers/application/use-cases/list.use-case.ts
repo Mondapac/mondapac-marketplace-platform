@@ -89,6 +89,8 @@ export interface SellerListPage {
   /** The `after` of the next page, or null after the last. */
   readonly next: string | null;
   readonly counts: ListCounts;
+  /** Every area of the Market, for the area filter. */
+  readonly areas: readonly { readonly code: string; readonly name: string }[];
   /** With the first page of a tab; null on a later page of a file tab, and when hidden. */
   readonly stateCounts: StateTabCounts | null;
 }
@@ -208,6 +210,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
         items: decorated.value,
         next: idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
         counts: read.value.counts,
+        areas: this.deps.onboardingAreas.all(context.market),
         stateCounts: stateTabCounts(idPage),
       });
     }
@@ -243,6 +246,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       items: decorated.value,
       next: more && last !== undefined ? cursorText(cursorOf(request, last)) : null,
       counts,
+      areas: this.deps.onboardingAreas.all(context.market),
       stateCounts,
     });
   }
@@ -265,6 +269,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       kind: request.kind,
       outsideArea: request.outsideArea,
       openAreaCodes: onboardingAreas.openCodes(market),
+      areaCode: request.areaCode,
       onlyIds,
       after: stateIds === null ? request.after : null,
       take,

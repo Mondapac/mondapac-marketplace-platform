@@ -16,6 +16,7 @@ import type {
   ReviewCursor,
   SellerReviewCursor,
   ReviewRepository,
+  ReviewWindow,
   ReviewSort,
   SellerRatingRecord,
   StoredSellerSummary,
@@ -1036,4 +1037,51 @@ export class PrismaReviewRepository implements ReviewRepository {
     await tx.reviewsHelpfulVote.deleteMany({ where: { marketId: market.marketId, accountId } });
     return { reviews: reviews.count, ratings: ratings.count };
   }
+
+  // ---- seller health feed -------------------------------------------------------------------
+
+  async countPublishedForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly ReviewWindow[],
+  ) {
+    if (windows.length === 0) return [];
+    const first = windows.reduce(
+      (a, w) => (Temporal.Instant.compare(w.from, a) < 0 ? w.from : a),
+      windows[0]!.from,
+    );
+    const last = windows.reduce(
+      (a, w) => (Temporal.Instant.compare(w.to, a) > 0 ? w.to : a),
+      windows[0]!.to,
+    );
+    const rows = await this.prisma.tx(market).reviewsProductReview.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        status: 'published',
+        publishedAt: { gte: toDate(first), lt: toDate(last) },
+      },
+      select: { publishedAt: true, rating: true },
+      take: SELLER_HEALTH_ROW_CAP + 1,
+    });
+    // A cut-off count would be a wrong score, so a seller past the cap fails the read instead.
+    if (rows.length > SELLER_HEALTH_ROW_CAP) {
+      throw new RangeError('reviews.seller-health: too many reviews in the windows');
+    }
+    const out = windows.map(() => ({ reviews: 0, starsSum: 0 }));
+    for (const row of rows) {
+      if (row.publishedAt === null) continue;
+      const at = fromDate(row.publishedAt);
+      windows.forEach((w, index) => {
+        if (Temporal.Instant.compare(at, w.from) >= 0 && Temporal.Instant.compare(at, w.to) < 0) {
+          const slot = out[index]!;
+          out[index] = { reviews: slot.reviews + 1, starsSum: slot.starsSum + row.rating };
+        }
+      });
+    }
+    return out;
+  }
 }
+
+/** The most published reviews of one seller read for the health windows (a few days). */
+const SELLER_HEALTH_ROW_CAP = 20_000;

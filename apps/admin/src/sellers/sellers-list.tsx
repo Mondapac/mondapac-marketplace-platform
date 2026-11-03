@@ -79,6 +79,8 @@ export function SellersList({
   const [tab, setTab] = useState<Tab>('awaiting-review');
   const [kind, setKind] = useState('');
   const [outsideArea, setOutsideArea] = useState(false);
+  const [areaCode, setAreaCode] = useState('');
+  const [areas, setAreas] = useState<SellerListPage['areas']>([]);
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<readonly SellerRow[]>([]);
@@ -107,6 +109,7 @@ export function SellersList({
           limit: PAGE_SIZE,
           ...(tab === 'awaiting-review' && kind !== '' ? { kind } : {}),
           ...(tab === 'incomplete' && outsideArea ? { outsideArea: true } : {}),
+          ...(areaCode !== '' && !isStateTab(tab) ? { areaCode } : {}),
           ...(search === '' || isStateTab(tab) ? {} : { search }),
           ...(after === null ? {} : { after }),
         },
@@ -127,10 +130,11 @@ export function SellersList({
       );
       setNext(result.body.next);
       setCounts(result.body.counts);
+      setAreas(result.body.areas);
       // A later page of a file tab carries no state counts: keep the first page's.
       if (after === null) setStateCounts(result.body.stateCounts);
     },
-    [tab, kind, outsideArea, search, csrfToken],
+    [tab, kind, outsideArea, areaCode, search, csrfToken],
   );
 
   useEffect(() => {
@@ -152,6 +156,7 @@ export function SellersList({
     setSearch('');
     setKind('');
     setOutsideArea(false);
+    setAreaCode('');
   }
 
   const tooShort = draft.trim().length === 1;
@@ -198,6 +203,15 @@ export function SellersList({
               onChange={(event) => setKind(event.target.value)}
               placeholder={t('filter.all-kinds')}
               options={KINDS.map((value) => ({ value, label: t(`kind.${value}`) }))}
+            />
+          ) : null}
+          {areas.length > 1 ? (
+            <Select
+              label={t('filter.area')}
+              value={areaCode}
+              onChange={(event) => setAreaCode(event.target.value)}
+              placeholder={t('filter.all-areas')}
+              options={areas.map((area) => ({ value: area.code, label: area.name }))}
             />
           ) : null}
           {tab === 'incomplete' ? (

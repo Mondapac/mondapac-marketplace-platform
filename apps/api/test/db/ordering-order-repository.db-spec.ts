@@ -1,5 +1,5 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
@@ -820,6 +820,82 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       expect(await value(market, () => repository.saveAttention(market, flagged))).toBe('stale');
       const read = await value(market, () => repository.findById(market, order.id));
       expect(read?.sellerOrders[0]?.deliveryAttention).toBe('no-carrier');
+    });
+  });
+
+  describe('seller health feed', () => {
+    const sellerId = ids.next<'Seller'>();
+    /** An order of `sellerId`, paid at `paidAt` and (when given) marked ready at `readyAt`. */
+    const paidOrder = async (
+      owner: MarketContext,
+      seller: Id<'Seller'>,
+      paidAt: Temporal.Instant | null,
+      readyAt: Temporal.Instant | null,
+    ) => {
+      const base = newOrder(ids.next<'Account'>(), T0.add({ hours: -30 }));
+      const order: OrderState = {
+        ...base,
+        marketId: owner.marketId,
+        sellerOrders: [{ ...base.sellerOrders[0]!, sellerId: seller, readyPrepMinutes: 45 }],
+      };
+      await value(owner, () => repository.insert(owner, order));
+      if (paidAt === null) return order;
+      await value(owner, () =>
+        repository.save(owner, {
+          ...order,
+          status: 'confirmed',
+          paymentState: 'captured',
+          stripePaymentIntentId: `pi_test_${order.id}`,
+          confirmedAt: paidAt,
+        }),
+      );
+      if (readyAt !== null) {
+        await value(owner, () =>
+          repository.saveReady(owner, { ...order.sellerOrders[0]!, readyAt }),
+        );
+      }
+      return order;
+    };
+
+    it('answers the paid and ready seller orders of one seller in a span, and nothing else', async () => {
+      const from = T0.add({ hours: -24 });
+      const to = T0;
+      await paidOrder(market, sellerId, T0.add({ hours: -20 }), T0.add({ hours: -19 }));
+      await paidOrder(market, sellerId, T0.add({ hours: -10 }), null);
+      // Outside the span, unpaid, another seller, another Market: none of these count.
+      await paidOrder(market, sellerId, T0.add({ hours: -40 }), T0.add({ hours: -39 }));
+      await paidOrder(market, sellerId, null, null);
+      await paidOrder(market, ids.next<'Seller'>(), T0.add({ hours: -5 }), T0.add({ hours: -4 }));
+      await paidOrder(other, sellerId, T0.add({ hours: -5 }), T0.add({ hours: -4 }));
+
+      const rows = await value(market, () =>
+        repository.sellerHealthRows(market, sellerId, from, to, 100),
+      );
+
+      expect(rows.paidAt.map(String).sort()).toEqual(
+        [T0.add({ hours: -20 }), T0.add({ hours: -10 })].map(String).sort(),
+      );
+      expect(rows.ready).toEqual([
+        {
+          readyAt: T0.add({ hours: -19 }),
+          confirmedAt: T0.add({ hours: -20 }),
+          deliveryMethod: 'instant',
+          deliveryWindow: null,
+          readyPrepMinutes: 45,
+        },
+      ]);
+    });
+
+    it('fails the read, rather than cut the count, when the seller has more rows than the limit', async () => {
+      const busy = ids.next<'Seller'>();
+      await paidOrder(market, busy, T0.add({ hours: -3 }), T0.add({ hours: -2 }));
+      await paidOrder(market, busy, T0.add({ hours: -4 }), T0.add({ hours: -3 }));
+
+      await expect(
+        value(market, () =>
+          repository.sellerHealthRows(market, busy, T0.add({ hours: -24 }), T0, 1),
+        ),
+      ).rejects.toThrow(RangeError);
     });
   });
 });
