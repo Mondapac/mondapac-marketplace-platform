@@ -14,7 +14,7 @@ import { applicationDatabaseUrl, migrationDatabaseUrl, REPO_ROOT } from './test-
 // triggers and grants on the application and the owner connections.
 
 const MIGRATIONS = join(REPO_ROOT, 'prisma', 'migrations');
-const C2_MIGRATION = '20261102130000_catalog_category_management_model';
+const C2_MIGRATION = '20261103100000_catalog_category_management_model';
 const T0 = '2026-10-08T00:00:00Z';
 let sequence = 0;
 const uuid7 = (): string =>

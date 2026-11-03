@@ -1,4 +1,4 @@
--- Reverses 20261102130000_catalog_category_management_model (docs/design/data/catalog.md 8.3):
+-- Reverses 20261103100000_catalog_category_management_model (docs/design/data/catalog.md 8.3):
 -- grants first, then triggers, the new tables, the new columns and constraints, the functions.
 -- Development and CI only: the dropped columns and tables lose their data.
 REVOKE SELECT, INSERT ON TABLE "catalog"."platform_category_slug_history" FROM "mondapac_app";
