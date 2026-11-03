@@ -85,6 +85,7 @@ describe('admin nav: daily work only', () => {
     ).toEqual([
       'home',
       'products',
+      'categories',
       'offer-reviews',
       'review-moderation',
       'price-holds',

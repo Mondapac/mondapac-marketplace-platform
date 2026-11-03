@@ -123,6 +123,7 @@
     "payouts": "Payouts",
     "attributes": "Attributes",
     "brands": "Brands",
+    "categories": "Categories",
     "review-moderation": "Buyer reviews",
     "business-activities": "Business activities"
   },
@@ -4107,6 +4108,76 @@
       "label": "Where you are signed in",
       "help": "See your open sessions and sign out of the others.",
       "link": "Open signed-in devices"
+    }
+  },
+  "categories": {
+    "title": "Categories",
+    "intro": "The category tree of this Market. Products and Offers sit in the categories below it; this page only reads them.",
+    "view-only": "Your role can't change categories.",
+    "counts-partial": "The counts are still being worked out, so they show as at least.",
+    "at-least": "at least {n}",
+    "tree-label": "Category tree",
+    "search": "Search categories",
+    "search-label": "Search the category tree",
+    "status-label": "Status",
+    "filter": {
+      "all": "All statuses",
+      "active": "Active",
+      "merged": "Merged",
+      "archived": "Archived"
+    },
+    "status": {
+      "active": "Active",
+      "merged": "Merged",
+      "archived": "Archived"
+    },
+    "filter-note": "Matching categories are shown with the categories above them.",
+    "loading": "Loading categories",
+    "load-error": "We couldn't load categories. Try again.",
+    "empty": "No categories yet.",
+    "empty-search": "No categories match \"{q}\".",
+    "empty-status": "No categories have this status.",
+    "no-access": "Your role cannot see categories.",
+    "back-home": "Back to the home page",
+    "back": "Back to the category tree",
+    "details": {
+      "label": "Category details",
+      "pick": "Pick a category to see its details.",
+      "loading": "Loading the category",
+      "load-error": "We couldn't load this category. Try again.",
+      "missing": "This category was not found.",
+      "tabs": "Category sections",
+      "tab": {
+        "details": "Details",
+        "products": "Products",
+        "history": "History"
+      },
+      "status": "Status",
+      "slug": "Slug",
+      "name-in": "Name ({locale})",
+      "name-missing": "Missing",
+      "missing-locales": "These languages have no name yet: {locales}.",
+      "live-products": "Live products",
+      "live-products-direct": "Live products directly in it",
+      "offers": "Offers",
+      "version": "Version"
+    },
+    "products": {
+      "intro": "What a change to this category would reach: the published products in it and under it.",
+      "empty": "No published products are in this category.",
+      "load-error": "We couldn't load the products. Try again.",
+      "products": "Published products",
+      "direct": "Directly in this category",
+      "offers": "Offers",
+      "listed": "Offers on sale",
+      "tagged": "Offers with an active certification tag",
+      "descendants": "Categories under it"
+    },
+    "history": {
+      "empty": "No changes are recorded for this category.",
+      "revision": "Revision {no}",
+      "by-seed": "Set up with the platform",
+      "by-admin": "Changed by an admin"
     }
   },
   "brands": {

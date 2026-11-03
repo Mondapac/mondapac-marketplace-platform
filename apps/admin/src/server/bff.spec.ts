@@ -1121,6 +1121,9 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/archive`],
     ['POST', `catalog/admin/brands/${id}/merge`],
     ['POST', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['GET', 'catalog/admin/categories'],
+    ['GET', `catalog/admin/categories/${id}`],
+    ['GET', `catalog/admin/categories/${id}/impact`],
     ['GET', 'catalog/admin/business-activities'],
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],
@@ -1170,6 +1173,12 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/delete`],
     ['POST', 'catalog/admin/brands/merge-queue'],
     ['GET', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['POST', 'catalog/admin/categories'],
+    ['PUT', `catalog/admin/categories/${id}`],
+    ['DELETE', `catalog/admin/categories/${id}`],
+    ['GET', 'catalog/admin/categories/not-a-uuid'],
+    ['GET', `catalog/admin/categories/${id}/extra`],
+    ['POST', `catalog/admin/categories/${id}/impact`],
     ['DELETE', `catalog/admin/business-activities/${id}`],
     ['PUT', 'catalog/admin/business-activities'],
     ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
@@ -1248,6 +1257,27 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/catalog/admin/business-activities',
     );
+  });
+
+  it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=merge&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=merge`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=delete`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact`,
+    );
+    const tree = await run('GET', 'catalog/admin/categories?q=x&limit=3', readHeaders);
+    expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
   });
 
   it('passes only the known, well-formed filters of the attribute list', async () => {

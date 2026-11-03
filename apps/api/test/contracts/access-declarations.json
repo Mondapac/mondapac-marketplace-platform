@@ -179,6 +179,7 @@
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   { "name": "commission-payouts.run-payouts", "rule": "system" },
+  { "name": "commission-payouts.seller-lost-disputes", "rule": "system" },
   { "name": "commission-payouts.sync-dispute", "rule": "system" },
   {
     "name": "commission-payouts.view-next-payout",
