@@ -217,6 +217,19 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   AttributeRelaxationRequest: {
     noCustomerText: 'aggregate class around AttributeRelaxationRequestState',
   },
+  AttributeValueSuggestion: {
+    noCustomerText: 'aggregate class around AttributeValueSuggestionState',
+  },
+  AttributeValueSuggestionState: {
+    noCustomerText:
+      "a seller's value suggestion: ids, status codes, times and the seller's own text, shown to admins only; an approval writes the value's labels through the attribute editor, which claim-checks them",
+  },
+  SuggestionNoticeFacts: {
+    noCustomerText: 'facts of the one mail to a seller about a suggestion; never shown to buyers',
+  },
+  SuggestionNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
   AttributeRelaxationRequestState: {
     noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
   },

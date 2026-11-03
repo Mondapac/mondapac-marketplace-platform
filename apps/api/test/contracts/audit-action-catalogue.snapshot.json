@@ -104,6 +104,31 @@
     }
   },
   {
+    "action": "catalog.attribute-value-suggestion.decided",
+    "targetType": "catalog.attribute-value-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "definitionId": "id",
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|rejected)"
+    }
+  },
+  {
+    "action": "catalog.attribute-value-suggestion.suggested",
+    "targetType": "catalog.attribute-value-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "definitionId": "id",
+      "productId": "id"
+    }
+  },
+  {
     "action": "catalog.product.paused",
     "targetType": "catalog.product",
     "targetId": "id",
