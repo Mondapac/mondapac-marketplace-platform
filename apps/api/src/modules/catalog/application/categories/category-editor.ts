@@ -151,11 +151,22 @@ export function checkedPlaces(input: {
 export async function refuseClaimTexts(
   deps: Pick<CategoryWriteDependencies, 'matcher' | 'claimLocales'>,
   context: CallContext,
-  places: readonly CheckedPlace[],
+  asked: readonly CheckedPlace[],
 ): Promise<CategoryWriteFailure | null> {
-  if (places.length === 0) return null;
+  if (asked.length === 0) return null;
   const covered = await deps.claimLocales.covered(context);
   if (!covered.ok) return { code: 'claim-text.check-unavailable' };
+  // The search fields and the slug are English, but a vocabulary is kept per full locale
+  // (en-AU, en-US), never as a bare `en`: they are checked with the Market's English
+  // vocabulary, and a Market with none cannot check them, so the write is refused.
+  const english =
+    covered.value.find((locale) => locale === SEARCH_TEXT_LOCALE) ??
+    covered.value.find((locale) => locale.split('-')[0] === SEARCH_TEXT_LOCALE);
+  const places = asked.map((place) =>
+    place.locale === SEARCH_TEXT_LOCALE && english !== undefined
+      ? { ...place, locale: english }
+      : place,
+  );
   const uncheckable = places
     .filter((place) => !covered.value.includes(place.locale))
     .map((place) => ({ path: place.path, code: 'locale-uncheckable' }));

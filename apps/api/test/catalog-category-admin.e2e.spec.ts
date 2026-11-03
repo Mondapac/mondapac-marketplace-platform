@@ -154,7 +154,7 @@ describe.each(TEST_MARKETS)(
             .overrideProvider(CLAIM_TERM_LOCALES)
             .useValue({
               covered: () =>
-                Promise.resolve({ ok: true, value: ['en', 'en-AU', 'en-US', 'ja-JP', 'fa', 'ar'] }),
+                Promise.resolve({ ok: true, value: ['en-AU', 'en-US', 'ja-JP', 'fa', 'ar'] }),
             }),
       }));
       await app.get(SeedRoles).execute(testCallContext(market, 'system', 'category-0001'), {});
