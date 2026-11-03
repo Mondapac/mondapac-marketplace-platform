@@ -81,7 +81,7 @@ describe.each(['AU', 'ZZ'] as const)('own-product.set-own-brand in market %s', (
   const product = (scope: 'SELLER' | 'PLATFORM' = 'SELLER') => {
     const created = Product.create({
       id: PRODUCT,
-      marketId: code,
+      marketId: market.marketId,
       scope,
       sellerId: scope === 'SELLER' ? SELLER : null,
       handler: simpleProductType,

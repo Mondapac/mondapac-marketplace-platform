@@ -46,7 +46,7 @@ describe.each(['AU', 'ZZ'] as const)('brand audit in market %s', (code) => {
         population,
         accountId: ADMIN as never,
         sessionId: '01990000-0000-7000-8000-0000000000a2' as never,
-        sellerId: population === 'seller' ? (SELLER) : null,
+        sellerId: population === 'seller' ? SELLER : null,
       }),
     );
 
