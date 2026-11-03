@@ -36,6 +36,10 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     return this.section(market).maxVariantsPerProduct;
   }
 
+  maxVariantAttributes(market: MarketContext): number {
+    return this.section(market).maxVariantAttributes;
+  }
+
   productTypes(market: MarketContext): readonly string[] {
     return [...this.section(market).productTypes];
   }

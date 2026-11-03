@@ -74,6 +74,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
         throw new Error('not used');
       },
       maxVariantsPerProduct: () => max,
+      maxVariantAttributes: () => 2,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

@@ -27,6 +27,8 @@ export interface SellerRow {
   readonly kind: string | null;
   readonly submittedAt: string | null;
   readonly serviceAreaCode: string | null;
+  /** English display name of the area from Market configuration; null when none. */
+  readonly serviceAreaName?: string | null;
   readonly timezone: string | null;
   readonly createdAt: string;
   readonly lastChangedAt: string;
@@ -50,6 +52,8 @@ export interface SellerListPage {
   readonly items: readonly SellerRow[];
   readonly next: string | null;
   readonly counts: SellerListCounts;
+  /** Every service area of the Market, for the area filter. */
+  readonly areas: readonly { readonly code: string; readonly name: string }[];
   /** Null when the admin may not see identity's state: the state tabs are then not shown. */
   readonly stateCounts: SellerListStateCounts | null;
 }

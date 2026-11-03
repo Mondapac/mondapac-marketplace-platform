@@ -92,6 +92,7 @@
     "products": "Products",
     "offers": "Offers",
     "orders": "Orders",
+    "reviews": "Reviews",
     "earnings": "Earnings",
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
@@ -1726,6 +1727,66 @@
       "action": "Sign out others"
     }
   },
+  "reviews": {
+    "title": "Reviews",
+    "intro": "What customers wrote about your products. You can answer each review once in public and report one that breaks the rules. Only the platform can hide or remove a review.",
+    "stars": "{rating} out of 5 stars",
+    "product-link": "View product",
+    "order-link": "View order",
+    "no-text": "The customer left a rating without a text.",
+    "more": "Show more",
+    "cancel": "Cancel",
+    "empty": {
+      "title": "No reviews yet",
+      "body": "Reviews of your products show up here after customers rate what they received."
+    },
+    "off": {
+      "title": "Reviews are not switched on yet",
+      "body": "Customer reviews are not available yet. They will appear here once the platform turns them on."
+    },
+    "reply": {
+      "title": "Your reply",
+      "action": "Reply",
+      "edit": "Edit reply",
+      "label": "Your public reply",
+      "edit-label": "Edit your public reply",
+      "help": "Everyone who reads the review sees your reply. Keep it polite and leave out phone numbers, emails, links and addresses. You can post one reply and edit it for a limited time.",
+      "save": "Post reply",
+      "save-edit": "Save changes",
+      "saved": "Reply posted",
+      "saved-edit": "Reply updated",
+      "edited": "edited",
+      "editable-until": "you can edit it until {date}",
+      "locked": "it can no longer be edited"
+    },
+    "report": {
+      "action": "Report",
+      "intro": "Tell the platform why this review breaks the rules. A person reviews every report; nothing changes on the page until then.",
+      "reason-label": "Reason",
+      "reason": {
+        "personal-information": "It shows personal information",
+        "abusive": "It is abusive",
+        "irrelevant": "It is not about the product or the service",
+        "not-a-purchase": "The customer did not buy this",
+        "extortion": "It threatens a bad review unless I give something"
+      },
+      "send": "Send report",
+      "sent": "Report sent",
+      "sent-badge": "Reported"
+    },
+    "error": {
+      "already-replied": "This review already has a reply. Reload the page.",
+      "edit-window-closed": "This reply can no longer be edited.",
+      "not-found": "This review is no longer available.",
+      "not-allowed": "The text has contact details, a link or a word that is not allowed. Remove it and try again.",
+      "invalid": "Check the text. It cannot be empty or too long.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "csrf": "Your session changed. Reload the page and try again.",
+      "denied": "You do not have permission to do this.",
+      "unavailable": "Reviews could not be loaded. Try again in a moment.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
   "notifications": {
     "bell": "Notifications",
     "bell-unread": "Notifications, {count, plural, one {# unread} other {# unread}}",
@@ -1761,6 +1822,10 @@
       "image-taken-down": "A <strong>product image</strong> was taken down {reason, select, certification_mark {because it shows a certification mark} misleading {because it is misleading} rights {after a rights claim} unsafe_or_illegal {because it is unsafe or illegal} other {by the platform}}",
       "price-hold-decided": "{outcome, select, approved {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was approved} rejected {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was rejected} other {Your <strong>price</strong> change was reviewed}}",
       "access-changed": "{change, select, approved {Your <strong>store</strong> is approved: you can start selling} reinstated {Your <strong>store</strong> is reinstated: you can sell again} other {Your <strong>store</strong> access changed}}",
+      "review-posted": "A <strong>customer review</strong> of one of your products is published: {rating, plural, one {# star} other {# stars}}",
+      "review-hidden": "A <strong>customer review</strong> of one of your products was hidden by the platform",
+      "review-restored": "A <strong>customer review</strong> of one of your products is visible again",
+      "delivery-problem": "A customer said <strong>an order did not arrive in good order</strong>",
       "other": "You have a new notification"
     },
     "category": {
@@ -1770,6 +1835,7 @@
       "catalogue": "Catalogue",
       "store": "My store",
       "prices": "Prices",
+      "reviews": "Reviews",
       "account": "Account",
       "other": "Other"
     },

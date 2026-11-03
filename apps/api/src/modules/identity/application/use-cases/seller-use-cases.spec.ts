@@ -288,10 +288,10 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
       ['platform', 'default', 'onboarding-compliance', 11],
-      ['platform', 'default', 'catalogue-moderator', 13],
-      ['platform', 'default', 'operations-support', 6],
+      ['platform', 'default', 'catalogue-moderator', 16],
+      ['platform', 'default', 'operations-support', 8],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 25],
+      ['platform', 'default', 'viewer', 27],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
@@ -348,6 +348,9 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.seller.view',
     ]);
     expect(keysOf('catalogue-moderator')).toEqual([
+      'catalog.attribute.view',
+      'catalog.category-tree.edit',
+      'catalog.category-tree.view',
       'catalog.platform-import.run',
       'catalog.platform-product.edit',
       'catalog.product.approve',
@@ -363,6 +366,8 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.seller.view',
     ]);
     expect(keysOf('operations-support')).toEqual([
+      'catalog.attribute.view',
+      'catalog.category-tree.view',
       'certification.type.view',
       'identity.customer-account.disable',
       'identity.customer-account.view',

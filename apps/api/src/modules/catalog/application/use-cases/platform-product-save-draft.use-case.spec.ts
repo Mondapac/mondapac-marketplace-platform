@@ -138,6 +138,7 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
         throw new Error('not used');
       },
       maxVariantsPerProduct: () => 100,
+      maxVariantAttributes: () => 2,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

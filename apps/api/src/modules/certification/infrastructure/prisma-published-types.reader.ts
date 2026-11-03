@@ -32,7 +32,14 @@ export class PrismaPublishedTypesReader implements PublishedTypesReader {
           `certification type ${row.code} has no claim term on its published revision`,
         );
       }
-      return { typeCode: row.code as CertificationTypeCode, terms: sortedUnique(terms) };
+      const termLocales = row.revision.texts
+        .filter((text) => text.terms.length > 0)
+        .map((text) => text.locale);
+      return {
+        typeCode: row.code as CertificationTypeCode,
+        terms: sortedUnique(terms),
+        termLocales: sortedUnique(termLocales),
+      };
     });
   }
 

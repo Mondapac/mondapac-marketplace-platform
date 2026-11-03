@@ -44,6 +44,8 @@ const SAMPLE_TEXT: Readonly<Record<string, string>> = {
   textSearchConfig: 'simple',
   limit: '1',
   offset: '0',
+  priorMeanTimes1000: '4000',
+  mode: 'relevance',
 };
 
 const uuid7 = (): string => uuidV7(Date.now(), crypto.getRandomValues(new Uint8Array(10)));

@@ -31,6 +31,7 @@ const input = (patch: Partial<DeliverySettingsInput> = {}): DeliverySettingsInpu
   sameDayCutoffMinutes: 630,
   scheduledDaysAhead: 5,
   scheduledWindowMinutes: 90,
+  readyPrepMinutes: 45,
   margin: { kind: 'percent', basisPoints: 1250 },
   roundingStepMinor: 5,
   ...patch,
@@ -189,6 +190,8 @@ describe.each(TEST_MARKETS)('delivery settings repository in market %s (database
     expect(await settings({ scheduled_days_ahead: 31 })).toBe(CHECK);
     expect(await settings({ scheduled_window_minutes: 20 })).toBe(CHECK);
     expect(await settings({ scheduled_window_minutes: 100 })).toBe(CHECK);
+    expect(await settings({ ready_prep_minutes: 4 })).toBe(CHECK);
+    expect(await settings({ ready_prep_minutes: 2881 })).toBe(CHECK);
     expect(await settings({ rounding_step_minor: 25 })).toBe(CHECK);
     expect(await settings({ margin_kind: 'percent' })).toBe(CHECK);
     expect(await settings({ margin_kind: 'none', margin_fixed_minor: 5 })).toBe(CHECK);

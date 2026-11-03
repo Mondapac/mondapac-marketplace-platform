@@ -16,7 +16,7 @@ import {
   sampleSellerId,
 } from './sample-catalog.ts';
 import { storefrontApiConfig } from './config.ts';
-import { liveCategory, liveProducts, type CategoryScope } from './listing-source.ts';
+import { liveCategory, liveProducts, type CategoryScope, type Reader } from './listing-source.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import type {
@@ -201,19 +201,22 @@ export async function searchCategory(code: string | undefined): Promise<Category
   return { code, name, shortName: name, children: [] };
 }
 
-export async function findProducts(query: ProductQuery): Promise<ProductPage> {
+export async function findProducts(query: ProductQuery, read?: Reader): Promise<ProductPage> {
   const pageSize = query.pageSize ?? PAGE_SIZE;
   // A filter the route cannot apply matches nothing rather than seeming to hold for products
   // nobody checked; the sort is not sent (the route ranks), so every sort reads as best match.
   if (listingIsLive() && activeFilterCount(query.filters ?? NO_FILTERS) > 0)
     return { items: [], page: query.page, pageSize, hasMore: false };
-  const live = await liveProducts({
-    ...(query.q === undefined ? {} : { q: query.q }),
-    ...(query.category === undefined ? {} : { category: query.category }),
-    ...(query.subcategory === undefined ? {} : { subcategory: query.subcategory }),
-    page: query.page,
-    pageSize,
-  });
+  const live = await liveProducts(
+    {
+      ...(query.q === undefined ? {} : { q: query.q }),
+      ...(query.category === undefined ? {} : { category: query.category }),
+      ...(query.subcategory === undefined ? {} : { subcategory: query.subcategory }),
+      page: query.page,
+      pageSize,
+    },
+    read,
+  );
   if (live !== undefined) return { ...live, page: query.page, pageSize };
   const filters = query.filters ?? NO_FILTERS;
   const matches = inScope(query)
@@ -315,4 +318,16 @@ export async function findStores(q: string): Promise<StoreResults> {
       .sort((a, b) => (matches.get(b.id) ?? 0) - (matches.get(a.id) ?? 0)),
     location,
   });
+}
+
+/**
+ * Whether a category listing holds no product: the one rule behind the page's noindex and the
+ * sitemap's choice of categories, so the two can never disagree.
+ */
+export async function categoryIsEmpty(
+  scope: { readonly category: string; readonly subcategory?: string },
+  read?: Reader,
+): Promise<boolean> {
+  const all = await findProducts({ ...scope, page: 1, pageSize: 1 }, read);
+  return (all.total ?? all.items.length) === 0;
 }
