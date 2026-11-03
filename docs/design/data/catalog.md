@@ -1442,7 +1442,9 @@ holds rows in a deployed environment is `CREATE INDEX CONCURRENTLY`, alone in it
 an environment holds products by then. Adding an off-sale cause later: `ADD COLUMN … boolean` (nullable),
 backfill `false` in batches by a worker job, then `SET NOT NULL` through the CHECK route of SL-data
 9.3, then swap `offers_listed_check` (`DROP` and `ADD … NOT VALID`, `VALIDATE`) in one file.
-Backfills never run inside a migration.
+Backfills never run inside a migration, with one bounded exception: while no environment is deployed
+and the tables hold only seed rows, a small backfill, a `SET NOT NULL` scan and a CHECK without `NOT VALID`
+may run in the file. The categories C2 migration is that case (six seed rows); it states so in its header.
 
 ### 8.3 `down.sql` and reversibility
 

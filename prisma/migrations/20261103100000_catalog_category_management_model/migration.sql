@@ -127,7 +127,8 @@ ALTER TABLE "catalog"."platform_category_revision_texts"
 
 -- No name is lost: every existing name moves over. platform_category_revision_names stays as it
 -- is (readable, insert-only); until the editor (C3) writes the texts itself, a trigger copies each
--- new name row so the two never differ.
+-- new name row (the text row of a revision is written first by C3; a name that differs from an
+-- existing text is not copied).
 INSERT INTO "catalog"."platform_category_revision_texts" ("market_id", "tenant_id", "revision_id", "locale", "name")
   SELECT "market_id", "tenant_id", "revision_id", "locale", "name"
     FROM "catalog"."platform_category_revision_names";
