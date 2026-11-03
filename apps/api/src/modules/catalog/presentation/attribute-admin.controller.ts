@@ -40,6 +40,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { CategoryAttributeLinksGet } from '../application/use-cases/category-attribute-links-get.use-case';
+import { CategoryAttributeLinksSet } from '../application/use-cases/category-attribute-links-set.use-case';
 import { AttributeAdminGet } from '../application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from '../application/use-cases/attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from '../application/use-cases/feature-set-admin-get.use-case';
@@ -62,6 +64,9 @@ import {
   FeatureSetCreateRequest,
   FeatureSetEditRequest,
   FeatureSetWriteWrapBody,
+  CategoryLinksBody,
+  CategoryLinksSetRequest,
+  CategoryLinksSetWrapBody,
 } from './attribute-admin.dto';
 import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
@@ -80,6 +85,16 @@ export const ATTRIBUTE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.f
   'attribute-definition.locale-invalid': 400,
   'attribute.not-found': 404,
   'feature-set.not-found': 404,
+  'category.not-found': 404,
+  'category.not-active': 409,
+  'category-links.feature-set-unknown': 422,
+  'category-links.feature-set-not-active': 422,
+  'category-links.stale': 409,
+  'category-links.filter-unknown': 422,
+  'category-links.filter-not-filterable': 422,
+  'category-links.filter-invalid': 422,
+  'category-links.filter-repeated': 422,
+  'category-links.too-many-filters': 422,
   'feature-set.code-taken': 409,
   'feature-set.stale': 409,
   'feature-set.material-removal-needs-request': 409,
@@ -193,6 +208,8 @@ export class AttributeAdminController {
     private readonly discardAttribute: AttributeDefinitionDiscard,
     private readonly createFeatureSet: FeatureSetCreate,
     private readonly editFeatureSet: FeatureSetEdit,
+    private readonly getCategoryLinks: CategoryAttributeLinksGet,
+    private readonly setCategoryLinks: CategoryAttributeLinksSet,
   ) {}
 
   @Post('attributes')
@@ -598,6 +615,84 @@ export class AttributeAdminController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.feature-set-edit', context, outcome);
+  }
+
+  @Get('categories/:categoryId/attribute-links')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read the attribute links of a category',
+    description:
+      `${NEEDS} What the category holds itself (feature set and filters, with the version to ` +
+      'save against) and what it ends up with after inheritance.',
+  })
+  @ApiParam({ name: 'categoryId', description: 'The category. A UUID v7.' })
+  @ApiOkResponse({ type: CategoryLinksBody })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'category.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async categoryLinks(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+  ): Promise<CategoryLinksBody> {
+    const result = await this.getCategoryLinks.execute(context, { categoryId });
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as CategoryLinksBody)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.category-attribute-links-get', context, outcome);
+  }
+
+  @Put('categories/:categoryId/attribute-links')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Set the attribute links of a category',
+    description:
+      `${EDITS} The feature set the category holds (null: it takes its parent's) and the ` +
+      'filterable attributes in order. Send the version read before (omit it for the first ' +
+      'save); a later one is category-links.stale. Children inherit what is set here.',
+  })
+  @ApiParam({ name: 'categoryId', description: 'The category. A UUID v7.' })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryLinksSetRequest })
+  @ApiOkResponse({ type: CategoryLinksSetWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'category.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'category-links.stale or category.not-active',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description:
+      'category-links.feature-set-*, category-links.filter-* or category-links.too-many-filters ' +
+      '(details.fields)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async setLinks(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryLinksSetWrapBody> {
+    const input = closedBody(request, body, ['featureSetId', 'filters'], ['version']);
+    let outcome: CategoryLinksSetWrapBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.setCategoryLinks.execute(context, { ...input, categoryId });
+      outcome = result.ok
+        ? {
+            links: JSON.parse(JSON.stringify(result.value)) as CategoryLinksSetWrapBody['links'],
+          }
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.category-attribute-links-set', context, outcome);
   }
 
   private settle<T extends object>(

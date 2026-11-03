@@ -249,6 +249,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CheckedRow: { noCustomerText: 'the admin check result of a row' },
   AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
   AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
+  CategoryAttributeLink: { noCustomerText: 'aggregate class around CategoryAttributeLinkState' },
   AttributeRelaxationRequest: {
     noCustomerText: 'aggregate class around AttributeRelaxationRequestState',
   },
@@ -290,6 +291,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   AttributeFamilyState: { table: 'FEATURE_SET_FIELDS' },
   AttributeOption: { table: 'ATTRIBUTE_OPTION_FIELDS' },
   CatalogBatchTooLarge: { noCustomerText: 'refusal code' },
+  CategoryAttributeLinkState: { noCustomerText: 'ids, attribute codes and counts; no text' },
+  EffectiveAttributes: { noCustomerText: 'ids and attribute codes of a resolution; no text' },
+  EffectiveFilter: { noCustomerText: 'an attribute code and a category id; no text' },
+  LinkFact: { noCustomerText: 'a feature set id and attribute codes; no text' },
   CatalogFacade: { noCustomerText: 'interface of methods' },
   CatalogIndexFacade: { noCustomerText: 'interface of methods' },
   CatalogValidationFailed: { noCustomerText: 'refusal code with fixed paths' },

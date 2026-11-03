@@ -384,3 +384,71 @@ export class FeatureSetWriteBody {
 export class FeatureSetWriteWrapBody {
   @ApiProperty({ type: FeatureSetWriteBody }) featureSet!: FeatureSetWriteBody;
 }
+
+export class CategoryLinksSetRequest {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    description: 'The feature set the category holds; null means it takes its parent’s.',
+  })
+  featureSetId!: string | null;
+  @ApiProperty({
+    type: [String],
+    description: 'Filterable attribute codes in the order buyers see.',
+  })
+  filters!: string[];
+  @ApiProperty({
+    required: false,
+    description: 'The version the admin saw; omitted when the category has no link yet.',
+  })
+  version?: number;
+}
+
+export class CategoryLinksOwnBody {
+  @ApiProperty({ format: 'uuid', nullable: true }) featureSetId!: string | null;
+  @ApiProperty({ type: [String] }) filters!: string[];
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty({ description: 'The version the editor names when it saves.' }) version!: number;
+}
+
+export class CategoryLinksFeatureSetBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALIZED) names!: Record<string, string>;
+  @ApiProperty({ format: 'uuid', description: 'The category that holds it.' })
+  fromCategoryId!: string;
+  @ApiProperty({ description: 'True when an ancestor holds it.' }) inherited!: boolean;
+}
+
+export class CategoryLinksFilterBody {
+  @ApiProperty() code!: string;
+  @ApiProperty({ format: 'uuid' }) fromCategoryId!: string;
+  @ApiProperty() inherited!: boolean;
+  @ApiProperty({ ...LOCALIZED, nullable: true }) names!: Record<string, string> | null;
+  @ApiProperty({ enum: ATTRIBUTE_DATA_TYPES, nullable: true }) dataType!: string | null;
+  @ApiProperty({ nullable: true }) status!: string | null;
+}
+
+export class CategoryLinksEffectiveBody {
+  @ApiProperty({ type: CategoryLinksFeatureSetBody, nullable: true })
+  featureSet!: CategoryLinksFeatureSetBody | null;
+  @ApiProperty({ type: [CategoryLinksFilterBody] }) filters!: CategoryLinksFilterBody[];
+}
+
+export class CategoryLinksBody {
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty({ type: CategoryLinksOwnBody, nullable: true }) own!: CategoryLinksOwnBody | null;
+  @ApiProperty({ type: CategoryLinksEffectiveBody }) effective!: CategoryLinksEffectiveBody;
+}
+
+export class CategoryLinksSetBody {
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true }) featureSetId!: string | null;
+  @ApiProperty({ type: [String] }) filters!: string[];
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty() version!: number;
+}
+
+export class CategoryLinksSetWrapBody {
+  @ApiProperty({ type: CategoryLinksSetBody }) links!: CategoryLinksSetBody;
+}

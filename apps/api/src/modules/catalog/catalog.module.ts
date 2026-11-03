@@ -253,6 +253,9 @@ import { ATTRIBUTE_DEFINITION_STORE } from './application/ports/attribute-defini
 import { FEATURE_SET_STORE } from './application/ports/feature-set.store';
 import { FeatureSetCreate } from './application/use-cases/feature-set-create.use-case';
 import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-case';
+import { CategoryAttributeLinksSet } from './application/use-cases/category-attribute-links-set.use-case';
+import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
+import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
@@ -360,6 +363,7 @@ const PORT = {
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   featureSetStore: FEATURE_SET_STORE,
+  linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
@@ -661,6 +665,20 @@ const productTypeProvider: FactoryProvider<string> = {
       audit: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(CategoryAttributeLinksSet, {
+      unitOfWork: true,
+      linkStore: true,
+      attributeAdminReader: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryAttributeLinksGet, {
+      unitOfWork: true,
+      linkStore: true,
+      treeReader: true,
+      attributeAdminReader: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,

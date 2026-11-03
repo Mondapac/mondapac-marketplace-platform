@@ -50,6 +50,7 @@ export function definitionRecord(
     readonly names?: LocalizedText;
     readonly material?: boolean;
     readonly isVariantOption?: boolean;
+    readonly canBeFilter?: boolean;
     readonly values?: readonly AttributeOption[];
     readonly revisionNo?: number;
   } = {},
@@ -68,6 +69,7 @@ export function definitionRecord(
       material: options.material ?? false,
       isVariantOption: options.isVariantOption ?? false,
       options: options.values ?? [],
+      display: { ...DEFAULT_DISPLAY_SETTINGS, canBeFilter: options.canBeFilter ?? false },
     }),
   };
 }
