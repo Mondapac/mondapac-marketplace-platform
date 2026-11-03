@@ -27,7 +27,9 @@ import { SELLER_HEALTH_SIGNALS } from './application/ports/seller-health-signals
 import { SELLER_HEALTH_STORE } from './application/ports/seller-health.store';
 import { SellerHealthRead } from './application/use-cases/seller-health-read.use-case';
 import { SellerHealthController } from './presentation/seller-health.controller';
+import { PurgeSellerHealth } from './application/use-cases/purge-seller-health.use-case';
 import { RunSellerHealth } from './application/use-cases/run-seller-health.use-case';
+import { purgeSellerHealthJob } from './presentation/jobs/purge-seller-health.job';
 import { sellerHealthJob } from './presentation/jobs/seller-health.job';
 import { SELLER_ACCESS_READER } from './application/ports/seller-access-reader';
 import { SELLER_ACCOUNT_DIRECTORY } from './application/ports/seller-account-directory';
@@ -740,19 +742,22 @@ const REVIEW_DECISION_PORTS = {
       healthPolicy: true,
       clock: true,
     }),
+    useCaseProvider(PurgeSellerHealth, { unitOfWork: true, healthStore: true, clock: true }),
     registerJobsFrom(
       'sellers',
-      [BackfillSellerFiles, PurgeExpired, ReconcileDecisions, RunSellerHealth],
+      [BackfillSellerFiles, PurgeExpired, ReconcileDecisions, RunSellerHealth, PurgeSellerHealth],
       (
         backfill: BackfillSellerFiles,
         purge: PurgeExpired,
         reconcile: ReconcileDecisions,
         health: RunSellerHealth,
+        purgeHealth: PurgeSellerHealth,
       ) => [
         backfillSellerFilesJob(backfill),
         purgeExpiredJob(purge),
         reconcileDecisionsJob(reconcile),
         sellerHealthJob(health),
+        purgeSellerHealthJob(purgeHealth),
       ],
     ),
     registerSubscriptionsFrom(
