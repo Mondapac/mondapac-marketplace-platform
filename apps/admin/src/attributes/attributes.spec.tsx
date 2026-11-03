@@ -1004,7 +1004,9 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       name: 'Ask to turn off Material for Attribute 1?',
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Send request' }));
-    await expectToast('Request sent. Another administrator can confirm it under Waiting for you.');
+    await expectToast(
+      'Request sent. A different administrator can confirm it under Waiting for you.',
+    );
     expect(writes('POST').map((w) => [w.path, w.body, w.csrf])).toEqual([
       [
         `catalog/admin/attributes/${id(1)}/relaxation-requests`,
@@ -1023,6 +1025,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
         409,
         'relaxation.already-open',
       ),
+      'GET catalog/admin/attribute-relaxations': ok({ requests: [] }),
     });
     mount({ canEdit: true, initialId: id(1) });
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
@@ -1030,9 +1033,13 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Send request' }));
     expect(
-      await within(dialog).findByText(/already asked to turn off Material for this attribute/),
+      await within(dialog).findByText(
+        /request to turn off Material for this attribute is already open/,
+      ),
     ).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: 'Reload' })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Go to Waiting for you' }));
+    expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
+    expect(window.location.search).toBe('?tab=waiting');
     cleanup();
     mount({ canEdit: true, initialId: id(2) });
     const plain = await screen.findByRole('region', { name: 'Attribute details' });
@@ -1060,11 +1067,13 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const rows = await within(list).findAllByRole('listitem');
     expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByText('Attribute 1')).toBeTruthy();
-    expect(within(rows[0]!).queryByRole('button', { name: 'Withdraw' })).toBeNull();
+    expect(within(rows[0]!).queryByRole('button', { name: /^Withdraw/ })).toBeNull();
     expect(within(rows[1]!).getByText('Your request')).toBeTruthy();
-    expect(within(rows[1]!).queryByRole('button', { name: 'Confirm' })).toBeNull();
+    expect(within(rows[1]!).queryByRole('button', { name: /^Confirm/ })).toBeNull();
 
-    fireEvent.click(within(rows[0]!).getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(
+      within(rows[0]!).getByRole('button', { name: 'Confirm request for Attribute 1' }),
+    );
     const confirm = await screen.findByRole('dialog', {
       name: 'Turn off Material for Attribute 1?',
     });
@@ -1073,12 +1082,20 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
 
     const left = await within(list).findAllByRole('listitem');
     await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
-    fireEvent.click(within(left.at(-1)!).getByRole('button', { name: 'Withdraw' }));
+    fireEvent.click(
+      within(left.at(-1)!).getByRole('button', { name: 'Withdraw request for Attribute 2' }),
+    );
     const withdraw = await screen.findByRole('dialog', {
       name: 'Withdraw your request for Attribute 2?',
     });
     fireEvent.click(within(withdraw).getByRole('button', { name: 'Withdraw' }));
     await expectToast('Request withdrawn.');
+    // The row whose button opened the dialog is gone: focus is on the list, not lost.
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe(
+        'Requests waiting for a second administrator',
+      ),
+    );
     expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
     expect(writes('POST').map((w) => [w.path, w.body, w.csrf])).toEqual([
       [`catalog/admin/attribute-relaxations/${id(801)}/confirm`, { version: 1 }, 'csrf-1'],
@@ -1097,13 +1114,13 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       ),
     });
     mount({ canEdit: true, initialTab: 'waiting' });
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm request for Attribute 1' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
     expect(await within(dialog).findByText(/This request expired/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(calls('catalog/admin/attribute-relaxations')).toHaveLength(2));
-    fireEvent.click(await screen.findByRole('button', { name: 'Open attribute' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Attribute 1' }));
     expect(await screen.findByRole('region', { name: 'Attribute details' })).toBeTruthy();
     expect(window.location.search).toBe(`?id=${id(1)}`);
   });
@@ -1136,6 +1153,57 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(screen.queryByRole('button', { name: 'Add attribute' })).toBeNull();
     expect(within(panel).queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(within(panel).queryByRole('button', { name: 'Publish' })).toBeNull();
+  });
+
+  it('offers no Turn off Material without catalog.attribute.edit, nor on a draft', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { material: true })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, { material: true })),
+      [`GET catalog/admin/attributes/${id(2)}`]: ok(
+        detail(locales, 2, { material: true, status: 'draft' }),
+      ),
+    });
+    mount({ initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(panel).findByRole('heading', { name: 'Attribute 1' });
+    expect(within(panel).queryByRole('button', { name: 'Turn off Material' })).toBeNull();
+    cleanup();
+    mount({ canEdit: true, initialId: id(2) });
+    const draft = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(draft).findByRole('button', { name: 'Publish' });
+    expect(within(draft).queryByRole('button', { name: 'Turn off Material' })).toBeNull();
+  });
+
+  it('sends a signed-out admin to the session-ended page from Waiting for you', async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, pathname: original.pathname, search: original.search },
+    });
+    try {
+      serve({ 'GET catalog/admin/attribute-relaxations': refuse(401, 'auth.required') });
+      mount({ canEdit: true, initialTab: 'waiting' });
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+      cleanup();
+      assign.mockClear();
+      serve({
+        'GET catalog/admin/attribute-relaxations': ok({ requests: [relaxation(1, false)] }),
+        [`POST catalog/admin/attribute-relaxations/${id(801)}/confirm`]: refuse(
+          401,
+          'auth.required',
+        ),
+      });
+      mount({ canEdit: true, initialTab: 'waiting' });
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Confirm request for Attribute 1' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original });
+    }
   });
 
   it('sends a signed-out admin to the session-ended page', async () => {

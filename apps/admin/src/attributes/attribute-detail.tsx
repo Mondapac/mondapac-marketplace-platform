@@ -63,6 +63,7 @@ export function AttributeDetailPanel({
   canEdit = false,
   csrfToken = '',
   onChanged,
+  onOpenWaiting,
 }: {
   readonly attributeId: string | null;
   readonly onClose: () => void;
@@ -70,6 +71,8 @@ export function AttributeDetailPanel({
   readonly csrfToken?: string;
   /** An attribute was saved, published or discarded: the list reads it again. */
   readonly onChanged?: () => void;
+  /** Opens the Waiting for you tab, where an already open request is. */
+  readonly onOpenWaiting?: () => void;
 }) {
   const t = useTranslations('attributes.detail');
   const tl = useTranslations('load');
@@ -194,6 +197,7 @@ export function AttributeDetailPanel({
                 setConfirm(null);
                 void fetchDetail();
               }}
+              onOpenWaiting={onOpenWaiting}
             />
           ) : null}
           {confirm === null || confirm === 'relax' ? null : (
@@ -385,12 +389,14 @@ function RelaxDialog({
   onClose,
   onDone,
   onReload,
+  onOpenWaiting,
 }: {
   readonly detail: AttributeDetail;
   readonly csrfToken: string;
   readonly onClose: () => void;
   readonly onDone: () => void;
   readonly onReload: () => void;
+  readonly onOpenWaiting?: () => void;
 }) {
   const t = useTranslations('attributes.detail');
   const te = useTranslations('attributes.editor');
@@ -417,7 +423,9 @@ function RelaxDialog({
           <Button variant="secondary" disabled={call.pending} onClick={onClose}>
             {te('cancel')}
           </Button>
-          {problem?.reload === true ? (
+          {problem?.key === 'relaxation-already-open' && onOpenWaiting !== undefined ? (
+            <Button onClick={onOpenWaiting}>{t('go-to-waiting')}</Button>
+          ) : problem?.reload === true ? (
             <Button onClick={onReload}>{te('reload')}</Button>
           ) : (
             <Button loading={call.pending} disabled={call.pending} onClick={() => void send()}>

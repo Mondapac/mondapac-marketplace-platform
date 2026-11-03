@@ -11,7 +11,7 @@ import {
   toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
 import { useAttributeCall } from './use-attribute-call.ts';
@@ -37,7 +37,7 @@ function nameOf(request: OpenRelaxation, locale: string): string {
 
 /**
  * The Waiting for you tab (attributes A2 part 3): requests to turn off Material that wait for a
- * second administrator, soonest to expire first. Another administrator's request can be
+ * second administrator, oldest first. Another administrator's request can be
  * confirmed; the reader's own can be withdrawn. Both ask first. Only an admin with
  * `catalog.attribute.edit` reads the list; any other admin sees the empty state.
  */
@@ -55,12 +55,21 @@ export function WaitingTab({
   const locale = useLocale();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [pending, setPending] = useState<Pending>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const section = useRef<HTMLElement>(null);
 
-  const fetchRequests = useCallback(async () => {
-    setLoad({ state: 'loading' });
+  /**
+   * Reads the list. After a decision the rows already shown stay while it reads (`quiet`), and
+   * focus moves to the list, since the row whose button opened the dialog may be gone.
+   */
+  const fetchRequests = useCallback(async (quiet = false) => {
+    if (quiet) setRefreshing(true);
+    else setLoad({ state: 'loading' });
     const result = await callApi<OpenRelaxationList>('GET', API_RELAXATIONS);
+    setRefreshing(false);
     if (result.ok) {
       setLoad({ state: 'ready', requests: result.body.requests });
+      if (quiet) section.current?.focus();
       return;
     }
     if (result.failure.status === 401) {
@@ -74,14 +83,23 @@ export function WaitingTab({
     if (canEdit) void fetchRequests();
   }, [canEdit, fetchRequests]);
 
-  const empty = <EmptyState size="card" icon="inbox" title={t('empty')} body={t('body')} />;
+  const empty = (
+    <EmptyState
+      size="card"
+      icon="inbox"
+      title={t('empty')}
+      body={t(canEdit ? 'body' : 'view-only-body')}
+    />
+  );
   if (!canEdit) return empty;
 
   return (
     <section
+      ref={section}
+      tabIndex={-1}
       aria-label={t('label')}
-      aria-busy={load.state === 'loading'}
-      className="flex min-w-0 flex-col gap-3"
+      aria-busy={load.state === 'loading' || refreshing}
+      className="flex min-w-0 flex-col gap-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     >
       {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={3} /> : null}
       {load.state === 'failed' ? (
@@ -94,7 +112,10 @@ export function WaitingTab({
       ) : null}
       {load.state === 'ready' && load.requests.length === 0 ? empty : null}
       {load.state === 'ready' && load.requests.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-line rounded-lg border border-line bg-surface">
+        <ul
+          role="list"
+          className="flex flex-col divide-y divide-line rounded-lg border border-line bg-surface"
+        >
           {load.requests.map((request) => {
             const name = nameOf(request, locale);
             return (
@@ -124,17 +145,25 @@ export function WaitingTab({
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" onClick={() => onOpenAttribute(request.attribute.id)}>
+                  <Button
+                    variant="secondary"
+                    aria-label={t('open-named', { name })}
+                    onClick={() => onOpenAttribute(request.attribute.id)}
+                  >
                     {t('open-attribute')}
                   </Button>
                   {request.allowedActions.confirm.allowed ? (
-                    <Button onClick={() => setPending({ kind: 'confirm', request })}>
+                    <Button
+                      aria-label={t('confirm-named', { name })}
+                      onClick={() => setPending({ kind: 'confirm', request })}
+                    >
                       {t('confirm')}
                     </Button>
                   ) : null}
                   {request.allowedActions.cancel.allowed ? (
                     <Button
                       variant="destructive"
+                      aria-label={t('withdraw-named', { name })}
                       onClick={() => setPending({ kind: 'withdraw', request })}
                     >
                       {t('withdraw')}
@@ -156,11 +185,11 @@ export function WaitingTab({
           onDone={() => {
             toast.success(t(pending.kind === 'confirm' ? 'confirmed' : 'withdrawn'));
             setPending(null);
-            void fetchRequests();
+            void fetchRequests(true);
           }}
           onReload={() => {
             setPending(null);
-            void fetchRequests();
+            void fetchRequests(true);
           }}
         />
       )}

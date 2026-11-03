@@ -341,7 +341,6 @@ const RELOAD: ReadonlySet<string> = new Set([
   'not-draft',
   'archived',
   'not-material',
-  'relaxation-already-open',
   'relaxation-gone',
   'relaxation-moved',
   'relaxation-expired',

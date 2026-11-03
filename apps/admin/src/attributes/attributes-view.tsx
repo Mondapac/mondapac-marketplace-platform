@@ -72,6 +72,10 @@ export function AttributesView({
           onSelect={setSelected}
           canEdit={canEdit}
           csrfToken={csrfToken}
+          onOpenWaiting={() => {
+            setTab('waiting');
+            setSelected(null);
+          }}
         />
       ) : null}
       {tab === 'feature-sets' ? (
