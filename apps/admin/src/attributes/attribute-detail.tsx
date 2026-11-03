@@ -21,7 +21,7 @@ import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
-import type { FieldErrors } from './editor.ts';
+import { BASE_UNIT, type FieldErrors } from './editor.ts';
 import { changeLineOf } from './history.ts';
 import { useRevealWhenStacked } from './reveal.ts';
 import { useSelectLabels } from './select-labels.ts';
@@ -355,6 +355,44 @@ function StatusDialog({
   );
 }
 
+/** A unit's label in the Market's main language, else its code. */
+function unitLabel(detail: AttributeDetail, code: string): string {
+  return textIn(
+    detail.units.find((unit) => unit.code === code)?.labels,
+    detail.locales.default,
+    detail.locales.default,
+    code,
+  );
+}
+
+/** The base unit after a measure's lowest or highest value (they are stored in base units). */
+function baseSuffix(detail: AttributeDetail): string {
+  const measure = detail.bounds.measure;
+  const base = measure === undefined ? undefined : BASE_UNIT[measure.dimension];
+  return base === undefined ? '' : ` ${unitLabel(detail, base)}`;
+}
+
+/** The unit settings of a measure attribute (attributes A3), as rows of the Details tab. */
+function measureRows(
+  detail: AttributeDetail,
+  t: ReturnType<typeof useTranslations>,
+): DataListRow[] {
+  const measure = detail.bounds.measure;
+  if (measure === undefined) return [];
+  return [
+    {
+      label: t('field.measure-dimension'),
+      value: t(`editor.measure.dimension.${measure.dimension}`),
+    },
+    {
+      label: t('field.measure-units'),
+      value: measure.units.map((code) => unitLabel(detail, code)).join(', '),
+    },
+    { label: t('field.measure-default-unit'), value: unitLabel(detail, measure.defaultUnit) },
+    { label: t('field.measure-decimals'), value: String(measure.decimals) },
+  ];
+}
+
 function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
   const t = useTranslations('attributes');
   const selectLabels = useSelectLabels();
@@ -380,10 +418,11 @@ function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
       : [{ label: t('field.max-length'), value: String(detail.bounds.maxLength) }]),
     ...(detail.bounds.min === undefined
       ? []
-      : [{ label: t('field.min'), value: String(detail.bounds.min) }]),
+      : [{ label: t('field.min'), value: `${detail.bounds.min}${baseSuffix(detail)}` }]),
     ...(detail.bounds.max === undefined
       ? []
-      : [{ label: t('field.max'), value: String(detail.bounds.max) }]),
+      : [{ label: t('field.max'), value: `${detail.bounds.max}${baseSuffix(detail)}` }]),
+    ...measureRows(detail, t),
     { label: t('field.show-on-product-page'), value: yesNo(detail.display.showOnProductPage) },
     { label: t('field.searchable'), value: yesNo(detail.display.searchable) },
     { label: t('field.can-be-filter'), value: yesNo(detail.display.canBeFilter) },
@@ -666,6 +705,11 @@ function ChangeText({
     case 'bound':
       what = t('history.change.bound', { bound: t(`field.${boundKey(line.bound)}`) });
       break;
+    case 'measure':
+      what = t('history.change.measure', {
+        setting: t(`field.measure-${measureKey(line.setting)}`),
+      });
+      break;
     case 'name':
       what = t('history.change.name', { language: line.language });
       break;
@@ -696,6 +740,12 @@ function ChangeText({
       })}
     </>
   );
+}
+
+function measureKey(setting: string): 'dimension' | 'units' | 'default-unit' | 'decimals' {
+  if (setting === 'defaultUnit') return 'default-unit';
+  if (setting === 'dimension' || setting === 'units' || setting === 'decimals') return setting;
+  return 'units';
 }
 
 function boundKey(bound: string): 'max-length' | 'min' | 'max' | 'limit' {

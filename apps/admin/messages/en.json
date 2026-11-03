@@ -4610,7 +4610,8 @@
       "boolean": "Yes or no",
       "date": "Date",
       "select": "One choice",
-      "multi-select": "Several choices"
+      "multi-select": "Several choices",
+      "measure": "Number with unit"
     },
     "status": {
       "active": "Active",
@@ -4674,7 +4675,11 @@
       "searchable": "Searchable",
       "can-be-filter": "Can be a filter",
       "position": "Position",
-      "internal-note": "Internal note"
+      "internal-note": "Internal note",
+      "measure-dimension": "Kind of quantity",
+      "measure-units": "Units sellers can pick",
+      "measure-default-unit": "Unit offered first",
+      "measure-decimals": "Decimal places"
     },
     "detail": {
       "label": "Attribute details",
@@ -4753,7 +4758,8 @@
         "searchable": "Searchable",
         "can-be-filter": "Can be a filter",
         "position": "Position",
-        "internal-note": "Internal note changed"
+        "internal-note": "Internal note changed",
+        "measure": "{setting}"
       }
     },
     "feature-sets": {
@@ -4806,7 +4812,8 @@
         "boolean": "Yes or no, such as “Contains nuts”.",
         "date": "A date, such as the harvest date.",
         "select": "One value from a list, such as Size: Small, Medium, Large.",
-        "multi-select": "Several values from a list, such as Allergens."
+        "multi-select": "Several values from a list, such as Allergens.",
+        "measure": "A number with a unit the seller picks, such as net weight in g or kg."
       },
       "type-chosen": "Type: {type}.",
       "draft-note": "It is added as a draft: sellers see it only after you publish it.",
@@ -4890,7 +4897,8 @@
         "number": "Enter a number.",
         "other": "Check this field.",
         "below-min": "The highest value must not be below the lowest.",
-        "unavailable": "We could not check this text. Try again."
+        "unavailable": "We could not check this text. Try again.",
+        "not-offered": "This Market does not offer this unit."
       },
       "error": {
         "invalid": "Some fields need a change.",
@@ -4914,10 +4922,38 @@
         "throttled": "Too many changes at once. Wait a moment and try again.",
         "unavailable": "We could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again.",
-        "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive."
+        "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive.",
+        "measure-invalid": "The unit settings are not valid. Pick at least one unit, and one that is offered first.",
+        "measure-locked": "Once published, the kind of quantity cannot change and a unit in use cannot be removed."
       },
       "has-error": "Needs a change",
-      "check-languages": "Check the text in: {languages}."
+      "check-languages": "Check the text in: {languages}.",
+      "measure": {
+        "dimension": {
+          "label": "Kind of quantity",
+          "help": "Decides which units can be offered.",
+          "locked": "Fixed once the attribute is published.",
+          "mass": "Weight",
+          "volume": "Volume",
+          "length": "Length",
+          "count": "Count"
+        },
+        "units": {
+          "label": "Units sellers can pick",
+          "help": "The Market decides which units exist. Pick the ones sellers may use for this attribute.",
+          "in-use": "In use: it stays on once the attribute is published."
+        },
+        "default-unit": {
+          "label": "Unit offered first",
+          "help": "The unit a seller sees when they start typing."
+        },
+        "decimals": {
+          "label": "Decimal places",
+          "help": "The most decimal places a seller can type, from 0 to 6. Whole numbers: 0."
+        },
+        "min": "Lowest value (in {unit})",
+        "max": "Highest value (in {unit})"
+      }
     }
   }
 }

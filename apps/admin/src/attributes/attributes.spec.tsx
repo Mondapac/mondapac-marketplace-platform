@@ -11,6 +11,7 @@ import { callApi, type ApiResult } from '../api/client.ts';
 import { AttributesView } from './attributes-view.tsx';
 import { changeLineOf } from './history.ts';
 import type {
+  MarketUnit,
   AttributeDetail,
   AttributePage,
   AttributeRow,
@@ -28,6 +29,20 @@ const MARKETS: readonly { readonly name: string; readonly locales: MarketLocales
   { name: 'AU', locales: { default: 'en-AU', supported: ['en-AU'] } },
   { name: 'ZZ', locales: { default: 'ja-JP', supported: ['ja-JP', 'fa-IR'] } },
 ];
+
+const unitsOf = (locales: MarketLocales): MarketUnit[] =>
+  [
+    ['g', 'mass', 'g'],
+    ['kg', 'mass', 'kg'],
+    ['ml', 'volume', 'ml'],
+    ['l', 'volume', 'L'],
+    ['mm', 'length', 'mm'],
+    ['count', 'count', 'each'],
+  ].map(([code, dimension, label]) => ({
+    code: code!,
+    dimension: dimension!,
+    labels: { [locales.default]: label! },
+  }));
 
 const row = (
   locales: MarketLocales,
@@ -58,6 +73,7 @@ const page = (
   total: items.length,
   totalAll: items.length,
   locales,
+  units: unitsOf(locales),
   featureSets: [{ id: id(50), code: 'grocery-sauces' }],
   truncated: false,
   ...over,
@@ -128,6 +144,7 @@ const detail = (
   ],
   historyTruncated: false,
   locales,
+  units: unitsOf(locales),
   ...over,
 });
 const featureSet = (n: number, over: Partial<FeatureSetRow> = {}): FeatureSetRow => ({
@@ -630,6 +647,88 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(window.location.search).toBe(`?id=${id(9)}`);
   });
 
+  it('adds a measure with its unit settings, and sends bounds in base units', async () => {
+    const created = detail(locales, 9, {
+      status: 'draft',
+      dataType: 'measure',
+      code: 'net-weight',
+      names: { [locales.default]: 'Net weight' },
+      options: [],
+      bounds: {
+        min: 1,
+        measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+      },
+    });
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      'POST catalog/admin/attributes': {
+        ok: true,
+        status: 201,
+        body: {
+          attribute: { id: id(9), code: 'net-weight', status: 'draft', version: 1, revisionNo: 1 },
+        },
+      },
+      [`GET catalog/admin/attributes/${id(9)}`]: ok(created),
+    });
+    mount({ canEdit: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add attribute' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Add attribute/ });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Number with unit/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name in/ }), {
+      target: { value: 'Net weight' },
+    });
+    // Starts with every mass unit on and the base unit first; the Market's units only.
+    expect(within(dialog).getByRole('checkbox', { name: 'kg' })).toHaveProperty('checked', true);
+    expect(within(dialog).queryByRole('checkbox', { name: 'ml' })).toBeNull();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Decimal places/ }), {
+      target: { value: '2' },
+    });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Lowest value \(in g\)/ }), {
+      target: { value: '1' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add as draft' }));
+    await screen.findByRole('region', { name: 'Attribute details' });
+    expect(writes('POST')[0]?.body).toMatchObject({
+      dataType: 'measure',
+      bounds: {
+        min: 1,
+        measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+      },
+      options: [],
+    });
+  });
+
+  it('refuses a measure with no unit before sending, and shows the settings of a saved one', async () => {
+    const measure = detail(locales, 1, {
+      dataType: 'measure',
+      options: [],
+      bounds: {
+        max: 5000,
+        measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+      },
+    });
+    serve({
+      'GET catalog/admin/attributes?': ok(
+        page(locales, [row(locales, 1, { dataType: 'measure' })]),
+      ),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(measure),
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(panel).findByText('Kind of quantity');
+    expect(within(panel).getByText('g, kg')).toBeTruthy();
+    expect(within(panel).getByText('5000 g')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
+    const form = within(panel).getByRole('form', { name: 'Edit attribute' });
+    // Published: the kind of quantity is fixed and the units in use stay on.
+    expect(within(form).getByRole('combobox', { name: /^Kind of quantity/ })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(within(form).getByRole('checkbox', { name: 'kg' })).toHaveProperty('disabled', true);
+  });
+
   it('asks for a code when the name has no Latin letters, and shows a claim word on its field', async () => {
     serve({
       'GET catalog/admin/attributes?': ok(page(locales, [])),
@@ -1002,6 +1101,7 @@ describe('history change lines', () => {
     expect(line('material')).toEqual({ key: 'material' });
     expect(line('isVariantOption')).toEqual({ key: 'variant' });
     expect(line('bounds.maxLength')).toEqual({ key: 'bound', bound: 'maxLength' });
+    expect(line('measure.defaultUnit')).toEqual({ key: 'measure', setting: 'defaultUnit' });
     expect(line('option.extra.hot.added')).toEqual({ key: 'option-added', code: 'extra.hot' });
     expect(line('option.hot.label.ja-JP')).toEqual({
       key: 'option-label',

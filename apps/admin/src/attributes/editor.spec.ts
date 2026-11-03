@@ -173,4 +173,63 @@ describe.each(['en-AU', 'ja-JP'])('attribute editor form (%s)', (locale) => {
       names: 'x',
     });
   });
+
+  describe('a measure (attributes A3)', () => {
+    const measure = (over: Partial<EditorForm> = {}) =>
+      form({
+        measureDimension: 'mass',
+        measureUnits: ['g', 'kg'],
+        measureDefaultUnit: 'g',
+        measureDecimals: '2',
+        ...over,
+      });
+
+    it('sends the unit settings with min and max as numbers, in base units', () => {
+      expect(contentOf(measure({ min: '1', max: '5000' }), 'measure', locale)).toMatchObject({
+        bounds: {
+          min: 1,
+          max: 5000,
+          measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+        },
+        options: [],
+        isVariantOption: false,
+      });
+    });
+
+    it('sends no unit settings for any other type', () => {
+      expect(contentOf(measure(), 'decimal', locale).bounds).toEqual({});
+    });
+
+    it('needs a unit, a default among them, and 0 to 6 decimal places', () => {
+      expect(checkForm(measure(), 'measure', locale)).toEqual({});
+      expect(checkForm(measure({ measureUnits: [] }), 'measure', locale)).toEqual({
+        'bounds.measure.units': 'required',
+      });
+      expect(checkForm(measure({ measureDefaultUnit: 'm' }), 'measure', locale)).toEqual({
+        'bounds.measure.defaultUnit': 'required',
+      });
+      for (const places of ['', '7', '-1', '1.5', 'x']) {
+        expect(checkForm(measure({ measureDecimals: places }), 'measure', locale)).toEqual({
+          'bounds.measure.decimals': 'number',
+        });
+      }
+    });
+
+    it('takes a lowest and highest value that are not negative and not reversed', () => {
+      expect(checkForm(measure({ min: '-1' }), 'measure', locale)).toEqual({
+        'bounds.min': 'number',
+      });
+      expect(checkForm(measure({ min: '10', max: '1' }), 'measure', locale)).toEqual({
+        'bounds.max': 'below-min',
+      });
+    });
+
+    it('reads the API refusals of the unit settings', () => {
+      const failure = (code: string) => ({ status: 422, code }) as never;
+      expect(problemOf(failure('attribute-definition.measure-invalid')).key).toBe(
+        'measure-invalid',
+      );
+      expect(problemOf(failure('attribute-definition.measure-locked')).key).toBe('measure-locked');
+    });
+  });
 });

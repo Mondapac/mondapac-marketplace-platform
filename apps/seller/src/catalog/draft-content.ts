@@ -1,12 +1,26 @@
+import { fromBase, placesOf, toBase } from './measure.ts';
 import type { FormField, FormOption } from './types.ts';
 
 // The editable parts of a working copy beside its texts: categories, tax category, attribute
 // values and variants. Pure functions: they read the saved `content` into editor state and write
 // the state back over it, leaving every key they do not own as it was.
 
-/** A value as a field edits it: text for most types, a flag for boolean, a list for multi-select. */
+/**
+ * A value as a field edits it: text for most types, a flag for boolean, a list for multi-select,
+ * and for a measure `{ amount, unit }` (the number typed, and the unit code picked).
+ */
 export type AttributeInput =
   string | boolean | readonly string[] | Readonly<Record<string, string>>;
+
+/** The edit state of a measure field. */
+export type MeasureInput = { readonly amount: string; readonly unit: string };
+
+export const isMeasureInput = (input: AttributeInput | undefined): input is MeasureInput =>
+  typeof input === 'object' &&
+  input !== null &&
+  !Array.isArray(input) &&
+  typeof (input as Record<string, unknown>)['amount'] === 'string' &&
+  typeof (input as Record<string, unknown>)['unit'] === 'string';
 export type AttributeInputs = Readonly<Record<string, AttributeInput | undefined>>;
 
 export interface VariantRow {
@@ -64,6 +78,16 @@ export function attributeInputsOf(
       if (Array.isArray(value)) {
         inputs[field.code] = value.filter((item): item is string => typeof item === 'string');
       }
+    } else if (field.dataType === 'measure') {
+      // Shown in the unit the seller saved it in, with no more places than the field allows.
+      if (
+        isObject(value) &&
+        typeof value['value'] === 'string' &&
+        typeof value['unit'] === 'string'
+      ) {
+        const shown = fromBase(value['value'], value['unit'], field.measure?.decimals ?? 0);
+        inputs[field.code] = { amount: shown ?? value['value'], unit: value['unit'] };
+      }
     } else if (field.localizable) {
       if (isStringMap(value)) inputs[field.code] = value;
       else if (typeof value === 'string') inputs[field.code] = { '': value };
@@ -93,6 +117,28 @@ export function attributeProblem(field: FormField, value: string): string | null
   return null;
 }
 
+/**
+ * `null` when a measure input fits the field, else the key of the problem: `decimal` (not a
+ * number), `places` (more decimal places than the field allows in that unit), `unit` (not one the
+ * field offers) or `range` (outside min and max, which are in base units).
+ */
+export function measureProblem(field: FormField, input: MeasureInput | undefined): string | null {
+  const amount = input?.amount.trim() ?? '';
+  if (input === undefined || amount === '') return null;
+  const settings = field.measure;
+  if (settings === undefined || !settings.units.includes(input.unit)) return 'unit';
+  const places = placesOf(amount);
+  if (places === null) return 'decimal';
+  if (places > settings.decimals) return 'places';
+  const base = toBase(amount, input.unit);
+  if (base === null) return 'decimal';
+  const { min, max } = field.bounds;
+  if ((min !== undefined && Number(base) < min) || (max !== undefined && Number(base) > max)) {
+    return 'range';
+  }
+  return null;
+}
+
 function valueOf(
   field: FormField,
   input: AttributeInput | undefined,
@@ -103,6 +149,13 @@ function valueOf(
   if (Array.isArray(input)) {
     const list = input as readonly string[];
     return list.length === 0 ? undefined : [...list];
+  }
+  if (field.dataType === 'measure') {
+    if (!isMeasureInput(input)) return undefined;
+    const amount = input.amount.trim();
+    if (amount === '') return undefined;
+    // An amount that does not convert is sent as typed, so the server names the problem.
+    return { value: toBase(amount, input.unit) ?? amount, unit: input.unit };
   }
   if (typeof input === 'string') {
     const text = input.trim();

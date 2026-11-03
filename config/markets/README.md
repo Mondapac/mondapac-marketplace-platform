@@ -222,6 +222,11 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check
   (`variants.too-many-option-attributes`).
+- `units` (required; attributes A3): the units a number-with-unit attribute may offer in this
+  Market, as `{ "code", "labels": { locale: text } }`. A code is one the platform knows (`g`, `kg`,
+  `ml`, `l`, `mm`, `cm`, `m`, `count`), no code repeats, and the four base units `g`, `ml`, `mm` and
+  `count` must all be listed (stored values are in base units). The label is what a seller and a
+  buyer see per locale ("kg", "L"); an administrator picks among these and cannot add one.
 - `productTypes` (required, 1 to 20 entries, no code repeated): the product type codes the Market
   offers (lower-case letters, digits and `-`, as the registry's codes are). A type that is not
   listed, or is listed but not registered, is refused at product creation (`product.type-not-offered`,

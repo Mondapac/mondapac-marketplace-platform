@@ -12,6 +12,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
+import { MeasureSettings } from './measure-settings.tsx';
 import {
   CODE_PATTERN,
   NAME_MAX,
@@ -20,6 +21,7 @@ import {
   contentOf,
   emptyForm,
   fieldKey,
+  measureDefaults,
   sentCodes,
   suggestCode,
   valuesFromLines,
@@ -34,6 +36,7 @@ import {
   type AttributeWrite,
   type DataType,
   type MarketLocales,
+  type MarketUnit,
 } from './types.ts';
 import { useAttributeCall } from './use-attribute-call.ts';
 
@@ -45,11 +48,14 @@ import { useAttributeCall } from './use-attribute-call.ts';
  */
 export function AddAttributeDialog({
   locales,
+  units,
   csrfToken,
   onClose,
   onCreated,
 }: {
   readonly locales: MarketLocales;
+  /** The Market's units, for a number-with-unit attribute. */
+  readonly units: readonly MarketUnit[];
   readonly csrfToken: string;
   readonly onClose: () => void;
   readonly onCreated: (id: string) => void;
@@ -64,6 +70,10 @@ export function AddAttributeDialog({
   const [values, setValues] = useState('');
   const [variant, setVariant] = useState(false);
   const [material, setMaterial] = useState(false);
+  const [measureForm, setMeasureForm] = useState(() => ({
+    ...emptyForm(),
+    ...measureDefaults(units, 'mass'),
+  }));
   const [errors, setErrors] = useState<FieldErrors>({});
   const call = useAttributeCall(csrfToken);
   const formRef = useRef<HTMLFormElement>(null);
@@ -85,7 +95,7 @@ export function AddAttributeDialog({
     event.preventDefault();
     const rows = choice ? valuesFromLines(values, locale) : [];
     const form = {
-      ...emptyForm(),
+      ...measureForm,
       names: { [locale]: name },
       values: rows,
       isVariantOption: variant,
@@ -220,6 +230,17 @@ export function AddAttributeDialog({
               dir={directionOf(locale)}
               error={valueErrors.length === 0 ? undefined : valueErrors.join(' ')}
               onChange={(event) => setValues(event.target.value)}
+            />
+          ) : null}
+          {dataType === 'measure' ? (
+            <MeasureSettings
+              form={measureForm}
+              units={units}
+              defaultLocale={locale}
+              savedUnits={[]}
+              locked={false}
+              errors={errors}
+              onChange={(next) => setMeasureForm((current) => ({ ...current, ...next }))}
             />
           ) : null}
           {dataType === 'select' ? (

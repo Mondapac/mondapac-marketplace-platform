@@ -24,6 +24,13 @@ export interface CatalogMarketPolicy {
   maxVariantsPerProduct(market: MarketContext): number;
   /** The most option attributes one product may vary on (attributes A2; AU 2). */
   maxVariantAttributes(market: MarketContext): number;
+  /** The units a number-with-unit attribute may offer in this Market, with labels (attributes A3). */
+  units(market: MarketContext): readonly {
+    readonly code: string;
+    /** mass, volume, length or count: from the platform's unit table, not the Market file. */
+    readonly dimension: string;
+    readonly labels: { readonly [locale: string]: string };
+  }[];
   /** The product types this Market offers (3.1 rule 4). */
   productTypes(market: MarketContext): readonly string[];
   /** The attribute family a new product starts in (4.1). */

@@ -228,4 +228,47 @@ describe('validateAttributeValues', () => {
     expect(check(multi, { tags: 'a' }).ok).toBe(false);
     expect(check(multi, { tags: [] }).ok).toBe(false);
   });
+  describe('measure fields', () => {
+    const weight = schemaOf(
+      field({
+        code: 'netWeight',
+        dataType: 'measure',
+        bounds: { min: 1, max: 5000 },
+        measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+      }),
+    );
+    const issues = (values: AttributeValues) => {
+      const result = check(weight, values);
+      return result.ok ? [] : result.error.map((issue) => issue.code);
+    };
+
+    it('accepts a value in base units with an offered unit', () => {
+      expect(issues({ netWeight: { value: '500', unit: 'g' } })).toEqual([]);
+      expect(issues({ netWeight: { value: '1250', unit: 'kg' } })).toEqual([]);
+    });
+
+    it('checks min and max in base units, whatever unit the seller picked', () => {
+      expect(issues({ netWeight: { value: '0', unit: 'g' } })).toEqual(['attribute.out-of-range']);
+      expect(issues({ netWeight: { value: '5001', unit: 'g' } })).toEqual([
+        'attribute.out-of-range',
+      ]);
+      expect(issues({ netWeight: { value: '5000', unit: 'kg' } })).toEqual([]);
+    });
+
+    it('names the problem: type, unit or decimal places', () => {
+      expect(issues({ netWeight: '500' })).toEqual(['attribute.type']);
+      expect(issues({ netWeight: { value: '5', unit: 'ml' } })).toEqual(['attribute.unit-unknown']);
+      expect(issues({ netWeight: { value: '1', unit: 'kg' } })).toEqual(['attribute.precision']);
+    });
+
+    it('treats a measure field without settings as invalid, never as free text', () => {
+      const broken = schemaOf(field({ code: 'w', dataType: 'measure' }));
+      expect(check(broken, { w: { value: '5', unit: 'g' } }).ok).toBe(false);
+    });
+
+    it('requires a value when the field is required', () => {
+      const required = schemaOf({ ...weight.fields[0]!, required: true });
+      expect(check(required, {}).ok).toBe(false);
+    });
+  });
 });

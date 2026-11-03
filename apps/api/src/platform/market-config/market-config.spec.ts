@@ -2102,6 +2102,12 @@ describe('loadMarketConfigs', () => {
       },
       maxVariantsPerProduct: 100,
       maxVariantAttributes: 2,
+      units: [
+        { code: 'g', labels: { 'en-NZ': 'g' } },
+        { code: 'ml', labels: { 'en-NZ': 'ml' } },
+        { code: 'mm', labels: { 'en-NZ': 'mm' } },
+        { code: 'count', labels: { 'en-NZ': 'each' } },
+      ],
       approvalRequired: true,
       productTypes: ['simple', 'configurable'],
       defaultFamily: 'default',
@@ -2186,6 +2192,31 @@ describe('loadMarketConfigs', () => {
       ['no variant attribute limit', without('maxVariantAttributes')],
       ['a zero variant attribute limit', { ...VALID_CATALOG, maxVariantAttributes: 0 }],
       ['a variant attribute limit above 5', { ...VALID_CATALOG, maxVariantAttributes: 6 }],
+      ['no units', without('units')],
+      ['an empty unit list', { ...VALID_CATALOG, units: [] }],
+      [
+        'a unit the platform does not know',
+        {
+          ...VALID_CATALOG,
+          units: [...VALID_CATALOG.units, { code: 'oz', labels: { 'en-NZ': 'oz' } }],
+        },
+      ],
+      [
+        'a repeated unit',
+        { ...VALID_CATALOG, units: [...VALID_CATALOG.units, VALID_CATALOG.units[0]] },
+      ],
+      ['a base unit missing', { ...VALID_CATALOG, units: VALID_CATALOG.units.slice(1) }],
+      [
+        'a unit without a label',
+        { ...VALID_CATALOG, units: [{ code: 'g', labels: {} }, ...VALID_CATALOG.units.slice(1)] },
+      ],
+      [
+        'a unit label in a malformed locale',
+        {
+          ...VALID_CATALOG,
+          units: [{ code: 'g', labels: { english: 'g' } }, ...VALID_CATALOG.units.slice(1)],
+        },
+      ],
       ['no approval setting', without('approvalRequired')],
       ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
       ['no product types', without('productTypes')],

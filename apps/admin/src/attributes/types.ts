@@ -33,6 +33,7 @@ export const DATA_TYPES = [
   'date',
   'select',
   'multi-select',
+  'measure',
 ] as const;
 export type DataType = (typeof DATA_TYPES)[number];
 
@@ -45,6 +46,21 @@ export interface MarketLocales {
   readonly default: string;
   /** The default first. */
   readonly supported: readonly string[];
+}
+
+/** A unit the Market offers (`catalog.units`), with its label per locale (attributes A3). */
+export interface MarketUnit {
+  readonly code: string;
+  readonly dimension: string;
+  readonly labels: Localized;
+}
+
+/** What an administrator chose for a number-with-unit attribute (attributes A3). */
+export interface MeasureConfig {
+  readonly dimension: string;
+  readonly units: readonly string[];
+  readonly defaultUnit: string;
+  readonly decimals: number;
 }
 
 export interface AttributeSummary {
@@ -71,6 +87,7 @@ export interface AttributePage {
   readonly total: number;
   readonly totalAll: number;
   readonly locales: MarketLocales;
+  readonly units: readonly MarketUnit[];
   readonly featureSets: readonly { readonly id: string; readonly code: string }[];
   readonly truncated: boolean;
 }
@@ -120,7 +137,13 @@ export interface AttributeDetail extends AttributeSummary {
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;
-  readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** For a measure, `min` and `max` are in the dimension's base unit. */
+  readonly bounds: {
+    readonly maxLength?: number;
+    readonly min?: number;
+    readonly max?: number;
+    readonly measure?: MeasureConfig;
+  };
   readonly display: AttributeDisplay;
   readonly options: readonly AttributeOption[];
   readonly productCount: number;
@@ -128,6 +151,7 @@ export interface AttributeDetail extends AttributeSummary {
   readonly history: readonly HistoryEntry[];
   readonly historyTruncated: boolean;
   readonly locales: MarketLocales;
+  readonly units: readonly MarketUnit[];
 }
 
 export interface FeatureSetRow {

@@ -441,6 +441,16 @@
     },
     "maxVariantsPerProduct": 100,
     "maxVariantAttributes": 2,
+    "units": [
+      { "code": "g", "labels": { "en-AU": "g" } },
+      { "code": "kg", "labels": { "en-AU": "kg" } },
+      { "code": "ml", "labels": { "en-AU": "ml" } },
+      { "code": "l", "labels": { "en-AU": "L" } },
+      { "code": "mm", "labels": { "en-AU": "mm" } },
+      { "code": "cm", "labels": { "en-AU": "cm" } },
+      { "code": "m", "labels": { "en-AU": "m" } },
+      { "code": "count", "labels": { "en-AU": "each" } }
+    ],
     "approvalRequired": true,
     "productTypes": ["simple", "configurable"],
     "defaultFamily": "default",

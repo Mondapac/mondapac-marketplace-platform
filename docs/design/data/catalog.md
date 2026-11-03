@@ -233,7 +233,8 @@ database stays the source of truth.
 
 `attribute_definitions` (root): `id`; `code` CA4, **unique `(market_id, code)`**, never updated;
 `data_type` CHECK `text`, `long-text`, `integer`, `decimal`, `boolean`, `select`, `multi-select`,
-`date` (D 3.3; no `image`, no money), never updated; `localizable boolean`, never updated; `status`
+`date`, `measure` (D 3.3; no `image`, no money; `measure` from attributes A3 keeps its unit settings in
+the revision's `bounds.measure`, so it adds no column), never updated; `localizable boolean`, never updated; `status`
 CHECK `draft`, `active`, `archived` (`draft` from attributes A2: created by an admin, never seen by a
 seller; `draft → active` on publish, `draft → archived` on discard; transitions are the use case's,
 no trigger yet); `published_revision_id` (same-definition FK, nullable as 3.4, Q-K10; families the same);

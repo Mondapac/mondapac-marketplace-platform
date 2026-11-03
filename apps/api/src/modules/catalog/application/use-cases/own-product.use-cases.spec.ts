@@ -270,6 +270,7 @@ describe.each(FIXTURES)(
         }),
         maxVariantsPerProduct: () => 100,
         maxVariantAttributes: () => 2,
+        units: () => [],
         productTypes: () => ['simple', 'configurable'],
         defaultFamily: () => 'default',
         conditions: () => ['new'],

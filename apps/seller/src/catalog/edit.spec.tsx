@@ -31,7 +31,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-01T00:00:00Z',
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], fields: [], categories: [] },
+  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
   workingCopy: {
     content: { texts: { 'en-AU': { name: 'Olive oil' } }, attributes: { size: '1L' } },
     lastSavedAt: '2026-10-01T00:00:00Z',

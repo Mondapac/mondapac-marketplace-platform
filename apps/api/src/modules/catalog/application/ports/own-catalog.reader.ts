@@ -1,4 +1,4 @@
-import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, MeasureSettings, Temporal } from '@mondapac/shared-kernel';
 import type { Offer } from '../../domain/offer';
 import type { Product } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
@@ -42,6 +42,8 @@ export interface ProductFormField {
   readonly required: boolean;
   readonly isVariantOption: boolean;
   readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** A measure field only: dimension, offered unit codes, default unit and decimal places. */
+  readonly measure?: MeasureSettings;
   readonly names: Readonly<Record<string, string>>;
   readonly options: readonly {
     readonly code: string;

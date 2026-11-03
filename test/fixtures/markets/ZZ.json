@@ -341,6 +341,16 @@
     },
     "maxVariantsPerProduct": 3,
     "maxVariantAttributes": 3,
+    "units": [
+      { "code": "g", "labels": { "ja-JP": "g" } },
+      { "code": "kg", "labels": { "ja-JP": "kg" } },
+      { "code": "ml", "labels": { "ja-JP": "ml" } },
+      { "code": "l", "labels": { "ja-JP": "L" } },
+      { "code": "mm", "labels": { "ja-JP": "mm" } },
+      { "code": "cm", "labels": { "ja-JP": "cm" } },
+      { "code": "m", "labels": { "ja-JP": "m" } },
+      { "code": "count", "labels": { "ja-JP": "each" } }
+    ],
     "approvalRequired": false,
     "productTypes": ["simple"],
     "defaultFamily": "default",

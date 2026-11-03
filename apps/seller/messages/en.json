@@ -1095,9 +1095,12 @@
         "unset": "Not set",
         "yes": "Yes",
         "no": "No",
+        "unit": "Unit",
         "problem": {
           "whole": "Enter a whole number.",
           "decimal": "Enter a number, like 12.5.",
+          "places": "{places, plural, =0 {Enter a whole number.} one {Use at most # decimal place.} other {Use at most # decimal places.}}",
+          "unit": "Pick one of the listed units.",
           "range": "Enter a value within the allowed range.",
           "length": "Use at most {length} characters."
         }

@@ -1,3 +1,4 @@
+import { boundsJson } from './attribute-bounds-json';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { AttributeDataType, Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -187,7 +188,7 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
           revisionNo: state.revisionNo,
           material: state.material,
           isVariantOption: state.isVariantOption,
-          bounds: { ...state.bounds },
+          bounds: boundsJson(state.bounds),
           names: { ...state.names },
           helpText: { ...state.display.helpText },
           showOnProductPage: state.display.showOnProductPage,

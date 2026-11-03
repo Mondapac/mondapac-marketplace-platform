@@ -45,7 +45,11 @@ export interface OwnProductReadOutput {
   readonly createdAt: string;
   readonly pendingSubmittedAt: string | null;
   /** What the product form is drawn from: the Market's tax categories, the family's fields and the categories. */
-  readonly form: ProductForm & { readonly taxCategoryCodes: readonly string[] };
+  readonly form: ProductForm & {
+    readonly taxCategoryCodes: readonly string[];
+    /** The Market's units with their labels per locale; a measure field names its units by code. */
+    readonly units: ReturnType<CatalogMarketPolicy['units']>;
+  };
   readonly workingCopy: {
     readonly content: Record<string, unknown>;
     readonly lastSavedAt: string;
@@ -120,8 +124,10 @@ export class OwnProductRead extends UseCase<
     let maxVariants: number;
     let sensitiveFields: string[];
     let taxCategoryCodes: readonly string[];
+    let units: ReturnType<CatalogMarketPolicy['units']>;
     try {
       taxCategoryCodes = deps.policy.taxCategoryCodes(market);
+      units = deps.policy.units(market);
       maxVariants = deps.policy.maxVariantsPerProduct(market);
       sensitiveFields = sensitiveFieldsOf(deps.policy.sensitiveChanges(market));
     } catch {
@@ -176,7 +182,7 @@ export class OwnProductRead extends UseCase<
       lastChangedAt: state.lastChangedAt.toString(),
       createdAt: state.createdAt.toString(),
       pendingSubmittedAt: isoOf(state.pendingSubmittedAt),
-      form: { ...form, taxCategoryCodes },
+      form: { ...form, taxCategoryCodes, units },
       workingCopy:
         copy === null
           ? null

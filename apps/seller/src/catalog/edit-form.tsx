@@ -279,6 +279,7 @@ export function EditForm({
       />
       <AttributesSection
         fields={attributeFields}
+        units={form.units}
         inputs={inputs}
         locales={locales}
         defaultLocale={defaultLocale}

@@ -105,4 +105,50 @@ describe('buildAttributeSchema', () => {
     );
     expect(buildAttributeSchema(family, drafts)).toEqual({ ok: false, missingCodes: ['brand'] });
   });
+
+  it("carries a measure definition's unit settings and bounds onto its field", () => {
+    const settings = {
+      dimension: 'mass',
+      units: ['g', 'kg'],
+      defaultUnit: 'g',
+      decimals: 2,
+    } as const;
+    const created = AttributeDefinition.create({
+      id: 'd-net' as Id<'AttributeDefinition'>,
+      revisionId: 'dr-net' as Id<'AttributeDefinitionRevision'>,
+      marketId: 'ZZ' as MarketId,
+      code: 'net-weight',
+      dataType: 'measure',
+      localizable: false,
+      material: false,
+      isVariantOption: false,
+      bounds: { min: 1, max: 5000, measure: settings },
+      names: { xx: 'Net weight' },
+      options: [],
+      createdByKind: 'seed',
+      now: NOW,
+    });
+    if (!created.ok) throw new Error(created.error.code);
+    const built = buildAttributeSchema(
+      {
+        code: 'f',
+        revisionId: 'fr' as Id<'AttributeFamilyRevision'>,
+        groups: [
+          {
+            groupCode: 'core',
+            attributes: [{ code: 'net-weight', required: true, isVariantOption: false }],
+          },
+        ],
+      },
+      [created.value.state],
+    );
+    if (!built.ok) throw new Error(built.missingCodes.join());
+    expect(built.schema.fields[0]).toMatchObject({
+      code: 'net-weight',
+      dataType: 'measure',
+      required: true,
+      bounds: { min: 1, max: 5000 },
+      measure: settings,
+    });
+  });
 });
