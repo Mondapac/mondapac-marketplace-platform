@@ -34,8 +34,9 @@ export type FieldErrors = Readonly<Record<string, string>>;
 
 const EMPTY_LOCALE: LocaleForm = { name: '', shortDescription: '', keywords: '' };
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-// The same ranges the API refuses in the search words (apps/api category-edit.ts): Hebrew, Arabic.
-const NON_ENGLISH = /[֐-ࣿיִ-﷿ﹰ-ﻼ]/u;
+// Same rule as the API (apps/api category-edit.ts): the search words are English, so a letter of
+// any script but Latin is refused. Digits, punctuation and spaces pass.
+const NON_ENGLISH = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
 
 export const localeOf = (form: EditForm, locale: string): LocaleForm =>
   form.texts[locale] ?? EMPTY_LOCALE;

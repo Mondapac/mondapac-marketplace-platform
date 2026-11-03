@@ -41,7 +41,9 @@ describe('category edit model', () => {
 
   it('keeps the search words English and within their limits', () => {
     const base = withLocale(emptyForm(), 'en', { name: 'Rice' });
-    expect(checkForm({ ...base, seoTitle: 'برنج' }, ['en'])['seo.title']).toBe('english-only');
+    for (const title of ['برنج', 'お米', 'Рис']) {
+      expect(checkForm({ ...base, seoTitle: title }, ['en'])['seo.title']).toBe('english-only');
+    }
     expect(checkForm({ ...base, seoTitle: 'x'.repeat(61) }, ['en'])['seo.title']).toBe('format');
     expect(checkForm({ ...base, seoDescription: 'x'.repeat(161) }, ['en'])['seo.description']).toBe(
       'format',
