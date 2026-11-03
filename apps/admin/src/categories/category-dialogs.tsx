@@ -28,7 +28,33 @@ function localesOf(supported: readonly string[], used: readonly string[]): reado
 
 /** Server field problems folded into the field errors the form shows. */
 function mergeErrors(local: FieldErrors, server: FieldErrors): FieldErrors {
-  return { ...server, ...local };
+  // A problem with one keyword (`texts.fa.keywords.3`) shows at the keywords field.
+  const folded = Object.fromEntries(
+    Object.entries(server).map(([path, code]) => [
+      path.replace(/\.keywords\.\d+$/, '.keywords'),
+      code,
+    ]),
+  );
+  return { ...folded, ...local };
+}
+
+/** Where to look first: the search tab for a search word, else the language of the first text. */
+function showFirst(
+  fields: Readonly<Record<string, string>>,
+  setTab: (tab: FormTab) => void,
+  setActive: (locale: string) => void,
+): void {
+  const first = Object.keys(fields)[0];
+  if (first === undefined) return;
+  if (first.startsWith('seo.')) {
+    setTab('seo');
+    return;
+  }
+  const locale = first.startsWith('texts.') ? first.split('.')[1] : undefined;
+  if (locale !== undefined) {
+    setTab('content');
+    setActive(locale);
+  } else if (first === 'slug') setTab('content');
 }
 
 function Tabbed({
@@ -109,6 +135,7 @@ export function EditDetailsDialog({
       { version: body.category.version, ...editBody(form) },
     );
     if (answer.ok) onSaved();
+    else if (answer.problem !== null) showFirst(answer.problem.fields, setTab, setActive);
   }
 
   const formId = 'category-edit-form';
@@ -226,6 +253,7 @@ export function CreateCategoryDialog({
       treeVersion,
     });
     if (answer.ok) onCreated(answer.body.category.id);
+    else if (answer.problem !== null) showFirst(answer.problem.fields, setTab, setActive);
   }
 
   const formId = 'category-create-form';

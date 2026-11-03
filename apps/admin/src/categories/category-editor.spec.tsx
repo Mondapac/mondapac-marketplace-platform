@@ -9,6 +9,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
 import { CategoriesView } from './categories-view.tsx';
+import { CategoryPageView } from './category-page-view.tsx';
 import type { CategoryRow, DetailBody, TreeBody } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -84,6 +85,22 @@ function serve(writeAnswer: ApiResult<unknown> = ok(written)) {
     if (method !== 'GET') return Promise.resolve(writeAnswer);
     if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree()));
     const found = tree().categories.find((c) => path === `catalog/admin/categories/${c.id}`);
+    return Promise.resolve(found === undefined ? ok(null) : ok(detail(found)));
+  });
+}
+/** Like `serve`, but once a write has happened the tree also holds `added`. */
+function serveGrowing(added: CategoryRow, writeAnswer: ApiResult<unknown>) {
+  let wrote = false;
+  call.mockImplementation((method: string, path: string) => {
+    if (method !== 'GET') {
+      wrote = true;
+      return Promise.resolve(writeAnswer);
+    }
+    const all = wrote ? [...tree().categories, added] : tree().categories;
+    if (path === 'catalog/admin/categories') {
+      return Promise.resolve(ok({ ...tree(), categories: all }));
+    }
+    const found = all.find((c) => path === `catalog/admin/categories/${c.id}`);
     return Promise.resolve(found === undefined ? ok(null) : ok(detail(found)));
   });
 }
@@ -311,5 +328,82 @@ describe('category editor (C3b)', () => {
     await pick('Pantry');
     expect(screen.queryByRole('button', { name: 'Edit details' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add category' })).toBeNull();
+  });
+
+  it('after Add child, opens the parent and picks the new category', async () => {
+    const added = row(9, 2, 2, 'Basmati');
+    serveGrowing(added, ok({ category: { ...written.category, id: id(9) } }));
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Rice');
+    fireEvent.click(screen.getByRole('button', { name: 'Add child' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name (English)'), {
+      target: { value: 'Basmati' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add category' }));
+    expect(await screen.findByRole('heading', { name: 'Basmati' })).toBeTruthy();
+    const selected = screen.getAllByRole('treeitem').filter((el) => el.ariaSelected === 'true');
+    expect(selected.map((el) => el.textContent)).toEqual([expect.stringContaining('Basmati')]);
+    expect(writes()[0]![2]).toMatchObject({ parentId: id(2), slug: 'basmati' });
+  });
+
+  it('keeps a refused Move on screen with a button to read again', async () => {
+    serve({ ok: false, failure: { status: 409, code: 'category.reorder-edge' } });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Rice');
+    fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+    expect(await screen.findByText(/already at the end/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Read again' })).toBeTruthy();
+  });
+
+  it('says why Discard was refused', async () => {
+    serve({ ok: false, failure: { status: 409, code: 'category.not-discardable' } });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Oils');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Discard' }));
+    expect(await screen.findByText(/Only a hidden category that never went live/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Read again' })).toBeTruthy();
+  });
+
+  it('shows a keyword problem at the keywords field and opens the search tab for a search word', async () => {
+    serve({
+      ok: false,
+      failure: {
+        status: 422,
+        code: 'category.claim-word',
+        details: { fields: [{ path: 'texts.en.keywords.2', code: 'claim-word' }] },
+      },
+    });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Pantry');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+    let dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    const keywords = await within(dialog).findByLabelText(/Keywords/);
+    await waitFor(() => expect(keywords.getAttribute('aria-invalid')).toBe('true'));
+    cleanup();
+
+    serve({
+      ok: false,
+      failure: {
+        status: 422,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'seo.title', code: 'format' }] },
+      },
+    });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Pantry');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+    dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByLabelText(/Search title/)).toBeTruthy();
+  });
+
+  it('gives an editor the change buttons on the page of one category (a tablet or a phone)', async () => {
+    serve();
+    view(<CategoryPageView id={id(2)} canEdit csrfToken="tok" />);
+    expect(await screen.findByRole('button', { name: 'Edit details' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Move up' })).toBeTruthy();
   });
 });

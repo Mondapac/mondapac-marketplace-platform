@@ -43,6 +43,7 @@ export function CategoryDetails({
   canEdit = false,
   csrfToken = '',
   onChanged,
+  onCreated,
 }: {
   readonly id: string;
   /** The tree the page shows: with it (and the permission) the category can be changed here. */
@@ -51,6 +52,7 @@ export function CategoryDetails({
   readonly csrfToken?: string;
   /** A change was saved: the owner reads the tree again and remounts this view. */
   readonly onChanged?: () => void;
+  readonly onCreated?: (id: string, parentId: string) => void;
 }) {
   const t = useTranslations('categories');
   const tl = useTranslations('load');
@@ -109,13 +111,18 @@ export function CategoryDetails({
           {body.path.map((entry) => entry.name ?? entry.slug).join(' › ')}
         </p>
       </div>
-      {tree !== undefined && tree !== null && canEdit && onChanged !== undefined ? (
+      {tree !== undefined &&
+      tree !== null &&
+      canEdit &&
+      onChanged !== undefined &&
+      onCreated !== undefined ? (
         <ToolbarFor
           body={body}
           tree={tree}
           csrfToken={csrfToken}
           title={title}
           onChanged={onChanged}
+          onCreated={onCreated}
         />
       ) : null}
       <Tabs
@@ -137,12 +144,14 @@ function ToolbarFor({
   csrfToken,
   title,
   onChanged,
+  onCreated,
 }: {
   readonly body: DetailBody;
   readonly tree: TreeBody;
   readonly csrfToken: string;
   readonly title: string;
   readonly onChanged: () => void;
+  readonly onCreated: (id: string, parentId: string) => void;
 }) {
   const { category } = body;
   const { children } = indexOf(tree.categories);
@@ -167,6 +176,7 @@ function ToolbarFor({
       descendants={descendants}
       title={title}
       onChanged={onChanged}
+      onCreated={onCreated}
     />
   );
 }

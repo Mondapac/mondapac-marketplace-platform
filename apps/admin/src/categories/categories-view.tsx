@@ -100,6 +100,12 @@ export function CategoriesView({
     setVersion((n) => n + 1);
     void fetchTree();
   }
+  /** A category was added: read the tree again, open its parent and pick it. */
+  function created(id: string, parentId: string | null) {
+    if (parentId !== null) setOpen(parentId, true);
+    setSelectedId(id);
+    changed();
+  }
   function pick(id: string) {
     if (typeof window.matchMedia === 'function' && !window.matchMedia(WIDE).matches) {
       router.push(`${CATEGORIES_PATH}/${id}`);
@@ -236,6 +242,7 @@ export function CategoriesView({
               canEdit={canEdit}
               csrfToken={csrfToken}
               onChanged={changed}
+              onCreated={created}
             />
           )}
         </aside>
@@ -249,9 +256,9 @@ export function CategoriesView({
           requiredLocales={tree.requiredLocales}
           csrfToken={csrfToken}
           onClose={() => setAdding(false)}
-          onCreated={() => {
+          onCreated={(id) => {
             setAdding(false);
-            changed();
+            created(id, null);
           }}
           onReload={() => {
             setAdding(false);

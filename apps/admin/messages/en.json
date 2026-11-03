@@ -4191,7 +4191,6 @@
     "missing-none": "All languages",
     "missing-option": "Missing: {language} ({count})",
     "add-category": "Add category",
-    "edit-on-wide": "To change this category, open the Categories page in a wider window.",
     "toolbar": {
       "label": "Change this category",
       "edit": "Edit details",
@@ -4201,7 +4200,8 @@
       "hide": "Hide",
       "show": "Show",
       "change-slug": "Change URL name",
-      "discard": "Discard"
+      "discard": "Discard",
+      "reload": "Read again"
     },
     "form": {
       "tabs": "Sections",

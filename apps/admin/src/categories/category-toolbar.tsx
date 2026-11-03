@@ -28,6 +28,7 @@ export function CategoryToolbar({
   descendants,
   title,
   onChanged,
+  onCreated,
 }: {
   readonly body: DetailBody;
   readonly canEdit: boolean;
@@ -40,6 +41,8 @@ export function CategoryToolbar({
   readonly title: string;
   /** A write is done (or the page read old data): read the tree and the category again. */
   readonly onChanged: () => void;
+  /** A child was added: the owner opens the parent and picks the new one. */
+  readonly onCreated: (id: string, parentId: string) => void;
 }) {
   const t = useTranslations('categories.toolbar');
   const [open, setOpen] = useState<Open>(null);
@@ -58,7 +61,8 @@ export function CategoryToolbar({
       direction,
       treeVersion: body.treeVersion,
     });
-    if (answer.ok || answer.problem?.reload === true) onChanged();
+    // A refusal stays in view with a button to read again; reading at once would clear it.
+    if (answer.ok) onChanged();
   }
 
   if (!canEdit) return null;
@@ -70,6 +74,13 @@ export function CategoryToolbar({
   return (
     <div className="flex flex-col gap-2">
       <CategoryProblemBanner problem={move.problem} />
+      {move.problem?.reload === true ? (
+        <div>
+          <Button variant="secondary" onClick={onChanged}>
+            {t('reload')}
+          </Button>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2" role="group" aria-label={t('label')}>
         <Button variant="secondary" disabled={!rename} onClick={() => setOpen('edit')}>
           {t('edit')}
@@ -128,7 +139,10 @@ export function CategoryToolbar({
           requiredLocales={body.requiredLocales}
           csrfToken={csrfToken}
           onClose={() => setOpen(null)}
-          onCreated={closeAndRefresh}
+          onCreated={(id) => {
+            setOpen(null);
+            onCreated(id, category.id);
+          }}
           onReload={closeAndRefresh}
         />
       ) : null}
