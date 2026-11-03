@@ -2549,5 +2549,95 @@
       "state": "enumOf(queued)",
       "toImport": "integer"
     }
+  },
+  {
+    "action": "catalog.platform-category.created",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "level": "integer",
+      "localeCount": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.details-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "localeCount": "integer",
+      "revisionNo": "integer"
+    },
+    "after": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "showInMenu": "boolean"
+    }
+  },
+  {
+    "action": "catalog.platform-category.discarded",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.hidden",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "cascaded": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.reordered",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "position": "integer"
+    },
+    "after": {
+      "position": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.shown",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "restored": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.slug-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "revisionNo": "integer"
+    },
+    "after": {
+      "revisionNo": "integer"
+    }
   }
 ]

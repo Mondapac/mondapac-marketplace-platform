@@ -2,7 +2,8 @@ import { err, ok, parsePlainText } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
 import { PlatformCategoryCreated } from './events';
 
-export const CATEGORY_STATUSES = ['active', 'merged', 'archived'] as const;
+/** `hidden` is reversible (plan decision 6): out of the menu and the category page, products stay on sale. */
+export const CATEGORY_STATUSES = ['active', 'hidden', 'merged', 'archived'] as const;
 export type CategoryStatus = (typeof CATEGORY_STATUSES)[number];
 
 /** Who made a change: the deploy-time seed or an admin (data design 3.4). */

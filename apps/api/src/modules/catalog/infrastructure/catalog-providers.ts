@@ -215,6 +215,11 @@ import { PrismaBusinessActivityReader } from './prisma-business-activity.reader'
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
+import { PrismaCategoryEditStore } from './prisma-category-edit.store';
+import {
+  CATEGORY_EDIT_STORE,
+  type CategoryEditStore,
+} from '../application/ports/category-edit.store';
 import {
   ADMIN_CATEGORY_READER,
   type AdminCategoryReader,
@@ -275,6 +280,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminCategoryReader =>
       new PrismaAdminCategoryReader(prisma),
+  },
+  {
+    provide: CATEGORY_EDIT_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryEditStore => new PrismaCategoryEditStore(prisma),
   },
   {
     provide: BRAND_READER,

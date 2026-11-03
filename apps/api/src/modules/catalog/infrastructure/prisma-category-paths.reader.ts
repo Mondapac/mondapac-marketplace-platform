@@ -78,7 +78,10 @@ export class PrismaCategoryPathsReader implements CategoryPathsReader {
             walk.next = node.parentId;
             continue;
           }
-          if (node.status !== 'active') throw new CategoryPathsUnavailableError('status');
+          // A hidden category keeps its products on sale (plan decision 6): it stays in their path.
+          if (node.status !== 'active' && node.status !== 'hidden') {
+            throw new CategoryPathsUnavailableError('status');
+          }
           if (walk.kept.includes(node.id)) throw new CategoryPathsUnavailableError('loop');
           walk.kept.push(node.id);
           walk.atLeaf = false;

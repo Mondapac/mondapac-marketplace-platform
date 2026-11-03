@@ -6,6 +6,10 @@ import request from 'supertest';
 import { ADMIN_CATEGORY_READER } from '../src/modules/catalog/application/ports/admin-category.reader';
 import type { AdminCategoryReader } from '../src/modules/catalog/application/ports/admin-category.reader';
 import { CATEGORY_ADMIN_STATUS } from '../src/modules/catalog/presentation/category-admin.controller';
+import { CATEGORY_EDIT_STORE } from '../src/modules/catalog/application/ports/category-edit.store';
+import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
+import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
+import { PLATFORM_CATEGORY_REPOSITORY } from '../src/modules/catalog/application/ports/platform-category.repository';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -14,6 +18,10 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import {
+  MemoryCategoryEditStore,
+  MemoryTreeVersion,
+} from './support/catalog-category-editor-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -43,6 +51,18 @@ const MISSING = id<'Category'>(0xccff);
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
+const editStore = new MemoryCategoryEditStore();
+const treeVersion = new MemoryTreeVersion();
+const halalOnlyMatcher = {
+  match: (_context: unknown, texts: readonly { text: string }[]) =>
+    Promise.resolve({
+      ok: true as const,
+      value: texts.map((t) =>
+        /halal/i.test(t.text) ? [{ typeCode: 'halal', span: { fromToken: 0, toToken: 0 } }] : [],
+      ),
+    }),
+};
+
 const reader: AdminCategoryReader = {
   categories: () =>
     Promise.resolve([
@@ -55,6 +75,8 @@ const reader: AdminCategoryReader = {
         names: [{ locale: 'en', name: 'Pantry' }],
         revisionNo: 1,
         version: 1,
+        position: 0,
+        showInMenu: true,
       },
       {
         id: LEAF,
@@ -65,6 +87,8 @@ const reader: AdminCategoryReader = {
         names: [{ locale: 'en', name: 'Rice' }],
         revisionNo: 1,
         version: 1,
+        position: 0,
+        showInMenu: true,
       },
     ]),
   treeVersion: () => Promise.resolve(4),
@@ -72,6 +96,14 @@ const reader: AdminCategoryReader = {
     Promise.resolve({
       facts: [{ categoryIds: [LEAF], offers: 2, listedOffers: 1, offersWithActiveTag: 1 }],
       complete: true,
+    }),
+  detail: () =>
+    Promise.resolve({
+      texts: [],
+      seo: { title: null, description: null, noindex: false },
+      showInMenu: true,
+      imageId: null,
+      hiddenById: null,
     }),
   revisions: (_m, categoryId) =>
     Promise.resolve(
@@ -101,6 +133,8 @@ describe.each(TEST_MARKETS)(
 
     beforeEach(async () => {
       fakes.reset();
+      editStore.reset();
+      treeVersion.version = 1;
       ({ app } = await createTestApp({
         env: { LOG_LEVEL: 'info', API_DOCS_ENABLED: 'true' },
         panelOrigins: true,
@@ -110,7 +144,18 @@ describe.each(TEST_MARKETS)(
             .overrideProvider(CLOCK)
             .useValue(clock)
             .overrideProvider(ADMIN_CATEGORY_READER)
-            .useValue(reader),
+            .useValue(reader)
+            .overrideProvider(CATEGORY_EDIT_STORE)
+            .useValue(editStore)
+            .overrideProvider(PLATFORM_CATEGORY_REPOSITORY)
+            .useValue(treeVersion)
+            .overrideProvider(CLAIM_TEXT_MATCHER)
+            .useValue(halalOnlyMatcher)
+            .overrideProvider(CLAIM_TERM_LOCALES)
+            .useValue({
+              covered: () =>
+                Promise.resolve({ ok: true, value: ['en', 'en-AU', 'en-US', 'ja-JP', 'fa', 'ar'] }),
+            }),
       }));
       await app.get(SeedRoles).execute(testCallContext(market, 'system', 'category-0001'), {});
       const marketId = code as AccountState['marketId'];
@@ -291,13 +336,143 @@ describe.each(TEST_MARKETS)(
       await http().get(`${BASE}/${ROOT}/impact?action=delete`).set(session).expect(400);
     });
 
-    it('documents the three routes in OpenAPI', async () => {
+    describe('the editor routes (C3a)', () => {
+      const english = code === 'AU' ? 'en-AU' : 'ja-JP';
+      const body = (over: Record<string, unknown> = {}) => ({
+        slug: 'rice',
+        texts: { [english]: { name: 'Rice' } },
+        treeVersion: treeVersion.version,
+        ...over,
+      });
+
+      it('maps the refusals of the editor to their status', () => {
+        expect(CATEGORY_ADMIN_STATUS).toMatchObject({
+          'conflict.stale': 409,
+          'category.slug-taken': 409,
+          'category.reorder-edge': 409,
+          'category.depth-exceeded': 422,
+          'category.claim-word': 422,
+          'claim-text.check-unavailable': 503,
+        });
+      });
+
+      it('refuses no session with 401, a Viewer with 403, a missing CSRF token with 403, a body that is not JSON with 415', async () => {
+        await http()
+          .post(BASE)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
+          .send(body())
+          .expect(401);
+        await http().post(BASE).set(adminSession(VIEWER, 20)).send(body()).expect(403);
+        const moderator = adminSession(MODERATOR, 21);
+        const withoutCsrf: Record<string, string> = { ...moderator };
+        delete withoutCsrf['x-csrf-token'];
+        await http().post(BASE).set(withoutCsrf).send(body()).expect(403);
+        await http()
+          .post(BASE)
+          .set({ ...moderator, 'content-type': 'text/plain' })
+          .send('x')
+          .expect(415);
+        expect(editStore.rows.size).toBe(0);
+      });
+
+      it('adds a category (201, hidden), shows it, saves its details and reorders', async () => {
+        const session = adminSession(MODERATOR, 22);
+        const created = await http().post(BASE).set(session).send(body()).expect(201);
+        const {
+          id: newId,
+          status,
+          treeVersion: afterCreate,
+        } = (created.body as { category: { id: string; status: string; treeVersion: number } })
+          .category;
+        expect(status).toBe('hidden');
+        expect(afterCreate).toBe(2);
+
+        const shown = await http()
+          .post(`${BASE}/${newId}/show`)
+          .set(session)
+          .send({ treeVersion: afterCreate })
+          .expect(200);
+        expect(shown.body).toMatchObject({ category: { status: 'active', treeVersion: 3 } });
+
+        const saved = await http()
+          .patch(`${BASE}/${newId}`)
+          .set(session)
+          .send({
+            version: 2,
+            texts: { [english]: { name: 'Basmati', keywords: ['rice'] } },
+            showInMenu: false,
+          })
+          .expect(200);
+        expect(saved.body).toMatchObject({ category: { version: 3, revisionNo: 3 } });
+
+        await http()
+          .post(`${BASE}/${newId}/reorder`)
+          .set(session)
+          .send({ direction: 'up', treeVersion: 3 })
+          .expect(409)
+          .expect((response) => {
+            expect((response.body as { code: string }).code).toBe('category.reorder-edge');
+          });
+      });
+
+      it('answers 409 for a stale tree and a taken slug, 422 for a claim word, 400 for an unknown field', async () => {
+        const session = adminSession(MODERATOR, 23);
+        await http().post(BASE).set(session).send(body()).expect(201);
+        await http()
+          .post(BASE)
+          .set(session)
+          .send(body({ treeVersion: 1 }))
+          .expect(409);
+        const taken = await http()
+          .post(BASE)
+          .set(session)
+          .send(body({ treeVersion: treeVersion.version, texts: { [english]: { name: 'Other' } } }))
+          .expect(409);
+        expect(taken.body).toEqual({ statusCode: 409, code: 'category.slug-taken' });
+        const claim = await http()
+          .post(BASE)
+          .set(session)
+          .send(
+            body({
+              slug: 'halal-corner',
+              treeVersion: treeVersion.version,
+              texts: { [english]: { name: 'Halal corner' } },
+            }),
+          )
+          .expect(422);
+        expect(claim.body).toMatchObject({ code: 'category.claim-word' });
+        expect(JSON.stringify(claim.body)).not.toMatch(/halal corner/i);
+        await http()
+          .post(BASE)
+          .set(session)
+          .send(body({ colour: 'red' }))
+          .expect(400);
+        await http().post(BASE).set(session).send({ slug: 'x' }).expect(400);
+      });
+
+      it('answers 404 for an unknown category and 400 for a malformed body of hide', async () => {
+        const session = adminSession(MODERATOR, 24);
+        await http()
+          .post(`${BASE}/${MISSING}/hide`)
+          .set(session)
+          .send({ treeVersion: treeVersion.version })
+          .expect(404);
+        await http().post(`${BASE}/${MISSING}/hide`).set(session).send({}).expect(400);
+      });
+    });
+
+    it('documents the routes in OpenAPI', async () => {
       const document = (await http().get('/docs-json').expect(200)).body as {
         paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
       };
       expect(document.paths[BASE]).toHaveProperty('get');
       expect(document.paths[`${BASE}/{categoryId}`]?.get?.responses).toHaveProperty('404');
       expect(document.paths[`${BASE}/{categoryId}/impact`]?.get?.responses).toHaveProperty('400');
+      expect(document.paths[BASE]).toHaveProperty('post');
+      expect(document.paths[`${BASE}/{categoryId}`]).toHaveProperty('patch');
+      for (const action of ['reorder', 'hide', 'show', 'change-slug', 'discard']) {
+        expect(document.paths[`${BASE}/{categoryId}/${action}`]).toHaveProperty('post');
+      }
     });
   },
 );

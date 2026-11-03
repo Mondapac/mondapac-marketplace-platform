@@ -4,6 +4,7 @@ import type {
   AttributeOption,
 } from './attribute-definition';
 import type { OfferState } from './offer';
+import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
 
@@ -21,7 +22,11 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'attribute-definition.name',
   'attribute-definition.option-label',
   'offer.description',
+  'platform-category.keyword',
   'platform-category.name',
+  'platform-category.seo-description',
+  'platform-category.seo-title',
+  'platform-category.short-description',
   'platform-category.slug',
   'product.attribute-text-value',
   'product.description',
@@ -134,6 +139,19 @@ export const CATEGORY_NAME_FIELDS: Record<keyof CategoryName, FieldDisposition> 
   name: checked('platform-category.name'),
 };
 
+export const CATEGORY_TEXT_FIELDS: Record<keyof CategoryText, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  name: checked('platform-category.name'),
+  shortDescription: checked('platform-category.short-description'),
+  keywords: checked('platform-category.keyword'),
+};
+
+export const CATEGORY_SEO_FIELDS: Record<keyof CategorySeo, FieldDisposition> = {
+  title: checked('platform-category.seo-title'),
+  description: checked('platform-category.seo-description'),
+  noindex: exempt('internal-code'),
+};
+
 export const PLATFORM_CATEGORY_FIELDS: Record<keyof PlatformCategoryState, FieldDisposition> = {
   id: exempt('identifier'),
   marketId: exempt('identifier'),
@@ -182,6 +200,8 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   ATTRIBUTE_DISPLAY_FIELDS,
   ATTRIBUTE_DEFINITION_FIELDS,
   CATEGORY_NAME_FIELDS,
+  CATEGORY_TEXT_FIELDS,
+  CATEGORY_SEO_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
 };
@@ -223,6 +243,14 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
   OfferMovedPayloadRefused: { noCustomerText: 'refusal code with fixed paths' },
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
+  CategoryText: { table: 'CATEGORY_TEXT_FIELDS' },
+  CategorySeo: { table: 'CATEGORY_SEO_FIELDS' },
+  EditableCategory: {
+    noCustomerText:
+      'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
+  },
+  FieldIssue: { noCustomerText: 'field path and a problem code' },
+  HiddenChange: { noCustomerText: 'ids and a state code' },
   PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },
   Brand: { noCustomerText: 'aggregate class around BrandState' },

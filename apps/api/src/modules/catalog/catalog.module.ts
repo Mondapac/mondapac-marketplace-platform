@@ -257,6 +257,14 @@ import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-ge
 import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-list.use-case';
 import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
+import { CATEGORY_EDIT_STORE } from './application/ports/category-edit.store';
+import { CategoryCreate } from './application/use-cases/category-create.use-case';
+import { CategoryEditDetails } from './application/use-cases/category-edit-details.use-case';
+import { CategoryReorder } from './application/use-cases/category-reorder.use-case';
+import { CategoryHide } from './application/use-cases/category-hide.use-case';
+import { CategoryShow } from './application/use-cases/category-show.use-case';
+import { CategoryChangeSlug } from './application/use-cases/category-change-slug.use-case';
+import { CategoryDiscard } from './application/use-cases/category-discard.use-case';
 import type { CategoryActionProbes } from './application/categories/category-admin-views';
 import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
 import { CategoryImportProbe } from './application/use-cases/category-import-probe.use-case';
@@ -353,6 +361,7 @@ const PORT = {
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
   adminCategoryReader: ADMIN_CATEGORY_READER,
+  store: CATEGORY_EDIT_STORE,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
@@ -669,6 +678,90 @@ const productTypeProvider: FactoryProvider<string> = {
       categoryProbes: true,
     }),
     useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
+    useCaseProvider(CategoryCreate, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryEditDetails, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryReorder, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryHide, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryShow, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryChangeSlug, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryDiscard, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),
     useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true }),

@@ -210,6 +210,10 @@ model CatalogPlatformCategory {
   seoTitle            String?                              @map("seo_title")
   seoDescription      String?                              @map("seo_description")
   seoNoindex          Boolean                              @default(false) @map("seo_noindex")
+  /// The category whose Hide cascaded to this one; null when hidden on its own (C3a).
+  hiddenById          String?                              @map("hidden_by_id") @db.Uuid
+  hiddenBy            CatalogPlatformCategory?             @relation("CategoryHiddenBy", fields: [marketId, hiddenById], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  hiddenCascade       CatalogPlatformCategory[]            @relation("CategoryHiddenBy")
   parent              CatalogPlatformCategory?             @relation("CategoryParent", fields: [marketId, parentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   children            CatalogPlatformCategory[]            @relation("CategoryParent")
   mergedInto          CatalogPlatformCategory?             @relation("CategoryMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
