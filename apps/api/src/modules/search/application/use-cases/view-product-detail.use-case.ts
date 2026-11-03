@@ -5,7 +5,12 @@ import type { SearchValidationFailed } from '../../domain/search-query';
 import type { ProductDetailDependencies } from '../product-detail-dependencies';
 import type { ImageRef } from '../../domain/image-ref';
 import { imageRefsOf } from '../product-images';
-import { detailKeyOf, type DetailBadge, type DetailKey } from '../ports/product-detail-sources';
+import {
+  detailKeyOf,
+  type DetailBadge,
+  type DetailKey,
+  type DetailSpecificationGroup,
+} from '../ports/product-detail-sources';
 
 /** How many Offers of one product a page reads: a product with more is shown its first 20 by id. */
 export const MAX_DETAIL_OFFERS = 20;
@@ -51,6 +56,8 @@ export interface ProductDetail {
   readonly categoryIds: readonly Id<'Category'>[];
   /** The product's active brand (the brand page's slug and name), or null. */
   readonly brand: { readonly slug: string; readonly name: string } | null;
+  /** The attribute values the page lists, grouped in catalog's order; empty when none. */
+  readonly specifications: readonly DetailSpecificationGroup[];
   /** The product's public photos in the published revision's order, at most 8; may be empty. */
   readonly images: readonly ImageRef[];
   readonly offers: readonly [ProductDetailOffer, ...ProductDetailOffer[]];
@@ -208,6 +215,7 @@ export class ViewProductDetail extends UseCase<
       description: product.description,
       categoryIds: product.categoryIds,
       brand: product.brand,
+      specifications: product.specifications,
       images: imageRefs.get(productId) ?? [],
       offers: [first, ...rest],
     });
