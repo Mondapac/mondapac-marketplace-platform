@@ -154,6 +154,69 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
     expect(back[0]).toEqual(snapshot);
   });
 
+  it('purges counters and snapshots before a date, in this Market only', async () => {
+    const mine = await newSeller();
+    const theirs = await newSeller(other);
+    const OLD = '2025-01-05';
+    const KEPT = '2026-11-01';
+    const newSnapshot = (iso: string) => {
+      const inputs = {
+        orders: 3,
+        sellerCancellations: { count: 0, base: 0 },
+        lateReady: { count: 0, base: 0 },
+        lostDisputes: { count: 0, base: 3 },
+        customerRating: { count: 0, averageHundredths: 0 },
+        reports: null,
+      };
+      const health = computeSellerHealth(inputs, {
+        minOrders: 10,
+        minReviews: 5,
+        sellerCancellations: { healthyBelow: 250, atRiskUpTo: 500, zeroAt: 1000 },
+        lateReady: { healthyBelow: 400, atRiskUpTo: 1000, zeroAt: 2000 },
+        lostDisputes: { healthyBelow: 50, atRiskUpTo: 100, zeroAt: 200 },
+        customerRating: { healthyFrom: 400, atRiskFrom: 350, best: 500, zeroAt: 100 },
+        reports: { healthyBelow: 1, atRiskUpTo: 2, zeroAt: 5 },
+      });
+      return { day: Temporal.PlainDate.from(iso), health, inputs, computedAt: T0 };
+    };
+    for (const [m, seller] of [
+      [market, mine],
+      [other, theirs],
+    ] as const) {
+      for (const iso of [OLD, KEPT]) {
+        await run(m, () => store.saveDay(m, seller, day(iso), T0));
+        await run(m, () => store.saveSnapshot(m, seller, newSnapshot(iso)));
+      }
+    }
+    const from = Temporal.PlainDate.from('2025-01-01');
+    const to = Temporal.PlainDate.from('2026-12-31');
+    const gone = await run(market, () =>
+      store.purgeBefore(market, Temporal.PlainDate.from('2026-01-01')),
+    );
+    // Other tests may have left older rows in the Market, so at least ours went.
+    expect(gone.days).toBeGreaterThanOrEqual(1);
+    expect(gone.snapshots).toBeGreaterThanOrEqual(1);
+    expect(
+      (await run(market, () => store.days(market, mine, from, to))).map((d) => d.day.toString()),
+    ).toEqual([KEPT]);
+    expect(
+      (await run(market, () => store.snapshots(market, mine, from, to))).map((d) =>
+        d.day.toString(),
+      ),
+    ).toEqual([KEPT]);
+    expect(
+      (await run(other, () => store.days(other, theirs, from, to))).map((d) => d.day.toString()),
+    ).toEqual([OLD, KEPT]);
+    expect(
+      (await run(other, () => store.snapshots(other, theirs, from, to))).map((d) =>
+        d.day.toString(),
+      ),
+    ).toEqual([OLD, KEPT]);
+    // A repeat finds nothing of ours left to delete and keeps the kept rows.
+    await run(market, () => store.purgeBefore(market, Temporal.PlainDate.from('2026-01-01')));
+    expect(await run(market, () => store.days(market, mine, from, to))).toHaveLength(1);
+  });
+
   it('stores a New snapshot without a score', async () => {
     const seller = await newSeller();
     const inputs = {

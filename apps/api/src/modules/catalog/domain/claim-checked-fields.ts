@@ -252,6 +252,19 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   AttributeRelaxationRequest: {
     noCustomerText: 'aggregate class around AttributeRelaxationRequestState',
   },
+  AttributeValueSuggestion: {
+    noCustomerText: 'aggregate class around AttributeValueSuggestionState',
+  },
+  AttributeValueSuggestionState: {
+    noCustomerText:
+      "a seller's value suggestion: ids, status codes, times and the seller's own text, shown to admins only; an approval writes the value's labels through the attribute editor, which claim-checks them",
+  },
+  SuggestionNoticeFacts: {
+    noCustomerText: 'facts of the one mail to a seller about a suggestion; never shown to buyers',
+  },
+  SuggestionNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
   AttributeRelaxationRequestState: {
     noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
   },
@@ -337,6 +350,22 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PublishedProduct: {
     noCustomerText:
       'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
+  },
+  PublishedSpecification: {
+    noCustomerText:
+      'read copy of a published revision attribute value (seller text already claim-checked when the revision was frozen) and the attribute name or option label (admin text, claim-checked when written)',
+  },
+  SpecificationOption: {
+    noCustomerText:
+      'read copy of a published definition option label (admin text, claim-checked when written) and a merge target code',
+  },
+  SpecificationDefinition: {
+    noCustomerText:
+      'read copy of a published definition: type, flags, names and options (admin text, claim-checked when written)',
+  },
+  SpecificationLocales: { noCustomerText: 'two locale tags' },
+  PublishedSpecificationGroup: {
+    noCustomerText: 'a family group code and its PublishedSpecification rows',
   },
   BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {

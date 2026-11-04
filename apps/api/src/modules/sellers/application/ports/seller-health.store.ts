@@ -46,6 +46,15 @@ export interface SellerHealthStore {
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<readonly SellerHealthSnapshot[]>;
+
+  /**
+   * Deletes the Market's counters and snapshots of local dates before `before`, of every seller,
+   * and answers how many rows went. Only the retention purge calls it.
+   */
+  purgeBefore(
+    market: MarketContext,
+    before: Temporal.PlainDate,
+  ): Promise<{ readonly days: number; readonly snapshots: number }>;
 }
 
 export const SELLER_HEALTH_STORE = Symbol('SELLER_HEALTH_STORE');
