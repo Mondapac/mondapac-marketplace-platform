@@ -146,7 +146,7 @@ export function CategoryTree({
             }}
             onBlur={(event) => {
               // Focus going to something outside the tree ends "focus is in the tree".
-              if (!root.current?.contains(event.relatedTarget as Node | null)) {
+              if (!root.current?.contains(event.relatedTarget)) {
                 inside.current = event.relatedTarget === null;
               }
             }}
