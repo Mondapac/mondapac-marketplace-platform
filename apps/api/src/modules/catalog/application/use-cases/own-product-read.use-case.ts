@@ -276,6 +276,7 @@ export function sensitiveFieldsOf(
   if (policy.name) fields.push('name');
   if (policy.primaryImage) fields.push('primary-image');
   if (policy.variantRemoved) fields.push('variant-removed');
+  if (policy.gtinChanged) fields.push('gtin-changed');
   fields.push('images');
   return fields;
 }

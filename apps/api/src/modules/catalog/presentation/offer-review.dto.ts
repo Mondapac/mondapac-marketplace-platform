@@ -112,6 +112,15 @@ export class ProductRevisionRowDto {
   @ApiProperty()
   hasImages!: boolean;
 
+  @ApiProperty({
+    type: [String],
+    description:
+      'Advice for the reviewer, never a block: `gtin.duplicate-platform` when a GTIN of the ' +
+      'revision is carried by a published PLATFORM product, `gtin.duplicate` when it is carried ' +
+      'by any other product.',
+  })
+  warnings!: string[];
+
   @ApiProperty({ description: 'ISO instant; oldest first.' })
   submittedAt!: string;
 }

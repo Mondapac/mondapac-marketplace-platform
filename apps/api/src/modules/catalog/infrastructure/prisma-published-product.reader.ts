@@ -61,7 +61,18 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     const revisionVariants = await tx.catalogProductRevisionVariant.findMany({
       where: { marketId: market.marketId, revisionId },
       orderBy: [{ position: 'asc' }],
-      select: { variantId: true, position: true, labels: true, optionValues: true },
+      select: {
+        variantId: true,
+        position: true,
+        labels: true,
+        optionValues: true,
+        gtin: true,
+        imageIds: true,
+        shippingWeightGrams: true,
+        shippingLengthMm: true,
+        shippingWidthMm: true,
+        shippingHeightMm: true,
+      },
     });
     const published = new Map(
       revisionVariants.length === 0
@@ -115,6 +126,14 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
           variantNo,
           variantCode: variantCodeOf(product.productCode, variantNo),
           axes,
+          gtin: row.gtin,
+          imageIds: row.imageIds as Id<'ProductImage'>[],
+          shipping: {
+            weightGrams: row.shippingWeightGrams,
+            lengthMm: row.shippingLengthMm,
+            widthMm: row.shippingWidthMm,
+            heightMm: row.shippingHeightMm,
+          },
         };
       }),
       brand,

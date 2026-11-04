@@ -129,6 +129,10 @@ Product (scope PLATFORM | SELLER; one Market)
   |-- typeCode, familyCode (fixed after creation), productCode (unique per Market)
   |-- ownerSellerId (SELLER only), ownBrand flag (CAT-46)
   |-- Variant registry: variantId (stable, never reused), state (proposed | published | retired)
+  |     per revision, a variant also carries (variants V4, plan t5 to t7): optional GTIN (8/12/13/14
+  |     digits, check digit, stored as 14 digits), optional shipping weight (g) and dimensions (mm,
+  |     all three or none; empty = the product's value), and image picks (an ordered subset of the
+  |     revision's images; the first is the variant's primary). Nothing else is per variant.
   |-- WorkingCopy (editable draft; autosaved; not a revision)
   |-- ProductRevision (V1, 0..n; immutable content)   --> decision (0..1), provenance per field
   |-- publishedRevisionId, pendingRevisionId, lifecycle status, flags (claim-text, photo takedown)
@@ -357,7 +361,9 @@ reasons: SensitiveReason[] }`.
 
 | Rule | Source |
 |---|---|
-| Sensitive fields come from Market (and later Vertical) configuration `catalog.sensitiveChanges` (7.1): AU = platform categories, tax category, name in any locale, primary image, **any image added or replaced** (Hassan, G1), **a variant removed** (Mohammad, G1) | VER-03, brief s5 |
+| Sensitive fields come from Market (and later Vertical) configuration `catalog.sensitiveChanges` (7.1): AU = platform categories, tax category, name in any locale, primary image, **any image added or replaced** (Hassan, G1), **a variant removed** (Mohammad, G1), **a GTIN set, changed or cleared on a variant that was already published** (`gtinChanged`, variants V4, t13) | VER-03, brief s5 |
+| Adding a variant is minor unless it brings a new image (t13): a variant's image picks are a subset of the revision's gallery, so picking, reordering or clearing picks is minor; a photo that is new to the gallery stays sensitive (Hassan H1) | variants plan t13 |
+| A GTIN is unique per Market among the not-retired variants of published products, and unique within one product (the freeze refuses a repeat). A duplicate on another product does not block a save or a submit: the save answers a `gtin.duplicate` notice per variant. For a PLATFORM product the notice carries its public code ("Sell on the existing product"); for any other product it is neutral and names no product, code or seller (Hassan) | variants plan t5 |
 | Anything else is minor | VER-03 |
 | Approval off (CAT-36): every revision publishes at once; claim text and claims are still checked at submit and publish. **Exception (Hassan H1): a revision that adds or replaces an image always goes to review, whatever CAT-36 says**; text is machine-checked, photos are not, so a human looks at every new photo. The review page names the check "No certification mark or claim words in photos" | AC 27; Hassan H1 |
 | A pending sensitive revision holds later edits: the next submit supersedes it and stays pending, even if the new delta is minor (brief s5 team proposal; AC 26) | — |
@@ -746,7 +752,7 @@ path (SL 4 pattern).
 | `productTypes` | `simple`, `configurable` | `simple` only for now (a fixture Vertical type joins with the first Vertical test) | 3.1 rule 4 |
 | `defaultFamily` | The seeded default family code | Its own | 4.1 |
 | `taxCategories` | `taxable`, `gst_free`, each with a label key and the official guide link (ADR-0007 d5; values wait for the tax adviser) | Three different codes | 4.2 completeness, 4.3 |
-| `sensitiveChanges` | `platformCategories`, `taxCategory`, `name`, `primaryImage`, `anyImage`, `variantRemoved` | `name`, `taxCategory` only | 4.3 |
+| `sensitiveChanges` | `platformCategories`, `taxCategory`, `name`, `primaryImage`, `anyImage`, `variantRemoved`, `gtinChanged` | `name`, `taxCategory` only | 4.3 |
 | `conditions` | `new`, `used` (label keys) | `new` | Offer |
 | `reviewReasons` | Codes with next-step keys (Reza and Jafar write them; brief s7) | Its own | 4.2 row 5, 4.4 |
 | `photoLimits` | Set by Hassan (19.2 item 7): 10 MiB per file, 10 photos per product, 40 megapixels, longest edge of the upload ≤ 12,000 px, one frame; longest edge rendered 2,048 px | Small | 10 |

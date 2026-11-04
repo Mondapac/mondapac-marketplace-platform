@@ -252,7 +252,7 @@ describe('seller product routes over HTTP (integration)', () => {
     allowed = 'all';
     saveCalls = [];
     submitCalls = [];
-    saveResult = { ok: true, value: { variantIds: [], refusedFields: [] } };
+    saveResult = { ok: true, value: { variantIds: [], refusedFields: [], variantNotices: [] } };
     submitResult = {
       ok: true,
       value: { revisionId: id<'ProductRevision'>(0xd002), revisionNo: 1, published: false },
@@ -438,7 +438,7 @@ describe('seller product routes over HTTP (integration)', () => {
       );
 
       expect(saved.status).toBe(200);
-      expect(saved.body).toEqual({ variantIds: [], refusedFields: [] });
+      expect(saved.body).toEqual({ variantIds: [], refusedFields: [], variantNotices: [] });
       expect(saveCalls).toEqual([{ productId: PRODUCT, content: { texts: {} }, variantIds: [] }]);
       const extra = await put(
         code,

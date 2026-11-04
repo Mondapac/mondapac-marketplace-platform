@@ -202,6 +202,11 @@ import {
 } from '../application/ports/published-product.reader';
 import { PrismaPublishedProductReader } from './prisma-published-product.reader';
 import {
+  VARIANT_GTIN_REGISTRY,
+  type VariantGtinRegistry,
+} from '../application/ports/variant-gtin.registry';
+import { PrismaVariantGtinRegistry } from './prisma-variant-gtin.registry';
+import {
   PUBLISHED_IMAGES_READER,
   type PublishedImagesReader,
 } from '../application/ports/published-images.reader';
@@ -361,6 +366,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): PublishedProductReader =>
       new PrismaPublishedProductReader(prisma),
+  },
+  {
+    provide: VARIANT_GTIN_REGISTRY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantGtinRegistry =>
+      new PrismaVariantGtinRegistry(prisma),
   },
   {
     provide: PUBLISHED_IMAGES_READER,

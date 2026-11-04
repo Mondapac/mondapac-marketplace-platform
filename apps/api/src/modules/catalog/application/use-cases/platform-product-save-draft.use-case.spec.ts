@@ -26,6 +26,7 @@ import type { ClaimTextMatcher, ClaimTextToMatch } from '../ports/claim-text-mat
 import type { ProductRepository } from '../ports/product.repository';
 import type { RateCounter, RateCounterRepository } from '../ports/rate-counter.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
+import type { GtinDuplicate, VariantGtinRegistry } from '../ports/variant-gtin.registry';
 import { SaveDraft } from '../working-copy/save-draft.service';
 import { SaveWorkingCopy } from '../working-copy/save-working-copy.service';
 import { PlatformImportRowSave } from './platform-import-row-save.use-case';
@@ -167,10 +168,25 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
       clock,
       ids,
     });
-    const saveDraft = new SaveDraft({ unitOfWork, check, save, workingCopies, policy });
+    const duplicates: GtinDuplicate[] = [];
+    const lookups: string[][] = [];
+    const gtinRegistry: VariantGtinRegistry = {
+      duplicatesOf: (_m, _except, gtins) => {
+        lookups.push([...gtins]);
+        return Promise.resolve(duplicates.filter((duplicate) => gtins.includes(duplicate.gtin)));
+      },
+    };
+    const saveDraft = new SaveDraft({
+      unitOfWork,
+      check,
+      save,
+      workingCopies,
+      policy,
+      gtinRegistry,
+    });
     const useCase = new PlatformProductSaveDraft(gate, { saveDraft });
     const importRow = new PlatformImportRowSave(gate, { saveDraft });
-    return { useCase, importRow, stored, copies, matched, check, counters };
+    return { useCase, importRow, stored, copies, matched, check, counters, duplicates, lookups };
   }
 
   const request = (
@@ -187,7 +203,10 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
 
     const saved = await r.useCase.execute(contextOf('admin'), request(product.state.id, content));
 
-    expect(saved).toEqual({ ok: true, value: { variantIds: [], refusedFields: [] } });
+    expect(saved).toEqual({
+      ok: true,
+      value: { variantIds: [], refusedFields: [], variantNotices: [] },
+    });
     expect(r.copies.get(product.state.id)?.content).toEqual(content);
   });
 
@@ -476,5 +495,72 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
     expect(saved).toEqual({ ok: false, error: { code: 'working-copy.invalid-content' } });
     expect(r.matched).toHaveLength(0);
     expect(r.copies.has(product.state.id)).toBe(false);
+  });
+
+  describe('GTIN notices (variants V4)', () => {
+    const GTIN13 = '4006381333931';
+    const GTIN14 = '04006381333931';
+    const draftWith = (variants: unknown[]) => ({ variants });
+
+    it('allows the save and suggests the platform product that already carries the GTIN', async () => {
+      const r = rig();
+      const product = newProduct();
+      r.stored.set(product.state.id, product);
+      r.duplicates.push({ gtin: GTIN14, scope: 'PLATFORM', platformProductCode: 'MP-004127' });
+      const saved = await r.useCase.execute(
+        contextOf('admin'),
+        request(product.state.id, draftWith([{ variantId: 'v1', gtin: GTIN13 }]), [null]),
+      );
+      expect(saved.ok && saved.value.variantNotices).toEqual([
+        { variantId: 'v1', code: 'gtin.duplicate', sellOnProductCode: 'MP-004127' },
+      ]);
+      // The lookup uses the 14-digit form, whatever length was typed.
+      expect(r.lookups).toEqual([[GTIN14]]);
+    });
+
+    it('gives a neutral notice, with no code, for a GTIN another seller carries', async () => {
+      const r = rig();
+      const product = newProduct();
+      r.stored.set(product.state.id, product);
+      r.duplicates.push({ gtin: GTIN14, scope: 'SELLER', platformProductCode: null });
+      const saved = await r.useCase.execute(
+        contextOf('admin'),
+        request(product.state.id, draftWith([{ variantId: 'v1', gtin: GTIN14 }]), [null]),
+      );
+      expect(saved.ok && saved.value.variantNotices).toEqual([
+        { variantId: 'v1', code: 'gtin.duplicate', sellOnProductCode: null },
+      ]);
+      expect(JSON.stringify(saved)).not.toMatch(/MP-|seller/i);
+    });
+
+    it('skips a malformed GTIN (the submit reports it) and looks up nothing', async () => {
+      const r = rig();
+      const product = newProduct();
+      r.stored.set(product.state.id, product);
+      const saved = await r.useCase.execute(
+        contextOf('admin'),
+        request(product.state.id, draftWith([{ variantId: 'v1', gtin: '4006381333932' }]), [null]),
+      );
+      expect(saved.ok && saved.value.variantNotices).toEqual([]);
+      expect(r.lookups).toEqual([]);
+    });
+
+    it('refuses a variant field of the wrong type as a whole', async () => {
+      const r = rig();
+      const product = newProduct();
+      r.stored.set(product.state.id, product);
+      for (const bad of [
+        { variantId: 'v1', gtin: 4006381333931 },
+        { variantId: 'v1', shippingWeightGrams: '500' },
+        { variantId: 'v1', imageIds: 'i1' },
+        { variantId: 'v1', unknownField: 1 },
+      ]) {
+        const saved = await r.useCase.execute(
+          contextOf('admin'),
+          request(product.state.id, draftWith([bad]), [null]),
+        );
+        expect(saved).toEqual({ ok: false, error: { code: 'working-copy.invalid-content' } });
+      }
+    });
   });
 });

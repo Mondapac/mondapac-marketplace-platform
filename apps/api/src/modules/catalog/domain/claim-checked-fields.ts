@@ -79,6 +79,13 @@ export const REVISION_VARIANT_FIELDS: Record<keyof RevisionVariantContent, Field
   // Attribute code to option code: the codes are internal, the labels live on the definition.
   optionValues: exempt('internal-code'),
   labels: checked('product.variant-label'),
+  // Digits only (check digit validated at the freeze), a number, or ids of the revision's images.
+  gtin: exempt('identifier'),
+  shippingWeightGrams: exempt('number'),
+  shippingLengthMm: exempt('number'),
+  shippingWidthMm: exempt('number'),
+  shippingHeightMm: exempt('number'),
+  imageIds: exempt('reference'),
 };
 
 export const REVISION_CONTENT_FIELDS: Record<keyof RevisionContent, FieldDisposition> = {

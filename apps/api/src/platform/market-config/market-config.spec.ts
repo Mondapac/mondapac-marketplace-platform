@@ -2099,6 +2099,7 @@ describe('loadMarketConfigs', () => {
         primaryImage: true,
         anyImage: true,
         variantRemoved: true,
+        gtinChanged: true,
       },
       maxVariantsPerProduct: 100,
       maxCategoryDepth: 4,

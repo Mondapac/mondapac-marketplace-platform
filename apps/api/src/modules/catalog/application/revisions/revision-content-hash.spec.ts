@@ -14,6 +14,12 @@ const content: RevisionContent = {
       optionKey: 'size=l',
       optionValues: { size: 'l' },
       labels: { en: 'L' },
+      gtin: null,
+      shippingWeightGrams: null,
+      shippingLengthMm: null,
+      shippingWidthMm: null,
+      shippingHeightMm: null,
+      imageIds: [],
     },
   ],
   imageIds: [],
@@ -56,6 +62,20 @@ describe('revisionContentHash', () => {
     ],
   ] as const)('changes with %s', (_name, patch) => {
     expect(revisionContentHash({ ...content, ...patch })).not.toBe(revisionContentHash(content));
+  });
+
+  it('is the same with or without the empty per-variant fields, and changes when one is set', () => {
+    const base = revisionContentHash(content);
+    const [variant] = content.variants;
+    for (const patch of [
+      { gtin: '04006381333931' },
+      { shippingWeightGrams: 450 },
+      { shippingLengthMm: 1, shippingWidthMm: 2, shippingHeightMm: 3 },
+      { imageIds: ['i1'] },
+    ]) {
+      const set = { ...content, variants: [{ ...variant!, ...patch }] };
+      expect(revisionContentHash(set)).not.toBe(base);
+    }
   });
 
   // The hash is persisted and recomputed by anyone: a change here is a format change.
