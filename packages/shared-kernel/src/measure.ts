@@ -130,6 +130,29 @@ export function measureFromBase(base: string, unit: string, decimals: number): s
   return render(rounded, decimals);
 }
 
+/**
+ * The one text a decimal number is stored as: no trailing zeros in the fraction ("500.0" is
+ * "500"). `null` when the text is not a plain non-negative decimal.
+ */
+export function canonicalDecimal(text: string): string | null {
+  const scaled = parseScaled(text);
+  return scaled === null ? null : render(scaled.digits, scaled.scale);
+}
+
+/**
+ * Exact comparison of two plain non-negative decimal texts: negative, zero or positive like a
+ * subtraction. `null` when either is not a plain decimal (so the caller decides).
+ */
+export function compareDecimals(a: string, b: string): number | null {
+  const left = parseScaled(a);
+  const right = parseScaled(b);
+  if (left === null || right === null) return null;
+  const scale = Math.max(left.scale, right.scale);
+  const x = left.digits * 10n ** BigInt(scale - left.scale);
+  const y = right.digits * 10n ** BigInt(scale - right.scale);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
 /** True when `value` has exactly the two text members of a stored measure. */
 export function isMeasureValue(value: unknown): value is MeasureValue {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -148,14 +171,16 @@ export type MeasureProblem = 'type' | 'unit-unknown' | 'precision';
  */
 export function checkMeasure(settings: MeasureSettings, value: unknown): MeasureProblem | null {
   if (!isMeasureValue(value)) return 'type';
-  if (parseScaled(value.value) === null) return 'type';
+  // Only the canonical text is stored, so equal numbers are equal texts ("500.0" is refused).
+  if (canonicalDecimal(value.value) !== value.value) return 'type';
   if (!settings.units.includes(value.unit)) return 'unit-unknown';
   const shown = measureFromBase(value.value, value.unit, MEASURE_DECIMALS_MAX);
   if (shown === null) return 'type';
   const places = decimalPlaces(shown);
   // The base text must be exactly representable in the unit with at most `decimals` places.
+  // Both texts are canonical, so an exact match is a string match (no floating point).
   const exact = measureToBase(shown, value.unit, MEASURE_DECIMALS_MAX);
-  if (places === null || exact === null || Number(exact) !== Number(value.value)) {
+  if (places === null || exact === null || exact !== value.value) {
     return 'precision';
   }
   return places > settings.decimals ? 'precision' : null;

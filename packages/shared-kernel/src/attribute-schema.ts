@@ -1,7 +1,7 @@
 import { err, ok } from './result';
 import type { Result } from './result';
 import type { Id } from './id';
-import { checkMeasure } from './measure';
+import { checkMeasure, compareDecimals } from './measure';
 import type { MeasureSettings, MeasureValue } from './measure';
 import { parsePlainText } from './plain-text';
 import type { InvisibleCharacterKind } from './plain-text';
@@ -147,6 +147,14 @@ function checkText(
   }
 }
 
+/** Exact comparison of a base-unit decimal text with a bound; a bound that is not a plain decimal falls back to numbers. */
+function compareToBound(base: string, bound: number): number {
+  const exact = compareDecimals(base, String(bound));
+  if (exact !== null) return exact;
+  const number = Number(base);
+  return number < bound ? -1 : number > bound ? 1 : 0;
+}
+
 function isBlank(value: unknown): boolean {
   return value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
 }
@@ -187,8 +195,11 @@ function checkScalar(field: AttributeField, value: unknown, issues: AttributeIss
       else if (problem === 'unit-unknown') issues.push({ path, code: 'attribute.unit-unknown' });
       else if (problem === 'precision') issues.push({ path, code: 'attribute.precision' });
       else {
-        const base = Number((value as MeasureValue).value);
-        if ((min !== undefined && base < min) || (max !== undefined && base > max)) {
+        const base = (value as MeasureValue).value;
+        if (
+          (min !== undefined && compareToBound(base, min) < 0) ||
+          (max !== undefined && compareToBound(base, max) > 0)
+        ) {
           issues.push({ path, code: 'attribute.out-of-range' });
         }
       }

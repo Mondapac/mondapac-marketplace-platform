@@ -255,6 +255,18 @@ describe('validateAttributeValues', () => {
       expect(issues({ netWeight: { value: '5000', unit: 'kg' } })).toEqual([]);
     });
 
+    it('compares min and max exactly, not as doubles', () => {
+      const tight = schemaOf({
+        ...weight.fields[0]!,
+        bounds: { max: 999999999999 },
+        measure: { dimension: 'mass', units: ['g'], defaultUnit: 'g', decimals: 6 },
+      });
+      const result = check(tight, { netWeight: { value: '999999999999.000001', unit: 'g' } });
+      expect(result.ok ? [] : result.error.map((issue) => issue.code)).toEqual([
+        'attribute.out-of-range',
+      ]);
+    });
+
     it('names the problem: type, unit or decimal places', () => {
       expect(issues({ netWeight: '500' })).toEqual(['attribute.type']);
       expect(issues({ netWeight: { value: '5', unit: 'ml' } })).toEqual(['attribute.unit-unknown']);

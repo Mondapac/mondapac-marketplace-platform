@@ -1,5 +1,7 @@
 import {
+  canonicalDecimal,
   checkMeasure,
+  compareDecimals,
   decimalPlaces,
   measureFromBase,
   measureToBase,
@@ -127,5 +129,29 @@ describe('checkMeasure', () => {
     // 1.5 g is not a whole gram when the field is in g with no places.
     expect(checkMeasure({ ...MASS, decimals: 0 }, { value: '1.5', unit: 'g' })).toBe('precision');
     expect(checkMeasure({ ...MASS, decimals: 0 }, { value: '1500', unit: 'kg' })).toBe('precision');
+  });
+});
+
+describe('exact decimal text', () => {
+  it('stores one text per number: trailing zeros are refused, not rounded away', () => {
+    expect(canonicalDecimal('500.0')).toBe('500');
+    expect(canonicalDecimal('2.50')).toBe('2.5');
+    expect(canonicalDecimal('01')).toBeNull();
+    expect(checkMeasure(MASS, { value: '500.0', unit: 'g' })).toBe('type');
+    expect(checkMeasure(MASS, { value: '500', unit: 'g' })).toBeNull();
+  });
+
+  it('compares without floating point, past the 15 digits a double keeps', () => {
+    expect(compareDecimals('999999999999.999999999', '999999999999.999999998')).toBe(1);
+    expect(compareDecimals('0.1', '0.10')).toBe(0);
+    expect(compareDecimals('2', '10')).toBe(-1);
+    expect(compareDecimals('x', '1')).toBeNull();
+  });
+
+  it('refuses an over-precise value that a double would round into an exact one', () => {
+    // 12 + 9 digits: as a double this equals 500 g, but it is 500.000000001 g.
+    expect(checkMeasure({ ...MASS, decimals: 6 }, { value: '500.000000001', unit: 'g' })).toBe(
+      'precision',
+    );
   });
 });

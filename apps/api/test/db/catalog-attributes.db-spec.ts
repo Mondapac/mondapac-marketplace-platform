@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
@@ -502,5 +504,28 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     } finally {
       await persistence.close();
     }
+  });
+
+  it('refuses to roll the measure migration back while a measure definition exists, and changes nothing (attributes A3)', async () => {
+    await insertDefinition({ code: `net-${randomUUID().slice(0, 8)}`, data_type: 'measure' });
+    const down = readFileSync(
+      join(
+        __dirname,
+        '../../../../prisma/migrations/20261103150000_catalog_attribute_measure/down.sql',
+      ),
+      'utf8',
+    );
+    try {
+      // The ALTER restores the earlier CHECK, which a measure row violates; the statement fails
+      // as a whole, so the widened CHECK stays and the row stays valid.
+      expect(await sqlState(owner, down)).toBe('23514');
+    } finally {
+      await owner.query('RESET lock_timeout; RESET statement_timeout');
+    }
+    const kept = await sql.query<{ n: string }>(
+      `SELECT count(*) AS n FROM catalog.attribute_definitions WHERE market_id = $1 AND data_type = 'measure'`,
+      [market.marketId],
+    );
+    expect(Number(kept.rows[0]!.n)).toBeGreaterThan(0);
   });
 });
