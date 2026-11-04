@@ -362,6 +362,49 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
     expect(queue.truncated).toBe(false);
   });
 
+  it('caps the queue and says truncated when more sellers are unhealthy than the cap', async () => {
+    const sellers = [await newSeller(), await newSeller(), await newSeller()];
+    const inputs = {
+      orders: 12,
+      sellerCancellations: { count: 0, base: 0 },
+      lateReady: { count: 0, base: 12 },
+      lostDisputes: { count: 0, base: 12 },
+      customerRating: { count: 0, averageHundredths: 0 },
+      reports: null,
+    };
+    const scores = [30, 10, 20];
+    for (const [i, seller] of sellers.entries()) {
+      await run(market, () =>
+        store.saveSnapshot(market, seller, {
+          day: Temporal.PlainDate.from('2026-12-02'),
+          health: {
+            kind: 'scored' as const,
+            band: 'unhealthy' as const,
+            score: scores[i]!,
+            lowestMetric: 'late-ready' as const,
+            metrics: [],
+            formulaVersion: 'v1',
+          },
+          inputs,
+          computedAt: T0,
+        }),
+      );
+    }
+    const from = Temporal.PlainDate.from('2026-12-01');
+    const to = Temporal.PlainDate.from('2026-12-03');
+
+    const capped = await run(market, () => store.unhealthy(market, from, to, 2));
+    expect(capped.truncated).toBe(true);
+    expect(capped.sellers.map((x) => [x.sellerId, x.score])).toEqual([
+      [sellers[1], 10],
+      [sellers[2], 20],
+    ]);
+
+    const roomy = await run(market, () => store.unhealthy(market, from, to, 3));
+    expect(roomy.truncated).toBe(false);
+    expect(roomy.sellers).toHaveLength(3);
+  });
+
   it('refuses rows the rules forbid', async () => {
     const seller = await newSeller();
     const insert = (patch: Record<string, unknown>) => {

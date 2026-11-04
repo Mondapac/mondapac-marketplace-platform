@@ -79,12 +79,15 @@ export interface SellerHealthStore {
   /**
    * The sellers whose newest snapshot among the dates from `from` to `to` is `unhealthy`: worst
    * score first, ties by seller id, at most `UNHEALTHY_QUEUE_MAX` of them. `truncated` is true
-   * when more sellers were unhealthy than the cap.
+   * when more sellers were unhealthy than the cap, or too many candidates were read to check
+   * them all (the candidate read is bounded).
    */
   unhealthy(
     market: MarketContext,
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
+    /** The cap; `UNHEALTHY_QUEUE_MAX` when left out. Only tests pass it. */
+    limit?: number,
   ): Promise<{
     readonly sellers: readonly (SellerHealthSummary & { readonly sellerId: Id<'Seller'> })[];
     readonly truncated: boolean;
