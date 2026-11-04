@@ -277,6 +277,8 @@ import { AttributeAdminList } from './application/use-cases/attribute-admin-list
 import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
 import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-list.use-case';
 import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
+import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-gap.reader';
+import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
 import type { CategoryActionProbes } from './application/categories/category-admin-views';
 import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
@@ -376,6 +378,7 @@ const PORT = {
   adminCategoryReader: ADMIN_CATEGORY_READER,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
+  detailsGapReader: PRODUCT_DETAILS_GAP_READER,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
@@ -753,6 +756,12 @@ const productTypeProvider: FactoryProvider<string> = {
       linkStore: true,
       treeReader: true,
       attributeAdminReader: true,
+    }),
+    useCaseProvider(ProductsMissingDetailsList, {
+      unitOfWork: true,
+      detailsGapReader: true,
+      attributes: true,
+      policy: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,

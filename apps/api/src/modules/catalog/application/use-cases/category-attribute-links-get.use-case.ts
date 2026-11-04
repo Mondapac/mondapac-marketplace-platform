@@ -179,16 +179,28 @@ export class CategoryAttributeLinksGet extends UseCase<
                 fromCategoryId: effective.familyFromCategoryId,
                 inherited: effective.familyFromCategoryId !== categoryId,
               },
-        filters: effective.filters.map((filter) => {
+        // A filter whose attribute was archived or switched off as a filter since the save no
+        // longer reaches buyers, so it is left out here too; the category's own list keeps it
+        // until an admin saves again.
+        filters: effective.filters.flatMap((filter) => {
           const definition = byCode.get(filter.code);
-          return {
-            code: filter.code,
-            fromCategoryId: filter.fromCategoryId,
-            inherited: filter.fromCategoryId !== categoryId,
-            names: definition === undefined ? null : { ...definition.revision.names },
-            dataType: definition?.dataType ?? null,
-            status: definition?.status ?? null,
-          };
+          if (
+            definition === undefined ||
+            definition.status !== 'active' ||
+            !definition.revision.display.canBeFilter
+          ) {
+            return [];
+          }
+          return [
+            {
+              code: filter.code,
+              fromCategoryId: filter.fromCategoryId,
+              inherited: filter.fromCategoryId !== categoryId,
+              names: { ...definition.revision.names },
+              dataType: definition.dataType,
+              status: definition.status,
+            },
+          ];
         }),
       },
     });

@@ -40,6 +40,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { ProductsMissingDetailsList } from '../application/use-cases/products-missing-details-list.use-case';
 import { CategoryAttributeLinksGet } from '../application/use-cases/category-attribute-links-get.use-case';
 import { CategoryAttributeLinksSet } from '../application/use-cases/category-attribute-links-set.use-case';
 import { AttributeAdminGet } from '../application/use-cases/attribute-admin-get.use-case';
@@ -65,6 +66,7 @@ import {
   FeatureSetEditRequest,
   FeatureSetWriteWrapBody,
   CategoryLinksBody,
+  MissingDetailsListBody,
   CategoryLinksSetRequest,
   CategoryLinksSetWrapBody,
 } from './attribute-admin.dto';
@@ -210,6 +212,7 @@ export class AttributeAdminController {
     private readonly editFeatureSet: FeatureSetEdit,
     private readonly getCategoryLinks: CategoryAttributeLinksGet,
     private readonly setCategoryLinks: CategoryAttributeLinksSet,
+    private readonly listMissingDetails: ProductsMissingDetailsList,
   ) {}
 
   @Post('attributes')
@@ -615,6 +618,39 @@ export class AttributeAdminController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.feature-set-edit', context, outcome);
+  }
+
+  @Get('reports/products-missing-details')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Products missing required details',
+    description:
+      `${NEEDS} Published products whose values leave a required attribute of their feature set ` +
+      'empty (the feature set gained it after approval). They stay on sale; the seller is ' +
+      'refused at the next submit until the field is filled. Keyset-paged by product id: one ' +
+      'call reads at most 2000 products, so follow `nextAfterId` until it is null. `limit` is 1 ' +
+      'to 100 (default 50).',
+  })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'familyCode', required: false, description: 'A feature set code.' })
+  @ApiQuery({ name: 'afterId', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: MissingDetailsListBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async missingDetails(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<MissingDetailsListBody> {
+    const result = await this.listMissingDetails.execute(context, pageQuery(query));
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsListBody)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.products-missing-details-list', context, outcome);
   }
 
   @Get('categories/:categoryId/attribute-links')

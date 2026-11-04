@@ -297,6 +297,27 @@ describe('category attribute links over HTTP (integration)', () => {
         .set(editor)
         .send({ featureSetId: SET_A, filters: [] })
         .expect(409);
+
+      // An attribute archived after the save drops out of what buyers get, not out of the saved list.
+      reader.seedDefinition(
+        code,
+        definitionRecord(dId(2), 'size', {
+          dataType: 'select',
+          names: { [localeOf(code)]: 'Size' },
+          canBeFilter: true,
+          status: 'archived',
+        }),
+      );
+      const after = await http().get(linksOf(CAT_G)).set(editor).expect(200);
+      expect(
+        (after.body as { own: { filters: string[] }; effective: { filters: unknown[] } }).own
+          .filters,
+      ).toEqual(['size']);
+      expect(
+        (after.body as { effective: { filters: { code: string }[] } }).effective.filters.map(
+          (f) => f.code,
+        ),
+      ).toEqual(['colour']);
     }, 30_000);
 
     it('refuses filters that are unknown, drafts, not filterable or repeated', async () => {
