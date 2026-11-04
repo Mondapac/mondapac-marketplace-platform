@@ -13,8 +13,39 @@ import { ServiceAreaDirectory, type ServiceAreaDefinition } from './service-area
 /** Codes from configuration are text, never a closed list (sellers data design S8). */
 const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 
+/** A language tag as a key of `names`: "en", "fa", "ar", "en-AU". */
+const NAME_LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/u;
+
+/** Display names per language; English is mandatory (buyer multilingual rule, john 30 Oct 2026). */
+const namesSchema = z
+  .record(z.string().regex(NAME_LOCALE, 'must be a language tag such as "en" or "fa"'), z.string())
+  .superRefine((names, ctx) => {
+    for (const [locale, name] of Object.entries(names)) {
+      if (name.trim() === '' || name.length > 120) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `name for "${locale}" must be 1 to 120 characters`,
+        });
+      }
+    }
+    if (names['en'] === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'an English name ("en") is required' });
+    }
+  });
+
 const areaSchema = z.strictObject({
   code: z.string().regex(AREA_CODE, 'must match ^[a-z0-9][a-z0-9-]{0,63}$'),
+  /** The area's display names, one per language; English is required. */
+  names: namesSchema,
+  /**
+   * The Market region (state) the area belongs to, as the address `regionField` writes it
+   * ("QLD"). Lets a later rule switch a whole state on by naming the region. Optional: a
+   * Market without regions leaves it out.
+   */
+  region: z
+    .string()
+    .regex(/^[A-Za-z0-9]{1,8}$/u, 'must be 1 to 8 letters or digits')
+    .optional(),
   /** Exact postcodes ("4000", "SW1A 1AA") or digit ranges ("4000-4179", same length). */
   postcodes: z.array(z.string()).min(1),
   sellerOnboardingEnabled: z.boolean(),
@@ -121,6 +152,8 @@ export function loadServiceAreas(
       areas.push(
         Object.freeze({
           code: area.code,
+          names: Object.freeze({ ...area.names }),
+          region: area.region ?? null,
           sellerOnboardingEnabled: area.sellerOnboardingEnabled,
           deliveryEnabled: area.deliveryEnabled,
           intervals: Object.freeze(postcodes.intervals),

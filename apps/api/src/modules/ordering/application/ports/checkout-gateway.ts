@@ -51,7 +51,61 @@ export interface CheckoutGateway {
 
   /** Reads a refund Stripe already made, by its id (test mode only, as `refund`). */
   refundStatus(stripeRefundId: string): Promise<Result<RefundAnswer, GatewayFailure>>;
+
+  /**
+   * What the buyer's browser gave Stripe for a card payment (a ConfirmationToken), read from
+   * Stripe: the card brand and the mode. Nothing else of the card is read or kept.
+   */
+  readConfirmationToken(
+    confirmationToken: string,
+  ): Promise<Result<ConfirmationTokenFacts, GatewayFailure>>;
+
+  /**
+   * Authorises the card payment of one order: a manual-capture PaymentIntent confirmed with the
+   * token, the amount and currency from the order (never from the client). Test mode only: with a
+   * live key the adapter refuses without calling Stripe. Nothing is captured here.
+   */
+  payByCard(request: PayByCardRequest): Promise<Result<CardPaymentAnswer, CardPaymentFailure>>;
 }
+
+/** The facts of a ConfirmationToken that ordering decides on. */
+export interface ConfirmationTokenFacts {
+  /** Always false here: a live-mode token is refused by the adapter. */
+  readonly livemode: boolean;
+  /** `card` for a card and for Apple Pay or Google Pay; anything else is not accepted. */
+  readonly methodType: string;
+  /** Lowercase brand Stripe reports (`visa`, `mastercard`, ...); null when it is not a card. */
+  readonly cardBrand: string | null;
+}
+
+export interface PayByCardRequest {
+  readonly orderId: string;
+  readonly marketId: string;
+  readonly currency: string;
+  /** The order total in minor units, computed on the server. */
+  readonly amount: bigint;
+  readonly confirmationToken: string;
+  /** Where Stripe sends the buyer back after an authentication step (3DS). */
+  readonly returnUrl: string;
+  /** Stored on the order before this call; the same key on every retry. */
+  readonly idempotencyKey: string;
+}
+
+/** Where the payment stands after the confirm. */
+export type CardPaymentAnswer =
+  /** The card holds the money (`requires_capture`). */
+  | { readonly status: 'authorised'; readonly paymentIntentId: string }
+  /** The buyer's bank asks for authentication (3DS): the browser finishes it with the secret. */
+  | {
+      readonly status: 'requires-action';
+      readonly paymentIntentId: string;
+      readonly clientSecret: string;
+    };
+
+export type CardPaymentFailure =
+  | GatewayFailure
+  /** The card was declined or failed authentication; `paymentIntentId` is set when Stripe made one. */
+  | { readonly code: 'payment.card-declined'; readonly paymentIntentId: string | null };
 
 /** Stripe's refund and its state: `pending` covers Stripe's `pending` and `requires_action`. */
 export interface RefundAnswer {

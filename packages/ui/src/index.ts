@@ -37,18 +37,30 @@ export {
   type LinkButtonProps,
 } from './form/button.tsx';
 export { TextField, type TextFieldProps } from './form/text-field.tsx';
+export { IconButton, type IconButtonProps } from './form/icon-button.tsx';
+export { SearchField, type SearchFieldProps } from './form/search-field.tsx';
 export { TextAreaField, type TextAreaFieldProps } from './form/text-area-field.tsx';
 export { FileButton, type FileButtonProps } from './form/file-button.tsx';
 export { ImageSlot, type ImageSlotProps, type ImageSlotShape } from './form/image-slot.tsx';
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
+export { SelectBox, type SelectBoxProps } from './form/select-box.tsx';
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './form/radio-group.tsx';
 export { ActionRow, type ActionRowProps } from './form/action-row.tsx';
 export { FieldAction, type FieldActionProps } from './form/field-action.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
 export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
+export {
+  SearchSelect,
+  SEARCH_THRESHOLD,
+  type SearchSelectLabels,
+  type SearchSelectMultiProps,
+  type SearchSelectOption,
+  type SearchSelectProps,
+  type SearchSelectSingleProps,
+} from './select/search-select.tsx';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
@@ -82,6 +94,12 @@ export {
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
 export { SettingsSubNav, type SubNavGroup } from './settings/settings-sub-nav.tsx';
 export { SettingsTitle } from './settings/settings-title.tsx';
+export {
+  SettingsHub,
+  type SettingsHubGroup,
+  type SettingsHubLabels,
+} from './settings/settings-hub.tsx';
+export { SettingsHubHeader } from './settings/settings-hub-header.tsx';
 export {
   SettingsConflictBanner,
   type SettingsConflictBannerProps,
@@ -125,6 +143,14 @@ export {
 } from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
+export {
+  ActionMenu,
+  type ActionMenuItem,
+  type ActionMenuLink,
+  type ActionMenuProps,
+} from './overlay/action-menu.tsx';
+export { Popover, type PopoverProps } from './overlay/popover.tsx';
+export { FilterChip, type FilterChipProps } from './form/filter-chip.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
 export { ThemeMenu, applyThemeChoice, type ThemeMenuProps } from './theme/theme-menu.tsx';
 export {
@@ -191,5 +217,13 @@ export {
   type PanelToolsLabels,
   type PanelToolsProps,
 } from './palette/panel-tools.tsx';
-export { PIN_LIMIT, RECENT_LIMIT } from './palette/panel-prefs.ts';
+export {
+  PIN_LIMIT,
+  RECENT_LIMIT,
+  browserStorage,
+  prefsKey,
+  readIds,
+  writeIds,
+  type PrefsStore,
+} from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';

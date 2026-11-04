@@ -139,6 +139,10 @@ class FakeAccounts implements AccountRepository {
     throw new Error('sign-up reads no customer summary');
   }
 
+  customerSharesAddressWithSellerMember(): never {
+    throw new Error('sign-up reads no seller team');
+  }
+
   customerStatus(): never {
     throw new Error('sign-up reads no customer status');
   }

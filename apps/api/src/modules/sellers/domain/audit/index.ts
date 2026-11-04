@@ -118,6 +118,18 @@ export const BlogAccessChanged = defineAuditAction({
   after: { enabled: auditField.boolean(), unpublishLive: auditField.boolean() },
 });
 
+/**
+ * An admin edited the display names of a service area (ADR-0041). The target is an id derived from
+ * the Market's area code; a name is free text and is never put in the log, only how many languages
+ * were set and how many were restored to the configured name.
+ */
+export const ServiceAreaNamesChanged = defineAuditAction({
+  action: 'sellers.service-area.change',
+  targetType: 'sellers.service-area',
+  actors: ['authenticated'],
+  after: { namesSet: auditField.integer(), namesRestored: auditField.integer() },
+});
+
 /** Every audited action of sellers, for its module's registration. */
 export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   BusinessDetailsViewed,
@@ -127,4 +139,5 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   StoreImageChanged,
   PickupDetailsReadForCarrier,
   BlogAccessChanged,
+  ServiceAreaNamesChanged,
 ]);

@@ -6,6 +6,7 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import { PrismaPlatformCategoryRepository } from '../../src/modules/catalog/infrastructure/prisma-platform-category.repository';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
+import { PrismaBrandReader } from '../../src/modules/catalog/infrastructure/prisma-brand.reader';
 import { PrismaPublishedProductReader } from '../../src/modules/catalog/infrastructure/prisma-published-product.reader';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -64,6 +65,8 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
     texts: Record<string, { name: string; shortDescription?: string; description?: string }>;
     /** Variants of the revision in position order; `state` is the registry state. */
     variants: { state: 'proposed' | 'published' | 'retired'; labels: Record<string, string> }[];
+    /** The family groups of the (one) family revision and this revision's attribute values. */
+    attributes?: { groups: unknown[]; values: Record<string, unknown> };
   }
 
   /** A product; `published` becomes the published revision, `draft` a newer one. */
@@ -103,7 +106,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       ...base,
       family_id: familyId,
       revision_no: 1,
-      groups: '[]',
+      groups: JSON.stringify((published ?? draft)?.attributes?.groups ?? []),
       author_kind: 'seed',
       created_at: T0.toString(),
     });
@@ -154,7 +157,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         family_revision_id: familyRevisionId,
         definition_revision_ids: [],
         tax_category_code: 'standard',
-        attribute_values: '{}',
+        attribute_values: JSON.stringify(spec.attributes?.values ?? {}),
         field_provenance: null,
         sensitive: false,
         sensitive_reasons: [],
@@ -250,8 +253,260 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         { variantId: a.variantIds[0], position: 0, label: '500 g' },
         { variantId: a.variantIds[1], position: 1, label: '1 kg' },
       ],
+      brand: null,
+      specifications: [],
     });
     expect(JSON.stringify(answer)).not.toContain('DRAFT');
+  });
+
+  /**
+   * An attribute definition with one PUBLISHED revision (and its options), by code; the code is
+   * unique in the Market, so each test makes its own.
+   */
+  async function definition(
+    target: typeof market,
+    code: string,
+    kind: {
+      dataType: string;
+      localizable?: boolean;
+      status?: string;
+      showOnProductPage?: boolean;
+      names: Record<string, string>;
+      options?: Record<string, { labels: Record<string, string>; mergedInto?: string }>;
+    },
+  ): Promise<void> {
+    const base = { market_id: target.marketId, tenant_id: target.tenantId };
+    const definitionId = uuid7();
+    const revisionId = uuid7();
+    await insert('attribute_definitions', {
+      id: definitionId,
+      ...base,
+      code,
+      data_type: kind.dataType,
+      localizable: kind.localizable ?? false,
+      status: kind.status ?? 'active',
+      created_by_kind: 'seed',
+      version: 1,
+      created_at: T0.toString(),
+    });
+    await insert('attribute_definition_revisions', {
+      id: revisionId,
+      ...base,
+      definition_id: definitionId,
+      revision_no: 1,
+      material: false,
+      is_variant_option: false,
+      bounds: '{}',
+      names: JSON.stringify(kind.names),
+      show_on_product_page: kind.showOnProductPage ?? true,
+      author_kind: 'seed',
+      created_at: T0.toString(),
+    });
+    for (const [index, [optionCode, option]] of Object.entries(kind.options ?? {}).entries()) {
+      await insert('attribute_definition_revision_options', {
+        ...base,
+        revision_id: revisionId,
+        option_code: optionCode,
+        labels: JSON.stringify(option.labels),
+        active: true,
+        position: index,
+        merged_into: option.mergedInto ?? null,
+      });
+    }
+    await owner.query(
+      `UPDATE catalog.attribute_definitions SET published_revision_id = $3
+         WHERE market_id = $1 AND id = $2`,
+      [target.marketId, definitionId, revisionId],
+    );
+  }
+
+  it('lists the published revision attribute values by family group, with names and labels in the asked locale', async () => {
+    const tag = uuid7().slice(-8);
+    const [origin, roast, tags, hidden, draftAttr, material] = [
+      'origin',
+      'roast',
+      'tags',
+      'hidden',
+      'draftattr',
+      'material',
+    ].map((name) => `${name}-${tag}`) as [string, string, string, string, string, string];
+    await definition(market, origin, {
+      dataType: 'text',
+      names: { 'en-AU': 'Country of origin', 'fa-IR': 'کشور سازنده' },
+    });
+    await definition(market, roast, {
+      dataType: 'select',
+      names: { 'en-AU': 'Roast' },
+      options: {
+        dark: { labels: { 'en-AU': 'Dark', 'fa-IR': 'تیره' } },
+        black: { labels: { 'en-AU': 'Black' }, mergedInto: 'dark' },
+      },
+    });
+    await definition(market, tags, {
+      dataType: 'multi-select',
+      names: { 'en-AU': 'Diet' },
+      options: { halal: { labels: { 'en-AU': 'Halal' } }, vegan: { labels: { 'en-AU': 'Vegan' } } },
+    });
+    await definition(market, hidden, {
+      dataType: 'text',
+      names: { 'en-AU': 'Hidden' },
+      showOnProductPage: false,
+    });
+    await definition(market, draftAttr, {
+      dataType: 'text',
+      names: { 'en-AU': 'Draft' },
+      status: 'draft',
+    });
+    await definition(market, material, {
+      dataType: 'text',
+      localizable: true,
+      names: { 'en-AU': 'Material' },
+    });
+    const entry = (code: string) => ({ code, required: false, isVariantOption: false });
+    const a = await product(market, {
+      texts: { 'en-AU': { name: 'Dates' } },
+      variants: [],
+      attributes: {
+        groups: [
+          { groupCode: 'details', attributes: [entry(roast), entry(tags), entry(hidden)] },
+          { groupCode: 'general', attributes: [entry(draftAttr), entry(origin), entry(material)] },
+        ],
+        values: {
+          [origin]: 'Iran',
+          [roast]: 'black',
+          [tags]: ['halal', 'gone', 'vegan'],
+          [hidden]: 'secret',
+          [draftAttr]: 'not yet',
+          [material]: { 'en-AU': 'Cotton' },
+        },
+      },
+    });
+
+    const english = (await read(a.productId))?.specifications;
+    expect(english).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          { code: roast, name: 'Roast', value: { kind: 'text', text: 'Dark' } },
+          { code: tags, name: 'Diet', value: { kind: 'list', items: ['Halal', 'Vegan'] } },
+        ],
+      },
+      {
+        groupCode: 'general',
+        specifications: [
+          { code: origin, name: 'Country of origin', value: { kind: 'text', text: 'Iran' } },
+          { code: material, name: 'Material', value: { kind: 'text', text: 'Cotton' } },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(english)).not.toContain('secret');
+    // The asked locale wins where the admin wrote it, the fallback fills the rest.
+    const persian = (await read(a.productId, { requested: 'fa-IR', fallback: 'en-AU' }))
+      ?.specifications;
+    expect(persian?.[0]?.specifications[0]).toEqual({
+      code: roast,
+      name: 'Roast',
+      value: { kind: 'text', text: 'تیره' },
+    });
+    expect(persian?.[1]?.specifications[0]).toEqual({
+      code: origin,
+      name: 'کشور سازنده',
+      value: { kind: 'text', text: 'Iran' },
+    });
+  });
+
+  it('has no specifications for a product whose family lists none', async () => {
+    const plain = await product(market, SPEC);
+    expect((await read(plain.productId))?.specifications).toEqual([]);
+  });
+
+  /** A brand row (brands are shared by every Market); `draft` needs the seller who proposed it. */
+  async function brand(status: 'active' | 'draft', name: string): Promise<string> {
+    const id = uuid7();
+    const slug = `pp-${uuid7().slice(-12)}`;
+    await insert('brands', {
+      id,
+      slug,
+      name,
+      name_key: slug.replaceAll('-', ''),
+      status,
+      ...(status === 'draft' ? { proposed_by_seller_id: uuid7() } : {}),
+      created_at: T0.toString(),
+      updated_at: T0.toString(),
+      version: 1,
+    });
+    return slug;
+  }
+  const setBrand = (target: typeof market, productId: string, slug: string) =>
+    owner.query(
+      `UPDATE catalog.products SET brand_id = (SELECT id FROM catalog.brands WHERE slug = $3)
+        WHERE market_id = $1 AND id = $2`,
+      [target.marketId, productId, slug],
+    );
+  const SPEC: Spec = {
+    texts: { 'en-AU': { name: 'Branded' } },
+    variants: [{ state: 'published', labels: { 'en-AU': 'A' } }],
+  };
+
+  it("carries the product's active brand, and none for a draft brand or no brand", async () => {
+    const withBrand = await product(market, SPEC);
+    const withDraft = await product(market, SPEC);
+    const plain = await product(market, SPEC);
+    const active = await brand('active', 'Saffron & Co');
+    const draft = await brand('draft', 'Not Yet');
+    await setBrand(market, withBrand.productId, active);
+    await setBrand(market, withDraft.productId, draft);
+
+    expect((await read(withBrand.productId))?.brand).toEqual({
+      slug: active,
+      name: 'Saffron & Co',
+    });
+    expect((await read(withDraft.productId))?.brand).toBeNull();
+    expect((await read(plain.productId))?.brand).toBeNull();
+  });
+
+  it('lists the live products of an active brand in this Market only (public brand ids)', async () => {
+    const brands = new PrismaBrandReader(db.service);
+    const live = await product(market, SPEC);
+    const unlisted = await product(market, SPEC);
+    const foreign = await product(other, SPEC);
+    const slug = await brand('active', 'Live Brand');
+    const draftSlug = await brand('draft', 'Draft Brand');
+    await setBrand(market, live.productId, slug);
+    await setBrand(market, unlisted.productId, slug);
+    await setBrand(other, foreign.productId, slug);
+    const offer = async (target: typeof market, productId: string, listed: boolean) => {
+      await owner.query(
+        `INSERT INTO catalog.offers (id, market_id, tenant_id, seller_id, product_id, seller_sku,
+           condition_code, description, handling, attestation_recorded_at, attestation_account_id,
+           status, off_sale_type_not_allowed, off_sale_product_retired, off_sale_product_not_listed,
+           off_sale_product_paused, off_sale_tag_suspended, off_sale_description_claim_text, listed,
+           submitted_at, first_published_at, version, created_at)
+         VALUES ($1,$2,$3,$4,$5,'SKU-LIVE','new','{"en":"x"}','SEALED_ORIGINAL',$6,$7,'published',
+           false,$8,false,false,false,false,$9,$6,$6,1,$6)`,
+        [
+          uuid7(),
+          target.marketId,
+          target.tenantId,
+          uuid7(),
+          productId,
+          T0.toString(),
+          uuid7(),
+          !listed,
+          listed,
+        ],
+      );
+    };
+    await offer(market, live.productId, true);
+    await offer(market, unlisted.productId, false);
+    await offer(other, foreign.productId, true);
+    const ids = (target: typeof market, slugOf: string, limit = 10) =>
+      run(target, () => brands.liveProductIds(target, slugOf, limit), true);
+
+    expect(await ids(market, slug)).toEqual([live.productId]);
+    expect(await ids(other, slug)).toEqual([foreign.productId]);
+    expect(await ids(market, draftSlug)).toEqual([]);
+    expect(await ids(market, 'no-such-brand')).toEqual([]);
   });
 
   it('leaves out a variant that is proposed or retired in the registry', async () => {

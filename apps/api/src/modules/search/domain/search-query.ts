@@ -17,12 +17,30 @@ export const STORE_SLUG_MIN_LENGTH = 3;
 export const STORE_SLUG_MAX_LENGTH = 50;
 const STORE_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+/**
+ * The shape of a brand address (catalog's brand slug: lower case words joined by single hyphens,
+ * at most 80 characters). Search keeps its own copy: whether such a brand exists and is active is
+ * catalog's answer, never decided here.
+ */
+export const BRAND_SLUG_MAX_LENGTH = 80;
+
+/**
+ * The orders of a text search or a category browse. `relevance` (default): text rank, or by name for
+ * a browse. `top-rated`: the Bayesian average of the product stars first (package 5; offered only
+ * while the Market's rating boost is on).
+ */
+export const SEARCH_SORTS = ['relevance', 'top-rated'] as const;
+export type SearchSort = (typeof SEARCH_SORTS)[number];
+
 /** What a visitor asked, as the transport hands it over: text, not yet checked. */
 export interface SearchProductsRequest {
   readonly q?: string | undefined;
   readonly category?: string | undefined;
   /** A store address: lists that store's Offers (no `q`). */
   readonly store?: string | undefined;
+  /** A brand address: lists the Offers of that brand's products (no `q`, no `store`). */
+  readonly brand?: string | undefined;
+  readonly sort?: string | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
 }
@@ -37,6 +55,9 @@ export interface SearchQuery {
   readonly categoryId: Id<'Category'> | null;
   /** The store address to list, or null. Never with a text. */
   readonly storeSlug: string | null;
+  /** The brand address to list, or null. Never with a text or a store. */
+  readonly brandSlug: string | null;
+  readonly sort: SearchSort;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -101,7 +122,38 @@ export function parseSearchQuery(
     if (text !== null) return invalid('store', 'with-text');
     storeSlug = slug;
   }
-  if (text === null && categoryId === null && storeSlug === null) return invalid('q', 'required');
+  let brandSlug: string | null = null;
+  if (request.brand !== undefined && request.brand !== '') {
+    const slug = request.brand;
+    if (
+      typeof slug !== 'string' ||
+      slug.length > BRAND_SLUG_MAX_LENGTH ||
+      !STORE_SLUG_PATTERN.test(slug)
+    ) {
+      return invalid('brand', 'format');
+    }
+    // A brand's list is a browse by name, like a store's; it is not mixed with text or a store.
+    if (text !== null) return invalid('brand', 'with-text');
+    if (storeSlug !== null) return invalid('brand', 'with-store');
+    brandSlug = slug;
+  }
+  if (text === null && categoryId === null && storeSlug === null && brandSlug === null)
+    return invalid('q', 'required');
+
+  let sort: SearchSort = 'relevance';
+  if (request.sort !== undefined && request.sort !== '') {
+    if (
+      typeof request.sort !== 'string' ||
+      !(SEARCH_SORTS as readonly string[]).includes(request.sort)
+    ) {
+      return invalid('sort', 'value');
+    }
+    sort = request.sort as SearchSort;
+    // A store's or a brand's list is a browse by name; it has no other order.
+    if (sort === 'top-rated' && (storeSlug !== null || brandSlug !== null)) {
+      return invalid('sort', storeSlug !== null ? 'with-store' : 'with-brand');
+    }
+  }
 
   const page = request.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return invalid('page', 'range');
@@ -109,5 +161,5 @@ export function parseSearchQuery(
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
     return invalid('pageSize', 'range');
   }
-  return ok({ text, categoryId, storeSlug, page, pageSize });
+  return ok({ text, categoryId, storeSlug, brandSlug, sort, page, pageSize });
 }

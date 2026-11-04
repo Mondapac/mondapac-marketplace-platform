@@ -116,7 +116,7 @@ export function SellersTable({
                   )}
                 </td>
                 <td className={`${labelled} lg:whitespace-nowrap`} data-label={t('col.area')}>
-                  {areaName(row.serviceAreaCode) ?? (
+                  {areaName(row.serviceAreaCode, row.serviceAreaName) ?? (
                     <span className="text-fg-muted">{t('not-given')}</span>
                   )}
                 </td>

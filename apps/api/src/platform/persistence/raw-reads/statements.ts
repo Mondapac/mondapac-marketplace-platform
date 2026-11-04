@@ -178,6 +178,38 @@ export interface RawReadStatements {
     };
     readonly row: OfferSearchRow;
   };
+  readonly 'search.offer-search-rated': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly mode: string;
+      readonly priorMeanTimes1000: string;
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: OfferSearchRow;
+  };
+  readonly 'search.offer-search-in-category-rated': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly categoryIds: readonly string[];
+      readonly mode: string;
+      readonly priorMeanTimes1000: string;
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: OfferSearchRow;
+  };
+  readonly 'search.offer-browse-top-rated': {
+    readonly params: {
+      readonly categoryIds: readonly string[];
+      readonly priorMeanTimes1000: string;
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: OfferSearchRow;
+  };
 }
 
 export type RawReadName = keyof RawReadStatements;
@@ -323,6 +355,49 @@ const OFFER_BROWSE_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, 
  ORDER BY d.name ASC, d.offer_id ASC
  LIMIT $3::text::int4 OFFSET $4::text::int4`;
 
+// The rating boost (buyer reviews and ratings package 5, owner decision N9). The arithmetic is not
+// done here: the sync job computes, in TypeScript, `bayes_times_1000` (the Bayesian average of a
+// product's stars times 1000) and `boost_ppm` (the relevance factor in millionths, a CHECK keeps it
+// within the Market's 10 % cap) and stores them in `search.product_ratings`. A product with no row
+// is unrated: factor 1000000 (no change) and, for Top rated, the prior mean (`$4`, times 1000).
+// `ts_rank * boost_ppm` moves the text rank by at most 10 %. Mode `top` (the "Top rated" sort)
+// orders by `bayes_times_1000` first, then by the same boosted rank; any other mode by the
+// boosted rank alone. The rows are the copy reviews' facade fills (empty while reviews or the
+// boost are off).
+const OFFER_SEARCH_RATED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
+       d.category_ids::text[] AS category_ids,
+       ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."offer_documents" d
+  LEFT JOIN "search"."product_ratings" r ON r.market_id = $1 AND r.product_id = d.product_id
+ WHERE d.market_id = $1
+   AND d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text)
+ ORDER BY CASE WHEN $4::text = 'top' THEN COALESCE(r.bayes_times_1000, $5::text::int4) END DESC NULLS LAST,
+          ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) * COALESCE(r.boost_ppm, 1000000) DESC,
+          d.offer_id ASC
+ LIMIT $6::text::int4 OFFSET $7::text::int4`;
+
+const OFFER_SEARCH_IN_CATEGORY_RATED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
+       d.category_ids::text[] AS category_ids,
+       ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."offer_documents" d
+  LEFT JOIN "search"."product_ratings" r ON r.market_id = $1 AND r.product_id = d.product_id
+ WHERE d.market_id = $1
+   AND d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text)
+   AND d.category_ids && $4::uuid[]
+ ORDER BY CASE WHEN $5::text = 'top' THEN COALESCE(r.bayes_times_1000, $6::text::int4) END DESC NULLS LAST,
+          ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) * COALESCE(r.boost_ppm, 1000000) DESC,
+          d.offer_id ASC
+ LIMIT $7::text::int4 OFFSET $8::text::int4`;
+
+const OFFER_BROWSE_TOP_RATED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
+       d.category_ids::text[] AS category_ids, 0::int4 AS rank
+  FROM "search"."offer_documents" d
+  LEFT JOIN "search"."product_ratings" r ON r.market_id = $1 AND r.product_id = d.product_id
+ WHERE d.market_id = $1
+   AND d.category_ids && $2::uuid[]
+ ORDER BY COALESCE(r.bayes_times_1000, $3::text::int4) DESC, d.name ASC, d.offer_id ASC
+ LIMIT $4::text::int4 OFFSET $5::text::int4`;
+
 /**
  * The list. `certification` holds S1 (with the badge columns of slice 10), S2 with the policy
  * rows of slice 13 and S3 of slice 14 (data design 7.3).
@@ -461,6 +536,56 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
     sql: OFFER_BROWSE_SQL,
     params: [
       { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseOfferSearchRow,
+  },
+  {
+    id: 'search.offer-search-rated',
+    owner: 'search',
+    reason:
+      'full-text search ranked by ts_rank times the stored rating factor (at most 10 %), or ordered by the stored Bayesian average for Top rated; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SEARCH_RATED_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'mode', type: 'text' },
+      { name: 'priorMeanTimes1000', type: 'text' },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseOfferSearchRow,
+  },
+  {
+    id: 'search.offer-search-in-category-rated',
+    owner: 'search',
+    reason:
+      'the category full-text search with the same stored rating factor or Top rated order; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SEARCH_IN_CATEGORY_RATED_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
+      { name: 'mode', type: 'text' },
+      { name: 'priorMeanTimes1000', type: 'text' },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseOfferSearchRow,
+  },
+  {
+    id: 'search.offer-browse-top-rated',
+    owner: 'search',
+    reason:
+      'a category browse ordered by the stored Bayesian average of the product stars over the category GIN index (&& overlap); Prisma has no array overlap',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_BROWSE_TOP_RATED_SQL,
+    params: [
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
+      { name: 'priorMeanTimes1000', type: 'text' },
       { name: 'limit', type: 'text' },
       { name: 'offset', type: 'text' },
     ],

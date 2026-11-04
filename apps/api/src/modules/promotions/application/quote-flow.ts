@@ -1,9 +1,23 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { QuoteRequest, QuoteResult } from '../contracts/promotions.facade';
-import { calculateDiscounts } from '../domain/calculation/engine';
-import type { CalculationInput, CalculationPromotion } from '../domain/calculation/types';
-import { layerOf, platformShareBps, type PromotionRecord } from '../domain/promotion';
+import { calculateDiscounts, validatePhase2 } from '../domain/calculation/engine';
+import { wholeDaysBetween } from '../domain/credit';
+import type {
+  Audience,
+  CalculationInput,
+  CalculationPromotion,
+  CustomerFacts,
+} from '../domain/calculation/types';
+import {
+  isCreditType,
+  layerOf,
+  normaliseCode,
+  platformShareBps,
+  type DiscountType,
+  type PromotionRecord,
+} from '../domain/promotion';
 import type { PromotionsFailure } from './failures';
 import { adminAccountId } from './caller';
 import { activeSettings } from './market-switch';
@@ -20,12 +34,43 @@ import { effectiveFirstOrder } from './admin-settings-flow';
 const MAX_LINES = 100;
 const MAX_SHIPPING = 50;
 
+/** What a quote knows about a promotion beyond its stored terms. */
+export interface PromotionExtras {
+  /** The units a limited promotion (flash sale) may still discount; absent for no limit. */
+  readonly unitLimit?: number;
+  /** The entered single-use code this promotion answers to, and whether it was redeemed already. */
+  readonly code?: string;
+  readonly codeUsed?: boolean;
+}
+
+/** A stored promotion that is a discount (the credit types never reach the calculation). */
+export type DiscountRecord = PromotionRecord & { readonly type: DiscountType };
+export const isDiscount = (record: PromotionRecord): record is DiscountRecord =>
+  !isCreditType(record.type);
+
+/**
+ * Who a customer-group or store-follower promotion is for. A row without the terms its type needs
+ * has no audience here and is left out of the quote by the caller.
+ */
+export function audienceOf(record: PromotionRecord): Audience | null {
+  if (record.type === 'STORE_FOLLOWER') return { kind: 'STORE_FOLLOWER' };
+  if (record.type !== 'CUSTOMER_GROUP') return null;
+  if (record.segmentKind === 'RETURNING_CUSTOMER' && record.segmentMinDays !== null) {
+    return { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: record.segmentMinDays };
+  }
+  if (record.segmentKind === 'DELIVERY_ZONE' && record.zones.length > 0) {
+    return { kind: 'DELIVERY_ZONE', zones: record.zones };
+  }
+  return null;
+}
+
 /** The plain input of a promotion for the pure calculation (a stored promotion with its facts). */
 export function calculationPromotionOf(
-  record: PromotionRecord,
+  record: DiscountRecord,
   usage: UsageRecord | undefined,
   optedInSellers: readonly Id<'Seller'>[],
   settings: PromotionsSettings,
+  extra: PromotionExtras = {},
 ): CalculationPromotion {
   const spent = usage?.spentMinor ?? 0n;
   const remaining =
@@ -47,9 +92,37 @@ export function calculationPromotionOf(
     platformShareBps: platformShareBps(record.funding, record.platformSplitBps),
     sellerId: record.ownerSellerId,
     combinable: record.combinable,
-    code: record.code,
+    // A single-use code is the one the customer entered, found among the generated codes.
+    code: extra.code ?? record.code,
+    codeUsed: extra.codeUsed ?? false,
     specialCampaign: record.specialCampaign,
     reward: record.reward,
+    tiers:
+      record.type === 'TIERED_CART'
+        ? record.tiers.map((tier) => ({ threshold: tier.thresholdMinor, reward: tier.reward }))
+        : null,
+    buyXGetY:
+      record.type === 'BUY_X_GET_Y' && record.buyQty !== null && record.getQty !== null
+        ? { buyQty: record.buyQty, getQty: record.getQty, maxRepeats: record.maxRepeatsPerOrder }
+        : null,
+    // The reward of a multi-buy is FIXED: the price of one group; of a bundle, the amount off a set.
+    multiBuy:
+      record.type === 'MULTI_BUY' && record.groupQty !== null && record.reward.kind === 'FIXED'
+        ? {
+            groupQty: record.groupQty,
+            groupPrice: record.reward.amount,
+            maxRepeats: record.maxRepeatsPerOrder,
+          }
+        : null,
+    bundle:
+      record.type === 'BUNDLE' && record.reward.kind === 'FIXED'
+        ? {
+            items: record.bundleItems,
+            amountOff: record.reward.amount,
+            maxRepeats: record.maxRepeatsPerOrder,
+          }
+        : null,
+    unitLimit: extra.unitLimit ?? null,
     // A seller's promotion is held to the Market's seller maximum, and, until an admin has
     // approved or reviewed it, to the approval threshold too (a fixed amount cannot be compared
     // with a price when it is written).
@@ -67,10 +140,14 @@ export function calculationPromotionOf(
     minSpend: record.minSpendMinor,
     productIds: record.productIds.length > 0 ? record.productIds : null,
     sellerIds,
-    zones: record.zones.length > 0 ? record.zones : null,
+    // The zones of a customer-group promotion are its audience, not a shipping target.
+    zones: record.type !== 'CUSTOMER_GROUP' && record.zones.length > 0 ? record.zones : null,
     firstOrderOnly: false,
+    audience: audienceOf(record),
   };
 }
+
+const logger = new Logger('PromotionsQuote');
 
 /** The promotions the calculation sees: live ones that may apply to this cart, plus the settings-based ones. */
 export function promotionsForCart(args: {
@@ -82,6 +159,14 @@ export function promotionsForCart(args: {
   readonly thresholds: ReadonlyMap<string, bigint>;
   readonly zones: readonly string[];
   readonly testMode: boolean;
+  /** Units a flash sale may still sell, per promotion; a flash sale not in the map is left out. */
+  readonly flashRemaining?: ReadonlyMap<Id<'Promotion'>, number>;
+  /** The generated single-use code the customer entered, if it exists. */
+  readonly batch?: {
+    readonly promotionId: Id<'Promotion'>;
+    readonly code: string;
+    readonly used: boolean;
+  } | null;
 }): CalculationPromotion[] {
   const { settings, testMode } = args;
   // Platform money is test-mode only until the Market confirms the tax ruling; checked again here
@@ -89,18 +174,67 @@ export function promotionsForCart(args: {
   const platformMoneyAllowed = settings.rules.gstRulingConfirmed || testMode;
   const out: CalculationPromotion[] = [];
   for (const record of args.records) {
+    // Wallet credit is a payment instrument, not a discount: never in a quote.
+    if (!isDiscount(record)) continue;
     if (record.currency !== settings.currency) continue;
     if (record.testMode && !testMode) continue;
     if (record.funding !== 'SELLER' && !platformMoneyAllowed) continue;
     const usage = args.usage.get(record.id);
     if (record.maxTotalUses !== null && (usage?.usesCount ?? 0) >= record.maxTotalUses) continue;
+    // A row without the terms its type needs cannot come from a use case; it is left out so that
+    // one bad row never fails the quote of every cart.
+    if (record.type === 'TIERED_CART' && record.tiers.length === 0) continue;
+    if (record.type === 'BUNDLE' && record.bundleItems.length < 2) continue;
+    if (record.type === 'BUY_X_GET_Y' && (record.buyQty === null || record.getQty === null))
+      continue;
+    if (record.type === 'MULTI_BUY' && record.groupQty === null) continue;
+    if (
+      (record.type === 'CUSTOMER_GROUP' || record.type === 'STORE_FOLLOWER') &&
+      audienceOf(record) === null
+    ) {
+      continue;
+    }
+    // One code per order: when the entered text is a generated single-use code, a public code
+    // with the same text is not a candidate, so the single-use code is the one that counts.
+    if (
+      record.type !== 'BATCH_CODE' &&
+      record.code !== null &&
+      args.batch != null &&
+      record.code === args.batch.code
+    ) {
+      continue;
+    }
+    const extra: { unitLimit?: number; code?: string; codeUsed?: boolean } = {};
+    if (record.type === 'BATCH_CODE') {
+      // Only the entered code's promotion is a candidate; the others are not looked at.
+      if (args.batch == null || args.batch.promotionId !== record.id) continue;
+      extra.code = args.batch.code;
+      extra.codeUsed = args.batch.used;
+    }
+    if (record.type === 'FLASH_SALE') {
+      const left = args.flashRemaining?.get(record.id);
+      if (left === undefined || left < 1) continue;
+      extra.unitLimit = left;
+    }
     const promotion = calculationPromotionOf(
       record,
       usage,
       args.optIns.get(record.id) ?? [],
       settings,
+      extra,
     );
     if (promotion.sellerIds !== null && promotion.sellerIds.length === 0) continue;
+    // The engine refuses a malformed promotion for the whole cart; one bad row must not fail the
+    // quote of every cart in the Market, so it is checked here and left out (the id is logged).
+    const malformed = validatePhase2(promotion);
+    if (malformed !== null) {
+      logger.warn({
+        msg: 'promotions.quote.skipped-malformed',
+        promotionId: record.id,
+        rule: malformed,
+      });
+      continue;
+    }
     out.push(promotion);
   }
   const firstOrder = args.firstOrder;
@@ -164,6 +298,7 @@ function toInput(
   currency: string,
   promotions: CalculationPromotion[],
   lineDiscountCapBps: number,
+  customer: CustomerFacts | null = null,
 ): CalculationInput {
   return {
     currency,
@@ -183,9 +318,54 @@ function toInput(
     promotions,
     code: request.code,
     isFirstOrder: request.isFirstOrder,
+    customer,
     orderCommission: request.orderCommission.amount,
     rules: { lineDiscountCapBps },
   };
+}
+
+/**
+ * What is known about the customer, for the promotions aimed at a segment or at the followers of a
+ * store: read only when a live promotion needs it, from the modules that own the facts (outside
+ * any unit). A fact that cannot be read, or a quote without a customer, is unknown, and the
+ * promotions that need it do not apply (fail closed).
+ */
+async function customerFactsOf(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  request: QuoteRequest,
+  records: readonly PromotionRecord[],
+  now: Temporal.Instant,
+): Promise<CustomerFacts | null> {
+  const accountId = request.customerAccountId ?? null;
+  if (accountId === null) return null;
+  const needsHistory = records.some(
+    (record) => record.type === 'CUSTOMER_GROUP' && record.segmentKind === 'RETURNING_CUSTOMER',
+  );
+  const needsFollows = records.some((record) => record.type === 'STORE_FOLLOWER');
+  if (!needsHistory && !needsFollows) return null;
+  let daysSinceLastOrder: number | null = null;
+  if (needsHistory) {
+    try {
+      const last = await deps.orderHistory.lastOrderAt(context, accountId);
+      if (last.known && last.value !== null) {
+        daysSinceLastOrder = wholeDaysBetween(last.value, now);
+      }
+    } catch {
+      daysSinceLastOrder = null;
+    }
+  }
+  let followedSellerIds: readonly string[] | null = null;
+  if (needsFollows) {
+    try {
+      const sellers = [...new Set(request.lines.map((line) => line.sellerId))].sort();
+      const followed = await deps.storeFollows.followedAmong(context, accountId, sellers);
+      followedSellerIds = followed.known ? followed.value : null;
+    } catch {
+      followedSellerIds = null;
+    }
+  }
+  return { daysSinceLastOrder, followedSellerIds };
 }
 
 function checkShape(
@@ -215,6 +395,8 @@ export async function quote(
   context: CallContext,
   request: QuoteRequest,
   strict: boolean,
+  /** The admin preview states the customer's facts itself; the facade reads them from their owners. */
+  simulated: CustomerFacts | null = null,
 ): Promise<Result<QuoteResult, PromotionsFailure>> {
   // The shape of the cart comes first, with the switch on or off: every amount in the Market's
   // currency (when the Market has no settings, in one currency), and the sizes in bounds.
@@ -235,6 +417,7 @@ export async function quote(
   const settings = switched.value;
   const now = deps.clock.now();
   const zones = [...new Set(request.shipping.map((charge) => charge.zoneCode))].sort();
+  const code = request.code === null ? null : normaliseCode(request.code);
 
   const loaded = await deps.unitOfWork.run(
     context.market,
@@ -251,11 +434,44 @@ export async function quote(
       );
       const firstOrder = await effectiveFirstOrder(deps, context, settings);
       const thresholds = await deps.thresholds.list(context.market);
-      return ok({ records, usage, optIns, firstOrder: firstOrder.settings, thresholds });
+      // The entered code may be a generated single-use code: found by its hash, never by the text.
+      const found =
+        code === null || !deps.codeCrypto.available
+          ? null
+          : await deps.batchCodes.find(context.market, deps.codeCrypto.hash(code));
+      return ok({
+        records,
+        usage,
+        optIns,
+        firstOrder: firstOrder.settings,
+        thresholds,
+        found,
+      });
     },
     { readOnly: true },
   );
   if (!loaded.ok) return err({ code: 'promotions.unavailable' });
+
+  // Units left of each flash sale: its limit less the units sold, from the counter port. A count
+  // that cannot be read is unknown: the sale is left out of a real order (fail closed) and counts
+  // as sold 0 in a test order only.
+  const flash = loaded.value.records.filter((record) => record.type === 'FLASH_SALE');
+  const sold =
+    flash.length === 0
+      ? null
+      : await deps.flashSales.soldUnits(
+          context,
+          flash.map((record) => record.id),
+        );
+  const flashRemaining = new Map<Id<'Promotion'>, number>();
+  for (const record of flash) {
+    const count = sold?.get(record.id) ?? (request.testMode ? 0 : null);
+    if (count === null || record.flashUnitLimit === null) continue;
+    flashRemaining.set(record.id, Math.max(0, record.flashUnitLimit - count));
+  }
+
+  const customer =
+    simulated ?? (await customerFactsOf(deps, context, request, loaded.value.records, now));
 
   const promotions = promotionsForCart({
     records: loaded.value.records,
@@ -266,9 +482,24 @@ export async function quote(
     thresholds: new Map(loaded.value.thresholds.map((row) => [row.zoneCode, row.thresholdMinor])),
     zones,
     testMode: request.testMode,
+    flashRemaining,
+    batch:
+      code === null || loaded.value.found === null
+        ? null
+        : {
+            promotionId: loaded.value.found.promotionId,
+            code,
+            used: loaded.value.found.usedAt !== null,
+          },
   });
   const result = calculateDiscounts(
-    toInput(request, settings.currency, promotions, settings.lineDiscountCapBps),
+    toInput(
+      { ...request, code },
+      settings.currency,
+      promotions,
+      settings.lineDiscountCapBps,
+      customer,
+    ),
   );
   if (!result.ok) {
     return err({ code: 'validation.failed', fields: [{ path: result.error.path, code: 'value' }] });

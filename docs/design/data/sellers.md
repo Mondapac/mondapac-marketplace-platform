@@ -1599,3 +1599,29 @@ refuses, the seller `reviewer-notice` reservation is released (the Market one st
 - `admin_flags`: one open flag per (market, seller, code), code `identifier-claim-conflict` only. Grants SELECT, INSERT and UPDATE of the two clearing columns.
 - Simplifications: the `review_checks` FK carries `seller_id` (every read names the seller). `down.sql` drops in reverse order; `db:check-reversible` passes.
 
+
+## Editable service area names: migration `20261104020000_sellers_service_area_names` (2026-11-04; ADR-0041)
+
+One table, `sellers.service_area_names(market_id, tenant_id, area_code, locale, name, updated_by,
+updated_at)`, primary key `(market_id, area_code, locale)`. A row overrides the display name that
+`config/service-areas/<MARKET>.json` holds for that language; deleting it restores the configured
+name. `area_code` is not a foreign key: areas are configuration, so the application checks the code
+against the Market's configured areas. CHECKs: tenant shape, area code `^[a-z0-9][a-z0-9-]{0,63}$`,
+language tag, name trimmed and 1 to 120 characters. Grants: `SELECT, INSERT, DELETE` and
+`UPDATE (name, updated_by, updated_at)` for `mondapac_app`.
+
+The CHECK on `name` is a floor: the application also trims tabs and no-break spaces and refuses
+format characters, which `btrim` and `[[:cntrl:]]` do not. A concurrent first write of the same
+language is settled by the repository (update, insert, update again), so the last writer wins.
+
+Access paths: the Market's whole set (`WHERE market_id = $1`, a prefix of the primary key; a Market
+has a handful of areas, so a scan of the prefix is bounded by areas times languages) and a write of
+one `(market, area, language)` row. No other index is needed. Growth: at most areas times
+languages rows per Market. Reversible: `down.sql` drops the table (the edited names are lost).
+
+## 25. Seller health tables: retention and revisit triggers (2026-11-03; Mojtaba review)
+Tables `seller_health_days` (migration `20261101070000_sellers_health_store`) and `seller_health_snapshots`. Rows are written by the hourly job `sellers.seller-health` (last 3 local days per seller, in the seller's zone) and deleted by `sellers.purge-seller-health` (every 6 hours; migration `20261103150000_sellers_health_retention` grants DELETE to the application role and nothing else may delete). Rows older than 400 days go: the longest window a Market may set is 366 days plus the 3-day recount, and the cut is made on the UTC date, so no score reads a deleted day.
+- **Future index (owner request 2026-11-03), not built.** Add `@@index([marketId, day])` on `SellersSellerHealthDay` with a later migration. Today the table has only its primary key `(market_id, seller_id, day)`; `seller_health_snapshots` already has `(market_id, day, score)`. PostgreSQL 17 has no B-tree skip scan (arrives in 18), so the purge's `DELETE ... WHERE market_id = $1 AND day < $2` reads the whole Market's rows four times a day. That is fine at launch size (sellers x 400 days, a few million rows at most; each run deletes about one day of rows in one short transaction, no batching needed).
+  - **Trigger:** the table passes about **1,000,000 rows**, or a purge run takes longer than about 1 second. Then add the index (a plain `CREATE INDEX` blocks writes while it builds; on a table that size build it `CONCURRENTLY` in its own out-of-transaction step, as the orders index note in `20261102080000_ordering_seller_health_indexes` says) and update this section.
+- **Related trigger (orders feed):** the paid-orders read grows with a seller's lifetime orders. Past a p95 of about 50 ms, or a seller with about 20,000 orders, add a `paid_at` column on `ordering.seller_orders` indexed `(market_id, seller_id, paid_at)`.
+- Evidence: Mojtaba's review of PR 657 (2026-11-03): no blockers; the grant is minimal, `down.sql` reverses it exactly, the delete and the nightly upserts touch different rows.

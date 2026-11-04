@@ -6,6 +6,24 @@ export interface DetailVariant {
   readonly label: string | null;
 }
 
+/** One value of a specification row (catalog's, copied): typed so the page formats it. */
+export type DetailSpecificationValue =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'list'; readonly items: readonly string[] }
+  | { readonly kind: 'number'; readonly value: string }
+  | { readonly kind: 'boolean'; readonly value: boolean }
+  | { readonly kind: 'date'; readonly value: string };
+
+/** The specifications of one family group, in catalog's order. */
+export interface DetailSpecificationGroup {
+  readonly groupCode: string;
+  readonly specifications: readonly {
+    readonly code: string;
+    readonly name: string;
+    readonly value: DetailSpecificationValue;
+  }[];
+}
+
 /** The published content of a product, as catalog tells it; seller-entered text: escape it. */
 export interface DetailProduct {
   readonly name: string;
@@ -13,6 +31,10 @@ export interface DetailProduct {
   readonly description: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
   readonly variants: readonly DetailVariant[];
+  /** The product's active brand (page slug and name), or null. */
+  readonly brand: { readonly slug: string; readonly name: string } | null;
+  /** The attribute values the product page lists, grouped; empty when none are shown. */
+  readonly specifications: readonly DetailSpecificationGroup[];
 }
 
 /** One (Offer, Variant) a price or a stock state is asked for. */
