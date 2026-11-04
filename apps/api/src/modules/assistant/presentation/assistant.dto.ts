@@ -1,3 +1,4 @@
+import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import {
   AUDIENCES,
@@ -121,6 +122,12 @@ export class AssistantSettingsBody {
   spend!: AssistantSpendBody;
   @ApiProperty({ type: UnavailableOptionsBody })
   unavailableOptions!: UnavailableOptionsBody;
+  @ApiProperty({
+    type: LastChangedDto,
+    nullable: true,
+    description: 'Who changed the settings last and when; null while the defaults are in force.',
+  })
+  lastChanged!: LastChangedDto | null;
 }
 
 export class SetAssistantSettingsRequest {
