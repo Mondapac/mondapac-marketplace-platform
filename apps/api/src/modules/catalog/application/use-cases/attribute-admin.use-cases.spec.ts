@@ -346,6 +346,7 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
         code: 'default',
         status: 'active',
         revisionNo: 1,
+        names: {},
         groupCount: 2,
         attributeCount: 3,
         productCount: 9,
@@ -355,6 +356,7 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
         code: 'rice',
         status: 'active',
         revisionNo: 1,
+        names: {},
         groupCount: 1,
         attributeCount: 1,
         productCount: 0,
@@ -373,6 +375,7 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
       {
         code: 'brand',
         required: true,
+        level: 'required',
         isVariantOption: false,
         attributeId: ID(1),
         names: names('Brand', 'Brand-x'),
@@ -383,6 +386,7 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
       {
         code: 'gone',
         required: false,
+        level: 'optional',
         isVariantOption: false,
         attributeId: null,
         names: null,

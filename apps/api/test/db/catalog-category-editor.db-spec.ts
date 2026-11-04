@@ -323,7 +323,7 @@ describe.each(TEST_MARKETS)('catalog category editor store in market %s (databas
     ]);
   });
 
-  it('refuses a nested keywords array', async () => {
+  it('refuses a nested keywords array, by the ndims check on its own', async () => {
     const id = await add(market, null, 'Nested keywords');
     const found = await owner.query<{ revision_id: string; tenant_id: string }>(
       `SELECT r.id AS revision_id, r.tenant_id FROM catalog.platform_category_revisions r
@@ -331,16 +331,23 @@ describe.each(TEST_MARKETS)('catalog category editor store in market %s (databas
       [market.marketId, id],
     );
     const { revision_id: revisionId, tenant_id: tenantId } = found.rows[0]!;
-    await expect(
-      owner.query(
-        `INSERT INTO catalog.platform_category_revision_texts
+    const insert = `INSERT INTO catalog.platform_category_revision_texts
            (market_id, tenant_id, revision_id, locale, name, keywords)
-         VALUES ($1, $2, $3, 'de', 'Nested', '{{a},{b}}')`,
-        [market.marketId, tenantId, revisionId],
-      ),
-      // The C2 keywords check fails first (it cannot search a nested array); the ndims check
-      // is the explicit rule behind it.
-    ).rejects.toThrow(/keywords_ndims_check|multidimensional/);
+         VALUES ($1, $2, $3, 'de', 'Nested', '{{a},{b}}')`;
+    // With both checks in place the C2 check fails first (it cannot search a nested array).
+    await expect(owner.query(insert, [market.marketId, tenantId, revisionId])).rejects.toThrow();
+    // Inside a transaction that is rolled back, drop the C2 check: the ndims check alone refuses.
+    await owner.query('BEGIN');
+    try {
+      await owner.query(
+        'ALTER TABLE catalog.platform_category_revision_texts DROP CONSTRAINT platform_category_revision_texts_keywords_check',
+      );
+      await expect(owner.query(insert, [market.marketId, tenantId, revisionId])).rejects.toThrow(
+        /keywords_ndims_check/,
+      );
+    } finally {
+      await owner.query('ROLLBACK');
+    }
   });
 
   it('never shows another Market a category and keeps slugs per Market', async () => {

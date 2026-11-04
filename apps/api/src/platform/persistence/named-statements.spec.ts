@@ -436,7 +436,7 @@ describe.each(['AU', 'ZZ'] as const)('catalog.lock-category-slug in market %s', 
 
   it('refuses a malformed slug and a missing row', async () => {
     const { runner } = runnerAnswering([]);
-    for (const slug of ["x' OR '1", 'Upper', '-a', 'a--b', '', 'a'.repeat(121)]) {
+    for (const slug of ["x' OR '1", 'Upper', '-a', 'a--b', '', 'a', 'a'.repeat(81)]) {
       await expect(
         runNamedStatement(runner, market, 'catalog.lock-category-slug', { slug }),
       ).rejects.toBeInstanceOf(NamedStatementRefusedError);

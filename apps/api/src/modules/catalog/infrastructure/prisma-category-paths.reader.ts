@@ -78,7 +78,10 @@ export class PrismaCategoryPathsReader implements CategoryPathsReader {
             walk.next = node.parentId;
             continue;
           }
-          // A hidden category keeps its products on sale (plan decision 6): it stays in their path.
+          // `hidden` is transparent here (plan decision 6): a hidden category keeps its products on
+          // sale, so it stays in their path and the ClaimBasisPolicy that applied before the Hide
+          // still applies. The shop's live tree treats it the other way (`liveCategoryTree`: the
+          // category and everything below it are left out). Any other status fails closed.
           if (node.status !== 'active' && node.status !== 'hidden') {
             throw new CategoryPathsUnavailableError('status');
           }

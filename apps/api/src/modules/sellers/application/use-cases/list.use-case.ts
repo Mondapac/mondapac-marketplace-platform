@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import {
   UseCase,
   type AccessDeclaration,
@@ -37,6 +37,7 @@ import type {
   SellerListRepository,
 } from '../ports/seller-list.repository';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { SellerHealthStore, SellerHealthSummary } from '../ports/seller-health.store';
 import type { AreaNameSource, EditedNamesByArea } from '../ports/service-area-names.repository';
 
 /** The request is the raw JSON body: the use case checks its shape itself (`parseListRequest`). */
@@ -74,7 +75,25 @@ export interface SellerListRow {
   readonly timezone: string | null;
   readonly createdAt: string;
   readonly lastChangedAt: string;
+  /**
+   * The seller's latest stored health (seller health package 5b), or null when no night has
+   * measured the seller or the health store could not answer: the list never fails for it.
+   */
+  readonly health: SellerListHealth | null;
 }
+
+/** The health column: the band and score only; the metrics are on the seller's own card. */
+export interface SellerListHealth {
+  readonly day: string;
+  readonly kind: 'scored' | 'new' | 'no-data';
+  readonly band: 'healthy' | 'at-risk' | 'unhealthy' | null;
+  readonly score: number | null;
+  /** The metric that set the score, shown next to the number; null unless `scored`. */
+  readonly lowestMetric: string | null;
+}
+
+/** How many days back the health column looks for a seller's newest snapshot. */
+export const SELLER_LIST_HEALTH_DAYS = 3;
 
 /** The counts of the `identity` state tabs (R-6); null when the actor may not see states. */
 export interface StateTabCounts {
@@ -94,6 +113,11 @@ export interface SellerListPage {
   readonly areas: readonly { readonly code: string; readonly name: string }[];
   /** With the first page of a tab; null on a later page of a file tab, and when hidden. */
   readonly stateCounts: StateTabCounts | null;
+  /**
+   * True when the health of this page could not be read: every row's `health` is then null
+   * because of the failure, not because the seller is unmeasured.
+   */
+  readonly healthUnavailable: boolean;
 }
 
 export type SellerListFailure =
@@ -111,6 +135,8 @@ export interface SellerListDependencies {
   /** Asked once per call whether the actor may see the status column (fails closed to hidden). */
   readonly authorisation: AuthorisationCheck;
   readonly onboardingAreas: OnboardingAreas;
+  readonly healthStore: SellerHealthStore;
+  readonly clock: Clock;
   /** Edited area names (ADR-0041); the configured name shows when none is edited. */
   readonly areaNames: AreaNameSource;
 }
@@ -211,7 +237,8 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       if (!decorated.ok) return decorated;
       return ok({
         tab: request.tab,
-        items: decorated.value,
+        items: decorated.value.rows,
+        healthUnavailable: decorated.value.healthUnavailable,
         next: idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
         counts: read.value.counts,
         areas: this.areasOf(context, edited),
@@ -247,7 +274,8 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     const last = page[page.length - 1];
     return ok({
       tab: request.tab,
-      items: decorated.value,
+      items: decorated.value.rows,
+      healthUnavailable: decorated.value.healthUnavailable,
       next: more && last !== undefined ? cursorText(cursorOf(request, last)) : null,
       counts,
       areas: this.areasOf(context, edited),
@@ -326,7 +354,12 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     page: readonly ListedSeller[],
     showStatus: boolean,
     edited: EditedNamesByArea,
-  ): Promise<Result<readonly SellerListRow[], SellerListFailure>> {
+  ): Promise<
+    Result<
+      { readonly rows: readonly SellerListRow[]; readonly healthUnavailable: boolean },
+      SellerListFailure
+    >
+  > {
     let accounts: ReadonlyMap<Id<'Seller'>, SellerAccountEntry> = new Map();
     if (showStatus && page.length > 0) {
       try {
@@ -339,8 +372,13 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       }
     }
     const openCodes = new Set(this.deps.onboardingAreas.openCodes(context.market));
-    return ok(
-      page.map((row) =>
+    const health = await this.healthOf(
+      context,
+      page.map((row) => row.sellerId),
+    );
+    return ok({
+      healthUnavailable: health.unavailable,
+      rows: page.map((row) =>
         rowOf(
           row,
           showStatus ? (accounts.get(row.sellerId) ?? null) : 'hidden',
@@ -349,9 +387,43 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
             ? null
             : (edited.get(row.serviceAreaCode)?.['en'] ??
                 this.deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode)),
+          health.byId.get(row.sellerId) ?? null,
         ),
       ),
-    );
+    });
+  }
+
+  /**
+   * The health of a page in one read-only unit and one query. A failure is logged and answers an
+   * empty map with `unavailable`: the column shows nothing and the page says why, the list still
+   * answers (the column is not a gate).
+   */
+  private async healthOf(
+    context: CallContext,
+    ids: readonly Id<'Seller'>[],
+  ): Promise<{
+    readonly byId: ReadonlyMap<Id<'Seller'>, SellerHealthSummary>;
+    readonly unavailable: boolean;
+  }> {
+    if (ids.length === 0) return { byId: new Map(), unavailable: false };
+    const { market } = context;
+    const today = this.deps.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
+    // The newest local date on Earth is at most one day ahead of UTC.
+    const last = today.add({ days: 1 });
+    const first = today.subtract({ days: SELLER_LIST_HEALTH_DAYS - 1 });
+    try {
+      const read = await this.deps.unitOfWork.run<
+        ReadonlyMap<Id<'Seller'>, SellerHealthSummary>,
+        never
+      >(market, async () => ok(await this.deps.healthStore.latest(market, ids, first, last)), {
+        readOnly: true,
+      });
+      if (!read.ok) throw new Error('the health read unit failed');
+      return { byId: read.value, unavailable: false };
+    } catch (error) {
+      this.fail(context, 'health-failed', error);
+      return { byId: new Map(), unavailable: true };
+    }
   }
 
   /** Every area of the Market for the filter, with the edited English name when there is one. */
@@ -415,6 +487,7 @@ function rowOf(
   account: SellerAccountEntry | null | 'hidden',
   openCodes: ReadonlySet<string>,
   areaName: string | null,
+  health: SellerHealthSummary | null,
 ): SellerListRow {
   const outside = row.hasAddress
     ? !(row.serviceAreaCode !== null && openCodes.has(row.serviceAreaCode))
@@ -443,6 +516,16 @@ function rowOf(
     timezone: row.operatingTimezone,
     createdAt: row.createdAt.toString(),
     lastChangedAt: row.lastChangedAt.toString(),
+    health:
+      health === null
+        ? null
+        : {
+            day: health.day.toString(),
+            kind: health.kind,
+            band: health.band,
+            score: health.score,
+            lowestMetric: health.lowestMetric,
+          },
   };
 }
 

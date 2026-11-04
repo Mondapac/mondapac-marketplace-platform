@@ -42,7 +42,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `product_code_counters` | The per-Market sequence for `productCode` (D 4.1) | Counter, one row per Market | 1 |
 | `category_trees` | One row per Market: the tree version (serialises structural edits; cache key) | Counter | 2 |
 | `platform_categories`, `platform_category_revisions`, `platform_category_revision_names` | `PlatformCategory` root, revisions of name and parent | V1 | 2 |
-| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions` | `AttributeDefinition`, `AttributeFamily` | V1 | 3 |
+| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions`, `category_attribute_links`, `category_attribute_link_revisions` | `AttributeDefinition`, `AttributeFamily`, `CategoryAttributeLink` | V1 | 3 |
 | `product_working_copies` | The working copy (D 2.3 M-2) | Mutable, one per product | 4 |
 | `product_revisions`, `product_revision_texts`, `product_revision_categories`, `product_revision_variants` | Revision content | V1 revision, insert-only + trigger | 4 |
 | `product_revision_decisions` | One terminal outcome per revision, with the named checks (D 8.3a) | V4, insert-only + trigger | 4; checks 10 |
@@ -290,10 +290,43 @@ revision).
 
 `attribute_families` (root): `id`; `code` unique per Market; `status`; `published_revision_id`;
 `created_by_kind`; `version`; `created_at`. `attribute_family_revisions` (insert-only): `id`;
-`family_id`; `revision_no`; `groups jsonb` (array of `{ groupCode, attributes: [{ code, required,
-isVariantOption }] }`), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
+`family_id`; `revision_no`; `names jsonb` (the feature set's name per locale, `{}` for the seeded
+family; attributes A4, `jsonb_typeof = 'object'`); `groups jsonb` (array of `{ groupCode, names?,
+attributes: [{ code, required, isVariantOption, level? }] }`; `level` is `required`, `recommended`
+or `optional` and `required` is true exactly for the first, both written by the editor of attributes
+A4; the Core group `core` comes first and holds the brand and the country of origin), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
 `(market_id, family_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 family_id, id)`; unique per Market), `created_at`.
+
+`category_attribute_links` (root, attributes A4, categories C8): `(market_id, category_id)` primary
+key (one link per platform category, FK `RESTRICT`); `published_revision_id` (same-category FK to
+the revision); `version`; `created_at`. `category_attribute_link_revisions` (insert-only, the
+`reject_mutation` triggers): `id`; `category_id`; `revision_no` unique per category; `family_id`
+(nullable, FK to `attribute_families`; null means the category takes its parent's feature set);
+`filters jsonb` (array of attribute codes in the order buyers see them, at most 20, CHECK
+`jsonb_typeof = 'array'`); `author_account_id`; `created_at` (the revision's own time). The use case
+resolves inheritance (the nearest category up the tree that holds a feature set; the filters of
+every category from the root down, a code once) and checks that each filter is an active,
+filterable definition; the table stores only what an admin set. Two rules stay in the
+application, not the database: a link may only be written for an `active` category and an `active`
+feature set (`categoryStatus` and the feature-set read), and a filter code has no foreign key. A
+definition archived or switched off as a filter after the save therefore leaves a code in the saved
+list; the read (`category-attribute-links.get`) drops such codes from what buyers get and keeps them
+in the category's own list until an admin saves again. The `names` and `groups` documents of a family
+revision and the `filters` of a link are bounded by the use case (counts and text lengths), the
+database only checks their JSON type and, for `filters`, the count. Grants: `SELECT, INSERT` on both,
+`UPDATE (published_revision_id, version)` on the root.
+
+**Products missing required details (attributes plan A4, decision ت۷).** A feature set can gain a
+required attribute after products were approved under it. Those products stay on sale; the report
+`catalog.products-missing-details-list` (admin, `catalog.attribute.view`) finds them without a new
+table or SQL beyond one keyset read of published products by id (`PrismaProductDetailsGapReader`):
+the use case judges each product's published `attribute_values` against the current published
+schema of its `family_code` with the same `validateAttributeValues` a submit uses, and keeps the
+`attribute.required` issues. One call reads at most 2000 products and returns `nextAfterId`; a
+feature set that cannot be read (unknown, archived, naming a missing attribute) is named in the
+answer and its products are not judged. The next submit of such a product is refused by that same
+rule (`attribute.required`).
 
 **Two-person backstop triggers (Hassan M2; slice 21; SQL in 5.1; measured).** All `SECURITY
 INVOKER`, fixed `search_path`, schema-qualified, through one helper
@@ -1770,5 +1803,5 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | `docs/design/domain/catalog.md` | Done: Q-K15 confirmed in D 2.1 (Mohammad); Q-K8 ruled (Ali) | Before slice 1 |
 | `catalog.product_images`, `product_image_renditions`, `product_revision_images` (migration `20261014120000_catalog_product_images`; slice 13, PR #288) | Simplified media path: one row per uploaded photo plus three JPEG renditions (thumb, medium, large) whose bytes live in the `ObjectStore` port (`platform/storage`, local disk stand-in, key `<productId>/<imageId>/<size>`). Images are insert-only into revisions and only `clean` ones may join (trigger). Limits: 8 per product, 4 MiB upload (raw 5800kb body parser on that one route), 24 MP, sides 200 to 12000 px. Takedown (`20261017100000_catalog_image_takedown`): `clean` to `taken-down` only (trigger `product_images_state_guard`), column-level `UPDATE` on the state and the three takedown columns, key `catalog.product.approve` (not `.delete`, undeclared), event `catalog.image-taken-down.v1`; the clean-image trigger locks the photo `FOR SHARE`. Orphan sweep `catalog.sweep-orphan-images` (hourly, 48 h grace, skips photos a draft names). Not built: S3 adapter, scanner, sweep of files without a row (the `ObjectStore` port cannot list), `photoTakenDownAt` flag | Done in PR #288; handoff `catalog-media.md` |
 | Categories C2 (migration `20261103100000_catalog_category_management_model`; plan v7) | Data model of the category editor: `position` (unique per sibling, deferrable), `hidden` status, `show_in_menu`, `image_id`, SEO columns; revision kinds and `reason`; `platform_category_revision_texts` (name, short description, keywords per locale; names copied by backfill and trigger); `platform_category_slug_history` with the 12-month trigger; `product_revision_categories.is_primary` with its partial unique index. Backfills run in the file (nothing deployed, six seed rows): 8.2 forbids that only for large tables. Market config `catalog.maxCategoryDepth` (AU 4, ZZ 3, schema range 3 to 4). Use cases and UI follow in C3 on; test `catalog-category-model.db-spec.ts` | Done in the C2 PR; Mojtaba, Hassan (grants) |
-| Categories C3 (migration `20261103180000_catalog_category_edit_support`; plan v7) | The tree editor's writes: add, edit details, reorder, hide and show, change URL name, discard. Adds `platform_categories.hidden_by_id` (cascade marker, see 3.4) and grants `UPDATE (slug, hidden_by_id)`. Every write is a new insert-only revision with the full texts (texts row before the name row); `apply` takes the row lock with the version-guarded update first, so a second admin with the same version is `conflict.stale` and never meets the `(category_id, revision_no)` unique. Positions swap through a parking value (no deferred constraint). Review amendment: CHECK `array_ndims(keywords) <= 1` on `platform_category_revision_texts` (added NOT VALID, then validated), and add / change URL name take the named advisory lock `catalog.lock-category-slug` (class 1704) on each slug involved, sorted. Test `catalog-category-editor.db-spec.ts` | Done in the C3a PR; Mojtaba, Hassan (claim-text path) |
+| Categories C3 (migration `20261104030000_catalog_category_edit_support`; plan v7) | The tree editor's writes: add, edit details, reorder, hide and show, change URL name, discard. Adds `platform_categories.hidden_by_id` (cascade marker, see 3.4) and grants `UPDATE (slug, hidden_by_id)`. Every write is a new insert-only revision with the full texts (texts row before the name row); `apply` takes the row lock with the version-guarded update first, so a second admin with the same version is `conflict.stale` and never meets the `(category_id, revision_no)` unique. Positions swap through a parking value (no deferred constraint). Review amendment: CHECK `array_ndims(keywords) <= 1` on `platform_category_revision_texts` (added NOT VALID, then validated), and add / change URL name take the named advisory lock `catalog.lock-category-slug` (class 1704) on each slug involved, sorted. Test `catalog-category-editor.db-spec.ts` | Done in the C3a PR; Mojtaba, Hassan (claim-text path) |
 | Public photo reads (storefront images package; no migration) | Two read-only readers over the slice 13 tables, `PrismaPublishedImagesReader`: the public photos of a published product's `published_revision_id` (revision rows by `position`, joined to the photo's state in one statement, `clean` only, at most 8 per product) and one rendition key of such a photo. Every statement is scoped by `market_id` and the revision's own `product_id`. Uses the existing grants and indexes (`product_revision_images` primary key and `(market_id, revision_id, position)`); no new index needed at this size | Done; `test/db/catalog-published-images.db-spec.ts` |
