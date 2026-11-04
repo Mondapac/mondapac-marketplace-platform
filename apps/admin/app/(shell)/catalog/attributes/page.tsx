@@ -4,6 +4,7 @@ import { AttributesView } from '../../../../src/attributes/attributes-view.tsx';
 import {
   BRANDS_READ_PERMISSION,
   EDIT_PERMISSION,
+  RESTRUCTURE_PERMISSION,
   TABS,
   VIEW_PERMISSION,
   type Tab,
@@ -54,6 +55,7 @@ export default async function AttributesPage({
       {permissionKeys.includes(VIEW_PERMISSION) ? (
         <AttributesView
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
+          canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
           csrfToken={csrfToken}
           canSeeBrands={permissionKeys.includes(BRANDS_READ_PERMISSION)}
           initialTab={tab}

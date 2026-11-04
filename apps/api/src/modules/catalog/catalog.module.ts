@@ -277,6 +277,13 @@ import { AttributeAdminList } from './application/use-cases/attribute-admin-list
 import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
 import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-list.use-case';
 import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
+import { ATTRIBUTE_IMPACT_READER } from './application/ports/attribute-impact.reader';
+import { AttributeImpactGet } from './application/use-cases/attribute-impact-get.use-case';
+import { AttributeValuesMerge } from './application/use-cases/attribute-values-merge.use-case';
+import { AttributeArchive } from './application/use-cases/attribute-archive.use-case';
+import { AttributeArchiveRequestCreate } from './application/use-cases/attribute-archive-request.use-case';
+import { AttributeArchiveConfirm } from './application/use-cases/attribute-archive-confirm.use-case';
+import { AttributeRestructureController } from './presentation/attribute-restructure.controller';
 import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-gap.reader';
 import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
@@ -378,6 +385,7 @@ const PORT = {
   adminCategoryReader: ADMIN_CATEGORY_READER,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
+  impact: ATTRIBUTE_IMPACT_READER,
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   featureSetStore: FEATURE_SET_STORE,
@@ -466,6 +474,7 @@ const productTypeProvider: FactoryProvider<string> = {
     BrandAdminController,
     AttributeAdminController,
     AttributeRelaxationController,
+    AttributeRestructureController,
     AttributeSuggestionController,
     OwnAttributeSuggestionController,
     CategoryAdminController,
@@ -637,6 +646,46 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeImpactGet, {
+      unitOfWork: true,
+      attributeStore: true,
+      impact: true,
+    }),
+    useCaseProvider(AttributeValuesMerge, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeArchive, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      impact: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeArchiveRequestCreate, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      impact: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeArchiveConfirm, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      impact: true,
       audit: true,
       clock: true,
       ids: true,

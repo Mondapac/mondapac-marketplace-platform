@@ -112,7 +112,11 @@ export type AttributeDefinitionRefusal =
       readonly locale: string;
       readonly option: string;
     }
-  | { readonly code: 'attribute-definition.active-option-required' };
+  | { readonly code: 'attribute-definition.active-option-required' }
+  /** A value merge or conversion names a type that has no values (attributes A8). */
+  | { readonly code: 'attribute-definition.not-select' }
+  /** The two values of a merge are not two different, usable values (attributes A8). */
+  | { readonly code: 'attribute-definition.merge-invalid' };
 
 /** `true` when the text is one an administrator may show a customer (CA5, PlainText). */
 function validText(text: string): boolean {
@@ -392,13 +396,24 @@ export class AttributeDefinition {
       if (!kept.has(code))
         return err({ code: 'attribute-definition.option-removed', option: code });
     }
-    const options = input.options.map((option) => ({
-      code: option.code,
-      labels: option.labels,
-      active: option.active,
-      position: option.position,
-      mergedInto: before.get(option.code)?.mergedInto ?? null,
-    }));
+    // A merged value stays inactive (attributes A8): an edit cannot bring it back.
+    const options = input.options.map((option) => {
+      const mergedInto = before.get(option.code)?.mergedInto ?? null;
+      return {
+        code: option.code,
+        labels: option.labels,
+        active: mergedInto === null ? option.active : false,
+        position: option.position,
+        mergedInto,
+      };
+    });
+    // Nor can an edit switch off a value that others were merged into.
+    const stillActive = new Set(options.filter((option) => option.active).map((o) => o.code));
+    if (
+      options.some((option) => option.mergedInto !== null && !stillActive.has(option.mergedInto))
+    ) {
+      return err({ code: 'attribute-definition.merge-invalid' });
+    }
     const problem = checkContent({
       dataType: current.dataType,
       names: input.names,
@@ -459,6 +474,83 @@ export class AttributeDefinition {
       display: current.display,
       now: input.now,
     });
+  }
+
+  /**
+   * The next revision with the value `source` merged into `target` (attributes A8; plan ت۶): the
+   * source stays in the list, inactive and marked "merged into" the target, so the storefront, the
+   * filters and the index read the target for it. No product revision changes; the next save of a
+   * product stores the target's code. A value that was merged into the source now points at the
+   * target, so a chain is never longer than one step. Only a published select-like definition;
+   * the source must be a value that is not already merged, the target an active one that is not
+   * merged, and the two differ. Nothing else changes (names, flags, help and the other values).
+   */
+  mergeValues(input: {
+    readonly revisionId: Id<'AttributeDefinitionRevision'>;
+    readonly source: string;
+    readonly target: string;
+    readonly now: Temporal.Instant;
+  }): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const current = this.#state;
+    if (current.status === 'archived') return err({ code: 'attribute-definition.archived' });
+    if (current.status !== 'active') return err({ code: 'attribute-definition.not-published' });
+    if (current.dataType !== 'select' && current.dataType !== 'multi-select') {
+      return err({ code: 'attribute-definition.not-select' });
+    }
+    const source = current.options.find((option) => option.code === input.source);
+    const target = current.options.find((option) => option.code === input.target);
+    if (
+      source === undefined ||
+      target === undefined ||
+      source.code === target.code ||
+      (source.mergedInto ?? null) !== null ||
+      !target.active ||
+      (target.mergedInto ?? null) !== null
+    ) {
+      return err({ code: 'attribute-definition.merge-invalid' });
+    }
+    const options = current.options.map((option) => {
+      if (option.code === source.code) {
+        return { ...option, active: false, mergedInto: target.code };
+      }
+      return option.mergedInto === source.code ? { ...option, mergedInto: target.code } : option;
+    });
+    return ok(
+      new AttributeDefinition({
+        ...current,
+        revisionId: input.revisionId,
+        revisionNo: current.revisionNo + 1,
+        options,
+        version: current.version + 1,
+        revisedAt: input.now,
+      }),
+    );
+  }
+
+  /**
+   * Whether the definition may be archived at all (attributes A8): only a published one. A draft
+   * is discarded instead, and an archived one stays archived.
+   */
+  archivable(): AttributeDefinitionRefusal | null {
+    const current = this.#state;
+    if (current.status === 'archived') return { code: 'attribute-definition.archived' };
+    if (current.status !== 'active') return { code: 'attribute-definition.not-published' };
+    return null;
+  }
+
+  /**
+   * A published definition is archived (attributes A8): products that already carry its values
+   * keep them, and no feature set offers it any more. Nothing is deleted (CA3, Q-K6). Whether it
+   * is in an active feature set, has live variants or is `material` (a second administrator) is
+   * checked by the use case, which reads those facts.
+   */
+  archive(): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const problem = this.archivable();
+    if (problem !== null) return err(problem);
+    const current = this.#state;
+    return ok(
+      new AttributeDefinition({ ...current, status: 'archived', version: current.version + 1 }),
+    );
   }
 
   /**
