@@ -104,9 +104,20 @@ export const SELLERS_BLOG_ACCESS_EDIT = definePermission('sellers', {
 });
 
 /**
+ * Edit the display names of service areas (ADR-0041). Platform scope; unprotected: a name is
+ * display text, moves no money, certification or access, and the area itself (code, postcodes,
+ * flags) is configuration this key cannot change. No default role lists it yet: the Platform
+ * Administrator holds every key. Reading the page needs `sellers.seller.view`.
+ */
+export const SELLERS_SERVICE_AREA_EDIT = definePermission('sellers', {
+  key: 'sellers.service-area.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read the business activities a seller carries and who last changed them and why (ADR-0040
- * decision 4). Platform scope, not protected. No default role lists it: the Platform Administrator
- * system role holds every key, so no role-seed bump is needed.
+ * decision 4). Platform scope, not protected. The Viewer role lists it (seed version 27).
  */
 export const SELLERS_BUSINESS_ACTIVITY_VIEW = definePermission('sellers', {
   key: 'sellers.business-activity.view',
@@ -134,6 +145,7 @@ export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_VIEW,
+  SELLERS_SERVICE_AREA_EDIT,
   SELLERS_STORE_PROFILE_EDIT,
   SELLERS_STORE_PROFILE_VIEW,
   SELLERS_STORE_SETTINGS_EDIT,

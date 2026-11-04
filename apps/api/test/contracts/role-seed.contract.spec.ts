@@ -190,7 +190,29 @@ const PINNED: readonly (readonly [string, string])[] = [
     '4ccab1de0bc348bdb96f477f3a706352cf1a70dc8af1aa9213752db3ae338a95',
   ],
   ['platform:viewer@24', '9928e2298c660546d2ecb26b76f5540b6fd2838c29d8b2cf2ef26ccfe40382cb'],
-  ['platform:viewer@25', '6ecf0dba9569939b117050d223ea77c6425a9ea8b93b9255ac0609bbe12b9f2d'],
+  [
+    'platform:catalogue-moderator@12',
+    '59e7644519eccbb45718cb853a659863f507b6758fae8741aecb1000e19531eb',
+  ],
+  [
+    'platform:operations-support@4',
+    'c0b3c5aeaa479f07d257e3f215f5e4b017729f0f161d42388466ca0f6f5340be',
+  ],
+  ['platform:viewer@25', '31fb763816b32d1d3df87568ee47079e9ac56f37428cacd157e4bede9110a2f2'],
+  [
+    'platform:catalogue-moderator@13',
+    'c1f2030e051733a2440571736fa143aba173bdad87127743c92fe8a178fdd250',
+  ],
+  [
+    'platform:operations-support@5',
+    '7e30489b4fa8ad1b7c3c3a299df0a371c8e9574e3fd42207a99cffdaa10b38c4',
+  ],
+  ['platform:viewer@26', '4ff3dbc052b2f9251399b95549e13f5c8743cbc17b737a1bcee7d97133a2957d'],
+  [
+    'platform:catalogue-moderator@14',
+    'a61a4fa59d108e4384201e4a75badcaa37fcd15c6f963d1fdf9a9b5e2c9b67e5',
+  ],
+  ['platform:viewer@27', '3bed6890b9b84cc2e9a2df2c6ac5dd67a7179323e0a64039a1439185b3d55b91'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

@@ -32,6 +32,7 @@ import { EvaluateClaimsSystem } from './application/use-cases/evaluate-claims-sy
 import { EvaluateClaims } from './application/use-cases/evaluate-claims.use-case';
 import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
+import { ClaimTermLocales } from './application/use-cases/claim-term-locales.use-case';
 import { CERTIFICATION_FACADE } from './contracts/certification.facade';
 import { isUsableZone } from './domain/validity';
 import { manufacturerBasisEnabledIn } from './infrastructure/market-config-expiry-policy';
@@ -87,6 +88,7 @@ const readerUseCases = [
   CertificationTypesSystem,
   MatchClaimTerms,
   MatchClaimTermsSystem,
+  ClaimTermLocales,
 ].map((type): FactoryProvider => ({
   provide: type,
   inject: [USE_CASE_GATE, PUBLISHED_TYPES_READER],
@@ -236,6 +238,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         EvaluateClaimsSystem,
         MatchClaimTerms,
         MatchClaimTermsSystem,
+        ClaimTermLocales,
         CertificationTypes,
         CertificationTypesSystem,
         SellerCertificateOverview,
@@ -246,6 +249,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         evaluateClaimsSystem: EvaluateClaimsSystem,
         matchClaimTerms: MatchClaimTerms,
         matchClaimTermsSystem: MatchClaimTermsSystem,
+        claimTermLocales: ClaimTermLocales,
         certificationTypes: CertificationTypes,
         certificationTypesSystem: CertificationTypesSystem,
         sellerCertificateOverview: SellerCertificateOverview,
@@ -256,6 +260,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           evaluateClaimsSystem,
           matchClaimTerms,
           matchClaimTermsSystem,
+          claimTermLocales,
           certificationTypes,
           certificationTypesSystem,
           sellerCertificateOverview,

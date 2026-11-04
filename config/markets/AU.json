@@ -440,6 +440,8 @@
       "variantRemoved": true
     },
     "maxVariantsPerProduct": 100,
+    "maxCategoryDepth": 4,
+    "maxVariantAttributes": 2,
     "approvalRequired": true,
     "productTypes": ["simple", "configurable"],
     "defaultFamily": "default",

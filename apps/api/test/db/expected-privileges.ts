@@ -327,11 +327,27 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
     },
+    // Editable service area names (ADR-0041): a name is set, changed (name, updater, time) and
+    // deleted to restore the configured name.
+    'sellers.service_area_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'updated_by'],
+    },
     // docs/design/data/sellers.md section 8 (slice 3): a tax registration period is inserted,
     // closed (valid_to is the only column that changes) and, while it has not started, deleted.
     'sellers.tax_registration_periods': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['valid_to'],
+    },
+    // Seller health (package 3): counters and snapshots are set by the rollup and replaced on a
+    // recalculation; deleted only by the retention purge (400 days).
+    'sellers.seller_health_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'sellers.seller_health_snapshots': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
     },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
@@ -597,6 +613,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Reviews (buyer reviews and ratings, package 1): the moderation log and the signals are
     // insert-only (triggers refuse more for every role); the rest change only the columns named
     // and are never deleted (a trigger refuses DELETE and TRUNCATE for every role).
+    'reviews.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'reviews.moderation_actions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.review_signals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.product_reviews': {
@@ -1240,10 +1257,25 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.category_trees': { table: ['INSERT', 'SELECT'], columnUpdate: ['version'] },
     'catalog.platform_categories': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['merged_into_id', 'parent_id', 'published_revision_id', 'status', 'version'],
+      columnUpdate: [
+        'image_id',
+        'merged_into_id',
+        'parent_id',
+        'position',
+        'published_revision_id',
+        'seo_description',
+        'seo_noindex',
+        'seo_title',
+        'show_in_menu',
+        'status',
+        'version',
+      ],
     },
     'catalog.platform_category_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_revision_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C2: per-locale content and the slug history are insert-only.
+    'catalog.platform_category_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.platform_category_slug_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.
@@ -1252,6 +1284,27 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'status', 'version'],
     },
     'catalog.attribute_definition_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Attributes A2: the status moves once, in these columns only (data design 3.21).
+    'catalog.attribute_relaxation_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
+    },
+    // Attributes A5: a decision and a notice move are the only updates, in these columns (data
+    // design 3.30); a suggestion is never deleted.
+    'catalog.attribute_value_suggestions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'option_code',
+        'reject_reason',
+        'status',
+        'version',
+      ],
+    },
     'catalog.attribute_definition_revision_options': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [],
@@ -1261,6 +1314,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'status', 'version'],
     },
     'catalog.attribute_family_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Attributes A4 (categories C8): a category's links; the pointer and version move, revisions never.
+    'catalog.category_attribute_links': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'version'],
+    },
+    'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
     // mutable and deleted from; the five revision tables are insert-only (CA3).
     'catalog.product_working_copies': {

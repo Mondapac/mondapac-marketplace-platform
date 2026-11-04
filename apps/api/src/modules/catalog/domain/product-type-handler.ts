@@ -26,6 +26,7 @@ export interface VariantIssue {
     | 'variants.option-missing'
     | 'variants.option-unknown'
     | 'variants.option-attribute-missing'
+    | 'variants.too-many-option-attributes'
     | 'variants.duplicate-combination';
 }
 
@@ -51,6 +52,8 @@ export interface ProductTypeHandler {
     schema: AttributeSchema,
     variants: readonly VariantDraft[],
     maxVariants: number,
+    /** The most option attributes a product may vary on (`maxVariantAttributes`, attributes A2). */
+    maxOptionAttributes: number,
   ): VariantValidationResult;
 }
 

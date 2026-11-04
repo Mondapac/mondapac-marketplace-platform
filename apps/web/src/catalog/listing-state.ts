@@ -60,6 +60,12 @@ const GROUP_KEYS: Readonly<Record<FilterGroup, string>> = {
   sellers: 'seller',
   prices: 'price',
 };
+/** Every query parameter that makes a listing a filtered or re-ordered copy of its plain page. */
+export const LISTING_FILTER_PARAMS: readonly string[] = [
+  ...Object.values(FLAG_KEYS),
+  ...Object.values(GROUP_KEYS),
+  'sort',
+];
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/u;
 const MAX_VALUES = 20;
 const MAX_PAGE = 100;

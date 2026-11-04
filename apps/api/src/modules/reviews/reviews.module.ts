@@ -2,6 +2,8 @@ import { Temporal } from '@mondapac/shared-kernel';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import {
   registerPermissions,
   registerStepUpActions,
@@ -31,6 +33,7 @@ import { ModerateReview } from './application/use-cases/moderate-review.use-case
 import { RemoveReview } from './application/use-cases/remove-review.use-case';
 import { ViewModerationReview } from './application/use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from './application/use-cases/delete-product-review.use-case';
+import { CountSellerReviews } from './application/use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from './application/use-cases/detach-author.use-case';
 import { EditProductReview } from './application/use-cases/edit-product-review.use-case';
 import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case';
@@ -55,6 +58,7 @@ import {
   REVIEWS_PERMISSIONS,
   REVIEWS_STEP_UP_ACTIONS,
 } from './contracts';
+import { REVIEWS_EVENTS } from './domain/events';
 import { reviewsProviders } from './infrastructure/reviews-providers';
 import { rebuildRatingSummariesJob } from './presentation/jobs/rebuild-rating-summaries.job';
 import {
@@ -79,6 +83,7 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
   ['affinity', SELLER_AFFINITY],
   ['overlap', SELLER_OVERLAP_SOURCE],
   ['audit', AUDIT_WRITER],
+  ['outbox', OUTBOX_WRITER],
   ['stepUp', STEP_UP_CONSUMER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -124,7 +129,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellerReviewsController,
   ],
   providers: [
+    PersistenceModule.outboxWriterFor('reviews'),
     PersistenceModule.auditWriterFor('reviews'),
+    registerEvents('reviews', REVIEWS_EVENTS),
     registerAuditActions('reviews', REVIEWS_AUDIT_ACTIONS),
     registerPermissions('reviews', REVIEWS_PERMISSIONS),
     registerStepUpActions('reviews', REVIEWS_STEP_UP_ACTIONS),
@@ -147,6 +154,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RemoveReview,
       RebuildRatingSummaries,
       DetachAuthor,
+      CountSellerReviews,
       CastHelpfulVote,
       RemoveHelpfulVote,
       ListProductRatingTotals,
@@ -157,13 +165,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: REVIEWS_FACADE,
-      inject: [ViewProductSummary, ViewSellerSummary, DetachAuthor, ListProductRatingTotals],
+      inject: [
+        ViewProductSummary,
+        ViewSellerSummary,
+        DetachAuthor,
+        ListProductRatingTotals,
+        CountSellerReviews,
+      ],
       useFactory: (
         product: ViewProductSummary,
         seller: ViewSellerSummary,
         detach: DetachAuthor,
         totals: ListProductRatingTotals,
-      ) => new ReviewsFacadeImplementation(product, seller, detach, totals),
+        count: CountSellerReviews,
+      ) => new ReviewsFacadeImplementation(product, seller, detach, totals, count),
     },
     registerJobsFrom(
       'reviews',

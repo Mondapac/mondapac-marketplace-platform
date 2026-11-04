@@ -58,6 +58,7 @@ import { AdminNoticesController } from './presentation/admin-notices.controller'
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
 import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
+import { reviewNoticeSubscriptions } from './presentation/subscribers/review-notice.subscriptions';
 import { payoutNoticeSubscriptions } from './presentation/subscribers/payout-notice.subscriptions';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
 import { orderMailSubscriptions } from './presentation/subscribers/order-mail.subscriptions';
@@ -270,6 +271,14 @@ function inAppNoticeProvider<U>(
       [RecordSellerNotice, RecordAdminReviewNotice],
       (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
         payoutNoticeSubscriptions(sellerNotice, adminNotice),
+    ),
+    // Buyer reviews, package 4b: a visible, hidden or restored review, a delivery problem, a held
+    // or reported review. Ids and the star count only.
+    registerSubscriptionsFrom(
+      'notifications',
+      [RecordSellerNotice, RecordAdminReviewNotice],
+      (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
+        reviewNoticeSubscriptions(sellerNotice, adminNotice),
     ),
     registerJobsFrom(
       'notifications',

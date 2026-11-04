@@ -27,6 +27,7 @@ import {
   FakeStepUp,
 } from '../support/reviews-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import { reviewsOutbox } from './reviews-outbox-support';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { ownerTestDatabaseUrl } from './test-database';
 
@@ -99,6 +100,7 @@ describe.each(TEST_MARKETS)('seller reviews in market %s (database)', (code) => 
       names: new FakeNames(),
       affinity: new FakeAffinity(),
       audit: { record: () => Promise.resolve() },
+      outbox: reviewsOutbox(db, ids),
       overlap: new FakeOverlap(),
       stepUp: new FakeStepUp(),
       ids,
@@ -167,6 +169,13 @@ describe.each(TEST_MARKETS)('seller reviews in market %s (database)', (code) => 
       await rows('SELECT status FROM reviews.product_reviews WHERE id = $1', [review])
     )[0]!.status;
     expect(status).toBe('published');
+    // One report, one event in the outbox, in the unit of the report; the repeat adds none.
+    const events = await rows(
+      "SELECT type, payload FROM reviews.outbox WHERE payload ->> 'reviewId' = $1",
+      [review],
+    );
+    expect(events.map((event) => event.type)).toEqual(['reviews.review-reported.v1']);
+    expect(Object.keys(events[0]!.payload as object).sort()).toEqual(['reportId', 'reviewId']);
   });
 
   it("answers not-found for another shop's review without writing", async () => {

@@ -11,7 +11,9 @@ import type {
  * The Configurable type (catalog design 3.2): at least one option attribute of the family with
  * type `select`; each variant has exactly one value per option attribute, from that attribute's
  * options, and the combination is unique within the product. At least one variant (CC2) and at
- * most `maxVariants` (Market configuration `maxVariantsPerProduct`).
+ * most `maxVariants` (Market configuration `maxVariantsPerProduct`). The family may mark at most
+ * `maxOptionAttributes` option attributes (Market configuration `maxVariantAttributes`, attributes
+ * A2); more is refused before any variant is read.
  */
 export const configurableProductType: ProductTypeHandler = Object.freeze({
   typeCode: 'configurable',
@@ -21,6 +23,7 @@ export const configurableProductType: ProductTypeHandler = Object.freeze({
     schema: AttributeSchema,
     variants: readonly VariantDraft[],
     maxVariants: number,
+    maxOptionAttributes: number,
   ): VariantValidationResult {
     const issues: VariantIssue[] = [];
     const optionFields = schema.fields.filter(
@@ -30,6 +33,12 @@ export const configurableProductType: ProductTypeHandler = Object.freeze({
       return {
         ok: false,
         issues: [{ path: 'variants', code: 'variants.option-attribute-missing' }],
+      };
+    }
+    if (optionFields.length > maxOptionAttributes) {
+      return {
+        ok: false,
+        issues: [{ path: 'variants', code: 'variants.too-many-option-attributes' }],
       };
     }
     if (variants.length === 0) issues.push({ path: 'variants', code: 'variants.none' });

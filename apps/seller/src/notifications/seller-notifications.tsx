@@ -137,7 +137,7 @@ function hrefOf(notice: ListedNotice): string | null {
     case REVIEW_RESTORED:
       return '/reviews';
     case DELIVERY_PROBLEM:
-      return sellerOrderId ? `/orders/${sellerOrderId}` : '/orders';
+      return '/reviews';
     default:
       return null;
   }

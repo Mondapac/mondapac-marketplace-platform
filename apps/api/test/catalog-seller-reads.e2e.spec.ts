@@ -12,6 +12,7 @@ import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own
 import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
 import { WORKING_COPY_REPOSITORY } from '../src/modules/catalog/application/ports/working-copy.repository';
 import { Offer } from '../src/modules/catalog/domain/offer';
+import { ATTRIBUTE_VALUE_SUGGESTION_STORE } from '../src/modules/catalog/application/ports/attribute-value-suggestion.store';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { Product, type ProductState } from '../src/modules/catalog/domain/product';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
@@ -69,6 +70,8 @@ describe('seller read routes over HTTP (integration)', () => {
           .useValue(clock)
           .overrideProvider(PRODUCT_REPOSITORY)
           .useValue({ findById: () => Promise.resolve(product) })
+          .overrideProvider(ATTRIBUTE_VALUE_SUGGESTION_STORE)
+          .useValue({ listOfProduct: () => Promise.resolve([]) })
           .overrideProvider(WORKING_COPY_REPOSITORY)
           .useValue({ find: () => Promise.resolve(null) })
           .overrideProvider(PRODUCT_REVISION_REPOSITORY)

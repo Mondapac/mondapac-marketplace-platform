@@ -53,6 +53,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The customer's own display name and storefront look (buyer account backend).
     'identity/customer/profile/display-name',
     'identity/customer/profile/appearance',
+    'identity/customer/profile/language',
   ]),
   DELETE: new Set([
     // The customer cancels their own pending deletion request.
