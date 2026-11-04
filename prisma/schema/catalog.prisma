@@ -530,8 +530,10 @@ model CatalogAttributeFamilyRevision {
   tenantId            String                   @map("tenant_id")
   familyId            String                   @map("family_id") @db.Uuid
   revisionNo          Int                      @map("revision_no")
-  /// Array of { groupCode, attributes: [{ code, required, isVariantOption }] }.
+  /// Array of { groupCode, names?, attributes: [{ code, required, isVariantOption, level? }] }.
   groups              Json                     @db.JsonB
+  /// The feature set's name per locale ({} for the seeded family and for revisions before A4).
+  names               Json                     @default("{}") @db.JsonB
   /// seed | admin.
   authorKind          String                   @map("author_kind")
   authorAccountId     String?                  @map("author_account_id") @db.Uuid

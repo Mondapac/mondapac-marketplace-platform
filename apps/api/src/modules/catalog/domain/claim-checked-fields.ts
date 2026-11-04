@@ -3,6 +3,7 @@ import type {
   AttributeDisplaySettings,
   AttributeOption,
 } from './attribute-definition';
+import type { AttributeFamilyState, FamilyAttribute, FamilyGroup } from './attribute-family';
 import type { OfferState } from './offer';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
@@ -20,6 +21,8 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'attribute-definition.help-text',
   'attribute-definition.name',
   'attribute-definition.option-label',
+  'feature-set.group-name',
+  'feature-set.name',
   'offer.description',
   'platform-category.name',
   'platform-category.slug',
@@ -173,6 +176,35 @@ export const OFFER_FIELDS: Record<keyof OfferState, FieldDisposition> = {
   createdAt: exempt('timestamp'),
 };
 
+export const FAMILY_ATTRIBUTE_FIELDS: Record<keyof FamilyAttribute, FieldDisposition> = {
+  code: exempt('internal-code'),
+  required: exempt('internal-code'),
+  isVariantOption: exempt('internal-code'),
+  level: exempt('internal-code'),
+};
+
+export const FAMILY_GROUP_FIELDS: Record<keyof FamilyGroup, FieldDisposition> = {
+  groupCode: exempt('internal-code'),
+  // The group heading on the seller form (attributes A4), in every locale.
+  names: checked('feature-set.group-name'),
+  attributes: nested('FAMILY_ATTRIBUTE_FIELDS'),
+};
+
+export const FEATURE_SET_FIELDS: Record<keyof AttributeFamilyState, FieldDisposition> = {
+  id: exempt('identifier'),
+  marketId: exempt('identifier'),
+  code: exempt('internal-code'),
+  status: exempt('internal-code'),
+  createdByKind: exempt('internal-code'),
+  revisionId: exempt('identifier'),
+  revisionNo: exempt('number'),
+  // The feature set's name, shown to admins and in the seller form header (attributes A4).
+  names: checked('feature-set.name'),
+  groups: nested('FAMILY_GROUP_FIELDS'),
+  version: exempt('number'),
+  createdAt: exempt('timestamp'),
+};
+
 /** Every table above by name, so the schema test can walk them and follow `nested`. */
 export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, FieldDisposition>>>> = {
   REVISION_TEXT_FIELDS,
@@ -181,6 +213,9 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   ATTRIBUTE_OPTION_FIELDS,
   ATTRIBUTE_DISPLAY_FIELDS,
   ATTRIBUTE_DEFINITION_FIELDS,
+  FAMILY_ATTRIBUTE_FIELDS,
+  FAMILY_GROUP_FIELDS,
+  FEATURE_SET_FIELDS,
   CATEGORY_NAME_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
@@ -265,7 +300,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
   AttributeDisplaySettings: { table: 'ATTRIBUTE_DISPLAY_FIELDS' },
-  AttributeFamilyState: { noCustomerText: 'internal codes only; no name or label' },
+  AttributeFamilyState: { table: 'FEATURE_SET_FIELDS' },
   AttributeOption: { table: 'ATTRIBUTE_OPTION_FIELDS' },
   CatalogBatchTooLarge: { noCustomerText: 'refusal code' },
   CatalogFacade: { noCustomerText: 'interface of methods' },
@@ -277,8 +312,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
   DraftText: { noCustomerText: 'a text found in a draft, already named by its checked field id' },
-  FamilyAttribute: { noCustomerText: 'internal code and flags' },
-  FamilyGroup: { noCustomerText: 'internal code; the panel names a group by its own label key' },
+  FamilyAttribute: { table: 'FAMILY_ATTRIBUTE_FIELDS' },
+  FamilyGroup: { table: 'FAMILY_GROUP_FIELDS' },
+  FeatureSetContent: {
+    noCustomerText: 'the names and groups of a feature set; see AttributeFamilyState',
+  },
   FreezeInput: { noCustomerText: 'working input of the freeze; its texts are checked as content' },
   FreezeIssue: { noCustomerText: 'issue code with a fixed path' },
   OutcomeInput: { noCustomerText: 'ids and a decision code' },

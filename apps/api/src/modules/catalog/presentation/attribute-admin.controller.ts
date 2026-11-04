@@ -44,6 +44,8 @@ import { AttributeAdminGet } from '../application/use-cases/attribute-admin-get.
 import { AttributeAdminList } from '../application/use-cases/attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from '../application/use-cases/feature-set-admin-get.use-case';
 import { FeatureSetAdminList } from '../application/use-cases/feature-set-admin-list.use-case';
+import { FeatureSetCreate } from '../application/use-cases/feature-set-create.use-case';
+import { FeatureSetEdit } from '../application/use-cases/feature-set-edit.use-case';
 import { AttributeDefinitionCreate } from '../application/use-cases/attribute-definition-create.use-case';
 import { AttributeDefinitionEdit } from '../application/use-cases/attribute-definition-edit.use-case';
 import { AttributeDefinitionDiscard } from '../application/use-cases/attribute-definition-discard.use-case';
@@ -57,6 +59,9 @@ import {
   AttributeEditRequest,
   AttributeVersionRequest,
   AttributeWriteWrapBody,
+  FeatureSetCreateRequest,
+  FeatureSetEditRequest,
+  FeatureSetWriteWrapBody,
 } from './attribute-admin.dto';
 import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
@@ -75,6 +80,24 @@ export const ATTRIBUTE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.f
   'attribute-definition.locale-invalid': 400,
   'attribute.not-found': 404,
   'feature-set.not-found': 404,
+  'feature-set.code-taken': 409,
+  'feature-set.stale': 409,
+  'feature-set.material-removal-needs-request': 409,
+  'feature-set.attribute-unknown': 422,
+  'feature-set.attribute-not-active': 422,
+  'feature-set.too-many-variant-attributes': 422,
+  'attribute-family.code-invalid': 400,
+  'attribute-family.group-invalid': 400,
+  'attribute-family.locale-invalid': 400,
+  'attribute-family.archived': 409,
+  'attribute-family.group-repeated': 422,
+  'attribute-family.attribute-invalid': 422,
+  'attribute-family.attribute-repeated': 422,
+  'attribute-family.default-name-required': 422,
+  'attribute-family.text-invalid': 422,
+  'attribute-family.too-many': 422,
+  'attribute-family.level-invalid': 422,
+  'attribute-family.core-invalid': 422,
   'attribute.code-taken': 409,
   'attribute.stale': 409,
   'attribute-definition.archived': 409,
@@ -121,6 +144,11 @@ const WRITE_422 =
   'attribute.claim-word or attribute.locale-uncheckable (details.fields), or a content rule ' +
   '(attribute-definition.*, details.fields where it names a locale or a value)';
 
+const FEATURE_SET_422 =
+  'attribute.claim-word or attribute.locale-uncheckable (details.fields), feature-set.attribute-* ' +
+  '(details.fields), feature-set.too-many-variant-attributes or a content rule ' +
+  '(attribute-family.*, details.fields where it names a field)';
+
 /** The content of an attribute a write may send (the use case reads and checks each one). */
 const CONTENT_KEYS = [
   'names',
@@ -163,6 +191,8 @@ export class AttributeAdminController {
     private readonly editAttribute: AttributeDefinitionEdit,
     private readonly publishAttribute: AttributeDefinitionPublish,
     private readonly discardAttribute: AttributeDefinitionDiscard,
+    private readonly createFeatureSet: FeatureSetCreate,
+    private readonly editFeatureSet: FeatureSetEdit,
   ) {}
 
   @Post('attributes')
@@ -477,6 +507,97 @@ export class AttributeAdminController {
       ? (JSON.parse(JSON.stringify(result.value)) as FeatureSetDetailBody)
       : refusal(result.error, response, context);
     return this.settle('catalog.feature-set-admin-get', context, outcome);
+  }
+
+  @Post('feature-sets')
+  @HttpCode(201)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Create a feature set',
+    description:
+      `${EDITS} Names per language, the groups in order (the Core group first) and in each ` +
+      'group the attributes in order with a level (required, recommended or optional). Every ' +
+      'attribute must be active. Every name passes the claim-word check.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: FeatureSetCreateRequest })
+  @ApiCreatedResponse({ type: FeatureSetWriteWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({ type: ApiErrorBody, description: 'feature-set.code-taken' })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: FEATURE_SET_422 })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim-text.check-unavailable',
+  })
+  async createSet(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<FeatureSetWriteWrapBody> {
+    const input = closedBody(request, body, ['names', 'groups'], ['code']);
+    let outcome: FeatureSetWriteWrapBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.createFeatureSet.execute(context, input);
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as FeatureSetWriteWrapBody)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.feature-set-create', context, outcome);
+  }
+
+  @Put('feature-sets/:featureSetId')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Save a feature set',
+    description:
+      `${EDITS} The whole content and the version the admin saw (a later one is ` +
+      'feature-set.stale: reload). Saved as the next revision. Removing a material attribute ' +
+      'needs the two-person request. Products already live keep selling; their next submit ' +
+      'asks for what is now required.',
+  })
+  @ApiParam({ name: 'featureSetId', description: 'The feature set. A UUID v7.' })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: FeatureSetEditRequest })
+  @ApiOkResponse({ type: FeatureSetWriteWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'feature-set.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'feature-set.stale, attribute-family.archived or ' +
+      'feature-set.material-removal-needs-request (details.fields)',
+  })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: FEATURE_SET_422 })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim-text.check-unavailable',
+  })
+  async editSet(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('featureSetId') featureSetId: string,
+    @Body() body: unknown,
+  ): Promise<FeatureSetWriteWrapBody> {
+    const input = closedBody(request, body, ['version', 'names', 'groups'], []);
+    let outcome: FeatureSetWriteWrapBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.editFeatureSet.execute(context, { ...input, featureSetId });
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as FeatureSetWriteWrapBody)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.feature-set-edit', context, outcome);
   }
 
   private settle<T extends object>(

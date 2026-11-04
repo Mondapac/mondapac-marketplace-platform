@@ -265,6 +265,9 @@ import { ExpireRelaxationRequests } from './application/use-cases/expire-relaxat
 import { expireRelaxationRequestsJob } from './presentation/jobs/expire-relaxation-requests.job';
 import { ATTRIBUTE_RELAXATION_STORE } from './application/ports/attribute-relaxation.store';
 import { ATTRIBUTE_DEFINITION_STORE } from './application/ports/attribute-definition.store';
+import { FEATURE_SET_STORE } from './application/ports/feature-set.store';
+import { FeatureSetCreate } from './application/use-cases/feature-set-create.use-case';
+import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-case';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
@@ -371,6 +374,7 @@ const PORT = {
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  featureSetStore: FEATURE_SET_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
@@ -708,6 +712,29 @@ const productTypeProvider: FactoryProvider<string> = {
       attributeStore: true,
       policy: true,
       audit: true,
+    }),
+    useCaseProvider(FeatureSetCreate, {
+      unitOfWork: true,
+      featureSetStore: true,
+      attributeAdminReader: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(FeatureSetEdit, {
+      unitOfWork: true,
+      featureSetStore: true,
+      attributeAdminReader: true,
+      relaxations: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
