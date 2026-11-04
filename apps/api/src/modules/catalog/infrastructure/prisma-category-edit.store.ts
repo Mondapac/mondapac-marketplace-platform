@@ -78,6 +78,12 @@ export class PrismaCategoryEditStore implements CategoryEditStore {
     }));
   }
 
+  async lockSlugs(market: MarketContext, slugs: readonly string[]): Promise<void> {
+    for (const slug of [...new Set(slugs)].sort()) {
+      await this.prisma.namedQuery(market, 'catalog.lock-category-slug', { slug });
+    }
+  }
+
   async slugUnavailable(
     market: MarketContext,
     slug: string,

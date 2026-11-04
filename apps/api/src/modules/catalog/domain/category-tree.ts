@@ -30,6 +30,8 @@ export interface LiveCategory {
   readonly position: number;
 }
 
+const HIDDEN = Symbol('under a hidden category');
+
 /** The stored tree cannot be turned into a live tree; nothing is answered from it. */
 export class CategoryTreeUnavailableError extends Error {
   constructor(reason: string) {
@@ -42,7 +44,7 @@ export class CategoryTreeUnavailableError extends Error {
  * The live tree of a Market (pure). Only `active` categories appear. A category's parent is its
  * nearest live ancestor, with the rules of `platformCategoryPaths` (catalog design 4.6): a merged
  * ancestor is followed to the one it was merged into, an archived ancestor is skipped and its own
- * parent kept. The name is the one in `locale` (the Market's default locale), else the first
+ * parent kept; a hidden ancestor hides the whole subtree below it. The name is the one in `locale` (the Market's default locale), else the first
  * locale in code order (INTL-13); a live category with no name at all is left out with its
  * subtree.
  * The answer is depth first, siblings by name (`Intl.Collator` of `locale`) then id, so the
@@ -55,13 +57,16 @@ export function liveCategoryTree(
 ): readonly LiveCategory[] {
   if (nodes.length > MAX_TREE_NODES) throw new CategoryTreeUnavailableError('too many');
   const byId = new Map(nodes.map((node) => [node.id, node] as const));
-  const liveParent = (node: StoredCategoryNode): Id<'Category'> | null => {
+  const liveParent = (node: StoredCategoryNode): Id<'Category'> | null | typeof HIDDEN => {
     let next = node.parentId;
     for (let steps = 0; next !== null; steps += 1) {
       if (steps > MAX_TREE_DEPTH * 2) throw new CategoryTreeUnavailableError('loop');
       const ancestor = byId.get(next);
       if (ancestor === undefined) throw new CategoryTreeUnavailableError('missing ancestor');
       if (ancestor.status === 'active') return ancestor.id;
+      // Hidden is opaque in the shop's tree (the claim path treats it as transparent instead):
+      // nothing below a hidden category is shown, even a node that is still active by itself.
+      if (ancestor.status === 'hidden') return HIDDEN;
       if (ancestor.status === 'merged') {
         if (ancestor.mergedIntoId === null) throw new CategoryTreeUnavailableError('merge');
         next = ancestor.mergedIntoId;
@@ -83,6 +88,7 @@ export function liveCategoryTree(
     const name = nameOf(node);
     if (name === null) continue;
     const parent = liveParent(node);
+    if (parent === HIDDEN) continue;
     const list = children.get(parent) ?? [];
     list.push({ node, name });
     children.set(parent, list);

@@ -142,6 +142,7 @@ export class CategoryCreate extends UseCase<
       if (levelOf(byId, parentId) + 1 > maxDepth) {
         return err({ code: 'category.depth-exceeded', max: maxDepth } as const);
       }
+      await store.lockSlugs(market, [slug]);
       if (await store.slugUnavailable(market, slug, null, clock.now())) {
         return err({ code: 'category.slug-taken' } as const);
       }

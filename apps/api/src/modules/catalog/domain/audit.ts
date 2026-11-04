@@ -256,12 +256,23 @@ export const PlatformCategoryDetailsChangedAudit = defineAuditAction({
   action: 'catalog.platform-category.details-changed',
   targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
   actors: ['authenticated'],
-  before: { revisionNo: auditField.integer(), localeCount: auditField.integer() },
+  // Flags and counts only (review amendment): whether a search-result title or description is
+  // set, never its text.
+  before: {
+    revisionNo: auditField.integer(),
+    localeCount: auditField.integer(),
+    showInMenu: auditField.boolean(),
+    noindex: auditField.boolean(),
+    seoTitleSet: auditField.boolean(),
+    seoDescriptionSet: auditField.boolean(),
+  },
   after: {
     revisionNo: auditField.integer(),
     localeCount: auditField.integer(),
     showInMenu: auditField.boolean(),
     noindex: auditField.boolean(),
+    seoTitleSet: auditField.boolean(),
+    seoDescriptionSet: auditField.boolean(),
   },
 });
 
