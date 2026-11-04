@@ -68,6 +68,44 @@
     }
   },
   {
+    "action": "catalog.attribute-family.created",
+    "targetType": "catalog.attribute-family",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "attributeCount": "integer",
+      "groupCount": "integer",
+      "optionalCount": "integer",
+      "recommendedCount": "integer",
+      "requiredCount": "integer",
+      "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.attribute-family.revised",
+    "targetType": "catalog.attribute-family",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "attributeCount": "integer",
+      "groupCount": "integer",
+      "optionalCount": "integer",
+      "recommendedCount": "integer",
+      "requiredCount": "integer",
+      "revisionNo": "integer"
+    },
+    "after": {
+      "attributeCount": "integer",
+      "groupCount": "integer",
+      "optionalCount": "integer",
+      "recommendedCount": "integer",
+      "requiredCount": "integer",
+      "revisionNo": "integer",
+      "requiredRelaxed": "integer"
+    }
+  },
+  {
     "action": "catalog.attribute-relaxation.cancelled",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -126,6 +164,22 @@
     "after": {
       "definitionId": "id",
       "productId": "id"
+    }
+  },
+  {
+    "action": "catalog.category-attributes.changed",
+    "targetType": "catalog.category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
+    },
+    "after": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
     }
   },
   {
@@ -2573,6 +2627,17 @@
       "startAs": "enumOf(inactive|active)",
       "state": "enumOf(queued)",
       "toImport": "integer"
+    }
+  },
+  {
+    "action": "sellers.service-area.change",
+    "targetType": "sellers.service-area",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "namesRestored": "integer",
+      "namesSet": "integer"
     }
   }
 ]

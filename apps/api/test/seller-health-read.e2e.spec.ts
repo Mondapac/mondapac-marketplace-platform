@@ -8,6 +8,7 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SELLER_FILE_REPOSITORY } from '../src/modules/sellers/application/ports/seller-file.repository';
+import { SELLER_LIST_REPOSITORY } from '../src/modules/sellers/application/ports/seller-list.repository';
 import {
   SELLER_HEALTH_STORE,
   type SellerHealthSnapshot,
@@ -23,11 +24,11 @@ import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
-// The admin seller list over HTTP (sellers design 6.2, 7.8; slice 6): `POST /sellers/admin/list`
-// with the real guards, controller, gate and use case on both Market fixtures. Identity's
-// database ports are in-memory fakes; the list's own store and the access reader are recording
-// stubs (their SQL is test/db/seller-list.db-spec.ts). Admin sessions are seeded into the fake
-// store as in the admin team list spec.
+// The admin seller health routes over HTTP (seller health packages 5a and 5c):
+// `GET /sellers/admin/:sellerId/health` and `GET /sellers/admin/health-queue` with the real
+// guards, controllers, gates and use cases on both Market fixtures. Identity's database ports
+// are in-memory fakes; the seller file, list and health stores are stubs (their SQL is covered
+// by the db-specs). Admin sessions are seeded into the fake store as in the admin team list spec.
 
 const START = Temporal.Instant.from('2026-10-09T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
@@ -85,6 +86,33 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
           .useValue({
             snapshots: (m: MarketContext, one: Id<'Seller'>) =>
               Promise.resolve(known.has(`${m.marketId}|${one}`) ? snapshots : []),
+            // The queue of a Market is the sellers `known` in it.
+            unhealthy: (m: MarketContext) =>
+              Promise.resolve({
+                sellers: [...known]
+                  .filter((key) => key.startsWith(`${m.marketId}|`))
+                  .map((key) => ({
+                    sellerId: key.split('|')[1] as Id<'Seller'>,
+                    day: Temporal.PlainDate.from('2026-11-10'),
+                    kind: 'scored' as const,
+                    band: 'unhealthy' as const,
+                    score: 12,
+                    lowestMetric: 'late-ready' as const,
+                  })),
+                truncated: false,
+              }),
+          })
+          .overrideProvider(SELLER_LIST_REPOSITORY)
+          .useValue({
+            all: (m: MarketContext, query: { onlyIds: readonly Id<'Seller'>[] | null }) =>
+              Promise.resolve(
+                (query.onlyIds ?? []).map((one) => ({
+                  sellerId: one,
+                  storeName: `Shop of ${m.marketId}`,
+                  heldSlug: null,
+                  draftSlug: 'shop',
+                })),
+              ),
           }),
     }));
   }
@@ -175,6 +203,13 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
     return headers === null ? call : call.set('cookie', headers.cookie);
   };
 
+  const getQueue = (code: string, headers: { cookie: string } | null) => {
+    const call = http()
+      .get('/sellers/admin/health-queue')
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
+    return headers === null ? call : call.set('cookie', headers.cookie);
+  };
+
   beforeEach(async () => {
     fakes.reset();
     clock = new FixedClock(Temporal.Instant.from('2026-11-10T12:00:00Z'));
@@ -239,6 +274,36 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
       expect(noKey.body).toMatchObject({ code: 'access.denied' });
       expect(noKey.headers['cache-control']).toBe('no-store');
       expect([401, 403]).toContain(customer.status);
+      expect(anonymous.status).toBe(401);
+    });
+
+    it('lists the queue for an administrator, no-store, and refuses the others', async () => {
+      await boot();
+      await seeded(code);
+      const other = TEST_MARKETS.find((m) => m !== code)!;
+      known.add(`${other}|${UNKNOWN}`);
+
+      const res = await getQueue(code, sessionHeaders(code, ROOT, 6));
+      const noKey = await getQueue(code, sessionHeaders(code, NO_KEY, 7));
+      const anonymous = await getQueue(code, null);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toEqual({
+        truncated: false,
+        items: [
+          {
+            sellerId: SELLER,
+            storeName: `Shop of ${code}`,
+            slug: 'shop',
+            day: '2026-11-10',
+            score: 12,
+            lowestMetric: 'late-ready',
+          },
+        ],
+      });
+      expect(noKey.status).toBe(403);
+      expect(noKey.body).toMatchObject({ code: 'access.denied' });
       expect(anonymous.status).toBe(401);
     });
   });

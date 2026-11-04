@@ -45,7 +45,7 @@ type Load =
   | { readonly state: 'missing' }
   | { readonly state: 'failed' };
 
-type Confirm = 'publish' | 'discard' | null;
+type Confirm = 'publish' | 'discard' | 'relax' | null;
 
 /** Refusals of publish that only an edit of the text clears. */
 const TEXT_FIX: ReadonlySet<string> = new Set(['claim-word', 'locale-uncheckable']);
@@ -63,6 +63,7 @@ export function AttributeDetailPanel({
   canEdit = false,
   csrfToken = '',
   onChanged,
+  onOpenWaiting,
 }: {
   readonly attributeId: string | null;
   readonly onClose: () => void;
@@ -70,6 +71,8 @@ export function AttributeDetailPanel({
   readonly csrfToken?: string;
   /** An attribute was saved, published or discarded: the list reads it again. */
   readonly onChanged?: () => void;
+  /** Opens the Waiting for you tab, where an already open request is. */
+  readonly onOpenWaiting?: () => void;
 }) {
   const t = useTranslations('attributes.detail');
   const tl = useTranslations('load');
@@ -163,6 +166,11 @@ export function AttributeDetailPanel({
                   >
                     {t('edit')}
                   </Button>
+                  {load.detail.status === 'active' && load.detail.material ? (
+                    <Button variant="secondary" onClick={() => setConfirm('relax')}>
+                      {t('turn-off-material')}
+                    </Button>
+                  ) : null}
                   {load.detail.status === 'draft' ? (
                     <>
                       <Button onClick={() => setConfirm('publish')}>{t('publish')}</Button>
@@ -176,7 +184,23 @@ export function AttributeDetailPanel({
             }
           />
           {load.detail.status === 'draft' ? <Banner tone="info">{t('draft-note')}</Banner> : null}
-          {confirm === null ? null : (
+          {confirm === 'relax' ? (
+            <RelaxDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => {
+                toast.success(t('relax-sent'));
+                setConfirm(null);
+              }}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+              onOpenWaiting={onOpenWaiting}
+            />
+          ) : null}
+          {confirm === null || confirm === 'relax' ? null : (
             <StatusDialog
               kind={confirm}
               detail={load.detail}
@@ -391,6 +415,70 @@ function measureRows(
     { label: t('field.measure-default-unit'), value: unitLabel(detail, measure.defaultUnit) },
     { label: t('field.measure-decimals'), value: String(measure.decimals) },
   ];
+}
+
+/**
+ * Ask a second administrator to turn off Material on a published attribute (catalog design 8.2,
+ * attributes A2 part 3). Nothing changes until another admin confirms under Waiting for you.
+ */
+function RelaxDialog({
+  detail,
+  csrfToken,
+  onClose,
+  onDone,
+  onReload,
+  onOpenWaiting,
+}: {
+  readonly detail: AttributeDetail;
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly onReload: () => void;
+  readonly onOpenWaiting?: () => void;
+}) {
+  const t = useTranslations('attributes.detail');
+  const te = useTranslations('attributes.editor');
+  const call = useAttributeCall(csrfToken);
+  const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
+
+  async function send() {
+    const answer = await call.run(
+      'POST',
+      `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/relaxation-requests`,
+      { version: detail.version, kind: 'clear-material' },
+    );
+    if (answer.ok) onDone();
+  }
+
+  const problem = call.problem;
+  return (
+    <Dialog
+      open
+      title={t('relax-title', { name })}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+            {te('cancel')}
+          </Button>
+          {problem?.key === 'relaxation-already-open' && onOpenWaiting !== undefined ? (
+            <Button onClick={onOpenWaiting}>{t('go-to-waiting')}</Button>
+          ) : problem?.reload === true ? (
+            <Button onClick={onReload}>{te('reload')}</Button>
+          ) : (
+            <Button loading={call.pending} disabled={call.pending} onClick={() => void send()}>
+              {t('relax-send')}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
+        <p>{t('relax-body')}</p>
+      </div>
+    </Dialog>
+  );
 }
 
 function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {

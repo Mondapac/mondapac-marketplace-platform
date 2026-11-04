@@ -5,6 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
 import type { LocalizedText } from '../../domain/attribute-definition';
+import { levelOf, type RequirementLevel } from '../../domain/attribute-family';
 import {
   ATTRIBUTE_LOAD_MAX,
   featureSetIdOf,
@@ -21,6 +22,8 @@ export interface FeatureSetAdminGetInput {
 export interface FeatureSetAttributeView {
   readonly code: string;
   readonly required: boolean;
+  /** Required, recommended or optional (package A4); a seeded entry reads from `required`. */
+  readonly level: RequirementLevel;
   readonly isVariantOption: boolean;
   /** The definition behind the code; null when the Market has none (never after the seed). */
   readonly attributeId: string | null;
@@ -35,9 +38,15 @@ export interface FeatureSetAdminGetOutput {
   readonly code: string;
   readonly status: string;
   readonly revisionNo: number;
+  /** The version the editor names when it saves (package A4). */
+  readonly version: number;
+  /** The name per locale; empty for the seeded family. */
+  readonly names: LocalizedText;
   readonly createdAt: string;
   readonly groups: readonly {
     readonly groupCode: string;
+    /** The group's name per locale; empty before package A4. */
+    readonly names: LocalizedText;
     readonly attributes: readonly FeatureSetAttributeView[];
   }[];
   readonly productCount: number;
@@ -126,14 +135,18 @@ export class FeatureSetAdminGet extends UseCase<
       code: set.code,
       status: set.status,
       revisionNo: set.revisionNo,
+      version: set.version,
+      names: { ...set.names },
       createdAt: set.createdAt.toString(),
       groups: set.groups.map((group) => ({
         groupCode: group.groupCode,
+        names: { ...(group.names ?? {}) },
         attributes: group.attributes.map((entry) => {
           const definition = byCode.get(entry.code);
           return {
             code: entry.code,
             required: entry.required,
+            level: levelOf(entry),
             isVariantOption: entry.isVariantOption,
             attributeId: definition?.id ?? null,
             names: definition === undefined ? null : { ...definition.revision.names },

@@ -167,7 +167,7 @@ export function parseEditorContent(
   });
 }
 
-function localizedOf(
+export function localizedOf(
   raw: unknown,
   path: string,
   supported: readonly string[],
@@ -328,7 +328,7 @@ export function freeCode(base: string | null, taken: ReadonlySet<string>): strin
 }
 
 /** One text the editor writes, with the fixed path its verdict is reported on. */
-interface PlacedText {
+export interface PlacedText {
   readonly path: string;
   readonly locale: string;
   readonly text: string;
@@ -370,7 +370,15 @@ export async function refuseClaimContent(
   context: CallContext,
   content: EditorContent,
 ): Promise<AttributeWriteFailure | null> {
-  const texts = textsOf(content);
+  return refuseClaimTexts(deps, context, textsOf(content));
+}
+
+/** The same check over any texts an editor writes (attributes A2, feature sets A4). */
+export async function refuseClaimTexts(
+  deps: { readonly matcher: ClaimTextMatcher; readonly claimLocales: ClaimTermLocales },
+  context: CallContext,
+  texts: readonly PlacedText[],
+): Promise<AttributeWriteFailure | null> {
   if (texts.length === 0) return null;
   const covered = await deps.claimLocales.covered(context);
   if (!covered.ok) return { code: 'claim-text.check-unavailable' };

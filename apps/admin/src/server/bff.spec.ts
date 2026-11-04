@@ -608,6 +608,18 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
   });
 
+  it('relays the service areas: a read, and the name edit as a POST on its exact path', async () => {
+    const base = 'sellers/admin/service-areas';
+    const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, base.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', `${base}/names`)).status).toBe(200);
+    expect((await call('POST', base)).status).toBe(404);
+    expect((await call('PUT', `${base}/names`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/names`)).status).toBe(404);
+    expect((await call('POST', `${base}/names/extra`)).status).toBe(404);
+  });
+
   it('relays the delivery settings of the Market and of a seller on their exact paths only', async () => {
     const base = 'shipping/admin/delivery-settings';
     const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
@@ -1134,6 +1146,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', `catalog/admin/attributes/${id}`],
     ['POST', `catalog/admin/attributes/${id}/publish`],
     ['POST', `catalog/admin/attributes/${id}/discard`],
+    ['GET', 'catalog/admin/attribute-relaxations'],
+    ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
+    ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
+    ['POST', `catalog/admin/attribute-relaxations/${id}/cancel`],
     ['GET', 'catalog/admin/feature-sets'],
     ['GET', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
@@ -1188,6 +1204,13 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', `catalog/admin/attributes/${id}`],
     ['DELETE', `catalog/admin/attributes/${id}`],
+    ['POST', 'catalog/admin/attribute-relaxations'],
+    ['GET', `catalog/admin/attribute-relaxations/${id}/confirm`],
+    ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/cancel'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/relaxation-requests'],
+    ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/confirm'],
+    ['GET', `catalog/admin/attributes/${id}/relaxation-requests`],
+    ['POST', `catalog/admin/attribute-relaxations/${id}`],
     ['POST', 'catalog/admin/attributes/not-a-uuid/publish'],
     ['POST', `catalog/admin/attributes/${id}/archive`],
     ['GET', `catalog/admin/attributes/${id}/publish`],

@@ -320,6 +320,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
     },
+    // Editable service area names (ADR-0041): a name is set, changed (name, updater, time) and
+    // deleted to restore the configured name.
+    'sellers.service_area_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'updated_by'],
+    },
     // docs/design/data/sellers.md section 8 (slice 3): a tax registration period is inserted,
     // closed (valid_to is the only column that changes) and, while it has not started, deleted.
     'sellers.tax_registration_periods': {
@@ -1301,6 +1307,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'status', 'version'],
     },
     'catalog.attribute_family_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Attributes A4 (categories C8): a category's links; the pointer and version move, revisions never.
+    'catalog.category_attribute_links': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'version'],
+    },
+    'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
     // mutable and deleted from; the five revision tables are insert-only (CA3).
     'catalog.product_working_copies': {

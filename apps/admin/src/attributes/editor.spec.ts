@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import messages from '../../messages/en.json';
 import {
   checkForm,
   contentOf,
@@ -231,5 +232,22 @@ describe.each(['en-AU', 'ja-JP'])('attribute editor form (%s)', (locale) => {
       );
       expect(problemOf(failure('attribute-definition.measure-locked')).key).toBe('measure-locked');
     });
+  });
+});
+
+describe('relaxation refusals', () => {
+  it.each([
+    ['attribute-definition.not-material', 409, 'not-material', true],
+    ['relaxation.already-open', 409, 'relaxation-already-open', false],
+    ['relaxation.not-found', 404, 'relaxation-gone', true],
+    ['relaxation.stale', 409, 'relaxation-moved', true],
+    ['relaxation.closed', 409, 'relaxation-moved', true],
+    ['relaxation.expired', 409, 'relaxation-expired', true],
+    ['relaxation.attribute-changed', 409, 'relaxation-attribute-changed', true],
+    ['relaxation.same-admin', 403, 'relaxation-same-admin', false],
+    ['relaxation.not-requester', 403, 'relaxation-not-requester', false],
+  ])('maps %s to its message and reload', (code, status, key, reload) => {
+    expect(problemOf({ status, code })).toEqual({ key, reload, fields: {} });
+    expect((messages.attributes.editor.error as Record<string, string>)[key]).toBeTruthy();
   });
 });

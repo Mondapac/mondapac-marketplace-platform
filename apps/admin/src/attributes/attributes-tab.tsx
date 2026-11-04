@@ -51,11 +51,14 @@ export function AttributesTab({
   onSelect,
   canEdit = false,
   csrfToken = '',
+  onOpenWaiting,
 }: {
   readonly selectedId: string | null;
   readonly onSelect: (id: string | null) => void;
   readonly canEdit?: boolean;
   readonly csrfToken?: string;
+  /** Opens the Waiting for you tab (a request is already open there). */
+  readonly onOpenWaiting?: () => void;
 }) {
   const t = useTranslations('attributes');
   const tl = useTranslations('load');
@@ -277,6 +280,7 @@ export function AttributesTab({
         canEdit={canEdit}
         csrfToken={csrfToken}
         onChanged={() => void fetchRows()}
+        onOpenWaiting={onOpenWaiting}
       />
       {adding && locales !== null ? (
         <AddAttributeDialog

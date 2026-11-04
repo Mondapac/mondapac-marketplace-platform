@@ -236,3 +236,39 @@ export function textIn(
   if (text === null || text === undefined) return fallback;
   return text[locale] ?? text[fallbackLocale] ?? fallback;
 }
+
+/** The requests to relax an attribute waiting for a second administrator (attributes A2). */
+export const API_RELAXATIONS = 'catalog/admin/attribute-relaxations';
+
+export type RelaxationKind = 'clear-material' | 'archive' | 'remove-from-family';
+
+interface RelaxationAction {
+  readonly allowed: boolean;
+  readonly reason?: string;
+}
+
+export interface OpenRelaxation {
+  readonly id: string;
+  readonly version: number;
+  readonly kind: RelaxationKind;
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly names: Localized;
+    readonly version: number;
+  };
+  /** The reader's own request: they may withdraw it, not confirm it. */
+  readonly mine: boolean;
+  /** The requesting administrator; their display name waits for an identity read. */
+  readonly requestedByAccountId: string;
+  readonly requestedAt: string;
+  readonly expiresAt: string;
+  readonly allowedActions: {
+    readonly confirm: RelaxationAction;
+    readonly cancel: RelaxationAction;
+  };
+}
+
+export interface OpenRelaxationList {
+  readonly requests: readonly OpenRelaxation[];
+}
