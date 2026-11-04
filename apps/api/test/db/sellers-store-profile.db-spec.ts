@@ -233,6 +233,24 @@ describe.each(TEST_MARKETS)('store profile content in market %s', (code) => {
       expect(current.map((image) => image.kind).sort()).toEqual(['banner', 'logo']);
     });
 
+    it('names for the file sweep only keys of a seller of this Market that no rendition holds', async () => {
+      const sellerId = await newSeller();
+      const strangerSeller = await newSeller(other);
+      const logo = newImage(sellerId, 'logo');
+      await inUnit(() => images.replace(market, sellerId, logo));
+      const held = logo.renditions.map((rendition) => rendition.objectKey);
+      const stray = `${sellerId}/store-images/${ids.next<'StoreImage'>()}/large`;
+      const ofOtherMarket = `${strangerSeller}/store-images/${ids.next<'StoreImage'>()}/large`;
+      const ofNobody = `${ids.next<'Seller'>()}/store-images/${ids.next<'StoreImage'>()}/large`;
+
+      const found = await inUnit(() =>
+        images.unreferencedObjectKeys(market, [...held, stray, ofOtherMarket, ofNobody]),
+      );
+
+      expect(found).toEqual([stray]);
+      expect(await inUnit(() => images.unreferencedObjectKeys(market, []))).toEqual([]);
+    });
+
     it('removes the current image and answers its objects; removing nothing answers null', async () => {
       const sellerId = await newSeller();
       const logo = newImage(sellerId, 'logo');

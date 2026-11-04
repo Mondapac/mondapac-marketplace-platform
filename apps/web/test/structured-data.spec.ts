@@ -211,6 +211,30 @@ describe('Product brand', () => {
   });
 });
 
+describe('Product additionalProperty', () => {
+  it('lists the specifications as PropertyValue nodes in plain text, in page order', () => {
+    const node = productStructuredData(
+      product({
+        specifications: [
+          { label: 'Country of origin', value: 'Iran', group: 'details' },
+          { label: 'Pack\n size', value: '500  g' },
+          { label: '  ', value: 'blank name' },
+        ],
+      }),
+      ORIGIN,
+      URL_,
+    )!;
+    expect(node.additionalProperty).toEqual([
+      { '@type': 'PropertyValue', name: 'Country of origin', value: 'Iran' },
+      { '@type': 'PropertyValue', name: 'Pack size', value: '500 g' },
+    ]);
+  });
+
+  it('has none for a product without specifications', () => {
+    expect(productStructuredData(product(), ORIGIN, URL_)).not.toHaveProperty('additionalProperty');
+  });
+});
+
 describe('Brand page structured data', () => {
   const brand = {
     slug: 'saffron-co',
@@ -378,9 +402,12 @@ describe('Routes', () => {
     read.product = undefined;
   });
 
-  const productRoute = async (id: string) => {
+  const productRoute = async (id: string, query?: { v?: string | string[] }) => {
     const { default: route } = await import('../app/p/[id]/page.tsx');
-    return route({ params: Promise.resolve({ id }) });
+    return route({
+      params: Promise.resolve({ id }),
+      ...(query === undefined ? {} : { searchParams: Promise.resolve(query) }),
+    });
   };
   const categoryRoute = async (params: { category: string; sub?: string[] }, query = {}) => {
     const { default: route } = await import('../app/c/[category]/[[...sub]]/page.tsx');
@@ -402,6 +429,31 @@ describe('Routes', () => {
       ],
     });
     expect(JSON.stringify(crumbs)).not.toContain('Browse');
+  });
+
+  it('opens on the Variant of ?v= and keeps the canonical link without it', async () => {
+    const v = (id: string, label: string, amount: number) => ({
+      id,
+      label,
+      inStock: true,
+      offers: [offer({ id: `o-${id}`, price: { amount, currency: 'AUD' } })] as [ProductOffer],
+    });
+    const variants = [v('v-1kg', '1 kg', 900), v('v-5kg', '5 kg', 3500)] as const;
+    read.product = product({ id: 'rice', offers: variants[0].offers, variants });
+    const route = await productRoute('rice', { v: 'v-5kg' });
+    const page = (route as ReactElement<{ children: ReactElement[] }>).props
+      .children[1] as ReactElement<{ initialVariantId?: string }>;
+    expect(page.props.initialVariantId).toBe('v-5kg');
+    const [node] = scriptOf(jsonLdOf(route))!['@graph'] as Node[];
+    expect(node!['@type']).toBe('ProductGroup');
+    // An unknown ?v= opens the default.
+    const other = await productRoute('rice', { v: 'nope' });
+    const otherPage = (other as ReactElement<{ children: ReactElement[] }>).props
+      .children[1] as ReactElement<{ initialVariantId?: string }>;
+    expect(otherPage.props.initialVariantId).toBeUndefined();
+    const { generateMetadata } = await import('../app/p/[id]/page.tsx');
+    const meta = await generateMetadata({ params: Promise.resolve({ id: 'rice' }) });
+    expect(JSON.stringify(meta.alternates)).not.toContain('v=');
   });
 
   it('gives no script for a product without a price, a removed product or an unknown host', async () => {

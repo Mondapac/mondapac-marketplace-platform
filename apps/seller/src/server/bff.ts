@@ -28,6 +28,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'inventory/seller/sources',
     // The store's settings (delivery terms; the minimum order is in the same answer).
     'sellers/store-settings',
+    // The seller's reviews (query: `cursor`), read again for "Show more".
+    'reviews/seller',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     'commission-payouts/seller/ledger',
@@ -119,7 +121,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'ordering/seller/orders/:id/deliver',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
     'notifications/seller/notices/:id/read',
+    // One public reply per review, and a report of a review (buyer reviews, package 4c).
+    'reviews/seller/:id/reply',
+    'reviews/seller/:id/report',
   ],
+  PATCH: ['reviews/seller/:id/reply'],
   DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
   GET: ['catalog/seller/products/:id/images/:id/:size', 'sellers/store-profile/images/:id/:size'],
@@ -138,6 +144,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'identity/seller/team': { after: UUID },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
+  // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
+  'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
 const QUERY_VALUE_MAX = 512;
 

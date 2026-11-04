@@ -167,6 +167,7 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     claimTermList: undefined as never,
     matchClaimTerms: undefined as never,
     matchClaimTermsSystem: undefined as never,
+    claimTermLocales: undefined as never,
     certificationTypes: undefined as never,
     certificationTypesSystem: undefined as never,
     sellerCertificateOverview: undefined as never,

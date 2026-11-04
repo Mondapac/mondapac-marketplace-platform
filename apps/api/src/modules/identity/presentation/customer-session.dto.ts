@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { CUSTOMER_LANGUAGES } from '../domain/customer-language';
 import {
   STOREFRONT_PALETTES,
   STOREFRONT_TEXT_SIZES,
@@ -74,6 +75,20 @@ export class AppearanceChanged {
   changed!: boolean;
 }
 
+/** The language to keep on the profile; null clears the choice (English). */
+export class ChangeLanguageRequest {
+  @ApiProperty({ type: String, nullable: true, enum: CUSTOMER_LANGUAGES })
+  locale!: string | null;
+}
+
+export class LanguageChanged {
+  @ApiProperty({ enum: ['customer-language-changed'] })
+  code!: 'customer-language-changed';
+
+  @ApiProperty({ description: 'False when the language already was the one given.' })
+  changed!: boolean;
+}
+
 /** The actor summary of identity design 8.6 rows 2 and 9 (customer). */
 export class CustomerSessionSummary {
   @ApiProperty({ format: 'uuid' })
@@ -123,6 +138,16 @@ export class CustomerSessionSummary {
     description: 'The storefront look kept on the account; null when none was chosen.',
   })
   appearance!: CustomerAppearance | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: CUSTOMER_LANGUAGES,
+    description:
+      'The language kept on the profile; null when none was chosen. `en` and null both mean ' +
+      'English. The storefront serves another language only when the Market has published it.',
+  })
+  locale!: string | null;
 
   @ApiProperty({ type: SessionTimes })
   session!: SessionTimes;

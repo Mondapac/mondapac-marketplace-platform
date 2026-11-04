@@ -7,6 +7,7 @@ import {
   parseDraft,
   platformExposure,
   platformShareBps,
+  withMarketDefaults,
   type PromotionDraft,
   type PromotionRules,
 } from './promotion';
@@ -17,6 +18,15 @@ const AU_RULES: PromotionRules = {
   newSellerDays: 30,
   platformBudgetStepUpMinor: 200000n,
   gstRulingConfirmed: false,
+  customerGroupReturningDays: 60,
+  referral: {
+    maxRewardMinor: 2000n,
+    maxRewardedPerReferrer: 10,
+    qualifyWithinDays: 30,
+    codeLength: 12,
+    alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+  },
+  cashback: { maxBps: 1000, maxCapMinor: 5000n },
 };
 // The synthetic Market: other limits, and the tax ruling already confirmed.
 const ZZ_RULES: PromotionRules = {
@@ -25,6 +35,15 @@ const ZZ_RULES: PromotionRules = {
   newSellerDays: 14,
   platformBudgetStepUpMinor: 300000n,
   gstRulingConfirmed: true,
+  customerGroupReturningDays: 45,
+  referral: {
+    maxRewardMinor: 1500n,
+    maxRewardedPerReferrer: 5,
+    qualifyWithinDays: 14,
+    codeLength: 12,
+    alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ2345678901',
+  },
+  cashback: { maxBps: 500, maxCapMinor: 3000n },
 };
 
 const PRODUCT = '01990000-0000-7000-8000-000000001001';
@@ -658,5 +677,271 @@ describe.each([
     expect(codes(parsed(rawTiered(platformDraft({ budgetMinor: undefined }))), platform)).toContain(
       'budgetMinor:required',
     );
+  });
+});
+
+// ---- phase 3: customer group, store follower, referral, cashback ------------------------------
+
+const rawGroup = (over: Record<string, unknown> = {}) => ({
+  ...base,
+  type: 'CUSTOMER_GROUP',
+  name: 'Welcome back',
+  funding: 'PLATFORM',
+  reward: { kind: 'PERCENT', bps: 500 },
+  budgetMinor: '100000',
+  testMode: true,
+  segment: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 60 },
+  ...over,
+});
+const rawFollower = (over: Record<string, unknown> = {}) => ({
+  ...base,
+  type: 'STORE_FOLLOWER',
+  name: 'For followers',
+  funding: 'SELLER',
+  reward: { kind: 'PERCENT', bps: 1000 },
+  ...over,
+});
+const rawReferral = (over: Record<string, unknown> = {}) => ({
+  ...base,
+  type: 'REFERRAL',
+  name: 'Refer a friend',
+  funding: 'PLATFORM',
+  reward: { kind: 'FIXED', amountMinor: '1000' },
+  refereeRewardMinor: '1000',
+  maxUsesPerCustomer: 3,
+  budgetMinor: '100000',
+  testMode: true,
+  ...over,
+});
+const rawCashback = (over: Record<string, unknown> = {}) => ({
+  ...base,
+  type: 'CASHBACK',
+  name: 'Cashback',
+  funding: 'PLATFORM',
+  reward: { kind: 'PERCENT', bps: 500 },
+  capMinor: '2000',
+  budgetMinor: '100000',
+  testMode: true,
+  ...over,
+});
+
+describe('phase 3 types: parseDraft', () => {
+  it('reads the segment and the new customer’s reward', () => {
+    const group = parsed(rawGroup());
+    expect(group.segmentKind).toBe('RETURNING_CUSTOMER');
+    expect(group.segmentMinDays).toBe(60);
+    expect(parsed(rawReferral()).refereeRewardMinor).toBe(1000n);
+    expect(parsed(rawSale()).segmentKind).toBeNull();
+  });
+
+  it('refuses a malformed segment or reward', () => {
+    expect(parseDraft(rawGroup({ segment: { kind: 'EVERYONE' } })).ok).toBe(false);
+    expect(
+      parseDraft(rawGroup({ segment: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 0 } }))
+        .ok,
+    ).toBe(false);
+    expect(
+      parseDraft(rawGroup({ segment: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 1.5 } }))
+        .ok,
+    ).toBe(false);
+    expect(
+      parseDraft(
+        rawGroup({ segment: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 99999 } }),
+      ).ok,
+    ).toBe(false);
+    expect(parseDraft(rawReferral({ refereeRewardMinor: '-1' })).ok).toBe(false);
+    expect(parseDraft(rawReferral({ refereeRewardMinor: 10 })).ok).toBe(false);
+  });
+});
+
+describe.each([
+  ['AU', AU_RULES],
+  ['ZZ', ZZ_RULES],
+] as const)('phase 3 types: checkDraft in market %s', (_code, rules) => {
+  const codes = (draft: PromotionDraft, owner: Parameters<typeof checkDraft>[1]) =>
+    checkDraft(draft, owner, rules).map((i) => `${i.path}:${i.code}`);
+  const platformDraft = (raw: Record<string, unknown>) => ({
+    ...raw,
+    testMode: !rules.gstRulingConfirmed,
+  });
+
+  it('lets an admin make the platform types and a seller only the follower offer', () => {
+    expect(codes(parsed(rawGroup(platformDraft({}))), platform)).toEqual([]);
+    expect(codes(parsed(rawReferral(platformDraft({}))), platform)).toEqual([]);
+    expect(codes(parsed(rawCashback(platformDraft({}))), platform)).toEqual([]);
+    expect(codes(parsed(rawFollower()), seller)).toEqual([]);
+
+    for (const raw of [rawGroup(), rawReferral(), rawCashback()]) {
+      expect(codes(parsed({ ...raw, funding: 'SELLER' }), seller)).toContain('type:not-allowed');
+    }
+    expect(codes(parsed(rawFollower()), platform)).toContain('type:not-allowed');
+  });
+
+  it('keeps the follower offer seller-funded and the platform types platform-funded', () => {
+    expect(
+      codes(
+        parsed(rawFollower({ funding: 'PLATFORM', budgetMinor: '1000', testMode: true })),
+        platform,
+      ),
+    ).not.toEqual([]);
+    expect(parseDraft(rawGroup({ funding: 'SELLER' })).ok).toBe(true);
+    expect(codes(parsed(rawGroup({ funding: 'SELLER' })), platform)).not.toEqual([]);
+  });
+
+  it('needs a platform budget and, until the ruling is confirmed, test mode', () => {
+    expect(codes(parsed(rawReferral({ budgetMinor: undefined })), platform)).toContain(
+      'budgetMinor:required',
+    );
+    if (!rules.gstRulingConfirmed) {
+      expect(codes(parsed(rawCashback({ testMode: false })), platform)).toContain(
+        'testMode:required',
+      );
+    } else {
+      expect(codes(parsed(rawCashback({ testMode: false })), platform)).toEqual([]);
+    }
+  });
+
+  it('checks the segment: its fields go with its kind', () => {
+    expect(codes(parsed(rawGroup(platformDraft({ segment: undefined }))), platform)).toContain(
+      'segment.kind:required',
+    );
+    expect(
+      codes(parsed(rawGroup(platformDraft({ segment: { kind: 'RETURNING_CUSTOMER' } }))), platform),
+    ).toContain('segment.minDaysSinceLastOrder:required');
+    expect(
+      codes(
+        parsed(
+          rawGroup(
+            platformDraft({
+              segment: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 30 },
+              zones: ['Z1'],
+            }),
+          ),
+        ),
+        platform,
+      ),
+    ).toContain('zones:not-allowed');
+    expect(
+      codes(parsed(rawGroup(platformDraft({ segment: { kind: 'DELIVERY_ZONE' } }))), platform),
+    ).toContain('zones:required');
+    expect(
+      codes(
+        parsed(
+          rawGroup(
+            platformDraft({
+              segment: { kind: 'DELIVERY_ZONE', minDaysSinceLastOrder: 3 },
+              zones: ['Z1'],
+            }),
+          ),
+        ),
+        platform,
+      ),
+    ).toContain('segment.minDaysSinceLastOrder:not-allowed');
+    expect(
+      codes(
+        parsed(rawGroup(platformDraft({ segment: { kind: 'DELIVERY_ZONE' }, zones: ['Z1'] }))),
+        platform,
+      ),
+    ).toEqual([]);
+    // A segment goes with the customer-group type only.
+    expect(codes(parsed(rawSale({ segment: { kind: 'DELIVERY_ZONE' } })), seller)).toContain(
+      'segment:not-allowed',
+    );
+  });
+
+  it('fills the Market default days of a returning-customer segment, never over an explicit one', () => {
+    const empty = parsed(rawGroup({ segment: { kind: 'RETURNING_CUSTOMER' } }));
+    expect(empty.segmentMinDays).toBeNull();
+    expect(withMarketDefaults(empty, rules).segmentMinDays).toBe(rules.customerGroupReturningDays);
+    const explicit = parsed(rawGroup());
+    expect(withMarketDefaults(explicit, rules).segmentMinDays).toBe(60);
+    expect(
+      withMarketDefaults(empty, { ...rules, customerGroupReturningDays: null }).segmentMinDays,
+    ).toBeNull();
+  });
+
+  it('holds a referral to the Market’s limits and its own terms', () => {
+    const referral = rules.referral!;
+    const over = (referral.maxRewardMinor + 1n).toString();
+    expect(
+      codes(
+        parsed(rawReferral(platformDraft({ reward: { kind: 'FIXED', amountMinor: over } }))),
+        platform,
+      ),
+    ).toContain('reward.amountMinor:exceeds-market-limit');
+    expect(
+      codes(parsed(rawReferral(platformDraft({ refereeRewardMinor: over }))), platform),
+    ).toContain('refereeRewardMinor:exceeds-market-limit');
+    expect(
+      codes(
+        parsed(
+          rawReferral(platformDraft({ maxUsesPerCustomer: referral.maxRewardedPerReferrer + 1 })),
+        ),
+        platform,
+      ),
+    ).toContain('maxUsesPerCustomer:exceeds-market-limit');
+    expect(
+      codes(parsed(rawReferral(platformDraft({ maxUsesPerCustomer: undefined }))), platform),
+    ).toContain('maxUsesPerCustomer:required');
+    expect(
+      codes(parsed(rawReferral(platformDraft({ refereeRewardMinor: undefined }))), platform),
+    ).toContain('refereeRewardMinor:required');
+    expect(
+      codes(
+        parsed(rawReferral(platformDraft({ reward: { kind: 'PERCENT', bps: 100 } }))),
+        platform,
+      ),
+    ).toContain('reward.kind:value');
+    expect(
+      codes(parsed(rawReferral(platformDraft({ productIds: [PRODUCT] }))), platform),
+    ).toContain('productIds:not-allowed');
+    expect(
+      codes(parsed(rawReferral(platformDraft({ refereeRewardMinor: '1' }))), platform),
+    ).toEqual([]);
+  });
+
+  it('holds cashback to the Market’s percent and per-order cap, and needs a cap', () => {
+    const cashback = rules.cashback!;
+    expect(
+      codes(
+        parsed(
+          rawCashback(platformDraft({ reward: { kind: 'PERCENT', bps: cashback.maxBps + 1 } })),
+        ),
+        platform,
+      ),
+    ).toContain('reward.bps:exceeds-market-limit');
+    expect(
+      codes(
+        parsed(rawCashback(platformDraft({ capMinor: (cashback.maxCapMinor + 1n).toString() }))),
+        platform,
+      ),
+    ).toContain('capMinor:exceeds-market-limit');
+    expect(codes(parsed(rawCashback(platformDraft({ capMinor: undefined }))), platform)).toContain(
+      'capMinor:required',
+    );
+    expect(
+      codes(
+        parsed(rawCashback(platformDraft({ reward: { kind: 'FIXED', amountMinor: '100' } }))),
+        platform,
+      ),
+    ).toContain('reward.kind:value');
+    expect(codes(parsed(rawCashback(platformDraft({ sellerIds: [SELLER] }))), platform)).toContain(
+      'sellerIds:not-allowed',
+    );
+  });
+
+  it('is unavailable in a Market with no referral or cashback limits (fail closed)', () => {
+    const bare = { ...rules, referral: null, cashback: null };
+    expect(
+      checkDraft(parsed(rawReferral(platformDraft({}))), platform, bare).map((i) => i.code),
+    ).toContain('unavailable');
+    expect(
+      checkDraft(parsed(rawCashback(platformDraft({}))), platform, bare).map((i) => i.code),
+    ).toContain('unavailable');
+  });
+
+  it('puts the new types on the layer the engine applies them in', () => {
+    expect(layerOf('CUSTOMER_GROUP', platform)).toBe('PLATFORM_CART');
+    expect(layerOf('STORE_FOLLOWER', seller)).toBe('SELLER_CART');
   });
 });

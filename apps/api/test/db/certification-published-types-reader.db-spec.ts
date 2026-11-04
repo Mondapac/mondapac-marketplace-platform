@@ -147,10 +147,10 @@ for (const phase of ['happy', 'faults'] as const) {
             rows.filter((row) => !(row.typeCode ?? row.code ?? '').startsWith('elsewhere-'));
           const vocabulary = mine(await read(() => reader.claimVocabulary(market)));
           expect(vocabulary).toEqual([
-            { typeCode: 'aa-first', terms: ['alpha', 'bravo'] },
-            { typeCode: 'mm-middle', terms: ['mike', 'mikel'] },
-            { typeCode: own, terms: [own] },
-            { typeCode: 'zz-last', terms: ['zed', 'zeta', 'زد'] },
+            { typeCode: 'aa-first', terms: ['alpha', 'bravo'], termLocales: ['en'] },
+            { typeCode: 'mm-middle', terms: ['mike', 'mikel'], termLocales: ['en', 'fr'] },
+            { typeCode: own, terms: [own], termLocales: ['en'] },
+            { typeCode: 'zz-last', terms: ['zed', 'zeta', 'زد'], termLocales: ['ar', 'en'] },
           ]);
 
           const all = mine(await read(() => reader.types(market, {})));
@@ -199,7 +199,11 @@ for (const phase of ['happy', 'faults'] as const) {
           const viaUnit = new UnitPublishedTypesReader(persistence.unitOfWork, reader);
 
           const vocabulary = await viaUnit.claimVocabulary(market);
-          expect(vocabulary).toContainEqual({ typeCode: wrapped, terms: [wrapped] });
+          expect(vocabulary).toContainEqual({
+            typeCode: wrapped,
+            terms: [wrapped],
+            termLocales: ['en'],
+          });
           const types = await viaUnit.types(market, { status: 'active' });
           expect(types.map((t) => t.code)).toContain(wrapped);
           // The other Market's reads never show this Market's type.

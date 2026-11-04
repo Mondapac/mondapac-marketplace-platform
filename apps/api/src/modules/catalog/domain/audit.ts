@@ -127,6 +127,198 @@ export const SavedFilterRemovedAudit = defineAuditAction({
   after: { ownedByActor: auditField.boolean() },
 });
 
+/** The audit target type of an attribute definition (attributes plan, package A2). */
+export const CATALOG_ATTRIBUTE_DEFINITION_TARGET = 'catalog.attribute-definition';
+
+const definitionStatus = auditField.enumOf(['draft', 'active', 'archived'] as const);
+
+/** What the audit keeps of a definition's revision: flags and counts, never a name or a label. */
+const definitionShape = {
+  status: definitionStatus,
+  revisionNo: auditField.integer(),
+  material: auditField.boolean(),
+  isVariantOption: auditField.boolean(),
+  optionCount: auditField.integer(),
+  activeOptionCount: auditField.integer(),
+};
+
+/** An admin created a definition as a draft (A2). */
+export const AttributeDefinitionCreatedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.created',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  after: definitionShape,
+});
+
+/**
+ * An admin saved a new revision of a definition (A2; catalog design 8.2). The flags before and
+ * after show a change of `material` or of the variant flag. Clearing `material` on a published
+ * definition is not an edit: it is the confirm of a two-person request, and then the row names the
+ * request and its requester; the actor is the confirming admin, so both account ids are here.
+ */
+export const AttributeDefinitionRevisedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.revised',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: definitionShape,
+  after: {
+    ...definitionShape,
+    relaxationRequestId: auditField.optional(auditField.id()),
+    requestedByAccountId: auditField.optional(auditField.id()),
+  },
+});
+
+/** An admin published a draft definition: sellers now see it where a feature set names it. */
+export const AttributeDefinitionPublishedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.published',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['draft'] as const) },
+  after: definitionShape,
+});
+
+/** An admin set aside a draft that was never published; it is archived, never deleted. */
+export const AttributeDefinitionDiscardedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.discarded',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['draft'] as const) },
+  after: { status: auditField.enumOf(['archived'] as const) },
+});
+
+const relaxationKind = auditField.enumOf([
+  'clear-material',
+  'archive',
+  'remove-from-family',
+] as const);
+
+/**
+ * An admin asked to relax a `material` attribute (catalog design 8.2): a different admin must
+ * confirm before `expiresAt`. The target is the definition.
+ */
+export const AttributeRelaxationRequestedAudit = defineAuditAction({
+  action: 'catalog.attribute-relaxation.requested',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    requestId: auditField.id(),
+    kind: relaxationKind,
+    definitionVersion: auditField.integer(),
+    expiresAt: auditField.instant(),
+  },
+});
+
+/**
+ * A relaxation request was cancelled: by its requester, or because the definition was revised
+ * while it was open (Q-K14; the actor is then the admin who saved that revision).
+ */
+export const AttributeRelaxationCancelledAudit = defineAuditAction({
+  action: 'catalog.attribute-relaxation.cancelled',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    requestId: auditField.id(),
+    reason: auditField.enumOf(['requester', 'definition-changed'] as const),
+    requestedByAccountId: auditField.id(),
+  },
+});
+
+/**
+ * A relaxation request ran out of time unconfirmed: closed by the expiry job (system), or by the
+ * unit of a new request for the same attribute (the admin asking again).
+ */
+export const AttributeRelaxationExpiredAudit = defineAuditAction({
+  action: 'catalog.attribute-relaxation.expired',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated', 'system'],
+  after: { requestId: auditField.id(), requestedByAccountId: auditField.id() },
+});
+
+/** The audit target type of a feature set, stored as an attribute family (package A4). */
+export const CATALOG_ATTRIBUTE_FAMILY_TARGET = 'catalog.attribute-family';
+
+/** What the audit keeps of a feature set revision: counts, never a name. */
+const familyShape = {
+  revisionNo: auditField.integer(),
+  groupCount: auditField.integer(),
+  attributeCount: auditField.integer(),
+  requiredCount: auditField.integer(),
+  recommendedCount: auditField.integer(),
+  optionalCount: auditField.integer(),
+};
+
+/** An admin created a feature set (A4). */
+export const AttributeFamilyCreatedAudit = defineAuditAction({
+  action: 'catalog.attribute-family.created',
+  targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
+  actors: ['authenticated'],
+  after: familyShape,
+});
+
+/**
+ * An admin saved a new revision of a feature set (A4; catalog design 8.2). `requiredRelaxed`
+ * counts the fields that were required and no longer are, dropped or lowered: a relaxation the
+ * audit must show. Removing a `material` attribute is not an edit (it needs the two-person
+ * request), so it never reaches this row.
+ */
+export const AttributeFamilyRevisedAudit = defineAuditAction({
+  action: 'catalog.attribute-family.revised',
+  targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
+  actors: ['authenticated'],
+  before: familyShape,
+  after: { ...familyShape, requiredRelaxed: auditField.integer() },
+});
+
+/** The audit target type of a seller's value suggestion (attributes plan, package A5). */
+export const CATALOG_ATTRIBUTE_SUGGESTION_TARGET = 'catalog.attribute-value-suggestion';
+
+/** A seller suggested a new value for a select attribute. Ids only: never the text they typed. */
+export const AttributeValueSuggestedAudit = defineAuditAction({
+  action: 'catalog.attribute-value-suggestion.suggested',
+  targetType: CATALOG_ATTRIBUTE_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  after: { definitionId: auditField.id(), productId: auditField.id() },
+});
+
+/**
+ * An admin approved (a value was added: its revision is audited as
+ * `catalog.attribute-definition.revised`), mapped or rejected a suggestion. Neither the seller's
+ * text, the value's labels nor the reason is kept here.
+ */
+export const AttributeValueSuggestionDecidedAudit = defineAuditAction({
+  action: 'catalog.attribute-value-suggestion.decided',
+  targetType: CATALOG_ATTRIBUTE_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['open'] as const) },
+  after: {
+    status: auditField.enumOf(['approved', 'mapped', 'rejected'] as const),
+    definitionId: auditField.id(),
+    sellerId: auditField.id(),
+  },
+});
+
+/** The audit target type of a category's attribute links (A4, categories C8). */
+export const CATALOG_CATEGORY_LINKS_TARGET = 'catalog.category';
+
+/** What the audit keeps of a category's links: counts and a flag, never a code or a name. */
+const linkShape = {
+  revisionNo: auditField.integer(),
+  hasFeatureSet: auditField.boolean(),
+  filterCount: auditField.integer(),
+};
+
+/**
+ * An admin changed the feature set or the filter list a category holds (A4). The first link of a
+ * category is recorded with `revisionNo` 0 before it.
+ */
+export const CategoryAttributesChangedAudit = defineAuditAction({
+  action: 'catalog.category-attributes.changed',
+  targetType: CATALOG_CATEGORY_LINKS_TARGET,
+  actors: ['authenticated'],
+  before: linkShape,
+  after: linkShape,
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -136,4 +328,16 @@ export const CATALOG_AUDIT_ACTIONS = [
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,
+  AttributeDefinitionCreatedAudit,
+  AttributeDefinitionRevisedAudit,
+  AttributeDefinitionPublishedAudit,
+  AttributeDefinitionDiscardedAudit,
+  AttributeRelaxationRequestedAudit,
+  AttributeRelaxationCancelledAudit,
+  AttributeRelaxationExpiredAudit,
+  AttributeFamilyCreatedAudit,
+  AttributeFamilyRevisedAudit,
+  AttributeValueSuggestedAudit,
+  AttributeValueSuggestionDecidedAudit,
+  CategoryAttributesChangedAudit,
 ] as const;

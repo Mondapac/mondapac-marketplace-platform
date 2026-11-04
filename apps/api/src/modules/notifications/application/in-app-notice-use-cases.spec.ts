@@ -35,6 +35,12 @@ import {
   SELLER_OFFER_TAG_CHANGED,
   SELLER_ORDER_PAID,
   SELLER_PAYOUT_TERMS_CHANGED,
+  SELLER_REVIEW_POSTED,
+  SELLER_REVIEW_HIDDEN,
+  SELLER_REVIEW_RESTORED,
+  SELLER_DELIVERY_PROBLEM,
+  ADMIN_REVIEW_HELD,
+  ADMIN_REVIEW_REPORTED,
   SELLER_PRICE_HOLD_DECIDED,
   type SellerOrderPaidParams,
 } from '../domain/in-app-notice';
@@ -482,6 +488,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         'notifications.see-seller-price-notices',
         'notifications.see-seller-access-notices',
         'notifications.see-seller-earnings-notices',
+        'notifications.see-seller-review-notices',
       ]);
       // No customer data reaches the notice.
       expect(JSON.stringify(result)).not.toContain(NOTICE.accountId);
@@ -851,6 +858,28 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       );
     });
 
+    it('writes the review notices for the moderation queue and shows them to its admins only', async () => {
+      const reviewId = id<'ProductReview'>(0x94);
+      expect(await review({ kind: ADMIN_REVIEW_HELD, reviewId })).toEqual(
+        ok({ code: 'notices.recorded', notices: 1 }),
+      );
+      expect(await review({ kind: ADMIN_REVIEW_REPORTED, reviewId })).toEqual(
+        ok({ code: 'notices.recorded', notices: 1 }),
+      );
+      expect(notices.rows.map((row) => [row.audience, row.kind, row.params])).toEqual([
+        ['admin', ADMIN_REVIEW_HELD, { reviewId }],
+        ['admin', ADMIN_REVIEW_REPORTED, { reviewId }],
+      ]);
+      adminKeys.set(ADMIN_ALL, ['reviews.moderation.queue']);
+      adminKeys.set(ADMIN_PRICES, ['pricing.price-hold.decide']);
+      const queue = await list(admin(ADMIN_ALL));
+      expect(queue.ok && queue.value.items.map((item) => item.kind)).toEqual([
+        ADMIN_REVIEW_REPORTED,
+        ADMIN_REVIEW_HELD,
+      ]);
+      expect(await list(admin(ADMIN_PRICES))).toEqual(ok({ items: [], next: null }));
+    });
+
     describe('reading', () => {
       beforeEach(async () => {
         for (const item of Object.values(ITEMS)) await review(item);
@@ -1218,6 +1247,67 @@ describe.each([['AU'], ['ZZ']] as const)('seller notices (package 4) in market %
       keys.set(MEMBER_2, ['inventory.stock.view']);
       expect(await kindsSeenBy(member(MEMBER_1))).toEqual([SELLER_PAYOUT_TERMS_CHANGED]);
       expect(await kindsSeenBy(member(MEMBER_2))).toEqual([SELLER_LOW_STOCK]);
+    });
+
+    it('shows the review notices only to a member who may see the shop reviews, with ids only', async () => {
+      const review = id<'ProductReview'>(0x91);
+      const product = id<'Product'>(0x92);
+      const items: SellerNoticeItem[] = [
+        {
+          kind: SELLER_REVIEW_POSTED,
+          owner: { by: 'seller' as const, sellerId: SELLER_A },
+          params: { reviewId: review, productId: product, rating: 2 },
+        },
+        {
+          kind: SELLER_REVIEW_HIDDEN,
+          owner: { by: 'seller' as const, sellerId: SELLER_A },
+          params: { reviewId: review, productId: product },
+        },
+        {
+          kind: SELLER_REVIEW_RESTORED,
+          owner: { by: 'seller' as const, sellerId: SELLER_A },
+          params: { reviewId: review, productId: product },
+        },
+        {
+          kind: SELLER_DELIVERY_PROBLEM,
+          owner: { by: 'seller' as const, sellerId: SELLER_A },
+          params: {},
+        },
+      ];
+      for (const item of items) {
+        expect(await record(item)).toEqual(ok({ code: 'notices.recorded', notices: 1 }));
+      }
+      keys.set(MEMBER_1, ['reviews.seller.view']);
+      keys.set(MEMBER_2, ['inventory.stock.view']);
+      expect(await kindsSeenBy(member(MEMBER_1))).toEqual([
+        SELLER_DELIVERY_PROBLEM,
+        SELLER_REVIEW_RESTORED,
+        SELLER_REVIEW_HIDDEN,
+        SELLER_REVIEW_POSTED,
+      ]);
+      expect(await kindsSeenBy(member(MEMBER_2))).toEqual([SELLER_LOW_STOCK]);
+      // Ids and the star count: nothing about the buyer or the text is stored.
+      expect(
+        notices.rows
+          .filter((row) =>
+            [
+              SELLER_REVIEW_POSTED,
+              SELLER_REVIEW_HIDDEN,
+              SELLER_REVIEW_RESTORED,
+              SELLER_DELIVERY_PROBLEM,
+            ].includes(row.kind as never),
+          )
+          .flatMap((row) => Object.keys(row.params))
+          .sort(),
+      ).toEqual([
+        'productId',
+        'productId',
+        'productId',
+        'rating',
+        'reviewId',
+        'reviewId',
+        'reviewId',
+      ]);
     });
 
     it('carries the newest unread order for the sound, never a newer notice of another kind', async () => {

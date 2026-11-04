@@ -13,6 +13,20 @@ export type PromotionStatus = (typeof PROMOTION_STATUSES)[number];
 export const FUNDINGS = ['SELLER', 'PLATFORM', 'CO_FUNDED'] as const;
 export type Funding = (typeof FUNDINGS)[number];
 
+/**
+ * The types that give wallet credit after a delivery instead of taking money off a cart. Credit is
+ * a payment instrument, not a discount: these promotions are never in the quote, and the credit is
+ * issued through the wallet's facade (phase 3).
+ */
+export const CREDIT_TYPES = ['REFERRAL', 'CASHBACK'] as const;
+export type CreditType = (typeof CREDIT_TYPES)[number];
+export const isCreditType = (type: string): type is CreditType =>
+  (CREDIT_TYPES as readonly string[]).includes(type);
+
+/** The segments of a customer-group discount. */
+export const SEGMENT_KINDS = ['RETURNING_CUSTOMER', 'DELIVERY_ZONE'] as const;
+export type SegmentKind = (typeof SEGMENT_KINDS)[number];
+
 /** The types a person creates; the first-order discount comes from the Market's settings. */
 export const CREATABLE_TYPES = [
   'SELLER_SALE',
@@ -27,8 +41,15 @@ export const CREATABLE_TYPES = [
   'BUNDLE',
   'FLASH_SALE',
   'BATCH_CODE',
-] as const satisfies readonly PromotionType[];
+  // Phase 3.
+  'CUSTOMER_GROUP',
+  'STORE_FOLLOWER',
+  'REFERRAL',
+  'CASHBACK',
+] as const satisfies readonly (PromotionType | CreditType)[];
 export type CreatableType = (typeof CREATABLE_TYPES)[number];
+/** A creatable type that is a discount (everything but the credit types). */
+export type DiscountType = Exclude<CreatableType, CreditType>;
 
 export const REWARD_KINDS = ['PERCENT', 'FIXED'] as const;
 export const PAUSED_BY = ['ADMIN', 'SELLER'] as const;
@@ -46,6 +67,35 @@ export interface PromotionRules {
   readonly newSellerDays: number;
   readonly platformBudgetStepUpMinor: bigint;
   readonly gstRulingConfirmed: boolean;
+  /**
+   * Phase 3 (Market config `promotions.customerGroup`): the days a customer-group promotion uses
+   * when its admin gives none. Absent or null: the admin must say.
+   */
+  readonly customerGroupReturningDays?: number | null;
+  /** Phase 3 referral program limits; absent or null: the Market has no referral program. */
+  readonly referral?: ReferralRules | null;
+  /** Phase 3 cashback limits; absent or null: the Market has no cashback. */
+  readonly cashback?: CashbackRules | null;
+}
+
+/** Market limits of the refer-a-friend program (Market config `promotions.referral`). */
+export interface ReferralRules {
+  /** The most one credit (the referrer's or the new customer's) may be, minor units. */
+  readonly maxRewardMinor: bigint;
+  /** The most rewarded referrals one referrer may have under one promotion. */
+  readonly maxRewardedPerReferrer: number;
+  /** Days a new customer has, from applying a code, to get a qualifying order delivered. */
+  readonly qualifyWithinDays: number;
+  /** The length and alphabet of a referral code (at least 60 bits, checked by the config). */
+  readonly codeLength: number;
+  readonly alphabet: string;
+}
+
+/** Market limits of cashback (Market config `promotions.cashback`). */
+export interface CashbackRules {
+  readonly maxBps: number;
+  /** The most one order may be credited, minor units; a promotion's own cap is at most this. */
+  readonly maxCapMinor: bigint;
 }
 
 /** One tier of a tiered cart discount: the goods amount it starts at and its reward. */
@@ -104,6 +154,16 @@ export interface PromotionDraft {
   readonly flashUnitLimit: number | null;
   /** FLASH_SALE: the IANA zone of the owning party, in which the window was written. */
   readonly flashTimeZone: string | null;
+  // Phase 3 parameters, set for their type only (checkDraft).
+  /** CUSTOMER_GROUP: the segment. DELIVERY_ZONE uses `zones`. */
+  readonly segmentKind: SegmentKind | null;
+  /** CUSTOMER_GROUP / RETURNING_CUSTOMER: whole days since the customer's last order. */
+  readonly segmentMinDays: number | null;
+  /**
+   * REFERRAL: the credit the new customer gets, minor units; `reward` (FIXED) is the referrer's.
+   * CASHBACK: `reward` is PERCENT of the goods paid and `capMinor` the most one order is credited.
+   */
+  readonly refereeRewardMinor: bigint | null;
 }
 
 /** A stored promotion. */
@@ -133,18 +193,24 @@ export const MAX_TIERS = 10;
 export const MAX_BUNDLE_ITEMS = 20;
 /** The most units a group, a set, a repeat limit or a quantity in a bundle may name. */
 export const MAX_UNITS = 1000;
+/** The most days a customer-group segment may name (about ten years). */
+export const MAX_SEGMENT_DAYS = 3650;
 /** Types only a seller makes, types only an admin makes (the rest either, with the owner's money). */
 export const SELLER_ONLY_TYPES: readonly CreatableType[] = [
   'SELLER_SALE',
   'BUY_X_GET_Y',
   'MULTI_BUY',
   'BUNDLE',
+  'STORE_FOLLOWER',
 ];
 export const ADMIN_ONLY_TYPES: readonly CreatableType[] = [
   'FREE_SHIPPING',
   'CO_FUNDED_CAMPAIGN',
   'TIERED_CART',
   'BATCH_CODE',
+  'CUSTOMER_GROUP',
+  'REFERRAL',
+  'CASHBACK',
 ];
 /** Types an owner must aim at products (a seller's own; the platform's flash sale names them too). */
 const NEEDS_PRODUCTS: readonly CreatableType[] = [
@@ -159,7 +225,7 @@ const MAX_COUNT = 2_000_000_000;
 
 /** The layer a type belongs to; an owner decides between the seller cart and the platform cart. */
 export function layerOf(
-  type: PromotionType,
+  type: DiscountType | PromotionType,
   owner: Owner | 'seller' | 'platform',
 ): 'ITEM' | 'SELLER_CART' | 'PLATFORM_CART' | 'SHIPPING' {
   const kind = typeof owner === 'string' ? owner : owner.kind;
@@ -177,7 +243,10 @@ export function layerOf(
     case 'FIRST_ORDER':
     case 'TIERED_CART':
     case 'BATCH_CODE':
+    case 'CUSTOMER_GROUP':
       return 'PLATFORM_CART';
+    case 'STORE_FOLLOWER':
+      return 'SELLER_CART';
     case 'FREE_SHIPPING':
       return 'SHIPPING';
   }
@@ -519,6 +588,27 @@ export function parseDraft(raw: unknown): Result<PromotionDraft, readonly FieldI
   const maxTotalUses = optionalCount(raw.maxTotalUses, 'maxTotalUses', issues);
   const maxUsesPerCustomer = optionalCount(raw.maxUsesPerCustomer, 'maxUsesPerCustomer', issues);
 
+  // Phase 3: the segment of a customer-group discount and the credit of the new customer.
+  let segmentKind: SegmentKind | null = null;
+  let segmentMinDays: number | null = null;
+  if (raw.segment !== undefined && raw.segment !== null) {
+    if (!isRecord(raw.segment)) {
+      issues.push({ path: 'segment', code: 'type' });
+    } else {
+      if (isIn(SEGMENT_KINDS, raw.segment.kind)) segmentKind = raw.segment.kind;
+      else issues.push({ path: 'segment.kind', code: 'value' });
+      segmentMinDays = boundedCount(
+        raw.segment.minDaysSinceLastOrder,
+        'segment.minDaysSinceLastOrder',
+        issues,
+        MAX_SEGMENT_DAYS,
+      );
+    }
+  }
+  const refereeRewardMinor = optionalMoney(raw.refereeRewardMinor, 'refereeRewardMinor', issues, {
+    min: 1n,
+  });
+
   const buyQty = boundedCount(raw.buyQty, 'buyQty', issues, MAX_UNITS);
   const getQty = boundedCount(raw.getQty, 'getQty', issues, MAX_UNITS);
   const groupQty = boundedCount(raw.groupQty, 'groupQty', issues, MAX_UNITS);
@@ -595,6 +685,9 @@ export function parseDraft(raw: unknown): Result<PromotionDraft, readonly FieldI
     maxRepeatsPerOrder,
     flashUnitLimit,
     flashTimeZone,
+    segmentKind,
+    segmentMinDays,
+    refereeRewardMinor,
   });
 }
 
@@ -622,15 +715,34 @@ export function approvalRewardOf(
   return draft.reward;
 }
 
+/**
+ * Fills what the Market's config supplies when the admin leaves it out: the days of a returning-
+ * customer segment. Called before {@link checkDraft}, at create and at edit.
+ */
+export function withMarketDefaults(draft: PromotionDraft, rules: PromotionRules): PromotionDraft {
+  if (
+    draft.type === 'CUSTOMER_GROUP' &&
+    draft.segmentKind === 'RETURNING_CUSTOMER' &&
+    draft.segmentMinDays === null &&
+    rules.customerGroupReturningDays != null
+  ) {
+    return { ...draft, segmentMinDays: rules.customerGroupReturningDays };
+  }
+  return draft;
+}
+
 /** The fields each type needs, allows and forbids; the numbers of the type are checked with them. */
 function checkTypeFields(
   draft: PromotionDraft,
   bad: (path: string, code: string) => unknown,
+  rules: PromotionRules,
 ): void {
   const only = (present: boolean, type: CreatableType | readonly CreatableType[], path: string) => {
     const types = typeof type === 'string' ? [type] : type;
     if (present && !types.includes(draft.type)) bad(path, 'not-allowed');
   };
+  only(draft.segmentKind !== null || draft.segmentMinDays !== null, 'CUSTOMER_GROUP', 'segment');
+  only(draft.refereeRewardMinor !== null, 'REFERRAL', 'refereeRewardMinor');
   only(draft.tiers.length > 0, 'TIERED_CART', 'tiers');
   only(draft.buyQty !== null, 'BUY_X_GET_Y', 'buyQty');
   only(draft.getQty !== null, 'BUY_X_GET_Y', 'getQty');
@@ -688,6 +800,69 @@ function checkTypeFields(
       // A real end, so a countdown is never faked.
       if (draft.endsAt === null) bad('endsAt', 'required');
       break;
+    case 'CUSTOMER_GROUP':
+      if (draft.segmentKind === null) bad('segment.kind', 'required');
+      if (draft.segmentKind === 'RETURNING_CUSTOMER') {
+        if (draft.segmentMinDays === null) bad('segment.minDaysSinceLastOrder', 'required');
+        if (draft.zones.length > 0) bad('zones', 'not-allowed');
+      }
+      if (draft.segmentKind === 'DELIVERY_ZONE') {
+        if (draft.segmentMinDays !== null) bad('segment.minDaysSinceLastOrder', 'not-allowed');
+        if (draft.zones.length === 0) bad('zones', 'required');
+      }
+      break;
+    case 'STORE_FOLLOWER':
+      // A seller's own store: it needs no target; any of its products qualify.
+      break;
+    case 'REFERRAL': {
+      const referral = rules.referral ?? null;
+      if (referral === null) {
+        bad('type', 'unavailable');
+        break;
+      }
+      if (draft.reward.kind !== 'FIXED') bad('reward.kind', 'value');
+      else if (draft.reward.amount > referral.maxRewardMinor)
+        bad('reward.amountMinor', 'exceeds-market-limit');
+      if (draft.refereeRewardMinor === null) bad('refereeRewardMinor', 'required');
+      else if (draft.refereeRewardMinor > referral.maxRewardMinor) {
+        bad('refereeRewardMinor', 'exceeds-market-limit');
+      }
+      // The cap on rewarded referrals of one referrer is part of the terms, and the Market bounds it.
+      if (draft.maxUsesPerCustomer === null) bad('maxUsesPerCustomer', 'required');
+      else if (draft.maxUsesPerCustomer > referral.maxRewardedPerReferrer) {
+        bad('maxUsesPerCustomer', 'exceeds-market-limit');
+      }
+      for (const [present, path] of [
+        [draft.capMinor !== null, 'capMinor'],
+        [draft.maxPerOrderMinor !== null, 'maxPerOrderMinor'],
+        [draft.productIds.length > 0, 'productIds'],
+        [draft.sellerIds.length > 0, 'sellerIds'],
+        [draft.zones.length > 0, 'zones'],
+      ] as const) {
+        if (present) bad(path, 'not-allowed');
+      }
+      break;
+    }
+    case 'CASHBACK': {
+      const cashback = rules.cashback ?? null;
+      if (cashback === null) {
+        bad('type', 'unavailable');
+        break;
+      }
+      if (draft.reward.kind !== 'PERCENT') bad('reward.kind', 'value');
+      else if (draft.reward.bps > cashback.maxBps) bad('reward.bps', 'exceeds-market-limit');
+      if (draft.capMinor === null) bad('capMinor', 'required');
+      else if (draft.capMinor > cashback.maxCapMinor) bad('capMinor', 'exceeds-market-limit');
+      for (const [present, path] of [
+        [draft.maxPerOrderMinor !== null, 'maxPerOrderMinor'],
+        [draft.productIds.length > 0, 'productIds'],
+        [draft.sellerIds.length > 0, 'sellerIds'],
+        [draft.zones.length > 0, 'zones'],
+      ] as const) {
+        if (present) bad(path, 'not-allowed');
+      }
+      break;
+    }
     default:
       break;
   }
@@ -737,10 +912,16 @@ export function checkDraft(
   if (NEEDS_PRODUCTS.includes(draft.type) && draft.productIds.length === 0) {
     bad('productIds', 'required');
   }
-  checkTypeFields(draft, bad);
+  checkTypeFields(draft, bad, rules);
   if (draft.type === 'FREE_SHIPPING' && draft.minSpendMinor === null)
     bad('minSpendMinor', 'required');
-  if (draft.type !== 'FREE_SHIPPING' && draft.zones.length > 0) bad('zones', 'not-allowed');
+  if (
+    draft.type !== 'FREE_SHIPPING' &&
+    !(draft.type === 'CUSTOMER_GROUP' && draft.segmentKind === 'DELIVERY_ZONE') &&
+    draft.zones.length > 0
+  ) {
+    bad('zones', 'not-allowed');
+  }
   if (draft.funding === 'CO_FUNDED') {
     if (draft.platformSplitBps === null) bad('platformSplitBps', 'required');
   } else if (draft.platformSplitBps !== null) {

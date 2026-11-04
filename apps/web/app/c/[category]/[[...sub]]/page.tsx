@@ -27,7 +27,7 @@ import {
 import { findProductsThrough } from '../../../../src/catalog/through.ts';
 import {
   LISTING_PAGE_SIZE,
-  findProducts,
+  categoryIsEmpty,
   listingBanner,
   listingFacets,
   listingIsLive,
@@ -61,8 +61,8 @@ export async function generateMetadata({ params, searchParams }: Props) {
   const state = listingStateOf(query);
   const path = child ? `/c/${category.code}/${child.code}` : `/c/${category.code}`;
   const scope = { category: category.code, ...(child ? { subcategory: child.code } : {}) };
-  const [all, description] = await Promise.all([
-    findProducts({ ...scope, page: 1, pageSize: 1 }),
+  const [empty, description] = await Promise.all([
+    categoryIsEmpty(scope),
     child
       ? seoDescription('subcategory', { name: child.name, category: category.name })
       : seoDescription('category', { name: category.name }),
@@ -73,7 +73,7 @@ export async function generateMetadata({ params, searchParams }: Props) {
     path,
     page: state.page,
     // An empty list, or a filtered or re-ordered copy of the plain one, stays out of the index.
-    noindex: listingNoindex(state) || (all.total ?? all.items.length) === 0,
+    noindex: listingNoindex(state) || empty,
   });
 }
 

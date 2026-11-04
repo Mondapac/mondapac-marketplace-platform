@@ -76,8 +76,8 @@
   --sf-on-teal-line: rgb(255 255 255 / 0.2);
   --sf-on-teal-fill: rgb(255 255 255 / 0.14);
   --sf-on-teal-muted: rgb(255 255 255 / 0.82);
-  --sf-font-head: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --sf-font-body: 'Figtree', system-ui, sans-serif;
+  --sf-font-head: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif;
+  --sf-font-body: var(--font-figtree), 'Figtree', system-ui, sans-serif;
   --sf-radius-card: 5px;
   --sf-radius-tile: 14px;
   --sf-radius-pill: 999px;
@@ -3194,6 +3194,57 @@ svg {
 .bprice s {
   color: var(--sf-slate);
 }
+.vpick {
+  margin-block-end: 14px;
+}
+.vpick-title {
+  color: var(--sf-slate);
+  font: 600 calc(13px * var(--fs)) / calc(18px * var(--fs)) var(--sf-font-body);
+  margin-block-end: 6px;
+}
+.vpick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vpick-opt {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 64px;
+  min-height: 44px;
+  justify-content: center;
+  padding: 6px 14px;
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  font: 700 calc(14px * var(--fs)) / calc(18px * var(--fs)) var(--sf-font-body);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.vpick-opt.on {
+  border: 2px solid var(--sf-teal);
+  background: var(--sf-mist-soft);
+  padding: 5px 13px;
+}
+.vpick-opt.off {
+  color: var(--sf-slate);
+  background: var(--sf-surface);
+  cursor: not-allowed;
+}
+.vpick-opt.off:not(.on) span {
+  text-decoration: line-through;
+}
+.vpick-opt small {
+  font-weight: 600;
+  font-size: calc(11px * var(--fs));
+}
+.vpick-opt:focus-visible {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+
 .bb .gst {
   color: var(--sf-slate);
   font-size: calc(12px * var(--fs));
@@ -3352,6 +3403,14 @@ svg {
 }
 .dmore[aria-expanded='true'] .ico {
   transform: rotate(-90deg);
+}
+.spec-group + .spec-group {
+  margin-top: 16px;
+}
+.spec-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 700;
 }
 .spec {
   margin: 0;
@@ -7623,7 +7682,7 @@ button.login {
   font-weight: 700;
   font-size: calc(14px * var(--fs));
 }
-.ac-fld input {
+.ac-fld :is(input, select) {
   box-sizing: border-box;
   width: 100%;
   height: 46px;
@@ -7634,11 +7693,11 @@ button.login {
   color: var(--sf-ink);
   font: inherit;
 }
-.ac-fld input:focus {
+.ac-fld :is(input, select):focus {
   border-color: var(--sf-teal);
   outline: 0;
 }
-.ac-fld input:focus-visible {
+.ac-fld :is(input, select):focus-visible {
   outline: 2px solid var(--sf-teal);
   outline-offset: 1px;
 }
@@ -9601,14 +9660,16 @@ button.login {
 
 /* Fonts for scripts the brand fonts do not cover. Figtree and Plus Jakarta Sans stay first, so
    Latin digits and brand text keep the brand look; the script font fills the other glyphs. The
-   stylesheet for it loads only in these languages (src/i18n/fonts.ts). */
+   font for it is applied only in these languages (src/i18n/fonts.ts). */
 :root:lang(fa) {
-  --sf-font-head: 'Plus Jakarta Sans', 'Vazirmatn', system-ui, sans-serif;
-  --sf-font-body: 'Figtree', 'Vazirmatn', system-ui, sans-serif;
+  --sf-font-head:
+    var(--font-jakarta), 'Plus Jakarta Sans', var(--font-vazirmatn), system-ui, sans-serif;
+  --sf-font-body: var(--font-figtree), 'Figtree', var(--font-vazirmatn), system-ui, sans-serif;
 }
 :root:lang(ar) {
-  --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
-  --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
+  --sf-font-head:
+    var(--font-jakarta), 'Plus Jakarta Sans', var(--font-noto-arabic), system-ui, sans-serif;
+  --sf-font-body: var(--font-figtree), 'Figtree', var(--font-noto-arabic), system-ui, sans-serif;
 }
 
 /* Buyer mobile M3: the phone home search field, the sticky filter bar and "Load more".

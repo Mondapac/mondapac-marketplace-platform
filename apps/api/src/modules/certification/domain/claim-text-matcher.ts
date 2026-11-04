@@ -21,6 +21,11 @@ export interface ClaimVocabularyEntry {
   readonly typeCode: CertificationTypeCode;
   /** Terms written by people (R10): phrases of one or more tokens. Never regular expressions. */
   readonly terms: readonly string[];
+  /**
+   * The locales whose texts carry at least one of these terms. Absent means unknown: a reader that
+   * does not say treats no locale as covered (fail closed).
+   */
+  readonly termLocales?: readonly string[];
 }
 
 export interface ClaimTermMatch {
