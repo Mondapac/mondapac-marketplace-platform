@@ -1,6 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
-import { Product, formatProductCode } from './product';
+import { Product, formatProductCode, variantCodeOf } from './product';
 import { configurableProductType } from './product-types/configurable';
 import { simpleProductType } from './product-types/simple';
 
@@ -71,7 +71,14 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
         discardedAt: null,
       });
       expect(product.state.variants).toEqual([
-        { id: variant(1), state: 'proposed', createdAt: T0, publishedAt: null, retiredAt: null },
+        {
+          id: variant(1),
+          variantNo: 1,
+          state: 'proposed',
+          createdAt: T0,
+          publishedAt: null,
+          retiredAt: null,
+        },
       ]);
       expect(product.persistedVersion).toBeNull();
       expect(product.pendingEvents).toHaveLength(1);
@@ -182,6 +189,23 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
         [variant(2), 'proposed'],
         [variant(3), 'proposed'],
       ]);
+    });
+
+    it('numbers variants 1, 2, 3 in creation order and never reuses a retired number (V2)', () => {
+      const product = reloaded(configurable());
+      product.addVariant(variant(1), 5, T1, 'seller');
+      product.addVariant(variant(2), 5, T1, 'seller');
+      product.removeProposedVariant(variant(2), T1, 'seller');
+      product.addVariant(variant(3), 5, T1, 'seller');
+
+      expect(product.state.variants.map((v) => [v.id, v.variantNo])).toEqual([
+        [variant(1), 1],
+        [variant(2), 2],
+        [variant(3), 3],
+      ]);
+      expect(variantCodeOf('MP-004127', 2)).toBe('MP-004127-02');
+      expect(variantCodeOf('MP-004127', 12)).toBe('MP-004127-12');
+      expect(variantCodeOf('MP-004127', 100)).toBe('MP-004127-100');
     });
 
     it('announces the removal of a proposed variant, once', () => {

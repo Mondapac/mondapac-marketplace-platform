@@ -61,12 +61,15 @@ function idList(value: unknown): boolean {
 /**
  * Walks a draft and answers every checked text with its place, or `working-copy.invalid-content`
  * when the draft holds anything the closed shape does not name. `defaultLocale` is the locale of
- * a text that is not localizable.
+ * a text that is not localizable. A variant label is built by the server (variants V2), so a
+ * seller's draft (`source` `draft`, the default) refuses a `labels` key; a frozen revision
+ * (`source` `revision`) carries the built labels and they are checked like any customer text.
  */
 export function draftTextsOf(
   content: Readonly<Record<string, unknown>>,
   supportedLocales: readonly string[],
   defaultLocale: string,
+  source: 'draft' | 'revision' = 'draft',
 ): Result<DraftText[], Invalid> {
   const found: DraftText[] = [];
   if (!closedKeys(content, TOP_KEYS)) return invalid;
@@ -135,7 +138,15 @@ export function draftTextsOf(
     if (!Array.isArray(variants) || variants.length > MAX_LIST) return invalid;
     const seenIds = new Set<string>();
     for (const variant of variants as unknown[]) {
-      if (!isObject(variant) || !closedKeys(variant, ['variantId', 'optionValues', 'labels'])) {
+      if (
+        !isObject(variant) ||
+        !closedKeys(
+          variant,
+          source === 'revision'
+            ? ['variantId', 'optionValues', 'labels']
+            : ['variantId', 'optionValues'],
+        )
+      ) {
         return invalid;
       }
       const variantId = variant['variantId'];

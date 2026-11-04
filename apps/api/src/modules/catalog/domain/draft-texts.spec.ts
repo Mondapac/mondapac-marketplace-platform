@@ -9,8 +9,26 @@ const FIXTURES = [
 
 describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLocale }) => {
   const [first, second] = supported;
+  // The walk of a frozen revision, which carries the built variant labels; a seller's draft does not.
   const read = (content: Record<string, unknown>) =>
-    draftTextsOf(content, supported, defaultLocale);
+    draftTextsOf(content, supported, defaultLocale, 'revision');
+
+  it('refuses a variant label in a seller draft: labels are built by the server (V2)', () => {
+    const variants = [
+      { variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } },
+    ];
+    expect(draftTextsOf({ variants }, supported, defaultLocale)).toEqual({
+      ok: false,
+      error: { code: 'working-copy.invalid-content' },
+    });
+    expect(
+      draftTextsOf(
+        { variants: [{ variantId: 'v1', optionValues: { size: 'l' } }] },
+        supported,
+        defaultLocale,
+      ).ok,
+    ).toBe(true);
+  });
 
   it('finds every text field of a full draft with its place', () => {
     const content = {

@@ -333,6 +333,36 @@ describe('claim-text control behind the platform product routes (integration, sl
       expect(copies.size).toBe(0);
     });
 
+    it('refuses a free variant label in the draft as a whole: labels are built by the server (V2)', async () => {
+      await boot();
+      const session = await seeded(code);
+      const product = newProduct(code);
+      const policy = app.get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY);
+      const variantId = product.state.variants[0]!.id;
+
+      const bad = await send(
+        'put',
+        code,
+        '/draft',
+        {
+          content: contentOf(policy, 'Dates', {
+            variants: [
+              {
+                variantId,
+                optionValues: {},
+                labels: { [policy.locales(marketOf(code)).default]: 'Big' },
+              },
+            ],
+          }),
+          variantIds: [variantId],
+        },
+        session,
+      );
+      expect(bad.status).toBe(400);
+      expect(bad.body).toEqual({ statusCode: 400, code: 'working-copy.invalid-content' });
+      expect(copies.size).toBe(0);
+    });
+
     it('refuses a submit whose frozen content now holds a claim, storing no revision', async () => {
       await boot();
       const session = await seeded(code);

@@ -156,6 +156,7 @@ migration in 8. "Privileges" lines are in 7.
 | `id` | `uuid` | no | PK. CA7 (UUIDv7 only, server-minted) |
 | `product_id` | `uuid` | no | FK `(market_id, product_id, variant_model)` → `products (market_id, id, variant_model)` |
 | `variant_model` | `text` | no | Copy bound by that FK |
+| `variant_no` | `integer` | no | V2. 1, 2, 3 ... per product in creation order, minted by the aggregate (highest ever used + 1, so a retired number is never reused). CHECK `>= 1`; CHECK `variant_model <> 'single' OR variant_no = 1`; unique `(market_id, product_id, variant_no)`; immutable (guard trigger). The variant code `{product_code}-{nn}` is derived, not stored. Migration `20261104020000_catalog_variant_number` backfills in `(created_at, id)` order with the guard trigger off for that one statement |
 | `state` | `text` | no | CHECK `proposed`, `published`, `retired` |
 | `created_at` | `timestamptz(6)` | no | |
 | `published_at`, `retired_at` | `timestamptz(6)` | yes | CHECK `(state = 'retired') = (retired_at IS NOT NULL)`; `state = 'proposed' OR published_at IS NOT NULL OR state = 'retired'` |
@@ -167,7 +168,7 @@ migration in 8. "Privileges" lines are in 7.
 - Unique `(market_id, id)` and `(market_id, product_id, id)` (target of 3.10's same-product FK; also
   the count path of the variant limit, 6.3 A16).
 - **Guard trigger `product_variants_guard`** (5.1; measured): refuses a change of `id`,
-  `product_id`, `variant_model`, `created_at`; allows only `proposed → published`, `proposed →
+  `product_id`, `variant_model`, `variant_no`, `created_at`; allows only `proposed → published`, `proposed →
   retired`, `published → retired`; refuses every `DELETE` (Q-K2). So a retired id is
   never revived and never re-enters `proposed` or `published` (D 17.1 item 2), for every role. A
   second trigger on `product_revision_variants` refuses a retired variant in any new revision (3.10).

@@ -37,7 +37,14 @@ const published = (id: Id<'Product'>): PublishedProduct => ({
   brand: null,
   specifications: [],
   variants: [
-    { variantId: '01990000-0000-7000-8000-0000000000b1' as Id<'Variant'>, position: 0, label: 'S' },
+    {
+      variantId: '01990000-0000-7000-8000-0000000000b1' as Id<'Variant'>,
+      position: 0,
+      label: 'S',
+      variantNo: 1,
+      variantCode: 'MP-000001-01',
+      axes: [],
+    },
   ],
 });
 

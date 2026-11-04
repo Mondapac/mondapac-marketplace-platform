@@ -12,7 +12,9 @@ import {
   type SpecificationDefinition,
   type SpecificationOption,
 } from '../domain/published-specifications';
+import { variantCodeOf } from '../domain/product';
 import { asTexts, pick } from './prisma-offer-listings.reader';
+import { readAxisValues } from './variant-axis-values';
 
 /**
  * {@link PublishedProductReader}: the product by `(market_id, id)` with status `published`, then
@@ -35,7 +37,7 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     const product = await tx.catalogProduct.findFirst({
       // A paused product is not shown (catalog design 4.1a).
       where: { marketId: market.marketId, id: productId, status: 'published', pausedAt: null },
-      select: { publishedRevisionId: true, brandId: true },
+      select: { publishedRevisionId: true, brandId: true, productCode: true },
     });
     if (product === null || product.publishedRevisionId === null) return null;
     const revisionId = product.publishedRevisionId;
@@ -59,9 +61,9 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     const revisionVariants = await tx.catalogProductRevisionVariant.findMany({
       where: { marketId: market.marketId, revisionId },
       orderBy: [{ position: 'asc' }],
-      select: { variantId: true, position: true, labels: true },
+      select: { variantId: true, position: true, labels: true, optionValues: true },
     });
-    const published = new Set(
+    const published = new Map(
       revisionVariants.length === 0
         ? []
         : (
@@ -72,9 +74,9 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
                 id: { in: revisionVariants.map((row) => row.variantId) },
                 state: 'published',
               },
-              select: { id: true },
+              select: { id: true, variantNo: true },
             })
-          ).map((row) => row.id),
+          ).map((row) => [row.id, row.variantNo] as const),
     );
     // The brand is shown only while it is active; a draft or archived one is no brand here.
     const brand =
@@ -85,6 +87,18 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
             select: { slug: true, name: true },
           });
     const specifications = await this.specifications(tx, market.marketId, revisionId, locales);
+    const rowsShown = revisionVariants.filter((row) => published.has(row.variantId));
+    const axisLists = await readAxisValues(
+      tx,
+      market.marketId,
+      rowsShown.map((row) => row.optionValues),
+      locales,
+    );
+    const shown = rowsShown.map((row, index) => ({
+      row,
+      variantNo: published.get(row.variantId)!,
+      axes: axisLists[index]!,
+    }));
     return {
       productId,
       publishedRevisionId: revisionId as Id<'ProductRevision'>,
@@ -92,16 +106,17 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
       shortDescription: text.shortDescription,
       description: text.description,
       categoryIds: categories.map((row) => row.categoryId as Id<'Category'>),
-      variants: revisionVariants
-        .filter((row) => published.has(row.variantId))
-        .map((row) => {
-          const labels = asTexts(row.labels);
-          return {
-            variantId: row.variantId as Id<'Variant'>,
-            position: row.position,
-            label: labels === null ? null : pick(labels, locales),
-          };
-        }),
+      variants: shown.map(({ row, variantNo, axes }) => {
+        const labels = asTexts(row.labels);
+        return {
+          variantId: row.variantId as Id<'Variant'>,
+          position: row.position,
+          label: labels === null ? null : pick(labels, locales),
+          variantNo,
+          variantCode: variantCodeOf(product.productCode, variantNo),
+          axes,
+        };
+      }),
       brand,
       specifications,
     };

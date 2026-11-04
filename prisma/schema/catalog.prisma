@@ -141,6 +141,9 @@ model CatalogProductVariant {
   variantModel     String                          @map("variant_model")
   /// proposed | published | retired.
   state            String
+  /// 1, 2, 3 ... per product in creation order; minted by the server, never reused, immutable.
+  /// The variant code is `{productCode}-{nn}`, derived from it.
+  variantNo        Int                             @map("variant_no")
   createdAt        DateTime                        @map("created_at") @db.Timestamptz(6)
   publishedAt      DateTime?                       @map("published_at") @db.Timestamptz(6)
   retiredAt        DateTime?                       @map("retired_at") @db.Timestamptz(6)
@@ -150,6 +153,8 @@ model CatalogProductVariant {
   @@unique([marketId, id])
   /// The count path of the variant limit and the target of a same-product foreign key (3.10).
   @@unique([marketId, productId, id])
+  /// The number of a variant within its product (V2); the single-variant CHECK is hand-written.
+  @@unique([marketId, productId, variantNo])
   @@map("product_variants")
   @@schema("catalog")
 }

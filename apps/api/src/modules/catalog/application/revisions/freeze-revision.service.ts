@@ -4,6 +4,7 @@ import type { Product } from '../../domain/product';
 import type { ProductTypeHandler, VariantDraft } from '../../domain/product-type-handler';
 import type { RevisionContent } from '../../domain/revision-content';
 import { freezeWorkingCopy, type FreezeIssue } from '../../domain/revision-freeze';
+import { buildVariantLabels } from '../../domain/variant-labels';
 import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
@@ -92,6 +93,7 @@ export class FreezeRevision {
       variantModel: state.variantModel,
       liveVariantIds: product.liveVariants.map((variant) => variant.id),
       maxVariants,
+      labelsFor: (optionValues) => buildVariantLabels(schema, optionValues, locales.supported),
       schemaRef: {
         familyRevisionId: schema.schemaRef.familyRevisionId,
         definitionRevisionIds: schema.schemaRef.definitionRevisionIds,
