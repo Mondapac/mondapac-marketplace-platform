@@ -223,6 +223,19 @@ export const CATALOG_ATTRIBUTE_EDIT = definePermission('catalog', {
   protected: true,
 });
 
+/**
+ * Approve, map or reject a seller's suggestion of a new value for a select attribute (attributes
+ * plan 14, package A5). Platform scope; unprotected, so Catalogue Moderator receives it by
+ * identity's seed. It does not need `catalog.attribute.edit` (protected): approving adds exactly
+ * one value to a published attribute that is not `material`, and the use case refuses any other
+ * change. A brand proposal is decided with `catalog.brand.edit`, as before.
+ */
+export const CATALOG_ATTRIBUTE_SUGGESTION_DECIDE = definePermission('catalog', {
+  key: 'catalog.attribute-suggestion.decide',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -240,6 +253,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_BUSINESS_ACTIVITY_EDIT,
   CATALOG_ATTRIBUTE_VIEW,
   CATALOG_ATTRIBUTE_EDIT,
+  CATALOG_ATTRIBUTE_SUGGESTION_DECIDE,
   CATALOG_CATEGORY_TREE_VIEW,
   CATALOG_CATEGORY_TREE_EDIT,
   CATALOG_CATEGORY_TREE_RESTRUCTURE,

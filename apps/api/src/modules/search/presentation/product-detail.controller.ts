@@ -18,7 +18,7 @@ import {
   type ProductDetail,
   type ProductDetailFailure,
 } from '../application/use-cases/view-product-detail.use-case';
-import { ProductDetailBody } from './search.dto';
+import { ProductDetailBody, ProductDetailSpecificationValueBody } from './search.dto';
 
 const fail = (status: number, code: string, details?: object): HttpException =>
   new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
@@ -81,6 +81,14 @@ export class ProductDetailController {
       description: detail.description,
       categoryIds: [...detail.categoryIds],
       brand: detail.brand === null ? null : { slug: detail.brand.slug, name: detail.brand.name },
+      specifications: detail.specifications.map((group) => ({
+        groupCode: group.groupCode,
+        specifications: group.specifications.map(({ code, name, value }) => ({
+          code,
+          name,
+          value: specificationValue(value),
+        })),
+      })),
       images: detail.images.map(({ imageId, width, height, alt }) => ({
         imageId,
         width,
@@ -139,3 +147,18 @@ export class ProductDetailController {
     throw fail(503, 'search.unavailable');
   }
 }
+
+/** A specification value field by field, with a mutable list. */
+function specificationValue(value: SpecificationValue): ProductDetailSpecificationValueBody {
+  switch (value.kind) {
+    case 'text':
+      return { kind: 'text', text: value.text };
+    case 'list':
+      return { kind: 'list', items: [...value.items] };
+    default:
+      return { kind: value.kind, value: value.value };
+  }
+}
+
+type SpecificationValue =
+  ProductDetail['specifications'][number]['specifications'][number]['value'];

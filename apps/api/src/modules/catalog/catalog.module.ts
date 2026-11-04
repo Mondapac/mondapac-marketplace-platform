@@ -238,6 +238,19 @@ import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.us
 import { BrandAdminController } from './presentation/brand-admin.controller';
 import { AttributeAdminController } from './presentation/attribute-admin.controller';
 import { AttributeRelaxationController } from './presentation/attribute-relaxation.controller';
+import { OwnAttributeValueSuggest } from './application/use-cases/own-attribute-value-suggest.use-case';
+import { AttributeSuggestionList } from './application/use-cases/attribute-suggestion-list.use-case';
+import { AttributeSuggestionApprove } from './application/use-cases/attribute-suggestion-approve.use-case';
+import { AttributeSuggestionMap } from './application/use-cases/attribute-suggestion-map.use-case';
+import { AttributeSuggestionReject } from './application/use-cases/attribute-suggestion-reject.use-case';
+import { SendAttributeSuggestionNotices } from './application/use-cases/send-attribute-suggestion-notices.use-case';
+import { sendAttributeSuggestionNoticesJob } from './presentation/jobs/send-attribute-suggestion-notices.job';
+import { AttributeSuggestionController } from './presentation/attribute-suggestion.controller';
+import { OwnAttributeSuggestionController } from './presentation/own-attribute-suggestion.controller';
+import {
+  ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  type AttributeValueSuggestionStore,
+} from './application/ports/attribute-value-suggestion.store';
 import { AttributeDefinitionCreate } from './application/use-cases/attribute-definition-create.use-case';
 import { AttributeDefinitionEdit } from './application/use-cases/attribute-definition-edit.use-case';
 import { AttributeDefinitionDiscard } from './application/use-cases/attribute-definition-discard.use-case';
@@ -365,6 +378,7 @@ const PORT = {
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
+  suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
@@ -447,6 +461,8 @@ const productTypeProvider: FactoryProvider<string> = {
     BrandAdminController,
     AttributeAdminController,
     AttributeRelaxationController,
+    AttributeSuggestionController,
+    OwnAttributeSuggestionController,
     CategoryAdminController,
     BusinessActivityAdminController,
     OwnBrandController,
@@ -512,13 +528,16 @@ const productTypeProvider: FactoryProvider<string> = {
         CATALOG_MARKET_POLICY,
         PRODUCT_TYPE_LOOKUP,
         PRODUCT_IMAGE_REPOSITORY,
+        ATTRIBUTE_VALUE_SUGGESTION_STORE,
       ],
       useFactory: (
         attributes: AttributeRepository,
         policy: CatalogMarketPolicy,
         handlerFor: ProductTypeLookup,
         images: ProductImageRepository,
-      ): FreezeRevision => new FreezeRevision({ attributes, policy, handlerFor, images }),
+        suggestions: AttributeValueSuggestionStore,
+      ): FreezeRevision =>
+        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions }),
     },
     serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
     serviceProvider(SubmitProduct, {
@@ -621,6 +640,59 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnAttributeValueSuggest, {
+      unitOfWork: true,
+      products: true,
+      attributes: true,
+      attributeStore: true,
+      suggestions: true,
+      eligibility: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeSuggestionList, {
+      unitOfWork: true,
+      suggestions: true,
+      attributeStore: true,
+      products: true,
+      policy: true,
+    }),
+    useCaseProvider(AttributeSuggestionApprove, {
+      unitOfWork: true,
+      attributeStore: true,
+      suggestions: true,
+      audit: true,
+      clock: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeSuggestionMap, {
+      unitOfWork: true,
+      attributeStore: true,
+      suggestions: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AttributeSuggestionReject, {
+      unitOfWork: true,
+      attributeStore: true,
+      suggestions: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendAttributeSuggestionNotices, {
+      unitOfWork: true,
+      suggestions: true,
+      attributeStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      policy: true,
       clock: true,
     }),
     useCaseProvider(ExpireRelaxationRequests, {
@@ -1112,6 +1184,8 @@ const productTypeProvider: FactoryProvider<string> = {
       revisions: true,
       ownReader: true,
       policy: true,
+      suggestions: true,
+      attributeStore: true,
     }),
     useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnOfferRead, {
@@ -1178,6 +1252,7 @@ const productTypeProvider: FactoryProvider<string> = {
         PlatformImportRun,
         PlatformImportPurge,
         ExpireRelaxationRequests,
+        SendAttributeSuggestionNotices,
       ],
       (
         categories: SeedCategoryTree,
@@ -1189,6 +1264,7 @@ const productTypeProvider: FactoryProvider<string> = {
         importRun: PlatformImportRun,
         importPurge: PlatformImportPurge,
         expireRelaxations: ExpireRelaxationRequests,
+        suggestionNotices: SendAttributeSuggestionNotices,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -1199,6 +1275,7 @@ const productTypeProvider: FactoryProvider<string> = {
         platformImportRunJob(importRun),
         purgePlatformImportsJob(importPurge),
         expireRelaxationRequestsJob(expireRelaxations),
+        sendAttributeSuggestionNoticesJob(suggestionNotices),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).

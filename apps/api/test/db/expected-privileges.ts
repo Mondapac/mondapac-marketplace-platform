@@ -327,9 +327,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['valid_to'],
     },
     // Seller health (package 3): counters and snapshots are set by the rollup and replaced on a
-    // recalculation; never deleted.
-    'sellers.seller_health_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
-    'sellers.seller_health_snapshots': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // recalculation; deleted only by the retention purge (400 days).
+    'sellers.seller_health_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'sellers.seller_health_snapshots': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
@@ -1269,6 +1275,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.attribute_relaxation_requests': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
+    },
+    // Attributes A5: a decision and a notice move are the only updates, in these columns (data
+    // design 3.30); a suggestion is never deleted.
+    'catalog.attribute_value_suggestions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'option_code',
+        'reject_reason',
+        'status',
+        'version',
+      ],
     },
     'catalog.attribute_definition_revision_options': {
       table: ['INSERT', 'SELECT'],
