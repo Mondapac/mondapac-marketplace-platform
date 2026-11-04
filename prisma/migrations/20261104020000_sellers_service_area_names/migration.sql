@@ -20,10 +20,12 @@ CREATE TABLE "sellers"."service_area_names" (
 -- Hand-written: CHECKs. The same shapes the configuration boot check holds (area code, language
 -- tag, 1 to 120 characters).
 ALTER TABLE "sellers"."service_area_names"
+  ADD CONSTRAINT "service_area_names_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "service_area_names_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
   ADD CONSTRAINT "service_area_names_area_code_check" CHECK ("area_code" ~ '^[a-z0-9][a-z0-9-]{0,63}$'),
   ADD CONSTRAINT "service_area_names_locale_check" CHECK ("locale" ~ '^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$'),
-  ADD CONSTRAINT "service_area_names_name_check" CHECK ("name" = btrim("name") AND length("name") BETWEEN 1 AND 120);
+  ADD CONSTRAINT "service_area_names_name_check" CHECK ("name" = btrim("name") AND length("name") BETWEEN 1 AND 120),
+  ADD CONSTRAINT "service_area_names_name_control_check" CHECK ("name" !~ '[[:cntrl:]]');
 
 -- Grants (database-designer). A name is replaced by changing the name, who and when; deleting the
 -- row restores the configured name. The key columns never change.

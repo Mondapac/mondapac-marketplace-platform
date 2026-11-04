@@ -1610,6 +1610,10 @@ against the Market's configured areas. CHECKs: tenant shape, area code `^[a-z0-9
 language tag, name trimmed and 1 to 120 characters. Grants: `SELECT, INSERT, DELETE` and
 `UPDATE (name, updated_by, updated_at)` for `mondapac_app`.
 
+The CHECK on `name` is a floor: the application also trims tabs and no-break spaces and refuses
+format characters, which `btrim` and `[[:cntrl:]]` do not. A concurrent first write of the same
+language is settled by the repository (update, insert, update again), so the last writer wins.
+
 Access paths: the Market's whole set (`WHERE market_id = $1`, a prefix of the primary key; a Market
 has a handful of areas, so a scan of the prefix is bounded by areas times languages) and a write of
 one `(market, area, language)` row. No other index is needed. Growth: at most areas times

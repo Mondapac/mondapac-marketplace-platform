@@ -37,4 +37,6 @@ releasing. The owner wants admins to edit the names.
 - A rename needs no release. Two instances may show an old name for up to a minute.
 - Area names appear in admin only for now. The review page and the public store keep their
   current text until their own packages.
+- Later readers of edited names (the review page, the storefront) get them through a `sellers`
+  contract and never query this table.
 - When the platform settings store exists, the table can move into it without changing the API.

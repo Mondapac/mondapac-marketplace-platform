@@ -18,6 +18,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { ConfiguredArea, OnboardingAreas } from '../ports/seller-market-formats';
 import type {
+  AreaNamesApplied,
   AreaNameSource,
   EditedAreaName,
   EditedNamesByArea,
@@ -52,19 +53,20 @@ class Store implements ServiceAreaNamesRepository {
     areaCode: string,
     changes: ReadonlyMap<string, string | null>,
     by: Id<'Account'>,
-  ): Promise<number> {
-    let changed = 0;
+  ): Promise<AreaNamesApplied> {
+    let set = 0;
+    let restored = 0;
     for (const [locale, name] of changes) {
       const key = `${market.marketId}|${areaCode}|${locale}`;
       const held = this.rows.get(key);
       if (name === null) {
-        if (held !== undefined) changed += Number(this.rows.delete(key));
+        if (held !== undefined) restored += Number(this.rows.delete(key));
       } else if (held?.name !== name) {
         this.rows.set(key, { areaCode, locale, name, by });
-        changed += 1;
+        set += 1;
       }
     }
-    return Promise.resolve(changed);
+    return Promise.resolve({ set, restored });
   }
 }
 
@@ -186,6 +188,28 @@ describe.each([['AU'], ['ZZ']])('service area names in %s', (code) => {
     expect(restored.ok && restored.value.area.names['en']?.name).toBe('Harbour City');
     expect(t.audits).toHaveLength(2);
     expect(t.store.rows.size).toBe(0);
+  });
+
+  it('audits the rows that changed, not the entries of the request', async () => {
+    const t = setUp();
+    const context = adminOf(t, code);
+    await t.edit.execute(context, { areaCode: AREA.code, names: { en: 'Same' } });
+    t.audits.length = 0;
+    // en is a repeat (no change) and fa has no edit to restore: nothing changed, nothing audited.
+    const noop = await t.edit.execute(context, {
+      areaCode: AREA.code,
+      names: { en: 'Same', fa: null },
+    });
+    expect(noop.ok && noop.value.changed).toBe(0);
+    expect(t.audits).toHaveLength(0);
+    // ar is new, en repeats, fa has no edit: one name set, none restored.
+    const mixed = await t.edit.execute(context, {
+      areaCode: AREA.code,
+      names: { en: 'Same', fa: null, ar: 'مدينة' },
+    });
+    expect(mixed.ok && mixed.value.changed).toBe(1);
+    expect(t.audits).toHaveLength(1);
+    expect(t.audits[0]).toMatchObject({ after: { namesSet: 1, namesRestored: 0 } });
   });
 
   it('refuses an unknown area, a bad body and a caller without the key', async () => {

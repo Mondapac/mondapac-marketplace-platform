@@ -73,14 +73,14 @@ describe.each(TEST_MARKETS)('service area names in market %s (database)', (code)
 
   it('sets, changes and restores names, and counts only real changes', async () => {
     const a = area();
-    expect(await apply(market, a, { en: 'One', fa: 'یک' })).toBe(2);
-    expect(await apply(market, a, { en: 'One' })).toBe(0);
-    expect(await apply(market, a, { en: 'Two' })).toBe(1);
+    expect(await apply(market, a, { en: 'One', fa: 'یک' })).toEqual({ set: 2, restored: 0 });
+    expect(await apply(market, a, { en: 'One' })).toEqual({ set: 0, restored: 0 });
+    expect(await apply(market, a, { en: 'Two' })).toEqual({ set: 1, restored: 0 });
     expect((await read(market)).filter((r) => r.areaCode === a)).toEqual([
       { areaCode: a, locale: 'en', name: 'Two' },
       { areaCode: a, locale: 'fa', name: 'یک' },
     ]);
-    expect(await apply(market, a, { en: null, ar: null })).toBe(1);
+    expect(await apply(market, a, { en: null, ar: null })).toEqual({ set: 0, restored: 1 });
     expect((await read(market)).filter((r) => r.areaCode === a).map((r) => r.locale)).toEqual([
       'fa',
     ]);
@@ -104,6 +104,10 @@ describe.each(TEST_MARKETS)('service area names in market %s (database)', (code)
     expect(await errorCode(insert(area(), 'en', 'x'.repeat(121)))).toBe(CHECK);
     expect(await errorCode(insert(area(), 'EN', 'Name'))).toBe(CHECK);
     expect(await errorCode(insert('Bad Code', 'en', 'Name'))).toBe(CHECK);
+    expect(await errorCode(insert(area(), 'en', 'Tab\there'))).toBe(CHECK);
+    expect(await errorCode(insert(area(), 'en', 'Name', 'lower' as typeof market.marketId))).toBe(
+      CHECK,
+    );
   });
 
   it('lets the application role change the name only, never the key', async () => {

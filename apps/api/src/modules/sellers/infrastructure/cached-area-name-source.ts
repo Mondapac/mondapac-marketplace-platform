@@ -18,6 +18,7 @@ export const AREA_NAMES_TTL_MS = 60_000;
  */
 export class CachedAreaNameSource implements AreaNameSource {
   readonly #logger = new Logger('AreaNameSource');
+  readonly #generation = new Map<string, number>();
   readonly #cache = new Map<string, { readonly at: number; readonly names: EditedNamesByArea }>();
 
   constructor(
@@ -30,6 +31,7 @@ export class CachedAreaNameSource implements AreaNameSource {
     const now = this.clock.now().epochMilliseconds;
     const kept = this.#cache.get(market.marketId);
     if (kept !== undefined && now - kept.at < AREA_NAMES_TTL_MS) return kept.names;
+    const generation = this.#generation.get(market.marketId) ?? 0;
     try {
       const rows = await this.unitOfWork.run<readonly { a: string; l: string; n: string }[], never>(
         market,
@@ -44,7 +46,11 @@ export class CachedAreaNameSource implements AreaNameSource {
       for (const row of rows.value) {
         byArea.set(row.a, { ...(byArea.get(row.a) ?? {}), [row.l]: row.n });
       }
-      this.#cache.set(market.marketId, { at: now, names: byArea });
+      // A write that finished while this read ran bumped the generation: the answer may be old, so
+      // it is returned once and not kept.
+      if ((this.#generation.get(market.marketId) ?? 0) === generation) {
+        this.#cache.set(market.marketId, { at: now, names: byArea });
+      }
       return byArea;
     } catch (error) {
       this.#logger.error({
@@ -57,6 +63,7 @@ export class CachedAreaNameSource implements AreaNameSource {
   }
 
   forget(market: MarketContext): void {
+    this.#generation.set(market.marketId, (this.#generation.get(market.marketId) ?? 0) + 1);
     this.#cache.delete(market.marketId);
   }
 }

@@ -16,8 +16,9 @@ export interface ServiceAreaNamesRepository {
   all(market: MarketContext): Promise<readonly EditedAreaName[]>;
 
   /**
-   * Sets a name per language, or removes the edit for a language (null), for one area. Returns how
-   * many languages it changed.
+   * Sets a name per language, or removes the edit for a language (null), for one area. Returns the
+   * rows that really changed: names set (a new row or a different name) and edits removed. A name
+   * equal to the one held, or a restore of a language with no edit, counts for neither.
    */
   apply(
     market: MarketContext,
@@ -25,7 +26,12 @@ export interface ServiceAreaNamesRepository {
     changes: ReadonlyMap<string, string | null>,
     by: Id<'Account'>,
     at: Temporal.Instant,
-  ): Promise<number>;
+  ): Promise<AreaNamesApplied>;
+}
+
+export interface AreaNamesApplied {
+  readonly set: number;
+  readonly restored: number;
 }
 
 export const SERVICE_AREA_NAMES_REPOSITORY = Symbol('SERVICE_AREA_NAMES_REPOSITORY');

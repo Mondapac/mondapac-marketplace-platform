@@ -100,23 +100,23 @@ export class ServiceAreaNamesEdit extends UseCase<
     if (area === undefined) return err({ code: 'service-area.not-found' });
 
     const written = await unitOfWork.run<number, ServiceAreaNamesEditFailure>(market, async () => {
-      const changed = await areaNameStore.apply(
+      const applied = await areaNameStore.apply(
         market,
         area.code,
         edit.names,
         actor.accountId,
         clock.now(),
       );
-      if (changed > 0) {
-        const restored = [...edit.names.values()].filter((name) => name === null).length;
+      if (applied.set + applied.restored > 0) {
+        // The rows that really changed, not the entries of the request.
         await audit.record(
           context,
           ServiceAreaNamesChanged.entry(areaTargetId(market, area.code), {
-            after: { namesSet: edit.names.size - restored, namesRestored: restored },
+            after: { namesSet: applied.set, namesRestored: applied.restored },
           }),
         );
       }
-      return ok(changed);
+      return ok(applied.set + applied.restored);
     });
     if (!written.ok) return written;
     areaNames.forget(market);
