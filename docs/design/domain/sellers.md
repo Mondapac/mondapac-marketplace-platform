@@ -625,6 +625,15 @@ and are decorated from `sellers`. **Text search works on the tabs read from `sel
 single rule; 14.3 Reza 9 agrees; Jafar 2). The flag `file-check-needed` (3.3) is a filter on "All". Target: 25 rows per page, 95th percentile under
 200 ms (technical-spec s3.2), measured with Mojtaba.
 
+**Health column (seller health package 5b).** After the page is assembled, one more read-only unit
+and one query (`SellerHealthStore.latest`) fetch each page seller's newest stored snapshot of the
+last three days (day, kind, band, score, lowest metric); the card with all metrics is the seller's
+own read. The column is not a gate: if the health read fails, the failure is logged
+(`sellers.list.health-failed`, no seller data), every row's `health` is null and the page carries
+`healthUnavailable: true`, so the screen can tell "not measured yet" (`health` null,
+`healthUnavailable` false) from "could not load" (`healthUnavailable` true). The list itself still
+answers.
+
 ## 8. Personal data
 
 ### 8.1 Fields and keys

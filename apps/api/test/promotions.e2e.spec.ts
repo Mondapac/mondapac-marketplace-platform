@@ -14,6 +14,11 @@ import { ListPromotionReviews } from '../src/modules/promotions/application/use-
 import { ListPromotionsFull } from '../src/modules/promotions/application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from '../src/modules/promotions/application/use-cases/list-promotions.use-case';
 import { PauseOwnPromotion } from '../src/modules/promotions/application/use-cases/pause-own-promotion.use-case';
+import { ApplyReferralCode } from '../src/modules/promotions/application/use-cases/apply-referral-code.use-case';
+import { ListPromotionCredits } from '../src/modules/promotions/application/use-cases/list-promotion-credits.use-case';
+import { ViewMyReferral } from '../src/modules/promotions/application/use-cases/view-my-referral.use-case';
+import { GenerateBatchCodes } from '../src/modules/promotions/application/use-cases/generate-batch-codes.use-case';
+import { ViewBatchCodeSummary } from '../src/modules/promotions/application/use-cases/view-batch-code-summary.use-case';
 import { PausePromotion } from '../src/modules/promotions/application/use-cases/pause-promotion.use-case';
 import { PreviewQuote } from '../src/modules/promotions/application/use-cases/preview-quote.use-case';
 import { ResumeOwnPromotion } from '../src/modules/promotions/application/use-cases/resume-own-promotion.use-case';
@@ -68,6 +73,7 @@ it('maps every refusal code of the promotions routes to its exact status', () =>
     'promotions.invalid-state': 409,
     'promotions.not-editable': 409,
     'promotions.too-many-active': 409,
+    'promotions.referral-not-eligible': 409,
     'access.unavailable': 503,
     'promotions.unavailable': 503,
   });
@@ -102,6 +108,8 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['pause', PausePromotion],
     ['resume', ResumePromotion],
     ['budget', SetPromotionBudget],
+    ['generate-codes', GenerateBatchCodes],
+    ['code-summary', ViewBatchCodeSummary],
     ['list-reviews', ListPromotionReviews],
     ['decide-review', DecidePromotionReview],
     ['view-first-order', ViewFirstOrderSettings],
@@ -115,6 +123,9 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['resume-own', ResumeOwnPromotion],
     ['list-own', ListOwnPromotions],
     ['opt-in', SetCoFundingOptIn],
+    ['credits', ListPromotionCredits],
+    ['my-referral', ViewMyReferral],
+    ['apply-referral', ApplyReferralCode],
   ] as const;
 
   async function boot() {
@@ -230,6 +241,15 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     productIds: [],
     sellerIds: [],
     zones: [],
+    tiers: [],
+    buyQty: null,
+    getQty: null,
+    groupQty: null,
+    bundleItems: [],
+    maxRepeatsPerOrder: null,
+    flash: null,
+    segment: null,
+    refereeRewardMinor: null,
     createdAt: START,
     updatedAt: START,
     platformSplitBps: null,
@@ -405,6 +425,176 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     });
   });
 
+  it('passes the phase 2 fields through to the use case and refuses any other', async () => {
+    await boot();
+    const tiered = {
+      type: 'TIERED_CART',
+      name: 'Spend more',
+      funding: 'PLATFORM',
+      startsAt: START.toString(),
+      budgetMinor: '100000',
+      tiers: [
+        { thresholdMinor: '5000', reward: { kind: 'FIXED', amountMinor: '500' } },
+        { thresholdMinor: '10000', reward: { kind: 'FIXED', amountMinor: '1500' } },
+      ],
+    };
+    const flash = {
+      type: 'FLASH_SALE',
+      name: 'Tonight',
+      funding: 'SELLER',
+      reward: { kind: 'PERCENT', bps: 3000 },
+      productIds: [id<'Product'>(0x1001)],
+      flash: {
+        unitLimit: 50,
+        timeZone: 'Australia/Brisbane',
+        startsLocal: '2026-11-01T18:00',
+        endsLocal: '2026-11-01T21:00',
+      },
+    };
+    const others = {
+      buyQty: 2,
+      getQty: 1,
+      groupQty: 3,
+      groupPriceMinor: '1000',
+      maxRepeatsPerOrder: 2,
+      bundleItems: [{ productId: id<'Product'>(0x1001), quantity: 1 }],
+    };
+    next = ok(PROMOTION_VIEW);
+    const admin1 = admin();
+    expect(
+      (await call('admin', 'post', '/promotions/admin/promotions', admin1, tiered)).status,
+    ).toBe(201);
+    next = ok(OWN_VIEW);
+    const seller1 = seller();
+    expect(
+      (await call('seller', 'post', '/promotions/seller/promotions', seller1, flash)).status,
+    ).toBe(201);
+    expect(
+      (
+        await call('seller', 'post', '/promotions/seller/promotions', seller1, {
+          ...flash,
+          ...others,
+        })
+      ).status,
+    ).toBe(201);
+    expect(calls.map((c) => c.input)).toEqual([tiered, flash, { ...flash, ...others }]);
+    const stray = await call('admin', 'post', '/promotions/admin/promotions', admin1, {
+      ...tiered,
+      tierBonus: 1,
+    });
+    expect(stray.status).toBe(400);
+    expect(stray.body).toMatchObject({
+      details: { fields: [{ path: 'tierBonus', code: 'unknown-field' }] },
+    });
+  });
+
+  it('answers the phase 2 terms of a promotion in its body', async () => {
+    await boot();
+    next = ok({
+      ...PROMOTION_VIEW,
+      type: 'TIERED_CART',
+      tiers: [{ thresholdMinor: 5000n, reward: { kind: 'FIXED', amount: 500n } }],
+      flash: { unitLimit: 5, timeZone: 'Australia/Brisbane' },
+      bundleItems: [{ productId: id<'Product'>(0x1001), quantity: 2 }],
+      buyQty: 2,
+      getQty: 1,
+      groupQty: 3,
+      maxRepeatsPerOrder: 4,
+    });
+    const read = await call('admin', 'get', `/promotions/admin/promotions/${PROMOTION}`, admin());
+    expect(read.body).toMatchObject({
+      tiers: [{ thresholdMinor: '5000', reward: { kind: 'FIXED', bps: null, amountMinor: '500' } }],
+      flash: { unitLimit: 5, timeZone: 'Australia/Brisbane' },
+      bundleItems: [{ productId: id<'Product'>(0x1001), quantity: 2 }],
+      buyQty: 2,
+      getQty: 1,
+      groupQty: 3,
+      maxRepeatsPerOrder: 4,
+    });
+  });
+
+  describe('single-use batch codes', () => {
+    const URL = `/promotions/admin/promotions/${PROMOTION}/batch-codes`;
+    const BATCH = id<'PromotionBatch'>(0xb001);
+
+    it('returns the generated codes once, as a CSV that is never cached', async () => {
+      await boot();
+      next = ok({
+        promotionId: PROMOTION,
+        batchId: BATCH,
+        codes: ['AAAA2222BBBB', 'CCCC3333DDDD'],
+      });
+      const response = await call('admin', 'post', URL, admin(), { count: 2 });
+      expect(response.status).toBe(201);
+      expect(response.headers['content-type']).toBe('text/csv; charset=utf-8');
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['content-disposition']).toBe(
+        `attachment; filename="promotion-${PROMOTION}-codes-${BATCH}.csv"`,
+      );
+      expect(response.text).toBe('code\r\nAAAA2222BBBB\r\nCCCC3333DDDD\r\n');
+      expect(calls).toEqual([
+        { name: 'generate-codes', input: { promotionId: PROMOTION, count: 2 } },
+      ]);
+    });
+
+    it('needs an admin session with CSRF, a JSON body of count only, and passes the use case’s refusals on', async () => {
+      await boot();
+      const session = admin();
+      expect(
+        (await call('admin', 'post', URL, { cookie: session.cookie }, { count: 2 })).status,
+      ).toBe(403);
+      const stray = await call('admin', 'post', URL, session, { count: 2, prefix: 'X' });
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'prefix', code: 'unknown-field' }] },
+      });
+      const text = await http()
+        .post(URL)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+        .set('content-type', 'text/plain')
+        .send('x');
+      expect(text.status).toBe(415);
+      for (const [error, status, details] of [
+        [
+          { code: 'second-factor.required', actionKey: 'promotions.platform-funding.approve' },
+          403,
+          { actionKey: 'promotions.platform-funding.approve' },
+        ],
+        [
+          { code: 'validation.failed', fields: [{ path: 'count', code: 'too-many' }] },
+          400,
+          { fields: [{ path: 'count', code: 'too-many' }] },
+        ],
+        [{ code: 'promotions.not-found' }, 404, undefined],
+        [{ code: 'promotions.disabled' }, 404, undefined],
+        [{ code: 'promotions.invalid-state' }, 409, undefined],
+        [{ code: 'promotions.unavailable' }, 503, undefined],
+        [{ code: 'access.denied' }, 403, undefined],
+      ] as const) {
+        next = err(error);
+        const refused = await call('admin', 'post', URL, session, { count: 2 });
+        expect(refused.status).toBe(status);
+        expect(refused.headers['content-type']).not.toContain('text/csv');
+        if (details !== undefined) expect(refused.body).toMatchObject({ details });
+      }
+    });
+
+    it('reads the counts of a promotion’s codes, never a code', async () => {
+      await boot();
+      next = ok({ promotionId: PROMOTION, total: 10, used: 2, maxPerPromotion: 1000 });
+      const response = await call('admin', 'get', URL, admin());
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        promotionId: PROMOTION,
+        total: 10,
+        used: 2,
+        maxPerPromotion: 1000,
+      });
+      expect(calls).toEqual([{ name: 'code-summary', input: { promotionId: PROMOTION } }]);
+    });
+  });
+
   it('answers a missing fresh code as 403 with the action key, and the other refusals with their status', async () => {
     await boot();
     const session = admin();
@@ -552,6 +742,118 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     expect(answer.status).toBe(200);
     expect(answer.body).toMatchObject({ enabled: true, totals: { payableMinor: '0' } });
     expect(calls.at(-1)).toEqual({ name: 'preview', input: body });
+  });
+
+  describe('phase 3: referral and credits', () => {
+    const CREDIT = id<'PromotionCredit'>(0xc001);
+
+    it('reads the customer’s own referral code, never cached, with amounts as digit strings', async () => {
+      await boot();
+      next = ok({
+        code: 'ABCDEFGH2345',
+        referrerRewardMinor: 1000n,
+        refereeRewardMinor: 1000n,
+        currency: 'AUD',
+        maxRewarded: 10,
+        pending: 1,
+        qualified: 2,
+      });
+      const response = await http()
+        .get('/promotions/referral/me')
+        .set({ 'x-market-id': code, ...customer() });
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        code: 'ABCDEFGH2345',
+        referrerRewardMinor: '1000',
+        refereeRewardMinor: '1000',
+        currency: 'AUD',
+        maxRewarded: 10,
+        pending: 1,
+        qualified: 2,
+      });
+      expect(actors).toEqual(['customer']);
+      // Without a session the use case sees an anonymous actor and refuses it (access declaration).
+      await http().get('/promotions/referral/me').set({ 'x-market-id': code });
+      expect(actors).toEqual(['customer', 'anonymous']);
+    });
+
+    it('applies a code with CSRF, a closed JSON body and the use case’s refusals', async () => {
+      await boot();
+      const session = customer();
+      const URL = '/promotions/referral/apply';
+      const send = (headers: Record<string, string>, payload: object) =>
+        http()
+          .post(URL)
+          .set({ 'x-market-id': code, ...headers })
+          .send(payload);
+      next = ok({ status: 'PENDING', expiresAt: START.add({ hours: 24 }) });
+      const applied = await send(session, { code: 'ABCDEFGH2345' });
+      expect(applied.status).toBe(200);
+      expect(applied.body).toEqual({
+        status: 'PENDING',
+        expiresAt: START.add({ hours: 24 }).toString(),
+      });
+      expect(calls.at(-1)).toEqual({ name: 'apply-referral', input: { code: 'ABCDEFGH2345' } });
+      expect((await send({ cookie: session.cookie }, { code: 'X' })).status).toBe(403);
+      const stray = await send(session, { code: 'X', accountId: CUSTOMER });
+      expect(stray.status).toBe(400);
+      expect(stray.body).toMatchObject({
+        details: { fields: [{ path: 'accountId', code: 'unknown-field' }] },
+      });
+      for (const [error, status] of [
+        [{ code: 'promotions.referral-not-eligible' }, 409],
+        [{ code: 'promotions.not-found' }, 404],
+        [{ code: 'promotions.disabled' }, 404],
+        [{ code: 'promotions.unavailable' }, 503],
+      ] as const) {
+        next = err(error);
+        expect((await send(session, { code: 'ABCDEFGH2345' })).status).toBe(status);
+      }
+    });
+
+    it('lists the credits of a promotion for an admin, closed query, digits for amounts', async () => {
+      await boot();
+      const URL = `/promotions/admin/promotions/${PROMOTION}/credits`;
+      next = ok({
+        nextCursor: 'abc_DEF-1',
+        items: [
+          {
+            id: CREDIT,
+            promotionId: PROMOTION,
+            kind: 'CASHBACK',
+            recipientAccountId: CUSTOMER,
+            orderId: null,
+            sourceKind: 'SELLER_ORDER',
+            sourceId: 'x',
+            amountMinor: 250n,
+            currency: 'AUD',
+            status: 'RECORDED',
+            failureCode: null,
+            walletJournalId: null,
+            idempotencyKey: 'promotions:cashback:x',
+            createdAt: START,
+            settledAt: START,
+          },
+        ],
+      });
+      const response = await call('admin', 'get', `${URL}?limit=5&cursor=abc_DEF-1`, admin());
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(itemsOf(response)[0]).toMatchObject({
+        id: CREDIT,
+        amountMinor: '250',
+        status: 'RECORDED',
+      });
+      expect(itemsOf(response)[0]).not.toHaveProperty('idempotencyKey');
+      expect(response.body).toMatchObject({ nextCursor: 'abc_DEF-1' });
+      expect(calls.at(-1)).toEqual({
+        name: 'credits',
+        input: { promotionId: PROMOTION, limit: 5, cursor: 'abc_DEF-1' },
+      });
+      const stray = await call('admin', 'get', `${URL}?offset=1`, admin());
+      expect(stray.status).toBe(400);
+    });
   });
 
   it('lets a seller list, create, edit, pause, resume and opt in, and takes no seller id from the request', async () => {

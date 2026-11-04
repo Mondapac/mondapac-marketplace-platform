@@ -29,6 +29,7 @@ export const MY_FILE_STATUS = {
   'identifier.checksum': 400,
   'search.too-broad': 400,
   'file.not-found': 404,
+  'service-area.not-found': 404,
   'file.change-request-required': 409,
   'file.incomplete': 409,
   'file.already-submitted': 409,

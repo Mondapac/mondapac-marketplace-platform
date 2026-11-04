@@ -72,6 +72,9 @@ class MemoryImages implements ProductImageRepository {
   takeDown() {
     return Promise.resolve(false);
   }
+  unreferencedObjectKeys() {
+    return Promise.resolve([]);
+  }
   listUnattached() {
     return Promise.resolve([]);
   }
@@ -135,6 +138,10 @@ describe('seller photo routes over HTTP (integration)', () => {
     productCode: 'P00000001',
     status: 'draft',
     discardedAt: null,
+    withdrawnAt: null,
+    retiredAt: null,
+    pausedAt: null,
+    pausedByAccountId: null,
     ownBrand: false,
     lastChangedAt: START,
     version: 3,

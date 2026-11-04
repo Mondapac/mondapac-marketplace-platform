@@ -192,6 +192,56 @@ export const OfferListingChanged = defineEvent({
   payload: { offerId: eventField.id(), listed: eventField.boolean() },
 });
 
+/**
+ * An admin paused a published product (catalog design 4.1a): the product and all its Offers are
+ * off sale until it is resumed. Ids only.
+ */
+export const ProductPaused = defineEvent({
+  type: 'catalog.product-paused.v1',
+  aggregateType: 'product',
+  payload: { productId: eventField.id() },
+});
+
+/** An admin resumed a paused product (catalog design 4.1a). Ids only. */
+export const ProductResumed = defineEvent({
+  type: 'catalog.product-resumed.v1',
+  aggregateType: 'product',
+  payload: { productId: eventField.id() },
+});
+
+/** A SELLER product was withdrawn, terminally (catalog design 4.1). Ids only. */
+export const ProductWithdrawn = defineEvent({
+  type: 'catalog.product-withdrawn.v1',
+  aggregateType: 'product',
+  payload: { productId: eventField.id() },
+});
+
+/** A PLATFORM product was retired, terminally (catalog design 4.1; CAT-48). Ids only. */
+export const ProductRetired = defineEvent({
+  type: 'catalog.product-retired.v1',
+  aggregateType: 'product',
+  payload: { productId: eventField.id() },
+});
+
+/** How an import run ended: every row it took was tried, or it stopped part way (design 14a). */
+export const PLATFORM_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
+
+/**
+ * An admin platform import ended its turn for good: finished, or stopped part way (catalog design
+ * 14a). Ids, an enum and counts only; the admin who started it is read from the job, not the event.
+ * Consumed by notifications to tell the admins who may import.
+ */
+export const PlatformImportFinished = defineEvent({
+  type: 'catalog.platform-import-finished.v1',
+  aggregateType: 'platform-import',
+  payload: {
+    importId: eventField.id(),
+    outcome: eventField.enumOf(PLATFORM_IMPORT_OUTCOMES),
+    added: eventField.integer(),
+    failed: eventField.integer(),
+  },
+});
+
 /** The reasons a reviewer may give when a photo is taken down (catalog design 10.5). */
 export const IMAGE_TAKEDOWN_REASONS = [
   'certification-mark',
@@ -241,4 +291,9 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   OfferTagRestored,
   OfferTagBasisSwitched,
   OfferListingChanged,
+  ProductPaused,
+  ProductResumed,
+  ProductWithdrawn,
+  ProductRetired,
+  PlatformImportFinished,
 ];

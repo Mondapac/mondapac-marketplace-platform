@@ -17,6 +17,45 @@ describe('admin nav: Content', () => {
   });
 });
 
+describe('admin nav: Catalogue', () => {
+  it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
+    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'offer-reviews']);
+    const item = adminNav.items.find((entry) => entry.id === 'products');
+    expect(item).toMatchObject({
+      icon: 'package',
+      href: '/catalog/products',
+      labelKey: 'nav.products',
+      group: 'catalogue',
+      anyOf: ['catalog.product.view'],
+    });
+    expect(adminNav.groups).toContainEqual({
+      id: 'catalogue',
+      labelKey: 'nav.group.catalogue',
+      icon: 'package',
+    });
+  });
+
+  it('is hidden without the key, and the Offer reviews item stays in Reviews', () => {
+    expect(ids(['catalog.product.approve'])).not.toContain('products');
+    expect(adminNav.items.find((entry) => entry.id === 'offer-reviews')?.group).toBe('reviews');
+  });
+});
+
+describe('admin nav: Buyer reviews', () => {
+  it('shows the queue for reviews.moderation.queue, in the Reviews group', () => {
+    expect(ids(['reviews.moderation.queue'])).toEqual(['home', 'review-moderation']);
+    expect(adminNav.items.find((entry) => entry.id === 'review-moderation')).toMatchObject({
+      href: '/reviews/moderation',
+      group: 'reviews',
+      anyOf: ['reviews.moderation.queue'],
+    });
+  });
+
+  it('is hidden with only the moderate or remove key', () => {
+    expect(ids(['reviews.moderation.moderate', 'reviews.moderation.remove'])).toEqual(['home']);
+  });
+});
+
 describe('admin nav: Wallet', () => {
   it('lists the credit pages for wallet.credit.view; the switch is a settings page', () => {
     expect(ids(['wallet.credit.view'])).toEqual(['home', 'wallet-credits', 'wallet-requests']);
@@ -45,8 +84,14 @@ describe('admin nav: daily work only', () => {
       adminNav.items.filter((item) => item.placement !== 'footer').map((item) => item.id),
     ).toEqual([
       'home',
+      'products',
+      'categories',
       'offer-reviews',
+      'review-moderation',
       'price-holds',
+      'attributes',
+      'brands',
+      'business-activities',
       'content',
       'sellers',
       'orders',
@@ -152,5 +197,61 @@ describe('admin nav: Settings', () => {
   it('is there for the account deletion setting alone', () => {
     expect(ids(['customers.account-deletion-settings.view'])).toContain('settings');
     expect(ids(['customers.account-deletion-settings.manage'])).not.toContain('settings');
+  });
+});
+
+describe('admin nav: Brands', () => {
+  it('is there for catalog.brand.read, in its own Catalog group, with the tag icon', () => {
+    expect(ids(['catalog.brand.read'])).toEqual(['home', 'brands']);
+    expect(adminNav.items.find((item) => item.id === 'brands')).toMatchObject({
+      icon: 'tag',
+      href: '/catalog/brands',
+      labelKey: 'nav.brands',
+      group: 'catalog',
+    });
+    expect((adminNav.groups ?? []).map((group) => group.id)).toContain('catalog');
+  });
+
+  it('is hidden without it, also with the edit key alone', () => {
+    expect(ids([])).not.toContain('brands');
+    expect(ids(['catalog.brand.edit'])).not.toContain('brands');
+  });
+});
+
+describe('admin nav: Attributes', () => {
+  it('is there for catalog.attribute.view, in the Catalog group before Brands', () => {
+    expect(ids(['catalog.attribute.view'])).toEqual(['home', 'attributes']);
+    expect(ids(['catalog.attribute.view', 'catalog.brand.read'])).toEqual([
+      'home',
+      'attributes',
+      'brands',
+    ]);
+    expect(adminNav.items.find((item) => item.id === 'attributes')).toMatchObject({
+      icon: 'sliders',
+      href: '/catalog/attributes',
+      labelKey: 'nav.attributes',
+      group: 'catalog',
+    });
+  });
+
+  it('is hidden without it, also with the protected edit key alone', () => {
+    expect(ids([])).not.toContain('attributes');
+    expect(ids(['catalog.attribute.edit'])).not.toContain('attributes');
+  });
+});
+
+describe('admin nav: Business activities', () => {
+  it('is there for catalog.business-activity.read, in the Catalog group', () => {
+    expect(ids(['catalog.business-activity.read'])).toEqual(['home', 'business-activities']);
+    expect(adminNav.items.find((item) => item.id === 'business-activities')).toMatchObject({
+      href: '/catalog/business-activities',
+      labelKey: 'nav.business-activities',
+      group: 'catalog',
+    });
+  });
+
+  it('is hidden without it, also with the edit key alone', () => {
+    expect(ids([])).not.toContain('business-activities');
+    expect(ids(['catalog.business-activity.edit'])).not.toContain('business-activities');
   });
 });

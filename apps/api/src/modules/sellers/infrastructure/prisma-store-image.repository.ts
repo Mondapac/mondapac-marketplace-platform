@@ -77,6 +77,28 @@ export class PrismaStoreImageRepository implements StoreImageRepository {
     return rows.flatMap((row) => toImage(row) ?? []);
   }
 
+  async unreferencedObjectKeys(
+    market: MarketContext,
+    keys: readonly string[],
+  ): Promise<readonly string[]> {
+    if (keys.length === 0) return [];
+    const tx = this.prisma.tx(market);
+    const sellerIds = [...new Set(keys.map((key) => key.split('/')[0] ?? ''))];
+    const [sellers, named] = await Promise.all([
+      tx.sellersSellerFile.findMany({
+        where: { marketId: market.marketId, sellerId: { in: sellerIds } },
+        select: { sellerId: true },
+      }),
+      tx.sellersStoreImageRendition.findMany({
+        where: { marketId: market.marketId, objectKey: { in: [...keys] } },
+        select: { objectKey: true },
+      }),
+    ]);
+    const owned = new Set(sellers.map((seller) => seller.sellerId));
+    const referenced = new Set(named.map((row) => row.objectKey));
+    return keys.filter((key) => owned.has(key.split('/')[0] ?? '') && !referenced.has(key));
+  }
+
   async logosOf(
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],

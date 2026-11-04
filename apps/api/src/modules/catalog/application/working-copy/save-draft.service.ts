@@ -44,6 +44,15 @@ export interface SaveDraftOutput extends SaveWorkingCopyOutput {
 export type SaveDraftFailure =
   SaveWorkingCopyFailure | { readonly code: 'working-copy.invalid-content' };
 
+export interface SaveDraftOptions {
+  /**
+   * False only for the rows of an admin import (catalog design 14a): the interactive limit of draft
+   * saves per account is not spent, and the import's own limits bound the work instead. Every
+   * interactive use case leaves it unset.
+   */
+  readonly spendSavesLimit?: boolean;
+}
+
 export interface SaveDraftDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly check: CheckClaimText;
@@ -78,6 +87,7 @@ export class SaveDraft {
   async execute(
     context: CallContext,
     input: SaveDraftInput,
+    options?: SaveDraftOptions,
   ): Promise<Result<SaveDraftOutput, SaveDraftFailure>> {
     if (!isStorableContent(input.content)) return err({ code: 'working-copy.invalid-content' });
     const content = input.content;
@@ -94,8 +104,11 @@ export class SaveDraft {
 
     // The saves limit is spent before the read and the check, so a throttled account costs the
     // matcher nothing (Hassan M2).
-    const throttled = await this.deps.save.reserveSaves(context);
-    if (throttled !== null) return err(throttled);
+    // An import row (design 14a) is bounded by the import's own limits and spends no interactive save.
+    if (options?.spendSavesLimit !== false) {
+      const throttled = await this.deps.save.reserveSaves(context);
+      if (throttled !== null) return err(throttled);
+    }
 
     // A read-only unit opens no transaction (ADR-0025); the save below opens its own.
     const read = await this.deps.unitOfWork.run(

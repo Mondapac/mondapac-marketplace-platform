@@ -128,6 +128,32 @@ export class PrismaBrandReader implements BrandReader {
     return { brand: brandStateOf(row), liveProductCount };
   }
 
+  async liveProductIds(
+    market: MarketContext,
+    slug: string,
+    limit: number,
+  ): Promise<readonly Id<'Product'>[]> {
+    const tx = this.prisma.tx(market);
+    const brand = await tx.catalogBrand.findFirst({
+      where: { slug, status: 'active' },
+      select: { id: true },
+    });
+    if (brand === null) return [];
+    const rows = await tx.catalogProduct.findMany({
+      where: {
+        marketId: market.marketId,
+        brandId: brand.id,
+        status: 'published',
+        publishedRevisionId: { not: null },
+        offers: { some: { marketId: market.marketId, status: 'published', listed: true } },
+      },
+      orderBy: [{ id: 'asc' }],
+      take: limit,
+      select: { id: true },
+    });
+    return rows.map((row) => row.id as Id<'Product'>);
+  }
+
   async publicActive(market: MarketContext, limit: number): Promise<readonly BrandState[]> {
     const rows = await this.prisma.tx(market).catalogBrand.findMany({
       where: { status: 'active' },

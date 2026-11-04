@@ -1,10 +1,21 @@
+import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
+import { intlLocale } from '../i18n/locale.ts';
+import { isBrandSlug } from './brands.ts';
 import { imageIdsOf, type PhotoUrl } from './photos.ts';
-import type { CertificationBadge, Money, ProductDetail, ProductOffer } from './types.ts';
+import { defaultVariantOf } from './variants.ts';
+import type {
+  CertificationBadge,
+  Money,
+  ProductDetail,
+  ProductOffer,
+  ProductSpecification,
+  ProductVariant,
+} from './types.ts';
 
 // The product page's read of the API (`GET search/product-detail/:productId`, PR #450) and its
 // mapping to the page's own shape. What the API does not have yet stays empty and the page hides
-// it: specifications, the regular price beside a special, similar products, the seller's city, "selling since",
+// it: the regular price beside a special, similar products, the seller's city, "selling since",
 // ratings and delivery window.
 
 /** Money as the API sends it: minor units as a decimal string. */
@@ -19,6 +30,10 @@ export interface ProductDetailBody {
   readonly shortDescription: string | null;
   readonly description: string | null;
   readonly categoryIds: readonly string[];
+  /** The product's active brand (`slug`, `name`) or null; untrusted, read through {@link brandRefOf}. */
+  readonly brand?: unknown;
+  /** Attribute values grouped by family group; untrusted, read through {@link specificationsOf}. */
+  readonly specifications?: unknown;
   /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
   readonly images?: unknown;
   readonly offers: readonly {
@@ -48,6 +63,11 @@ export interface ProductDetailBody {
 export interface ProductDetailLabels {
   readonly minimum: (amount: string) => string;
   readonly noMinimum: string;
+  /** The "Yes" and "No" of a yes/no specification. */
+  readonly yes?: string;
+  readonly no?: string;
+  /** The heading of a specification group by its code (a code the page has no word for: undefined). */
+  readonly group?: (code: string) => string | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -112,17 +132,213 @@ export function badgesOf(raw: unknown): CertificationBadge[] {
   return out;
 }
 
+/**
+ * The brand of the product from the untrusted body: a slug of the brand page's shape and a name, or
+ * none (absent, null or malformed is no brand, never half a link).
+ */
+export function brandRefOf(raw: unknown): ProductDetail['brand'] {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { slug, name } = raw as Record<string, unknown>;
+  return isBrandSlug(slug) && isText(name) ? { slug, name } : undefined;
+}
+
+const MAX_SPECS = 60;
+const MAX_LIST = 20;
+const GROUP_CODE = /^[a-z][a-z0-9_-]{0,63}$/u;
+const DECIMAL = /^-?[0-9]{1,15}(\.[0-9]{1,9})?$/u;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** One specification value as the line a buyer reads; null when it is malformed (never half a row). */
+function specificationValueOf(
+  raw: unknown,
+  locale: string,
+  labels: ProductDetailLabels,
+): string | null {
+  if (!isRecord(raw)) return null;
+  switch (raw.kind) {
+    case 'text':
+      return isText(raw.text) ? raw.text : null;
+    case 'list': {
+      if (!Array.isArray(raw.items)) return null;
+      const items = (raw.items as unknown[]).filter(isText).slice(0, MAX_LIST);
+      return items.length === 0 ? null : items.join(', ');
+    }
+    case 'number':
+      // Latin digits whatever the language; the number is shown as the admin's own digits.
+      return typeof raw.value === 'string' && DECIMAL.test(raw.value)
+        ? new Intl.NumberFormat(intlLocale(locale), {
+            numberingSystem: 'latn',
+            maximumFractionDigits: 9,
+          }).format(Number(raw.value))
+        : null;
+    case 'boolean':
+      return typeof raw.value === 'boolean'
+        ? raw.value
+          ? (labels.yes ?? 'Yes')
+          : (labels.no ?? 'No')
+        : null;
+    case 'date':
+      return isIsoDate(raw.value) ? formatDate(raw.value, locale, { dateStyle: 'long' }) : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The specification rows of the product page from the untrusted body, in the API's order: one row
+ * per attribute, tagged with its group's code. A row with any field missing, of the wrong type or
+ * out of shape is dropped whole; a group's heading is for the page to show when there are several.
+ */
+export function specificationsOf(
+  raw: unknown,
+  locale: string,
+  labels: ProductDetailLabels,
+): ProductSpecification[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProductSpecification[] = [];
+  const seen = new Set<string>();
+  for (const group of raw as unknown[]) {
+    if (!isRecord(group) || typeof group.groupCode !== 'string') continue;
+    if (!GROUP_CODE.test(group.groupCode) || !Array.isArray(group.specifications)) continue;
+    const heading = labels.group?.(group.groupCode);
+    for (const item of group.specifications as unknown[]) {
+      if (out.length >= MAX_SPECS) return out;
+      if (!isRecord(item) || typeof item.code !== 'string' || seen.has(item.code)) continue;
+      const value = specificationValueOf(item.value, locale, labels);
+      if (!isText(item.name) || value === null) continue;
+      seen.add(item.code);
+      out.push({
+        code: item.code,
+        label: item.name,
+        value,
+        group: group.groupCode,
+        ...(heading === undefined ? {} : { groupLabel: heading }),
+      });
+    }
+  }
+  return out;
+}
+
 /** API money as the page's; null when the amount is not a safe whole number of minor units. */
 function moneyOf(body: MoneyBody): Money | null {
   if (!/^[0-9]{1,15}$/u.test(body.amount)) return null;
   return { amount: Number(body.amount), currency: body.currency };
 }
 
+type BodyOffer = ProductDetailBody['offers'][number];
+type BodyUnit = BodyOffer['units'][number];
+
+/** One offer shown with one of its units (its priced Variant); null when it cannot be shown. */
+function offerOf(
+  offer: BodyOffer,
+  unit: BodyUnit,
+  locale: string,
+  labels: ProductDetailLabels,
+): ProductOffer | null {
+  const name = offer.seller.storeName;
+  const price = moneyOf(unit.price);
+  if (price === null || name === null) return null;
+  const minimum = offer.seller.minimumOrder;
+  const badges = badgesOf(offer.badges);
+  const minimumMoney = minimum === undefined || minimum === null ? null : moneyOf(minimum);
+  return {
+    id: offer.offerId,
+    variantId: unit.variantId,
+    // The card line "<type> certificate checked" is for a certificate the platform checked, not a
+    // seller's own declaration, and not a manufacturer's.
+    seller: {
+      id: offer.sellerId,
+      name,
+      certificates: badges
+        .filter((badge) => badge.basis === 'SELLER' && badge.sellerClaim !== true)
+        .map((badge) => ({ type: badge.type, name: badge.label })),
+    },
+    price,
+    certifications: badges,
+    ...(unit.stock.status === 'out'
+      ? { lowStock: 0 }
+      : unit.stock.status === 'low' && unit.stock.onlyLeft !== null
+        ? { lowStock: unit.stock.onlyLeft }
+        : {}),
+    ...(minimum === null
+      ? { minimumOrder: labels.noMinimum }
+      : minimumMoney === null
+        ? {}
+        : { minimumOrder: labels.minimum(formatMoney(minimumMoney, locale, { whole: true })) }),
+  };
+}
+
 /**
- * The page's product from the API answer, or undefined when no offer can be shown. An offer is
- * shown with its first priced Variant (the page has no Variant picker yet); a seller without a
- * public store name is left out. "Only N left" is the API's `onlyLeft` in the low band; out of
- * stock is a limit of 0, so Add to cart is disabled.
+ * The Variants of the answer in the owner's order (the order they first appear, offer by offer,
+ * unit by unit), each with its offers. A single Variant keeps the API's offer order (the featured
+ * offer first); with several, a Variant's sellers are listed in stock first, then lowest price first.
+ */
+function variantsOf(
+  body: ProductDetailBody,
+  locale: string,
+  labels: ProductDetailLabels,
+): ProductVariant[] {
+  const order: string[] = [];
+  const names = new Map<string, string | undefined>();
+  const offersOf = new Map<string, ProductOffer[]>();
+  for (const offer of body.offers) {
+    for (const unit of offer.units) {
+      const shown = offerOf(offer, unit, locale, labels);
+      if (shown === null) continue;
+      if (!offersOf.has(unit.variantId)) {
+        order.push(unit.variantId);
+        offersOf.set(unit.variantId, []);
+        names.set(unit.variantId, isText(unit.label) ? unit.label.trim() : undefined);
+      }
+      const list = offersOf.get(unit.variantId)!;
+      // One row per seller and Variant: the first unit wins.
+      if (!list.some((seen) => seen.id === shown.id)) list.push(shown);
+    }
+  }
+  const several = order.length > 1;
+  return order.flatMap((id): ProductVariant[] => {
+    const list = offersOf.get(id)!;
+    // A seller that has stock comes before one that has not, then the lowest price.
+    const sorted = several
+      ? list.toSorted(
+          (a, b) =>
+            Number(a.lowStock === 0) - Number(b.lowStock === 0) || a.price.amount - b.price.amount,
+        )
+      : list;
+    const [first, ...rest] = sorted;
+    if (first === undefined) return [];
+    const label = names.get(id);
+    return [
+      {
+        id,
+        ...(label === undefined ? {} : { label }),
+        inStock: sorted.some((o) => o.lowStock !== 0),
+        offers: [first, ...rest],
+      },
+    ];
+  });
+}
+
+/**
+ * The Variant a `?v=` value names, or undefined when it names none of the product's Variants
+ * (absent, repeated, malformed or unknown: the page then opens on its default).
+ */
+export function variantFromParam(
+  product: Pick<ProductDetail, 'variants'>,
+  raw: string | readonly string[] | undefined,
+): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const wanted = raw.toLowerCase();
+  return product.variants?.find((variant) => variant.id.toLowerCase() === wanted)?.id;
+}
+
+/**
+ * The page's product from the API answer, or undefined when no offer can be shown. Each Variant
+ * keeps the sellers that sell it; the page opens on the default Variant ({@link defaultVariantOf}).
+ * A seller without a public store name is left out. "Only N left" is the API's `onlyLeft` in the
+ * low band; out of stock is a limit of 0, so Add to cart is disabled.
  */
 export function productDetailOf(
   body: ProductDetailBody,
@@ -130,44 +346,14 @@ export function productDetailOf(
   labels: ProductDetailLabels,
   photo: PhotoUrl | null = null,
 ): ProductDetail | undefined {
-  const offers = body.offers.flatMap((offer): ProductOffer[] => {
-    const unit = offer.units[0];
-    const name = offer.seller.storeName;
-    const price = unit === undefined ? null : moneyOf(unit.price);
-    if (unit === undefined || price === null || name === null) return [];
-    const minimum = offer.seller.minimumOrder;
-    const badges = badgesOf(offer.badges);
-    const minimumMoney = minimum === undefined || minimum === null ? null : moneyOf(minimum);
-    return [
-      {
-        id: offer.offerId,
-        variantId: unit.variantId,
-        // The card line "<type> certificate checked" is for a certificate the platform checked, not a
-        // seller's own declaration, and not a manufacturer's.
-        seller: {
-          id: offer.sellerId,
-          name,
-          certificates: badges
-            .filter((badge) => badge.basis === 'SELLER' && badge.sellerClaim !== true)
-            .map((badge) => ({ type: badge.type, name: badge.label })),
-        },
-        price,
-        certifications: badges,
-        ...(unit.stock.status === 'out'
-          ? { lowStock: 0 }
-          : unit.stock.status === 'low' && unit.stock.onlyLeft !== null
-            ? { lowStock: unit.stock.onlyLeft }
-            : {}),
-        ...(minimum === null
-          ? { minimumOrder: labels.noMinimum }
-          : minimumMoney === null
-            ? {}
-            : { minimumOrder: labels.minimum(formatMoney(minimumMoney, locale, { whole: true })) }),
-      },
-    ];
-  });
-  const [first, ...rest] = offers;
-  if (first === undefined) return undefined;
+  const all = variantsOf(body, locale, labels);
+  const [firstVariant, secondVariant, ...restVariants] = all;
+  if (firstVariant === undefined) return undefined;
+  const variants =
+    secondVariant === undefined
+      ? undefined
+      : ([firstVariant, secondVariant, ...restVariants] as const);
+  const offers = variants === undefined ? firstVariant.offers : defaultVariantOf(variants).offers;
   const ids = photo === null ? [] : imageIdsOf(body.images);
   // Both sizes or neither: an id the builder refuses drops that photo from both lists.
   const shots = ids.flatMap((id) => {
@@ -180,10 +366,12 @@ export function productDetailOf(
     name: body.name,
     category: body.categoryIds[0] ?? '',
     description: body.description ?? body.shortDescription ?? '',
-    specifications: [],
+    specifications: specificationsOf(body.specifications, locale, labels),
+    ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
     photos: shots.map((shot) => shot.large),
     ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),
-    offers: [first, ...rest],
+    offers,
+    ...(variants === undefined ? {} : { variants }),
     similar: [],
   };
 }

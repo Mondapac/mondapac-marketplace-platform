@@ -51,6 +51,18 @@ const LISTED: readonly AdminNotice[] = [
     kind: 'admin.delivery-fallback-over-cap',
     params: { sellerId: SELLER, sellerOrderId: OLD },
   }),
+  notice('0190a000-0000-7000-8000-00000000000f', {
+    kind: 'admin.platform-import-finished',
+    params: { importId: OLD, outcome: 'stopped' },
+  }),
+  notice('0190a000-0000-7000-8000-00000000000e', {
+    kind: 'admin.review-held',
+    params: { reviewId: OLD },
+  }),
+  notice('0190a000-0000-7000-8000-00000000000d', {
+    kind: 'admin.review-reported',
+    params: { reviewId: NEW },
+  }),
 ];
 
 let counts: { unread: number; newest: AdminNotice | null }[] = [];
@@ -177,7 +189,7 @@ describe('AdminNotifications sound', () => {
 });
 
 describe('AdminNotifications drawer', () => {
-  it('shows all five kinds, linking only those with an admin page', async () => {
+  it('shows all eight kinds, linking only those with an admin page', async () => {
     counts = [{ unread: 3, newest: notice(NEW) }];
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 3 unread' }));
@@ -193,6 +205,12 @@ describe('AdminNotifications drawer', () => {
     expect(price.getAttribute('href')).toBe('/price-holds');
     const delivery = screen.getByRole('link', { name: /A different fleet was booked/ });
     expect(delivery.getAttribute('href')).toBe('/settings/delivery');
+    const imported = screen.getByRole('link', { name: /A product import stopped part way/ });
+    expect(imported.getAttribute('href')).toBe(`/catalog/products/import?id=${OLD}`);
+    const held = screen.getByRole('link', { name: /A review is held for moderation/ });
+    expect(held.getAttribute('href')).toBe('/reviews');
+    const reported = screen.getByRole('link', { name: /A seller reported a review/ });
+    expect(reported.getAttribute('href')).toBe('/reviews');
   });
 
   it('marks a notice without a page read in place, and opens a linked one after marking it', async () => {
@@ -251,6 +269,8 @@ describe('admin notice bell', () => {
     expect(showsNoticeBell(['catalog.product.approve', 'identity.role.manage'])).toBe(true);
     expect(showsNoticeBell(['sellers.seller-file.review'])).toBe(true);
     expect(showsNoticeBell(['shipping.delivery-settings.view'])).toBe(true);
+    expect(showsNoticeBell(['catalog.platform-import.run'])).toBe(true);
+    expect(showsNoticeBell(['reviews.moderation.queue'])).toBe(true);
     expect(showsNoticeBell(['identity.role.manage'])).toBe(false);
     expect(showsNoticeBell([])).toBe(false);
   });

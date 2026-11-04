@@ -1,8 +1,11 @@
 import type { Id } from '@mondapac/shared-kernel';
 import {
   OfferDeleted,
+  OfferListingChanged,
   OfferMoved,
   OfferPublished,
+  ProductPaused,
+  ProductResumed,
   ProductRevisionPublished,
 } from '../../../catalog';
 import {
@@ -16,6 +19,9 @@ export const INDEX_ON_OFFER_PUBLISHED_SUBSCRIBER = 'search.index-published-offer
 export const INDEX_ON_OFFER_DELETED_SUBSCRIBER = 'search.index-deleted-offer';
 export const INDEX_ON_OFFER_MOVED_SUBSCRIBER = 'search.index-moved-offer';
 export const INDEX_ON_REVISION_PUBLISHED_SUBSCRIBER = 'search.index-published-revision';
+export const INDEX_ON_LISTING_CHANGED_SUBSCRIBER = 'search.index-listing-changed-offer';
+export const INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER = 'search.index-paused-product';
+export const INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER = 'search.index-resumed-product';
 
 /**
  * Search's subscriptions to catalog (speed mode): an Offer published, deleted or moved, and a
@@ -24,6 +30,9 @@ export const INDEX_ON_REVISION_PUBLISHED_SUBSCRIBER = 'search.index-published-re
  * content is trusted and a repeated or out-of-order delivery converges. Entry adapters: the
  * delivery's Market system-actor context goes unchanged to one `system` use case. A refusal
  * throws, so the delivery is retried and, after its last attempt, dead-lettered with an alert.
+ * An Offer put on or taken off sale (`OfferListingChanged`) and a product paused or resumed
+ * (the admin pause, catalog design 4.1a) re-read the Offer, or all Offers of the product, so a
+ * paused product leaves the index at once and comes back on resume.
  * Variant changes need no subscription: the document holds nothing of variants.
  */
 export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSubscription[] {
@@ -65,6 +74,30 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
       event: ProductRevisionPublished,
       handle: (event, _delivery, context) =>
         run(INDEX_ON_REVISION_PUBLISHED_SUBSCRIBER, context, {
+          productId: event.payload.productId as Id<'Product'>,
+        }),
+    }),
+    subscription({
+      name: INDEX_ON_LISTING_CHANGED_SUBSCRIBER,
+      event: OfferListingChanged,
+      handle: (event, _delivery, context) =>
+        run(INDEX_ON_LISTING_CHANGED_SUBSCRIBER, context, {
+          offerIds: [event.payload.offerId as Id<'Offer'>],
+        }),
+    }),
+    subscription({
+      name: INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER,
+      event: ProductPaused,
+      handle: (event, _delivery, context) =>
+        run(INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER, context, {
+          productId: event.payload.productId as Id<'Product'>,
+        }),
+    }),
+    subscription({
+      name: INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER,
+      event: ProductResumed,
+      handle: (event, _delivery, context) =>
+        run(INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER, context, {
           productId: event.payload.productId as Id<'Product'>,
         }),
     }),

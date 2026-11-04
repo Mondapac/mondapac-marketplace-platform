@@ -130,7 +130,9 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
       );
     expect(await insert({ code: 'Upper' })).toBe('23514');
     expect(await insert({ dataType: 'blob' })).toBe('23514');
-    expect(await insert({ status: 'draft' })).toBe('23514');
+    // 'draft' is a status since attributes A2; any other word is still refused.
+    expect(await insert({ status: 'pending' })).toBe('23514');
+    expect(await insert({ status: 'draft' })).toBeNull();
     expect(await insert({ kind: 'robot' })).toBe('23514');
     expect(await insert({})).toBeNull();
     const code = `dup-${randomUUID().slice(0, 8)}`;

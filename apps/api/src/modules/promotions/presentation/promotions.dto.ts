@@ -1,5 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { CalculationOutput } from '../domain/calculation/types';
+import type { CreditPage } from '../application/use-cases/list-promotion-credits.use-case';
+import type { AppliedReferral } from '../application/use-cases/apply-referral-code.use-case';
+import type { MyReferralView } from '../application/use-cases/view-my-referral.use-case';
 import { PROMOTIONS_STATUSES } from '../domain/market-status';
 import { CREATABLE_TYPES, FUNDINGS, PROMOTION_STATUSES } from '../domain/promotion';
 import type { FirstOrderView } from '../application/use-cases/view-first-order-settings.use-case';
@@ -33,6 +36,38 @@ export class RewardBody {
   amountMinor!: string | null;
 }
 
+export class TierBody {
+  @ApiProperty({
+    type: String,
+    description: 'Goods amount, minor units, from which the tier applies.',
+  })
+  thresholdMinor!: string;
+  @ApiProperty({ type: RewardBody }) reward!: RewardBody;
+}
+
+export class BundleItemBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ description: 'Units of the product in one set.' }) quantity!: number;
+}
+
+export class FlashBody {
+  @ApiProperty({ description: 'The units the sale may sell in all.' }) unitLimit!: number;
+  @ApiProperty({
+    description: 'The IANA zone of the owning party, in which the window was written.',
+  })
+  timeZone!: string;
+}
+
+export class SegmentBody {
+  @ApiProperty({ enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE'] }) kind!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'RETURNING_CUSTOMER: whole days since the last order.',
+  })
+  minDaysSinceLastOrder!: number | null;
+}
+
 class PromotionCommonBody {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ enum: [...CREATABLE_TYPES] }) type!: string;
@@ -53,6 +88,43 @@ class PromotionCommonBody {
   @ApiProperty({ type: [String], description: 'Empty is any product.' }) productIds!: string[];
   @ApiProperty({ type: [String], description: 'Empty is any seller.' }) sellerIds!: string[];
   @ApiProperty({ type: [String], description: 'Empty is any delivery zone.' }) zones!: string[];
+  @ApiProperty({ type: [TierBody], description: 'TIERED_CART only, lowest threshold first.' })
+  tiers!: TierBody[];
+  @ApiProperty({ nullable: true, type: Number, description: 'BUY_X_GET_Y: units to buy.' })
+  buyQty!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'BUY_X_GET_Y: cheapest units rewarded.',
+  })
+  getQty!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'MULTI_BUY: units in one group; the group price is `reward.amountMinor`.',
+  })
+  groupQty!: number | null;
+  @ApiProperty({
+    type: [BundleItemBody],
+    description: 'BUNDLE: the items of one set; the amount off a set is `reward.amountMinor`.',
+  })
+  bundleItems!: BundleItemBody[];
+  @ApiProperty({ nullable: true, type: Number }) maxRepeatsPerOrder!: number | null;
+  @ApiProperty({ nullable: true, type: FlashBody }) flash!: FlashBody | null;
+  @ApiProperty({
+    nullable: true,
+    type: SegmentBody,
+    description: 'CUSTOMER_GROUP: the segment; a DELIVERY_ZONE segment uses `zones`.',
+  })
+  segment!: SegmentBody | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'REFERRAL: the credit of the new customer, minor units; `reward.amountMinor` is the ' +
+      "referrer's. CASHBACK: `reward` is the percent of the goods paid.",
+  })
+  refereeRewardMinor!: string | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
 }
@@ -124,16 +196,76 @@ export class PromotionRequest {
   @ApiProperty({ required: false }) combinable?: boolean;
   @ApiProperty({ required: false, description: 'The public code of a CART_CODE promotion.' })
   code?: string;
-  @ApiProperty({ format: 'date-time' }) startsAt!: string;
+  @ApiProperty({ format: 'date-time', required: false }) startsAt?: string;
   @ApiProperty({ format: 'date-time', required: false }) endsAt?: string;
   @ApiProperty({ required: false }) testMode?: boolean;
   @ApiProperty({ required: false, description: 'Admin only; needs a fresh two-step code.' })
   specialCampaign?: boolean;
   @ApiProperty({
     type: Object,
-    description: '`{ kind: "PERCENT", bps }` or `{ kind: "FIXED", amountMinor }`.',
+    required: false,
+    description:
+      '`{ kind: "PERCENT", bps }` or `{ kind: "FIXED", amountMinor }`. Per unit for BUY_X_GET_Y ' +
+      'and FLASH_SALE; FIXED (the amount off one set) for BUNDLE. Not accepted for TIERED_CART ' +
+      '(its tiers) and MULTI_BUY (its group price).',
   })
-  reward!: object;
+  reward?: object;
+  @ApiProperty({
+    required: false,
+    type: [Object],
+    description:
+      'TIERED_CART: `{ thresholdMinor, reward }` per tier (all PERCENT or all FIXED; higher ' +
+      'tiers give more). The highest tier the goods amount reaches applies.',
+  })
+  tiers?: object[];
+  @ApiProperty({ required: false, description: 'BUY_X_GET_Y: units to buy.' }) buyQty?: number;
+  @ApiProperty({
+    required: false,
+    description: 'BUY_X_GET_Y: the cheapest units that get the reward.',
+  })
+  getQty?: number;
+  @ApiProperty({ required: false, description: 'MULTI_BUY: units in one group (2 or more).' })
+  groupQty?: number;
+  @ApiProperty({ required: false, description: 'MULTI_BUY: the price of one group, minor units.' })
+  groupPriceMinor?: string;
+  @ApiProperty({
+    required: false,
+    type: [Object],
+    description: 'BUNDLE: `{ productId, quantity }` per item of one set (2 or more items).',
+  })
+  bundleItems?: object[];
+  @ApiProperty({
+    required: false,
+    description: 'BUY_X_GET_Y, MULTI_BUY, BUNDLE: the most groups or sets in one order.',
+  })
+  maxRepeatsPerOrder?: number;
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description:
+      'FLASH_SALE: `{ unitLimit, timeZone, startsLocal?, endsLocal? }`. `timeZone` is the IANA ' +
+      'zone of the owning party; with `startsLocal` and `endsLocal` (wall-clock `YYYY-MM-DDTHH:mm`) ' +
+      'the window is written in that zone and stored as UTC instants, and `startsAt` and `endsAt` ' +
+      'are not sent. A local time that does not exist or happens twice is refused. A flash sale ' +
+      'always has an end.',
+  })
+  flash?: object;
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description:
+      'CUSTOMER_GROUP (admin): `{ kind: "RETURNING_CUSTOMER", minDaysSinceLastOrder? }` (the ' +
+      'Market\'s default days when left out) or `{ kind: "DELIVERY_ZONE" }` with `zones`.',
+  })
+  segment?: object;
+  @ApiProperty({
+    required: false,
+    description:
+      'REFERRAL (admin): the wallet credit of the new customer, minor units. `reward` (FIXED) is ' +
+      "the referrer's credit and `maxUsesPerCustomer` the most rewarded referrals of one referrer. " +
+      'CASHBACK (admin): `reward` PERCENT of the goods paid, `capMinor` the most one order is credited.',
+  })
+  refereeRewardMinor?: string;
   @ApiProperty({ required: false, description: 'Minor units, digits only.' }) capMinor?: string;
   @ApiProperty({ required: false }) maxPerOrderMinor?: string;
   @ApiProperty({ required: false }) maxTotalUses?: number;
@@ -144,6 +276,19 @@ export class PromotionRequest {
   @ApiProperty({ required: false, type: [String] }) productIds?: string[];
   @ApiProperty({ required: false, type: [String] }) sellerIds?: string[];
   @ApiProperty({ required: false, type: [String] }) zones?: string[];
+}
+
+export class GenerateBatchCodesRequest {
+  @ApiProperty({ description: "How many codes to make; at most the Market's `maxPerBatch`." })
+  count!: number;
+}
+
+export class BatchCodeSummaryBody {
+  @ApiProperty({ format: 'uuid' }) promotionId!: string;
+  @ApiProperty() total!: number;
+  @ApiProperty() used!: number;
+  @ApiProperty({ description: 'The most codes the Market lets one promotion hold.' })
+  maxPerPromotion!: number;
 }
 
 export class BudgetRequest {
@@ -259,6 +404,15 @@ export class QuoteRequestBody {
   @ApiProperty({ required: false, description: 'Defaults to true for the preview.' })
   testMode?: boolean;
   @ApiProperty({ required: false }) orderCommissionMinor?: string;
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description:
+      'Customer facts to try a customer-group or store-follower promotion with: ' +
+      '`{ daysSinceLastOrder?, followedSellerIds? }`. A field left out is unknown, so the ' +
+      'promotions that need it do not apply.',
+  })
+  customer?: object;
 }
 
 export class QuoteBody {
@@ -298,6 +452,27 @@ function common(view: Common) {
     productIds: [...view.productIds],
     sellerIds: [...view.sellerIds],
     zones: [...view.zones],
+    tiers: view.tiers.map((tier) => ({
+      thresholdMinor: minor(tier.thresholdMinor),
+      reward: rewardBody(tier.reward),
+    })),
+    buyQty: view.buyQty,
+    getQty: view.getQty,
+    groupQty: view.groupQty,
+    bundleItems: view.bundleItems.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    })),
+    maxRepeatsPerOrder: view.maxRepeatsPerOrder,
+    flash:
+      view.flash === null
+        ? null
+        : { unitLimit: view.flash.unitLimit, timeZone: view.flash.timeZone },
+    segment:
+      view.segment === null
+        ? null
+        : { kind: view.segment.kind, minDaysSinceLastOrder: view.segment.minDaysSinceLastOrder },
+    refereeRewardMinor: minorOrNull(view.refereeRewardMinor),
     createdAt: iso(view.createdAt),
     updatedAt: iso(view.updatedAt),
   };
@@ -424,3 +599,83 @@ export const quoteBody = (result: CalculationOutput & { enabled: boolean }): Quo
     payableMinor: minor(result.totals.payable),
   },
 });
+
+export class MyReferralBody {
+  @ApiProperty({ description: "The customer's own referral code (made on the first ask)." })
+  code!: string;
+  @ApiProperty({ description: 'Minor units, digits only.' }) referrerRewardMinor!: string;
+  @ApiProperty({ description: 'Minor units, digits only.' }) refereeRewardMinor!: string;
+  @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
+  @ApiProperty() maxRewarded!: number;
+  @ApiProperty() pending!: number;
+  @ApiProperty() qualified!: number;
+}
+
+export function myReferralBody(view: MyReferralView): MyReferralBody {
+  return {
+    code: view.code,
+    referrerRewardMinor: minor(view.referrerRewardMinor),
+    refereeRewardMinor: minor(view.refereeRewardMinor),
+    currency: view.currency,
+    maxRewarded: view.maxRewarded,
+    pending: view.pending,
+    qualified: view.qualified,
+  };
+}
+
+export class ApplyReferralRequest {
+  @ApiProperty({ description: "The referrer's code." }) code!: string;
+}
+
+export class AppliedReferralBody {
+  @ApiProperty({ enum: ['PENDING'] }) status!: 'PENDING';
+  @ApiProperty({ description: 'The instant by which the qualifying order must be delivered.' })
+  expiresAt!: string;
+}
+
+export function appliedReferralBody(applied: AppliedReferral): AppliedReferralBody {
+  return { status: applied.status, expiresAt: iso(applied.expiresAt) };
+}
+
+export class CreditBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) promotionId!: string;
+  @ApiProperty({ enum: ['CASHBACK', 'REFERRER_REWARD', 'REFEREE_REWARD'] }) kind!: string;
+  @ApiProperty({ format: 'uuid' }) recipientAccountId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true }) orderId!: string | null;
+  @ApiProperty({ description: 'Minor units, digits only.' }) amountMinor!: string;
+  @ApiProperty() currency!: string;
+  @ApiProperty({ enum: ['PENDING', 'GRANTED', 'RECORDED', 'FAILED'] }) status!: string;
+  @ApiProperty({ nullable: true }) failureCode!: string | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty({ nullable: true }) settledAt!: string | null;
+}
+
+export class CreditsBody {
+  @ApiProperty({ type: [CreditBody] }) items!: CreditBody[];
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Pass as `cursor` for the next page; null on the last page.',
+  })
+  nextCursor!: string | null;
+}
+
+export function creditsBody(page: CreditPage): CreditsBody {
+  return {
+    nextCursor: page.nextCursor,
+    items: page.items.map((credit) => ({
+      id: credit.id,
+      promotionId: credit.promotionId,
+      kind: credit.kind,
+      recipientAccountId: credit.recipientAccountId,
+      orderId: credit.orderId,
+      amountMinor: minor(credit.amountMinor),
+      currency: credit.currency,
+      status: credit.status,
+      failureCode: credit.failureCode,
+      createdAt: iso(credit.createdAt),
+      settledAt: credit.settledAt === null ? null : iso(credit.settledAt),
+    })),
+  };
+}

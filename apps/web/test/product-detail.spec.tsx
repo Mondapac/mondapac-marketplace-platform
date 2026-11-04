@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { ProductPage } from '../src/product/product-page.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
@@ -21,6 +21,8 @@ const PRODUCT = '01990000-0000-7000-8000-000000000900';
 const labels = {
   minimum: (amount: string) => `${amount} minimum order`,
   noMinimum: 'No minimum order',
+  yes: 'Yes',
+  no: 'No',
 };
 
 const unit = (
@@ -167,6 +169,197 @@ describe('product page on API data', () => {
       </NextIntlClientProvider>,
     );
     expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
+  });
+});
+
+// The brand of the product (the API's `brand`, untrusted): a link to its page under the title.
+describe('the brand on the product page', () => {
+  const renderPage = (extra: Partial<ProductDetailBody>) => {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('min-width: 1000px'),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf({ ...TWO_SELLERS, ...extra }, 'en', labels)!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+  };
+
+  it('links the brand name to its page, beside the seller line', () => {
+    renderPage({ brand: { slug: 'kedron-farms', name: 'Kedron Farms' } });
+    const link = screen.getByRole('link', { name: 'Kedron Farms' });
+    expect(link.getAttribute('href')).toBe('/brands/kedron-farms');
+    expect(link.closest('p')?.textContent).toBe('Brand: Kedron Farms');
+    expect(screen.getByRole('link', { name: 'Kedron Butchers' })).toBeTruthy();
+  });
+
+  it('shows no brand line for a product without a brand or with a malformed one', () => {
+    for (const brand of [undefined, null, { slug: 'Bad_Slug', name: 'x' }, { slug: 'ok-slug' }]) {
+      renderPage({ brand });
+      expect(screen.queryByText(/^Brand:/u)).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('maps a valid brand reference of the answer', () => {
+    expect(
+      productDetailOf({ ...TWO_SELLERS, brand: { slug: 'a-1', name: 'A1' } }, 'en', labels)?.brand,
+    ).toEqual({ slug: 'a-1', name: 'A1' });
+  });
+});
+
+// Specifications: the API's grouped attribute values are untrusted input. A row with any field
+// missing or malformed is dropped whole; numbers keep Latin digits; the page lists them as a table.
+describe('specifications from the API', () => {
+  const groups = [
+    {
+      groupCode: 'general',
+      specifications: [
+        { code: 'origin', name: 'Country of origin', value: { kind: 'text', text: 'Iran' } },
+        { code: 'tags', name: 'Diet', value: { kind: 'list', items: ['Halal', 'Vegan'] } },
+      ],
+    },
+    {
+      groupCode: 'details',
+      specifications: [
+        { code: 'weight', name: 'Net weight', value: { kind: 'number', value: '1250.5' } },
+        { code: 'organic', name: 'Organic', value: { kind: 'boolean', value: true } },
+        { code: 'best-before', name: 'Best before', value: { kind: 'date', value: '2027-03-01' } },
+      ],
+    },
+  ];
+  const withGroup = {
+    ...labels,
+    group: (code: string) => (code === 'details' ? 'Details' : undefined),
+  };
+
+  it('maps typed values to the lines a buyer reads, in order, tagged with their group', () => {
+    const rows = productDetailOf(
+      { ...TWO_SELLERS, specifications: groups },
+      'en',
+      withGroup,
+    )!.specifications;
+    expect(rows.map((row) => [row.label, row.value, row.group])).toEqual([
+      ['Country of origin', 'Iran', 'general'],
+      ['Diet', 'Halal, Vegan', 'general'],
+      ['Net weight', '1,250.5', 'details'],
+      ['Organic', 'Yes', 'details'],
+      ['Best before', 'March 1, 2027', 'details'],
+    ]);
+    expect(rows[2]?.groupLabel).toBe('Details');
+    expect(rows[0]?.groupLabel).toBeUndefined();
+  });
+
+  it('shows digits as Latin digits in a right-to-left language', () => {
+    const rows = productDetailOf(
+      { ...TWO_SELLERS, specifications: groups },
+      'fa',
+      labels,
+    )!.specifications;
+    expect(rows.find((row) => row.label === 'Net weight')?.value).toMatch(/^[0-9٬,.]+$/u);
+    expect(rows.find((row) => row.label === 'Net weight')?.value).not.toMatch(/[۰-۹٠-٩]/u);
+  });
+
+  it('drops malformed rows whole and treats a missing or wrong-typed list as none', () => {
+    const bad = [
+      {
+        groupCode: 'general',
+        specifications: [
+          { code: 'a', name: 'Fine', value: { kind: 'text', text: 'ok' } },
+          { code: 'b', name: '', value: { kind: 'text', text: 'no name' } },
+          { code: 'c', name: 'No value', value: { kind: 'text' } },
+          { code: 'd', name: 'Odd kind', value: { kind: 'html', text: '<b>x</b>' } },
+          { code: 'e', name: 'Bad number', value: { kind: 'number', value: 'NaN' } },
+          { code: 'f', name: 'Bad date', value: { kind: 'date', value: '2027-02-30' } },
+          { code: 'a', name: 'Repeated code', value: { kind: 'text', text: 'again' } },
+          'not a row',
+        ],
+      },
+      { groupCode: 'Bad Code', specifications: [] },
+      'not a group',
+    ];
+    const rows = (value: unknown) =>
+      productDetailOf({ ...TWO_SELLERS, specifications: value }, 'en', labels)!.specifications;
+    expect(rows(bad).map((row) => row.label)).toEqual(['Fine']);
+    expect(rows(undefined)).toEqual([]);
+    expect(rows({})).toEqual([]);
+  });
+
+  function renderWith(specifications: unknown, group = withGroup) {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf({ ...TWO_SELLERS, specifications }, 'en', group)!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it('lists the rows in a Specifications table with a heading for each of several groups', () => {
+    renderWith(groups);
+    const section = screen.getByText('Specifications').closest('section')!;
+    expect(within(section).getByText('Country of origin').tagName).toBe('DT');
+    expect(within(section).getByText('Iran').tagName).toBe('DD');
+    expect(within(section).getByText('Details', { selector: 'h4' })).toBeTruthy();
+    // The group with no word for its code has no heading.
+    expect(section.querySelectorAll('h4')).toHaveLength(1);
+  });
+
+  it('shows one group as one plain table without a heading', () => {
+    renderWith([groups[0]]);
+    const section = screen.getByText('Specifications').closest('section')!;
+    expect(section.querySelectorAll('h4')).toHaveLength(0);
+    expect(section.querySelectorAll('dl')).toHaveLength(1);
+  });
+
+  it('keys each row by its attribute code, so two attributes with one name give no key warning', () => {
+    const rows = productDetailOf(
+      {
+        ...TWO_SELLERS,
+        specifications: [
+          {
+            groupCode: 'general',
+            specifications: [
+              { code: 'size-a', name: 'Size', value: { kind: 'text', text: 'Small' } },
+              { code: 'size-b', name: 'Size', value: { kind: 'text', text: 'Large' } },
+            ],
+          },
+        ],
+      },
+      'en',
+      labels,
+    )!.specifications;
+    expect(rows.map((row) => row.code)).toEqual(['size-a', 'size-b']);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    renderWith([
+      {
+        groupCode: 'general',
+        specifications: [
+          { code: 'size-a', name: 'Size', value: { kind: 'text', text: 'Small' } },
+          { code: 'size-b', name: 'Size', value: { kind: 'text', text: 'Large' } },
+        ],
+      },
+    ]);
+    const warned = error.mock.calls.some((call) => String(call[0]).includes('same key'));
+    error.mockRestore();
+    expect(warned).toBe(false);
+    expect(screen.getByText('Small').tagName).toBe('DD');
+    expect(screen.getByText('Large').tagName).toBe('DD');
+  });
+
+  it('leaves out the Specifications section when there is no row', () => {
+    renderWith([]);
+    expect(screen.queryByText('Specifications')).toBeNull();
   });
 });
 
