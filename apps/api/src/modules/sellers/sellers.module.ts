@@ -93,6 +93,7 @@ import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-bu
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
+import { SweepOrphanStoreImageFiles } from './application/use-cases/sweep-orphan-store-image-files.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { ServiceAreaNamesEdit } from './application/use-cases/service-area-names-edit.use-case';
 import { ServiceAreaNamesList } from './application/use-cases/service-area-names-list.use-case';
@@ -123,6 +124,7 @@ import { StoreSettingsController } from './presentation/store-settings.controlle
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
+import { sweepOrphanStoreImageFilesJob } from './presentation/jobs/sweep-orphan-store-image-files.job';
 import { reconcileDecisionsJob } from './presentation/jobs/reconcile-decisions.job';
 import { ReviewDecisionController } from './presentation/review-decision.controller';
 import { decisionSubscriptions } from './presentation/subscribers/decision.subscriptions';
@@ -754,6 +756,12 @@ const REVIEW_DECISION_PORTS = {
         }),
     },
     useCaseProvider(PurgeExpired, { unitOfWork: true, counters: true, clock: true }),
+    useCaseProvider(SweepOrphanStoreImageFiles, {
+      unitOfWork: true,
+      storeImages: true,
+      objectStore: true,
+      clock: true,
+    }),
     // Seller health, nightly per seller zone (package 4): the feeds are bound by SellerHealthModule.
     useCaseProvider(SellerHealthRead, {
       unitOfWork: true,
@@ -772,17 +780,26 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(PurgeSellerHealth, { unitOfWork: true, healthStore: true, clock: true }),
     registerJobsFrom(
       'sellers',
-      [BackfillSellerFiles, PurgeExpired, ReconcileDecisions, RunSellerHealth, PurgeSellerHealth],
+      [
+        BackfillSellerFiles,
+        PurgeExpired,
+        ReconcileDecisions,
+        SweepOrphanStoreImageFiles,
+        RunSellerHealth,
+        PurgeSellerHealth,
+      ],
       (
         backfill: BackfillSellerFiles,
         purge: PurgeExpired,
         reconcile: ReconcileDecisions,
+        sweepFiles: SweepOrphanStoreImageFiles,
         health: RunSellerHealth,
         purgeHealth: PurgeSellerHealth,
       ) => [
         backfillSellerFilesJob(backfill),
         purgeExpiredJob(purge),
         reconcileDecisionsJob(reconcile),
+        sweepOrphanStoreImageFilesJob(sweepFiles),
         sellerHealthJob(health),
         purgeSellerHealthJob(purgeHealth),
       ],

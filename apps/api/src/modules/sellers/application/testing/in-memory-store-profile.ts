@@ -90,6 +90,16 @@ export class InMemoryStoreImages implements StoreImageRepository {
     return `${keyOf(market, sellerId)}|${kind}`;
   }
 
+  unreferencedObjectKeys(
+    market: MarketContext,
+    keys: readonly string[],
+  ): Promise<readonly string[]> {
+    const named = new Set(
+      [...this.current.values()].flatMap((image) => image.renditions.map((r) => r.objectKey)),
+    );
+    return Promise.resolve(keys.filter((key) => !named.has(key)));
+  }
+
   currentOf(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly StoredStoreImage[]> {
     return Promise.resolve(
       (['logo', 'banner'] as const).flatMap((kind) => {
