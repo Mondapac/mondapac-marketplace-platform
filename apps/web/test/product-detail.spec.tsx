@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { ProductPage } from '../src/product/product-page.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
@@ -254,7 +254,8 @@ describe('specifications from the API', () => {
       ['Best before', 'March 1, 2027', 'details'],
     ]);
     expect(rows[2]?.groupLabel).toBe('Details');
-    expect(rows[0]?.groupLabel).toBeUndefined();
+    // A group the page has no word for is spelled out from its code.
+    expect(rows[0]?.groupLabel).toBe('General');
   });
 
   it('shows digits as Latin digits in a right-to-left language', () => {
@@ -312,7 +313,126 @@ describe('specifications from the API', () => {
     expect(within(section).getByText('Iran').tagName).toBe('DD');
     expect(within(section).getByText('Details', { selector: 'h4' })).toBeTruthy();
     // The group with no word for its code has no heading.
-    expect(section.querySelectorAll('h4')).toHaveLength(1);
+    expect(section.querySelectorAll('h4')).toHaveLength(2);
+  });
+
+  it('keeps the group heading one level under the section heading', () => {
+    // With a description the section is h3 and the groups are h4; without one, h2 and h3.
+    renderWith(groups);
+    const section = screen.getByText('Specifications').closest('section')!;
+    expect(section.querySelectorAll('h3.spec-title, h4.spec-title')).toHaveLength(2);
+    expect(section.querySelectorAll('h4.spec-title')).toHaveLength(2);
+    cleanup();
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf(
+              { ...TWO_SELLERS, description: null, shortDescription: null, specifications: groups },
+              'en',
+              withGroup,
+            )!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    const bare = screen.getByText('Specifications').closest('section')!;
+    expect(bare.querySelector('h2')?.textContent).toBe('Specifications');
+    expect(bare.querySelectorAll('h3.spec-title')).toHaveLength(2);
+    expect(bare.querySelectorAll('h4')).toHaveLength(0);
+  });
+
+  it('keeps two attributes with the same name in one group as two rows, without a key warning', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    renderWith([
+      {
+        groupCode: 'general',
+        specifications: [
+          { code: 'a', name: 'Material', value: { kind: 'text', text: 'Cotton' } },
+          { code: 'b', name: 'Material', value: { kind: 'text', text: 'Wool' } },
+        ],
+      },
+    ]);
+    expect(screen.getAllByText('Material')).toHaveLength(2);
+    expect(screen.getByText('Cotton')).toBeTruthy();
+    expect(screen.getByText('Wool')).toBeTruthy();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it('spells out a group code the page has no word for', () => {
+    const heading = (groupCode: string) =>
+      productDetailOf(
+        {
+          ...TWO_SELLERS,
+          specifications: [
+            {
+              groupCode,
+              specifications: [{ code: 'x', name: 'X', value: { kind: 'text', text: 'y' } }],
+            },
+          ],
+        },
+        'en',
+        labels,
+      )!.specifications[0]?.groupLabel;
+    expect(heading('nutrition-facts')).toBe('Nutrition facts');
+    expect(heading('a_b')).toBe('A b');
+    expect(heading('general')).toBe('General');
+  });
+
+  it('writes a list with the language separator and a decimal without rounding it', () => {
+    const rows = (locale: string) =>
+      productDetailOf(
+        {
+          ...TWO_SELLERS,
+          specifications: [
+            {
+              groupCode: 'general',
+              specifications: [
+                { code: 'l', name: 'L', value: { kind: 'list', items: ['Halal', 'Vegan'] } },
+                {
+                  code: 'n',
+                  name: 'N',
+                  value: { kind: 'number', value: '123456789012345.123456789' },
+                },
+                { code: 'm', name: 'M', value: { kind: 'number', value: '-0.5' } },
+                { code: 'z', name: 'Z', value: { kind: 'number', value: '7' } },
+                { code: 'o', name: 'O', value: { kind: 'number', value: '-0' } },
+              ],
+            },
+          ],
+        },
+        locale,
+        labels,
+      )!.specifications.map((row) => row.value);
+    expect(rows('en')).toEqual(['Halal, Vegan', '123,456,789,012,345.123456789', '-0.5', '7', '0']);
+    // Persian writes «،» with a right-to-left mark; the digits stay Latin.
+    expect(rows('fa')[0]).toBe('Halal،\u200F Vegan');
+    expect(rows('fa')[1]).toMatch(/^123,456,789,012,345[.٫]123456789$/u);
+    expect(rows('fa')[2]).toMatch(/^-0[.٫]5$/u);
+  });
+
+  it('shows at most 60 rows and 20 list items', () => {
+    const many = Array.from({ length: 70 }, (_, index) => ({
+      code: `a${index}`,
+      name: `Attribute ${index}`,
+      value: { kind: 'text', text: 'x' },
+    }));
+    const list = {
+      groupCode: 'details',
+      specifications: [
+        {
+          code: 'big',
+          name: 'Big',
+          value: { kind: 'list', items: Array.from({ length: 25 }, (_, i) => `Item${i}`) },
+        },
+      ],
+    };
+    const rows = (value: unknown) =>
+      productDetailOf({ ...TWO_SELLERS, specifications: value }, 'en', labels)!.specifications;
+    expect(rows([{ groupCode: 'general', specifications: many }])).toHaveLength(60);
+    expect(rows([list])[0]?.value.split(', ')).toHaveLength(20);
   });
 
   it('shows one group as one plain table without a heading', () => {
