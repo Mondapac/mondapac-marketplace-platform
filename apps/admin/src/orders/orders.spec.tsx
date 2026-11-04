@@ -243,6 +243,10 @@ describe('orders list in page-number mode', () => {
         'ordering/admin/orders?page=2&pageSize=25&sort=created&direction=desc',
       ),
     );
+    // The focus moves from the pager to the top of the new rows.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('table').parentElement?.parentElement),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
     await waitFor(() =>
       expect(call).toHaveBeenLastCalledWith(

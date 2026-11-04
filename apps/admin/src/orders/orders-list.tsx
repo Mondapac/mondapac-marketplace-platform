@@ -52,6 +52,10 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const latest = useRef(0);
+  // After a page change the focus moves to the top of the list, so a keyboard or screen reader
+  // user starts on the new rows and not on the pager they used.
+  const listTop = useRef<HTMLDivElement>(null);
+  const focusList = useRef(false);
   const backwards = rangeIsBackwards(filters);
   const cursor = cursors[cursors.length - 1] ?? null;
 
@@ -95,6 +99,13 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && focusList.current) {
+      focusList.current = false;
+      listTop.current?.focus();
+    }
+  }, [loading, rows]);
 
   // Any change of what is asked for starts again at the first page.
   const change = (patch: Partial<OrderFilters>) => {
@@ -193,7 +204,11 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
           })}
         </p>
       ) : null}
-      {rows.length > 0 ? <OrdersTable rows={rows} /> : null}
+      {rows.length > 0 ? (
+        <div ref={listTop} tabIndex={-1} className="outline-none">
+          <OrdersTable rows={rows} />
+        </div>
+      ) : null}
       {!loading && !failed && rows.length === 0 ? (
         <EmptyState
           icon="receipt"
@@ -207,7 +222,10 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
         <Pagination
           page={page}
           pageCount={pageCount}
-          onPage={setPage}
+          onPage={(n) => {
+            focusList.current = true;
+            setPage(n);
+          }}
           disabled={loading}
           labels={{
             nav: t('paging.nav'),
@@ -221,8 +239,15 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
           hasPrevious={cursors.length > 1}
           hasNext={next !== null}
           disabled={loading}
-          onPrevious={() => setCursors((current) => current.slice(0, -1))}
-          onNext={() => next !== null && setCursors((current) => [...current, next])}
+          onPrevious={() => {
+            focusList.current = true;
+            setCursors((current) => current.slice(0, -1));
+          }}
+          onNext={() => {
+            if (next === null) return;
+            focusList.current = true;
+            setCursors((current) => [...current, next]);
+          }}
           labels={{
             nav: t('paging.nav'),
             previous: t('paging.previous'),
