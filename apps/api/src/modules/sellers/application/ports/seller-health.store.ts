@@ -1,5 +1,9 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { SellerHealth, SellerHealthInput } from '../../domain/seller-health';
+import type {
+  SellerHealth,
+  SellerHealthInput,
+  SellerHealthMetric,
+} from '../../domain/seller-health';
 import type { SellerHealthDay } from '../../domain/seller-health-days';
 
 /** The daily snapshot of one seller's score, as stored (data: sellers.seller_health_snapshots). */
@@ -17,7 +21,12 @@ export interface SellerHealthSummary {
   readonly kind: 'scored' | 'new' | 'no-data';
   readonly band: 'healthy' | 'at-risk' | 'unhealthy' | null;
   readonly score: number | null;
+  /** The metric that set a scored seller's score; null unless `scored`. */
+  readonly lowestMetric: SellerHealthMetric | null;
 }
+
+/** Cap on the sellers the "Needs a look" queue reads; beyond it the answer says `truncated`. */
+export const UNHEALTHY_QUEUE_MAX = 200;
 
 /**
  * `sellers.seller_health_days` and `sellers.seller_health_snapshots`. Runs in the caller's open
@@ -66,6 +75,20 @@ export interface SellerHealthStore {
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<ReadonlyMap<Id<'Seller'>, SellerHealthSummary>>;
+
+  /**
+   * The sellers whose newest snapshot among the dates from `from` to `to` is `unhealthy`: worst
+   * score first, ties by seller id, at most `UNHEALTHY_QUEUE_MAX` of them. `truncated` is true
+   * when more sellers were unhealthy than the cap.
+   */
+  unhealthy(
+    market: MarketContext,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<{
+    readonly sellers: readonly (SellerHealthSummary & { readonly sellerId: Id<'Seller'> })[];
+    readonly truncated: boolean;
+  }>;
 
   /**
    * Deletes the Market's counters and snapshots of local dates before `before`, of every seller,

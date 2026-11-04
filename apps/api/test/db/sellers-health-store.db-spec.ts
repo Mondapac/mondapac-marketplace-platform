@@ -292,6 +292,7 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
       kind: 'new',
       band: null,
       score: null,
+      lowestMetric: null,
     });
     const scoredBack = await run(market, () =>
       store.latest(market, [both], from, Temporal.PlainDate.from('2026-11-09')),
@@ -301,8 +302,64 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
       kind: 'scored',
       band: 'unhealthy',
       score: 20,
+      lowestMetric: 'late-ready',
     });
     expect(await run(market, () => store.latest(market, [], from, to))).toEqual(new Map());
+  });
+
+  it('queues the sellers whose newest snapshot is unhealthy, worst first, in this Market only', async () => {
+    const a = await newSeller();
+    const recovered = await newSeller();
+    const c = await newSeller();
+    const old = await newSeller();
+    const foreign = await newSeller(other);
+    const inputs = {
+      orders: 12,
+      sellerCancellations: { count: 0, base: 0 },
+      lateReady: { count: 0, base: 12 },
+      lostDisputes: { count: 0, base: 12 },
+      customerRating: { count: 0, averageHundredths: 0 },
+      reports: null,
+    };
+    const bad = (score: number) => ({
+      kind: 'scored' as const,
+      band: 'unhealthy' as const,
+      score,
+      lowestMetric: 'late-ready' as const,
+      metrics: [],
+      formulaVersion: 'v1',
+    });
+    const good = { ...bad(90), band: 'healthy' as const };
+    const snap = (iso: string, health: ReturnType<typeof bad> | typeof good) => ({
+      day: Temporal.PlainDate.from(iso),
+      health,
+      inputs,
+      computedAt: T0,
+    });
+    await run(market, () => store.saveSnapshot(market, a, snap('2026-11-10', bad(20))));
+    await run(market, () => store.saveSnapshot(market, recovered, snap('2026-11-09', bad(10))));
+    await run(market, () => store.saveSnapshot(market, recovered, snap('2026-11-10', good)));
+    await run(market, () => store.saveSnapshot(market, c, snap('2026-11-10', bad(5))));
+    await run(market, () => store.saveSnapshot(market, old, snap('2026-11-01', bad(1))));
+    await run(other, () => store.saveSnapshot(other, foreign, snap('2026-11-10', bad(2))));
+
+    const queue = await run(market, () =>
+      store.unhealthy(
+        market,
+        Temporal.PlainDate.from('2026-11-08'),
+        Temporal.PlainDate.from('2026-11-11'),
+      ),
+    );
+
+    const mine = new Set([a, recovered, c, old, foreign]);
+    expect(
+      queue.sellers.filter((x) => mine.has(x.sellerId)).map((x) => [x.sellerId, x.score]),
+    ).toEqual([
+      [c, 5],
+      [a, 20],
+    ]);
+    expect(queue.sellers[0]).toMatchObject({ band: 'unhealthy', lowestMetric: 'late-ready' });
+    expect(queue.truncated).toBe(false);
   });
 
   it('refuses rows the rules forbid', async () => {

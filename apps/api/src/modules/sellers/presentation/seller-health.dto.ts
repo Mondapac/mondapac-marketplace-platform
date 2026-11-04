@@ -70,3 +70,34 @@ export class SellerHealthBody {
   @ApiProperty({ type: [SellerHealthTrendPointBody], description: 'Oldest first, last 90 days.' })
   trend!: SellerHealthTrendPointBody[];
 }
+
+export class SellerHealthQueueItemBody {
+  @ApiProperty({ description: 'The seller id (UUID v7).' })
+  sellerId!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  storeName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'The held slug, else the draft slug.' })
+  slug!: string | null;
+
+  @ApiProperty({ example: '2026-11-03', description: 'Local date of the latest snapshot.' })
+  day!: string;
+
+  @ApiProperty({ minimum: 0, maximum: 100 })
+  score!: number;
+
+  @ApiProperty({ description: 'The metric that set the score: where to look first.' })
+  lowestMetric!: string;
+}
+
+export class SellerHealthQueueBody {
+  @ApiProperty({
+    type: [SellerHealthQueueItemBody],
+    description: 'Unhealthy sellers, worst score first.',
+  })
+  items!: SellerHealthQueueItemBody[];
+
+  @ApiProperty({ description: 'True when more sellers were unhealthy than the queue holds.' })
+  truncated!: boolean;
+}

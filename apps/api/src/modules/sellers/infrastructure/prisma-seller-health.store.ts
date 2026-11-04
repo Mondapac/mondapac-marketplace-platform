@@ -2,10 +2,11 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type {
-  SellerHealthSnapshot,
-  SellerHealthStore,
-  SellerHealthSummary,
+import {
+  UNHEALTHY_QUEUE_MAX,
+  type SellerHealthSnapshot,
+  type SellerHealthStore,
+  type SellerHealthSummary,
 } from '../application/ports/seller-health.store';
 import {
   SELLER_HEALTH_METRICS,
@@ -205,7 +206,14 @@ export class PrismaSellerHealthStore implements SellerHealthStore {
       },
       orderBy: [{ sellerId: 'asc' }, { day: 'desc' }],
       distinct: ['sellerId'],
-      select: { sellerId: true, day: true, kind: true, band: true, score: true },
+      select: {
+        sellerId: true,
+        day: true,
+        kind: true,
+        band: true,
+        score: true,
+        lowestMetric: true,
+      },
     });
     const found = new Map<Id<'Seller'>, SellerHealthSummary>();
     for (const row of rows) {
@@ -216,15 +224,52 @@ export class PrismaSellerHealthStore implements SellerHealthStore {
         if (row.score === null || row.band === null || bandOfScore(row.score) !== row.band) {
           throw new StoredSellerHealthError('score');
         }
+        if (!isMetric(row.lowestMetric)) throw new StoredSellerHealthError('score');
       }
       found.set(row.sellerId as Id<'Seller'>, {
         day: toDay(row.day),
         kind: row.kind,
         band: row.kind === 'scored' ? (row.band as 'healthy' | 'at-risk' | 'unhealthy') : null,
         score: row.kind === 'scored' ? row.score : null,
+        lowestMetric: row.kind === 'scored' && isMetric(row.lowestMetric) ? row.lowestMetric : null,
       });
     }
     return found;
+  }
+
+  async unhealthy(
+    market: MarketContext,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<{
+    readonly sellers: readonly (SellerHealthSummary & { readonly sellerId: Id<'Seller'> })[];
+    readonly truncated: boolean;
+  }> {
+    // Sellers with an unhealthy snapshot in the range (a small set), then each one's newest
+    // snapshot: one that has since recovered, or was measured again as healthy, drops out.
+    const candidates = await this.prisma.tx(market).sellersSellerHealthSnapshot.findMany({
+      where: {
+        marketId: market.marketId,
+        band: 'unhealthy',
+        day: { gte: dayDate(from), lte: dayDate(to) },
+      },
+      distinct: ['sellerId'],
+      orderBy: { sellerId: 'asc' },
+      select: { sellerId: true },
+    });
+    const ids = candidates.map((row) => row.sellerId as Id<'Seller'>);
+    const latest = await this.latest(market, ids, from, to);
+    const still = ids.flatMap((sellerId) => {
+      const summary = latest.get(sellerId);
+      return summary !== undefined && summary.band === 'unhealthy'
+        ? [{ sellerId, ...summary }]
+        : [];
+    });
+    still.sort((a, b) => (a.score ?? 0) - (b.score ?? 0) || (a.sellerId < b.sellerId ? -1 : 1));
+    return {
+      sellers: still.slice(0, UNHEALTHY_QUEUE_MAX),
+      truncated: still.length > UNHEALTHY_QUEUE_MAX,
+    };
   }
 
   async purgeBefore(

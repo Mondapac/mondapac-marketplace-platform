@@ -568,6 +568,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       kind: 'scored',
       band: 'at-risk',
       score: 55,
+      lowestMetric: 'late-ready',
     };
 
     it('shows the latest band and score of each row, read once for the whole page', async () => {

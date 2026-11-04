@@ -459,6 +459,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
         kind: 'scored',
         band: 'unhealthy',
         score: 20,
+        lowestMetric: 'late-ready',
       });
 
       const listed = await post(code, sessionHeaders(code, ROOT, 31), {});
