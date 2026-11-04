@@ -21,6 +21,8 @@ platform. The core must not encode knowledge of any specific vertical.
    implement isolation.
 4. Each vertical ships as a separate headless storefront (Next.js app) consuming the same
    Core API through a vertical-specific BFF; the Core API itself remains vertical-agnostic.
+   *(Amended by ADR-0043, 2026-11-04: one buyer site per Market with a section per vertical,
+   each section in its own route group and BFF module; the Core API stays vertical-agnostic.)*
 5. No vertical name may appear in core module code, event topic names, or core schema.
    A check enforced in CI (ADR-0008 decision 6), plus qc-release-manager/security-tester review,
    flags any conditional branching on a vertical identifier inside core modules.
