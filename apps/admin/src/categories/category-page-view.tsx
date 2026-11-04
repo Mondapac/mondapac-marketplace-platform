@@ -10,8 +10,9 @@ import { API_CATEGORIES, CATEGORIES_PATH, type TreeBody } from './types.ts';
 
 /**
  * The details of one category as a page: how a phone, a tablet or a narrow window shows them.
- * An editor also gets the change buttons here; they need the tree (for the order among siblings
- * and the languages), so it is read beside the category. Without it the category is still shown.
+ * The change buttons are shown here too (off for a reader, as on the wide view); they need the tree
+ * (for the order among siblings and the languages), so it is read beside the category. Without it
+ * the category is still shown.
  */
 export function CategoryPageView({
   id,
@@ -34,7 +35,6 @@ export function CategoryPageView({
   const focusNote = useRef(false);
 
   const fetchTree = useCallback(async () => {
-    if (!canEdit) return;
     const ticket = ++latest.current;
     const result = await callApi<TreeBody>('GET', API_CATEGORIES);
     if (ticket !== latest.current) return;
@@ -43,7 +43,7 @@ export function CategoryPageView({
       return;
     }
     setTree(result.ok ? result.body : null);
-  }, [canEdit]);
+  }, []);
 
   useEffect(() => {
     void fetchTree();

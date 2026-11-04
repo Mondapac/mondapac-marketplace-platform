@@ -518,6 +518,14 @@ describe('category editor (C3b)', () => {
     expect(await screen.findByRole('button', { name: 'Edit details' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Move up' })).toBeTruthy();
   });
+  it('shows a reader the change buttons off on the page of one category', async () => {
+    serve();
+    view(<CategoryPageView id={id(2)} canEdit={false} />);
+    const edit = await screen.findByRole<HTMLButtonElement>('button', { name: 'Edit details' });
+    expect(edit.disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Hide' }).disabled).toBe(true);
+  });
+
   it('says what a write did on the page of one category and moves focus there', async () => {
     serve();
     view(<CategoryPageView id={id(2)} canEdit csrfToken="tok" />);
