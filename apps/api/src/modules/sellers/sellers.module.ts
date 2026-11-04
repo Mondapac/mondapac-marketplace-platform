@@ -567,6 +567,8 @@ const REVIEW_DECISION_PORTS = {
       reviewChecks: true,
       accessReader: true,
       identifierSchemes: true,
+      onboardingAreas: true,
+      areaNames: true,
       audit: true,
       clock: true,
     }),
