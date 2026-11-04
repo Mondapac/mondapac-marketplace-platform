@@ -163,7 +163,9 @@ function decimalText(value: string, locale: string): string {
   const format = new Intl.NumberFormat(intlLocale(locale), { numberingSystem: 'latn' });
   const point = format.formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? '.';
   const text = format.format(BigInt(whole)) + (fraction === undefined ? '' : point + fraction);
-  return negative ? `-${text}` : text;
+  // "-0" and "-0.0" are zero, not a negative number.
+  const zero = /^0*(\.0*)?$/u.test(value.replace('-', ''));
+  return negative && !zero ? `-${text}` : text;
 }
 
 /** One specification value as the line a buyer reads; null when it is malformed (never half a row). */
@@ -179,7 +181,7 @@ function specificationValueOf(
     case 'list': {
       if (!Array.isArray(raw.items)) return null;
       const items = (raw.items as unknown[]).filter(isText).slice(0, MAX_LIST);
-      // The language's own separator and "and" (a Persian list uses «،»).
+      // The language's own separator, with no "and" (a Persian list uses «،»).
       return items.length === 0
         ? null
         : new Intl.ListFormat(intlLocale(locale), { style: 'short', type: 'unit' }).format(items);

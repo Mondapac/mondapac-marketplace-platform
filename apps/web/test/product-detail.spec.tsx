@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { ProductPage } from '../src/product/product-page.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
@@ -343,20 +343,42 @@ describe('specifications from the API', () => {
     expect(bare.querySelectorAll('h4')).toHaveLength(0);
   });
 
-  it('keeps two attributes with the same name in different groups as two rows', () => {
+  it('keeps two attributes with the same name in one group as two rows, without a key warning', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     renderWith([
       {
         groupCode: 'general',
-        specifications: [{ code: 'a', name: 'Material', value: { kind: 'text', text: 'Cotton' } }],
-      },
-      {
-        groupCode: 'details',
-        specifications: [{ code: 'b', name: 'Material', value: { kind: 'text', text: 'Wool' } }],
+        specifications: [
+          { code: 'a', name: 'Material', value: { kind: 'text', text: 'Cotton' } },
+          { code: 'b', name: 'Material', value: { kind: 'text', text: 'Wool' } },
+        ],
       },
     ]);
     expect(screen.getAllByText('Material')).toHaveLength(2);
     expect(screen.getByText('Cotton')).toBeTruthy();
     expect(screen.getByText('Wool')).toBeTruthy();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it('spells out a group code the page has no word for', () => {
+    const heading = (groupCode: string) =>
+      productDetailOf(
+        {
+          ...TWO_SELLERS,
+          specifications: [
+            {
+              groupCode,
+              specifications: [{ code: 'x', name: 'X', value: { kind: 'text', text: 'y' } }],
+            },
+          ],
+        },
+        'en',
+        labels,
+      )!.specifications[0]?.groupLabel;
+    expect(heading('nutrition-facts')).toBe('Nutrition facts');
+    expect(heading('a_b')).toBe('A b');
+    expect(heading('general')).toBe('General');
   });
 
   it('writes a list with the language separator and a decimal without rounding it', () => {
@@ -376,6 +398,7 @@ describe('specifications from the API', () => {
                 },
                 { code: 'm', name: 'M', value: { kind: 'number', value: '-0.5' } },
                 { code: 'z', name: 'Z', value: { kind: 'number', value: '7' } },
+                { code: 'o', name: 'O', value: { kind: 'number', value: '-0' } },
               ],
             },
           ],
@@ -383,8 +406,11 @@ describe('specifications from the API', () => {
         locale,
         labels,
       )!.specifications.map((row) => row.value);
-    expect(rows('en')).toEqual(['Halal, Vegan', '123,456,789,012,345.123456789', '-0.5', '7']);
-    expect(rows('fa')[0]).toContain('،');
+    expect(rows('en')).toEqual(['Halal, Vegan', '123,456,789,012,345.123456789', '-0.5', '7', '0']);
+    // Persian writes «،» with a right-to-left mark; the digits stay Latin.
+    expect(rows('fa')[0]).toBe('Halal،\u200F Vegan');
+    expect(rows('fa')[1]).toMatch(/^123,456,789,012,345[.٫]123456789$/u);
+    expect(rows('fa')[2]).toMatch(/^-0[.٫]5$/u);
   });
 
   it('shows at most 60 rows and 20 list items', () => {
