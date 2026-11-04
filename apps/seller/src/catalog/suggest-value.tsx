@@ -2,7 +2,7 @@
 
 import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import type { ValueSuggestion } from './types.ts';
 
@@ -14,10 +14,11 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'suggestion.label-invalid': 'invalid',
   'suggestion.already-open': 'already-open',
   'suggestion.limit-reached': 'limit',
-  'suggestion.attribute-protected': 'protected',
-  'suggestion.attribute-unavailable': 'unavailable-field',
+  'attribute.not-suggestable': 'not-suggestable',
+  'suggestion.value-exists': 'value-exists',
+  'product.not-editable': 'not-editable',
   'product.not-found': 'not-found',
-  'seller.not-eligible': 'not-eligible',
+  'access.seller-not-approved': 'not-approved',
   'access.denied': 'denied',
   'request.throttled': 'throttled',
   'request.csrf': 'csrf',
@@ -48,10 +49,23 @@ export function SuggestValue({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  const opened = useRef(false);
+
+  // Opening the form moves focus to its field; cancelling returns it to the button.
+  useEffect(() => {
+    if (editing) {
+      opened.current = true;
+      root.current?.querySelector<HTMLElement>('input')?.focus();
+    } else if (opened.current) {
+      opened.current = false;
+      root.current?.querySelector<HTMLElement>('button')?.focus();
+    }
+  }, [editing]);
 
   const mine = suggestions.filter((item) => item.attributeCode === attributeCode);
   const open = mine.find((item) => item.status === 'open');
-  const rejected = open === undefined ? mine.find((item) => item.status === 'rejected') : undefined;
+  const decided = open === undefined ? mine.find((item) => item.status !== 'open') : undefined;
 
   async function send() {
     if (busy.current) return;
@@ -84,18 +98,24 @@ export function SuggestValue({
 
   if (open !== undefined) {
     return (
-      <p className="text-sm text-fg-muted" data-testid={`suggestion-open-${attributeCode}`}>
+      <p
+        role="status"
+        className="text-sm text-fg-muted"
+        data-testid={`suggestion-open-${attributeCode}`}
+      >
         {t('open', { label: open.label })}
       </p>
     );
   }
   return (
-    <div className="flex flex-col gap-2">
-      {rejected === undefined ? null : (
+    <div ref={root} className="flex flex-col gap-2">
+      {decided === undefined ? null : (
         <Banner tone="info">
-          {rejected.rejectReason === null || rejected.rejectReason === ''
-            ? t('rejected', { label: rejected.label })
-            : t('rejected-reason', { label: rejected.label, reason: rejected.rejectReason })}
+          {decided.status === 'rejected'
+            ? decided.rejectReason === null || decided.rejectReason === ''
+              ? t('rejected', { label: decided.label })
+              : t('rejected-reason', { label: decided.label, reason: decided.rejectReason })
+            : t(decided.status === 'approved' ? 'approved' : 'mapped', { label: decided.label })}
         </Banner>
       )}
       {editing ? (

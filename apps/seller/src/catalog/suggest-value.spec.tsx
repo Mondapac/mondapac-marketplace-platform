@@ -68,7 +68,7 @@ describe('suggest a value', () => {
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Oat' } });
     call.mockResolvedValue({
       ok: false,
-      failure: { status: 409, code: 'suggestion.limit-reached' },
+      failure: { status: 422, code: 'suggestion.limit-reached' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send suggestion' }));
     expect(await screen.findByText(/too many suggestions waiting/)).toBeTruthy();
@@ -77,7 +77,7 @@ describe('suggest a value', () => {
 
   it('shows an open suggestion as plain text and offers no second one', () => {
     mount([suggestion({})]);
-    expect(screen.getByTestId('suggestion-open-flavour').textContent).toContain('<i>Oat</i>');
+    expect(screen.getByRole('status').textContent).toContain('<i>Oat</i>');
     expect(document.querySelector('i')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Suggest a value' })).toBeNull();
   });
@@ -86,5 +86,57 @@ describe('suggest a value', () => {
     mount([suggestion({ status: 'rejected', rejectReason: 'Not a flavour' })]);
     expect(screen.getByText(/Not a flavour/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Suggest a value' })).toBeTruthy();
+  });
+
+  it.each([
+    ['attribute.not-suggestable', /does not take suggestions/],
+    ['suggestion.value-exists', /already on the list/],
+    ['product.not-editable', /can't be changed now/],
+    ['access.seller-not-approved', /has to be approved/],
+    ['unheard.of', /could not be sent/],
+  ])('says %s plainly and keeps the form', async (code, text) => {
+    mount([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest a value' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Oat' } });
+    call.mockResolvedValue({ ok: false, failure: { status: 422, code } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send suggestion' }));
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(screen.getByRole('textbox')).toBeTruthy();
+  });
+
+  it('says the service is unreachable on a 5xx and sends an ended session to sign-in', async () => {
+    mount([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest a value' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Oat' } });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'unknown' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send suggestion' }));
+    expect(await screen.findByText(/not reachable/)).toBeTruthy();
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 401, code: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send suggestion' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    vi.unstubAllGlobals();
+  });
+
+  it('moves focus into the form and back to the button on cancel', async () => {
+    mount([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest a value' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox')));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Suggest a value' })),
+    );
+  });
+
+  it('tells what a reviewer did with an approved, mapped or reason-less rejected one', () => {
+    mount([suggestion({ status: 'approved', optionCode: 'oat' })]);
+    expect(screen.getByText(/added “<i>Oat<\/i>” to the list/)).toBeTruthy();
+    cleanup();
+    mount([suggestion({ status: 'mapped', optionCode: 'plain' })]);
+    expect(screen.getByText(/matched “<i>Oat<\/i>”/)).toBeTruthy();
+    cleanup();
+    mount([suggestion({ status: 'rejected', rejectReason: null })]);
+    expect(screen.getByText(/did not add “<i>Oat<\/i>”\./)).toBeTruthy();
   });
 });
