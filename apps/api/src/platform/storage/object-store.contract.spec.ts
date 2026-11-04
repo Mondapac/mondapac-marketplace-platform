@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
   S3ServiceException,
@@ -64,6 +65,22 @@ const adapters: Record<string, () => Promise<Harness>> = {
       objects.delete(input.Key);
       return {};
     });
+    mock
+      .on(ListObjectsV2Command)
+      .callsFake((input: { Prefix?: string; StartAfter?: string; MaxKeys: number }) => {
+        const all = [...objects.keys()]
+          .filter(
+            (key) =>
+              (input.Prefix === undefined || key.startsWith(input.Prefix)) &&
+              (input.StartAfter === undefined || key > input.StartAfter),
+          )
+          .sort();
+        const page = all.slice(0, input.MaxKeys);
+        return {
+          Contents: page.map((Key) => ({ Key, LastModified: new Date('2026-10-30T00:00:00Z') })),
+          IsTruncated: all.length > page.length,
+        };
+      });
     return Promise.resolve({
       store: new S3ObjectStore(
         { bucket: 'b', region: 'ap-southeast-2', credentials: null },
@@ -120,6 +137,34 @@ describe.each(Object.entries(adapters))('ObjectStore contract: %s', (_name, make
     expect(refused?.status === 'rejected' && refused.reason).toBeInstanceOf(
       ObjectAlreadyExistsError,
     );
+  });
+
+  it('lists whole-segment prefixes in key order, page by page', async () => {
+    for (const key of ['a/b/1', 'a/b/2', 'a/b/3', 'a/bc/1', 'z/1']) {
+      await harness.store.put(key, Buffer.from('x'));
+    }
+    const first = await harness.store.list('a/b', { after: null, limit: 2 });
+    expect(first.objects.map((o) => o.key)).toEqual(['a/b/1', 'a/b/2']);
+    expect(first.next).toBe('a/b/2');
+    const second = await harness.store.list('a/b', { after: first.next, limit: 2 });
+    expect(second.objects.map((o) => o.key)).toEqual(['a/b/3']);
+    expect(second.next).toBeNull();
+    const everything = await harness.store.list('', { after: null, limit: 100 });
+    expect(everything.objects.map((o) => o.key)).toEqual([
+      'a/b/1',
+      'a/b/2',
+      'a/b/3',
+      'a/bc/1',
+      'z/1',
+    ]);
+    expect(everything.objects[0]?.lastModified.epochMilliseconds).toBeGreaterThan(0);
+  });
+
+  it('refuses a bad prefix or limit', async () => {
+    await expect(harness.store.list('../x', { after: null, limit: 10 })).rejects.toThrow('prefix');
+    await expect(harness.store.list('a/', { after: null, limit: 10 })).rejects.toThrow('prefix');
+    await expect(harness.store.list('', { after: null, limit: 0 })).rejects.toThrow('limit');
+    await expect(harness.store.list('', { after: null, limit: 1001 })).rejects.toThrow('limit');
   });
 
   it('deletes, and deleting a missing key is not an error', async () => {
