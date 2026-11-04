@@ -39,7 +39,7 @@ async function reload(): Promise<MarketSettingsAnswer | null> {
 }
 
 /**
- * Settings › Lists: how every list of both panels moves between pages (List paging, ADR-0040). The
+ * Settings › Lists: how every list of both panels moves between pages (List paging, ADR-0041). The
  * answer drives the screen, nothing is optimistic. A stale version keeps the draft and compares it
  * with what is saved now (the hub's conflict view).
  */
