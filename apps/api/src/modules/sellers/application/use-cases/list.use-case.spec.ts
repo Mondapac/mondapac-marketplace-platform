@@ -27,6 +27,7 @@ import type {
   SellerListRepository,
 } from '../ports/seller-list.repository';
 import { SellerAccountAccessRefused } from '../ports/seller-account-directory';
+import type { SellerHealthStore, SellerHealthSummary } from '../ports/seller-health.store';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
 import type { AreaNameSource } from '../ports/service-area-names.repository';
 import { SellerList, type SellerListPage } from './list.use-case';
@@ -40,6 +41,35 @@ const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const SECRET_TERM = 'canary-term-zebra';
 const SECRET_NAME = 'Canary Store Zebra';
+
+/** The health store of the list: summaries by seller, counting its calls, failing on demand. */
+class FakeHealth {
+  readonly summaries = new Map<string, SellerHealthSummary>();
+  failing = false;
+  readonly asked: { ids: readonly string[]; from: string; to: string }[] = [];
+
+  readonly store = {
+    latest: (
+      _market: MarketContext,
+      sellerIds: readonly Id<'Seller'>[],
+      from: Temporal.PlainDate,
+      to: Temporal.PlainDate,
+    ) => {
+      this.asked.push({ ids: sellerIds, from: from.toString(), to: to.toString() });
+      if (this.failing) return Promise.reject(new Error('health down'));
+      return Promise.resolve(
+        new Map(
+          sellerIds.flatMap((one) => {
+            const found = this.summaries.get(one);
+            return found === undefined ? [] : [[one, found] as const];
+          }),
+        ),
+      );
+    },
+  } as unknown as SellerHealthStore;
+}
+
+const healthClock = new FixedClock(START);
 
 /** In-memory rows with the filters and keyset order of the real queries. */
 class FakeListRepository implements SellerListRepository {
@@ -222,15 +252,18 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
   function setUp() {
     const repository = new FakeListRepository();
     const access = new FakeAccess();
+    const health = new FakeHealth();
     const useCase = new SellerList(createUseCaseGate(markets, strict), {
       unitOfWork,
       list: repository,
       directory: new FakeDirectory(access),
       authorisation: strict,
       onboardingAreas: areas,
+      healthStore: health.store,
+      clock: healthClock,
       areaNames: noEditedNames,
     });
-    return { repository, access, useCase };
+    return { repository, access, useCase, health };
   }
 
   function admin(
@@ -373,6 +406,8 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
               : strict.check(context, declaration),
         },
         onboardingAreas: areas,
+        healthStore: t.health.store,
+        clock: healthClock,
         areaNames: noEditedNames,
       });
 
@@ -543,6 +578,76 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     expect(byId.get(unknown.sellerId)?.status).toBeNull();
   });
 
+  describe('the health column (seller health package 5b)', () => {
+    const summary: SellerHealthSummary = {
+      day: Temporal.PlainDate.from('2026-10-08'),
+      kind: 'scored',
+      band: 'at-risk',
+      score: 55,
+      lowestMetric: 'late-ready',
+    };
+
+    it('shows the latest band and score of each row, read once for the whole page', async () => {
+      const t = setUp();
+      const first = row({ pending: pendingOf(1), storeName: 'A' });
+      const second = row({ pending: pendingOf(2), storeName: 'B' });
+      t.repository.add(code, first);
+      t.repository.add(code, second);
+      t.health.summaries.set(first.sellerId, summary);
+
+      const result = await t.useCase.execute(admin(), {});
+
+      const byId = new Map(
+        result.ok ? result.value.items.map((item) => [item.sellerId, item]) : [],
+      );
+      expect(byId.get(first.sellerId)?.health).toEqual({
+        day: '2026-10-08',
+        kind: 'scored',
+        band: 'at-risk',
+        score: 55,
+        lowestMetric: 'late-ready',
+      });
+      expect(byId.get(second.sellerId)?.health).toBeNull();
+      expect(result.ok && result.value.healthUnavailable).toBe(false);
+      expect(t.health.asked).toHaveLength(1);
+      expect(t.health.asked[0]).toMatchObject({ from: '2026-10-06', to: '2026-10-09' });
+      expect(new Set(t.health.asked[0]!.ids)).toEqual(new Set([first.sellerId, second.sellerId]));
+    });
+
+    it('still lists, says the health is unavailable, and logs the failure without personal data', async () => {
+      const t = setUp();
+      const listed = row({ pending: pendingOf(1), storeName: 'Canary Store Narwhal' });
+      t.repository.add(code, listed);
+      t.health.failing = true;
+
+      const result = await t.useCase.execute(admin(), {});
+
+      expect(result.ok && result.value.items.map((item) => item.health)).toEqual([null]);
+      expect(result.ok && result.value.healthUnavailable).toBe(true);
+      const failures = logged.filter((line) => line.includes('sellers.list.health-failed'));
+      expect(failures).toHaveLength(1);
+      const entry = JSON.parse(failures[0]!) as Record<string, unknown>;
+      expect(entry).toMatchObject({
+        msg: 'sellers.list.health-failed',
+        error: 'Error',
+        marketId: code,
+      });
+      // The error name only: no message, no store name, no seller id.
+      expect(failures[0]).not.toContain('health down');
+      expect(failures[0]).not.toContain('Narwhal');
+      expect(failures[0]).not.toContain(listed.sellerId);
+    });
+
+    it('does not read health for an empty page', async () => {
+      const t = setUp();
+
+      const result = await t.useCase.execute(admin(), {});
+
+      expect(result.ok && result.value.items).toEqual([]);
+      expect(t.health.asked).toEqual([]);
+    });
+  });
+
   it('returns clear fields of the file only, no business data, and the owner from identity', async () => {
     const t = setUp();
     const r = row({ pending: pendingOf(1), storeName: 'Shop' });
@@ -554,6 +659,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     expect(result.ok && Object.keys(result.value.items[0]!).sort()).toEqual(
       [
         'createdAt',
+        'health',
         'kind',
         'lastChangedAt',
         'origin',
@@ -582,6 +688,8 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         directory,
         authorisation: strict,
         onboardingAreas: areas,
+        healthStore: t.health.store,
+        clock: healthClock,
         areaNames: noEditedNames,
       });
       return { ...t, directory, useCase };

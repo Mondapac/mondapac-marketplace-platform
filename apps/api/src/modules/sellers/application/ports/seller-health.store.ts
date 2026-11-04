@@ -1,5 +1,9 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { SellerHealth, SellerHealthInput } from '../../domain/seller-health';
+import type {
+  SellerHealth,
+  SellerHealthInput,
+  SellerHealthMetric,
+} from '../../domain/seller-health';
 import type { SellerHealthDay } from '../../domain/seller-health-days';
 
 /** The daily snapshot of one seller's score, as stored (data: sellers.seller_health_snapshots). */
@@ -9,6 +13,16 @@ export interface SellerHealthSnapshot {
   /** The counts the score was computed from, kept for the card and for tracing a formula change. */
   readonly inputs: SellerHealthInput;
   readonly computedAt: Temporal.Instant;
+}
+
+/** What a list shows of a seller's latest snapshot: the band and score, never the metrics. */
+export interface SellerHealthSummary {
+  readonly day: Temporal.PlainDate;
+  readonly kind: 'scored' | 'new' | 'no-data';
+  readonly band: 'healthy' | 'at-risk' | 'unhealthy' | null;
+  readonly score: number | null;
+  /** The metric that set a scored seller's score; null unless `scored`. */
+  readonly lowestMetric: SellerHealthMetric | null;
 }
 
 /**
@@ -46,6 +60,18 @@ export interface SellerHealthStore {
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<readonly SellerHealthSnapshot[]>;
+
+  /**
+   * The newest snapshot of each seller in `sellerIds` among the dates from `from` to `to`, as a
+   * summary; a seller with none in that range is absent from the map. One query for the whole
+   * list page (no N+1).
+   */
+  latest(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<ReadonlyMap<Id<'Seller'>, SellerHealthSummary>>;
 
   /**
    * Deletes the Market's counters and snapshots of local dates before `before`, of every seller,

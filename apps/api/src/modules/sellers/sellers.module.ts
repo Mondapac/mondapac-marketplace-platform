@@ -620,6 +620,8 @@ const REVIEW_DECISION_PORTS = {
       directory: true,
       authorisation: true,
       onboardingAreas: true,
+      healthStore: true,
+      clock: true,
       areaNames: true,
     }),
     // Editable service area names (ADR-0041), over HTTP through ServiceAreaNamesController: the

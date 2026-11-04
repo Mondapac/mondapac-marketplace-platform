@@ -240,6 +240,73 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
     expect(back[0]?.health).toMatchObject({ kind: 'new' });
   });
 
+  it('answers the newest summary of each listed seller in the range, in this Market only', async () => {
+    const both = await newSeller();
+    const stale = await newSeller();
+    const none = await newSeller();
+    const foreign = await newSeller(other);
+    const inputs = {
+      orders: 12,
+      sellerCancellations: { count: 0, base: 0 },
+      lateReady: { count: 0, base: 12 },
+      lostDisputes: { count: 0, base: 12 },
+      customerRating: { count: 0, averageHundredths: 0 },
+      reports: null,
+    };
+    const scored = {
+      kind: 'scored' as const,
+      band: 'unhealthy' as const,
+      score: 20,
+      lowestMetric: 'late-ready' as const,
+      metrics: [
+        {
+          metric: 'late-ready' as const,
+          kind: 'scored' as const,
+          band: 'unhealthy' as const,
+          score: 20,
+        },
+      ],
+      formulaVersion: 'v1',
+    };
+    const fresh = { kind: 'new' as const, metrics: [], formulaVersion: 'v1' };
+    const snap = (iso: string, health: typeof scored | typeof fresh) => ({
+      day: Temporal.PlainDate.from(iso),
+      health,
+      inputs,
+      computedAt: T0,
+    });
+    await run(market, () => store.saveSnapshot(market, both, snap('2026-11-09', scored)));
+    await run(market, () => store.saveSnapshot(market, both, snap('2026-11-10', fresh)));
+    await run(market, () => store.saveSnapshot(market, stale, snap('2026-11-01', scored)));
+    await run(other, () => store.saveSnapshot(other, foreign, snap('2026-11-10', scored)));
+
+    const from = Temporal.PlainDate.from('2026-11-08');
+    const to = Temporal.PlainDate.from('2026-11-11');
+    const found = await run(market, () =>
+      store.latest(market, [both, stale, none, foreign], from, to),
+    );
+
+    expect([...found.keys()]).toEqual([both]);
+    expect(found.get(both)).toEqual({
+      day: Temporal.PlainDate.from('2026-11-10'),
+      kind: 'new',
+      band: null,
+      score: null,
+      lowestMetric: null,
+    });
+    const scoredBack = await run(market, () =>
+      store.latest(market, [both], from, Temporal.PlainDate.from('2026-11-09')),
+    );
+    expect(scoredBack.get(both)).toEqual({
+      day: Temporal.PlainDate.from('2026-11-09'),
+      kind: 'scored',
+      band: 'unhealthy',
+      score: 20,
+      lowestMetric: 'late-ready',
+    });
+    expect(await run(market, () => store.latest(market, [], from, to))).toEqual(new Map());
+  });
+
   it('refuses rows the rules forbid', async () => {
     const seller = await newSeller();
     const insert = (patch: Record<string, unknown>) => {
