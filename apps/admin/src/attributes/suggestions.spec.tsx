@@ -144,7 +144,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Map “<b>Oat</b> & honey” to an existing value' }),
+      await screen.findByRole('button', { name: 'Map to existing: “<b>Oat</b> & honey”' }),
     );
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'plain' } });
     call.mockResolvedValueOnce(

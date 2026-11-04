@@ -4961,7 +4961,7 @@
         "reload-failed": "The list could not be refreshed and may be out of date. Reload the page."
       },
       "approve-for": "Approve “{label}”",
-      "map-for": "Map “{label}” to an existing value",
+      "map-for": "Map to existing: “{label}”",
       "reject-for": "Reject “{label}”",
       "value-code": "Value code",
       "value-code-help": "Optional. Letters a to z, digits and hyphens. Made from the name if left empty.",
