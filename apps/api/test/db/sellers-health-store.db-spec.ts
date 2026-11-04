@@ -292,6 +292,7 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
       kind: 'new',
       band: null,
       score: null,
+      lowestMetric: null,
     });
     const scoredBack = await run(market, () =>
       store.latest(market, [both], from, Temporal.PlainDate.from('2026-11-09')),
@@ -301,6 +302,7 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
       kind: 'scored',
       band: 'unhealthy',
       score: 20,
+      lowestMetric: 'late-ready',
     });
     expect(await run(market, () => store.latest(market, [], from, to))).toEqual(new Map());
   });

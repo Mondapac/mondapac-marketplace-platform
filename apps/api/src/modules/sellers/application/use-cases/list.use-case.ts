@@ -87,6 +87,8 @@ export interface SellerListHealth {
   readonly kind: 'scored' | 'new' | 'no-data';
   readonly band: 'healthy' | 'at-risk' | 'unhealthy' | null;
   readonly score: number | null;
+  /** The metric that set the score, shown next to the number; null unless `scored`. */
+  readonly lowestMetric: string | null;
 }
 
 /** How many days back the health column looks for a seller's newest snapshot. */
@@ -110,6 +112,11 @@ export interface SellerListPage {
   readonly areas: readonly { readonly code: string; readonly name: string }[];
   /** With the first page of a tab; null on a later page of a file tab, and when hidden. */
   readonly stateCounts: StateTabCounts | null;
+  /**
+   * True when the health of this page could not be read: every row's `health` is then null
+   * because of the failure, not because the seller is unmeasured.
+   */
+  readonly healthUnavailable: boolean;
 }
 
 export type SellerListFailure =
@@ -226,7 +233,8 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       if (!decorated.ok) return decorated;
       return ok({
         tab: request.tab,
-        items: decorated.value,
+        items: decorated.value.rows,
+        healthUnavailable: decorated.value.healthUnavailable,
         next: idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
         counts: read.value.counts,
         areas: this.deps.onboardingAreas.all(context.market),
@@ -262,7 +270,8 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     const last = page[page.length - 1];
     return ok({
       tab: request.tab,
-      items: decorated.value,
+      items: decorated.value.rows,
+      healthUnavailable: decorated.value.healthUnavailable,
       next: more && last !== undefined ? cursorText(cursorOf(request, last)) : null,
       counts,
       areas: this.deps.onboardingAreas.all(context.market),
@@ -340,7 +349,12 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     context: CallContext,
     page: readonly ListedSeller[],
     showStatus: boolean,
-  ): Promise<Result<readonly SellerListRow[], SellerListFailure>> {
+  ): Promise<
+    Result<
+      { readonly rows: readonly SellerListRow[]; readonly healthUnavailable: boolean },
+      SellerListFailure
+    >
+  > {
     let accounts: ReadonlyMap<Id<'Seller'>, SellerAccountEntry> = new Map();
     if (showStatus && page.length > 0) {
       try {
@@ -357,8 +371,9 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       context,
       page.map((row) => row.sellerId),
     );
-    return ok(
-      page.map((row) =>
+    return ok({
+      healthUnavailable: health.unavailable,
+      rows: page.map((row) =>
         rowOf(
           row,
           showStatus ? (accounts.get(row.sellerId) ?? null) : 'hidden',
@@ -366,21 +381,25 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
           row.serviceAreaCode === null
             ? null
             : this.deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode),
-          health.get(row.sellerId) ?? null,
+          health.byId.get(row.sellerId) ?? null,
         ),
       ),
-    );
+    });
   }
 
   /**
    * The health of a page in one read-only unit and one query. A failure is logged and answers an
-   * empty map: the column shows nothing, the list still answers (the column is not a gate).
+   * empty map with `unavailable`: the column shows nothing and the page says why, the list still
+   * answers (the column is not a gate).
    */
   private async healthOf(
     context: CallContext,
     ids: readonly Id<'Seller'>[],
-  ): Promise<ReadonlyMap<Id<'Seller'>, SellerHealthSummary>> {
-    if (ids.length === 0) return new Map();
+  ): Promise<{
+    readonly byId: ReadonlyMap<Id<'Seller'>, SellerHealthSummary>;
+    readonly unavailable: boolean;
+  }> {
+    if (ids.length === 0) return { byId: new Map(), unavailable: false };
     const { market } = context;
     const today = this.deps.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
     // The newest local date on Earth is at most one day ahead of UTC.
@@ -394,10 +413,10 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
         readOnly: true,
       });
       if (!read.ok) throw new Error('the health read unit failed');
-      return read.value;
+      return { byId: read.value, unavailable: false };
     } catch (error) {
       this.fail(context, 'health-failed', error);
-      return new Map();
+      return { byId: new Map(), unavailable: true };
     }
   }
 
@@ -484,7 +503,13 @@ function rowOf(
     health:
       health === null
         ? null
-        : { day: health.day.toString(), kind: health.kind, band: health.band, score: health.score },
+        : {
+            day: health.day.toString(),
+            kind: health.kind,
+            band: health.band,
+            score: health.score,
+            lowestMetric: health.lowestMetric,
+          },
   };
 }
 

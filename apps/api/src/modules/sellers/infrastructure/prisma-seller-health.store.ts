@@ -205,7 +205,14 @@ export class PrismaSellerHealthStore implements SellerHealthStore {
       },
       orderBy: [{ sellerId: 'asc' }, { day: 'desc' }],
       distinct: ['sellerId'],
-      select: { sellerId: true, day: true, kind: true, band: true, score: true },
+      select: {
+        sellerId: true,
+        day: true,
+        kind: true,
+        band: true,
+        score: true,
+        lowestMetric: true,
+      },
     });
     const found = new Map<Id<'Seller'>, SellerHealthSummary>();
     for (const row of rows) {
@@ -216,12 +223,14 @@ export class PrismaSellerHealthStore implements SellerHealthStore {
         if (row.score === null || row.band === null || bandOfScore(row.score) !== row.band) {
           throw new StoredSellerHealthError('score');
         }
+        if (!isMetric(row.lowestMetric)) throw new StoredSellerHealthError('score');
       }
       found.set(row.sellerId as Id<'Seller'>, {
         day: toDay(row.day),
         kind: row.kind,
         band: row.kind === 'scored' ? (row.band as 'healthy' | 'at-risk' | 'unhealthy') : null,
         score: row.kind === 'scored' ? row.score : null,
+        lowestMetric: row.kind === 'scored' && isMetric(row.lowestMetric) ? row.lowestMetric : null,
       });
     }
     return found;

@@ -1,5 +1,9 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { SellerHealth, SellerHealthInput } from '../../domain/seller-health';
+import type {
+  SellerHealth,
+  SellerHealthInput,
+  SellerHealthMetric,
+} from '../../domain/seller-health';
 import type { SellerHealthDay } from '../../domain/seller-health-days';
 
 /** The daily snapshot of one seller's score, as stored (data: sellers.seller_health_snapshots). */
@@ -17,6 +21,8 @@ export interface SellerHealthSummary {
   readonly kind: 'scored' | 'new' | 'no-data';
   readonly band: 'healthy' | 'at-risk' | 'unhealthy' | null;
   readonly score: number | null;
+  /** The metric that set a scored seller's score; null unless `scored`. */
+  readonly lowestMetric: SellerHealthMetric | null;
 }
 
 /**
