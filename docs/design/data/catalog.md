@@ -156,7 +156,7 @@ migration in 8. "Privileges" lines are in 7.
 | `id` | `uuid` | no | PK. CA7 (UUIDv7 only, server-minted) |
 | `product_id` | `uuid` | no | FK `(market_id, product_id, variant_model)` → `products (market_id, id, variant_model)` |
 | `variant_model` | `text` | no | Copy bound by that FK |
-| `variant_no` | `integer` | no | V2. 1, 2, 3 ... per product in creation order, minted by the aggregate (highest ever used + 1, so a retired number is never reused). CHECK `>= 1`; CHECK `variant_model <> 'single' OR variant_no = 1`; unique `(market_id, product_id, variant_no)`; immutable (guard trigger). The variant code `{product_code}-{nn}` is derived, not stored. Migration `20261104020000_catalog_variant_number` backfills in `(created_at, id)` order with the guard trigger off for that one statement |
+| `variant_no` | `integer` | no | V2. 1, 2, 3 ... per product in creation order, minted by the aggregate (highest ever used + 1, so a retired number is never reused). CHECK `>= 1`; CHECK `variant_model <> 'single' OR variant_no = 1`; unique `(market_id, product_id, variant_no)`; immutable (guard trigger). The variant code `{product_code}-{nn}` is derived, not stored. Migration `20261104030000_catalog_variant_number` backfills in `(created_at, id)` order with the guard trigger off for that one statement |
 | `state` | `text` | no | CHECK `proposed`, `published`, `retired` |
 | `created_at` | `timestamptz(6)` | no | |
 | `published_at`, `retired_at` | `timestamptz(6)` | yes | CHECK `(state = 'retired') = (retired_at IS NOT NULL)`; `state = 'proposed' OR published_at IS NOT NULL OR state = 'retired'` |

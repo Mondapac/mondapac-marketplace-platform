@@ -1,4 +1,4 @@
--- Reverses 20261104020000_catalog_variant_number: the guard goes back to its earlier body (without
+-- Reverses 20261104030000_catalog_variant_number: the guard goes back to its earlier body (without
 -- the number), then the constraints, the index and the column. Variant codes are derived, so no
 -- other data is lost.
 CREATE OR REPLACE FUNCTION "catalog"."product_variants_guard"() RETURNS trigger LANGUAGE plpgsql

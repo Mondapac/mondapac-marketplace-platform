@@ -333,34 +333,30 @@ describe('claim-text control behind the platform product routes (integration, sl
       expect(copies.size).toBe(0);
     });
 
-    it('refuses a free variant label in the draft as a whole: labels are built by the server (V2)', async () => {
+    it('drops a variant label a client still sends and stores the draft without it (V2)', async () => {
       await boot();
       const session = await seeded(code);
       const product = newProduct(code);
       const policy = app.get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY);
       const variantId = product.state.variants[0]!.id;
+      const locale = policy.locales(marketOf(code)).default;
 
-      const bad = await send(
+      const saved = await send(
         'put',
         code,
         '/draft',
         {
           content: contentOf(policy, 'Dates', {
-            variants: [
-              {
-                variantId,
-                optionValues: {},
-                labels: { [policy.locales(marketOf(code)).default]: 'Big' },
-              },
-            ],
+            variants: [{ variantId, optionValues: {}, labels: { [locale]: 'Typed by a seller' } }],
           }),
           variantIds: [variantId],
         },
         session,
       );
-      expect(bad.status).toBe(400);
-      expect(bad.body).toEqual({ statusCode: 400, code: 'working-copy.invalid-content' });
-      expect(copies.size).toBe(0);
+      expect(saved.status).toBe(200);
+      expect(JSON.stringify([...copies.values()])).not.toContain('Typed by a seller');
+      const stored = copies.get(PRODUCT)?.content as { variants?: Record<string, unknown>[] };
+      expect(stored.variants?.[0]).toEqual({ variantId, optionValues: {} });
     });
 
     it('refuses a submit whose frozen content now holds a claim, storing no revision', async () => {

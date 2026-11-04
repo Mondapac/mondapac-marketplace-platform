@@ -1,4 +1,10 @@
-import { changedTexts, draftTextsOf, restoreRefused, valueAt } from './draft-texts';
+import {
+  changedTexts,
+  draftTextsOf,
+  restoreRefused,
+  valueAt,
+  withoutVariantLabels,
+} from './draft-texts';
 
 // The closed draft shape and the per-field restore of catalog design 6.1, 6.2. Locales come from
 // the Market, so both fixtures' locale sets are exercised.
@@ -13,7 +19,29 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
   const read = (content: Record<string, unknown>) =>
     draftTextsOf(content, supported, defaultLocale, 'revision');
 
-  it('refuses a variant label in a seller draft: labels are built by the server (V2)', () => {
+  it('drops a variant label a client still sends, keeping everything else (V2 transition)', () => {
+    const content = {
+      texts: { [first]: { name: 'N' } },
+      variants: [
+        { variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } },
+        { variantId: 'v2', optionValues: { size: 's' } },
+      ],
+    };
+    const stripped = withoutVariantLabels(content);
+    expect(stripped).toEqual({
+      texts: content.texts,
+      variants: [
+        { variantId: 'v1', optionValues: { size: 'l' } },
+        { variantId: 'v2', optionValues: { size: 's' } },
+      ],
+    });
+    // The input is untouched, and a draft without variants passes through.
+    expect(content.variants[0]).toHaveProperty('labels');
+    expect(withoutVariantLabels({ texts: {} })).toEqual({ texts: {} });
+    expect(draftTextsOf(stripped, supported, defaultLocale).ok).toBe(true);
+  });
+
+  it('still refuses a variant label if one reaches the draft walk (defence in depth)', () => {
     const variants = [
       { variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } },
     ];

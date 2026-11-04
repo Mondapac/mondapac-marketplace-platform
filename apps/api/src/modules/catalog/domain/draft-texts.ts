@@ -59,6 +59,28 @@ function idList(value: unknown): boolean {
 }
 
 /**
+ * The draft without any variant `labels` (variants V2, transition rule). Labels are built by the
+ * server at revision build time, so a label a client still sends is dropped before the draft is
+ * checked and stored, not refused: an older seller form keeps saving while the new one rolls out.
+ * Nothing else changes; the input is not modified.
+ */
+export function withoutVariantLabels(
+  content: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const variants = content['variants'];
+  if (!Array.isArray(variants)) return { ...content };
+  return {
+    ...content,
+    variants: (variants as unknown[]).map((variant) => {
+      if (!isObject(variant) || !Object.hasOwn(variant, 'labels')) return variant;
+      const { labels: _dropped, ...rest } = variant;
+      void _dropped;
+      return rest;
+    }),
+  };
+}
+
+/**
  * Walks a draft and answers every checked text with its place, or `working-copy.invalid-content`
  * when the draft holds anything the closed shape does not name. `defaultLocale` is the locale of
  * a text that is not localizable. A variant label is built by the server (variants V2), so a
