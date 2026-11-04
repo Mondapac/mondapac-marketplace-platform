@@ -49,7 +49,7 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
  * reviews switch, reviews package 1; promotions: the Market switch, the promotion changes, reviews and
  * settings, promotions package T1; customers: the account deletion setting change, package 5a;
- * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0040).
+ * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0041).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
