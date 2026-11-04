@@ -37,6 +37,8 @@ export interface ListPageQuery {
   readonly outsideArea: boolean;
   /** Codes of the areas that take new sellers now, for the outside-area filter. */
   readonly openAreaCodes: readonly string[];
+  /** When set, only files whose service area is this code. */
+  readonly areaCode: string | null;
   /** When set, only these sellers (the candidates of a search). */
   readonly onlyIds: readonly Id<'Seller'>[] | null;
   readonly after: ListCursor | null;

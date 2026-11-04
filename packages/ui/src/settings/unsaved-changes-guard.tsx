@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../form/button.tsx';
 import { Dialog } from '../overlay/dialog.tsx';
 
@@ -64,7 +64,10 @@ export function useUnsavedChangesGuard(
   // Stay is the safe choice, so it takes focus (it is the first button; Leave is the primary one at the end).
   const stay = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
+  // A layout effect, not a passive one: the guard must follow `dirty` in the same commit. With a
+  // passive effect the old listeners outlive the commit that made the page clean (a save), so a
+  // check right after the "Saved." toast could still see the guard.
+  useLayoutEffect(() => {
     if (!dirty) return;
     confirmed.current = false;
     const onUnload = (event: BeforeUnloadEvent) => {

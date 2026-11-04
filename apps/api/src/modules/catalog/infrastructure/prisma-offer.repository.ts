@@ -116,6 +116,7 @@ export function offerFromRow(row: OfferRow, tags?: readonly TagRow[]): Offer {
     'type-not-allowed': row.offSaleTypeNotAllowed,
     'product-retired': row.offSaleProductRetired,
     'product-not-listed': row.offSaleProductNotListed,
+    'product-paused': row.offSaleProductPaused,
     'tag-suspended': row.offSaleTagSuspended,
     'description-claim-text': row.offSaleDescriptionClaimText,
   };
@@ -144,11 +145,12 @@ export function offerFromRow(row: OfferRow, tags?: readonly TagRow[]): Offer {
   );
 }
 
-/** The causes as the five stored flags, in the order of {@link OFF_SALE_CAUSES}. */
+/** The causes as the six stored flags, in the order of {@link OFF_SALE_CAUSES}. */
 const causeFlags = (causes: readonly OffSaleCause[]) => ({
   offSaleTypeNotAllowed: causes.includes('type-not-allowed'),
   offSaleProductRetired: causes.includes('product-retired'),
   offSaleProductNotListed: causes.includes('product-not-listed'),
+  offSaleProductPaused: causes.includes('product-paused'),
   offSaleTagSuspended: causes.includes('tag-suspended'),
   offSaleDescriptionClaimText: causes.includes('description-claim-text'),
 });

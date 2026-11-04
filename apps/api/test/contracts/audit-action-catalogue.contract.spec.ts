@@ -48,11 +48,13 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * change and pause rows, Phase 5 package 3 leftovers; assistant: the buyer assistant settings
  * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
  * reviews switch, reviews package 1; promotions: the Market switch, the promotion changes, reviews and
- * settings, promotions package T1; customers: the account deletion setting change, package 5a).
+ * settings, promotions package T1; customers: the account deletion setting change, package 5a;
+ * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0042).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
   'BlogModule',
+  'CatalogModule',
   'CertificationModule',
   'CommissionPayoutsModule',
   'CustomersModule',
@@ -64,6 +66,7 @@ const AUDITING_MODULES = [
   'PromotionsModule',
   'ReviewsModule',
   'SellersModule',
+  'SettingsModule',
   'ShippingModule',
   'StorefrontModule',
   'TaxModule',
@@ -486,6 +489,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     expect(binders.sort()).toEqual([
       ['AssistantModule', 'assistant'],
       ['BlogModule', 'blog'],
+      ['CatalogModule', 'catalog'],
       ['CertificationModule', 'certification'],
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['CustomersModule', 'customers'],
@@ -497,6 +501,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PromotionsModule', 'promotions'],
       ['ReviewsModule', 'reviews'],
       ['SellersModule', 'sellers'],
+      ['SettingsModule', 'settings'],
       ['ShippingModule', 'shipping'],
       ['StorefrontModule', 'storefront'],
       ['TaxModule', 'tax'],
@@ -526,6 +531,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['AssistantModule', 'writer'],
       ['BlogModule', 'actions'],
       ['BlogModule', 'writer'],
+      ['CatalogModule', 'actions'],
+      ['CatalogModule', 'writer'],
       ['CertificationModule', 'actions'],
       ['CertificationModule', 'writer'],
       ['CommissionPayoutsModule', 'actions'],
@@ -548,6 +555,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['ReviewsModule', 'writer'],
       ['SellersModule', 'actions'],
       ['SellersModule', 'writer'],
+      ['SettingsModule', 'actions'],
+      ['SettingsModule', 'writer'],
       ['ShippingModule', 'actions'],
       ['ShippingModule', 'writer'],
       ['StorefrontModule', 'actions'],
@@ -639,6 +648,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'assistant', 'assistant.module.ts')}: registerAuditActions('assistant')`,
       `${path.join('modules', 'blog', 'blog.module.ts')}: auditWriterFor('blog')`,
       `${path.join('modules', 'blog', 'blog.module.ts')}: registerAuditActions('blog')`,
+      `${path.join('modules', 'catalog', 'catalog.module.ts')}: auditWriterFor('catalog')`,
+      `${path.join('modules', 'catalog', 'catalog.module.ts')}: registerAuditActions('catalog')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: auditWriterFor('certification')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: registerAuditActions('certification')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: auditWriterFor('commission-payouts')`,
@@ -661,6 +672,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'reviews', 'reviews.module.ts')}: registerAuditActions('reviews')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
+      `${path.join('modules', 'settings', 'settings.module.ts')}: auditWriterFor('settings')`,
+      `${path.join('modules', 'settings', 'settings.module.ts')}: registerAuditActions('settings')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: auditWriterFor('shipping')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: registerAuditActions('shipping')`,
       `${path.join('modules', 'storefront', 'storefront.module.ts')}: auditWriterFor('storefront')`,

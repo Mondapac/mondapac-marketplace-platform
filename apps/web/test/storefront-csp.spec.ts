@@ -39,8 +39,10 @@ describe('storefront Content-Security-Policy', () => {
     expect(storefrontCsp('abc123', false, 'https://img.example.test')).toContain(
       "img-src 'self' data: blob: https://*.stripe.com https://img.example.test;",
     );
-    expect(policy).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;");
-    expect(policy).toContain("font-src 'self' data: https://fonts.gstatic.com;");
+    // Fonts are self-hosted: no font host is allowed.
+    expect(policy).toContain("style-src 'self' 'unsafe-inline';");
+    expect(policy).toContain("font-src 'self' data:;");
+    expect(policy).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 
   it('gives every response its own nonce, on the request for Next.js and on the response', () => {

@@ -1,4 +1,4 @@
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 
 export type ReviewsFacadeFailure =
@@ -44,6 +44,31 @@ export interface SellerRatingSummary {
   readonly arrivedOkBps: number | null;
 }
 
+/** What the seller health feed gets for one window. */
+export interface SellerReviewCount {
+  /** Reviews of the seller published in the window and still published. */
+  readonly reviews: number;
+  /** The sum of their 1 to 5 ratings. */
+  readonly starsSum: number;
+}
+
+/** The star totals of one product that has published reviews: `count` reviews adding up to `sum` stars. */
+export interface ProductRatingTotal {
+  readonly productId: Id<'Product'>;
+  readonly count: number;
+  readonly sum: number;
+}
+
+/** A page of {@link ProductRatingTotal}, ordered by product id; `next` is the cursor of the following page. */
+export interface ProductRatingTotalsPage {
+  readonly items: readonly ProductRatingTotal[];
+  /** The `after` of the next call, or null on the last page. */
+  readonly next: Id<'Product'> | null;
+}
+
+/** The most totals one call returns. */
+export const MAX_RATING_TOTALS_PAGE = 1000;
+
 /**
  * The public facade of `reviews`. Every method takes the caller's `CallContext` first, unchanged,
  * and is a thin call of one use case, so the gate runs. Other modules inject
@@ -62,6 +87,29 @@ export interface ReviewsFacade {
     context: CallContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<SellerRatingSummary, ReviewsFacadeFailure>>;
+
+  /**
+   * The seller health feed (rule `system`): for each window `[from, to)` a seller's reviews
+   * published in it and their stars, counted by status now, in one read (at most 8 windows). The
+   * caller works the windows out in the seller's own zone (ADR-0005). Counters only; no text, no
+   * author.
+   */
+  sellerReviewCounts(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<Result<readonly SellerReviewCount[], ReviewsFacadeFailure>>;
+
+  /**
+   * The star totals of every product with a published review, a page at a time in product-id
+   * order (rule `system`). Search copies them for its staged rating boost. Answers
+   * `reviews.disabled` while reviews are off, which is how the boost goes away with the switch.
+   * `limit` defaults to and is at most {@link MAX_RATING_TOTALS_PAGE}.
+   */
+  productRatingTotals(
+    context: CallContext,
+    request: { readonly after?: Id<'Product'> | null; readonly limit?: number },
+  ): Promise<Result<ProductRatingTotalsPage, ReviewsFacadeFailure>>;
 
   /**
    * A deleted account's reviews and ratings lose their author link and stay as "Former

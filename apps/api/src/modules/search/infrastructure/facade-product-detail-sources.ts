@@ -44,6 +44,16 @@ export class FacadeProductDetailSources implements ProductDetailSources {
           description: published.description,
           categoryIds: published.categoryIds,
           variants: published.variants.map(({ variantId, label }) => ({ variantId, label })),
+          brand: published.brand,
+          // Field by field: nothing catalog might add later reaches the page unreviewed.
+          specifications: published.specifications.map((group) => ({
+            groupCode: group.groupCode,
+            specifications: group.specifications.map(({ code, name, value }) => ({
+              code,
+              name,
+              value,
+            })),
+          })),
         },
       };
     } catch {

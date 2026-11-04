@@ -1,4 +1,5 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
@@ -26,6 +27,7 @@ import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-poli
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
+import { PAYMENT_ATTEMPT_LIMITS } from './application/ports/payment-attempt-limits';
 import { PICKUP_CODE_REPOSITORY } from './application/ports/pickup-code.repository';
 import { PICKUP_CODE_VAULT } from './application/ports/pickup-code-vault';
 import { REFUND_REPOSITORY } from './application/ports/refund.repository';
@@ -38,6 +40,7 @@ import { AdminViewOrder } from './application/use-cases/admin-view-order.use-cas
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
+import { SellerHealthCountsQuery } from './application/use-cases/seller-health-counts.use-case';
 import { MyDeliveredSellerOrders } from './application/use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
@@ -63,6 +66,7 @@ import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-car
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
 import { DeliveryQuotes } from './application/use-cases/delivery-quotes.use-case';
+import { PayByCard } from './application/use-cases/pay-by-card.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
 import { ViewOrderDocument } from './application/use-cases/view-order-document.use-case';
@@ -121,6 +125,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['deliveryMethods', DELIVERY_METHOD_POLICY],
   ['pickupCodes', PICKUP_CODE_REPOSITORY],
   ['pickupVault', PICKUP_CODE_VAULT],
+  ['attempts', PAYMENT_ATTEMPT_LIMITS],
 ];
 
 /** Every ordering use case shares one dependency object, built from the same ports. */
@@ -198,9 +203,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       deliverySubscriptions(record),
     ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
+    SubjectRateLimits,
     ...orderingProviders,
     ...[
       StartCheckout,
+      PayByCard,
       DeliveryQuotes,
       ViewOrder,
       ViewOrderDocument,
@@ -228,6 +235,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OpenObligationsOfQuery,
       AdminOpenObligationsOfQuery,
       MyDeliveredSellerOrders,
+      SellerHealthCountsQuery,
       BookCarrierDeliveries,
       BookReadyCarrierDelivery,
       RecordCarrierProgress,
@@ -249,6 +257,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         MyDeliveredSellerOrders,
         OrderPaymentRefQuery,
         AdminOpenObligationsOfQuery,
+        SellerHealthCountsQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -261,6 +270,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         delivered: MyDeliveredSellerOrders,
         paymentRef: OrderPaymentRefQuery,
         adminOpenObligations: AdminOpenObligationsOfQuery,
+        healthCounts: SellerHealthCountsQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -273,6 +283,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           delivered,
           paymentRef,
           adminOpenObligations,
+          healthCounts,
         ),
     },
     {

@@ -40,10 +40,14 @@ vi.mock('../src/storefront/source.ts', async (importOriginal) => {
   const actual = await importOriginal<object>();
   const { sampleProduct } = await import('../src/storefront/sample-product.ts');
   const { sampleUnavailableProduct } = await import('../src/storefront/sample-unavailable.ts');
+  const { sampleBrandIndex, sampleBrandPage } = await import('../src/storefront/sample-brands.ts');
   return {
     ...actual,
     loadProduct: (id: string) => Promise.resolve(read.product ?? sampleProduct(id)),
     loadUnavailableProduct: (id: string) => Promise.resolve(sampleUnavailableProduct(id)),
+    loadBrands: () => Promise.resolve(sampleBrandIndex()),
+    loadBrand: (slug: string, page = 1, all = false) =>
+      Promise.resolve(sampleBrandPage(slug, page, all ? 24 : 8, all)),
   };
 });
 vi.mock('../src/storefront/listing-source.ts', async (importOriginal) => ({
@@ -53,6 +57,7 @@ vi.mock('../src/storefront/listing-source.ts', async (importOriginal) => ({
 }));
 
 const {
+  brandPageStructuredData,
   breadcrumbStructuredData,
   decimalPrice,
   homeStructuredData,
@@ -181,6 +186,122 @@ describe('Product structured data', () => {
   });
 });
 
+describe('Product brand', () => {
+  it('names the brand entity of the product and its page, not a text a seller typed', () => {
+    const node = productStructuredData(
+      product({ brand: { slug: 'saffron-co', name: 'Saffron & Co' } }),
+      ORIGIN,
+      URL_,
+    )!;
+    expect(node.brand).toEqual({
+      '@type': 'Brand',
+      name: 'Saffron & Co',
+      url: `${ORIGIN}/brands/saffron-co`,
+    });
+  });
+
+  it('has no brand for a product without one, and plain text in the name', () => {
+    expect(productStructuredData(product(), ORIGIN, URL_)).not.toHaveProperty('brand');
+    const node = productStructuredData(
+      product({ brand: { slug: 'x-y', name: 'Two\n  words\t' } }),
+      ORIGIN,
+      URL_,
+    )!;
+    expect((node.brand as Node).name).toBe('Two words');
+  });
+});
+
+describe('Product additionalProperty', () => {
+  it('lists the specifications as PropertyValue nodes in plain text, in page order', () => {
+    const node = productStructuredData(
+      product({
+        specifications: [
+          { label: 'Country of origin', value: 'Iran', group: 'details' },
+          { label: 'Pack\n size', value: '500  g' },
+          { label: '  ', value: 'blank name' },
+        ],
+      }),
+      ORIGIN,
+      URL_,
+    )!;
+    expect(node.additionalProperty).toEqual([
+      { '@type': 'PropertyValue', name: 'Country of origin', value: 'Iran' },
+      { '@type': 'PropertyValue', name: 'Pack size', value: '500 g' },
+    ]);
+  });
+
+  it('has none for a product without specifications', () => {
+    expect(productStructuredData(product(), ORIGIN, URL_)).not.toHaveProperty('additionalProperty');
+  });
+});
+
+describe('Brand page structured data', () => {
+  const brand = {
+    slug: 'saffron-co',
+    name: 'Saffron & Co',
+    summary: 'Family spice mill.\nSince 1998.',
+    originCountry: 'AU',
+    productCount: 14,
+  };
+  const crumbs = [
+    { name: 'Home', path: '/' },
+    { name: 'Brands', path: '/brands' },
+    { name: 'Saffron & Co' },
+  ];
+
+  it('gives the Brand with its canonical URL and a plain-text description', () => {
+    const [node, trail] = brandPageStructuredData(
+      brand,
+      crumbs,
+      ORIGIN,
+      `${ORIGIN}/brands/saffron-co`,
+    );
+    expect(node).toEqual({
+      '@type': 'Brand',
+      name: 'Saffron & Co',
+      url: `${ORIGIN}/brands/saffron-co`,
+      description: 'Family spice mill. Since 1998.',
+    });
+    expect(trail).toMatchObject({
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { position: 1, name: 'Home', item: `${ORIGIN}/` },
+        { position: 2, name: 'Brands', item: `${ORIGIN}/brands` },
+        { position: 3, name: 'Saffron & Co' },
+      ],
+    });
+    expect((trail!.itemListElement as Node[])[2]).not.toHaveProperty('item');
+  });
+
+  it('adds the logo only when it is a site path or an https URL, and no description when empty', () => {
+    const [withLogo] = brandPageStructuredData(
+      { ...brand, summary: undefined, logo: { src: '/l.png', width: 1, height: 1, alt: 'x' } },
+      crumbs,
+      ORIGIN,
+      URL_,
+    );
+    expect(withLogo).toMatchObject({ logo: `${ORIGIN}/l.png` });
+    expect(withLogo).not.toHaveProperty('description');
+    const [bad] = brandPageStructuredData(
+      { ...brand, logo: { src: 'javascript:alert(1)', width: 1, height: 1, alt: 'x' } },
+      crumbs,
+      ORIGIN,
+      URL_,
+    );
+    expect(bad).not.toHaveProperty('logo');
+  });
+
+  it('escapes a hostile brand name in the script', () => {
+    const html = renderToStaticMarkup(
+      JsonLd({
+        data: brandPageStructuredData({ ...brand, name: '</script><b>' }, crumbs, ORIGIN, URL_),
+      }) as ReactElement,
+    );
+    expect(/<script[^>]*>([\s\S]*)<\/script>/u.exec(html)![1]).not.toMatch(/[<>&]/u);
+    expect(html.match(/<script/gu)).toHaveLength(1);
+  });
+});
+
 describe('hasCertification', () => {
   it('lists only the certified badges of the buy-box offer', () => {
     const node = productStructuredData(product({}, { certifications: [HALAL] }), ORIGIN, URL_)!;
@@ -281,9 +402,12 @@ describe('Routes', () => {
     read.product = undefined;
   });
 
-  const productRoute = async (id: string) => {
+  const productRoute = async (id: string, query?: { v?: string | string[] }) => {
     const { default: route } = await import('../app/p/[id]/page.tsx');
-    return route({ params: Promise.resolve({ id }) });
+    return route({
+      params: Promise.resolve({ id }),
+      ...(query === undefined ? {} : { searchParams: Promise.resolve(query) }),
+    });
   };
   const categoryRoute = async (params: { category: string; sub?: string[] }, query = {}) => {
     const { default: route } = await import('../app/c/[category]/[[...sub]]/page.tsx');
@@ -307,6 +431,31 @@ describe('Routes', () => {
     expect(JSON.stringify(crumbs)).not.toContain('Browse');
   });
 
+  it('opens on the Variant of ?v= and keeps the canonical link without it', async () => {
+    const v = (id: string, label: string, amount: number) => ({
+      id,
+      label,
+      inStock: true,
+      offers: [offer({ id: `o-${id}`, price: { amount, currency: 'AUD' } })] as [ProductOffer],
+    });
+    const variants = [v('v-1kg', '1 kg', 900), v('v-5kg', '5 kg', 3500)] as const;
+    read.product = product({ id: 'rice', offers: variants[0].offers, variants });
+    const route = await productRoute('rice', { v: 'v-5kg' });
+    const page = (route as ReactElement<{ children: ReactElement[] }>).props
+      .children[1] as ReactElement<{ initialVariantId?: string }>;
+    expect(page.props.initialVariantId).toBe('v-5kg');
+    const [node] = scriptOf(jsonLdOf(route))!['@graph'] as Node[];
+    expect(node!['@type']).toBe('ProductGroup');
+    // An unknown ?v= opens the default.
+    const other = await productRoute('rice', { v: 'nope' });
+    const otherPage = (other as ReactElement<{ children: ReactElement[] }>).props
+      .children[1] as ReactElement<{ initialVariantId?: string }>;
+    expect(otherPage.props.initialVariantId).toBeUndefined();
+    const { generateMetadata } = await import('../app/p/[id]/page.tsx');
+    const meta = await generateMetadata({ params: Promise.resolve({ id: 'rice' }) });
+    expect(JSON.stringify(meta.alternates)).not.toContain('v=');
+  });
+
   it('gives no script for a product without a price, a removed product or an unknown host', async () => {
     read.product = product({ id: 'free' }, { price: { amount: 0, currency: 'AUD' } });
     expect(scriptOf(jsonLdOf(await productRoute('free')))).toBeNull();
@@ -320,6 +469,63 @@ describe('Routes', () => {
     request.host = 'shop.example';
     request.listed = false;
     expect(scriptOf(jsonLdOf(await productRoute('lamb-shoulder')))).toBeNull();
+  });
+
+  const brandRoute = async (slug: string, query = {}) => {
+    const { default: route } = await import('../app/brands/[slug]/page.tsx');
+    return route({ params: Promise.resolve({ slug }), searchParams: Promise.resolve(query) });
+  };
+
+  it('gives a brand page its Brand and the visible crumbs, from the same read', async () => {
+    const data = scriptOf(jsonLdOf(await brandRoute('saffron-co')))!;
+    const [node, crumbs] = data['@graph'] as Node[];
+    expect(node).toMatchObject({
+      '@type': 'Brand',
+      name: 'Saffron & Co',
+      url: `${ORIGIN}/brands/saffron-co`,
+    });
+    expect(crumbs).toMatchObject({
+      itemListElement: [
+        { position: 1, name: 'Home', item: `${ORIGIN}/` },
+        { position: 2, name: 'Brands', item: `${ORIGIN}/brands` },
+        { position: 3, name: 'Saffron & Co' },
+      ],
+    });
+  });
+
+  it('gives the brands page its crumbs, and nothing for the full list, an unknown host or sample data', async () => {
+    const { default: brands } = await import('../app/brands/page.tsx');
+    expect(scriptOf(jsonLdOf(await brands()))).toMatchObject({
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { position: 1, name: 'Home', item: `${ORIGIN}/` },
+        { position: 2, name: 'Brands' },
+      ],
+    });
+    expect(scriptOf(jsonLdOf(await brandRoute('saffron-co', { all: '1' })))).toBeNull();
+    request.host = 'evil.example';
+    expect(scriptOf(jsonLdOf(await brandRoute('saffron-co')))).toBeNull();
+    expect(scriptOf(jsonLdOf(await brands()))).toBeNull();
+    request.host = 'shop.example';
+    request.listed = false;
+    expect(scriptOf(jsonLdOf(await brandRoute('saffron-co')))).toBeNull();
+  });
+
+  it('is a 404 for a brand that does not exist', async () => {
+    await expect(brandRoute('no-such-brand')).rejects.toThrow('not found');
+  });
+
+  it('puts the brand into the Product node of the product page', async () => {
+    read.product = product({
+      id: 'lamb-shoulder',
+      brand: { slug: 'kedron-farms', name: 'Kedron Farms' },
+    });
+    const data = scriptOf(jsonLdOf(await productRoute('lamb-shoulder')))!;
+    const [node] = data['@graph'] as Node[];
+    expect(node!.brand).toMatchObject({
+      name: 'Kedron Farms',
+      url: `${ORIGIN}/brands/kedron-farms`,
+    });
   });
 
   it('gives a category and a subcategory their visible crumbs', async () => {

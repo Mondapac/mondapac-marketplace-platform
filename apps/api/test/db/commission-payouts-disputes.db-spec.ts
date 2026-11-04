@@ -689,6 +689,17 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
         ).filter((h) => h.reason === 'dispute'),
         decisions: await disputes.decisionsForSeller(market, sellerId),
       }));
+    /** The seller-fault decisions that stand, over any span the clock can reach. */
+    const standingFaults = (sellerId: Id<'Seller'>, limit = 100) =>
+      value(market, () =>
+        disputes.sellerFaultDecisionTimes(
+          market,
+          sellerId,
+          Temporal.Instant.from('2000-01-01T00:00:00Z'),
+          Temporal.Instant.from('2100-01-01T00:00:00Z'),
+          limit,
+        ),
+      );
     const decide = (
       disputeId: Id<'Dispute'>,
       sellerOrderId: Id<'SellerOrder'>,
@@ -794,6 +805,10 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
         ok: true,
         value: { bearer: 'seller', holdsReleased: false, bucket: 'decision-needed' },
       });
+      // The seller health feed: the seller charged is counted once; the other seller is not.
+      expect(await standingFaults(sellerA)).toHaveLength(1);
+      expect(await standingFaults(sellerB)).toHaveLength(0);
+      await expect(standingFaults(sellerA, 0)).rejects.toThrow(RangeError);
       expect(await decide(disputeId, soA, 'platform')).toMatchObject({
         ok: false,
         error: { code: 'commission-payouts.dispute.already-decided' },
@@ -1023,10 +1038,13 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
       );
       await changed(disputeId, orderId);
       expect(await caseRow(disputeId)).toMatchObject({ bucket: 'decision-needed' });
+      expect(await standingFaults(sellerId)).toHaveLength(1);
       expect(await decide(disputeId, so, 'platform')).toMatchObject({
         ok: true,
         value: { reversal: true, bucket: 'closed' },
       });
+      // The bank returned the money and the platform reversed the decision: not the seller's fault.
+      expect(await standingFaults(sellerId)).toHaveLength(0);
       const kinds = await sql.query<{ kind: string; amount_minor: string }>(
         `SELECT kind, amount::text AS amount_minor FROM commission_payouts.ledger_entries
           WHERE market_id = $1 AND seller_order_id = $2 AND source_id = $3 ORDER BY kind`,

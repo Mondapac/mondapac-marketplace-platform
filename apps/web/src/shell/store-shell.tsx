@@ -36,6 +36,7 @@ export function StoreShell({
   locator,
   deliverTo,
   consent,
+  analyticsAvailable = false,
   signIn,
   live = false,
   assistant = null,
@@ -49,6 +50,8 @@ export function StoreShell({
   readonly locator: DeliveryLocatorSource;
   readonly deliverTo: DeliverTo | null;
   readonly consent: Consent | null;
+  /** The Market has a GA4 measurement ID: the cookie bar offers analytics too. */
+  readonly analyticsAvailable?: boolean;
   /** The account the sample log-in signs in to, until customer sessions are wired. */
   readonly signIn: CheckoutCustomer;
   /** The storefront talks to the API: sign-in, sign-out and the session are real. */
@@ -84,7 +87,7 @@ export function StoreShell({
           </div>
           <Footer area={content.delivery.label} />
           <Dock>
-            <ConsentBar initial={consent} />
+            <ConsentBar initial={consent} analyticsAvailable={analyticsAvailable} />
             <TabBar />
           </Dock>
         </PageFrame>

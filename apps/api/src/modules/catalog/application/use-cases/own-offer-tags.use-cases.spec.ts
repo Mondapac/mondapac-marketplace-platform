@@ -112,6 +112,8 @@ describe.each([
       offer?: OfferState | null;
       tags?: OfferTagState[];
       published?: boolean;
+      /** A published product that an admin paused (design 4.1a). */
+      paused?: boolean;
       decide?: (query: TagClaimQuery) => ReturnType<typeof allowedDecision>;
       unavailable?: boolean;
       /** Each read of the Offer after the first answers this version (another write landed). */
@@ -197,6 +199,7 @@ describe.each([
           state: {
             id,
             status: options.published === false ? 'unpublished' : 'published',
+            pausedAt: options.paused === true ? T0 : null,
             typeCode: 'simple',
           },
         }),
@@ -473,6 +476,13 @@ describe.each([
       expect(r.saved).toHaveLength(1);
       expect(r.current()!.tags).toEqual([expect.objectContaining({ typeCode, status: 'active' })]);
       expect(r.outbox.types).toContain('catalog.offer-tag-added.v1');
+    });
+
+    it('refuses a submit under a paused product, which stays published (Hassan L-583-1)', async () => {
+      const r = rig({ offer: draft(), paused: true });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: false, error: { code: 'offer.product-not-published' } });
+      expect(r.saved).toHaveLength(0);
     });
 
     it('refuses the whole submit when a requested type is not allowed', async () => {
