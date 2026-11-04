@@ -1124,7 +1124,8 @@
             "not-suggestable": "This field does not take suggestions.",
             "value-exists": "That value is already on the list. Pick it above.",
             "not-editable": "This product can't be changed now.",
-            "not-approved": "Your store has to be approved before you can make suggestions."
+            "not-approved": "Your store has to be approved before you can make suggestions.",
+            "not-eligible": "Your store cannot make suggestions yet."
           },
           "approved": "A reviewer added “{label}” to the list. Pick it above.",
           "mapped": "A reviewer matched “{label}” to a value already on the list. Pick that value above."

@@ -19,6 +19,7 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'product.not-editable': 'not-editable',
   'product.not-found': 'not-found',
   'access.seller-not-approved': 'not-approved',
+  'seller.not-eligible': 'not-eligible',
   'access.denied': 'denied',
   'request.throttled': 'throttled',
   'request.csrf': 'csrf',

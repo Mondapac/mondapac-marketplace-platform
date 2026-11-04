@@ -93,6 +93,7 @@ describe('suggest a value', () => {
     ['suggestion.value-exists', /already on the list/],
     ['product.not-editable', /can't be changed now/],
     ['access.seller-not-approved', /has to be approved/],
+    ['seller.not-eligible', /cannot make suggestions yet/],
     ['unheard.of', /could not be sent/],
   ])('says %s plainly and keeps the form', async (code, text) => {
     mount([]);
