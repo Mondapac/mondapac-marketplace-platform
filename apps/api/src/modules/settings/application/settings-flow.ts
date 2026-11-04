@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { MarketSettingChanged } from '../domain/audit';
@@ -7,6 +8,8 @@ import type { SettingsDependencies } from './settings-dependencies';
 // Admin-editable Market settings (ADR-0026). A change is refused in an acting-as session, checks
 // the version the admin saw (a stale edit is refused), writes the value and a history row in one
 // unit, and is audited. Asking for the value already in force changes nothing.
+
+const logger = new Logger('SettingsFlow');
 
 export interface FieldIssue {
   readonly path: string;
@@ -67,6 +70,21 @@ export async function viewSettings(
 }
 
 /**
+ * A read that fell back to the safe value is logged with the setting and the reason, never the
+ * error text (it can carry connection details). Operators alert on this message: a store that
+ * keeps failing silently turns every list in both panels to Previous and next.
+ */
+function logReadFailure(context: CallContext, code: string, reason: string): void {
+  logger.warn({
+    msg: 'settings.read-fell-back-to-safe-value',
+    code,
+    reason,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  });
+}
+
+/**
  * One setting's value for a panel to read. A store that cannot be read answers the setting's safe
  * value, never an error and never another Market's value.
  */
@@ -83,10 +101,14 @@ export async function readSettingValue(
       async () => ok(await deps.settings.find(context.market, code)),
       { readOnly: true },
     );
-    if (!read.ok) return definition.safeValue;
+    if (!read.ok) {
+      logReadFailure(context, definition.code, 'unit-failed');
+      return definition.safeValue;
+    }
     return read.value?.value ?? definition.defaultValue;
   } catch {
     // An unreadable store is not the Market's choice: answer the safe value (ADR-0026 decision 5).
+    logReadFailure(context, definition.code, 'store-unreadable');
     return definition.safeValue;
   }
 }

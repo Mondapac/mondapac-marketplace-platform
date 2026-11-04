@@ -67,6 +67,9 @@ export class PrismaPlatformCategoryRepository implements PlatformCategoryReposit
         createdByKind: state.createdByKind,
         version: state.version,
         createdAt: toDate(state.createdAt),
+        // -1 = last among the siblings: the database numbers it under a lock (the editor of C3
+        // passes its own position).
+        position: -1,
       },
       select: { id: true },
     });

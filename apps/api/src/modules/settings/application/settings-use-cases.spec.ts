@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import {
@@ -217,7 +218,21 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
   it('answers the safe value (Previous and Next) when the store cannot be read', async () => {
     await change({ code: 'list-paging', value: 'pages', expectedVersion: 0 });
     store.failReads = true;
-    const paging = await new ReadListPaging(gate, deps).execute(sellerCtx(), {});
-    expect(paging.ok && paging.value).toBe('prev-next');
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const paging = await new ReadListPaging(gate, deps).execute(sellerCtx(), {});
+      expect(paging.ok && paging.value).toBe('prev-next');
+      // The fall-back is never silent: one structured line names the setting and the Market,
+      // and carries no error text.
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toMatchObject({
+        msg: 'settings.read-fell-back-to-safe-value',
+        code: 'list-paging',
+        reason: 'store-unreadable',
+        marketId: code,
+      });
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -288,7 +288,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
       ['platform', 'default', 'onboarding-compliance', 11],
-      ['platform', 'default', 'catalogue-moderator', 16],
+      ['platform', 'default', 'catalogue-moderator', 17],
       ['platform', 'default', 'operations-support', 8],
       ['platform', 'default', 'finance', 3],
       ['platform', 'default', 'viewer', 28],
@@ -348,6 +348,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.seller.view',
     ]);
     expect(keysOf('catalogue-moderator')).toEqual([
+      'catalog.attribute-suggestion.decide',
       'catalog.attribute.view',
       'catalog.category-tree.edit',
       'catalog.category-tree.view',

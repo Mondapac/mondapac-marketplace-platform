@@ -360,7 +360,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
-  it('upgrades catalogue-moderator from version 1 to 13: adds the catalog keys (view, edit, approve, pause, delete, saved-filter share, platform import, attribute view, category tree view and edit), certification.claim-policy.view, certification.product-certificate.view, certification.type.view, pricing.price-hold.view and sellers.seller.view only, one seed-applied row, other roles untouched (I-1a)', async () => {
+  it('upgrades catalogue-moderator from version 1 to 14: adds the catalog keys (view, edit, approve, pause, delete, saved-filter share, platform import, attribute view, category tree view and edit, attribute suggestion decide), certification.claim-policy.view, certification.product-certificate.view, certification.type.view, pricing.price-hold.view and sellers.seller.view only, one seed-applied row, other roles untouched (I-1a)', async () => {
     const EDIT = 'catalog.platform-product.edit';
     // The previous build's definition: version 1 with the identity key only.
     const v1 = seedWith((role) =>
@@ -388,8 +388,9 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'catalogue-moderator')).toMatchObject({
       id: before.id,
-      seedVersion: 13,
+      seedVersion: 14,
       permissionKeys: [
+        'catalog.attribute-suggestion.decide',
         'catalog.attribute.view',
         'catalog.category-tree.edit',
         'catalog.category-tree.view',
@@ -415,8 +416,9 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 13,
+            seedVersion: 14,
             addedKeys: [
+              'catalog.attribute-suggestion.decide',
               'catalog.attribute.view',
               'catalog.category-tree.edit',
               'catalog.category-tree.view',
