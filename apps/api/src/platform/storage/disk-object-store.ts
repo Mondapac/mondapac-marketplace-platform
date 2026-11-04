@@ -1,17 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   assertObjectKey,
   isValidObjectKey,
+  ObjectAlreadyExistsError,
   ObjectStoreUnavailableError,
   type ObjectStore,
 } from './object-store';
 
 /**
  * The local object store: one file per key under a root directory. It is the stand-in for the
- * demo and for tests; an S3-compatible adapter replaces it behind the same port. A write goes
- * to a temporary name and is renamed, so a reader never sees half an object.
+ * demo and for tests; the S3 adapter replaces it behind the same port. A write goes
+ * to a temporary name and is hard-linked into place, never over an existing object, so a reader never sees half an object.
  */
 export class DiskObjectStore implements ObjectStore {
   constructor(private readonly root: string) {}
@@ -24,14 +25,20 @@ export class DiskObjectStore implements ObjectStore {
   async put(key: string, bytes: Buffer): Promise<void> {
     const target = this.#pathOf(key);
     const temporary = `${target}.${randomUUID()}.tmp`;
+    let exists = false;
     try {
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(temporary, bytes, { flag: 'wx' });
-      await rename(temporary, target);
-    } catch {
+      // A hard link fails when the target exists, atomically: no check-then-write race, and a
+      // reader never sees half an object.
+      await link(temporary, target);
+    } catch (error) {
+      exists = (error as NodeJS.ErrnoException).code === 'EEXIST';
+      if (!exists) throw new ObjectStoreUnavailableError();
+    } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
-      throw new ObjectStoreUnavailableError();
     }
+    if (exists) throw new ObjectAlreadyExistsError();
   }
 
   async get(key: string): Promise<Buffer | null> {
@@ -93,6 +100,7 @@ export class MemoryObjectStore implements ObjectStore {
   readonly objects = new Map<string, Buffer>();
   put(key: string, bytes: Buffer): Promise<void> {
     if (!isValidObjectKey(key)) return Promise.reject(new Error('invalid object key'));
+    if (this.objects.has(key)) return Promise.reject(new ObjectAlreadyExistsError());
     this.objects.set(key, Buffer.from(bytes));
     return Promise.resolve();
   }

@@ -11,7 +11,11 @@ import {
 import { mockClient } from 'aws-sdk-client-mock';
 import { DiskObjectStore } from './disk-object-store';
 import { MemoryObjectStore } from './disk-object-store';
-import { ObjectStoreUnavailableError, type ObjectStore } from './object-store';
+import {
+  ObjectAlreadyExistsError,
+  ObjectStoreUnavailableError,
+  type ObjectStore,
+} from './object-store';
 import { S3ObjectStore } from './s3-object-store';
 
 /** One contract, every adapter: what a caller may rely on behind the port. */
@@ -32,10 +36,19 @@ const adapters: Record<string, () => Promise<Harness>> = {
   's3 (SDK client replaced by a stateful fake)': () => {
     const objects = new Map<string, Buffer>();
     const mock = mockClient(S3Client);
-    mock.on(PutObjectCommand).callsFake((input: { Key: string; Body: Buffer }) => {
-      objects.set(input.Key, Buffer.from(input.Body));
-      return {};
-    });
+    mock
+      .on(PutObjectCommand)
+      .callsFake((input: { Key: string; Body: Buffer; IfNoneMatch?: string }) => {
+        if (input.IfNoneMatch === '*' && objects.has(input.Key)) {
+          throw new S3ServiceException({
+            name: 'PreconditionFailed',
+            $fault: 'client',
+            $metadata: { httpStatusCode: 412 },
+          });
+        }
+        objects.set(input.Key, Buffer.from(input.Body));
+        return {};
+      });
     mock.on(GetObjectCommand).callsFake((input: { Key: string }) => {
       const found = objects.get(input.Key);
       if (found === undefined) {
@@ -82,10 +95,31 @@ describe.each(Object.entries(adapters))('ObjectStore contract: %s', (_name, make
     expect(await harness.store.get('p1/none')).toBeNull();
   });
 
-  it('replaces an object written twice', async () => {
+  it('never replaces an object: a second write to the key is refused and the first stays', async () => {
     await harness.store.put('p1/i1', Buffer.from('one'));
+    await expect(harness.store.put('p1/i1', Buffer.from('two'))).rejects.toBeInstanceOf(
+      ObjectAlreadyExistsError,
+    );
+    expect((await harness.store.get('p1/i1'))?.toString()).toBe('one');
+  });
+
+  it('allows a write again after the key was deleted', async () => {
+    await harness.store.put('p1/i1', Buffer.from('one'));
+    await harness.store.delete('p1/i1');
     await harness.store.put('p1/i1', Buffer.from('two'));
     expect((await harness.store.get('p1/i1'))?.toString()).toBe('two');
+  });
+
+  it('lets exactly one of two concurrent writes to a key win', async () => {
+    const results = await Promise.allSettled([
+      harness.store.put('p1/race', Buffer.from('a')),
+      harness.store.put('p1/race', Buffer.from('b')),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const refused = results.find((r) => r.status === 'rejected');
+    expect(refused?.status === 'rejected' && refused.reason).toBeInstanceOf(
+      ObjectAlreadyExistsError,
+    );
   });
 
   it('deletes, and deleting a missing key is not an error', async () => {
