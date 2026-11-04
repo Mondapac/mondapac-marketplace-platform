@@ -30,7 +30,10 @@ import {
   type CatalogMarketPolicy,
 } from './application/ports/catalog-market-policy';
 import { CLAIM_TEXT_MATCHER } from './application/ports/claim-text-matcher';
-import { PRODUCT_REVISION_REPOSITORY } from './application/ports/product-revision.repository';
+import {
+  PRODUCT_REVISION_REPOSITORY,
+  type ProductRevisionRepository,
+} from './application/ports/product-revision.repository';
 import {
   PRODUCT_TYPE_LOOKUP,
   type ProductTypeLookup,
@@ -534,6 +537,7 @@ const productTypeProvider: FactoryProvider<string> = {
         PRODUCT_TYPE_LOOKUP,
         PRODUCT_IMAGE_REPOSITORY,
         ATTRIBUTE_VALUE_SUGGESTION_STORE,
+        PRODUCT_REVISION_REPOSITORY,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -541,8 +545,9 @@ const productTypeProvider: FactoryProvider<string> = {
         handlerFor: ProductTypeLookup,
         images: ProductImageRepository,
         suggestions: AttributeValueSuggestionStore,
+        revisions: ProductRevisionRepository,
       ): FreezeRevision =>
-        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions }),
+        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions, revisions }),
     },
     serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
     serviceProvider(SubmitProduct, {
