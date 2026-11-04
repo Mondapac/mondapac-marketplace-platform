@@ -77,16 +77,23 @@ architecture, not implemented).
      from the order.
    - **Order state while the payment is only held.** Core keeps its rule that `confirmed`
      means captured (`confirmOrder`). Until the restaurant accepts, the order stays
-     `pending-payment` with payment state `authorised`. For an "accept first" section the
-     pending order's expiry is the accept deadline, and the restaurant sees the seller order in
-     Needs action while it is in this state; the buyer sees "Placed, waiting for the
-     restaurant". There is no stock commit (menu items have no stock counts). On accept the
-     payment is captured and the order becomes `confirmed`, with `confirmedAt` = the accept
-     time, so the preparation promise and the seller ledger start then. If the capture fails,
-     the order is cancelled with the existing payment reasons and the restaurant is told. On
-     reject or timeout the hold is voided and the order is cancelled with a new reason,
-     restaurant rejected or not accepted in time; these two count in seller health, `expired`
-     does not.
+     `pending-payment` with payment state `authorised`. The restaurant sees the seller order in
+     Needs action while it is in this state; the buyer sees "Waiting for the restaurant".
+     There is no stock commit (menu items have no stock counts).
+   - **The accept deadline is its own timer.** It starts when the amount is held (payment state
+     becomes `authorised`) and runs for the admin-set minutes. It is not `paymentExpiresAt`,
+     the window in which the buyer must pay; that window ends when the hold is made, and an
+     order that is never authorised still expires as today (`expired`).
+   - On accept the payment is captured and the order becomes `confirmed`, with
+     `confirmedAt` = the accept time, so the preparation promise and the seller ledger start
+     then. If the accept succeeds but the capture fails, the accept is undone: the order is
+     cancelled with the existing payment reasons, the hold is released, the restaurant is told
+     not to prepare, and the buyer is told the card could not be charged. This does not count
+     against the restaurant.
+   - On reject or timeout the hold is voided and the order is cancelled with one of two new
+     reasons, restaurant rejected or not accepted in time; these two count in seller health,
+     `expired` does not. An admin cancel (A2) also voids the hold and uses its own reason,
+     admin cancelled, which does not count against the restaurant.
    - **Deadline:** an admin sets it per Market. A job running as the system actor, with the
      Clock, voids and cancels orders past the deadline; the accept use case also refuses an
      accept after the deadline, so a late accept cannot capture.
@@ -121,7 +128,12 @@ architecture, not implemented).
 - No change to identity, to the core order status values or to the fulfilment values.
 - Core changes, each in its package: `cart` (section key, cart policy, options in the line key;
   R4), `ordering` (accept step, deadline job, capture on accept for "accept first" sections,
-  option snapshot; R4), `payments` (capture and void at a later step through the existing
+  option snapshot; R4). The `ordering` changes in detail: three new cancel reasons
+  (restaurant rejected, not accepted in time, admin cancelled); the accept-deadline timer next
+  to `paymentExpiresAt`; seller order pages and the seller order board show held
+  (`pending-payment`, `authorised`) seller orders of "accept first" sections, which today they
+  do not; and the seller-health cancellation counter (HLT-06) counts the first two reasons.
+  Also `payments` (capture and void at a later step through the existing
   states; R4), pricing, tax and commission bases include option deltas (R2 and R4).
 - `OrderWorkflowExtension` gets its first real contract; its design is reviewed by the
   architect and CTO in package R4. security-tester reviews in R4: the deadline job, the
