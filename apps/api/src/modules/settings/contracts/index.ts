@@ -10,7 +10,7 @@ export {
   type SettingDefinition,
 } from '../domain/definitions';
 export {
-  SETTINGS_MARKET_SETTING_MANAGE,
-  SETTINGS_MARKET_SETTING_VIEW,
+  SETTINGS_LIST_PAGING_MANAGE,
+  SETTINGS_LIST_PAGING_VIEW,
   SETTINGS_PERMISSIONS,
 } from './permissions';

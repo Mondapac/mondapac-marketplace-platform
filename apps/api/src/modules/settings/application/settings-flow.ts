@@ -44,25 +44,28 @@ function adminAccountId(context: CallContext): Id<'Account'> | null {
   return isActingAs(context) ? null : actor.accountId;
 }
 
-/** Every setting of the Market with the value in force. */
+/** The named settings of the Market with the value in force (the caller holds their view key). */
 export async function viewSettings(
   deps: SettingsDependencies,
   context: CallContext,
+  codes: readonly string[],
 ): Promise<Result<readonly SettingView[], SettingsFailure>> {
   return deps.unitOfWork.run<readonly SettingView[], SettingsFailure>(
     context.market,
     async () => {
       const rows = await deps.settings.list(context.market);
       return ok(
-        SETTING_DEFINITIONS.map((definition) => {
-          const row = rows.find((candidate) => candidate.code === definition.code);
-          return {
-            code: definition.code,
-            value: row?.value ?? definition.defaultValue,
-            version: row?.version ?? 0,
-            updatedAt: row?.updatedAt ?? null,
-          };
-        }),
+        SETTING_DEFINITIONS.filter((definition) => codes.includes(definition.code)).map(
+          (definition) => {
+            const row = rows.find((candidate) => candidate.code === definition.code);
+            return {
+              code: definition.code,
+              value: row?.value ?? definition.defaultValue,
+              version: row?.version ?? 0,
+              updatedAt: row?.updatedAt ?? null,
+            };
+          },
+        ),
       );
     },
     { readOnly: true },
@@ -116,11 +119,13 @@ export async function readSettingValue(
 export async function changeSetting(
   deps: SettingsDependencies,
   context: CallContext,
+  /** The one setting the caller's manage key covers; any other code is a validation failure. */
+  allowedCode: string,
   input: { readonly code?: unknown; readonly value?: unknown; readonly expectedVersion?: unknown },
 ): Promise<Result<SettingView, SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
-  const definition = findDefinition(input?.code);
+  const definition = input?.code === allowedCode ? findDefinition(allowedCode) : null;
   if (definition === null) {
     return err({ code: 'validation.failed', fields: [{ path: 'code', code: 'value' }] });
   }

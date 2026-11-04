@@ -7,9 +7,9 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import type { SettingsDependencies } from './application/settings-dependencies';
-import { ChangeMarketSetting } from './application/use-cases/change-market-setting.use-case';
+import { ChangeListPagingSetting } from './application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from './application/use-cases/read-list-paging.use-case';
-import { ViewMarketSettings } from './application/use-cases/view-market-settings.use-case';
+import { ViewListPagingSetting } from './application/use-cases/view-list-paging-setting.use-case';
 import { SETTINGS_AUDIT_ACTIONS, SETTINGS_PERMISSIONS } from './contracts';
 import { settingsProviders } from './infrastructure/settings-providers';
 import {
@@ -53,7 +53,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerAuditActions('settings', SETTINGS_AUDIT_ACTIONS),
     registerPermissions('settings', SETTINGS_PERMISSIONS),
     ...settingsProviders,
-    ...[ViewMarketSettings, ChangeMarketSetting, ReadListPaging].map((type) =>
+    ...[ViewListPagingSetting, ChangeListPagingSetting, ReadListPaging].map((type) =>
       useCaseProvider(type as UseCaseClass<unknown>),
     ),
   ],

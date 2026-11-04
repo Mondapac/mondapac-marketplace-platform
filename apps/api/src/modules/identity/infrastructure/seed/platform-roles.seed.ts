@@ -187,7 +187,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // protected `catalog.attribute.edit` is not a viewer key. Version 26 adds
     // `catalog.category-tree.view`, likewise unprotected (categories package C1); the edit,
     // restructure and import keys are not viewer keys. Version 27 adds
-    // `settings.market-setting.view`, likewise unprotected (settings module: List paging); the
+    // `settings.list-paging.view`, likewise unprotected (settings module: List paging); the
     // manage key is not a viewer key.
     seedVersion: 27,
     nameKey: 'identity.role.viewer',
@@ -219,7 +219,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.brand.read',
       'catalog.attribute.view',
       'catalog.category-tree.view',
-      'settings.market-setting.view',
+      'settings.list-paging.view',
     ],
   },
   {

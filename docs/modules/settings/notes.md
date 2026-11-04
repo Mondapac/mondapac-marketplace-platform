@@ -23,7 +23,7 @@ store of ADR-0026).
   when, before, after). A trigger refuses UPDATE, DELETE and TRUNCATE on the history and DELETE and
   TRUNCATE on the settings.
 - Routes: `GET /settings/admin/market-settings` and `PUT /settings/admin/market-settings` (admin;
-  keys `settings.market-setting.view` and `.manage`, not protected), `GET /settings/admin/list-paging`
+  keys `settings.list-paging.view` and `.manage`, not protected), `GET /settings/admin/list-paging`
   and `GET /settings/seller/list-paging` (any signed-in panel user).
 - A change checks the version the admin saw (a stale edit is 409 `settings.conflict`), is refused in
   an acting-as session, writes the value and the history row in one unit, and is audited as

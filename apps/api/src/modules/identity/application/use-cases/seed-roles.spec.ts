@@ -215,7 +215,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
-  it('upgrades viewer from version 1 to 27: adds settings.market-setting.view, catalog.category-tree.view, catalog.attribute.view, catalog.brand.read, customers.account-deletion-requests.view, promotions.promotion.view, blog.post.read, shipping.delivery-settings.view, commission-payouts.dispute.view, commission-payouts.payout-terms.view, shipping.fleet-selection.view, customers.account-deletion-settings.view, assistant.settings.view, certification.product-certificate.view, certification.claim-policy.view, certification.type.view, certification.seller-certificate.view, catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view, commission-payouts.settlement.view, payments.connected-account.view and notifications.support-contact.view, one seed-applied row, other roles untouched', async () => {
+  it('upgrades viewer from version 1 to 27: adds settings.list-paging.view, catalog.category-tree.view, catalog.attribute.view, catalog.brand.read, customers.account-deletion-requests.view, promotions.promotion.view, blog.post.read, shipping.delivery-settings.view, commission-payouts.dispute.view, commission-payouts.payout-terms.view, shipping.fleet-selection.view, customers.account-deletion-settings.view, assistant.settings.view, certification.product-certificate.view, certification.claim-policy.view, certification.type.view, certification.seller-certificate.view, catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view, commission-payouts.settlement.view, payments.connected-account.view and notifications.support-contact.view, one seed-applied row, other roles untouched', async () => {
     const VIEW = 'sellers.seller.view';
     const HOLDS = 'pricing.price-hold.view';
     const ORDERS = 'ordering.order.view';
@@ -233,7 +233,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     const BRANDS = 'catalog.brand.read';
     const ATTRIBUTES = 'catalog.attribute.view';
     const CATEGORIES = 'catalog.category-tree.view';
-    const SETTINGS = 'settings.market-setting.view';
+    const SETTINGS = 'settings.list-paging.view';
     const PAYOUT_TERMS = 'commission-payouts.payout-terms.view';
     const DISPUTES = 'commission-payouts.dispute.view';
     const FLEETS = 'shipping.fleet-selection.view';

@@ -1118,7 +1118,7 @@
       "pricing.price-hold.view",
       "promotions.promotion.view",
       "sellers.seller.view",
-      "settings.market-setting.view",
+      "settings.list-paging.view",
       "shipping.delivery-settings.view",
       "shipping.fleet-selection.view"
     ]
