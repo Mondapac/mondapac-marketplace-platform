@@ -57,10 +57,10 @@ const fail = (status: number, code: string): ApiResult<never> => ({
   failure: { status, code },
 });
 
-function mount(canDecide = true) {
+function mount() {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <SuggestionsTab canDecide={canDecide} csrfToken="csrf-1" />
+      <SuggestionsTab csrfToken="csrf-1" />
     </NextIntlClientProvider>,
   );
 }
@@ -73,16 +73,12 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     call.mockReset();
   });
 
-  it('shows the seller words as plain text and asks nothing without the decide key', async () => {
+  it('shows the seller words as plain text under its own heading', async () => {
     call.mockResolvedValue(ok(list(locales, required)));
     mount();
     expect(await screen.findByText('“<b>Oat</b> & honey”')).toBeTruthy();
     expect(document.querySelector('b')).toBeNull();
-    cleanup();
-    call.mockClear();
-    mount(false);
-    expect(screen.getByText(/You cannot decide value suggestions/)).toBeTruthy();
-    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Value suggestions from sellers' })).toBeTruthy();
   });
 
   it('approves with a name in every required language and the version seen', async () => {
@@ -217,7 +213,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(1);
   });
 
-  it('shows a retry when the list cannot be read, and the denied text on a 403', async () => {
+  it('shows a retry when the list cannot be read, and nothing on a 403', async () => {
     call.mockResolvedValueOnce(fail(500, 'unknown'));
     mount();
     expect(await screen.findByText('The suggestions could not be loaded.')).toBeTruthy();
@@ -225,9 +221,12 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('“<b>Oat</b> & honey”')).toBeTruthy();
     cleanup();
+    call.mockClear();
     call.mockResolvedValueOnce(fail(403, 'access.denied'));
     mount();
-    expect(await screen.findByText(/You cannot decide value suggestions/)).toBeTruthy();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(screen.queryByText('The suggestions could not be loaded.')).toBeNull();
   });
 
   it('moves focus into the form it opens', async () => {

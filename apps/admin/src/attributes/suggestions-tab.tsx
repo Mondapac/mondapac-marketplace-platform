@@ -77,16 +77,22 @@ function problemOf(failure: ApiFailure): { key: string; reload: boolean } {
  * (named in every required language), maps it to a value the field already has, or rejects it
  * with a reason the seller reads in an email. Nothing is decided by itself.
  */
-export function SuggestionsTab({
-  canDecide,
-  csrfToken,
-}: {
-  readonly canDecide: boolean;
-  readonly csrfToken: string;
-}) {
+export function SuggestionsTab({ csrfToken }: { readonly csrfToken: string }) {
+  const t = useTranslations('attributes.suggestions');
+  return (
+    <section aria-labelledby="suggestions-heading" className="flex flex-col gap-4">
+      <h2 id="suggestions-heading" className="text-lg font-semibold text-fg">
+        {t('title')}
+      </h2>
+      <SuggestionsBody csrfToken={csrfToken} />
+    </section>
+  );
+}
+
+function SuggestionsBody({ csrfToken }: { readonly csrfToken: string }) {
   const t = useTranslations('attributes.suggestions');
   const tl = useTranslations('load');
-  const [load, setLoad] = useState<Load>(canDecide ? { state: 'loading' } : { state: 'denied' });
+  const [load, setLoad] = useState<Load>({ state: 'loading' });
 
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -111,12 +117,11 @@ export function SuggestionsTab({
   }, []);
 
   useEffect(() => {
-    if (canDecide) void fetchList();
-  }, [canDecide, fetchList]);
+    void fetchList();
+  }, [fetchList]);
 
-  if (load.state === 'denied') {
-    return <p className="text-fg-muted">{t('no-access')}</p>;
-  }
+  // Only an admin who may decide is shown this section; a refusal on the read hides it again.
+  if (load.state === 'denied') return null;
   if (load.state === 'loading') return <SkeletonRows label={t('loading')} rows={3} />;
   if (load.state === 'failed') {
     return (

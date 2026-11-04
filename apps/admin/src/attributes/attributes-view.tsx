@@ -6,12 +6,14 @@ import { useEffect, useState } from 'react';
 import { AttributesTab } from './attributes-tab.tsx';
 import { FeatureSetsTab } from './feature-sets-tab.tsx';
 import { SuggestionsTab } from './suggestions-tab.tsx';
+import { WaitingTab } from './waiting-tab.tsx';
 import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
 
 /**
  * The Attributes page (attributes plan 16, package A1): four tabs. Attributes and Feature sets
  * are a list with the chosen row's details beside it (below it on a narrow screen); Brands is the
- * brands page; Waiting for you holds the sellers' value suggestions (package A5). An admin with `catalog.attribute.edit`
+ * brands page; Waiting for you holds the requests to turn off Material (A2 part 3) and the sellers' value
+ * suggestions (A5). An admin with `catalog.attribute.edit`
  * adds and edits attributes (package A2); any other admin sees the view-only notice.
  */
 export function AttributesView({
@@ -74,6 +76,10 @@ export function AttributesView({
           onSelect={setSelected}
           canEdit={canEdit}
           csrfToken={csrfToken}
+          onOpenWaiting={() => {
+            setTab('waiting');
+            setSelected(null);
+          }}
         />
       ) : null}
       {tab === 'feature-sets' ? (
@@ -86,7 +92,17 @@ export function AttributesView({
           }}
         />
       ) : null}
-      {tab === 'waiting' ? <SuggestionsTab canDecide={canDecide} csrfToken={csrfToken} /> : null}
+      {tab === 'waiting' ? (
+        <WaitingTab
+          canEdit={canEdit}
+          csrfToken={csrfToken}
+          onOpenAttribute={(id) => {
+            setTab('attributes');
+            setSelected(id);
+          }}
+        />
+      ) : null}
+      {tab === 'waiting' && canDecide ? <SuggestionsTab csrfToken={csrfToken} /> : null}
     </div>
   );
 }
