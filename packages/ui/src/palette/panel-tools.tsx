@@ -231,6 +231,12 @@ export function PanelTools({
     [entries, labels.shortcuts.title, labels.shortcuts.openSearch],
   );
 
+  // "?" in the palette's empty field: the list opens and later gives focus back to the palette's opener.
+  const openHelpFromPalette = useCallback(() => {
+    helpOpener.current = opener.current;
+    setHelpOpen(true);
+  }, []);
+
   const choose = useCallback(
     (entry: PaletteEntry): boolean => {
       if (entry.id === HELP_ENTRY_ID) {
@@ -323,6 +329,7 @@ export function PanelTools({
         labels={labels.palette}
         onChoose={choose}
         navigate={navigate}
+        onShortcutKey={singleKeys ? openHelpFromPalette : undefined}
       />
       <ShortcutsDialog
         open={helpOpen}

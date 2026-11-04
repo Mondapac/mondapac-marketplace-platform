@@ -45,6 +45,8 @@ export interface CommandPaletteProps {
   readonly onChoose: (entry: PaletteEntry) => boolean | void;
   /** Goes to a path; the browser's own navigation unless a caller (a test) replaces it. */
   readonly navigate?: (href: string) => void;
+  /** "?" typed in the empty field: opens the shortcuts list. Absent, "?" is typed as text. */
+  readonly onShortcutKey?: () => void;
 }
 
 interface Section {
@@ -53,15 +55,16 @@ interface Section {
   readonly items: readonly PaletteEntry[];
 }
 
-/** What typing finds, in this order. Actions are only offered before typing. */
-const KIND_ORDER: readonly PaletteKind[] = ['setting', 'page'];
+/** What typing finds, in this order: settings, then pages, then actions. */
+const KIND_ORDER: readonly PaletteKind[] = ['setting', 'page', 'action'];
 
 /**
  * The ⌘K palette: a modal dialog holding a combobox (the search field) and a listbox (the
  * results), after the WAI-ARIA combobox pattern. Focus stays in the field; the arrow keys move the
  * active option (`aria-activedescendant`), Enter opens it, Escape closes. With an empty field it
- * lists the pinned pages, the recent pages and the actions; typing lists settings, then pages, with
- * the count shown under the field and announced.
+ * lists the pinned pages, the recent pages and the actions; typing lists settings, pages and then
+ * actions, with the count shown under the field and announced. "?" in the empty field opens the
+ * shortcuts list when `onShortcutKey` is given (single-key shortcuts on); only then is it hinted.
  */
 export function CommandPalette({
   open,
@@ -72,6 +75,7 @@ export function CommandPalette({
   labels,
   onChoose,
   navigate = (href) => window.location.assign(href),
+  onShortcutKey,
 }: CommandPaletteProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const field = useRef<HTMLInputElement>(null);
@@ -133,6 +137,13 @@ export function CommandPalette({
   }, [open]);
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === '?' && query === '' && onShortcutKey !== undefined) {
+      event.preventDefault();
+      // Before closing, as with a chosen entry: the list keeps the palette's opener to return to.
+      onShortcutKey();
+      onClose();
+      return;
+    }
     // Home and End stay with the text field (they move its caret), as in the APG combobox.
     if (isListKey(event.key) && event.key !== 'Home' && event.key !== 'End') {
       event.preventDefault();
@@ -298,9 +309,11 @@ export function CommandPalette({
             <span>
               <Kbd>Esc</Kbd> {labels.hintClose}
             </span>
-            <span className="ms-auto">
-              <Kbd>?</Kbd> {labels.hintShortcuts}
-            </span>
+            {onShortcutKey === undefined ? null : (
+              <span className="ms-auto">
+                <Kbd>?</Kbd> {labels.hintShortcuts}
+              </span>
+            )}
           </div>
         </div>
       ) : null}

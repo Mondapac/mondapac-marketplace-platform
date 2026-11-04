@@ -247,13 +247,18 @@ describe('PanelTools', () => {
     ]);
   });
 
-  it('offers no actions while typing, and ends the footer with "? for shortcuts"', () => {
+  it('lists actions after settings and pages while typing, and ends the footer with "? for shortcuts"', () => {
     mount({ keys: [...KEYS, 'identity.platform-role.create'] });
     key(document, { key: 'k', ctrlKey: true });
     const footer = dialog()!.querySelector('div.border-t')!;
     expect(footer.textContent).toBe('↑ ↓ to moveEnter to openEsc to close? for shortcuts');
     fireEvent.change(within(dialog()!).getByRole('combobox'), { target: { value: 'role' } });
-    expect(within(dialog()!).queryAllByRole('option')).toEqual([]);
+    const groups = [...dialog()!.querySelectorAll('[role="group"]')];
+    expect(groups.length).toBeGreaterThan(0);
+    const last = groups.at(-1)!;
+    expect(document.getElementById(last.getAttribute('aria-labelledby')!)?.textContent).toBe(
+      'Actions',
+    );
   });
 
   it('says so when nothing matches, and never lists what the keys do not allow', () => {
@@ -462,6 +467,48 @@ describe('PanelTools', () => {
     expect(dialog()?.textContent).toContain('Single-key shortcuts');
     fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
     expect(document.activeElement).toBe(opener);
+  });
+
+  it('finds the shortcuts action by typing, after settings and pages', () => {
+    mount();
+    key(document, { key: 'k', ctrlKey: true });
+    const box = within(dialog()!).getByRole('combobox');
+    fireEvent.change(box, { target: { value: 'keyboard' } });
+    const options = within(dialog()!).getAllByRole('option');
+    expect(options.at(-1)!.textContent).toContain('Keyboard shortcuts');
+    fireEvent.change(box, { target: { value: 'shortcuts' } });
+    expect(
+      within(dialog()!)
+        .getAllByRole('option')
+        .some((option) => option.textContent?.includes('Keyboard shortcuts')),
+    ).toBe(true);
+  });
+
+  it('opens the shortcuts list with ? in the empty field, and types ? once something is typed', () => {
+    mount();
+    const opener = screen.getByRole('button', { name: 'Search' });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(dialog()?.textContent).toContain('for shortcuts');
+    const box = within(dialog()!).getByRole('combobox');
+    fireEvent.change(box, { target: { value: 'or' } });
+    key(box, { key: '?', shiftKey: true });
+    expect(dialog()?.textContent).not.toContain('Single-key shortcuts');
+    fireEvent.change(box, { target: { value: '' } });
+    key(box, { key: '?', shiftKey: true });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(dialog()?.textContent).toContain('Single-key shortcuts');
+    fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('neither hints nor takes ? in the palette when single-key shortcuts are off', () => {
+    window.localStorage.setItem('mp:admin:AU:acc-1:single-key', '0');
+    mount();
+    key(document, { key: 'k', ctrlKey: true });
+    expect(dialog()?.textContent).not.toContain('for shortcuts');
+    key(within(dialog()!).getByRole('combobox'), { key: '?', shiftKey: true });
+    expect(dialog()?.textContent).not.toContain('Single-key shortcuts');
   });
 
   it('returns focus to what had it before ? opened the list', () => {
