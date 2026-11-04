@@ -69,19 +69,30 @@ architecture, not implemented).
      mark-ready use case), `Out for delivery` is `shipped` and the end is `delivered`. The
      order status and the fulfilment values of core do not change.
    - The extension may refuse one core transition: mark ready before `Accepted`.
-   - **Money (owner, 15:40Z):** for a seller order in a section whose policy says "accept
-     first", the payment is authorised at checkout and captured only when the restaurant
+   - **Money (owner, 15:40Z):** for an order whose section policy says "accept first", the
+     payment is authorised at checkout and captured only when the restaurant
      accepts. If the restaurant rejects (with a reason) or the accept deadline passes, the
      authorisation is voided; no refund is needed. Capture and void use the existing payment
      states (`authorised`, `captured`, `voided`) and run once per order with a key derived
-     from the order.
+     from the order. Capture and void act on the whole order (one PaymentIntent), so the
+     Market configuration check refuses "accept first" for a section whose cart policy is not
+     "at most one seller per cart". A card hold lasts a few days at most; this is safe only
+     because restaurant orders are same-day (Q7).
    - **Order state while the payment is only held.** Core keeps its rule that `confirmed`
      means captured (`confirmOrder`). Until the restaurant accepts, the order stays
      `pending-payment` with payment state `authorised`. The restaurant sees the seller order in
      Needs action while it is in this state; the buyer sees "Waiting for the restaurant".
-     There is no stock commit (menu items have no stock counts).
+     The buyer page hides the "pay by" time once the payment is `authorised`. The `Eat` cart
+     is cleared when the hold is made, as today after payment.
+   - **No stock for menu items.** Checkout today always reserves stock and the confirm path
+     commits the reservation before capture. A product type with no stock counts (menu items)
+     skips reserve and commit; its cart line takes its buyable state from the extension's
+     availability (decision 3) instead of a stock verdict. The order's reservation becomes
+     optional for such orders.
    - **The accept deadline is its own timer.** It starts when the amount is held (payment state
-     becomes `authorised`) and runs for the admin-set minutes. It is not `paymentExpiresAt`,
+     becomes `authorised`) and runs for the admin-set minutes. For an order placed ahead while
+     the restaurant is closed, it starts at the later of the hold time and the restaurant's
+     next opening time, so a closed restaurant never times out. It is not `paymentExpiresAt`,
      the window in which the buyer must pay; that window ends when the hold is made, and an
      order that is never authorised still expires as today (`expired`).
    - On accept the payment is captured and the order becomes `confirmed`, with
@@ -92,13 +103,22 @@ architecture, not implemented).
      against the restaurant.
    - On reject or timeout the hold is voided and the order is cancelled with one of two new
      reasons, restaurant rejected or not accepted in time; these two count in seller health,
-     `expired` does not. An admin cancel (A2) also voids the hold and uses its own reason,
-     admin cancelled, which does not count against the restaurant.
+     `expired` does not. An admin cancel (A2) uses its own reason, admin cancelled, which does
+     not count against the restaurant: before capture it voids the hold; after capture it goes
+     through the existing refund contract (idempotent, once per order) and is in
+     security-tester's R4 scope.
+   - Only the accept-deadline job, a reject and an admin cancel may cancel a held "accept
+     first" order. The existing payment cancel path (`cancelPayment` for `expired` and
+     `payment-failed`) does not act on one. Accept and the deadline job write the order under
+     one version check, so capture and void can never both run.
+   - Buyer cancel while waiting for the restaurant is not offered in version 1; adding it later
+     is an owner decision (it would be a void with a reason that does not count).
    - **Deadline:** an admin sets it per Market. A job running as the system actor, with the
      Clock, voids and cancels orders past the deadline; the accept use case also refuses an
      accept after the deadline, so a late accept cannot capture.
    - A missed deadline or a rejection counts as a seller cancellation in seller health
-     (HLT-06; owner, 15:48Z).
+     (HLT-06; owner, 15:48Z). `ordering` records the cancel reasons; the seller-health
+     cancellation metric counts them when it is built.
 6. **Cart and delivery.** The `Eat` cart policy allows one restaurant only (Q2; enforced in the
    `Cart` aggregate, ADR-0043 decision 5); adding from a second restaurant asks the buyer to
    empty the cart first. Delivery uses the existing same-day flow: the courier job is booked
@@ -129,15 +149,21 @@ architecture, not implemented).
 - Core changes, each in its package: `cart` (section key, cart policy, options in the line key;
   R4), `ordering` (accept step, deadline job, capture on accept for "accept first" sections,
   option snapshot; R4). The `ordering` changes in detail: three new cancel reasons
-  (restaurant rejected, not accepted in time, admin cancelled); the accept-deadline timer next
-  to `paymentExpiresAt`; seller order pages and the seller order board show held
-  (`pending-payment`, `authorised`) seller orders of "accept first" sections, which today they
-  do not; and the seller-health cancellation counter (HLT-06) counts the first two reasons.
-  Also `payments` (capture and void at a later step through the existing
+  (restaurant rejected, not accepted in time, admin cancelled) in the `CancelReason` type and
+  the API enum; the accept-deadline timer next to `paymentExpiresAt`; seller order pages and
+  the seller order board show held (`pending-payment`, `authorised`) seller orders of "accept
+  first" sections, which today they do not; the buyer order view hides "pay by" for a held
+  order; `cancelPayment` skips held "accept first" orders; and the cart is cleared when the
+  hold is made. `inventory` and the checkout flow: no reserve or commit for a product type
+  without stock counts (R4). Seller health (HLT-06) counts the reject and timeout reasons when
+  its cancellation metric is built; the late-ready promise for these orders starts at the
+  accept time, not the payment time, which changes `docs/features/01-sellers.md` (HLT-06
+  note) in R4. Also `payments` (capture and void at a later step through the existing
   states; R4), pricing, tax and commission bases include option deltas (R2 and R4).
 - `OrderWorkflowExtension` gets its first real contract; its design is reviewed by the
   architect and CTO in package R4. security-tester reviews in R4: the deadline job, the
-  void and capture path, the accept guard, and the pickup code (attempt limits and expiry).
+  void and capture path, the accept guard, the accept/timeout race, the admin refund after
+  capture, and the pickup code (attempt limits and expiry).
 - Australian legal and tax questions stay open for a lawyer and an AU tax advisor before launch:
   food business registration, allergen information online, food safety and temperature in
   delivery, alcohol (proposed: none in version 1), GST on hot food and its delivery fee, and
