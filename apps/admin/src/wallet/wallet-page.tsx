@@ -42,7 +42,8 @@ export async function WalletPage({
   const allowed = anyOf.some((key) => keys.has(key));
   const shell = (children: ReactNode) =>
     settingsLinkId === undefined ? (
-      <AdminShell session={gate.session} activeId={activeId} title={title}>
+      // The page draws the pin beside its title (SettingsTitle below), so the top bar has none.
+      <AdminShell session={gate.session} activeId={activeId} title={title} pinInPage>
         {children}
       </AdminShell>
     ) : (

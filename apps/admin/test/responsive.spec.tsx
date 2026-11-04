@@ -83,6 +83,18 @@ describe('settings navigation', () => {
     expect(read('src/server/admin-shell.tsx')).toContain('pinInPage ? undefined : <PinButton />');
   });
 
+  it('gives every settings page its pin beside the title: no plain h1 under Settings', () => {
+    const pages = sourceFiles(join(__dirname, '..', 'app/(shell)/settings'));
+    expect(pages.length).toBeGreaterThan(0);
+    for (const page of pages) expect(readFileSync(page, 'utf8'), page).not.toContain('<h1');
+  });
+
+  it('draws one pin on a wallet page outside Settings: the page title has it, the top bar not', () => {
+    const wallet = read('src/wallet/wallet-page.tsx');
+    expect(wallet).toContain('<SettingsTitle>');
+    expect(wallet).toMatch(/<AdminShell[^>]*pinInPage/);
+  });
+
   it('shows the sub-navigation column from 1180px and the back link only below it', () => {
     expect(shell).toContain('min-[1180px]:grid-cols-[13.75rem_minmax(0,1fr)]');
     expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
