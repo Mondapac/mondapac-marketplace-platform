@@ -75,6 +75,18 @@ architecture, not implemented).
      authorisation is voided; no refund is needed. Capture and void use the existing payment
      states (`authorised`, `captured`, `voided`) and run once per order with a key derived
      from the order.
+   - **Order state while the payment is only held.** Core keeps its rule that `confirmed`
+     means captured (`confirmOrder`). Until the restaurant accepts, the order stays
+     `pending-payment` with payment state `authorised`. For an "accept first" section the
+     pending order's expiry is the accept deadline, and the restaurant sees the seller order in
+     Needs action while it is in this state; the buyer sees "Placed, waiting for the
+     restaurant". There is no stock commit (menu items have no stock counts). On accept the
+     payment is captured and the order becomes `confirmed`, with `confirmedAt` = the accept
+     time, so the preparation promise and the seller ledger start then. If the capture fails,
+     the order is cancelled with the existing payment reasons and the restaurant is told. On
+     reject or timeout the hold is voided and the order is cancelled with a new reason,
+     restaurant rejected or not accepted in time; these two count in seller health, `expired`
+     does not.
    - **Deadline:** an admin sets it per Market. A job running as the system actor, with the
      Clock, voids and cancels orders past the deadline; the accept use case also refuses an
      accept after the deadline, so a late accept cannot capture.
