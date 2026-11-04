@@ -366,6 +366,23 @@ describe('the delivery settings page', () => {
     link.remove();
   });
 
+  it('says "it is lost" for a single unsaved change', () => {
+    mount(settings({ version: 1 }));
+    fireEvent.click(screen.getByLabelText('Instant delivery'));
+    const link = document.createElement('a');
+    link.href = '/orders';
+    link.textContent = 'Orders';
+    document.body.append(link);
+
+    fireEvent.click(link);
+
+    const dialog = screen.getByRole('dialog', { name: 'Leave without saving?', hidden: true });
+    expect(flat(dialog.textContent)).toContain(
+      'You have 1 unsaved change on Delivery rules. If you leave now, it is lost.',
+    );
+    link.remove();
+  });
+
   it('flags a bad form without calling the API', () => {
     mount(settings());
 

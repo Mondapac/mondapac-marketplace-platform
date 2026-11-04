@@ -325,6 +325,23 @@ describe('the fleet selection page', () => {
     expect(screen.queryByText('1 unsaved change')).toBeNull();
   });
 
+  it('counts an open model editor as one unsaved change when the admin leaves', () => {
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    const link = document.createElement('a');
+    link.href = '/orders';
+    link.textContent = 'Orders';
+    document.body.append(link);
+
+    fireEvent.click(link);
+
+    const dialog = screen.getByRole('dialog', { name: 'Leave without saving?', hidden: true });
+    expect((dialog.textContent ?? '').replaceAll('\u00a0', ' ')).toContain(
+      'You have 1 unsaved change',
+    );
+    link.remove();
+  });
+
   it('creates a weighted model, then reads the page again', async () => {
     call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
     mount(selection());

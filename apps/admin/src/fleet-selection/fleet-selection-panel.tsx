@@ -315,7 +315,8 @@ export function FleetSelectionPanel({
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
       dirty={canManage && (count > 0 || editing !== null)}
-      dirtyCount={count}
+      // An open model editor is one unsaved change, so the leave dialog never says "0".
+      dirtyCount={count + (editing === null ? 0 : 1)}
       leave={chrome.leave}
     >
       {/* The one form of the page with a save bar: methods and scores save together (batch). */}
