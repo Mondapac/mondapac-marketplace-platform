@@ -65,6 +65,7 @@ import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
+import { encodeCursor } from './read-flow';
 
 // Checkout, payment confirmation and the order reads in memory on both Market fixtures (AU in
 // AUD, ZZ in JPY): the seller split and totals, stock reserved before the page opens, committed
@@ -1175,6 +1176,15 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         );
         expect(await list({ sort: 'total' })).toEqual(
           refused([{ path: 'sort', code: 'needs-page' }]),
+        );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list({ page: 2, cursor: encodeCursor(T0, id<'Order'>(1)), limit: 10 }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
         );
         expect(
           await list({

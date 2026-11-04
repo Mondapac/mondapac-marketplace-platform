@@ -45,6 +45,7 @@ import {
 import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
+import { encodeCursor } from '../src/modules/ordering/application/read-flow';
 
 // The checkout and order routes over HTTP: the real guards, controllers, gate and use cases; the
 // order store, Stripe, inventory and the cart are in memory. Proves the session and CSRF rules,
@@ -813,6 +814,25 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         .get('/ordering/admin/orders?pageSize=10')
         .set(adminHeaders(VIEWER, 18));
 
+      const badSort = await http()
+        .get('/ordering/admin/orders?page=1&sort=name')
+        .set(adminHeaders(VIEWER, 19));
+      const notANumber = await http()
+        .get('/ordering/admin/orders?page=abc')
+        .set(adminHeaders(VIEWER, 20));
+      const pageAndCursor = await http()
+        .get(`/ordering/admin/orders?page=1&cursor=${encodeCursor(START, id<'Order'>(1))}&limit=10`)
+        .set(adminHeaders(VIEWER, 21));
+      const backwards = await http()
+        .get('/ordering/admin/orders?from=2026-02-01T00:00:00Z&to=2026-01-01T00:00:00Z')
+        .set(adminHeaders(VIEWER, 22));
+
+      expect([badSort, notANumber, pageAndCursor, backwards].map((r) => r.status)).toEqual([
+        400, 400, 400, 400,
+      ]);
+      expect(body(pageAndCursor)).toMatchObject({
+        details: { fields: [{ path: 'cursor' }, { path: 'limit' }] },
+      });
       expect(paged.status).toBe(200);
       expect(body(paged)).toMatchObject({ total: 1, page: 1, pageSize: 10, nextCursor: null });
       expect(body(list)).toMatchObject({ total: null, page: null, pageSize: null });

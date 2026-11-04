@@ -176,6 +176,10 @@ function offsetOf(input: ListInput): Result<OffsetRequest | null, ReadFailure> {
       : null;
   const page = whole(input.page, 1, MAX_PAGED_ROWS);
   if (page === null) fields.push({ path: 'page', code: 'range' });
+  // A page number and a cursor are two ways to say where to start; asking for both is refused.
+  for (const path of ['cursor', 'limit'] as const) {
+    if (input[path] !== undefined) fields.push({ path, code: 'with-page' });
+  }
   let pageSize = DEFAULT_PAGE_SIZE;
   if (input.pageSize !== undefined) {
     const given = whole(input.pageSize, 1, MAX_PAGE_SIZE);
