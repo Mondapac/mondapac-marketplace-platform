@@ -28,6 +28,7 @@ import type {
 } from '../ports/seller-list.repository';
 import { SellerAccountAccessRefused } from '../ports/seller-account-directory';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { AreaNameSource } from '../ports/service-area-names.repository';
 import { SellerList, type SellerListPage } from './list.use-case';
 
 // The admin seller list (sellers design 7.8; slice 6) on both Market fixtures: the gate, the
@@ -199,10 +200,23 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     },
   };
   const unitOfWork: UnitOfWork = { run: (_market, work) => work(), runOnce: noRunOnce };
+  const noEditedNames: AreaNameSource = {
+    edited: () => Promise.resolve(new Map()),
+    forget: () => {},
+  };
   const areas: OnboardingAreas = {
     openCodes: () => ['open-area'],
     nameOf: (_market, code) => (code === 'open-area' ? 'Open Area' : null),
     all: () => [{ code: 'open-area', name: 'Open Area' }],
+    configured: () => [
+      {
+        code: 'open-area',
+        region: null,
+        names: { en: 'Open Area' },
+        sellerOnboardingEnabled: true,
+        deliveryEnabled: false,
+      },
+    ],
   };
 
   function setUp() {
@@ -214,6 +228,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       directory: new FakeDirectory(access),
       authorisation: strict,
       onboardingAreas: areas,
+      areaNames: noEditedNames,
     });
     return { repository, access, useCase };
   }
@@ -358,6 +373,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
               : strict.check(context, declaration),
         },
         onboardingAreas: areas,
+        areaNames: noEditedNames,
       });
 
       const result = await failing.execute(admin(true, market, true), { tab: 'all' });
@@ -566,6 +582,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         directory,
         authorisation: strict,
         onboardingAreas: areas,
+        areaNames: noEditedNames,
       });
       return { ...t, directory, useCase };
     }
