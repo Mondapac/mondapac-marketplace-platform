@@ -1100,6 +1100,30 @@
           "decimal": "Enter a number, like 12.5.",
           "range": "Enter a value within the allowed range.",
           "length": "Use at most {length} characters."
+        },
+        "suggest": {
+          "start": "Suggest a value",
+          "label": "Value you need",
+          "help": "Say it in a few words. A reviewer adds it for everyone, matches it to an existing value, or tells you why not. We email you the answer.",
+          "send": "Send suggestion",
+          "cancel": "Cancel",
+          "open": "You asked for “{label}”. This field stays empty until a reviewer decides. A required field holds back submitting for review.",
+          "rejected": "A reviewer did not add “{label}”.",
+          "rejected-reason": "A reviewer did not add “{label}”: {reason}",
+          "error": {
+            "invalid": "Use 1 to 120 characters of plain text.",
+            "already-open": "You already have a suggestion waiting for this field.",
+            "limit": "You have too many suggestions waiting. Wait for some to be decided.",
+            "protected": "This field does not take suggestions.",
+            "unavailable-field": "This field is not open to suggestions.",
+            "not-found": "This product was not found.",
+            "not-eligible": "Your store cannot make suggestions yet.",
+            "denied": "You don't have permission to edit products.",
+            "throttled": "Too many requests. Try again in a moment.",
+            "csrf": "Your session needs a refresh. Reload the page.",
+            "unreachable": "The service is not reachable. Try again.",
+            "unknown": "The suggestion could not be sent."
+          }
         }
       }
     },
