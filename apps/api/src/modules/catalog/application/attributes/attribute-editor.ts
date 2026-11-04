@@ -268,7 +268,7 @@ export function codeFrom(text: string): string | null {
   return /^[a-z]/.test(ascii) ? ascii : `v-${ascii}`;
 }
 
-function freeCode(base: string | null, taken: ReadonlySet<string>): string | null {
+export function freeCode(base: string | null, taken: ReadonlySet<string>): string | null {
   if (base === null) return null;
   if (!taken.has(base)) return base;
   for (let n = 2; n <= ATTRIBUTE_OPTIONS_MAX + 1; n += 1) {
