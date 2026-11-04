@@ -78,6 +78,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
     'catalog/admin/attributes',
     'catalog/admin/feature-sets',
+    // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
+    'catalog/admin/attribute-relaxations',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -195,6 +197,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/show',
     'catalog/admin/categories/:id/change-slug',
     'catalog/admin/categories/:id/discard',
+    // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
+    // (catalog, attributes A2 part 3: two administrators).
+    'catalog/admin/attributes/:id/relaxation-requests',
+    'catalog/admin/attribute-relaxations/:id/confirm',
+    'catalog/admin/attribute-relaxations/:id/cancel',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
