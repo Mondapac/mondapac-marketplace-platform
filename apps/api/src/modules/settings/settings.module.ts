@@ -42,7 +42,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
 }
 
 /**
- * Settings (admin-editable Market settings, ADR-0026 and ADR-0041): one shared store with a
+ * Settings (admin-editable Market settings, ADR-0026 and ADR-0042): one shared store with a
  * version, an insert-only history and an audit row per change, in the `settings` schema. List
  * paging is its first setting. The settings other modules already keep are not moved here.
  */
