@@ -204,6 +204,43 @@ describe('the history drawer', () => {
     expect(within(dialog).queryByRole('button', { name: 'Show older changes' })).toBeNull();
   });
 
+  it('keeps Show older changes usable after closing while an older page was loading', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { items: [row()], next: 'cursor-1' },
+    });
+    mount(contact());
+    open();
+    let dialog = await screen.findByRole('dialog', { name: 'History' });
+    await within(dialog).findByText('Changed: Email');
+
+    // The older page never answers before the drawer closes.
+    call.mockReturnValueOnce(new Promise(() => undefined) as never);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Show older changes' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close history' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'History' })).toBeNull());
+
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { items: [row()], next: 'cursor-1' },
+    });
+    open();
+    dialog = await screen.findByRole('dialog', { name: 'History' });
+    await within(dialog).findByText('Changed: Email');
+    const older = within(dialog).getByRole('button', { name: 'Show older changes' });
+    expect((older as HTMLButtonElement).disabled).toBe(false);
+
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { items: [row({ id: 'r9', fields: ['version'] })], next: null },
+    });
+    fireEvent.click(older);
+    await waitFor(() => expect(within(dialog).getAllByText(/^Changed:/)).toHaveLength(2));
+  });
+
   it('closes with the close button and reads again when opened again', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { items: [row()], next: null } });
     mount(contact());

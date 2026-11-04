@@ -197,6 +197,9 @@ export function useSettingsHistory<T extends { readonly id: string }>(
     const mine = (generation.current += 1);
     setPhase('loading');
     setMoreFailed(false);
+    // A later page still loading when the drawer closed never clears its own flag (its answer is
+    // dropped), so a fresh read clears it here or "Show older" would stay disabled.
+    setLoadingMore(false);
     const page = await load(null);
     if (mine !== generation.current) return;
     if (page === null) {
