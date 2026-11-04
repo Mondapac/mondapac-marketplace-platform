@@ -129,6 +129,92 @@
     }
   },
   {
+    "action": "catalog.brand.approved",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "proposedBySeller": "boolean",
+      "status": "enumOf(active)"
+    }
+  },
+  {
+    "action": "catalog.brand.archived",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "status": "enumOf(archived)"
+    }
+  },
+  {
+    "action": "catalog.brand.created",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "origin": "enumOf(admin|seller)",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.brand.edited",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "imagesChanged": "boolean",
+      "nameChanged": "boolean",
+      "originCountryChanged": "boolean",
+      "slugChanged": "boolean",
+      "status": "enumOf(draft|active|archived)",
+      "summaryChanged": "boolean"
+    }
+  },
+  {
+    "action": "catalog.brand.merge-dismissed",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "groupSize": "integer"
+    }
+  },
+  {
+    "action": "catalog.brand.merged",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "aliasesAdded": "integer",
+      "productsMoved": "integer",
+      "sourceCount": "integer"
+    }
+  },
+  {
+    "action": "catalog.brand.proposed",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "origin": "enumOf(admin|seller)",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-relaxation.requested",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",

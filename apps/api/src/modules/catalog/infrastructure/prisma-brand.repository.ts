@@ -263,8 +263,13 @@ export class PrismaBrandRepository implements BrandRepository {
       readonly accountId: Id<'Account'>;
       readonly now: Temporal.Instant;
     },
-  ): Promise<number> {
-    const { count } = await this.prisma.tx(market).catalogBrandMergeCandidate.updateMany({
+  ): Promise<readonly Id<'Brand'>[]> {
+    const rows = await this.prisma.tx(market).catalogBrandMergeCandidate.findMany({
+      where: { groupKey: input.groupKey, status: 'open' },
+      select: { brandId: true },
+      orderBy: { brandId: 'asc' },
+    });
+    await this.prisma.tx(market).catalogBrandMergeCandidate.updateMany({
       where: { groupKey: input.groupKey, status: 'open' },
       data: {
         status: 'resolved',
@@ -273,6 +278,6 @@ export class PrismaBrandRepository implements BrandRepository {
         resolvedBy: input.accountId,
       },
     });
-    return count;
+    return rows.map((row) => row.brandId as Id<'Brand'>);
   }
 }
