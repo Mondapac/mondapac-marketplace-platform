@@ -50,7 +50,7 @@ export class AttributeArchive extends UseCase<
   AttributeArchiveFailure
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'catalog.attribute-definition-archive',
+    name: 'catalog.attribute-archive',
     rule: { kind: 'permissions', allOf: [CATALOG_ATTRIBUTE_RESTRUCTURE.key] },
   };
 
@@ -69,7 +69,7 @@ export class AttributeArchive extends UseCase<
   ): Promise<Result<{ readonly attribute: AttributeWriteView }, AttributeArchiveFailure>> {
     const result = await this.#archive(context, input);
     this.#logger.log({
-      msg: 'catalog.attribute-definition-archive',
+      msg: 'catalog.attribute-archive',
       code: result.ok ? 'archived' : result.error.code,
       marketId: context.market.marketId,
       correlationId: context.correlationId,

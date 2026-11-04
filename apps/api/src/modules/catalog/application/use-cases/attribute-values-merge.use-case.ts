@@ -46,7 +46,7 @@ export class AttributeValuesMerge extends UseCase<
   AttributeValuesMergeFailure
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'catalog.attribute-definition-merge-values',
+    name: 'catalog.attribute-values-merge',
     rule: { kind: 'permissions', allOf: [CATALOG_ATTRIBUTE_RESTRUCTURE.key] },
   };
 
@@ -65,7 +65,7 @@ export class AttributeValuesMerge extends UseCase<
   ): Promise<Result<{ readonly attribute: AttributeWriteView }, AttributeValuesMergeFailure>> {
     const result = await this.#merge(context, input);
     this.#logger.log({
-      msg: 'catalog.attribute-definition-merge-values',
+      msg: 'catalog.attribute-values-merge',
       code: result.ok ? 'merged' : result.error.code,
       marketId: context.market.marketId,
       correlationId: context.correlationId,

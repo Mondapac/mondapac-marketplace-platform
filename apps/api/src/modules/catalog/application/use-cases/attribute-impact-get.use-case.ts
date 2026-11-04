@@ -31,7 +31,7 @@ export class AttributeImpactGet extends UseCase<
   AttributeImpactGetFailure
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'catalog.attribute-definition-impact',
+    name: 'catalog.attribute-impact-get',
     rule: { kind: 'permissions', allOf: [CATALOG_ATTRIBUTE_RESTRUCTURE.key] },
   };
 

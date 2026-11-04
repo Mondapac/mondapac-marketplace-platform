@@ -59,7 +59,7 @@ export class AttributeArchiveConfirm extends UseCase<
   AttributeArchiveConfirmFailure
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'catalog.attribute-definition-confirm-archive',
+    name: 'catalog.attribute-archive-confirm',
     rule: { kind: 'permissions', allOf: [CATALOG_ATTRIBUTE_RESTRUCTURE.key] },
   };
 
@@ -78,7 +78,7 @@ export class AttributeArchiveConfirm extends UseCase<
   ): Promise<Result<AttributeArchiveConfirmOutput, AttributeArchiveConfirmFailure>> {
     const result = await this.#confirm(context, input);
     this.#logger.log({
-      msg: 'catalog.attribute-definition-confirm-archive',
+      msg: 'catalog.attribute-archive-confirm',
       code: result.ok ? 'archived' : result.error.code,
       marketId: context.market.marketId,
       correlationId: context.correlationId,

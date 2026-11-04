@@ -54,7 +54,7 @@ export class AttributeArchiveRequestCreate extends UseCase<
   AttributeArchiveRequestFailure
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'catalog.attribute-definition-request-archive',
+    name: 'catalog.attribute-archive-request',
     rule: { kind: 'permissions', allOf: [CATALOG_ATTRIBUTE_RESTRUCTURE.key] },
   };
 
@@ -73,7 +73,7 @@ export class AttributeArchiveRequestCreate extends UseCase<
   ): Promise<Result<{ readonly request: RelaxationWriteView }, AttributeArchiveRequestFailure>> {
     const result = await this.#request(context, input);
     this.#logger.log({
-      msg: 'catalog.attribute-definition-request-archive',
+      msg: 'catalog.attribute-archive-request',
       code: result.ok ? 'requested' : result.error.code,
       marketId: context.market.marketId,
       correlationId: context.correlationId,

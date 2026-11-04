@@ -129,7 +129,7 @@ export class AttributeRestructureController {
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as AttributeImpactBody)
       : refusal(result.error, response, context);
-    return this.settle('catalog.attribute-definition-impact', context, outcome);
+    return this.settle('catalog.attribute-impact-get', context, outcome);
   }
 
   @Post('attributes/:attributeId/merge-values')
@@ -171,7 +171,7 @@ export class AttributeRestructureController {
         ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
         : refusal(result.error, response, context);
     }
-    return this.settle('catalog.attribute-definition-merge-values', context, outcome);
+    return this.settle('catalog.attribute-values-merge', context, outcome);
   }
 
   @Post('attributes/:attributeId/archive')
@@ -215,7 +215,7 @@ export class AttributeRestructureController {
         ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
         : refusal(result.error, response, context);
     }
-    return this.settle('catalog.attribute-definition-archive', context, outcome);
+    return this.settle('catalog.attribute-archive', context, outcome);
   }
 
   @Post('attributes/:attributeId/archive-requests')
@@ -258,7 +258,7 @@ export class AttributeRestructureController {
         ? (JSON.parse(JSON.stringify(result.value)) as RelaxationWriteWrapBody)
         : refusal(result.error, response, context);
     }
-    return this.settle('catalog.attribute-definition-request-archive', context, outcome);
+    return this.settle('catalog.attribute-archive-request', context, outcome);
   }
 
   @Post('attribute-archive-requests/:requestId/confirm')
@@ -304,7 +304,7 @@ export class AttributeRestructureController {
         ? (JSON.parse(JSON.stringify(result.value)) as RelaxationConfirmBody)
         : refusal(result.error, response, context);
     }
-    return this.settle('catalog.attribute-definition-confirm-archive', context, outcome);
+    return this.settle('catalog.attribute-archive-confirm', context, outcome);
   }
 
   private settle<T extends object>(
