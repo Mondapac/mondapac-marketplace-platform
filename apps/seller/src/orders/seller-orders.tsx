@@ -1,8 +1,17 @@
 'use client';
 
-import { Banner, Button, EmptyState, Pagination, Select, Tabs, TextField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  EmptyState,
+  Pagination,
+  PrevNext,
+  Select,
+  Tabs,
+  TextField,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { OrdersTable } from './orders-table.tsx';
 import {
@@ -34,85 +43,87 @@ export function SellerOrders({
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
+  // What the rows on screen answer. Nothing here changes until an answer arrives, so a failed
+  // request leaves the old rows under the old tab, days, sort and range line.
   const [orders, setOrders] = useState(initial.sellerOrders);
-  const [cursor, setCursor] = useState(initial.nextCursor);
+  const [next, setNext] = useState(initial.nextCursor);
   const [total, setTotal] = useState<number | null>(initial.total ?? null);
   const [filter, setFilter] = useState<FulfilmentFilter>('all');
   const [days, setDays] = useState<Days>(NO_DAYS);
   const [sort, setSort] = useState<SortId>('newest');
   const [page, setPage] = useState(1);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [moreFailed, setMoreFailed] = useState(false);
-  const [switching, setSwitching] = useState(false);
+  // Previous and next: the cursor that opened each page seen so far (the first page has none).
+  const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   // Only the newest question may fill the list: a slow answer for old filters is dropped.
   const latest = useRef(0);
+  // After a page change the focus moves to the top of the list, so a keyboard or screen reader
+  // user starts on the new rows and not on the pager they used.
+  const listTop = useRef<HTMLDivElement>(null);
+  const focusList = useRef(false);
   const backwards = rangeIsBackwards(days);
   const number = (n: number) => n.toLocaleString(locale);
 
-  const modeFor = (nextPage: number, nextSort: SortId, after: string | null) =>
-    paging === 'pages'
-      ? ({ paging, page: nextPage, sort: nextSort } as const)
-      : ({ paging, cursor: after } as const);
-
-  async function loadMore() {
-    if (cursor === null || loadingMore) return;
-    setLoadingMore(true);
-    setMoreFailed(false);
-    const result = await callApi<SellerOrderPage>(
-      'GET',
-      queryOf(filter, days, modeFor(1, sort, cursor)),
-    );
-    setLoadingMore(false);
-    if (!result.ok) {
-      if (result.failure.status === 401) window.location.assign('/session-ended');
-      else setMoreFailed(true);
-      return;
+  useEffect(() => {
+    if (!loading && focusList.current) {
+      focusList.current = false;
+      listTop.current?.focus();
     }
-    const known = new Set(orders.map((order) => order.sellerOrderId));
-    setOrders([...orders, ...result.body.sellerOrders.filter((o) => !known.has(o.sellerOrderId))]);
-    setCursor(result.body.nextCursor);
-  }
+  }, [loading, orders]);
 
-  /** Asks the API for the first page (or the given page) of what the controls now say. */
-  async function reload(next: {
+  /** Asks for what the controls would say; the screen takes it over only when the answer is in. */
+  async function ask(want: {
     filter?: FulfilmentFilter;
     days?: Days;
     sort?: SortId;
     page?: number;
+    cursors?: readonly (string | null)[];
+    focus?: boolean;
   }) {
-    const nextFilter = next.filter ?? filter;
-    const nextDays = next.days ?? days;
-    const nextSort = next.sort ?? sort;
-    const nextPage = next.page ?? 1;
+    const nextFilter = want.filter ?? filter;
+    const nextDays = want.days ?? days;
+    const nextSort = want.sort ?? sort;
+    const nextPage = want.page ?? 1;
+    const nextCursors = want.cursors ?? [null];
     const ticket = ++latest.current;
+    setFailed(false);
+    if (rangeIsBackwards(nextDays)) {
+      // Nothing matches; an answer still on its way for the days as they were must not fill it.
+      setDays(nextDays);
+      setOrders([]);
+      setNext(null);
+      setTotal(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const cursor = nextCursors[nextCursors.length - 1] ?? null;
+    const result = await callApi<SellerOrderPage>(
+      'GET',
+      queryOf(
+        nextFilter,
+        nextDays,
+        paging === 'pages' ? { paging, page: nextPage, sort: nextSort } : { paging, cursor },
+      ),
+    );
+    if (ticket !== latest.current) return;
+    if (!result.ok) {
+      setLoading(false);
+      if (result.failure.status === 401) window.location.assign('/session-ended');
+      else setFailed(true);
+      return;
+    }
+    focusList.current = want.focus === true;
     setFilter(nextFilter);
     setDays(nextDays);
     setSort(nextSort);
     setPage(nextPage);
-    setMoreFailed(false);
-    if (rangeIsBackwards(nextDays)) {
-      // Nothing matches; an answer still on its way for the days as they were must not fill it.
-      setOrders([]);
-      setCursor(null);
-      setTotal(null);
-      setSwitching(false);
-      return;
-    }
-    setSwitching(true);
-    const result = await callApi<SellerOrderPage>(
-      'GET',
-      queryOf(nextFilter, nextDays, modeFor(nextPage, nextSort, null)),
-    );
-    if (ticket !== latest.current) return;
-    setSwitching(false);
-    if (!result.ok) {
-      if (result.failure.status === 401) window.location.assign('/session-ended');
-      else setMoreFailed(true);
-      return;
-    }
+    setCursors(nextCursors);
     setOrders(result.body.sellerOrders);
-    setCursor(result.body.nextCursor);
+    setNext(result.body.nextCursor);
     setTotal(result.body.total ?? null);
+    setLoading(false);
   }
 
   const filtered = days.from !== '' || days.to !== '';
@@ -123,7 +134,7 @@ export function SellerOrders({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      {orders.length === 0 && everyState && !switching ? (
+      {orders.length === 0 && everyState && !loading && !failed ? (
         <EmptyState icon="clipboard" title={t('empty-state.title')} body={t('empty-state.body')} />
       ) : (
         <>
@@ -131,7 +142,7 @@ export function SellerOrders({
             label={t('filter.label')}
             activeId={filter}
             onSelect={(id) => {
-              if (id !== filter && !switching) void reload({ filter: id as FulfilmentFilter });
+              if (id !== filter && !loading) void ask({ filter: id as FulfilmentFilter });
             }}
             items={FULFILMENT_FILTERS.map((id) => ({
               id,
@@ -147,27 +158,27 @@ export function SellerOrders({
               type="date"
               label={t('filters.from')}
               value={days.from}
-              onChange={(event) => void reload({ days: { ...days, from: event.target.value } })}
+              onChange={(event) => void ask({ days: { ...days, from: event.target.value } })}
             />
             <TextField
               type="date"
               label={t('filters.to')}
               value={days.to}
               error={backwards ? t('filters.backwards') : undefined}
-              onChange={(event) => void reload({ days: { ...days, to: event.target.value } })}
+              onChange={(event) => void ask({ days: { ...days, to: event.target.value } })}
             />
             {paging === 'pages' ? (
               <Select
                 label={t('sort.label')}
                 value={sort}
                 options={SORTS.map((id) => ({ value: id, label: t(`sort.${id}`) }))}
-                onChange={(event) => void reload({ sort: event.target.value as SortId })}
+                onChange={(event) => void ask({ sort: event.target.value as SortId })}
               />
             ) : null}
           </div>
           {filtered ? (
             <div>
-              <Button variant="secondary" onClick={() => void reload({ days: NO_DAYS })}>
+              <Button variant="secondary" onClick={() => void ask({ days: NO_DAYS })}>
                 {t('filters.clear')}
               </Button>
             </div>
@@ -181,25 +192,27 @@ export function SellerOrders({
               })}
             </p>
           ) : null}
-          {orders.length === 0 && !switching ? (
+          {failed ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}
+          {orders.length === 0 && !loading && !failed ? (
             <EmptyState
               icon="clipboard"
               title={t('filter.empty.title')}
               body={t('filter.empty.body')}
             />
-          ) : (
-            <OrdersTable orders={orders} />
-          )}
+          ) : orders.length > 0 ? (
+            <div ref={listTop} tabIndex={-1} className="outline-none">
+              <OrdersTable orders={orders} />
+            </div>
+          ) : null}
         </>
       )}
-      {moreFailed ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}
       {cut ? <Banner tone="info">{t('too-many', { limit: number(MAX_PAGED_ROWS) })}</Banner> : null}
       {paging === 'pages' ? (
         <Pagination
           page={page}
           pageCount={pageCount}
-          onPage={(n) => void reload({ page: n })}
-          disabled={switching}
+          onPage={(n) => void ask({ page: n, focus: true })}
+          disabled={loading}
           labels={{
             nav: t('paging.nav'),
             previous: t('paging.previous'),
@@ -207,12 +220,19 @@ export function SellerOrders({
             page: (n) => t('paging.page', { n }),
           }}
         />
-      ) : cursor === null ? null : (
-        <div>
-          <Button variant="secondary" onClick={() => void loadMore()} loading={loadingMore}>
-            {t('more')}
-          </Button>
-        </div>
+      ) : (
+        <PrevNext
+          hasPrevious={cursors.length > 1}
+          hasNext={next !== null}
+          disabled={loading}
+          onPrevious={() => void ask({ cursors: cursors.slice(0, -1), focus: true })}
+          onNext={() => next !== null && void ask({ cursors: [...cursors, next], focus: true })}
+          labels={{
+            nav: t('paging.nav'),
+            previous: t('paging.previous'),
+            next: t('paging.next'),
+          }}
+        />
       )}
     </div>
   );
