@@ -308,11 +308,8 @@ const REVIEW_DECISION_PORTS = {
     ReviewDecisionController,
     BlogAccessController,
     SellerListController,
-<<<<<<< HEAD
     ServiceAreaNamesController,
-=======
     SellerHealthController,
->>>>>>> origin/main
     StoreSettingsController,
     OwnZoneController,
     PublicStoreController,
