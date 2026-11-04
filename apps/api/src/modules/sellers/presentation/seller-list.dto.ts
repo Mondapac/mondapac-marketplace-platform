@@ -40,6 +40,13 @@ export class SellerListRequest {
   outsideArea?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      'The tabs read from the seller files only: files whose service area has this code. A code ' +
+      'that names no area lists nothing. Not for the identity state tabs.',
+  })
+  areaCode?: string;
+
+  @ApiPropertyOptional({
     minLength: SEARCH_MIN_LENGTH,
     maxLength: SEARCH_MAX_LENGTH,
     description:
@@ -133,6 +140,13 @@ export class SellerListRowView {
   @ApiProperty({ type: String, nullable: true })
   serviceAreaCode!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'English display name of the service area; null when none is configured.',
+  })
+  serviceAreaName!: string | null;
+
   @ApiProperty({ type: String, nullable: true, description: 'IANA zone id of the seller.' })
   timezone!: string | null;
 
@@ -176,6 +190,14 @@ export class SellerListStateCounts {
   suspended!: number;
 }
 
+export class SellerListAreaView {
+  @ApiProperty()
+  code!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
 export class SellerListBody {
   @ApiProperty({ enum: LIST_TABS })
   tab!: (typeof LIST_TABS)[number];
@@ -192,6 +214,12 @@ export class SellerListBody {
 
   @ApiProperty({ type: SellerListCounts })
   counts!: SellerListCounts;
+
+  @ApiProperty({
+    type: [SellerListAreaView],
+    description: 'Every service area of the Market with its English name, for the area filter.',
+  })
+  areas!: SellerListAreaView[];
 
   @ApiProperty({
     type: SellerListStateCounts,

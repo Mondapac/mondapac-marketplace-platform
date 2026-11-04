@@ -14,7 +14,8 @@ model PromotionsPromotion {
   marketId           String                     @map("market_id") @db.VarChar(8)
   tenantId           String                     @map("tenant_id")
   /// SELLER_SALE, CART_DISCOUNT, CART_CODE, FREE_SHIPPING, CO_FUNDED_CAMPAIGN, TIERED_CART,
-  /// BUY_X_GET_Y, MULTI_BUY, BUNDLE, FLASH_SALE or BATCH_CODE (CHECK).
+  /// BUY_X_GET_Y, MULTI_BUY, BUNDLE, FLASH_SALE, BATCH_CODE, CUSTOMER_GROUP, STORE_FOLLOWER,
+  /// REFERRAL or CASHBACK (CHECK). REFERRAL and CASHBACK give wallet credit, not a discount.
   type               String
   /// PENDING_APPROVAL, ACTIVE, PAUSED or REJECTED (CHECK).
   status             String
@@ -63,6 +64,14 @@ model PromotionsPromotion {
   /// both set if and only if the type is FLASH_SALE (CHECK), which also has an end.
   flashUnitLimit     Int?                       @map("flash_unit_limit")
   flashTimeZone      String?                    @map("flash_time_zone")
+  /// CUSTOMER_GROUP: RETURNING_CUSTOMER or DELIVERY_ZONE (the zones are its ZONE targets); set if
+  /// and only if the type is CUSTOMER_GROUP (CHECK).
+  segmentKind        String?                    @map("segment_kind")
+  /// RETURNING_CUSTOMER: whole days since the customer's last order (1 to 3650).
+  segmentMinDays     Int?                       @map("segment_min_days") @db.SmallInt
+  /// REFERRAL: the credit the new customer gets; `rewardAmountMinor` is the referrer's. Set if and
+  /// only if the type is REFERRAL (CHECK).
+  refereeRewardMinor BigInt?                    @map("referee_reward_minor")
   createdByAccountId String                     @map("created_by_account_id") @db.Uuid
   createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime                   @map("updated_at") @db.Timestamptz(6)
@@ -73,6 +82,8 @@ model PromotionsPromotion {
   tiers              PromotionsTier[]
   bundleItems        PromotionsBundleItem[]
   batchCodes         PromotionsBatchCode[]
+  referrals          PromotionsReferral[]
+  creditIssuances    PromotionsCreditIssuance[]
 
   /// The foreign-key target of the children.
   @@unique([marketId, id])
@@ -270,5 +281,126 @@ model PromotionsMarketSetting {
 
   @@id([marketId])
   @@map("market_settings")
+  @@schema("promotions")
+}
+
+/// A customer's referral code (phase 3). The code itself is derived from the pepper and the
+/// account and is never stored; only its HMAC hash is, to find the referrer when a new customer
+/// types it. One code per customer in a Market. Never deleted.
+model PromotionsReferralCode {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  accountId String   @map("account_id") @db.Uuid
+  codeHash  String   @map("code_hash")
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@id([marketId, accountId])
+  /// A code is unique in a Market; the lookup by what the new customer typed.
+  @@unique([marketId, codeHash])
+  @@map("referral_codes")
+  @@schema("promotions")
+}
+
+/// A new customer who applied a referrer's code. At most one per referred customer in a Market.
+/// PENDING until the referred customer's first qualifying order is delivered; then QUALIFIED
+/// (the two credits are issued), or REJECTED (an abuse check failed) or EXPIRED (no qualifying
+/// order in time). Never deleted.
+model PromotionsReferral {
+  id                      String              @id @db.Uuid
+  marketId                String              @map("market_id") @db.VarChar(8)
+  tenantId                String              @map("tenant_id")
+  /// The REFERRAL promotion in force when the code was applied; its terms pay the credits.
+  promotionId             String              @map("promotion_id") @db.Uuid
+  referrerAccountId       String              @map("referrer_account_id") @db.Uuid
+  refereeAccountId        String              @map("referee_account_id") @db.Uuid
+  /// PENDING, QUALIFIED, REJECTED or EXPIRED (CHECK).
+  status                  String
+  /// Why a referral was rejected: SAME_HOUSEHOLD, SAME_PAYMENT, CAP_REACHED or BUDGET_EXHAUSTED (CHECK); null otherwise.
+  rejectReason            String?             @map("reject_reason")
+  createdAt               DateTime            @map("created_at") @db.Timestamptz(6)
+  expiresAt               DateTime            @map("expires_at") @db.Timestamptz(6)
+  decidedAt               DateTime?           @map("decided_at") @db.Timestamptz(6)
+  /// The delivered seller order that qualified the referral (ids only).
+  qualifyingOrderId       String?             @map("qualifying_order_id") @db.Uuid
+  qualifyingSellerOrderId String?             @map("qualifying_seller_order_id") @db.Uuid
+  promotion               PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// A customer is referred once in a Market.
+  @@unique([marketId, refereeAccountId])
+  /// A referrer's referrals by state (the per-referrer cap).
+  @@index([marketId, referrerAccountId, status])
+  /// A promotion's referrals by state (the promotion-wide cap).
+  @@index([marketId, promotionId, status])
+  /// The referral a delivered seller order qualified (finishing its credits on a retry).
+  @@index([marketId, qualifyingSellerOrderId])
+  @@map("referrals")
+  @@schema("promotions")
+}
+
+/// One wallet credit that a REFERRAL or CASHBACK promotion owes or has paid. The row is made
+/// PENDING in the unit that reserves the promotion's budget; the wallet is called with the row's
+/// idempotency key; the row then becomes GRANTED (with the wallet journal id). A credit for a test
+/// order is only RECORDED (the intended credit; the wallet is not called). FAILED: the wallet
+/// refused for good (its code is kept) and the budget is freed. One credit per source, so an
+/// event delivered twice owes the customer once. Never deleted.
+model PromotionsCreditIssuance {
+  id                 String              @id @db.Uuid
+  marketId           String              @map("market_id") @db.VarChar(8)
+  tenantId           String              @map("tenant_id")
+  promotionId        String              @map("promotion_id") @db.Uuid
+  /// CASHBACK, REFERRER_REWARD or REFEREE_REWARD (CHECK).
+  kind               String
+  recipientAccountId String              @map("recipient_account_id") @db.Uuid
+  /// The order that earned the credit (cashback: the delivered order; referral: the qualifying one).
+  orderId            String?             @map("order_id") @db.Uuid
+  /// SELLER_ORDER (cashback) or REFERRAL (the two referral credits) (CHECK), and its id.
+  sourceKind         String              @map("source_kind")
+  sourceId           String              @map("source_id") @db.Uuid
+  amountMinor        BigInt              @map("amount_minor")
+  currency           String              @db.VarChar(3)
+  /// PENDING, GRANTED, RECORDED or FAILED (CHECK).
+  status             String
+  /// The wallet's refusal code when FAILED.
+  failureCode        String?             @map("failure_code")
+  /// The wallet journal that holds the credit, once GRANTED.
+  walletJournalId    String?             @map("wallet_journal_id") @db.Uuid
+  idempotencyKey     String              @map("idempotency_key")
+  createdAt          DateTime            @map("created_at") @db.Timestamptz(6)
+  settledAt          DateTime?           @map("settled_at") @db.Timestamptz(6)
+  promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// Not expressible here, declared in the migration: partial unique indexes on (market_id, kind,
+  /// source_id) and on (market_id, idempotency_key), one pair for the real credits and one for
+  /// the RECORDED ones (a test-mode note has a slot of its own).
+  /// The budget of a promotion: the sum of its PENDING and GRANTED credits, an index-only scan
+  /// (the amount is a trailing key column, the design's INCLUDE).
+  @@index([marketId, promotionId, status, amountMinor])
+  /// A promotion's credits, newest first (the keyset list).
+  @@index([marketId, promotionId, createdAt(sort: Desc), id(sort: Desc)])
+  /// What an order has been credited (the cashback cap is per order).
+  @@index([marketId, orderId])
+  /// What a customer has received from a promotion (the per-customer limit).
+  @@index([marketId, promotionId, recipientAccountId])
+  /// The lookup of a credit by its source, whatever its status (the event handler's findBySource;
+  /// the partial unique indexes cannot serve a query that does not name the status).
+  @@index([marketId, kind, sourceId])
+  @@map("credit_issuances")
+  @@schema("promotions")
+}
+
+/// Promotions' inbox (P 6.4): one row per consumed event and handler, so a repeated delivery of
+/// `ordering.seller-order-delivered.v1` changes nothing. Insert-only.
+model PromotionsInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "promotions.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
   @@schema("promotions")
 }

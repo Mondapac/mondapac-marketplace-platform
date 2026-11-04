@@ -402,6 +402,8 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
         kind: 'onboarding',
         submittedAt: START.toString(),
         serviceAreaCode: 'open',
+        // 'open' is no area of the test Market configuration: no name, never a guess.
+        serviceAreaName: null,
         timezone: 'Australia/Brisbane',
         createdAt: START.toString(),
         lastChangedAt: START.toString(),

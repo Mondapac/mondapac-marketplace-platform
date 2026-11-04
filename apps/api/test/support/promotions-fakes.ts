@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
-import { ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Id,
+  MarketContext,
+  Money,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpProofConsumer, StepUpRefusal } from '../../src/platform/authz';
 import type { BatchCodeCrypto } from '../../src/modules/promotions/application/ports/batch-code-crypto';
 import type {
@@ -8,6 +15,36 @@ import type {
   BatchCodeRecord,
   BatchCodeRepository,
 } from '../../src/modules/promotions/application/ports/batch-code.repository';
+import type {
+  CreditCursor,
+  CreditRepository,
+  ReferralCodeRecord,
+  ReferralRepository,
+} from '../../src/modules/promotions/application/ports/credit.repository';
+import type {
+  CustomerOrderHistory,
+  Known,
+  StoreFollows,
+} from '../../src/modules/promotions/application/ports/customer-facts';
+import type {
+  DeliveredOrderFacts,
+  DeliveredSellerOrderFacts,
+} from '../../src/modules/promotions/application/ports/order-facts';
+import type {
+  ReferralSignals,
+  ReferralVerdict,
+} from '../../src/modules/promotions/application/ports/referral-signals';
+import type {
+  WalletCredit,
+  WalletCreditFailure,
+} from '../../src/modules/promotions/application/ports/wallet-credit';
+import type {
+  CreditKind,
+  CreditRecord,
+  ReferralRecord,
+  ReferralRejectReason,
+  ReferralStatus,
+} from '../../src/modules/promotions/domain/credit';
 import type { FlashSales } from '../../src/modules/promotions/application/ports/flash-sales';
 import type {
   MarketSettingRecord,
@@ -105,6 +142,23 @@ export class MemoryPromotions implements PromotionRepository {
           (r.ownerSellerId === null || scope.sellerIds.includes(r.ownerSellerId)) &&
           (r.productIds.length === 0 || r.productIds.some((p) => scope.productIds.includes(p))),
       ),
+    );
+  }
+  listLiveOfTypes(
+    _market: MarketContext,
+    now: Temporal.Instant,
+    types: readonly PromotionRecord['type'][],
+  ) {
+    return Promise.resolve(
+      [...this.records.values()]
+        .filter(
+          (r) =>
+            types.includes(r.type) &&
+            r.status === 'ACTIVE' &&
+            r.startsAt.epochMilliseconds <= now.epochMilliseconds &&
+            (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds),
+        )
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     );
   }
   existingCodes(_market: MarketContext, codes: readonly string[]) {
@@ -377,6 +431,20 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
   hash(code: string): string {
     return createHash('sha256').update(code, 'utf8').digest('hex');
   }
+  referralCode(subject: string, alphabet: string, length: number): string {
+    const digest = createHash('sha256').update(`referral-code|${subject}`, 'utf8').digest();
+    let n = BigInt(`0x${digest.toString('hex')}`);
+    const base = BigInt(alphabet.length);
+    let code = '';
+    for (let i = 0; i < length; i++) {
+      code += alphabet[Number(n % base)];
+      n /= base;
+    }
+    return code;
+  }
+  referralHash(code: string): string {
+    return createHash('sha256').update(`referral-hash|${code}`, 'utf8').digest('hex');
+  }
 }
 
 /** The units-sold counter of flash sales: unknown (null) until a test says otherwise. */
@@ -385,4 +453,331 @@ export class FakeFlashSales implements FlashSales {
   soldUnits() {
     return Promise.resolve(this.sold as ReadonlyMap<Id<'Promotion'>, number> | null);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Phase 3: facts of other modules, the wallet, credits and referrals.
+// ---------------------------------------------------------------------------------------------
+
+/** When customers last ordered: unknown until a test says otherwise (the real adapter's answer). */
+export class FakeCustomerOrderHistory implements CustomerOrderHistory {
+  readonly lastOrder = new Map<Id<'Account'>, Temporal.Instant | null>();
+  /** True: every read fails (unknown). */
+  broken = false;
+  /** Throws instead of answering. */
+  throws = false;
+  reads = 0;
+  lastOrderAt(_context: CallContext, accountId: Id<'Account'>) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('orders unreachable'));
+    if (this.broken || !this.lastOrder.has(accountId)) {
+      return Promise.resolve({ known: false } as Known<Temporal.Instant | null>);
+    }
+    return Promise.resolve({
+      known: true,
+      value: this.lastOrder.get(accountId)!,
+    } as Known<Temporal.Instant | null>);
+  }
+}
+
+/** Which sellers a customer follows: unknown until a test says otherwise. */
+export class FakeStoreFollows implements StoreFollows {
+  readonly follows = new Map<Id<'Account'>, Id<'Seller'>[]>();
+  broken = false;
+  throws = false;
+  reads = 0;
+  followedAmong(
+    _context: CallContext,
+    accountId: Id<'Account'>,
+    sellerIds: readonly Id<'Seller'>[],
+  ) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('follows unreachable'));
+    const followed = this.follows.get(accountId);
+    if (this.broken || followed === undefined) {
+      return Promise.resolve({ known: false } as Known<readonly Id<'Seller'>[]>);
+    }
+    return Promise.resolve({
+      known: true,
+      value: sellerIds.filter((s) => followed.includes(s)),
+    } as Known<readonly Id<'Seller'>[]>);
+  }
+}
+
+/** The facts of delivered seller orders, by seller order id; unknown for any other. */
+export class FakeOrderFacts implements DeliveredOrderFacts {
+  readonly orders = new Map<string, DeliveredSellerOrderFacts>();
+  reads = 0;
+  add(facts: DeliveredSellerOrderFacts): void {
+    this.orders.set(facts.sellerOrderId, facts);
+  }
+  read(_context: CallContext, request: { readonly sellerOrderId: Id<'SellerOrder'> }) {
+    this.reads += 1;
+    const facts = this.orders.get(request.sellerOrderId);
+    const answer: Known<DeliveredSellerOrderFacts> =
+      facts === undefined ? { known: false } : { known: true, value: facts };
+    return Promise.resolve(answer);
+  }
+}
+
+export class FakeReferralSignals implements ReferralSignals {
+  verdict: ReferralVerdict = 'clear';
+  calls = 0;
+  compare() {
+    this.calls += 1;
+    return Promise.resolve(this.verdict);
+  }
+}
+
+/** The wallet: one journal per idempotency key, as the real one answers a repeat with the first result. */
+export class FakeWalletCredit implements WalletCredit {
+  readonly grants: {
+    readonly accountId: Id<'Account'>;
+    readonly amount: Money;
+    readonly orderId: Id<'Order'> | null;
+    readonly idempotencyKey: string;
+  }[] = [];
+  readonly journals = new Map<string, string>();
+  /** The failure to answer next (once), or for every call while `always` is set. */
+  failure: WalletCreditFailure | null = null;
+  always = false;
+  /** Decides per request (before `failure`): a failure to answer, or null to go on. */
+  failWhen: ((request: { readonly idempotencyKey: string }) => WalletCreditFailure | null) | null =
+    null;
+  /** Every call, including the refused ones. */
+  calls = 0;
+  grant(
+    _context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly amount: Money;
+      readonly orderId: Id<'Order'> | null;
+      readonly idempotencyKey: string;
+    },
+  ): Promise<Result<{ readonly journalId: string }, WalletCreditFailure>> {
+    this.calls += 1;
+    const scripted = this.failWhen?.(request) ?? null;
+    if (scripted !== null) return Promise.resolve(err(scripted));
+    if (this.failure !== null) {
+      const failure = this.failure;
+      if (!this.always) this.failure = null;
+      return Promise.resolve(err(failure));
+    }
+    let journal = this.journals.get(request.idempotencyKey);
+    if (journal === undefined) {
+      journal = `01990000-0000-7000-8000-${(0xa00000 + this.journals.size + 1).toString(16).padStart(12, '0')}`;
+      this.journals.set(request.idempotencyKey, journal);
+      this.grants.push(request);
+    }
+    return Promise.resolve({ ok: true, value: { journalId: journal } } as const);
+  }
+}
+
+/**
+ * Credits in memory: unique per kind and source and per idempotency key, like the table; the real
+ * credits and the RECORDED notes each have their own slots (the partial unique indexes).
+ */
+export class MemoryCredits implements CreditRepository {
+  readonly rows = new Map<Id<'PromotionCredit'>, CreditRecord>();
+  insert(_market: MarketContext, record: CreditRecord) {
+    const recorded = record.status === 'RECORDED';
+    const clash = [...this.rows.values()].some(
+      (r) =>
+        (r.status === 'RECORDED') === recorded &&
+        ((r.kind === record.kind && r.sourceId === record.sourceId) ||
+          r.idempotencyKey === record.idempotencyKey),
+    );
+    if (clash) return Promise.resolve('duplicate' as const);
+    this.rows.set(record.id, record);
+    return Promise.resolve('inserted' as const);
+  }
+  findBySource(_market: MarketContext, kind: CreditKind, sourceId: string) {
+    const found = [...this.rows.values()].filter((r) => r.kind === kind && r.sourceId === sourceId);
+    return Promise.resolve(found.find((r) => r.status !== 'RECORDED') ?? found[0] ?? null);
+  }
+  settle(
+    _market: MarketContext,
+    id: Id<'PromotionCredit'>,
+    result:
+      | { readonly status: 'GRANTED'; readonly walletJournalId: string }
+      | { readonly status: 'FAILED'; readonly failureCode: string },
+    at: Temporal.Instant,
+  ) {
+    const row = this.rows.get(id);
+    if (row === undefined || row.status !== 'PENDING') return Promise.resolve(false);
+    this.rows.set(id, {
+      ...row,
+      status: result.status,
+      walletJournalId: result.status === 'GRANTED' ? result.walletJournalId : null,
+      failureCode: result.status === 'FAILED' ? result.failureCode : null,
+      settledAt: at,
+    });
+    return Promise.resolve(true);
+  }
+  reservedTotal(_market: MarketContext, promotionId: Id<'Promotion'>) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.promotionId === promotionId && (r.status === 'PENDING' || r.status === 'GRANTED'),
+        )
+        .reduce((sum, r) => sum + r.amountMinor, 0n),
+    );
+  }
+  countLive(_market: MarketContext, promotionId: Id<'Promotion'>, recipient?: Id<'Account'>) {
+    return Promise.resolve(
+      [...this.rows.values()].filter(
+        (r) =>
+          r.promotionId === promotionId &&
+          (r.status === 'PENDING' || r.status === 'GRANTED') &&
+          (recipient === undefined || r.recipientAccountId === recipient),
+      ).length,
+    );
+  }
+  creditedForOrder(_market: MarketContext, orderId: Id<'Order'>, kind: CreditKind) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.orderId === orderId &&
+            r.kind === kind &&
+            (r.status === 'PENDING' || r.status === 'GRANTED'),
+        )
+        .reduce((sum, r) => sum + r.amountMinor, 0n),
+    );
+  }
+  listForPromotion(
+    _market: MarketContext,
+    promotionId: Id<'Promotion'>,
+    limit: number,
+    after?: CreditCursor,
+  ) {
+    const newestFirst = (a: CreditRecord, b: CreditRecord) =>
+      b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => r.promotionId === promotionId)
+        .sort(newestFirst)
+        .filter(
+          (r) =>
+            after === undefined ||
+            r.createdAt.epochMilliseconds < after.createdAt.epochMilliseconds ||
+            (r.createdAt.epochMilliseconds === after.createdAt.epochMilliseconds &&
+              r.id < after.id),
+        )
+        .slice(0, limit),
+    );
+  }
+}
+
+/** Referral codes and referrals in memory: one code per customer, one referral per new customer. */
+export class MemoryReferrals implements ReferralRepository {
+  readonly codes = new Map<Id<'Account'>, ReferralCodeRecord>();
+  readonly rows = new Map<Id<'Referral'>, ReferralRecord>();
+  findCode(_market: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(this.codes.get(accountId) ?? null);
+  }
+  findCodeByHash(_market: MarketContext, codeHash: string) {
+    return Promise.resolve([...this.codes.values()].find((c) => c.codeHash === codeHash) ?? null);
+  }
+  insertCode(_market: MarketContext, record: ReferralCodeRecord) {
+    if (
+      this.codes.has(record.accountId) ||
+      [...this.codes.values()].some((c) => c.codeHash === record.codeHash)
+    ) {
+      return Promise.resolve('duplicate' as const);
+    }
+    this.codes.set(record.accountId, record);
+    return Promise.resolve('inserted' as const);
+  }
+  findQualifiedBySellerOrder(_market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    return Promise.resolve(
+      [...this.rows.values()].find(
+        (r) => r.status === 'QUALIFIED' && r.qualifyingSellerOrderId === sellerOrderId,
+      ) ?? null,
+    );
+  }
+  findByReferee(_market: MarketContext, refereeAccountId: Id<'Account'>) {
+    return Promise.resolve(
+      [...this.rows.values()].find((r) => r.refereeAccountId === refereeAccountId) ?? null,
+    );
+  }
+  insert(_market: MarketContext, record: ReferralRecord) {
+    if ([...this.rows.values()].some((r) => r.refereeAccountId === record.refereeAccountId)) {
+      return Promise.resolve('duplicate' as const);
+    }
+    this.rows.set(record.id, record);
+    return Promise.resolve('inserted' as const);
+  }
+  decide(
+    _market: MarketContext,
+    id: Id<'Referral'>,
+    decision:
+      | {
+          readonly status: 'QUALIFIED';
+          readonly orderId: Id<'Order'>;
+          readonly sellerOrderId: Id<'SellerOrder'>;
+        }
+      | { readonly status: 'REJECTED'; readonly reason: ReferralRejectReason }
+      | { readonly status: 'EXPIRED' },
+    at: Temporal.Instant,
+  ) {
+    const row = this.rows.get(id);
+    if (row === undefined || row.status !== 'PENDING') return Promise.resolve(false);
+    this.rows.set(id, {
+      ...row,
+      status: decision.status,
+      rejectReason: decision.status === 'REJECTED' ? decision.reason : null,
+      qualifyingOrderId: decision.status === 'QUALIFIED' ? decision.orderId : null,
+      qualifyingSellerOrderId: decision.status === 'QUALIFIED' ? decision.sellerOrderId : null,
+      decidedAt: at,
+    });
+    return Promise.resolve(true);
+  }
+  countByReferrer(
+    _market: MarketContext,
+    referrerAccountId: Id<'Account'>,
+    promotionId: Id<'Promotion'>,
+    status: ReferralStatus,
+    notExpiredAt?: Temporal.Instant,
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()].filter(
+        (r) =>
+          r.referrerAccountId === referrerAccountId &&
+          r.promotionId === promotionId &&
+          r.status === status &&
+          (notExpiredAt === undefined ||
+            r.expiresAt.epochMilliseconds > notExpiredAt.epochMilliseconds),
+      ).length,
+    );
+  }
+  countByPromotion(_market: MarketContext, promotionId: Id<'Promotion'>, status: ReferralStatus) {
+    return Promise.resolve(
+      [...this.rows.values()].filter((r) => r.promotionId === promotionId && r.status === status)
+        .length,
+    );
+  }
+  listByReferrer(_market: MarketContext, referrerAccountId: Id<'Account'>, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => r.referrerAccountId === referrerAccountId)
+        .sort((a, b) => b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds)
+        .slice(0, limit),
+    );
+  }
+}
+
+/** The phase 3 dependencies, fresh: spread into a deps object. */
+export function phase3Fakes() {
+  return {
+    orderHistory: new FakeCustomerOrderHistory(),
+    storeFollows: new FakeStoreFollows(),
+    orderFacts: new FakeOrderFacts(),
+    referralSignals: new FakeReferralSignals(),
+    walletCredit: new FakeWalletCredit(),
+    credits: new MemoryCredits(),
+    referrals: new MemoryReferrals(),
+  };
 }

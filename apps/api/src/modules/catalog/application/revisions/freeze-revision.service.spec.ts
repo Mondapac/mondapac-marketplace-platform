@@ -5,6 +5,7 @@ import { configurableProductType } from '../../domain/product-types/configurable
 import { simpleProductType } from '../../domain/product-types/simple';
 import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
+import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { FreezeRevision } from './freeze-revision.service';
 
@@ -74,6 +75,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
         throw new Error('not used');
       },
       maxVariantsPerProduct: () => max,
+      maxVariantAttributes: () => 2,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],
@@ -311,5 +313,34 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       ok: false,
       error: { code: 'revision.type-unknown' },
     });
+  });
+  it('reports a required field whose value suggestion is open as pending, not as missing', async () => {
+    const withSuggestions = new FreezeRevision({
+      attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
+      policy: {
+        taxCategoryCodes: () => tax,
+        locales: () => ({ default: locale, supported: locales }),
+        maxVariantsPerProduct: () => max,
+        maxVariantAttributes: () => 2,
+      } as unknown as CatalogMarketPolicy,
+      handlerFor: (type) => (type === 'simple' ? simpleProductType : undefined),
+      suggestions: {
+        openAttributeCodesOfProduct: () => Promise.resolve(new Set(['origin'])),
+      } as unknown as AttributeValueSuggestionStore,
+    });
+    const content = ready({ attributeValues: { tagline: { [locale]: 'Sweet' } } });
+    const result = await withSuggestions.freeze(market, product('simple'), copyOf(content));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({ code: 'revision.not-ready' });
+    const issues = result.error.code === 'revision.not-ready' ? result.error.issues : [];
+    expect(issues.map((i) => `${i.path}:${i.code}`)).toEqual([
+      'origin:attribute.suggestion-pending',
+    ]);
+    // Without the suggestion the same draft says the field is missing.
+    const plain = await service.freeze(market, product('simple'), copyOf(content));
+    expect(
+      plain.ok === false && plain.error.code === 'revision.not-ready' && plain.error.issues,
+    ).toEqual([{ path: 'origin', code: 'attribute.required' }]);
   });
 });

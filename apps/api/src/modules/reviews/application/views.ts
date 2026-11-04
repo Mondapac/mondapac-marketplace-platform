@@ -89,4 +89,6 @@ export interface PublicReviewView {
   /** The day only (`YYYY-MM-DD`, UTC): an exact time could link an anonymous review to an order. */
   readonly publishedOn: string;
   readonly editedOn: string | null;
+  /** How many accounts found the review helpful (a number only: never who). */
+  readonly helpfulCount: number;
 }
