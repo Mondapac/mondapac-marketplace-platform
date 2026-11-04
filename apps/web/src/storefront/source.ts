@@ -122,15 +122,22 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
     if (read.status === 404) return undefined;
     throw new Error('product detail unavailable');
   }
-  const [locale, t, photo] = await Promise.all([
+  const [locale, t, tp, photo] = await Promise.all([
     getLocale(),
     getTranslations('seller'),
+    getTranslations('product'),
     photoUrls(),
   ]);
   return productDetailOf(
     read.body,
     locale,
-    { minimum: (amount) => t('minimum', { amount }), noMinimum: t('no-minimum') },
+    {
+      minimum: (amount) => t('minimum', { amount }),
+      noMinimum: t('no-minimum'),
+      yes: tp('spec-yes'),
+      no: tp('spec-no'),
+      group: (code) => (tp.has(`spec-group-${code}`) ? tp(`spec-group-${code}`) : undefined),
+    },
     photo,
   );
 }

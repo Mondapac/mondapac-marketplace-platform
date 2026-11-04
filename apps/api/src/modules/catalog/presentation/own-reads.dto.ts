@@ -106,6 +106,19 @@ export class OwnChangeRequestView {
   @ApiProperty({ description: 'ISO instant.' }) decidedAt!: string;
 }
 
+export class OwnSuggestionView {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'The code of the field the value was suggested for.' })
+  attributeCode!: string;
+  @ApiProperty({ description: "The seller's own text. Show as plain text." }) label!: string;
+  @ApiProperty({ enum: ['open', 'approved', 'mapped', 'rejected'] }) status!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The value added or chosen.' })
+  optionCode!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: "The reviewer's words (rejected)." })
+  rejectReason!: string | null;
+  @ApiProperty({ description: 'ISO instant.' }) createdAt!: string;
+}
+
 export class OwnProductView {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty() productCode!: string;
@@ -141,6 +154,13 @@ export class OwnProductView {
       'The reviewer sent the newest revision back; null when it was not (a newer submit clears it).',
   })
   changeRequest!: OwnChangeRequestView | null;
+  @ApiProperty({
+    type: [OwnSuggestionView],
+    description:
+      'Value suggestions for this product, newest first. An open one keeps its field empty ' +
+      '(a required field then holds back the submit: attribute.suggestion-pending).',
+  })
+  suggestions!: OwnSuggestionView[];
 }
 
 export class OwnOfferProductLabel {

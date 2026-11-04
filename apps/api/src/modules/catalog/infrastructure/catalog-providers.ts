@@ -40,9 +40,21 @@ import {
   ATTRIBUTE_DEFINITION_STORE,
   type AttributeDefinitionStore,
 } from '../application/ports/attribute-definition.store';
+import { FEATURE_SET_STORE, type FeatureSetStore } from '../application/ports/feature-set.store';
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
+import { PrismaFeatureSetStore } from './prisma-feature-set.store';
+import {
+  CATEGORY_ATTRIBUTE_LINK_STORE,
+  type CategoryAttributeLinkStore,
+} from '../application/ports/category-attribute-link.store';
+import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
 import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
+import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import {
+  ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  type AttributeValueSuggestionStore,
+} from '../application/ports/attribute-value-suggestion.store';
 import {
   ATTRIBUTE_RELAXATION_STORE,
   type AttributeRelaxationStore,
@@ -201,6 +213,11 @@ import {
   type AttributeAdminReader,
 } from '../application/ports/attribute-admin.reader';
 import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
+import {
+  PRODUCT_DETAILS_GAP_READER,
+  type ProductDetailsGapReader,
+} from '../application/ports/product-details-gap.reader';
+import { PrismaProductDetailsGapReader } from './prisma-product-details-gap.reader';
 import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
 import {
   BUSINESS_ACTIVITY_REPOSITORY,
@@ -248,10 +265,27 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAttributeDefinitionStore(prisma),
   },
   {
+    provide: FEATURE_SET_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): FeatureSetStore => new PrismaFeatureSetStore(prisma),
+  },
+  {
+    provide: CATEGORY_ATTRIBUTE_LINK_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryAttributeLinkStore =>
+      new PrismaCategoryAttributeLinkStore(prisma),
+  },
+  {
     provide: ATTRIBUTE_RELAXATION_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeRelaxationStore =>
       new PrismaAttributeRelaxationStore(prisma),
+  },
+  {
+    provide: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeValueSuggestionStore =>
+      new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,
@@ -286,6 +320,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeAdminReader =>
       new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: PRODUCT_DETAILS_GAP_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductDetailsGapReader =>
+      new PrismaProductDetailsGapReader(prisma),
   },
   {
     provide: BUSINESS_ACTIVITY_REPOSITORY,

@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    settings: ['USAGE'],
     promotions: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
@@ -320,6 +321,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
     },
+    // Editable service area names (ADR-0041): a name is set, changed (name, updater, time) and
+    // deleted to restore the configured name.
+    'sellers.service_area_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'updated_by'],
+    },
     // docs/design/data/sellers.md section 8 (slice 3): a tax registration period is inserted,
     // closed (valid_to is the only column that changes) and, while it has not started, deleted.
     'sellers.tax_registration_periods': {
@@ -327,9 +334,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['valid_to'],
     },
     // Seller health (package 3): counters and snapshots are set by the rollup and replaced on a
-    // recalculation; never deleted.
-    'sellers.seller_health_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
-    'sellers.seller_health_snapshots': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // recalculation; deleted only by the retention purge (400 days).
+    'sellers.seller_health_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'sellers.seller_health_snapshots': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
@@ -644,6 +657,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'sum',
       ],
     },
+    // Settings (admin-editable Market settings, ADR-0026): a setting changes its value, version and
+    // stamps (never its identity or scope); the history is read and appended to only.
+    'settings.market_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['updated_at', 'updated_by_account_id', 'value', 'version'],
+    },
+    'settings.market_setting_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.market_settings': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],
@@ -1270,6 +1290,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
     },
+    // Attributes A5: a decision and a notice move are the only updates, in these columns (data
+    // design 3.30); a suggestion is never deleted.
+    'catalog.attribute_value_suggestions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'option_code',
+        'reject_reason',
+        'status',
+        'version',
+      ],
+    },
     'catalog.attribute_definition_revision_options': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [],
@@ -1279,6 +1315,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'status', 'version'],
     },
     'catalog.attribute_family_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Attributes A4 (categories C8): a category's links; the pointer and version move, revisions never.
+    'catalog.category_attribute_links': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'version'],
+    },
+    'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
     // mutable and deleted from; the five revision tables are insert-only (CA3).
     'catalog.product_working_copies': {

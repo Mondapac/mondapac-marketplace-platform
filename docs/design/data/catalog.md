@@ -42,7 +42,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `product_code_counters` | The per-Market sequence for `productCode` (D 4.1) | Counter, one row per Market | 1 |
 | `category_trees` | One row per Market: the tree version (serialises structural edits; cache key) | Counter | 2 |
 | `platform_categories`, `platform_category_revisions`, `platform_category_revision_names` | `PlatformCategory` root, revisions of name and parent | V1 | 2 |
-| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions` | `AttributeDefinition`, `AttributeFamily` | V1 | 3 |
+| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions`, `category_attribute_links`, `category_attribute_link_revisions` | `AttributeDefinition`, `AttributeFamily`, `CategoryAttributeLink` | V1 | 3 |
 | `product_working_copies` | The working copy (D 2.3 M-2) | Mutable, one per product | 4 |
 | `product_revisions`, `product_revision_texts`, `product_revision_categories`, `product_revision_variants` | Revision content | V1 revision, insert-only + trigger | 4 |
 | `product_revision_decisions` | One terminal outcome per revision, with the named checks (D 8.3a) | V4, insert-only + trigger | 4; checks 10 |
@@ -55,6 +55,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `claim_text_rescans` | Rescan progress (D 6.4) | Job state | 18 |
 | `attribute_relaxation_requests` | Two-admin rule for `material` relaxations (D 8.2, 19.2 item 8) | One-way status, guard trigger | 21 |
 | `product_url_keys` | URL key per Market (CAT-12) | Held / retired keys | 22 (Q-K9) |
+| `attribute_value_suggestions` | A seller's request for a value a select attribute lacks (attributes A5) | One-way status, guard trigger | 30 |
 | `seller_categories`, `seller_category_names`, `category_proposals` | `SellerCategory`, `CategoryProposal` | Roots | 23 |
 | `import_jobs`, `import_job_errors` | `ImportJob` (outline) | Root; errors insert-only | 24 |
 | `ai_listing_suggestions`, `ai_claim_flags` | AIS-03, AIA-03 (outline) | Purged with the draft; insert-only | 25, 26 |
@@ -70,6 +71,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
  attribute_definitions --< attribute_definition_revisions --< ..._revision_options
    |-- attribute_relaxation_requests (open -> confirmed | cancelled | expired)
  attribute_families --< attribute_family_revisions
+ attribute_definitions --< attribute_value_suggestions >-- products (open -> approved | mapped | rejected)
  product_code_counters (1 per Market)
  products (published_/pending_revision_id: same-product FKs)
    |--< product_variants (one-way state)            |-- product_working_copies (0..1)
@@ -286,10 +288,43 @@ revision).
 
 `attribute_families` (root): `id`; `code` unique per Market; `status`; `published_revision_id`;
 `created_by_kind`; `version`; `created_at`. `attribute_family_revisions` (insert-only): `id`;
-`family_id`; `revision_no`; `groups jsonb` (array of `{ groupCode, attributes: [{ code, required,
-isVariantOption }] }`), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
+`family_id`; `revision_no`; `names jsonb` (the feature set's name per locale, `{}` for the seeded
+family; attributes A4, `jsonb_typeof = 'object'`); `groups jsonb` (array of `{ groupCode, names?,
+attributes: [{ code, required, isVariantOption, level? }] }`; `level` is `required`, `recommended`
+or `optional` and `required` is true exactly for the first, both written by the editor of attributes
+A4; the Core group `core` comes first and holds the brand and the country of origin), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
 `(market_id, family_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 family_id, id)`; unique per Market), `created_at`.
+
+`category_attribute_links` (root, attributes A4, categories C8): `(market_id, category_id)` primary
+key (one link per platform category, FK `RESTRICT`); `published_revision_id` (same-category FK to
+the revision); `version`; `created_at`. `category_attribute_link_revisions` (insert-only, the
+`reject_mutation` triggers): `id`; `category_id`; `revision_no` unique per category; `family_id`
+(nullable, FK to `attribute_families`; null means the category takes its parent's feature set);
+`filters jsonb` (array of attribute codes in the order buyers see them, at most 20, CHECK
+`jsonb_typeof = 'array'`); `author_account_id`; `created_at` (the revision's own time). The use case
+resolves inheritance (the nearest category up the tree that holds a feature set; the filters of
+every category from the root down, a code once) and checks that each filter is an active,
+filterable definition; the table stores only what an admin set. Two rules stay in the
+application, not the database: a link may only be written for an `active` category and an `active`
+feature set (`categoryStatus` and the feature-set read), and a filter code has no foreign key. A
+definition archived or switched off as a filter after the save therefore leaves a code in the saved
+list; the read (`category-attribute-links.get`) drops such codes from what buyers get and keeps them
+in the category's own list until an admin saves again. The `names` and `groups` documents of a family
+revision and the `filters` of a link are bounded by the use case (counts and text lengths), the
+database only checks their JSON type and, for `filters`, the count. Grants: `SELECT, INSERT` on both,
+`UPDATE (published_revision_id, version)` on the root.
+
+**Products missing required details (attributes plan A4, decision ت۷).** A feature set can gain a
+required attribute after products were approved under it. Those products stay on sale; the report
+`catalog.products-missing-details-list` (admin, `catalog.attribute.view`) finds them without a new
+table or SQL beyond one keyset read of published products by id (`PrismaProductDetailsGapReader`):
+the use case judges each product's published `attribute_values` against the current published
+schema of its `family_code` with the same `validateAttributeValues` a submit uses, and keeps the
+`attribute.required` issues. One call reads at most 2000 products and returns `nextAfterId`; a
+feature set that cannot be read (unknown, archived, naming a missing attribute) is named in the
+answer and its products are not judged. The next submit of such a product is refused by that same
+rule (`attribute.required`).
 
 **Two-person backstop triggers (Hassan M2; slice 21; SQL in 5.1; measured).** All `SECURITY
 INVOKER`, fixed `search_path`, schema-qualified, through one helper
@@ -960,6 +995,57 @@ closed and is intended; the admin starts the import again (Mojtaba S2; test in
   and `platform-import-start.account.day` join the CHECK; `down.sql` deletes those counter rows
   before restoring the old CHECK.
 - Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
+
+### 3.30 `attribute_value_suggestions` (attributes package A5)
+
+One row per seller's request for a value that a select or multi-select attribute does not offer.
+Born `open` at version 1; an admin moves it once to `approved` (the value was added to the
+attribute as its next revision; `option_code` names it), `mapped` (an existing value was chosen;
+`option_code`) or `rejected` (`reject_reason`, the words the seller reads). Then one mail tells the
+seller: the `notice_*` columns are the send marker of that one notice (`none` while open, then
+`pending`, then `sent`, `skipped` or `failed`), so a failed send is tried again without touching
+the decision. Not insert-only: only the decision and the notice marker change (guard trigger).
+Nothing is deleted. The audit rows are `catalog.attribute-value-suggestion.suggested` and
+`.decided` (ids and the outcome only: never the seller's text, the labels or the reason); an
+approval also writes `catalog.attribute-definition.revised`.
+
+`(market_id, id)` primary key; `tenant_id`; `definition_id` with `(market_id, definition_id)` →
+`attribute_definitions`; `seller_id` (a Seller of `sellers`, no FK across modules); `product_id`
+with `(market_id, product_id)` → `products`; `label` (the seller's own text in the Market's default
+locale, 1 to 120 characters, trimmed, no control character; shown to admins only); `status`;
+`option_code`; `reject_reason` (1 to 300 characters); `decided_by_account_id` (an `identity`
+account, no FK) and `decided_at`; `notice_state`, `notice_attempts` (0 to 10),
+`notice_next_attempt_at`; `version`; `created_at`.
+
+- CHECKs: the Market and tenant formats; the label and reason shapes; the status and notice
+  vocabularies; **decision shape** (`open` has no decision; `approved` and `mapped` name a value
+  and the deciding admin and time; `rejected` gives a reason and the admin and time); an open
+  suggestion has `notice_state = 'none'` and a decided one does not; only a `pending` notice has
+  `notice_next_attempt_at`; `version >= 1`.
+- **Partial unique** `attribute_value_suggestions_open_product_definition_key`
+  `(market_id, product_id, definition_id) WHERE status = 'open'`: one waiting suggestion per field
+  of a product (the seller's second request is `suggestion.already-open`).
+- Indexes: `(market_id, status, created_at, id)` for the admin queue; `(market_id, seller_id,
+  status)` for the per-seller cap (10 open); `(market_id, product_id)` for the product read and the
+  submit gate; the partial `attribute_value_suggestions_notice_due_idx`
+  `(market_id, notice_next_attempt_at, id) WHERE notice_state = 'pending'` for the notice job.
+- Guard trigger `attribute_value_suggestions_guard()` (`BEFORE INSERT OR UPDATE OR DELETE`): a
+  delete is refused; an insert is `open` at version 1 with no attempts and a `created_at` within
+  five minutes of the statement; the identity columns and the label never change; the version
+  rises by one; out of `open` the move is a decision whose notice starts `pending` and whose
+  `decided_at` is within five minutes of the statement; a decided row never changes its decision;
+  only a `pending` notice moves, and its attempts never go down. A no-truncate trigger
+  (`reject_mutation`) refuses `TRUNCATE`.
+- Grants: `SELECT`, `INSERT`, and `UPDATE` on `status`, `option_code`, `reject_reason`,
+  `decided_by_account_id`, `decided_at`, `notice_state`, `notice_attempts`,
+  `notice_next_attempt_at`, `version` only.
+- Writes are conditional updates at the version read (`StaleAggregateError` when another admin
+  decided first); the notice job's marker is one conditional update out of `pending`.
+- A product with an open suggestion keeps the field empty. `FreezeRevision` reads
+  `openAttributeCodesOfProduct` and, for a required field that is empty because of it, reports
+  `attribute.suggestion-pending` instead of `attribute.required`.
+- Reversible: `pnpm db:check-reversible` passes (`down.sql` drops the trigger functions and the
+  table).
 
 ## 4. What is never stored
 

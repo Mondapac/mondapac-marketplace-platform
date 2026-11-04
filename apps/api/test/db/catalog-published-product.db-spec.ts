@@ -65,6 +65,8 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
     texts: Record<string, { name: string; shortDescription?: string; description?: string }>;
     /** Variants of the revision in position order; `state` is the registry state. */
     variants: { state: 'proposed' | 'published' | 'retired'; labels: Record<string, string> }[];
+    /** The family groups of the (one) family revision and this revision's attribute values. */
+    attributes?: { groups: unknown[]; values: Record<string, unknown> };
   }
 
   /** A product; `published` becomes the published revision, `draft` a newer one. */
@@ -104,7 +106,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       ...base,
       family_id: familyId,
       revision_no: 1,
-      groups: '[]',
+      groups: JSON.stringify((published ?? draft)?.attributes?.groups ?? []),
       author_kind: 'seed',
       created_at: T0.toString(),
     });
@@ -155,7 +157,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         family_revision_id: familyRevisionId,
         definition_revision_ids: [],
         tax_category_code: 'standard',
-        attribute_values: '{}',
+        attribute_values: JSON.stringify(spec.attributes?.values ?? {}),
         field_provenance: null,
         sensitive: false,
         sensitive_reasons: [],
@@ -252,8 +254,170 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         { variantId: a.variantIds[1], position: 1, label: '1 kg' },
       ],
       brand: null,
+      specifications: [],
     });
     expect(JSON.stringify(answer)).not.toContain('DRAFT');
+  });
+
+  /**
+   * An attribute definition with one PUBLISHED revision (and its options), by code; the code is
+   * unique in the Market, so each test makes its own.
+   */
+  async function definition(
+    target: typeof market,
+    code: string,
+    kind: {
+      dataType: string;
+      localizable?: boolean;
+      status?: string;
+      showOnProductPage?: boolean;
+      names: Record<string, string>;
+      options?: Record<string, { labels: Record<string, string>; mergedInto?: string }>;
+    },
+  ): Promise<void> {
+    const base = { market_id: target.marketId, tenant_id: target.tenantId };
+    const definitionId = uuid7();
+    const revisionId = uuid7();
+    await insert('attribute_definitions', {
+      id: definitionId,
+      ...base,
+      code,
+      data_type: kind.dataType,
+      localizable: kind.localizable ?? false,
+      status: kind.status ?? 'active',
+      created_by_kind: 'seed',
+      version: 1,
+      created_at: T0.toString(),
+    });
+    await insert('attribute_definition_revisions', {
+      id: revisionId,
+      ...base,
+      definition_id: definitionId,
+      revision_no: 1,
+      material: false,
+      is_variant_option: false,
+      bounds: '{}',
+      names: JSON.stringify(kind.names),
+      show_on_product_page: kind.showOnProductPage ?? true,
+      author_kind: 'seed',
+      created_at: T0.toString(),
+    });
+    for (const [index, [optionCode, option]] of Object.entries(kind.options ?? {}).entries()) {
+      await insert('attribute_definition_revision_options', {
+        ...base,
+        revision_id: revisionId,
+        option_code: optionCode,
+        labels: JSON.stringify(option.labels),
+        active: true,
+        position: index,
+        merged_into: option.mergedInto ?? null,
+      });
+    }
+    await owner.query(
+      `UPDATE catalog.attribute_definitions SET published_revision_id = $3
+         WHERE market_id = $1 AND id = $2`,
+      [target.marketId, definitionId, revisionId],
+    );
+  }
+
+  it('lists the published revision attribute values by family group, with names and labels in the asked locale', async () => {
+    const tag = uuid7().slice(-8);
+    const [origin, roast, tags, hidden, draftAttr, material] = [
+      'origin',
+      'roast',
+      'tags',
+      'hidden',
+      'draftattr',
+      'material',
+    ].map((name) => `${name}-${tag}`) as [string, string, string, string, string, string];
+    await definition(market, origin, {
+      dataType: 'text',
+      names: { 'en-AU': 'Country of origin', 'fa-IR': 'کشور سازنده' },
+    });
+    await definition(market, roast, {
+      dataType: 'select',
+      names: { 'en-AU': 'Roast' },
+      options: {
+        dark: { labels: { 'en-AU': 'Dark', 'fa-IR': 'تیره' } },
+        black: { labels: { 'en-AU': 'Black' }, mergedInto: 'dark' },
+      },
+    });
+    await definition(market, tags, {
+      dataType: 'multi-select',
+      names: { 'en-AU': 'Diet' },
+      options: { halal: { labels: { 'en-AU': 'Halal' } }, vegan: { labels: { 'en-AU': 'Vegan' } } },
+    });
+    await definition(market, hidden, {
+      dataType: 'text',
+      names: { 'en-AU': 'Hidden' },
+      showOnProductPage: false,
+    });
+    await definition(market, draftAttr, {
+      dataType: 'text',
+      names: { 'en-AU': 'Draft' },
+      status: 'draft',
+    });
+    await definition(market, material, {
+      dataType: 'text',
+      localizable: true,
+      names: { 'en-AU': 'Material' },
+    });
+    const entry = (code: string) => ({ code, required: false, isVariantOption: false });
+    const a = await product(market, {
+      texts: { 'en-AU': { name: 'Dates' } },
+      variants: [],
+      attributes: {
+        groups: [
+          { groupCode: 'details', attributes: [entry(roast), entry(tags), entry(hidden)] },
+          { groupCode: 'general', attributes: [entry(draftAttr), entry(origin), entry(material)] },
+        ],
+        values: {
+          [origin]: 'Iran',
+          [roast]: 'black',
+          [tags]: ['halal', 'gone', 'vegan'],
+          [hidden]: 'secret',
+          [draftAttr]: 'not yet',
+          [material]: { 'en-AU': 'Cotton' },
+        },
+      },
+    });
+
+    const english = (await read(a.productId))?.specifications;
+    expect(english).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          { code: roast, name: 'Roast', value: { kind: 'text', text: 'Dark' } },
+          { code: tags, name: 'Diet', value: { kind: 'list', items: ['Halal', 'Vegan'] } },
+        ],
+      },
+      {
+        groupCode: 'general',
+        specifications: [
+          { code: origin, name: 'Country of origin', value: { kind: 'text', text: 'Iran' } },
+          { code: material, name: 'Material', value: { kind: 'text', text: 'Cotton' } },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(english)).not.toContain('secret');
+    // The asked locale wins where the admin wrote it, the fallback fills the rest.
+    const persian = (await read(a.productId, { requested: 'fa-IR', fallback: 'en-AU' }))
+      ?.specifications;
+    expect(persian?.[0]?.specifications[0]).toEqual({
+      code: roast,
+      name: 'Roast',
+      value: { kind: 'text', text: 'تیره' },
+    });
+    expect(persian?.[1]?.specifications[0]).toEqual({
+      code: origin,
+      name: 'کشور سازنده',
+      value: { kind: 'text', text: 'Iran' },
+    });
+  });
+
+  it('has no specifications for a product whose family lists none', async () => {
+    const plain = await product(market, SPEC);
+    expect((await read(plain.productId))?.specifications).toEqual([]);
   });
 
   /** A brand row (brands are shared by every Market); `draft` needs the seller who proposed it. */

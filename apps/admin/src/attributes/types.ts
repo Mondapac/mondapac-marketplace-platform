@@ -212,3 +212,76 @@ export function textIn(
   if (text === null || text === undefined) return fallback;
   return text[locale] ?? text[fallbackLocale] ?? fallback;
 }
+
+/** The requests to relax an attribute waiting for a second administrator (attributes A2). */
+export const API_RELAXATIONS = 'catalog/admin/attribute-relaxations';
+
+export type RelaxationKind = 'clear-material' | 'archive' | 'remove-from-family';
+
+interface RelaxationAction {
+  readonly allowed: boolean;
+  readonly reason?: string;
+}
+
+export interface OpenRelaxation {
+  readonly id: string;
+  readonly version: number;
+  readonly kind: RelaxationKind;
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly names: Localized;
+    readonly version: number;
+  };
+  /** The reader's own request: they may withdraw it, not confirm it. */
+  readonly mine: boolean;
+  /** The requesting administrator; their display name waits for an identity read. */
+  readonly requestedByAccountId: string;
+  readonly requestedAt: string;
+  readonly expiresAt: string;
+  readonly allowedActions: {
+    readonly confirm: RelaxationAction;
+    readonly cancel: RelaxationAction;
+  };
+}
+
+export interface OpenRelaxationList {
+  readonly requests: readonly OpenRelaxation[];
+}
+
+// Value suggestions (attributes A5): a seller asked for a value a select field does not offer.
+// The label is the seller's own text: rendered as plain text only.
+export const DECIDE_PERMISSION = 'catalog.attribute-suggestion.decide';
+export const API_SUGGESTIONS = 'catalog/admin/attribute-suggestions';
+
+export interface SuggestionItem {
+  readonly id: string;
+  readonly version: number;
+  readonly label: string;
+  readonly createdAt: string;
+  readonly sellerId: string;
+  readonly productId: string;
+  readonly productCode: string | null;
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly names: Localized;
+    readonly multi: boolean;
+    readonly options: readonly { readonly code: string; readonly labels: Localized }[];
+  };
+}
+
+export interface SuggestionList {
+  readonly items: readonly SuggestionItem[];
+  readonly requiredLocales: readonly string[];
+  readonly locales: MarketLocales;
+}
+
+export interface SuggestionDecided {
+  readonly suggestion: {
+    readonly id: string;
+    readonly status: 'approved' | 'mapped' | 'rejected';
+    readonly version: number;
+    readonly optionCode: string | null;
+  };
+}
