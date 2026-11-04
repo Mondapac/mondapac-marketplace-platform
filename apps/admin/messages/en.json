@@ -1596,6 +1596,7 @@
       },
       "link": {
         "support": "Support contact",
+        "service-areas": "Service areas",
         "assistant": "Smart assistant",
         "account-deletion": "Account deletion",
         "delivery": "Delivery rules",
@@ -4584,8 +4585,35 @@
       "body": "You can view attributes. Ask a Platform Administrator to change them."
     },
     "waiting": {
+      "label": "Requests waiting for a second administrator",
+      "loading": "Loading requests",
+      "load-error": "We could not load the requests.",
       "empty": "Nothing is waiting for you.",
-      "body": "Change requests for attributes will show here."
+      "body": "When an administrator asks to turn off Material for an attribute, the request shows here for a different administrator to confirm.",
+      "kind": {
+        "clear-material": "Turn off Material",
+        "archive": "Archive",
+        "remove-from-family": "Remove from feature set"
+      },
+      "mine": "Your request",
+      "requested": "Requested",
+      "expires": "Expires",
+      "open-attribute": "Open attribute",
+      "confirm": "Confirm",
+      "withdraw": "Withdraw",
+      "confirm-title": "Turn off Material for {name}?",
+      "confirm-body": "Material is turned off at once. After that, a change to this attribute's value on a product no longer sends its product certifications for a new check.",
+      "withdraw-title": "Withdraw your request for {name}?",
+      "withdraw-body": "The request closes and Material stays on.",
+      "confirmed": "Material turned off.",
+      "withdrawn": "Request withdrawn.",
+      "reload": "Reload",
+      "cancel": "Cancel",
+      "same-admin-note": "A different administrator must confirm your request.",
+      "view-only-body": "Requests to turn off Material are confirmed by administrators who can edit attributes.",
+      "confirm-named": "Confirm request for {name}",
+      "withdraw-named": "Withdraw request for {name}",
+      "open-named": "Open {name}"
     },
     "list-label": "Attributes",
     "filters": "Filter attributes",
@@ -4709,7 +4737,13 @@
       "discard-body": "The draft is archived and can never be published. Its history is kept.",
       "edit-attribute": "Edit attribute",
       "publish-claim-word": "A name or value names a certification, such as halal. Edit it before publishing.",
-      "publish-locale-uncheckable": "Some text is in a language that cannot be checked for certification words yet. Edit it before publishing."
+      "publish-locale-uncheckable": "Some text is in a language that cannot be checked for certification words yet. Edit it before publishing.",
+      "turn-off-material": "Turn off Material",
+      "relax-title": "Ask to turn off Material for {name}?",
+      "relax-body": "While Material is on, a change to this attribute's value on a product sends its product certifications for a new check. Once it is off, that no longer happens. A different administrator must confirm within 72 hours. Nothing changes until then.",
+      "relax-send": "Send request",
+      "relax-sent": "Request sent. A different administrator can confirm it under Waiting for you.",
+      "go-to-waiting": "Go to Waiting for you"
     },
     "values": {
       "not-choice": "This attribute has no list of values: sellers type or pick its value.",
@@ -4865,8 +4899,8 @@
         "variant-help": "Products can come in versions that differ by this value, such as size.",
         "variant-locked": "Fixed once the attribute is published.",
         "material": "Material",
-        "material-help": "A material attribute matters to buyers' decisions. Turning it off needs a second administrator's approval.",
-        "material-locked": "Turning Material off needs a second administrator's approval, which is not available yet.",
+        "material-help": "When this attribute's value changes on a product, its product certifications are sent for a new check. Turning Material off needs a different administrator to confirm.",
+        "material-locked": "To turn Material off, use Turn off Material at the top of this attribute. A different administrator must confirm.",
         "show-on-product-page": "Show on the product page",
         "searchable": "Searchable",
         "can-be-filter": "Can be a filter",
@@ -4914,10 +4948,57 @@
         "throttled": "Too many changes at once. Wait a moment and try again.",
         "unavailable": "We could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again.",
-        "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive."
+        "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive.",
+        "not-material": "This attribute is not Material any more. Reload to see the latest version.",
+        "relaxation-already-open": "A request to turn off Material for this attribute is already open. Find it under Waiting for you.",
+        "relaxation-gone": "This request no longer exists. Reload the list.",
+        "relaxation-moved": "This request was already confirmed, withdrawn or closed. Reload the list.",
+        "relaxation-expired": "This request expired. The requester can ask again.",
+        "relaxation-attribute-changed": "The attribute changed after this request was made, so it can't be confirmed. The requester can withdraw it and ask again.",
+        "relaxation-same-admin": "You made this request. A different administrator must confirm it.",
+        "relaxation-not-requester": "Only the administrator who made this request can withdraw it."
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}."
+    }
+  },
+  "serviceAreas": {
+    "title": "Service areas",
+    "section": "Area names",
+    "permission-view": "Sellers: view",
+    "intro": "The names buyers and sellers see for each service area. The code, postcodes and switches come from configuration and do not change here.",
+    "read-only": "You can see the names but not change them. Changing a name needs the service area edit permission.",
+    "no-access": "You don't have access to service areas.",
+    "unavailable": "The service areas could not be loaded. Try again later.",
+    "col": {
+      "area": "Area",
+      "names": "Names",
+      "actions": "Actions"
+    },
+    "edited": "Edited",
+    "edit": "Edit names",
+    "edit-label": "Edit the names of {code}",
+    "dialog": {
+      "title": "Names of {code}",
+      "language": "Language",
+      "language-required": "{name} (required)",
+      "name": "Name",
+      "help-none": "The configuration has no name in this language.",
+      "help-configured": "Configured name: {name}",
+      "restore": "Restore configured name",
+      "required": "Enter a name, or restore the configured one.",
+      "cancel": "Cancel",
+      "save": "Save names",
+      "saved": "Names saved."
+    },
+    "error": {
+      "invalid": "A name was refused. Names have 1 to 120 characters and no control characters.",
+      "not-found": "This area no longer exists. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change service area names.",
+      "unavailable": "Service areas are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
     }
   }
 }

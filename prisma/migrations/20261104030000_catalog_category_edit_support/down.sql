@@ -1,4 +1,4 @@
--- Reverses 20261103180000_catalog_category_edit_support (docs/design/data/catalog.md 8.3).
+-- Reverses 20261104030000_catalog_category_edit_support (docs/design/data/catalog.md 8.3).
 -- Development and CI only: the cascade markers are lost.
 REVOKE UPDATE ("slug", "hidden_by_id") ON TABLE "catalog"."platform_categories" FROM "mondapac_app";
 ALTER TABLE "catalog"."platform_categories"

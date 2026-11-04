@@ -51,6 +51,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'commission-payouts/admin/payouts',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
+    // The service areas with their names (sellers, ADR-0041), read-only.
+    'sellers/admin/service-areas',
     // The marketplace product list (catalog), read-only (query: `view`, `q`, the filters, `sort`,
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
@@ -78,6 +80,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
     'catalog/admin/attributes',
     'catalog/admin/feature-sets',
+    // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
+    'catalog/admin/attribute-relaxations',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -125,6 +129,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
+    // The names of one service area, set or restored (sellers, ADR-0041).
+    'sellers/admin/service-areas/names',
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
@@ -186,6 +192,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Publish or discard a draft attribute, with the version seen (catalog, attributes A2).
     'catalog/admin/attributes/:id/publish',
     'catalog/admin/attributes/:id/discard',
+    // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
+    // (catalog, attributes A2 part 3: two administrators).
+    'catalog/admin/attributes/:id/relaxation-requests',
+    'catalog/admin/attribute-relaxations/:id/confirm',
+    'catalog/admin/attribute-relaxations/:id/cancel',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.

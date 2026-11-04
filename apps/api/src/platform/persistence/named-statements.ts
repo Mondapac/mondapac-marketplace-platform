@@ -104,7 +104,7 @@ export function lockTimeoutStatement(milliseconds: number): Prisma.Sql {
 /** The most stock items one `inventory.lock-stock-items` call locks (inventory data design 4.3). */
 export const MAX_LOCKED_STOCK_ITEMS = 1000;
 
-const CATEGORY_SLUG = /^(?=.{1,120}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const CATEGORY_SLUG = /^(?=.{2,80}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** One locked stock item: the columns a stock writer decides from (inventory data design 4.3). */

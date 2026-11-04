@@ -71,6 +71,7 @@ class MemoryStore {
           )
           .map(([, snap]) => snap),
       ),
+    latest: () => Promise.resolve(new Map()),
   };
 }
 

@@ -15,6 +15,8 @@ export interface FeatureSetListItem {
   readonly code: string;
   readonly status: string;
   readonly revisionNo: number;
+  /** The name per locale; empty for the seeded family. */
+  readonly names: Readonly<Record<string, string>>;
   readonly groupCount: number;
   /** Distinct attribute codes across the groups. */
   readonly attributeCount: number;
@@ -106,6 +108,7 @@ export class FeatureSetAdminList extends UseCase<
         code: set.code,
         status: set.status,
         revisionNo: set.revisionNo,
+        names: { ...set.names },
         groupCount: set.groups.length,
         attributeCount: new Set(
           set.groups.flatMap((group) => group.attributes.map((entry) => entry.code)),

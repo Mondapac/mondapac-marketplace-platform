@@ -72,6 +72,9 @@ class MemoryImages implements ProductImageRepository {
   takeDown() {
     return Promise.resolve(false);
   }
+  unreferencedObjectKeys() {
+    return Promise.resolve([]);
+  }
   listUnattached() {
     return Promise.resolve([]);
   }

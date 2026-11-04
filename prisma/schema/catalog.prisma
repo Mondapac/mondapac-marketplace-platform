@@ -182,48 +182,49 @@ model CatalogCategoryTree {
 /// parent live in insert-only revisions; this root holds the lifecycle, the slug and the pointer
 /// to the current revision. The CHECKs, the no-cycle trigger and the grants are hand-written.
 model CatalogPlatformCategory {
-  id                  String                               @id @db.Uuid
-  marketId            String                               @map("market_id") @db.VarChar(8)
-  tenantId            String                               @map("tenant_id")
+  id                            String                               @id @db.Uuid
+  marketId                      String                               @map("market_id") @db.VarChar(8)
+  tenantId                      String                               @map("tenant_id")
   /// Null for a root of the tree; never equal to the id (CHECK).
-  parentId            String?                              @map("parent_id") @db.Uuid
+  parentId                      String?                              @map("parent_id") @db.Uuid
   /// Optional Vertical root marker (CA4); only on a root (CHECK).
-  verticalRootCode    String?                              @map("vertical_root_code")
+  verticalRootCode              String?                              @map("vertical_root_code")
   /// Case-sensitive collation "C" is set in the migration; unique per Market.
-  slug                String
+  slug                          String
   /// active | hidden | merged | archived.
-  status              String
-  mergedIntoId        String?                              @map("merged_into_id") @db.Uuid
+  status                        String
+  mergedIntoId                  String?                              @map("merged_into_id") @db.Uuid
   /// The current revision; null only inside the creating unit (Q-K10).
-  publishedRevisionId String?                              @map("published_revision_id") @db.Uuid
+  publishedRevisionId           String?                              @map("published_revision_id") @db.Uuid
   /// seed | admin; never updated.
-  createdByKind       String                               @map("created_by_kind")
-  version             Int
-  createdAt           DateTime                             @map("created_at") @db.Timestamptz(6)
+  createdByKind                 String                               @map("created_by_kind")
+  version                       Int
+  createdAt                     DateTime                             @map("created_at") @db.Timestamptz(6)
   /// Order among siblings (roots are siblings); unique per parent, deferrable (hand-written).
-  position            Int
+  position                      Int
   /// Hidden from menus when false; products stay on sale.
-  showInMenu          Boolean                              @default(true) @map("show_in_menu")
+  showInMenu                    Boolean                              @default(true) @map("show_in_menu")
   /// Category image from the product image intake (purpose category-image, wired in C3). No
   /// foreign key: product_images belong to a product.
-  imageId             String?                              @map("image_id") @db.Uuid
+  imageId                       String?                              @map("image_id") @db.Uuid
   /// English only, at most 60 and 160 characters (CHECKs).
-  seoTitle            String?                              @map("seo_title")
-  seoDescription      String?                              @map("seo_description")
-  seoNoindex          Boolean                              @default(false) @map("seo_noindex")
+  seoTitle                      String?                              @map("seo_title")
+  seoDescription                String?                              @map("seo_description")
+  seoNoindex                    Boolean                              @default(false) @map("seo_noindex")
   /// The category whose Hide cascaded to this one; null when hidden on its own (C3a).
-  hiddenById          String?                              @map("hidden_by_id") @db.Uuid
-  hiddenBy            CatalogPlatformCategory?             @relation("CategoryHiddenBy", fields: [marketId, hiddenById], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  hiddenCascade       CatalogPlatformCategory[]            @relation("CategoryHiddenBy")
-  parent              CatalogPlatformCategory?             @relation("CategoryParent", fields: [marketId, parentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  children            CatalogPlatformCategory[]            @relation("CategoryParent")
-  mergedInto          CatalogPlatformCategory?             @relation("CategoryMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  mergedFrom          CatalogPlatformCategory[]            @relation("CategoryMerge")
-  revisions           CatalogPlatformCategoryRevision[]    @relation("CategoryRevisions")
-  publishedRevision   CatalogPlatformCategoryRevision?     @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
-  productRevisions    CatalogProductRevisionCategory[]
-  businessActivities  CatalogBusinessActivityCategory[]    @relation("ActivityCategory")
-  slugHistory         CatalogPlatformCategorySlugHistory[]
+  hiddenById                    String?                              @map("hidden_by_id") @db.Uuid
+  hiddenBy                      CatalogPlatformCategory?             @relation("CategoryHiddenBy", fields: [marketId, hiddenById], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  hiddenCascade                 CatalogPlatformCategory[]            @relation("CategoryHiddenBy")
+  parent                        CatalogPlatformCategory?             @relation("CategoryParent", fields: [marketId, parentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  children                      CatalogPlatformCategory[]            @relation("CategoryParent")
+  mergedInto                    CatalogPlatformCategory?             @relation("CategoryMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom                    CatalogPlatformCategory[]            @relation("CategoryMerge")
+  revisions                     CatalogPlatformCategoryRevision[]    @relation("CategoryRevisions")
+  publishedRevision             CatalogPlatformCategoryRevision?     @relation("CategoryPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
+  productRevisions              CatalogProductRevisionCategory[]
+  businessActivities            CatalogBusinessActivityCategory[]    @relation("ActivityCategory")
+  slugHistory                   CatalogPlatformCategorySlugHistory[]
+  catalogCategoryAttributeLinks CatalogCategoryAttributeLink[]
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
@@ -422,20 +423,21 @@ model CatalogAttributeDefinitionRevisionOption {
 
 /// A family: the groups of attributes a product type offers (catalog design 2.1; data design 3.5).
 model CatalogAttributeFamily {
-  id                  String                           @id @db.Uuid
-  marketId            String                           @map("market_id") @db.VarChar(8)
-  tenantId            String                           @map("tenant_id")
-  code                String
+  id                    String                                 @id @db.Uuid
+  marketId              String                                 @map("market_id") @db.VarChar(8)
+  tenantId              String                                 @map("tenant_id")
+  code                  String
   /// active | archived.
-  status              String
-  publishedRevisionId String?                          @map("published_revision_id") @db.Uuid
+  status                String
+  publishedRevisionId   String?                                @map("published_revision_id") @db.Uuid
   /// seed | admin; never updated.
-  createdByKind       String                           @map("created_by_kind")
-  version             Int
-  createdAt           DateTime                         @map("created_at") @db.Timestamptz(6)
-  revisions           CatalogAttributeFamilyRevision[] @relation("FamilyRevisions")
-  relaxationRequests  CatalogAttributeRelaxationRequest[] @relation("FamilyRelaxationRequests")
-  publishedRevision   CatalogAttributeFamilyRevision?  @relation("FamilyPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, familyId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdByKind         String                                 @map("created_by_kind")
+  version               Int
+  createdAt             DateTime                               @map("created_at") @db.Timestamptz(6)
+  revisions             CatalogAttributeFamilyRevision[]       @relation("FamilyRevisions")
+  relaxationRequests    CatalogAttributeRelaxationRequest[]    @relation("FamilyRelaxationRequests")
+  categoryLinkRevisions CatalogCategoryAttributeLinkRevision[]
+  publishedRevision     CatalogAttributeFamilyRevision?        @relation("FamilyPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, familyId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, id])
   @@unique([marketId, code])
@@ -534,8 +536,10 @@ model CatalogAttributeFamilyRevision {
   tenantId            String                   @map("tenant_id")
   familyId            String                   @map("family_id") @db.Uuid
   revisionNo          Int                      @map("revision_no")
-  /// Array of { groupCode, attributes: [{ code, required, isVariantOption }] }.
+  /// Array of { groupCode, names?, attributes: [{ code, required, isVariantOption, level? }] }.
   groups              Json                     @db.JsonB
+  /// The feature set's name per locale ({} for the seeded family and for revisions before A4).
+  names               Json                     @default("{}") @db.JsonB
   /// seed | admin.
   authorKind          String                   @map("author_kind")
   authorAccountId     String?                  @map("author_account_id") @db.Uuid
@@ -1339,5 +1343,47 @@ model CatalogBusinessActivityCategory {
   @@id([marketId, activityId, categoryId])
   @@index([marketId, categoryId])
   @@map("business_activity_categories")
+  @@schema("catalog")
+}
+
+/// A category's feature set and filter list (attributes package A4, categories C8): the root holds
+/// the pointer to the current revision and the version a write names. The CHECKs, the insert-only
+/// triggers and the grants are hand-written in the migration.
+model CatalogCategoryAttributeLink {
+  marketId            String                                 @map("market_id") @db.VarChar(8)
+  tenantId            String                                 @map("tenant_id")
+  categoryId          String                                 @map("category_id") @db.Uuid
+  publishedRevisionId String?                                @map("published_revision_id") @db.Uuid
+  version             Int
+  createdAt           DateTime                               @map("created_at") @db.Timestamptz(6)
+  category            CatalogPlatformCategory                @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  publishedRevision   CatalogCategoryAttributeLinkRevision?  @relation("LinkPublished", fields: [marketId, categoryId, publishedRevisionId], references: [marketId, categoryId, id], onDelete: Restrict, onUpdate: Restrict)
+  revisions           CatalogCategoryAttributeLinkRevision[] @relation("LinkRevisions")
+
+  @@id([marketId, categoryId])
+  @@map("category_attribute_links")
+  @@schema("catalog")
+}
+
+/// A revision of a category's links (insert-only). A null family means "inherited from the
+/// parent"; `filters` is the array of attribute codes in order.
+model CatalogCategoryAttributeLinkRevision {
+  id              String                         @id @db.Uuid
+  marketId        String                         @map("market_id") @db.VarChar(8)
+  tenantId        String                         @map("tenant_id")
+  categoryId      String                         @map("category_id") @db.Uuid
+  revisionNo      Int                            @map("revision_no")
+  familyId        String?                        @map("family_id") @db.Uuid
+  filters         Json                           @db.JsonB
+  authorAccountId String                         @map("author_account_id") @db.Uuid
+  createdAt       DateTime                       @map("created_at") @db.Timestamptz(6)
+  link            CatalogCategoryAttributeLink   @relation("LinkRevisions", fields: [marketId, categoryId], references: [marketId, categoryId], onDelete: Restrict, onUpdate: Restrict)
+  published       CatalogCategoryAttributeLink[] @relation("LinkPublished")
+  family          CatalogAttributeFamily?        @relation(fields: [marketId, familyId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, categoryId, revisionNo])
+  @@unique([marketId, categoryId, id])
+  @@index([marketId, familyId])
+  @@map("category_attribute_link_revisions")
   @@schema("catalog")
 }

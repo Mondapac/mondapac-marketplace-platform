@@ -282,8 +282,10 @@ function featureSetOf(row: {
   readonly status: string;
   readonly createdByKind: string;
   readonly createdAt: Date;
+  readonly version: number;
   readonly publishedRevision: {
     readonly revisionNo: number;
+    readonly names: Prisma.JsonValue;
     readonly groups: Prisma.JsonValue;
   } | null;
 }): FeatureSetRecord {
@@ -294,6 +296,8 @@ function featureSetOf(row: {
     createdByKind: row.createdByKind as CategoryAuthorKind,
     createdAt: toInstant(row.createdAt),
     revisionNo: row.publishedRevision!.revisionNo,
+    version: row.version,
+    names: (row.publishedRevision!.names ?? {}) as LocalizedText,
     groups: (row.publishedRevision!.groups ?? []) as unknown as FamilyGroup[],
   };
 }
