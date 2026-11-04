@@ -33,6 +33,7 @@ vi.mock('../../../../src/attributes/attributes-view.tsx', () => ({
   AttributesView: (props: {
     readonly canEdit: boolean;
     readonly canSeeBrands: boolean;
+    readonly canDecide: boolean;
     readonly initialTab: string;
     readonly initialId: string | null;
   }) => (
@@ -40,6 +41,7 @@ vi.mock('../../../../src/attributes/attributes-view.tsx', () => ({
       data-testid="view"
       data-can-edit={String(props.canEdit)}
       data-brands={String(props.canSeeBrands)}
+      data-decide={String(props.canDecide)}
       data-tab={props.initialTab}
       data-id={String(props.initialId)}
     >

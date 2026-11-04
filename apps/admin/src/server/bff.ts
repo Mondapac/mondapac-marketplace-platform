@@ -80,6 +80,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
     'catalog/admin/attributes',
     'catalog/admin/feature-sets',
+    // The value suggestions waiting for a decision (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
   ]),
@@ -192,6 +194,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Publish or discard a draft attribute, with the version seen (catalog, attributes A2).
     'catalog/admin/attributes/:id/publish',
     'catalog/admin/attributes/:id/discard',
+    // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions/:id/approve',
+    'catalog/admin/attribute-suggestions/:id/map',
+    'catalog/admin/attribute-suggestions/:id/reject',
     // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
     // (catalog, attributes A2 part 3: two administrators).
     'catalog/admin/attributes/:id/relaxation-requests',
