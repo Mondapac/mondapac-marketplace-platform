@@ -628,3 +628,21 @@ model SellersSellerHealthSnapshot {
   @@map("seller_health_snapshots")
   @@schema("sellers")
 }
+
+/// An admin's edit of the display name of a ServiceArea in one language (ADR-0041). Only a name:
+/// the area itself (code, postcodes, flags) stays in `config/service-areas/`. A row overrides the
+/// name the configuration holds for that language; deleting the row restores the configured name.
+model SellersServiceAreaName {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  /// A code of the Market's configured areas (checked by the application; not a foreign key).
+  areaCode  String   @map("area_code")
+  locale    String
+  name      String
+  updatedBy String   @map("updated_by") @db.Uuid
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, areaCode, locale])
+  @@map("service_area_names")
+  @@schema("sellers")
+}

@@ -527,6 +527,16 @@ module.exports = {
       to: { path: '(^|/node_modules/)libpg-query(/|$)' },
     },
     {
+      // File storage pilot F2: the storage port is the only way to objects.
+      name: 'aws-s3-client-only-in-s3-object-store',
+      comment:
+        'The AWS S3 client is imported only by platform/storage/s3-object-store.ts: every other ' +
+        'file reaches objects through the ObjectStore port.',
+      severity: 'error',
+      from: { pathNot: '^src/platform/storage/s3-object-store\\.ts$' },
+      to: { path: '(^|/node_modules/)@aws-sdk/client-s3(/|$)' },
+    },
+    {
       name: 'no-circular',
       comment: 'Circular dependencies hide coupling between files and modules.',
       severity: 'error',
