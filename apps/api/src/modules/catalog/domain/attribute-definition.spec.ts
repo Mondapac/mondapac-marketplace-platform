@@ -298,3 +298,45 @@ describe('AttributeDefinition drafts and revisions (attributes A2)', () => {
     });
   });
 });
+
+describe('AttributeDefinition.addOption', () => {
+  const published = () => {
+    const result = AttributeDefinition.create(
+      input({
+        code: 'pack',
+        isVariantOption: false,
+        options: [{ code: 'small', labels: { xx: 'Small' }, active: true, position: 0 }],
+      }),
+    );
+    if (!result.ok) throw new Error(result.error.code);
+    return result.value;
+  };
+  const add = (definition: AttributeDefinition, code: string, labels = { xx: 'Large' }) =>
+    definition.addOption({
+      revisionId: 'r2' as Id<'AttributeDefinitionRevision'>,
+      code,
+      labels,
+      now: NOW,
+    });
+
+  it('writes the next revision with the value last and active, the others untouched', () => {
+    const result = add(published(), 'large');
+    if (!result.ok) throw new Error(result.error.code);
+    expect(result.value.state).toMatchObject({ revisionNo: 2, version: 2, status: 'active' });
+    expect(result.value.state.options).toMatchObject([
+      { code: 'small', labels: { xx: 'Small' }, active: true, position: 0 },
+      { code: 'large', labels: { xx: 'Large' }, active: true, position: 1 },
+    ]);
+  });
+
+  it('refuses a repeated code and a value with no label', () => {
+    expect(add(published(), 'small')).toEqual({
+      ok: false,
+      error: { code: 'attribute-definition.option-repeated' },
+    });
+    expect(add(published(), 'large', {} as never)).toMatchObject({
+      ok: false,
+      error: { code: 'attribute-definition.option-invalid' },
+    });
+  });
+});

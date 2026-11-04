@@ -6,6 +6,7 @@ import type { RevisionContent } from '../../domain/revision-content';
 import { freezeWorkingCopy, type FreezeIssue } from '../../domain/revision-freeze';
 import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
+import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductImageRepository } from '../ports/product-image.repository';
 import { revisionContentHash } from './revision-content-hash';
@@ -33,6 +34,11 @@ export interface FreezeRevisionDependencies {
   readonly handlerFor: (typeCode: string) => ProductTypeHandler | undefined;
   /** The photo library; without it a draft that lists photos is not ready. */
   readonly images?: ProductImageRepository;
+  /**
+   * The sellers' value suggestions (attributes A5): a required field that is empty because its
+   * suggestion is still open is reported as `attribute.suggestion-pending`, not `attribute.required`.
+   */
+  readonly suggestions?: AttributeValueSuggestionStore;
 }
 
 /**
@@ -103,7 +109,19 @@ export class FreezeRevision {
     const ordered = [locales.default, ...locales.supported.filter((l) => l !== locales.default)];
     const attributes = handler.validateAttributes(schema, values, ordered);
     if (!attributes.ok) {
-      issues.push(...attributes.error.map((issue) => ({ path: issue.path, code: issue.code })));
+      const pending =
+        this.deps.suggestions === undefined
+          ? new Set<string>()
+          : await this.deps.suggestions.openAttributeCodesOfProduct(market, state.id);
+      issues.push(
+        ...attributes.error.map((issue) => ({
+          path: issue.path,
+          code:
+            issue.code === 'attribute.required' && pending.has(issue.path)
+              ? 'attribute.suggestion-pending'
+              : issue.code,
+        })),
+      );
     }
     if (frozen.ok) {
       // A Simple product's one variant carries no options; the handler still sees it (CC2).

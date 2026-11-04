@@ -97,6 +97,23 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       description: 'Beef',
       categoryIds: [CATEGORY],
       brand: { slug: 'kedron-farms', name: 'Kedron Farms' },
+      specifications: [
+        {
+          groupCode: 'details',
+          specifications: [
+            {
+              code: 'origin',
+              name: 'Country of origin',
+              value: { kind: 'text', text: 'Australia' },
+            },
+            {
+              code: 'diet',
+              name: 'Diet',
+              value: { kind: 'list', items: ['Halal', 'Gluten free'] },
+            },
+          ],
+        },
+      ],
       images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
       offers: [
         {
@@ -201,6 +218,23 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       description: 'Beef',
       categoryIds: [CATEGORY],
       brand: { slug: 'kedron-farms', name: 'Kedron Farms' },
+      specifications: [
+        {
+          groupCode: 'details',
+          specifications: [
+            {
+              code: 'origin',
+              name: 'Country of origin',
+              value: { kind: 'text', text: 'Australia' },
+            },
+            {
+              code: 'diet',
+              name: 'Diet',
+              value: { kind: 'list', items: ['Halal', 'Gluten free'] },
+            },
+          ],
+        },
+      ],
       images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
       offers: [
         {

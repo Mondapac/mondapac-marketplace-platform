@@ -310,6 +310,34 @@ export const PlatformCategoryDiscardedAudit = defineAuditAction({
   after: { status: categoryEditStatus },
 });
 
+/** The audit target type of a seller's value suggestion (attributes plan, package A5). */
+export const CATALOG_ATTRIBUTE_SUGGESTION_TARGET = 'catalog.attribute-value-suggestion';
+
+/** A seller suggested a new value for a select attribute. Ids only: never the text they typed. */
+export const AttributeValueSuggestedAudit = defineAuditAction({
+  action: 'catalog.attribute-value-suggestion.suggested',
+  targetType: CATALOG_ATTRIBUTE_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  after: { definitionId: auditField.id(), productId: auditField.id() },
+});
+
+/**
+ * An admin approved (a value was added: its revision is audited as
+ * `catalog.attribute-definition.revised`), mapped or rejected a suggestion. Neither the seller's
+ * text, the value's labels nor the reason is kept here.
+ */
+export const AttributeValueSuggestionDecidedAudit = defineAuditAction({
+  action: 'catalog.attribute-value-suggestion.decided',
+  targetType: CATALOG_ATTRIBUTE_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['open'] as const) },
+  after: {
+    status: auditField.enumOf(['approved', 'mapped', 'rejected'] as const),
+    definitionId: auditField.id(),
+    sellerId: auditField.id(),
+  },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -333,4 +361,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   PlatformCategoryShownAudit,
   PlatformCategorySlugChangedAudit,
   PlatformCategoryDiscardedAudit,
+
+  AttributeValueSuggestedAudit,
+  AttributeValueSuggestionDecidedAudit,
 ] as const;
