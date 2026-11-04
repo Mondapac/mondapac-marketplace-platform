@@ -37,6 +37,7 @@ import type {
   SellerListRepository,
 } from '../ports/seller-list.repository';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { AreaNameSource, EditedNamesByArea } from '../ports/service-area-names.repository';
 
 /** The request is the raw JSON body: the use case checks its shape itself (`parseListRequest`). */
 export type SellerListInput = unknown;
@@ -110,6 +111,8 @@ export interface SellerListDependencies {
   /** Asked once per call whether the actor may see the status column (fails closed to hidden). */
   readonly authorisation: AuthorisationCheck;
   readonly onboardingAreas: OnboardingAreas;
+  /** Edited area names (ADR-0041); the configured name shows when none is edited. */
+  readonly areaNames: AreaNameSource;
 }
 
 /**
@@ -185,6 +188,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     const request = parsed.value;
     const { directory } = this.deps;
     const showStatus = await this.mayShowStatus(context);
+    const edited = await this.deps.areaNames.edited(context.market);
 
     if (isStateTab(request.tab)) {
       if (!showStatus) return err({ code: 'access.denied' });
@@ -203,14 +207,14 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       const read = await this.readFiles(context, request, idPage.sellerIds);
       if (!read.ok) return read;
       const page = read.value.rows ?? [];
-      const decorated = await this.decorate(context, page, true);
+      const decorated = await this.decorate(context, page, true, edited);
       if (!decorated.ok) return decorated;
       return ok({
         tab: request.tab,
         items: decorated.value,
         next: idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
         counts: read.value.counts,
-        areas: this.deps.onboardingAreas.all(context.market),
+        areas: this.areasOf(context, edited),
         stateCounts: stateTabCounts(idPage),
       });
     }
@@ -238,7 +242,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
         return this.identityFailed(context, error);
       }
     }
-    const decorated = await this.decorate(context, page, showStatus);
+    const decorated = await this.decorate(context, page, showStatus, edited);
     if (!decorated.ok) return decorated;
     const last = page[page.length - 1];
     return ok({
@@ -246,7 +250,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       items: decorated.value,
       next: more && last !== undefined ? cursorText(cursorOf(request, last)) : null,
       counts,
-      areas: this.deps.onboardingAreas.all(context.market),
+      areas: this.areasOf(context, edited),
       stateCounts,
     });
   }
@@ -321,6 +325,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     context: CallContext,
     page: readonly ListedSeller[],
     showStatus: boolean,
+    edited: EditedNamesByArea,
   ): Promise<Result<readonly SellerListRow[], SellerListFailure>> {
     let accounts: ReadonlyMap<Id<'Seller'>, SellerAccountEntry> = new Map();
     if (showStatus && page.length > 0) {
@@ -342,10 +347,21 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
           openCodes,
           row.serviceAreaCode === null
             ? null
-            : this.deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode),
+            : (edited.get(row.serviceAreaCode)?.['en'] ??
+                this.deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode)),
         ),
       ),
     );
+  }
+
+  /** Every area of the Market for the filter, with the edited English name when there is one. */
+  private areasOf(
+    context: CallContext,
+    edited: EditedNamesByArea,
+  ): readonly { readonly code: string; readonly name: string }[] {
+    return this.deps.onboardingAreas
+      .all(context.market)
+      .map((area) => ({ code: area.code, name: edited.get(area.code)?.['en'] ?? area.name }));
   }
 
   private async mayShowStatus(context: CallContext): Promise<boolean> {

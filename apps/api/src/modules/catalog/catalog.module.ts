@@ -193,7 +193,9 @@ import { ProductImageReviewController } from './presentation/product-image-revie
 import { ProductImageAdminRead } from './application/use-cases/product-image-admin-read.use-case';
 import { ProductImageTakeDown } from './application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
+import { SweepOrphanImageFiles } from './application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from './application/use-cases/sweep-orphan-images.use-case';
+import { sweepOrphanImageFilesJob } from './presentation/jobs/sweep-orphan-image-files.job';
 import { sweepOrphanImagesJob } from './presentation/jobs/sweep-orphan-images.job';
 import { ReevaluateTags } from './application/use-cases/reevaluate-tags.use-case';
 import { OfferBadgesQuery } from './application/use-cases/offer-badges.use-case';
@@ -1224,6 +1226,12 @@ const productTypeProvider: FactoryProvider<string> = {
       objectStore: true,
       clock: true,
     }),
+    useCaseProvider(SweepOrphanImageFiles, {
+      unitOfWork: true,
+      images: true,
+      objectStore: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,
@@ -1294,6 +1302,7 @@ const productTypeProvider: FactoryProvider<string> = {
         SeedCategoryTree,
         SeedAttributes,
         SweepOrphanImages,
+        SweepOrphanImageFiles,
         ReevaluateTags,
         ReconcileTags,
         SendOfferOwnerNotices,
@@ -1306,6 +1315,7 @@ const productTypeProvider: FactoryProvider<string> = {
         categories: SeedCategoryTree,
         attributes: SeedAttributes,
         sweep: SweepOrphanImages,
+        sweepFiles: SweepOrphanImageFiles,
         reevaluate: ReevaluateTags,
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
@@ -1317,6 +1327,7 @@ const productTypeProvider: FactoryProvider<string> = {
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
         sweepOrphanImagesJob(sweep),
+        sweepOrphanImageFilesJob(sweepFiles),
         reevaluateTagsJob(reevaluate),
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),

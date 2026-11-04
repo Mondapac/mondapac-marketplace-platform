@@ -320,6 +320,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['ever_public', 'retired_at', 'state', 'version'],
     },
+    // Editable service area names (ADR-0041): a name is set, changed (name, updater, time) and
+    // deleted to restore the configured name.
+    'sellers.service_area_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'updated_by'],
+    },
     // docs/design/data/sellers.md section 8 (slice 3): a tax registration period is inserted,
     // closed (valid_to is the only column that changes) and, while it has not started, deleted.
     'sellers.tax_registration_periods': {

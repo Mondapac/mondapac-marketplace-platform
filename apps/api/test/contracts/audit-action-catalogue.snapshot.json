@@ -2576,6 +2576,17 @@
     }
   },
   {
+    "action": "sellers.service-area.change",
+    "targetType": "sellers.service-area",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "namesRestored": "integer",
+      "namesSet": "integer"
+    }
+  },
+  {
     "action": "catalog.platform-category.created",
     "targetType": "catalog.platform-category",
     "targetId": "id",
