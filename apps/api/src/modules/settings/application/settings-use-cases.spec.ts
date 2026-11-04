@@ -21,9 +21,9 @@ import type {
   MarketSettingRepository,
 } from './ports/market-setting.repository';
 import type { SettingsDependencies } from './settings-dependencies';
-import { ChangeMarketSetting } from './use-cases/change-market-setting.use-case';
+import { ChangeListPagingSetting } from './use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
-import { ViewMarketSettings } from './use-cases/view-market-settings.use-case';
+import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
 
 // The settings store in memory on both Market fixtures: the default in force before any change,
 // a change with its version, history and one audit row, a stale version, a repeat that changes
@@ -119,7 +119,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       actor: { ...context.actor, actingAs: { adminAccountId: ADMIN } },
     }) as unknown as CallContext;
   const change = (input: Record<string, unknown>, context = adminCtx()) =>
-    new ChangeMarketSetting(gate, deps).execute(context, input);
+    new ChangeListPagingSetting(gate, deps).execute(context, input);
 
   beforeEach(() => {
     gate = createUseCaseGate(markets, {
@@ -136,7 +136,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
   });
 
   it('shows the default (page numbers, version 0) before any change', async () => {
-    const view = await new ViewMarketSettings(gate, deps).execute(adminCtx(), {});
+    const view = await new ViewListPagingSetting(gate, deps).execute(adminCtx(), {});
     expect(view.ok && view.value).toEqual([
       { code: 'list-paging', value: 'pages', version: 0, updatedAt: null },
     ]);

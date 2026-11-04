@@ -193,7 +193,9 @@ import { ProductImageReviewController } from './presentation/product-image-revie
 import { ProductImageAdminRead } from './application/use-cases/product-image-admin-read.use-case';
 import { ProductImageTakeDown } from './application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
+import { SweepOrphanImageFiles } from './application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from './application/use-cases/sweep-orphan-images.use-case';
+import { sweepOrphanImageFilesJob } from './presentation/jobs/sweep-orphan-image-files.job';
 import { sweepOrphanImagesJob } from './presentation/jobs/sweep-orphan-images.job';
 import { ReevaluateTags } from './application/use-cases/reevaluate-tags.use-case';
 import { OfferBadgesQuery } from './application/use-cases/offer-badges.use-case';
@@ -211,6 +213,7 @@ import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
+import { OwnProductSetOwnBrand } from './application/use-cases/own-product-set-own-brand.use-case';
 import { OwnProductSubmit } from './application/use-cases/own-product-submit.use-case';
 import { BRAND_ASSIGNER } from './application/ports/brand-assigner';
 import { BRAND_READER } from './application/ports/brand.reader';
@@ -263,12 +266,20 @@ import { ExpireRelaxationRequests } from './application/use-cases/expire-relaxat
 import { expireRelaxationRequestsJob } from './presentation/jobs/expire-relaxation-requests.job';
 import { ATTRIBUTE_RELAXATION_STORE } from './application/ports/attribute-relaxation.store';
 import { ATTRIBUTE_DEFINITION_STORE } from './application/ports/attribute-definition.store';
+import { FEATURE_SET_STORE } from './application/ports/feature-set.store';
+import { FeatureSetCreate } from './application/use-cases/feature-set-create.use-case';
+import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-case';
+import { CategoryAttributeLinksSet } from './application/use-cases/category-attribute-links-set.use-case';
+import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
+import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
 import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-list.use-case';
 import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
+import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-gap.reader';
+import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
 import type { CategoryActionProbes } from './application/categories/category-admin-views';
 import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
@@ -368,7 +379,10 @@ const PORT = {
   adminCategoryReader: ADMIN_CATEGORY_READER,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
+  detailsGapReader: PRODUCT_DETAILS_GAP_READER,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  featureSetStore: FEATURE_SET_STORE,
+  linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
@@ -707,6 +721,49 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       audit: true,
     }),
+    useCaseProvider(FeatureSetCreate, {
+      unitOfWork: true,
+      featureSetStore: true,
+      attributeAdminReader: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(FeatureSetEdit, {
+      unitOfWork: true,
+      featureSetStore: true,
+      attributeAdminReader: true,
+      relaxations: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryAttributeLinksSet, {
+      unitOfWork: true,
+      linkStore: true,
+      attributeAdminReader: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryAttributeLinksGet, {
+      unitOfWork: true,
+      linkStore: true,
+      treeReader: true,
+      attributeAdminReader: true,
+    }),
+    useCaseProvider(ProductsMissingDetailsList, {
+      unitOfWork: true,
+      detailsGapReader: true,
+      attributes: true,
+      policy: true,
+    }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
       attributeAdminReader: true,
@@ -742,13 +799,24 @@ const productTypeProvider: FactoryProvider<string> = {
     }),
     useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
-    useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),
-    useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true }),
-    useCaseProvider(BrandArchive, { unitOfWork: true, brands: true, clock: true }),
-    useCaseProvider(BrandApprove, { unitOfWork: true, brands: true, clock: true }),
-    useCaseProvider(BrandMerge, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandCreate, {
+      unitOfWork: true,
+      brands: true,
+      clock: true,
+      audit: true,
+      ids: true,
+    }),
+    useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandArchive, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandApprove, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandMerge, { unitOfWork: true, brands: true, clock: true, audit: true }),
     useCaseProvider(BrandMergeQueueList, { unitOfWork: true, brandReader: true }),
-    useCaseProvider(BrandMergeQueueDismiss, { unitOfWork: true, brands: true, clock: true }),
+    useCaseProvider(BrandMergeQueueDismiss, {
+      unitOfWork: true,
+      brands: true,
+      clock: true,
+      audit: true,
+    }),
     useCaseProvider(OwnBrandPropose, {
       unitOfWork: true,
       brands: true,
@@ -756,6 +824,7 @@ const productTypeProvider: FactoryProvider<string> = {
       eligibility: true,
       clock: true,
       ids: true,
+      audit: true,
     }),
     useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
@@ -1072,6 +1141,12 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(OwnProductSaveDraft, { saveDraft: true, eligibility: true }),
+    useCaseProvider(OwnProductSetOwnBrand, {
+      unitOfWork: true,
+      products: true,
+      eligibility: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductSubmit, {
       unitOfWork: true,
       products: true,
@@ -1128,6 +1203,12 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       images: true,
       workingCopies: true,
+      objectStore: true,
+      clock: true,
+    }),
+    useCaseProvider(SweepOrphanImageFiles, {
+      unitOfWork: true,
+      images: true,
       objectStore: true,
       clock: true,
     }),
@@ -1201,6 +1282,7 @@ const productTypeProvider: FactoryProvider<string> = {
         SeedCategoryTree,
         SeedAttributes,
         SweepOrphanImages,
+        SweepOrphanImageFiles,
         ReevaluateTags,
         ReconcileTags,
         SendOfferOwnerNotices,
@@ -1213,6 +1295,7 @@ const productTypeProvider: FactoryProvider<string> = {
         categories: SeedCategoryTree,
         attributes: SeedAttributes,
         sweep: SweepOrphanImages,
+        sweepFiles: SweepOrphanImageFiles,
         reevaluate: ReevaluateTags,
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
@@ -1224,6 +1307,7 @@ const productTypeProvider: FactoryProvider<string> = {
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
         sweepOrphanImagesJob(sweep),
+        sweepOrphanImageFilesJob(sweepFiles),
         reevaluateTagsJob(reevaluate),
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),

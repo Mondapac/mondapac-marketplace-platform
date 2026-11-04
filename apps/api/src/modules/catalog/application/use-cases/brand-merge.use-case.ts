@@ -1,10 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_BRAND_EDIT } from '../../contracts/permissions';
+import { BrandMergedAudit } from '../../domain/audit';
 import {
   aliasForMergedName,
   BRAND_NAME_MAX,
@@ -54,6 +56,7 @@ export interface BrandMergeDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly clock: Clock;
+  readonly audit: AuditWriter;
 }
 
 const MERGE_KEYS = ['brandId', 'sourceBrandIds', 'aliases'] as const;
@@ -179,6 +182,16 @@ export class BrandMerge extends UseCase<BrandMergeInput, BrandMergeOutput, Brand
             targetId.value,
             [...names, ...wanted],
             now,
+          );
+          await this.deps.audit.record(
+            context,
+            BrandMergedAudit.entry(targetId.value, {
+              after: {
+                sourceCount: merged.length,
+                productsMoved: merged.reduce((sum, row) => sum + row.productsMoved, 0),
+                aliasesAdded: aliasesAdded.length,
+              },
+            }),
           );
           return ok({ brand: viewOf(target.state), merged, aliasesAdded });
         },

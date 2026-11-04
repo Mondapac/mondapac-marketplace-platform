@@ -7,9 +7,9 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
-import { ChangeMarketSetting } from '../src/modules/settings/application/use-cases/change-market-setting.use-case';
+import { ChangeListPagingSetting } from '../src/modules/settings/application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../src/modules/settings/application/use-cases/read-list-paging.use-case';
-import { ViewMarketSettings } from '../src/modules/settings/application/use-cases/view-market-settings.use-case';
+import { ViewListPagingSetting } from '../src/modules/settings/application/use-cases/view-list-paging-setting.use-case';
 import { SETTINGS_STATUS } from '../src/modules/settings/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
@@ -78,9 +78,9 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(clock)
-          .overrideProvider(ViewMarketSettings)
+          .overrideProvider(ViewListPagingSetting)
           .useValue(stub('view'))
-          .overrideProvider(ChangeMarketSetting)
+          .overrideProvider(ChangeListPagingSetting)
           .useValue(stub('change'))
           .overrideProvider(ReadListPaging)
           .useValue(stub('paging')),

@@ -1,5 +1,11 @@
 import 'server-only';
-import type { Brand, CertificationBadge, Money, ProductDetail } from '../storefront/types.ts';
+import type {
+  Brand,
+  CertificationBadge,
+  Money,
+  ProductDetail,
+  ProductOffer,
+} from '../storefront/types.ts';
 import { plainText } from './defaults.ts';
 import { imageUrl } from './metadata.ts';
 
@@ -77,6 +83,35 @@ function certificationOf(badge: CertificationBadge): JsonLdNode | null {
   };
 }
 
+/** The one Offer node of an offer; the caller checks the price is positive. */
+function offerNode(offer: ProductOffer, url: string, origin: string): JsonLdNode {
+  const price = decimalPrice(offer.price);
+  return {
+    '@type': 'Offer',
+    url,
+    price,
+    priceCurrency: offer.price.currency,
+    // Every price on the page is shown "including GST" (inferred in the plan; see the PR).
+    priceSpecification: {
+      '@type': 'UnitPriceSpecification',
+      price,
+      priceCurrency: offer.price.currency,
+      valueAddedTaxIncluded: true,
+    },
+    // Same rule as the buy button: a limit of 0 units is out of stock.
+    availability: `${SCHEMA}/${offer.lowStock === 0 ? 'OutOfStock' : 'InStock'}`,
+    itemCondition: `${SCHEMA}/NewCondition`,
+    seller: {
+      '@type': 'Organization',
+      name: offer.seller.name,
+      url: absolute(`/s/${encodeURIComponent(offer.seller.id)}`, origin),
+    },
+  };
+}
+
+const hasPrice = (offer: ProductOffer): boolean =>
+  Number.isSafeInteger(offer.price.amount) && offer.price.amount > 0;
+
 /** The most `additionalProperty` entries of a Product node. */
 const MAX_PROPERTIES = 30;
 
@@ -98,6 +133,11 @@ function propertiesOf(product: ProductDetail): JsonLdNode[] {
  * The Product node of a product page (merchant listing): ONE Offer, the buy box's offer, never an
  * AggregateOffer. None when that offer has no positive price.
  *
+ * A product with several Variants is a `ProductGroup`: the group carries the shared facts, and
+ * `hasVariant` holds one Product per Variant with its own link (`?v=`) and its lowest-priced
+ * offer. The page's own canonical link stays without `?v=`. Variants with no positive price are
+ * left out; with none left there is no node.
+ *
  * @param url the page's absolute canonical URL
  */
 export function productStructuredData(
@@ -105,19 +145,16 @@ export function productStructuredData(
   origin: string,
   url: string,
 ): JsonLdNode | null {
+  const variants = product.variants;
   const [offer] = product.offers;
-  if (!Number.isSafeInteger(offer.price.amount) || offer.price.amount <= 0) return null;
-  const price = decimalPrice(offer.price);
+  if (variants === undefined && !hasPrice(offer)) return null;
   const images = product.photos.flatMap((photo) => imageUrl(photo, origin) ?? []);
   const description = Array.from(plainText(product.description)).slice(0, DESCRIPTION_MAX).join('');
-  const certifications = offer.certifications.flatMap((badge) => certificationOf(badge) ?? []);
   const properties = propertiesOf(product);
-  return {
-    '@type': 'Product',
+  const shared = {
     name: plainText(product.name),
     ...(images.length === 0 ? {} : { image: images }),
     ...(description === '' ? {} : { description }),
-    ...(certifications.length === 0 ? {} : { hasCertification: certifications }),
     // The brand entity of the product (its active brand's page), never a text a seller typed.
     ...(product.brand === undefined
       ? {}
@@ -129,27 +166,41 @@ export function productStructuredData(
           },
         }),
     ...(properties.length === 0 ? {} : { additionalProperty: properties }),
-    offers: {
-      '@type': 'Offer',
-      url,
-      price,
-      priceCurrency: offer.price.currency,
-      // Every price on the page is shown "including GST" (inferred in the plan; see the PR).
-      priceSpecification: {
-        '@type': 'UnitPriceSpecification',
-        price,
-        priceCurrency: offer.price.currency,
-        valueAddedTaxIncluded: true,
+  };
+  const certificationsOf = (of: ProductOffer) => {
+    const list = of.certifications.flatMap((badge) => certificationOf(badge) ?? []);
+    return list.length === 0 ? {} : { hasCertification: list };
+  };
+  if (variants === undefined) {
+    return {
+      '@type': 'Product',
+      ...shared,
+      ...certificationsOf(offer),
+      offers: offerNode(offer, url, origin),
+    };
+  }
+  const has = variants.flatMap((variant, index): JsonLdNode[] => {
+    const best =
+      variant.offers.find((o) => hasPrice(o) && o.lowStock !== 0) ?? variant.offers.find(hasPrice);
+    if (best === undefined) return [];
+    const link = `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(variant.id)}`;
+    return [
+      {
+        '@type': 'Product',
+        name: plainText(`${product.name} - ${variant.label ?? `Option ${index + 1}`}`),
+        ...certificationsOf(best),
+        offers: offerNode(best, link, origin),
       },
-      // Same rule as the buy button: a limit of 0 units is out of stock.
-      availability: `${SCHEMA}/${offer.lowStock === 0 ? 'OutOfStock' : 'InStock'}`,
-      itemCondition: `${SCHEMA}/NewCondition`,
-      seller: {
-        '@type': 'Organization',
-        name: offer.seller.name,
-        url: absolute(`/s/${encodeURIComponent(offer.seller.id)}`, origin),
-      },
-    },
+    ];
+  });
+  if (has.length === 0) return null;
+  return {
+    '@type': 'ProductGroup',
+    productGroupID: product.id,
+    ...shared,
+    // The axis is the unit label until variants have typed axes (size today).
+    variesBy: [`${SCHEMA}/size`],
+    hasVariant: has,
   };
 }
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { ProductPage } from '../src/product/product-page.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
@@ -320,6 +320,41 @@ describe('specifications from the API', () => {
     const section = screen.getByText('Specifications').closest('section')!;
     expect(section.querySelectorAll('h4')).toHaveLength(0);
     expect(section.querySelectorAll('dl')).toHaveLength(1);
+  });
+
+  it('keys each row by its attribute code, so two attributes with one name give no key warning', () => {
+    const rows = productDetailOf(
+      {
+        ...TWO_SELLERS,
+        specifications: [
+          {
+            groupCode: 'general',
+            specifications: [
+              { code: 'size-a', name: 'Size', value: { kind: 'text', text: 'Small' } },
+              { code: 'size-b', name: 'Size', value: { kind: 'text', text: 'Large' } },
+            ],
+          },
+        ],
+      },
+      'en',
+      labels,
+    )!.specifications;
+    expect(rows.map((row) => row.code)).toEqual(['size-a', 'size-b']);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    renderWith([
+      {
+        groupCode: 'general',
+        specifications: [
+          { code: 'size-a', name: 'Size', value: { kind: 'text', text: 'Small' } },
+          { code: 'size-b', name: 'Size', value: { kind: 'text', text: 'Large' } },
+        ],
+      },
+    ]);
+    const warned = error.mock.calls.some((call) => String(call[0]).includes('same key'));
+    error.mockRestore();
+    expect(warned).toBe(false);
+    expect(screen.getByText('Small').tagName).toBe('DD');
+    expect(screen.getByText('Large').tagName).toBe('DD');
   });
 
   it('leaves out the Specifications section when there is no row', () => {

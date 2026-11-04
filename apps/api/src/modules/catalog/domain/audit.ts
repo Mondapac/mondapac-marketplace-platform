@@ -234,6 +234,120 @@ export const AttributeRelaxationExpiredAudit = defineAuditAction({
   after: { requestId: auditField.id(), requestedByAccountId: auditField.id() },
 });
 
+/** The audit target type of a brand (catalog brand package; attributes package A5). */
+export const CATALOG_BRAND_TARGET = 'catalog.brand';
+
+const brandStatus = auditField.enumOf(['draft', 'active', 'archived'] as const);
+const brandOrigin = auditField.enumOf(['admin', 'seller'] as const);
+
+/** An admin created an active brand. Ids, the origin and a status only: never the name. */
+export const BrandCreatedAudit = defineAuditAction({
+  action: 'catalog.brand.created',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: { status: brandStatus, origin: brandOrigin },
+});
+
+/** A seller proposed a brand; it is a draft until an admin approves it. */
+export const BrandProposedAudit = defineAuditAction({
+  action: 'catalog.brand.proposed',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: { status: brandStatus, origin: brandOrigin },
+});
+
+/** An admin replaced the content of a brand; which parts changed, never the text. */
+export const BrandEditedAudit = defineAuditAction({
+  action: 'catalog.brand.edited',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  before: { status: brandStatus },
+  after: {
+    status: brandStatus,
+    nameChanged: auditField.boolean(),
+    slugChanged: auditField.boolean(),
+    summaryChanged: auditField.boolean(),
+    originCountryChanged: auditField.boolean(),
+    imagesChanged: auditField.boolean(),
+  },
+});
+
+/** An admin approved a draft brand, normally a seller's proposal. */
+export const BrandApprovedAudit = defineAuditAction({
+  action: 'catalog.brand.approved',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['draft'] as const) },
+  after: { status: auditField.enumOf(['active'] as const), proposedBySeller: auditField.boolean() },
+});
+
+/** An admin archived a brand; it keeps its row, slug and aliases. */
+export const BrandArchivedAudit = defineAuditAction({
+  action: 'catalog.brand.archived',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  before: { status: brandStatus },
+  after: { status: auditField.enumOf(['archived'] as const) },
+});
+
+/**
+ * An admin merged brands into this one (the target). Counts only: how many brands, how many
+ * products moved and how many spellings were added.
+ */
+export const BrandMergedAudit = defineAuditAction({
+  action: 'catalog.brand.merged',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sourceCount: auditField.integer(),
+    productsMoved: auditField.integer(),
+    aliasesAdded: auditField.integer(),
+  },
+});
+
+/** An admin decided that the brands of a merge-queue group are different brands. One row per brand. */
+export const BrandMergeDismissedAudit = defineAuditAction({
+  action: 'catalog.brand.merge-dismissed',
+  targetType: CATALOG_BRAND_TARGET,
+  actors: ['authenticated'],
+  after: { groupSize: auditField.integer() },
+});
+
+/** The audit target type of a feature set, stored as an attribute family (package A4). */
+export const CATALOG_ATTRIBUTE_FAMILY_TARGET = 'catalog.attribute-family';
+
+/** What the audit keeps of a feature set revision: counts, never a name. */
+const familyShape = {
+  revisionNo: auditField.integer(),
+  groupCount: auditField.integer(),
+  attributeCount: auditField.integer(),
+  requiredCount: auditField.integer(),
+  recommendedCount: auditField.integer(),
+  optionalCount: auditField.integer(),
+};
+
+/** An admin created a feature set (A4). */
+export const AttributeFamilyCreatedAudit = defineAuditAction({
+  action: 'catalog.attribute-family.created',
+  targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
+  actors: ['authenticated'],
+  after: familyShape,
+});
+
+/**
+ * An admin saved a new revision of a feature set (A4; catalog design 8.2). `requiredRelaxed`
+ * counts the fields that were required and no longer are, dropped or lowered: a relaxation the
+ * audit must show. Removing a `material` attribute is not an edit (it needs the two-person
+ * request), so it never reaches this row.
+ */
+export const AttributeFamilyRevisedAudit = defineAuditAction({
+  action: 'catalog.attribute-family.revised',
+  targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
+  actors: ['authenticated'],
+  before: familyShape,
+  after: { ...familyShape, requiredRelaxed: auditField.integer() },
+});
+
 /** The audit target type of a seller's value suggestion (attributes plan, package A5). */
 export const CATALOG_ATTRIBUTE_SUGGESTION_TARGET = 'catalog.attribute-value-suggestion';
 
@@ -262,6 +376,28 @@ export const AttributeValueSuggestionDecidedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a category's attribute links (A4, categories C8). */
+export const CATALOG_CATEGORY_LINKS_TARGET = 'catalog.category';
+
+/** What the audit keeps of a category's links: counts and a flag, never a code or a name. */
+const linkShape = {
+  revisionNo: auditField.integer(),
+  hasFeatureSet: auditField.boolean(),
+  filterCount: auditField.integer(),
+};
+
+/**
+ * An admin changed the feature set or the filter list a category holds (A4). The first link of a
+ * category is recorded with `revisionNo` 0 before it.
+ */
+export const CategoryAttributesChangedAudit = defineAuditAction({
+  action: 'catalog.category-attributes.changed',
+  targetType: CATALOG_CATEGORY_LINKS_TARGET,
+  actors: ['authenticated'],
+  before: linkShape,
+  after: linkShape,
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -278,6 +414,16 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,
+  BrandCreatedAudit,
+  BrandProposedAudit,
+  BrandEditedAudit,
+  BrandApprovedAudit,
+  BrandArchivedAudit,
+  BrandMergedAudit,
+  BrandMergeDismissedAudit,
+  AttributeFamilyCreatedAudit,
+  AttributeFamilyRevisedAudit,
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
+  CategoryAttributesChangedAudit,
 ] as const;

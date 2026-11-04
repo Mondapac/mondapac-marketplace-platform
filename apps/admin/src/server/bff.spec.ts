@@ -608,6 +608,18 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
   });
 
+  it('relays the service areas: a read, and the name edit as a POST on its exact path', async () => {
+    const base = 'sellers/admin/service-areas';
+    const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, base.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', `${base}/names`)).status).toBe(200);
+    expect((await call('POST', base)).status).toBe(404);
+    expect((await call('PUT', `${base}/names`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/names`)).status).toBe(404);
+    expect((await call('POST', `${base}/names/extra`)).status).toBe(404);
+  });
+
   it('relays the delivery settings of the Market and of a seller on their exact paths only', async () => {
     const base = 'shipping/admin/delivery-settings';
     const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
@@ -1134,6 +1146,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', `catalog/admin/attributes/${id}`],
     ['POST', `catalog/admin/attributes/${id}/publish`],
     ['POST', `catalog/admin/attributes/${id}/discard`],
+    ['GET', 'catalog/admin/attribute-suggestions'],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/approve`],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/map`],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
     ['GET', 'catalog/admin/attribute-relaxations'],
     ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
@@ -1189,6 +1205,9 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/business-activities/${id}`],
     ['GET', 'catalog/admin/business-activities/not-a-uuid'],
     ['PUT', 'catalog/admin/attributes'],
+    ['POST', 'catalog/admin/attribute-suggestions'],
+    ['POST', `catalog/admin/attribute-suggestions/${id}`],
+    ['PUT', `catalog/admin/attribute-suggestions/${id}/approve`],
     ['PUT', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', `catalog/admin/attributes/${id}`],
     ['DELETE', `catalog/admin/attributes/${id}`],

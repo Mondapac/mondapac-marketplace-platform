@@ -1,5 +1,5 @@
 -- Never run this against production after launch: it drops every admin-editable Market setting
--- and its history. Reverses 20261104010000_settings_core: the grants first, then the tables
+-- and its history. Reverses 20261104030000_settings_core: the grants first, then the tables
 -- (which drops their triggers), then the function. The empty schema "settings" stays, without its
 -- USAGE grant, as the leftover check of docs/design/data/platform.md 10.5 (guard 2) expects.
 SET lock_timeout = '5s';

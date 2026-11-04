@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
 import { LIST_PAGING_VALUES, SETTING_DEFINITIONS } from '../domain/definitions';
-import type { SettingView } from '../application/use-cases/view-market-settings.use-case';
+import type { SettingView } from '../application/use-cases/view-list-paging-setting.use-case';
 
 export class SettingBody {
   @ApiProperty({ enum: SETTING_DEFINITIONS.map((definition) => definition.code) }) code!: string;

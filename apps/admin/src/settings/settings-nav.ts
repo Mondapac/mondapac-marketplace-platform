@@ -14,6 +14,7 @@ import {
   SETTINGS_MANAGE_PERMISSION as LISTS_MANAGE_PERMISSION,
   SETTINGS_VIEW_PERMISSION as LISTS_VIEW_PERMISSION,
 } from '../lists-settings/types.ts';
+import { AREAS_EDIT_PERMISSION, AREAS_VIEW_PERMISSION } from '../service-area-names/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -58,6 +59,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/assistant',
         view: [ASSISTANT_VIEW_PERMISSION],
         manage: [ASSISTANT_MANAGE_PERMISSION],
+      },
+      {
+        id: 'service-areas',
+        labelKey: 'settings.hub.link.service-areas',
+        href: '/settings/service-areas',
+        view: [AREAS_VIEW_PERMISSION],
+        manage: [AREAS_EDIT_PERMISSION],
       },
       {
         id: 'account-deletion',

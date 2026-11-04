@@ -214,6 +214,7 @@ function mount(
   options: {
     canEdit?: boolean;
     canSeeBrands?: boolean;
+    canDecide?: boolean;
     initialTab?: Tab;
     initialId?: string | null;
   } = {},
@@ -224,6 +225,7 @@ function mount(
         canEdit={options.canEdit ?? false}
         csrfToken="csrf-1"
         canSeeBrands={options.canSeeBrands ?? true}
+        canDecide={options.canDecide ?? false}
         initialTab={options.initialTab ?? 'attributes'}
         initialId={options.initialId ?? null}
       />
@@ -548,10 +550,11 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(document.activeElement).toBe(heading);
   });
 
-  it('shows the Brands tab as a link, and the empty Waiting for you tab', () => {
+  it('shows the Brands tab as a link, and keeps the value suggestions out of Waiting for you without the decide key', () => {
     serve({ 'GET catalog/admin/attributes?': ok(page(locales, [])) });
     mount({ canSeeBrands: true, initialTab: 'waiting' });
-    expect(screen.getByText('Nothing is waiting for you.')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Value suggestions from sellers' })).toBeNull();
+    expect(calls('catalog/admin/attribute-suggestions')).toEqual([]);
     expect(screen.getByRole('link', { name: 'Brands' }).getAttribute('href')).toBe(
       '/catalog/brands',
     );

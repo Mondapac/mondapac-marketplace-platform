@@ -18,9 +18,9 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
-import { ChangeMarketSetting } from '../application/use-cases/change-market-setting.use-case';
+import { ChangeListPagingSetting } from '../application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../application/use-cases/read-list-paging.use-case';
-import { ViewMarketSettings } from '../application/use-cases/view-market-settings.use-case';
+import { ViewListPagingSetting } from '../application/use-cases/view-list-paging-setting.use-case';
 import { closedBody, refusal } from './http-answers';
 import {
   ChangeSettingRequest,
@@ -54,15 +54,15 @@ export class AdminSettingsController {
   readonly #logger = new Logger('AdminSettingsController');
 
   constructor(
-    private readonly view: ViewMarketSettings,
-    private readonly change: ChangeMarketSetting,
+    private readonly view: ViewListPagingSetting,
+    private readonly change: ChangeListPagingSetting,
     private readonly listPaging: ReadListPaging,
   ) {}
 
   @Get('market-settings')
   @ApiOperation({
     summary: 'Every editable setting of the Market (admin)',
-    description: 'Needs settings.market-setting.view. A setting with no change has version 0.',
+    description: 'Needs settings.list-paging.view. A setting with no change has version 0.',
   })
   @ApiOkResponse({ type: SettingsListBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -72,7 +72,7 @@ export class AdminSettingsController {
     const result = await this.view.execute(context, {});
     logRoute(
       this.#logger,
-      'settings.view-market-settings-route',
+      'settings.view-list-paging-setting-route',
       context,
       result.ok ? 'read' : result.error.code,
     );
@@ -85,7 +85,7 @@ export class AdminSettingsController {
   @ApiOperation({
     summary: 'Change one editable setting of the Market (admin)',
     description:
-      'Needs settings.market-setting.manage; refused in an acting-as session. The body carries the ' +
+      'Needs settings.list-paging.manage; refused in an acting-as session. The body carries the ' +
       'version the admin saw: a stale edit is 409 settings.conflict. Audited; asking for the value ' +
       'already in force changes nothing.',
   })
@@ -113,7 +113,7 @@ export class AdminSettingsController {
     const result = await this.change.execute(context, { code, value, expectedVersion });
     logRoute(
       this.#logger,
-      'settings.change-market-setting-route',
+      'settings.change-list-paging-setting-route',
       context,
       result.ok ? 'set' : result.error.code,
     );

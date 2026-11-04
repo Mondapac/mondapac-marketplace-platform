@@ -1,8 +1,8 @@
 // Answers and keys of the Market settings routes (apps/api settings module, ADR-0041). The panel
 // follows what the API answers; it decides nothing.
 
-export const SETTINGS_VIEW_PERMISSION = 'settings.market-setting.view';
-export const SETTINGS_MANAGE_PERMISSION = 'settings.market-setting.manage';
+export const SETTINGS_VIEW_PERMISSION = 'settings.list-paging.view';
+export const SETTINGS_MANAGE_PERMISSION = 'settings.list-paging.manage';
 
 export const SETTINGS_PATH = 'settings/admin/market-settings';
 

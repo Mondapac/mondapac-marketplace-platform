@@ -1034,7 +1034,8 @@
         "csrf": "Your session expired. Reload the page and try again.",
         "unavailable": "Products are unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again.",
-        "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page."
+        "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page.",
+        "suggestion-pending": "A value you suggested is still waiting for a reviewer, so a required field is empty. You can submit once it is decided."
       },
       "attributes": "Details",
       "classification": "Categories and tax",
@@ -1100,6 +1101,34 @@
           "decimal": "Enter a number, like 12.5.",
           "range": "Enter a value within the allowed range.",
           "length": "Use at most {length} characters."
+        },
+        "suggest": {
+          "start": "Suggest a value",
+          "label": "Value you need",
+          "help": "Say it in a few words. A reviewer adds it for everyone, matches it to an existing value, or tells you why not. We email you the answer.",
+          "send": "Send suggestion",
+          "cancel": "Cancel",
+          "open": "You asked for “{label}”. A reviewer will decide; leave this field empty until then. A required field holds back submitting for review.",
+          "rejected": "A reviewer did not add “{label}”.",
+          "rejected-reason": "A reviewer did not add “{label}”: {reason}",
+          "error": {
+            "invalid": "Use 1 to 120 characters of plain text.",
+            "already-open": "You already have a suggestion waiting for this field.",
+            "limit": "You have too many suggestions waiting. Wait for some to be decided.",
+            "not-found": "This product was not found.",
+            "denied": "You don't have permission to edit products.",
+            "throttled": "Too many requests. Try again in a moment.",
+            "csrf": "Your session needs a refresh. Reload the page.",
+            "unreachable": "The service is not reachable. Try again.",
+            "unknown": "The suggestion could not be sent.",
+            "not-suggestable": "This field does not take suggestions.",
+            "value-exists": "That value is already on the list. Pick it above.",
+            "not-editable": "This product can't be changed now.",
+            "not-approved": "Your store has to be approved before you can make suggestions.",
+            "not-eligible": "Your store cannot make suggestions yet."
+          },
+          "approved": "A reviewer added “{label}” to the list. Pick it above.",
+          "mapped": "A reviewer matched “{label}” to a value already on the list. Pick that value above."
         }
       }
     },

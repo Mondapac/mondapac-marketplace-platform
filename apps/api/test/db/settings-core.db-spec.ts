@@ -5,9 +5,9 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import { ChangeMarketSetting } from '../../src/modules/settings/application/use-cases/change-market-setting.use-case';
+import { ChangeListPagingSetting } from '../../src/modules/settings/application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../../src/modules/settings/application/use-cases/read-list-paging.use-case';
-import { ViewMarketSettings } from '../../src/modules/settings/application/use-cases/view-market-settings.use-case';
+import { ViewListPagingSetting } from '../../src/modules/settings/application/use-cases/view-list-paging-setting.use-case';
 import type { SettingsDependencies } from '../../src/modules/settings/application/settings-dependencies';
 import { PrismaMarketSettingRepository } from '../../src/modules/settings/infrastructure/prisma-market-setting.repository';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -190,7 +190,7 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       const first = await read();
       expect(first.ok && first.value).toBe('pages');
       const ctx = admin('settings-db-admin-1');
-      const changed = await new ChangeMarketSetting(gate, deps).execute(ctx, {
+      const changed = await new ChangeListPagingSetting(gate, deps).execute(ctx, {
         code: 'list-paging',
         value: 'prev-next',
         expectedVersion: 0,
@@ -198,7 +198,7 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       expect(changed.ok && changed.value.version).toBe(1);
       const after = await read();
       expect(after.ok && after.value).toBe('prev-next');
-      const view = await new ViewMarketSettings(gate, deps).execute(ctx, {});
+      const view = await new ViewListPagingSetting(gate, deps).execute(ctx, {});
       expect(view.ok && view.value[0]).toMatchObject({ value: 'prev-next', version: 1 });
       const history = await owner.query(
         'SELECT version, previous_value, value FROM settings.market_setting_history WHERE market_id = $1 AND code = $2 ORDER BY version',
@@ -213,7 +213,7 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
 
     it('lets only one of two admins who saved from the same version win', async () => {
       const change = (name: string, value: string, expectedVersion: number) =>
-        new ChangeMarketSetting(gate, deps).execute(admin(name), {
+        new ChangeListPagingSetting(gate, deps).execute(admin(name), {
           code: 'list-paging',
           value,
           expectedVersion,
