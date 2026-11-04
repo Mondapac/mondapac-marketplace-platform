@@ -11,7 +11,10 @@ import type {
   CertificationBadge,
   ProductDetail,
   ProductOffer,
+  ProductSpecification,
 } from '../storefront/types.ts';
+import { ProductReviews } from '../reviews/product-reviews.tsx';
+import type { ProductReviews as ProductReviewsData } from '../reviews/reviews-source.ts';
 import { TabBarAutoHide } from '../shell/tabbar-autohide.tsx';
 import { BuyControl } from './buy-control.tsx';
 import { Collapsible } from './collapsible.tsx';
@@ -24,12 +27,35 @@ import { SellerBlock, SellerCards } from './seller-card.tsx';
 // similar products. Under 1000px the buy box is in the flow and a sticky buy bar sits above the
 // bottom tab bar until the end of the product section.
 
+interface SpecGroup {
+  readonly code: string | undefined;
+  readonly label: string | undefined;
+  readonly rows: ProductSpecification[];
+}
+
+/**
+ * The specification rows in runs of one group. A heading shows only when there are several
+ * groups and the group has a word; one group is one plain table, as before.
+ */
+function specGroups(rows: readonly ProductSpecification[]): SpecGroup[] {
+  const groups: SpecGroup[] = [];
+  for (const row of rows) {
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.code === row.group) last.rows.push(row);
+    else groups.push({ code: row.group, label: row.groupLabel, rows: [row] });
+  }
+  return groups.length > 1 ? groups : groups.map((group) => ({ ...group, label: undefined }));
+}
+
 export function ProductPage({
   product,
   category,
+  reviews = null,
 }: {
   readonly product: ProductDetail;
   readonly category: Category | undefined;
+  /** The product's reviews while the Market's reviews switch is on and there is one; else null. */
+  readonly reviews?: ProductReviewsData | null;
 }) {
   const t = useTranslations('product');
   const tc = useTranslations('catalog');
@@ -92,14 +118,21 @@ export function ProductPage({
               ) : null}
               {product.specifications.length > 0 ? (
                 <Collapsible title={t('specifications')} level={product.description ? 'h3' : 'h2'}>
-                  <dl className="spec">
-                    {product.specifications.map((s) => (
-                      <div key={s.label}>
-                        <dt>{s.label}</dt>
-                        <dd>{s.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                  {specGroups(product.specifications).map((group, index) => (
+                    <div key={group.code ?? index} className="spec-group">
+                      {group.label === undefined ? null : (
+                        <h4 className="spec-title">{group.label}</h4>
+                      )}
+                      <dl className="spec">
+                        {group.rows.map((s) => (
+                          <div key={s.label}>
+                            <dt>{s.label}</dt>
+                            <dd>{s.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ))}
                 </Collapsible>
               ) : null}
             </section>
@@ -138,6 +171,16 @@ export function ProductPage({
           ) : null}
         </div>
       </div>
+      {reviews === null ? null : (
+        <ProductReviews
+          productId={product.id}
+          summary={reviews.summary}
+          initial={reviews.page}
+          sellers={Object.fromEntries(
+            product.offers.map((o) => [o.seller.id.toLowerCase(), o.seller.name]),
+          )}
+        />
+      )}
       {product.similar.length > 0 ? (
         <section className="sec">
           <div className="sech">

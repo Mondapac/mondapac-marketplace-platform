@@ -5,7 +5,7 @@ import { PROMOTIONS_PROMOTION_MANAGE } from '../../contracts/permissions';
 import { adminAccountId } from '../caller';
 import type { PromotionsFailure } from '../failures';
 import type { PromotionsDependencies } from '../promotions-dependencies';
-import { parseQuoteRequest } from '../quote-input';
+import { parseQuoteRequest, parseSimulatedCustomer } from '../quote-input';
 import type { QuoteResult } from '../../contracts/promotions.facade';
 import { quote } from '../quote-flow';
 
@@ -36,6 +36,11 @@ export class PreviewQuote extends UseCase<unknown, QuoteResult, PromotionsFailur
     if (settings === null) return err({ code: 'promotions.unavailable' });
     const request = parseQuoteRequest(input, settings.currency, { testMode: true });
     if (!request.ok) return err({ code: 'validation.failed', fields: request.error });
-    return quote(this.deps, context, request.value, true);
+    // The customer facts an admin may state to see a segment or follower promotion work.
+    const raw =
+      typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
+    const customer = parseSimulatedCustomer(raw.customer);
+    if (!customer.ok) return err({ code: 'validation.failed', fields: customer.error });
+    return quote(this.deps, context, request.value, true, customer.value);
   }
 }

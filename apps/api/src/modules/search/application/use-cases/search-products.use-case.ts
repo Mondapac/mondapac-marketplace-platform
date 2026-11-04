@@ -48,6 +48,10 @@ export type SearchProductsFailure =
  * then catalog and sellers are asked whether each hit is still sellable now. A hit that fails
  * either check is dropped, so a page can hold fewer than `pageSize` items while `hasMore` is
  * true. If a check cannot be made the answer is `search.unavailable`, never an unchecked list.
+ * While the Market's rating boost is on (`search.ratingBoost`, off by default), the text rank is
+ * multiplied by a stored rating factor of at most 10 % either way, and `sort=top-rated` orders by
+ * the Bayesian average of the product stars instead; with the boost off `top-rated` is refused
+ * (`validation.failed`, `sort`).
  * With a `brand` (no `q`, no `store`) the route lists the Offers of the brand's live products in the
  * Market by name (catalog names the product ids; an unknown, draft or archived brand answers an
  * empty page, a brand read that fails is `search.unavailable`).
@@ -81,8 +85,15 @@ export class SearchProducts extends UseCase<
     const query = parseSearchQuery(input);
     if (!query.ok) return query;
     const { market } = context;
-    const { text, categoryId, storeSlug, brandSlug, page, pageSize } = query.value;
-    const { textSearchConfig } = this.deps.policy.settings(market);
+    const { text, categoryId, storeSlug, brandSlug, sort, page, pageSize } = query.value;
+    const { textSearchConfig, ratingBoost } = this.deps.policy.settings(market);
+    // `top-rated` exists only while the Market's rating boost is on.
+    if (sort === 'top-rated' && ratingBoost === null) {
+      return err({
+        code: 'validation.failed',
+        fields: [{ path: 'sort', code: 'unavailable' }],
+      });
+    }
     const offset = (page - 1) * pageSize;
 
     let storeSellerId: Id<'Seller'> | null = null;
@@ -130,6 +141,8 @@ export class SearchProducts extends UseCase<
                   categoryIds,
                   limit: pageSize + 1,
                   offset,
+                  ...(ratingBoost === null ? {} : { ratingBoost }),
+                  ...(sort === 'top-rated' ? { sort } : {}),
                 }),
         ),
       { readOnly: true },

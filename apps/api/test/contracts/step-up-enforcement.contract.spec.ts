@@ -8,6 +8,7 @@ import { IDENTITY_STEP_UP_ACTIONS } from '../../src/modules/identity/contracts/s
 import { PAYMENTS_STEP_UP_ACTIONS } from '../../src/modules/payments/contracts/step-up';
 import { PRICING_STEP_UP_ACTIONS } from '../../src/modules/pricing/contracts/step-up';
 import { PROMOTIONS_STEP_UP_ACTIONS } from '../../src/modules/promotions/contracts/step-up';
+import { REVIEWS_STEP_UP_ACTIONS } from '../../src/modules/reviews/contracts/step-up';
 import { SELLERS_STEP_UP_ACTIONS } from '../../src/modules/sellers/contracts/step-up';
 import { WALLET_STEP_UP_ACTIONS } from '../../src/modules/wallet/contracts/step-up';
 
@@ -41,6 +42,7 @@ describe('step-up enforcement contract', () => {
     ...PAYMENTS_STEP_UP_ACTIONS,
     ...PRICING_STEP_UP_ACTIONS,
     ...PROMOTIONS_STEP_UP_ACTIONS,
+    ...REVIEWS_STEP_UP_ACTIONS,
     ...SELLERS_STEP_UP_ACTIONS,
     ...WALLET_STEP_UP_ACTIONS,
   ].map((action) => action.key);

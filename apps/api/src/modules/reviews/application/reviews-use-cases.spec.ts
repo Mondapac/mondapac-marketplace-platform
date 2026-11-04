@@ -7,9 +7,12 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { RecordingOutbox } from '../../../../test/support/catalog-tag-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import {
   FakeAffinity,
+  FakeOverlap,
+  FakeStepUp,
   FakeDeliveries,
   FakeNames,
   FakeOffers,
@@ -26,14 +29,22 @@ import { REVIEWS_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigReviewsPolicy } from '../infrastructure/config-reviews-policy';
 import { ReviewsFacadeImplementation } from '../presentation/reviews.facade';
 import type { ReviewsDependencies } from './reviews-dependencies';
+import { CastHelpfulVote } from './use-cases/cast-helpful-vote.use-case';
+import { ListModerationQueue } from './use-cases/list-moderation-queue.use-case';
+import { ModerateReview } from './use-cases/moderate-review.use-case';
+import { RemoveReview } from './use-cases/remove-review.use-case';
+import { ViewModerationReview } from './use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from './use-cases/delete-product-review.use-case';
+import { CountSellerReviews } from './use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from './use-cases/detach-author.use-case';
 import { EditProductReview } from './use-cases/edit-product-review.use-case';
 import { ListMyReviews } from './use-cases/list-my-reviews.use-case';
+import { ListProductRatingTotals } from './use-cases/list-product-rating-totals.use-case';
 import { ListProductReviews } from './use-cases/list-product-reviews.use-case';
 import { ListToReview } from './use-cases/list-to-review.use-case';
 import { RateSellerOrder } from './use-cases/rate-seller-order.use-case';
 import { RebuildRatingSummaries } from './use-cases/rebuild-rating-summaries.use-case';
+import { RemoveHelpfulVote } from './use-cases/remove-helpful-vote.use-case';
 import { SetReviewsStatus } from './use-cases/set-reviews-status.use-case';
 import { SubmitProductReview } from './use-cases/submit-product-review.use-case';
 import { ViewProductSummary } from './use-cases/view-product-summary.use-case';
@@ -90,7 +101,10 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
   let offers: FakeOffers;
   let names: FakeNames;
   let affinity: FakeAffinity;
+  let overlap: FakeOverlap;
+  let stepUp: FakeStepUp;
   let audit: RecordingAudit;
+  let outbox: RecordingOutbox;
   let deps: ReviewsDependencies;
 
   const customerCtx = (accountId = BUYER) =>
@@ -134,7 +148,10 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
     offers = new FakeOffers();
     names = new FakeNames();
     affinity = new FakeAffinity();
+    overlap = new FakeOverlap();
+    stepUp = new FakeStepUp();
     audit = new RecordingAudit();
+    outbox = new RecordingOutbox();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reviews,
@@ -144,7 +161,10 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       catalog: offers.facade(),
       names,
       affinity,
+      overlap,
       audit,
+      outbox,
+      stepUp,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -239,6 +259,26 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'active' });
       expect(audit.entries).toHaveLength(1);
       expect(setting.saves).toBe(1);
+    });
+
+    it('needs the admin two-step proof to change the switch, and spends it once', async () => {
+      stepUp.proofs = 0;
+      expect(
+        await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'active' }),
+      ).toEqual(err({ code: 'second-factor.required', actionKey: 'reviews.settings.change' }));
+      expect(setting.record).toBeNull();
+      expect(audit.entries).toHaveLength(0);
+      stepUp.proofs = 1;
+      expect(
+        (await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'active' })).ok,
+      ).toBe(true);
+      expect(stepUp.spent).toEqual(['reviews.settings.change']);
+      // The audit row names the proof it spent; a repeat of the same state spends none.
+      expect(audit.entries[0]).toMatchObject({
+        after: { status: 'active', stepUpSessionId: expect.any(String) as string },
+      });
+      await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'active' });
+      expect(stepUp.spent).toHaveLength(1);
     });
 
     it('fails closed when the switch cannot be read: an error, never a silent "off"', async () => {
@@ -364,6 +404,21 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       // The next day the account can write again.
       clock.set(T0.add(DAY).add({ minutes: 1 }));
       expect((await submit(limit + 1)).ok).toBe(true);
+    });
+
+    it('takes the account lock before it counts, in submit, edit and rate', async () => {
+      await switchOn();
+      bought(1);
+      bought(2);
+      const first = await submitted(1);
+      await edit(first.review.id, { rating: 4 });
+      await rate(2);
+      const calls = reviews.limitCalls;
+      expect(calls.length).toBeGreaterThanOrEqual(6);
+      for (let i = 0; i < calls.length; i += 2) {
+        expect(calls[i]).toBe(`lock:${BUYER}`);
+        expect(calls[i + 1]).toBe(`count:${BUYER}`);
+      }
     });
 
     it('counts edits and delete-and-resubmit against the daily limit, and never refuses a delete', async () => {
@@ -608,6 +663,23 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(await sellerSummary()).toMatchObject({ ok: true, value: { count: 1 } });
     });
 
+    it('writes delivery-problem-flagged only when the buyer says it did not arrive in good order', async () => {
+      bought(1);
+      bought(2);
+      expect((await rate(1)).ok).toBe(true);
+      expect(outbox.types).toEqual([]);
+      expect((await rate(2, { arrivedOk: false, reasonCode: 'damaged', satisfaction: 2 })).ok).toBe(
+        true,
+      );
+      expect(outbox.types).toEqual(['reviews.delivery-problem-flagged.v1']);
+      // The seller only, never the order: the seller cannot tie the answer to one buyer.
+      expect(outbox.appended[0]!.payload).toEqual({ sellerId: SELLER });
+      // A second rating of the same order is refused and writes nothing more.
+      clock.set(T0.add({ hours: 25 }));
+      expect(await rate(2, { arrivedOk: false })).toEqual(err({ code: 'reviews.already-rated' }));
+      expect(outbox.types).toHaveLength(1);
+    });
+
     it('gives only the count while the seller is below the Market minimum', async () => {
       bought(1);
       await rate(1);
@@ -824,12 +896,350 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(twoStars.value.reviews.map((r) => r.rating)).toEqual([2]);
       expect(twoStars.value.reviews[0]!.author).toEqual({ kind: 'verified-buyer' });
       expect(await list(1, { stars: '9' })).toMatchObject({ ok: false });
-      expect(await list(1, { sort: 'helpful' })).toMatchObject({ ok: false });
+      expect(await list(1, { sort: 'popular' })).toMatchObject({ ok: false });
       expect(await list(1, { cursor: 'garbage' })).toMatchObject({ ok: false });
     });
   });
 
   // ---- maintenance ------------------------------------------------------------------------
+
+  // ---- the moderator queue ----------------------------------------------------------------
+
+  describe('the moderator queue', () => {
+    const queue = (input: object = {}, context = adminCtx()) =>
+      new ListModerationQueue(gate, deps).execute(context, input);
+    const view = (reviewId: Id<'ProductReview'>, context = adminCtx()) =>
+      new ViewModerationReview(gate, deps).execute(context, { reviewId });
+    const moderate = (
+      reviewId: Id<'ProductReview'>,
+      action: string,
+      reasonCode: string,
+      context = adminCtx(),
+    ) => new ModerateReview(gate, deps).execute(context, { reviewId, action, reasonCode });
+    const removeIt = (reviewId: Id<'ProductReview'>, reasonCode: string, context = adminCtx()) =>
+      new RemoveReview(gate, deps).execute(context, { reviewId, action: 'remove', reasonCode });
+    /** A held review (trips the blocked-word check) of product n by `account`. */
+    const held = async (n: number, account = BUYER) => {
+      bought(n, 1, account);
+      const result = await new SubmitProductReview(gate, deps).execute(customerCtx(account), {
+        productId: product(n),
+        rating: 1,
+        body: `This is ${blocked} stuff`,
+      });
+      if (!result.ok) throw new Error(result.error.code);
+      expect(result.value.review.status).toBe('held');
+      return result.value.review.id;
+    };
+    const live = async (n: number, account = BUYER) => {
+      bought(n, 1, account);
+      const result = await new SubmitProductReview(gate, deps).execute(customerCtx(account), {
+        productId: product(n),
+        rating: 5,
+        body: 'Arrived fresh',
+      });
+      if (!result.ok) throw new Error(result.error.code);
+      return result.value.review.id;
+    };
+
+    beforeEach(async () => {
+      await switchOn();
+    });
+
+    describe('events for the notices (package 4b)', () => {
+      const events = () => outbox.appended.map((event) => event.type);
+      const lastPayload = () => outbox.appended[outbox.appended.length - 1]!.payload;
+
+      it('writes review-published for a clean review and review-held for a held one, ids only', async () => {
+        const liveId = await live(1);
+        expect(events()).toEqual(['reviews.review-published.v1']);
+        expect(lastPayload()).toEqual({
+          reviewId: liveId,
+          productId: product(1),
+          sellerId: SELLER,
+          rating: 5,
+        });
+        const heldId = await held(2);
+        expect(events()).toEqual(['reviews.review-published.v1', 'reviews.review-held.v1']);
+        expect(lastPayload()).toEqual({
+          reviewId: heldId,
+          productId: product(2),
+          sellerId: SELLER,
+        });
+        // The text appears in no event.
+        expect(JSON.stringify(outbox.appended)).not.toContain(blocked);
+        expect(JSON.stringify(outbox.appended)).not.toContain('Arrived fresh');
+      });
+
+      it('writes review-held again only when an edit sends a visible review back to the admins', async () => {
+        const liveId = await live(1);
+        outbox.appended.length = 0;
+        const clean = await new EditProductReview(gate, deps).execute(customerCtx(), {
+          reviewId: liveId,
+          body: 'Still good',
+        });
+        expect(clean.ok).toBe(true);
+        expect(events()).toEqual([]);
+        clock.set(T0.add({ hours: 25 }));
+        const flagged = await new EditProductReview(gate, deps).execute(customerCtx(), {
+          reviewId: liveId,
+          body: `This is ${blocked} now`,
+        });
+        expect(flagged).toMatchObject({ ok: true, value: { status: 'held' } });
+        expect(events()).toEqual(['reviews.review-held.v1']);
+        // Held and edited again: the admins already have it.
+        clock.set(T0.add({ hours: 50 }));
+        await new EditProductReview(gate, deps).execute(customerCtx(), {
+          reviewId: liveId,
+          body: `Still ${blocked}`,
+        });
+        expect(events()).toEqual(['reviews.review-held.v1']);
+      });
+
+      it('writes review-published when an admin releases a held review', async () => {
+        const heldId = await held(1);
+        outbox.appended.length = 0;
+        expect((await moderate(heldId, 'publish', 'checked-ok')).ok).toBe(true);
+        expect(events()).toEqual(['reviews.review-published.v1']);
+      });
+
+      it('writes review-hidden for a visible review that is hidden or removed, and review-restored', async () => {
+        const a = await live(1);
+        const b = await live(2, OTHER);
+        outbox.appended.length = 0;
+        expect((await moderate(a, 'hide', 'spam')).ok).toBe(true);
+        expect(events()).toEqual(['reviews.review-hidden.v1']);
+        expect((await moderate(a, 'restore', 'hidden-in-error')).ok).toBe(true);
+        expect(events()).toEqual(['reviews.review-hidden.v1', 'reviews.review-restored.v1']);
+        expect((await removeIt(b, 'illegal')).ok).toBe(true);
+        expect(events()).toHaveLength(3);
+        expect(events()[2]).toBe('reviews.review-hidden.v1');
+        // A hidden review that is removed later is no news to the seller.
+        expect((await moderate(a, 'hide', 'spam')).ok).toBe(true);
+        outbox.appended.length = 0;
+        expect((await removeIt(a, 'abusive')).ok).toBe(true);
+        expect(events()).toEqual([]);
+      });
+
+      it('writes nothing when a moderation action is refused', async () => {
+        const a = await live(1);
+        outbox.appended.length = 0;
+        stepUp.proofs = 0;
+        const refused = await moderate(a, 'hide', 'spam');
+        expect(refused.ok).toBe(false);
+        expect(events()).toEqual([]);
+      });
+    });
+
+    it('lists held, reported and actioned reviews with counts, newest first, in pages', async () => {
+      const a = await held(1);
+      clock.set(T0.add({ minutes: 1 }));
+      const b = await held(2);
+      clock.set(T0.add({ minutes: 2 }));
+      const c = await live(3, OTHER);
+      reviews.reports.push({ reviewId: c, reasonCode: 'abusive', status: 'open' });
+      const first = await queue({ tab: 'held', limit: 1 });
+      expect(first).toMatchObject({
+        ok: true,
+        value: {
+          tab: 'held',
+          counts: { held: 2, reported: 1, actioned: 0 },
+          items: [{ id: b, status: 'held', openReports: 0 }],
+        },
+      });
+      if (!first.ok || first.value.nextCursor === null) throw new Error('no next page');
+      expect(first.value.items[0]!.signalCodes).toContain('profanity');
+      const second = await queue({ tab: 'held', limit: 1, cursor: first.value.nextCursor });
+      expect(second).toMatchObject({ ok: true, value: { items: [{ id: a }], nextCursor: null } });
+      expect(await queue({ tab: 'reported' })).toMatchObject({
+        ok: true,
+        value: { items: [{ id: c, openReports: 1 }] },
+      });
+    });
+
+    it('is for admins with the permission only, and refuses a bad tab, cursor or limit', async () => {
+      expect(await queue({}, customerCtx())).toEqual(err({ code: 'access.denied' }));
+      expect(await queue({}, actingAs(adminCtx()))).toEqual(err({ code: 'access.denied' }));
+      expect(await queue({ tab: 'flagged', cursor: 'x', limit: 0 })).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [
+            { path: 'tab', code: 'value' },
+            { path: 'cursor', code: 'format' },
+            { path: 'limit', code: 'range' },
+          ],
+        }),
+      );
+    });
+
+    it('works while the Market switch is off', async () => {
+      const a = await held(1);
+      await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'off' });
+      expect((await queue()).ok).toBe(true);
+      expect((await view(a)).ok).toBe(true);
+      expect((await moderate(a, 'hide', 'spam')).ok).toBe(true);
+    });
+
+    it('shows one review with its reports, signals, history and the actions that apply', async () => {
+      const a = await held(1);
+      reviews.reports.push({ reviewId: a, reasonCode: 'abusive', status: 'open' });
+      reviews.reports.push({ reviewId: a, reasonCode: 'abusive', status: 'open' });
+      const shown = await view(a);
+      expect(shown).toMatchObject({
+        ok: true,
+        value: {
+          id: a,
+          status: 'held',
+          openReports: 2,
+          reportReasons: [{ reasonCode: 'abusive', count: 2 }],
+          history: [{ action: 'auto-hold', byModerator: false }],
+          allowedActions: ['publish', 'hide', 'remove', 'dismiss-reports'],
+        },
+      });
+      expect(await view(id(0xdead))).toEqual(err({ code: 'reviews.not-found' }));
+      expect(
+        await new ViewModerationReview(gate, deps).execute(adminCtx(), { reviewId: 'x' }),
+      ).toEqual(err({ code: 'validation.failed', fields: [{ path: 'reviewId', code: 'format' }] }));
+    });
+
+    it('publishes a held review: public, counted in the summary, logged by the moderator', async () => {
+      const a = await held(1);
+      expect((await list(1)).ok && (await list(1))).toMatchObject({ value: { reviews: [] } });
+      const done = await moderate(a, 'publish', 'checked-ok');
+      expect(done).toMatchObject({ ok: true, value: { status: 'published' } });
+      expect((await productSummary(1)).count).toBe(1);
+      expect(reviews.actions.at(-1)).toMatchObject({
+        action: 'publish',
+        actorAccountId: ADMIN,
+        reasonCode: 'checked-ok',
+        fromStatus: 'held',
+        toStatus: 'published',
+      });
+      expect(stepUp.spent).toContain('reviews.review.moderate');
+    });
+
+    it('hides and restores, drops and returns the stars, and closes the reports it acted on', async () => {
+      const a = await live(1);
+      expect((await productSummary(1)).count).toBe(1);
+      reviews.reports.push({ reviewId: a, reasonCode: 'spam', status: 'open' });
+      const hid = await moderate(a, 'hide', 'spam');
+      expect(hid).toMatchObject({
+        ok: true,
+        value: { status: 'hidden', openReports: 0, allowedActions: ['restore', 'remove'] },
+      });
+      expect(reviews.reports[0]!.status).toBe('actioned');
+      expect((await productSummary(1)).count).toBe(0);
+      expect(await moderate(a, 'restore', 'hidden-in-error')).toMatchObject({
+        ok: true,
+        value: { status: 'published' },
+      });
+      expect((await productSummary(1)).count).toBe(1);
+    });
+
+    it('removes only with the remove use case, for good, and a removed review cannot come back', async () => {
+      const a = await live(1);
+      expect(await moderate(a, 'remove', 'illegal')).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'action', code: 'value' }] }),
+      );
+      expect(await removeIt(a, 'spam')).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'reasonCode', code: 'value' }] }),
+      );
+      expect(await removeIt(a, 'defamatory')).toMatchObject({
+        ok: true,
+        value: { status: 'removed', allowedActions: [] },
+      });
+      expect(await moderate(a, 'restore', 'reinstated')).toEqual(
+        err({ code: 'reviews.not-moderatable' }),
+      );
+      expect(await moderate(a, 'publish', 'checked-ok')).toEqual(
+        err({ code: 'reviews.not-moderatable' }),
+      );
+    });
+
+    it('refuses an action the status does not allow, a reason of another action and bad input', async () => {
+      const a = await live(1);
+      expect(await moderate(a, 'publish', 'checked-ok')).toEqual(
+        err({ code: 'reviews.not-moderatable' }),
+      );
+      expect(await moderate(a, 'hide', 'checked-ok')).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'reasonCode', code: 'value' }] }),
+      );
+      // No reason exists for a negative review.
+      expect(await moderate(a, 'hide', 'negative')).toMatchObject({ ok: false });
+      expect(await moderate(a, 'dismiss-reports', 'duplicate')).toEqual(
+        err({ code: 'reviews.not-moderatable' }),
+      );
+      expect(await moderate(id(0xdead), 'hide', 'spam')).toEqual(
+        err({ code: 'reviews.not-found' }),
+      );
+      expect(reviews.productReviews.get(a)!.status).toBe('published');
+    });
+
+    it('needs the two-step proof for a change and commits nothing without it', async () => {
+      const a = await live(1);
+      stepUp.proofs = 0;
+      const before = reviews.actions.length;
+      expect(await moderate(a, 'hide', 'spam')).toEqual(
+        err({ code: 'second-factor.required', actionKey: 'reviews.review.moderate' }),
+      );
+      expect(await removeIt(a, 'illegal')).toEqual(
+        err({ code: 'second-factor.required', actionKey: 'reviews.review.moderate' }),
+      );
+      expect(reviews.productReviews.get(a)!.status).toBe('published');
+      expect(reviews.actions).toHaveLength(before);
+      // A refused status does not use a proof up.
+      stepUp.proofs = 1;
+      expect(await moderate(a, 'restore', 'reinstated')).toEqual(
+        err({ code: 'reviews.not-moderatable' }),
+      );
+      expect(stepUp.proofs).toBe(1);
+    });
+
+    it('dismisses reports with no proof and no status change', async () => {
+      const a = await live(1);
+      reviews.reports.push({ reviewId: a, reasonCode: 'irrelevant', status: 'open' });
+      stepUp.proofs = 0;
+      const done = await moderate(a, 'dismiss-reports', 'not-against-policy');
+      expect(done).toMatchObject({ ok: true, value: { status: 'published', openReports: 0 } });
+      expect(reviews.reports[0]!.status).toBe('dismissed');
+      expect(reviews.actions.filter((x) => x.actorAccountId !== null)).toHaveLength(0);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'reviews.review.moderated',
+        after: { action: 'dismiss-reports', stepUpSessionId: null },
+      });
+    });
+
+    it('audits codes only: never the text, the title or the author', async () => {
+      const a = await live(1);
+      await moderate(a, 'hide', 'abusive');
+      const text = JSON.stringify(audit.entries.at(-1));
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'reviews.review.moderated',
+        targetId: a,
+        before: { status: 'published' },
+        after: { status: 'hidden', action: 'hide', reasonCode: 'abusive' },
+      });
+      expect(text).not.toContain('Arrived fresh');
+      expect(text).not.toContain(BUYER);
+    });
+
+    it('does not count a moderator publish against the author daily limit', async () => {
+      const limit = rules.maxSubmissionsPerAccountPerDay;
+      const a = await held(1);
+      for (let n = 2; n <= limit; n += 1) bought(n);
+      // The held submit counted 1. Publishing it as a moderator adds nothing.
+      await moderate(a, 'publish', 'checked-ok');
+      for (let n = 2; n <= limit; n += 1) expect((await submit(n)).ok).toBe(true);
+      bought(limit + 1);
+      expect(await submit(limit + 1)).toEqual(err({ code: 'reviews.rate-limited' }));
+    });
+
+    it('a hidden review cannot be rewritten after the author deletes it', async () => {
+      const a = await live(1);
+      await moderate(a, 'hide', 'spam');
+      expect((await remove(a)).ok).toBe(true);
+      expect(await submit(1)).toEqual(err({ code: 'reviews.already-reviewed' }));
+    });
+  });
 
   describe('maintenance', () => {
     it('rebuilds drifted summaries from the published rows, and does nothing while off', async () => {
@@ -892,6 +1302,8 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
         new ViewProductSummary(gate, deps),
         new ViewSellerSummary(gate, deps),
         new DetachAuthor(gate, deps),
+        new ListProductRatingTotals(gate, deps),
+        new CountSellerReviews(gate, deps),
       );
       expect(await facade.productSummary(anonymous, product(1))).toMatchObject({
         ok: true,
@@ -902,6 +1314,333 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
         value: { count: 0, averageTimes100: null },
       });
       expect(await facade.detachAuthor(system, BUYER)).toEqual(ok({ reviews: 1, ratings: 0 }));
+    });
+  });
+
+  describe('seller health feed', () => {
+    const count = (input: object, context = system) =>
+      new CountSellerReviews(gate, deps).execute(context, input);
+    const win = (from: Temporal.Instant, to: Temporal.Instant) => ({
+      from: from.toString(),
+      to: to.toString(),
+    });
+    const around = win(T0.subtract({ hours: 1 }), T0.add({ hours: 1 }));
+
+    it('counts the seller reviews published in each window and their stars, in order', async () => {
+      await switchOn();
+      bought(1);
+      bought(2);
+      await submitted(1, { rating: 5 });
+      await submitted(2, { rating: 3 });
+
+      const read = await count({
+        sellerId: SELLER,
+        windows: [
+          around,
+          win(T0.subtract({ hours: 48 }), T0.subtract({ hours: 24 })),
+          win(T0.add({ hours: 1 }), T0.add({ hours: 2 })),
+        ],
+      });
+
+      expect(read).toEqual(
+        ok([
+          { reviews: 2, starsSum: 8 },
+          { reviews: 0, starsSum: 0 },
+          { reviews: 0, starsSum: 0 },
+        ]),
+      );
+    });
+
+    it('counts only the asked seller', async () => {
+      await switchOn();
+      bought(1);
+      await submitted(1, { rating: 4 });
+
+      const other = await count({
+        sellerId: 'a0000000-0000-7000-8000-000000000999',
+        windows: [around],
+      });
+
+      expect(other).toEqual(ok([{ reviews: 0, starsSum: 0 }]));
+    });
+
+    it('answers only the system, refuses bad windows and is off while reviews are off', async () => {
+      const input = { sellerId: SELLER, windows: [around] };
+      expect(await count(input)).toEqual(err({ code: 'reviews.disabled' }));
+      await switchOn();
+      expect(await count(input, customerCtx())).toEqual(err({ code: 'access.denied' }));
+      expect(await count(input, anonymous)).toEqual(err({ code: 'access.denied' }));
+      expect(await count({ sellerId: SELLER, windows: [win(T0, T0)] })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'windows.0.to', code: 'range' }] },
+      });
+      expect(
+        await count({ sellerId: SELLER, windows: [{ from: 'yesterday', to: 'today' }] }),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await count({ sellerId: SELLER, windows: [] })).toMatchObject({ ok: false });
+      expect(await count({ sellerId: SELLER, windows: Array(9).fill(around) })).toMatchObject({
+        ok: false,
+      });
+    });
+  });
+
+  // ---- package 5: helpful votes, overlap signals, rating totals ----------------------------
+
+  describe('package 5', () => {
+    beforeEach(switchOn);
+
+    const publicIdOf = (reviewId: Id<'ProductReview'>) => reviews.publicIdOf(reviewId);
+    const vote = (reviewId: Id<'ProductReview'>, account = OTHER) =>
+      new CastHelpfulVote(gate, deps).execute(customerCtx(account), {
+        reviewId: publicIdOf(reviewId),
+      });
+    const unvote = (reviewId: Id<'ProductReview'>, account = OTHER) =>
+      new RemoveHelpfulVote(gate, deps).execute(customerCtx(account), {
+        reviewId: publicIdOf(reviewId),
+      });
+    /** A review of product n written by `account` (a fresh buyer of that product). */
+    const reviewBy = async (account: Id<'Account'>, n: number, minute = 0) => {
+      bought(n, 1, account);
+      clock.set(T0.add({ minutes: minute }));
+      const result = await new SubmitProductReview(gate, deps).execute(customerCtx(account), {
+        productId: product(n),
+        rating: 4,
+        body: 'Arrived fresh and tasted great',
+      });
+      if (!result.ok) throw new Error(`submit refused: ${result.error.code}`);
+      return result.value.review.id;
+    };
+
+    describe('helpful votes', () => {
+      it('casts a vote once, answers a repeat the same, and takes it back', async () => {
+        const review = await reviewBy(BUYER, 1);
+        expect(await vote(review)).toEqual(
+          ok({ reviewId: publicIdOf(review), helpfulCount: 1, voted: true }),
+        );
+        expect(await vote(review)).toEqual(
+          ok({ reviewId: publicIdOf(review), helpfulCount: 1, voted: true }),
+        );
+        expect(await vote(review, id<'Account'>(0xb3))).toMatchObject({
+          ok: true,
+          value: { helpfulCount: 2 },
+        });
+        expect(await unvote(review)).toEqual(
+          ok({ reviewId: publicIdOf(review), helpfulCount: 1, voted: false }),
+        );
+        // Taking back a vote that is not there is the same answer.
+        expect(await unvote(review)).toMatchObject({ ok: true, value: { helpfulCount: 1 } });
+      });
+
+      it('shows the count in the public list, never who voted', async () => {
+        const review = await reviewBy(BUYER, 1);
+        await vote(review);
+        const page = await list(1);
+        if (!page.ok) throw new Error(page.error.code);
+        expect(page.value.reviews[0]).toMatchObject({ helpfulCount: 1 });
+        expect(JSON.stringify(page.value)).not.toContain(OTHER);
+      });
+
+      it('refuses the author, a member of the seller, an unknown or unpublished review, and a non-buyer', async () => {
+        const review = await reviewBy(BUYER, 1);
+        expect(await vote(review, BUYER)).toEqual(err({ code: 'reviews.own-review' }));
+        affinity.tied.add(`${OTHER}:${SELLER}`);
+        expect(await vote(review)).toEqual(err({ code: 'reviews.own-store' }));
+        affinity.tied.clear();
+        expect(
+          await new CastHelpfulVote(gate, deps).execute(customerCtx(OTHER), {
+            reviewId: '00000000-0000-4000-8000-000000000000',
+          }),
+        ).toEqual(err({ code: 'reviews.not-found' }));
+        expect(
+          await new CastHelpfulVote(gate, deps).execute(customerCtx(OTHER), { reviewId: 'x' }),
+        ).toEqual(err({ code: 'reviews.not-found' }));
+        // A held review is not public, so it cannot be voted on.
+        const held = await reviewBy(id<'Account'>(0xb4), 2);
+        const stored = reviews.productReviews.get(held)!;
+        reviews.productReviews.set(held, { ...stored, status: 'held' });
+        expect(await vote(held)).toEqual(err({ code: 'reviews.not-found' }));
+        expect(await new CastHelpfulVote(gate, deps).execute(anonymous, { reviewId: 'x' })).toEqual(
+          err({ code: 'access.unauthenticated' }),
+        );
+        expect(
+          await new CastHelpfulVote(gate, deps).execute(actingAs(customerCtx(OTHER)), {
+            reviewId: publicIdOf(review),
+          }),
+        ).toEqual(err({ code: 'access.denied' }));
+        expect(reviews.helpfulCountOf(review)).toBe(0);
+      });
+
+      it('limits an account to the Market daily number of votes, and a vote taken back frees none', async () => {
+        const limit = 2;
+        const base = deps.policy;
+        deps = {
+          ...deps,
+          policy: {
+            settings: (m) => ({ ...base.settings(m)!, maxHelpfulVotesPerAccountPerDay: limit }),
+          },
+        };
+        const targets: Id<'ProductReview'>[] = [];
+        for (let n = 1; n <= limit + 1; n += 1) {
+          targets.push(await reviewBy(id<'Account'>(0xc00 + n), n, n));
+        }
+        clock.set(T0.add({ hours: 1 }));
+        for (const target of targets.slice(0, limit)) expect((await vote(target)).ok).toBe(true);
+        const third = targets[limit]!;
+        expect(await vote(third)).toEqual(err({ code: 'reviews.rate-limited' }));
+        // (The real unit rolls the refused vote back; test/db checks that against PostgreSQL.)
+        // An old vote at the limit still gets its real answer.
+        expect(await vote(targets[0]!)).toMatchObject({ ok: true, value: { helpfulCount: 1 } });
+        // The next day the account can vote again.
+        clock.set(T0.add(DAY).add({ hours: 2 }));
+        expect((await vote(third)).ok).toBe(true);
+      });
+
+      it('lists the most helpful first and pages without repeating or skipping a review', async () => {
+        const authors = [1, 2, 3, 4].map((n) => id<'Account'>(0xe00 + n));
+        const [r1, r2, r3, r4] = [
+          await reviewBy(authors[0]!, 1, 1),
+          await reviewBy(authors[1]!, 1, 2),
+          await reviewBy(authors[2]!, 1, 3),
+          await reviewBy(authors[3]!, 1, 4),
+        ] as const;
+        const voters = [1, 2, 3].map((n) => id<'Account'>(0xf00 + n));
+        clock.set(T0.add({ hours: 1 }));
+        // r3: three votes, r1: two, r4: one, r2: none. Newest first would be r4, r3, r2, r1.
+        for (const voter of voters) await vote(r3, voter);
+        for (const voter of voters.slice(0, 2)) await vote(r1, voter);
+        await vote(r4, voters[0]);
+        const seen: string[] = [];
+        let cursor: string | null = null;
+        for (let page = 0; page < 6; page += 1) {
+          const result: Awaited<ReturnType<typeof list>> = await list(1, {
+            sort: 'helpful',
+            ...(cursor === null ? {} : { cursor }),
+          });
+          if (!result.ok) throw new Error(result.error.code);
+          seen.push(...result.value.reviews.map((r) => r.id));
+          cursor = result.value.nextCursor;
+          if (cursor === null) break;
+        }
+        expect(seen).toEqual([r3, r1, r4, r2].map(publicIdOf));
+        expect(await list(1, { sort: 'popular' })).toMatchObject({
+          ok: false,
+          error: { fields: [{ path: 'sort', code: 'value' }] },
+        });
+      });
+
+      it('drops an account votes when the account is detached, and counts follow', async () => {
+        const review = await reviewBy(BUYER, 1);
+        await vote(review);
+        await new DetachAuthor(gate, deps).execute(system, { accountId: OTHER });
+        expect(reviews.helpfulCountOf(review)).toBe(0);
+      });
+
+      it('answers reviews.disabled while off and when the switch goes off between calls', async () => {
+        const review = await reviewBy(BUYER, 1);
+        await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'off' });
+        expect(await vote(review)).toEqual(err({ code: 'reviews.disabled' }));
+        expect(await unvote(review)).toEqual(err({ code: 'reviews.disabled' }));
+      });
+    });
+
+    describe('signals for the same address or payment fingerprint as the seller', () => {
+      const facts = (extra: object = {}) => ({
+        sameAddress: null,
+        samePaymentFingerprint: null,
+        ...extra,
+      });
+      const codesOf = () => reviews.signals.map((s) => s.code);
+
+      it('holds a review that went to the seller address, with a code and no text, and does not refuse it', async () => {
+        bought(1);
+        overlap.bySellerOrder.set(sellerOrder(1), facts({ sameAddress: true }));
+        const result = await submitted(1);
+        expect(result.review.status).toBe('held');
+        expect(codesOf()).toEqual(['same-address-as-seller']);
+        expect(JSON.stringify(reviews.signals)).not.toContain('Arrived fresh');
+        expect(reviews.actions.at(-1)).toMatchObject({ action: 'auto-hold', toStatus: 'held' });
+        // Held means it is not in the product's numbers until a human looks.
+        expect((await productSummary(1)).count).toBe(0);
+      });
+
+      it('raises the fingerprint signal, and both signals together with a text hit', async () => {
+        bought(1);
+        overlap.bySellerOrder.set(
+          sellerOrder(1),
+          facts({ sameAddress: true, samePaymentFingerprint: true }),
+        );
+        await submitted(1, { body: `${blocked} stuff` });
+        expect(codesOf().sort()).toEqual(
+          ['profanity', 'same-address-as-seller', 'same-payment-fingerprint'].sort(),
+        );
+      });
+
+      it('publishes as usual when the source knows nothing, finds no overlap or is down', async () => {
+        bought(1);
+        bought(2);
+        bought(3);
+        overlap.bySellerOrder.set(
+          sellerOrder(2),
+          facts({ sameAddress: false, samePaymentFingerprint: false }),
+        );
+        expect((await submitted(1)).review.status).toBe('published');
+        expect((await submitted(2)).review.status).toBe('published');
+        overlap.failing = true;
+        clock.set(T0.add(DAY).add({ minutes: 1 }));
+        expect((await submitted(3)).review.status).toBe('published');
+        expect(reviews.signals).toEqual([]);
+      });
+
+      it('records a seller rating signal without holding the rating', async () => {
+        bought(1);
+        overlap.bySellerOrder.set(sellerOrder(1), facts({ samePaymentFingerprint: true }));
+        const rated = await rate(1);
+        expect(rated).toMatchObject({ ok: true, value: { status: 'published' } });
+        expect(reviews.signals).toMatchObject([
+          { subject: 'seller-rating', code: 'same-payment-fingerprint' },
+        ]);
+      });
+    });
+
+    describe('star totals for search', () => {
+      const totals = (input: object = {}, context: CallContext = system) =>
+        new ListProductRatingTotals(gate, deps).execute(context, input);
+
+      it('lists the totals of products with published reviews, in pages by product id', async () => {
+        for (let n = 1; n <= 3; n += 1) await reviewBy(id<'Account'>(0x900 + n), n, n);
+        await reviewBy(id<'Account'>(0x910), 3, 5);
+        const first = await totals({ limit: 2 });
+        if (!first.ok) throw new Error(first.error.code);
+        expect(first.value.items).toEqual([
+          { productId: product(1), count: 1, sum: 4 },
+          { productId: product(2), count: 1, sum: 4 },
+        ]);
+        expect(first.value.next).toBe(product(2));
+        const second = await totals({ limit: 2, after: first.value.next });
+        expect(second).toEqual(
+          ok({ items: [{ productId: product(3), count: 2, sum: 8 }], next: null }),
+        );
+      });
+
+      it('leaves out a product whose only review was deleted', async () => {
+        const review = await reviewBy(BUYER, 1);
+        await remove(review);
+        expect(await totals()).toEqual(ok({ items: [], next: null }));
+      });
+
+      it('is reviews.disabled while off, refuses bad input, and is for the system only', async () => {
+        expect(await totals({ limit: 0 })).toMatchObject({ ok: false });
+        expect(await totals({ after: 'x' })).toMatchObject({
+          ok: false,
+          error: { fields: [{ path: 'after', code: 'format' }] },
+        });
+        expect(await totals({}, customerCtx())).toEqual(err({ code: 'access.denied' }));
+        await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'off' });
+        expect(await totals()).toEqual(err({ code: 'reviews.disabled' }));
+      });
     });
   });
 });

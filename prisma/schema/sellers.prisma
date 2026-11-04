@@ -144,6 +144,8 @@ model SellersSellerFile {
   registerChecks                 SellersRegisterCheck[]
   identifierClaim                SellersIdentifierClaim?
   adminFlags                     SellersAdminFlag[]
+  healthDays                     SellersSellerHealthDay[]
+  healthSnapshots                SellersSellerHealthSnapshot[]
 
   /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
   @@unique([marketId, sellerId])
@@ -568,5 +570,61 @@ model SellersAdminFlag {
   sellerFile         SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("admin_flags")
+  @@schema("sellers")
+}
+
+/// One day of a seller's health counters (seller health package 3). The day is the seller's own
+/// local date (ADR-0005). The nightly rollup writes the whole row for the day it recounts, so a
+/// repeat or a "Recalculate now" sets the same numbers and never adds twice. Counts are of the
+/// seller's own faults only (customer cancels, failed payments, courier delays and disputes the
+/// seller won are never counted). Seller cancellations are not here: ordering has no seller
+/// cancel flow yet, and that metric reads "no data". CHECKs and grants are hand-written.
+model SellersSellerHealthDay {
+  marketId        String            @map("market_id") @db.VarChar(8)
+  tenantId        String            @map("tenant_id")
+  sellerId        String            @map("seller_id") @db.Uuid
+  /// The seller's local date.
+  day             DateTime          @db.Date
+  /// Orders paid that day (the base of the order-based metrics and of the New label).
+  paidOrders      Int               @map("paid_orders")
+  /// Orders the seller marked ready that day, and how many were after the promised time.
+  readyOrders     Int               @map("ready_orders")
+  lateReadyOrders Int               @map("late_ready_orders")
+  /// Disputes the seller lost that day.
+  lostDisputes    Int               @map("lost_disputes")
+  /// Approved reviews that day and the sum of their stars (1 to 5 each).
+  reviewsApproved Int               @map("reviews_approved")
+  ratingStarsSum  Int               @map("rating_stars_sum")
+  recountedAt     DateTime          @map("recounted_at") @db.Timestamptz(6)
+  sellerFile      SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, day])
+  @@map("seller_health_days")
+  @@schema("sellers")
+}
+
+/// The daily snapshot of a seller's health score, for the 90-day trend and the list column
+/// (seller health package 3). One row per seller and local day; a recalculation the same day
+/// replaces it. `kind` is scored, new or no-data; band, score and the lowest metric are set
+/// exactly when it is scored (CHECK). `metrics` holds each metric's inputs and result as the
+/// formula version named produced them, for the card. No decision is ever taken from it:
+/// health never suspends a seller. CHECKs and grants are hand-written.
+model SellersSellerHealthSnapshot {
+  marketId       String            @map("market_id") @db.VarChar(8)
+  tenantId       String            @map("tenant_id")
+  sellerId       String            @map("seller_id") @db.Uuid
+  day            DateTime          @db.Date
+  kind           String
+  band           String?
+  score          Int?
+  lowestMetric   String?           @map("lowest_metric")
+  formulaVersion String            @map("formula_version")
+  metrics        Json              @db.JsonB
+  computedAt     DateTime          @map("computed_at") @db.Timestamptz(6)
+  sellerFile     SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, day])
+  @@index([marketId, day, score])
+  @@map("seller_health_snapshots")
   @@schema("sellers")
 }

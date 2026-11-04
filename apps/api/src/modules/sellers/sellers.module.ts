@@ -21,6 +21,16 @@ import { IdentityModule } from '../identity';
 import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-file-revision.repository';
 import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
+import { SELLER_HEALTH_POLICY } from './application/ports/seller-health-policy';
+import { SELLER_HEALTH_ROSTER } from './application/ports/seller-health-roster';
+import { SELLER_HEALTH_SIGNALS } from './application/ports/seller-health-signals';
+import { SELLER_HEALTH_STORE } from './application/ports/seller-health.store';
+import { SellerHealthRead } from './application/use-cases/seller-health-read.use-case';
+import { SellerHealthController } from './presentation/seller-health.controller';
+import { PurgeSellerHealth } from './application/use-cases/purge-seller-health.use-case';
+import { RunSellerHealth } from './application/use-cases/run-seller-health.use-case';
+import { purgeSellerHealthJob } from './presentation/jobs/purge-seller-health.job';
+import { sellerHealthJob } from './presentation/jobs/seller-health.job';
 import { SELLER_ACCESS_READER } from './application/ports/seller-access-reader';
 import { SELLER_ACCOUNT_DIRECTORY } from './application/ports/seller-account-directory';
 import { TEAM_MEMBER_LABEL_SOURCE } from './application/ports/team-member-labels';
@@ -197,6 +207,10 @@ const PORT = {
   publishedContent: PUBLISHED_STORE_CONTENT,
   objectStore: OBJECT_STORE,
   decider: SELLER_ACCESS_DECIDER,
+  healthStore: SELLER_HEALTH_STORE,
+  healthRoster: SELLER_HEALTH_ROSTER,
+  healthPolicy: SELLER_HEALTH_POLICY,
+  healthSignals: SELLER_HEALTH_SIGNALS,
   ids: ID_GENERATOR,
   clock: CLOCK,
 } as const satisfies Record<string, InjectionToken>;
@@ -287,6 +301,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewDecisionController,
     BlogAccessController,
     SellerListController,
+    SellerHealthController,
     StoreSettingsController,
     OwnZoneController,
     PublicStoreController,
@@ -720,19 +735,46 @@ const REVIEW_DECISION_PORTS = {
       objectStore: true,
       clock: true,
     }),
+    // Seller health, nightly per seller zone (package 4): the feeds are bound by SellerHealthModule.
+    useCaseProvider(SellerHealthRead, {
+      unitOfWork: true,
+      files: true,
+      healthStore: true,
+      clock: true,
+    }),
+    useCaseProvider(RunSellerHealth, {
+      unitOfWork: true,
+      healthRoster: true,
+      healthStore: true,
+      healthSignals: true,
+      healthPolicy: true,
+      clock: true,
+    }),
+    useCaseProvider(PurgeSellerHealth, { unitOfWork: true, healthStore: true, clock: true }),
     registerJobsFrom(
       'sellers',
-      [BackfillSellerFiles, PurgeExpired, ReconcileDecisions, SweepOrphanStoreImageFiles],
+      [
+        BackfillSellerFiles,
+        PurgeExpired,
+        ReconcileDecisions,
+        SweepOrphanStoreImageFiles,
+        RunSellerHealth,
+        PurgeSellerHealth,
+      ],
       (
         backfill: BackfillSellerFiles,
         purge: PurgeExpired,
         reconcile: ReconcileDecisions,
         sweepFiles: SweepOrphanStoreImageFiles,
+        health: RunSellerHealth,
+        purgeHealth: PurgeSellerHealth,
       ) => [
         backfillSellerFilesJob(backfill),
         purgeExpiredJob(purge),
         reconcileDecisionsJob(reconcile),
         sweepOrphanStoreImageFilesJob(sweepFiles),
+        sellerHealthJob(health),
+        purgeSellerHealthJob(purgeHealth),
       ],
     ),
     registerSubscriptionsFrom(
@@ -749,6 +791,7 @@ const REVIEW_DECISION_PORTS = {
     ),
   ],
   // STORE_TEXT_CLAIM_CHECK: SellerStoreProfileModule binds certification to it at start.
-  exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES, STORE_TEXT_CLAIM_CHECK],
+  // SELLER_HEALTH_SIGNALS: SellerHealthModule binds the three feeds to it at start.
+  exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES, STORE_TEXT_CLAIM_CHECK, SELLER_HEALTH_SIGNALS],
 })
 export class SellersModule {}

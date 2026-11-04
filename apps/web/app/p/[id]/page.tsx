@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { UnavailableProductView } from '../../../src/errors/unavailable-product.tsx';
 import { ProductPage } from '../../../src/product/product-page.tsx';
+import { loadProductReviews } from '../../../src/reviews/reviews-source.ts';
 import { JsonLd } from '../../../src/seo/json-ld.tsx';
 import {
   canonicalOf,
@@ -65,12 +66,14 @@ export default async function ProductRoute({ params }: Props) {
   const [found, { id }] = await Promise.all([resolve(params), params]);
   // A removed product is noindex: no structured data.
   if (!found.product) return <UnavailableProductView product={found.removed} />;
-  const [content, origin, t] = await Promise.all([
+  const { product } = found;
+  const [content, origin, t, reviews] = await Promise.all([
     loadStorefrontContent(),
     requestOrigin(),
     getTranslations('catalog'),
+    // Null while the Market's reviews switch is off, on a fault, and for a product with none.
+    loadProductReviews(product.id),
   ]);
-  const { product } = found;
   const category = content.categories.find((c) => c.code === product.category);
   // The markup is built from the same read as the page, so price and stock always match it.
   const canonical =
@@ -92,7 +95,7 @@ export default async function ProductRoute({ params }: Props) {
   return (
     <>
       <JsonLd data={data} />
-      <ProductPage product={product} category={category} />
+      <ProductPage product={product} category={category} reviews={reviews} />
     </>
   );
 }

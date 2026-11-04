@@ -14,6 +14,7 @@ import type {
 } from '../domain/attribute-definition';
 import { buildAttributeSchema } from '../domain/attribute-schema-builder';
 import type { AttributeFamily, FamilyGroup } from '../domain/attribute-family';
+import type { AttributeDefinitionStatus } from '../domain/attribute-definition';
 
 const toDate = (instant: { readonly epochMilliseconds: number }): Date =>
   new Date(instant.epochMilliseconds);
@@ -78,7 +79,7 @@ export class PrismaAttributeRepository implements AttributeRepository {
       if (published === null) return null;
       definitions.push({
         code: row.code,
-        status: row.status as 'active' | 'archived',
+        status: row.status as AttributeDefinitionStatus,
         revisionId: published.id as Id<'AttributeDefinitionRevision'>,
         dataType: row.dataType as AttributeDataType,
         localizable: row.localizable,

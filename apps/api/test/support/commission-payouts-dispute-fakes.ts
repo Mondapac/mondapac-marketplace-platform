@@ -1,4 +1,4 @@
-import { encodePayload } from '@mondapac/shared-kernel';
+import { encodePayload, Temporal } from '@mondapac/shared-kernel';
 import type {
   CallContext,
   Id,
@@ -184,6 +184,29 @@ export class MemoryDisputes implements DisputeRepository {
         .filter((d) => d.market === market.marketId && d.decision.sellerId === sellerId)
         .map((d) => d.decision),
     );
+  }
+  sellerFaultDecisionTimes(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+    limit: number,
+  ) {
+    const mine = this.decisions
+      .filter((d) => d.market === market.marketId && d.decision.sellerId === sellerId)
+      .map((d) => d.decision);
+    const reversed = new Set(mine.map((d) => d.supersedes).filter((id) => id !== null));
+    const times = mine
+      .filter(
+        (d) =>
+          d.bearer === 'seller' &&
+          !reversed.has(d.id) &&
+          Temporal.Instant.compare(d.decidedAt, from) >= 0 &&
+          Temporal.Instant.compare(d.decidedAt, to) < 0,
+      )
+      .map((d) => d.decidedAt);
+    if (times.length > limit) return Promise.reject(new RangeError('too many decisions'));
+    return Promise.resolve(times);
   }
   lockForDecision(market: MarketContext, disputeId: Parameters<DisputeRepository['find']>[1]) {
     // Units run one at a time in the fakes: there is nothing to wait for.

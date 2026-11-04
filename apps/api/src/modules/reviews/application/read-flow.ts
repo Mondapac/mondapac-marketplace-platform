@@ -13,7 +13,7 @@ import type { ProductRatingSummary, SellerRatingSummary } from '../contracts/rev
 import { buyerAccountId } from './caller';
 import { activeSettings } from './market-switch';
 import type { FieldIssue, ReviewsFailure, SummaryFailure } from './failures';
-import type { PublishedReviewRecord, ReviewCursor } from './ports/review.repository';
+import type { PublishedReviewRecord, ReviewCursor, ReviewSort } from './ports/review.repository';
 import { deliveredPurchases, lookbackSince } from './purchases';
 import type { ReviewsDependencies } from './reviews-dependencies';
 import {
@@ -188,7 +188,7 @@ export interface ProductReviewsPage {
 // The cursor of the public list is the random public id of the last review shown: it carries no
 // time (an exact publish time would let a client binary-search it), and an id of another product
 // or a made-up one is refused.
-const PUBLIC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export const PUBLIC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export async function listProductReviews(
   deps: ReviewsDependencies,
@@ -210,9 +210,12 @@ export async function listProductReviews(
     if (parsed === null) fields.push({ path: 'stars', code: 'range' });
     else stars = parsed;
   }
-  // "Most helpful" arrives with helpful votes (not in this package): only `recent` exists.
-  if (input?.sort !== undefined && input.sort !== 'recent')
-    fields.push({ path: 'sort', code: 'value' });
+  // `recent` (default) or `helpful` (most votes first, package 5).
+  let sort: ReviewSort = 'recent';
+  if (input?.sort !== undefined) {
+    if (input.sort === 'recent' || input.sort === 'helpful') sort = input.sort;
+    else fields.push({ path: 'sort', code: 'value' });
+  }
   let cursorId: string | null = null;
   if (input?.cursor !== undefined) {
     if (typeof input.cursor === 'string' && PUBLIC_ID.test(input.cursor)) cursorId = input.cursor;
@@ -238,6 +241,7 @@ export async function listProductReviews(
       }
       return ok(
         await deps.reviews.listPublishedProductReviews(context.market, productId.value, {
+          sort,
           stars,
           after,
           limit: settings.pageSize + 1,
@@ -281,6 +285,7 @@ export async function listProductReviews(
       boughtFrom: { offerId: record.offerId, sellerId: record.sellerId },
       publishedOn: dayOf(record.publishedAt!),
       editedOn: record.editedAt === null ? null : dayOf(record.editedAt),
+      helpfulCount: record.helpfulCount,
     })),
     nextCursor: read.value.length > settings.pageSize && last !== undefined ? last.publicId : null,
   });
@@ -359,4 +364,71 @@ export async function viewSellerSummary(
       : null,
     arrivedOkBps: meetsMinimum ? shareBps(summary.arrivedOkYes, summary.ratedSellerOrders) : null,
   });
+}
+
+/** What the seller health feed counts for one window: published reviews and their stars. */
+export interface SellerReviewCount {
+  readonly reviews: number;
+  readonly starsSum: number;
+}
+
+/** The most windows one call may ask for (a few local days). */
+export const SELLER_REVIEW_MAX_WINDOWS = 8;
+
+/**
+ * The seller health feed: for each window `[from, to)` the seller's reviews published in it and
+ * the sum of their stars, counted by their status now, in one read. The windows are pairs of
+ * instants the caller worked out in the seller's own zone (ADR-0005); this module knows no zone.
+ * Read only, and answers `reviews.disabled` while the Market has reviews off.
+ */
+export async function countSellerReviews(
+  deps: ReviewsDependencies,
+  context: CallContext,
+  input: { readonly sellerId?: unknown; readonly windows?: unknown },
+): Promise<Result<readonly SellerReviewCount[], SummaryFailure>> {
+  const switched = await activeSettings(deps, context);
+  if (!switched.ok) return switched;
+  const sellerId = typeof input?.sellerId === 'string' ? parseId<'Seller'>(input.sellerId) : null;
+  const fields: FieldIssue[] = [];
+  if (sellerId === null || !sellerId.ok) fields.push({ path: 'sellerId', code: 'format' });
+  const windows: { from: Temporal.Instant; to: Temporal.Instant }[] = [];
+  const raw = input?.windows;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > SELLER_REVIEW_MAX_WINDOWS) {
+    fields.push({ path: 'windows', code: 'range' });
+  } else {
+    raw.forEach((entry: unknown, index) => {
+      const w = (entry ?? {}) as { from?: unknown; to?: unknown };
+      const from = instantOf(w.from);
+      const to = instantOf(w.to);
+      if (from === null) fields.push({ path: `windows.${index}.from`, code: 'format' });
+      if (to === null) fields.push({ path: `windows.${index}.to`, code: 'format' });
+      if (from !== null && to !== null) {
+        if (Temporal.Instant.compare(from, to) >= 0) {
+          fields.push({ path: `windows.${index}.to`, code: 'range' });
+        } else {
+          windows.push({ from, to });
+        }
+      }
+    });
+  }
+  if (fields.length > 0 || sellerId === null || !sellerId.ok) {
+    return err({ code: 'validation.failed', fields });
+  }
+  const read = await deps.unitOfWork.run(
+    context.market,
+    async () =>
+      ok(await deps.reviews.countPublishedForSeller(context.market, sellerId.value, windows)),
+    { readOnly: true },
+  );
+  if (!read.ok) return err({ code: 'reviews.unavailable' });
+  return ok(read.value);
+}
+
+function instantOf(value: unknown): Temporal.Instant | null {
+  if (typeof value !== 'string') return null;
+  try {
+    return Temporal.Instant.from(value);
+  } catch {
+    return null;
+  }
 }
