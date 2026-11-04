@@ -11,6 +11,14 @@ export interface SellerHealthSnapshot {
   readonly computedAt: Temporal.Instant;
 }
 
+/** What a list shows of a seller's latest snapshot: the band and score, never the metrics. */
+export interface SellerHealthSummary {
+  readonly day: Temporal.PlainDate;
+  readonly kind: 'scored' | 'new' | 'no-data';
+  readonly band: 'healthy' | 'at-risk' | 'unhealthy' | null;
+  readonly score: number | null;
+}
+
 /**
  * `sellers.seller_health_days` and `sellers.seller_health_snapshots`. Runs in the caller's open
  * read-write unit. A day or snapshot written again for the same seller and local day replaces
@@ -46,6 +54,18 @@ export interface SellerHealthStore {
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<readonly SellerHealthSnapshot[]>;
+
+  /**
+   * The newest snapshot of each seller in `sellerIds` among the dates from `from` to `to`, as a
+   * summary; a seller with none in that range is absent from the map. One query for the whole
+   * list page (no N+1).
+   */
+  latest(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<ReadonlyMap<Id<'Seller'>, SellerHealthSummary>>;
 
   /**
    * Deletes the Market's counters and snapshots of local dates before `before`, of every seller,

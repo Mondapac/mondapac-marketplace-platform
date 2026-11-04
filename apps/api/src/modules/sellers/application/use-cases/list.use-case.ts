@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import {
   UseCase,
   type AccessDeclaration,
@@ -37,6 +37,7 @@ import type {
   SellerListRepository,
 } from '../ports/seller-list.repository';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { SellerHealthStore, SellerHealthSummary } from '../ports/seller-health.store';
 
 /** The request is the raw JSON body: the use case checks its shape itself (`parseListRequest`). */
 export type SellerListInput = unknown;
@@ -73,7 +74,23 @@ export interface SellerListRow {
   readonly timezone: string | null;
   readonly createdAt: string;
   readonly lastChangedAt: string;
+  /**
+   * The seller's latest stored health (seller health package 5b), or null when no night has
+   * measured the seller or the health store could not answer: the list never fails for it.
+   */
+  readonly health: SellerListHealth | null;
 }
+
+/** The health column: the band and score only; the metrics are on the seller's own card. */
+export interface SellerListHealth {
+  readonly day: string;
+  readonly kind: 'scored' | 'new' | 'no-data';
+  readonly band: 'healthy' | 'at-risk' | 'unhealthy' | null;
+  readonly score: number | null;
+}
+
+/** How many days back the health column looks for a seller's newest snapshot. */
+export const SELLER_LIST_HEALTH_DAYS = 3;
 
 /** The counts of the `identity` state tabs (R-6); null when the actor may not see states. */
 export interface StateTabCounts {
@@ -110,6 +127,8 @@ export interface SellerListDependencies {
   /** Asked once per call whether the actor may see the status column (fails closed to hidden). */
   readonly authorisation: AuthorisationCheck;
   readonly onboardingAreas: OnboardingAreas;
+  readonly healthStore: SellerHealthStore;
+  readonly clock: Clock;
 }
 
 /**
@@ -334,6 +353,10 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
       }
     }
     const openCodes = new Set(this.deps.onboardingAreas.openCodes(context.market));
+    const health = await this.healthOf(
+      context,
+      page.map((row) => row.sellerId),
+    );
     return ok(
       page.map((row) =>
         rowOf(
@@ -343,9 +366,39 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
           row.serviceAreaCode === null
             ? null
             : this.deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode),
+          health.get(row.sellerId) ?? null,
         ),
       ),
     );
+  }
+
+  /**
+   * The health of a page in one read-only unit and one query. A failure is logged and answers an
+   * empty map: the column shows nothing, the list still answers (the column is not a gate).
+   */
+  private async healthOf(
+    context: CallContext,
+    ids: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, SellerHealthSummary>> {
+    if (ids.length === 0) return new Map();
+    const { market } = context;
+    const today = this.deps.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
+    // The newest local date on Earth is at most one day ahead of UTC.
+    const last = today.add({ days: 1 });
+    const first = today.subtract({ days: SELLER_LIST_HEALTH_DAYS - 1 });
+    try {
+      const read = await this.deps.unitOfWork.run<
+        ReadonlyMap<Id<'Seller'>, SellerHealthSummary>,
+        never
+      >(market, async () => ok(await this.deps.healthStore.latest(market, ids, first, last)), {
+        readOnly: true,
+      });
+      if (!read.ok) throw new Error('the health read unit failed');
+      return read.value;
+    } catch (error) {
+      this.fail(context, 'health-failed', error);
+      return new Map();
+    }
   }
 
   private async mayShowStatus(context: CallContext): Promise<boolean> {
@@ -399,6 +452,7 @@ function rowOf(
   account: SellerAccountEntry | null | 'hidden',
   openCodes: ReadonlySet<string>,
   areaName: string | null,
+  health: SellerHealthSummary | null,
 ): SellerListRow {
   const outside = row.hasAddress
     ? !(row.serviceAreaCode !== null && openCodes.has(row.serviceAreaCode))
@@ -427,6 +481,10 @@ function rowOf(
     timezone: row.operatingTimezone,
     createdAt: row.createdAt.toString(),
     lastChangedAt: row.lastChangedAt.toString(),
+    health:
+      health === null
+        ? null
+        : { day: health.day.toString(), kind: health.kind, band: health.band, score: health.score },
   };
 }
 

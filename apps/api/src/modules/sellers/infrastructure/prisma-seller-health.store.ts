@@ -5,6 +5,7 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   SellerHealthSnapshot,
   SellerHealthStore,
+  SellerHealthSummary,
 } from '../application/ports/seller-health.store';
 import {
   SELLER_HEALTH_METRICS,
@@ -187,6 +188,43 @@ export class PrismaSellerHealthStore implements SellerHealthStore {
       }
       return { day: toDay(row.day), health, inputs, computedAt: toInstant(row.computedAt) };
     });
+  }
+
+  async latest(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<ReadonlyMap<Id<'Seller'>, SellerHealthSummary>> {
+    if (sellerIds.length === 0) return new Map();
+    const rows = await this.prisma.tx(market).sellersSellerHealthSnapshot.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: { in: [...sellerIds] },
+        day: { gte: dayDate(from), lte: dayDate(to) },
+      },
+      orderBy: [{ sellerId: 'asc' }, { day: 'desc' }],
+      distinct: ['sellerId'],
+      select: { sellerId: true, day: true, kind: true, band: true, score: true },
+    });
+    const found = new Map<Id<'Seller'>, SellerHealthSummary>();
+    for (const row of rows) {
+      if (row.kind !== 'scored' && row.kind !== 'new' && row.kind !== 'no-data') {
+        throw new StoredSellerHealthError('kind');
+      }
+      if (row.kind === 'scored') {
+        if (row.score === null || row.band === null || bandOfScore(row.score) !== row.band) {
+          throw new StoredSellerHealthError('score');
+        }
+      }
+      found.set(row.sellerId as Id<'Seller'>, {
+        day: toDay(row.day),
+        kind: row.kind,
+        band: row.kind === 'scored' ? (row.band as 'healthy' | 'at-risk' | 'unhealthy') : null,
+        score: row.kind === 'scored' ? row.score : null,
+      });
+    }
+    return found;
   }
 
   async purgeBefore(
