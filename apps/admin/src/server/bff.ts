@@ -78,6 +78,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
     'catalog/admin/attributes',
     'catalog/admin/feature-sets',
+    // The value suggestions waiting for a decision (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -186,6 +188,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Publish or discard a draft attribute, with the version seen (catalog, attributes A2).
     'catalog/admin/attributes/:id/publish',
     'catalog/admin/attributes/:id/discard',
+    // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions/:id/approve',
+    'catalog/admin/attribute-suggestions/:id/map',
+    'catalog/admin/attribute-suggestions/:id/reject',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.

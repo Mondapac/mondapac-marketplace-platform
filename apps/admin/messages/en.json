@@ -4583,10 +4583,6 @@
       "title": "View only",
       "body": "You can view attributes. Ask a Platform Administrator to change them."
     },
-    "waiting": {
-      "empty": "Nothing is waiting for you.",
-      "body": "Change requests for attributes will show here."
-    },
     "list-label": "Attributes",
     "filters": "Filter attributes",
     "search": "Search by name or code",
@@ -4918,6 +4914,48 @@
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}."
+    },
+    "suggestions": {
+      "list-label": "Value suggestions",
+      "loading": "Loading suggestions",
+      "no-access": "You cannot decide value suggestions. Ask a Platform Administrator if you need to.",
+      "load-failed": "The suggestions could not be loaded.",
+      "empty": "Nothing is waiting for you.",
+      "empty-body": "Values that sellers ask for on a product form will show here.",
+      "open": "Waiting",
+      "asked": "Asked for on {attribute}, product {product}.",
+      "no-product-code": "without a code",
+      "approve": "Approve",
+      "map": "Map to existing",
+      "reject": "Reject",
+      "cancel": "Cancel",
+      "approve-note": "Approving adds the value to the field for every seller. Name it in each required language.",
+      "name-in": "Name in {language}",
+      "approve-confirm": "Approve value",
+      "map-to": "Existing value",
+      "map-choose": "Choose a value",
+      "map-confirm": "Map to this value",
+      "reason": "Reason for the seller",
+      "reason-help": "The seller reads this in an email.",
+      "reject-confirm": "Reject suggestion",
+      "decided": {
+        "approved": "Value added. The seller was told.",
+        "mapped": "Mapped to an existing value. The seller was told.",
+        "rejected": "Suggestion rejected. The seller was told."
+      },
+      "error": {
+        "invalid": "Check the names and try again.",
+        "claim": "A name uses a word that only a certificate can back. Choose another word.",
+        "stale": "Someone else already decided this suggestion. The list is read again.",
+        "attribute-unavailable": "The field changed or is no longer open to suggestions. The list is read again.",
+        "value-exists": "The field already has a value with that code or name. Map the suggestion to it instead.",
+        "option-invalid": "That value is no longer available. The list is read again.",
+        "denied": "You cannot decide value suggestions.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not reachable. Try again.",
+        "unknown": "The decision could not be saved."
+      }
     }
   }
 }
