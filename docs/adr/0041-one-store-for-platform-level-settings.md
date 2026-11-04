@@ -1,4 +1,4 @@
-# ADR-0040: One Store for Platform-Level Market Settings
+# ADR-0041: One Store for Platform-Level Market Settings
 
 **Status:** Accepted — 2026-11-01, on the project owner's decision (project thread, 1 Nov 2026):
 the shared settings store of ADR-0026 is built now, with List paging as its first setting; the
