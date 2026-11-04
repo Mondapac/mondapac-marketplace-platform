@@ -1,4 +1,4 @@
-# ADR-0041: One Store for Platform-Level Market Settings
+# ADR-0042: One Store for Platform-Level Market Settings
 
 **Status:** Accepted — 2026-11-01, on the project owner's decision (project thread, 1 Nov 2026):
 the shared settings store of ADR-0026 is built now, with List paging as its first setting; the
@@ -19,31 +19,42 @@ boundary checks are module-based, so a store with no owning module does not fit 
 
 ## Decision
 1. **One shared store.** A small module, `settings` (schema `settings`), owns the store: the
-   current value, a version, an insert-only history, the audit action and the permission keys
-   `settings.market-setting.view` and `settings.market-setting.manage`. It declares the editable
-   settings in code (`domain/definitions.ts`): code, allowed values, default and safe value.
-2. **List paging is the first setting.** Values `pages` (page numbers with the total; the
+   current value, a version, an insert-only history and the audit action. It declares the
+   editable settings in code (`domain/definitions.ts`): code, allowed values, default and safe
+   value.
+2. **Each setting has its own permission keys.** A setting declares its own pair of keys,
+   `settings.<setting>.view` (see the setting and its history) and `settings.<setting>.manage`
+   (change it), in `contracts/permissions.ts`; List paging has `settings.list-paging.view` and
+   `settings.list-paging.manage`. There is no shared key for all settings, so a role can be given
+   one setting without the others, and a key is protected (R11) when that setting's review says
+   so (ADR-0026 decision 7). Adding a setting is adding its definition and its two keys. Reading
+   the value in force (as the panels do for List paging) needs no key.
+3. **List paging is the first setting.** Values `pages` (page numbers with the total; the
    default) and `prev-next`. If the store cannot be read, readers get `prev-next`.
-3. **Every new platform-level, admin-editable Market setting goes into this store.** No module
+4. **Every new platform-level, admin-editable Market setting goes into this store.** No module
    adds another `market_settings` table for a setting of this kind.
-4. **Existing settings are not changed now.** The `market_settings` tables of `reviews`, `wallet`
+5. **Existing settings are not changed now.** The `market_settings` tables of `reviews`, `wallet`
    and `promotions`, and the other settings that modules own, stay as they are.
-5. **Consolidation later, one setting at a time.** Moving an existing setting into the store is
+6. **Consolidation later, one setting at a time.** Moving an existing setting into the store is
    its own PR, decided by the owner, with a data migration, a check that readers see the same
    value, and the review its path needs (for example Hassan for anything on a decision path).
    Until then both ways exist side by side.
-6. **Per-seller settings stay in `sellers`** (ADR-0026 decision 9); anything read by
+7. **Per-seller settings stay in `sellers`** (ADR-0026 decision 9); anything read by
    `evaluateClaim` or `ClaimBasisPolicy`, identity's security policy, AI provider/model/region,
    payment and commission values and `HOSTED_MARKETS` are still never settings.
 
 ## Consequences
-- Each new setting costs a definition, a translation and a page row, not a table and a migration.
+- Each new setting costs a definition, its two permission keys, a translation and a page row,
+  not a table and a migration.
 - Versioning, history, audit and the safe value are written and reviewed once.
 - Two ways to hold a setting exist until the owner moves the old ones.
 
 ## Alternatives considered
 - **One more single-row table in a module for List paging:** quickest, but a fourth copy and an
   owner module that does not own the idea.
+- **One shared pair of keys for every setting** (`settings.market-setting.view` and `.manage`):
+  fewer keys, but a role could not be given one setting without all the others, and a setting that
+  must be protected would make every setting protected.
 - **A store inside `platform/` with no module:** needs platform-owned permission keys, controllers
   and check exemptions that the rules do not allow today.
 - **Move the existing settings now:** a data migration on three live modules, not asked for.
