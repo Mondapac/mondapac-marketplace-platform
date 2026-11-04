@@ -25,6 +25,8 @@ import { SELLER_HEALTH_POLICY } from './application/ports/seller-health-policy';
 import { SELLER_HEALTH_ROSTER } from './application/ports/seller-health-roster';
 import { SELLER_HEALTH_SIGNALS } from './application/ports/seller-health-signals';
 import { SELLER_HEALTH_STORE } from './application/ports/seller-health.store';
+import { SellerHealthRead } from './application/use-cases/seller-health-read.use-case';
+import { SellerHealthController } from './presentation/seller-health.controller';
 import { PurgeSellerHealth } from './application/use-cases/purge-seller-health.use-case';
 import { RunSellerHealth } from './application/use-cases/run-seller-health.use-case';
 import { purgeSellerHealthJob } from './presentation/jobs/purge-seller-health.job';
@@ -297,6 +299,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewDecisionController,
     BlogAccessController,
     SellerListController,
+    SellerHealthController,
     StoreSettingsController,
     OwnZoneController,
     PublicStoreController,
@@ -725,6 +728,12 @@ const REVIEW_DECISION_PORTS = {
     },
     useCaseProvider(PurgeExpired, { unitOfWork: true, counters: true, clock: true }),
     // Seller health, nightly per seller zone (package 4): the feeds are bound by SellerHealthModule.
+    useCaseProvider(SellerHealthRead, {
+      unitOfWork: true,
+      files: true,
+      healthStore: true,
+      clock: true,
+    }),
     useCaseProvider(RunSellerHealth, {
       unitOfWork: true,
       healthRoster: true,
