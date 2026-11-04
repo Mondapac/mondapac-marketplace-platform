@@ -4957,7 +4957,8 @@
         "unavailable": "The service is not reachable. Try again.",
         "unknown": "The decision could not be saved.",
         "locale-uncheckable": "A name is in a language that cannot be checked for certification words yet.",
-        "check-unavailable": "The certification-wording check is unavailable. Try again in a moment."
+        "check-unavailable": "The certification-wording check is unavailable. Try again in a moment.",
+        "reload-failed": "The list could not be refreshed and may be out of date. Reload the page."
       },
       "approve-for": "Approve “{label}”",
       "map-for": "Map “{label}” to an existing value",

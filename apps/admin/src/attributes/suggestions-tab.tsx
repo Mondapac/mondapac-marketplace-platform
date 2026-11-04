@@ -102,7 +102,11 @@ export function SuggestionsTab({
       window.location.assign('/session-ended');
       return;
     }
-    if (quiet) return;
+    if (quiet) {
+      // The list on screen may be out of date: say so instead of showing it as current.
+      setNotice('reload-failed');
+      return;
+    }
     setLoad({ state: result.failure.status === 403 ? 'denied' : 'failed' });
   }, []);
 

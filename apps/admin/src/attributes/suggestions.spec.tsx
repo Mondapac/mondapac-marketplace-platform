@@ -236,4 +236,35 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     fireEvent.click(await screen.findByRole('button', { name: 'Reject “<b>Oat</b> & honey”' }));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox')));
   });
+
+  it('sends an ended session to sign-in, on load and on a decision', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    call.mockResolvedValueOnce(fail(401, 'identity.session-ended'));
+    mount();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    cleanup();
+    assign.mockClear();
+    call.mockResolvedValueOnce(ok(list(locales, required)));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /^Reject/ }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
+    call.mockResolvedValueOnce(fail(401, 'identity.session-ended'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reject suggestion' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    vi.unstubAllGlobals();
+  });
+
+  it('says the list may be out of date when it cannot be refreshed', async () => {
+    call.mockResolvedValueOnce(ok(list(locales, required)));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /^Reject/ }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
+    call.mockResolvedValueOnce(
+      ok({ suggestion: { id: id(1), status: 'rejected', version: 4, optionCode: null } }),
+    );
+    call.mockResolvedValueOnce(fail(500, 'unknown'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reject suggestion' }));
+    expect(await screen.findByText(/may be out of date/)).toBeTruthy();
+  });
 });
