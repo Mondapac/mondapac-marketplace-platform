@@ -1,11 +1,19 @@
+import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
+import { intlLocale } from '../i18n/locale.ts';
 import { isBrandSlug } from './brands.ts';
 import { imageIdsOf, type PhotoUrl } from './photos.ts';
-import type { CertificationBadge, Money, ProductDetail, ProductOffer } from './types.ts';
+import type {
+  CertificationBadge,
+  Money,
+  ProductDetail,
+  ProductOffer,
+  ProductSpecification,
+} from './types.ts';
 
 // The product page's read of the API (`GET search/product-detail/:productId`, PR #450) and its
 // mapping to the page's own shape. What the API does not have yet stays empty and the page hides
-// it: specifications, the regular price beside a special, similar products, the seller's city, "selling since",
+// it: the regular price beside a special, similar products, the seller's city, "selling since",
 // ratings and delivery window.
 
 /** Money as the API sends it: minor units as a decimal string. */
@@ -22,6 +30,8 @@ export interface ProductDetailBody {
   readonly categoryIds: readonly string[];
   /** The product's active brand (`slug`, `name`) or null; untrusted, read through {@link brandRefOf}. */
   readonly brand?: unknown;
+  /** Attribute values grouped by family group; untrusted, read through {@link specificationsOf}. */
+  readonly specifications?: unknown;
   /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
   readonly images?: unknown;
   readonly offers: readonly {
@@ -51,6 +61,11 @@ export interface ProductDetailBody {
 export interface ProductDetailLabels {
   readonly minimum: (amount: string) => string;
   readonly noMinimum: string;
+  /** The "Yes" and "No" of a yes/no specification. */
+  readonly yes?: string;
+  readonly no?: string;
+  /** The heading of a specification group by its code (a code the page has no word for: undefined). */
+  readonly group?: (code: string) => string | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -125,6 +140,84 @@ export function brandRefOf(raw: unknown): ProductDetail['brand'] {
   return isBrandSlug(slug) && isText(name) ? { slug, name } : undefined;
 }
 
+const MAX_SPECS = 60;
+const MAX_LIST = 20;
+const GROUP_CODE = /^[a-z][a-z0-9_-]{0,63}$/u;
+const DECIMAL = /^-?[0-9]{1,15}(\.[0-9]{1,9})?$/u;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** One specification value as the line a buyer reads; null when it is malformed (never half a row). */
+function specificationValueOf(
+  raw: unknown,
+  locale: string,
+  labels: ProductDetailLabels,
+): string | null {
+  if (!isRecord(raw)) return null;
+  switch (raw.kind) {
+    case 'text':
+      return isText(raw.text) ? raw.text : null;
+    case 'list': {
+      if (!Array.isArray(raw.items)) return null;
+      const items = (raw.items as unknown[]).filter(isText).slice(0, MAX_LIST);
+      return items.length === 0 ? null : items.join(', ');
+    }
+    case 'number':
+      // Latin digits whatever the language; the number is shown as the admin's own digits.
+      return typeof raw.value === 'string' && DECIMAL.test(raw.value)
+        ? new Intl.NumberFormat(intlLocale(locale), {
+            numberingSystem: 'latn',
+            maximumFractionDigits: 9,
+          }).format(Number(raw.value))
+        : null;
+    case 'boolean':
+      return typeof raw.value === 'boolean'
+        ? raw.value
+          ? (labels.yes ?? 'Yes')
+          : (labels.no ?? 'No')
+        : null;
+    case 'date':
+      return isIsoDate(raw.value) ? formatDate(raw.value, locale, { dateStyle: 'long' }) : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The specification rows of the product page from the untrusted body, in the API's order: one row
+ * per attribute, tagged with its group's code. A row with any field missing, of the wrong type or
+ * out of shape is dropped whole; a group's heading is for the page to show when there are several.
+ */
+export function specificationsOf(
+  raw: unknown,
+  locale: string,
+  labels: ProductDetailLabels,
+): ProductSpecification[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProductSpecification[] = [];
+  const seen = new Set<string>();
+  for (const group of raw as unknown[]) {
+    if (!isRecord(group) || typeof group.groupCode !== 'string') continue;
+    if (!GROUP_CODE.test(group.groupCode) || !Array.isArray(group.specifications)) continue;
+    const heading = labels.group?.(group.groupCode);
+    for (const item of group.specifications as unknown[]) {
+      if (out.length >= MAX_SPECS) return out;
+      if (!isRecord(item) || typeof item.code !== 'string' || seen.has(item.code)) continue;
+      const value = specificationValueOf(item.value, locale, labels);
+      if (!isText(item.name) || value === null) continue;
+      seen.add(item.code);
+      out.push({
+        label: item.name,
+        value,
+        group: group.groupCode,
+        ...(heading === undefined ? {} : { groupLabel: heading }),
+      });
+    }
+  }
+  return out;
+}
+
 /** API money as the page's; null when the amount is not a safe whole number of minor units. */
 function moneyOf(body: MoneyBody): Money | null {
   if (!/^[0-9]{1,15}$/u.test(body.amount)) return null;
@@ -193,7 +286,7 @@ export function productDetailOf(
     name: body.name,
     category: body.categoryIds[0] ?? '',
     description: body.description ?? body.shortDescription ?? '',
-    specifications: [],
+    specifications: specificationsOf(body.specifications, locale, labels),
     ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
     photos: shots.map((shot) => shot.large),
     ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),

@@ -82,8 +82,11 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // holds). Version 12 adds `catalog.attribute.view` (attributes package A1: the read-only
     // Attributes page; the protected `catalog.attribute.edit` is not listed). Version 13 adds
     // `catalog.category-tree.view` and `.edit` (categories package C1, plan section 11); the
-    // protected `.restructure` and `.import` are not listed.
-    seedVersion: 13,
+    // protected `.restructure` and `.import` are not listed. Version 14 adds
+    // `catalog.attribute-suggestion.decide` (attributes package A5: approve, map or reject a
+    // seller's suggested value; unprotected, it adds one value to a published attribute that is not
+    // `material` and nothing else).
+    seedVersion: 14,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -97,6 +100,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.attribute.view',
       'catalog.category-tree.view',
       'catalog.category-tree.edit',
+      'catalog.attribute-suggestion.decide',
       'sellers.seller.view',
       'pricing.price-hold.view',
       'certification.type.view',

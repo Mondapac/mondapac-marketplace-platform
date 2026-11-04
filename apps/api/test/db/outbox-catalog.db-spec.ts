@@ -36,6 +36,15 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX carts_market_id_account_id_active_key ON cart.carts USING btree (market_id, account_id) WHERE ((account_id IS NOT NULL) AND (status = 'active'::text))",
   'cart.carts_market_id_guest_token_hash_key':
     'CREATE UNIQUE INDEX carts_market_id_guest_token_hash_key ON cart.carts USING btree (market_id, guest_token_hash) WHERE (guest_token_hash IS NOT NULL)',
+  // Attributes A2: one open relaxation request per attribute definition (data design 3.21).
+  'catalog.attribute_relaxation_requests_open_definition_key':
+    "CREATE UNIQUE INDEX attribute_relaxation_requests_open_definition_key ON catalog.attribute_relaxation_requests USING btree (market_id, definition_id) WHERE (status = 'open'::text)",
+  // Attributes A5: one open suggestion per product and attribute; the due-notice scan (data
+  // design 3.30).
+  'catalog.attribute_value_suggestions_open_product_definition_key':
+    "CREATE UNIQUE INDEX attribute_value_suggestions_open_product_definition_key ON catalog.attribute_value_suggestions USING btree (market_id, product_id, definition_id) WHERE (status = 'open'::text)",
+  'catalog.attribute_value_suggestions_notice_due_idx':
+    "CREATE INDEX attribute_value_suggestions_notice_due_idx ON catalog.attribute_value_suggestions USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
   'catalog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/catalog.md 3.15 (slice 12): the selection indexes of the certification-event
@@ -89,6 +98,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_revision_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_revision_id) WHERE (kind = 'revision-published'::text)",
   'catalog.tag_reevaluation_requests_market_id_source_event_id_key':
     'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id, cause) NULLS NOT DISTINCT WHERE (source_event_id IS NOT NULL)',
+  'catalog.product_revision_categories_market_id_revision_id_primary_key':
+    'CREATE UNIQUE INDEX product_revision_categories_market_id_revision_id_primary_key ON catalog.product_revision_categories USING btree (market_id, revision_id) WHERE is_primary',
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
   'catalog.products_market_id_owner_seller_id_created_at_idx':
