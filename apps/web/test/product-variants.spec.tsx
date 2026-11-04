@@ -77,6 +77,28 @@ describe('Variants from the API answer', () => {
     ]);
   });
 
+  it('lists a seller with stock before a cheaper one that is out, so the buy box can be bought', () => {
+    const detail = productDetailOf(
+      body([
+        seller(1, 'Kedron Grocers', [unit(V1, '1 kg', '900'), unit(V5, '5 kg', '3000', OUT)]),
+        seller(2, 'Logan Pantry', [unit(V5, '5 kg', '3500')]),
+      ]),
+      'en',
+      labels,
+    )!;
+    const five = detail.variants!.find((v) => v.id === V5)!;
+    expect(five.offers.map((o) => o.seller.name)).toEqual(['Logan Pantry', 'Kedron Grocers']);
+    expect(five.offers[0].lowStock).toBeUndefined();
+    const node = productStructuredData(
+      detail,
+      'https://shop.example',
+      'https://shop.example/p/r',
+    ) as {
+      hasVariant: { offers: { availability: string } }[];
+    };
+    expect(node.hasVariant[1]!.offers.availability.endsWith('InStock')).toBe(true);
+  });
+
   it('opens on the first Variant in stock, or on the first when none is', () => {
     const detail = productDetailOf(
       body([seller(1, 'Kedron Grocers', [unit(V1, '1 kg', '900', OUT), unit(V5, '5 kg', '3900')])]),

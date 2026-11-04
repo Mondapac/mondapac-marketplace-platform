@@ -184,7 +184,7 @@ function offerOf(
 /**
  * The Variants of the answer in the owner's order (the order they first appear, offer by offer,
  * unit by unit), each with its offers. A single Variant keeps the API's offer order (the featured
- * offer first); with several, a Variant's sellers are listed lowest price first.
+ * offer first); with several, a Variant's sellers are listed in stock first, then lowest price first.
  */
 function variantsOf(
   body: ProductDetailBody,
@@ -211,7 +211,13 @@ function variantsOf(
   const several = order.length > 1;
   return order.flatMap((id): ProductVariant[] => {
     const list = offersOf.get(id)!;
-    const sorted = several ? list.toSorted((a, b) => a.price.amount - b.price.amount) : list;
+    // A seller that has stock comes before one that has not, then the lowest price.
+    const sorted = several
+      ? list.toSorted(
+          (a, b) =>
+            Number(a.lowStock === 0) - Number(b.lowStock === 0) || a.price.amount - b.price.amount,
+        )
+      : list;
     const [first, ...rest] = sorted;
     if (first === undefined) return [];
     const label = names.get(id);

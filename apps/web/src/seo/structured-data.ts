@@ -161,7 +161,8 @@ export function productStructuredData(
     };
   }
   const has = variants.flatMap((variant, index): JsonLdNode[] => {
-    const best = variant.offers.find(hasPrice);
+    const best =
+      variant.offers.find((o) => hasPrice(o) && o.lowStock !== 0) ?? variant.offers.find(hasPrice);
     if (best === undefined) return [];
     const link = `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(variant.id)}`;
     return [

@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useRef, type KeyboardEvent } from 'react';
+import { useId, useRef, type KeyboardEvent } from 'react';
 import { useSelected } from './selected-offer.tsx';
 
 /**
@@ -14,6 +14,7 @@ export function VariantPicker() {
   const t = useTranslations('product');
   const { product, variant, select } = useSelected();
   const group = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const variants = product.variants;
   if (variants === undefined || variant === undefined) return null;
   const choosable = (id: string) => id === variant.id || variants.find((v) => v.id === id)?.inStock;
@@ -43,14 +44,14 @@ export function VariantPicker() {
 
   return (
     <div className="vpick">
-      <div className="vpick-title" id="vpick-title">
+      <div className="vpick-title" id={titleId}>
         {t('variant-choose')}
       </div>
       <div
         ref={group}
         className="vpick-row"
         role="radiogroup"
-        aria-labelledby="vpick-title"
+        aria-labelledby={titleId}
         onKeyDown={move}
       >
         {variants.map((v, index) => {

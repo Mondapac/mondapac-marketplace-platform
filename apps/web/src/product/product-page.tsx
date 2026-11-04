@@ -42,7 +42,11 @@ export function ProductPage({
   const tc = useTranslations('catalog');
   return (
     <SellerCards>
-      <SelectedOffer product={product} initialVariantId={initialVariantId}>
+      <SelectedOffer
+        key={`${product.id}:${initialVariantId ?? ''}`}
+        product={product}
+        initialVariantId={initialVariantId}
+      >
         <TabBarAutoHide />
         <Crumbs
           trail={[

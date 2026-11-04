@@ -3220,6 +3220,7 @@ svg {
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-tile);
   font: 700 calc(14px * var(--fs)) / calc(18px * var(--fs)) var(--sf-font-body);
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .vpick-opt.on {
