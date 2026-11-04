@@ -320,6 +320,7 @@ describe('SettingsErrorSummary', () => {
           { id: 'cutoff', label: 'Cut-off time', reason: 'Enter a time such as 1:00 pm.' },
           { id: 'free', label: 'Free delivery from' },
         ]}
+        focusSignal={1}
       />,
     );
     expect(out).toContain('role="alert"');
@@ -332,6 +333,18 @@ describe('SettingsErrorSummary', () => {
       />Cut-off time<\/a><span>: (<!-- -->)?Enter a time such as 1:00 pm\.<\/span>/,
     );
     expect(out).toContain('text-critical-fg');
+  });
+
+  it('stays quiet (no alert role) before a Save press, so typing is not interrupted', () => {
+    const out = html(
+      <SettingsErrorSummary
+        title="1 setting needs fixing before you can save"
+        items={[{ id: 'cutoff', label: 'Cut-off time' }]}
+      />,
+    );
+    expect(out).not.toContain('role="alert"');
+    expect(out).toContain('role="group"');
+    expect(out).toContain('<a href="#cutoff"');
   });
 
   it('renders nothing without fields', () => {

@@ -90,13 +90,17 @@ describe('StoreProfile live About checks', () => {
     const bar = screen.getByRole('region', { name: 'Unsaved changes' });
     expect(bar.textContent).toContain('1 unsaved change');
     expect(bar.textContent).toContain('1 needs fixing');
-    expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+    // Before a Save press the summary is a quiet named group, not an alert.
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('group', { name: /needs? fixing/ }).textContent).toContain(
+      '1 setting needs fixing',
+    );
     expect(save().disabled).toBe(true);
     expect(call).not.toHaveBeenCalled();
 
     fireEvent.change(box(), { target: { value: 'Family bakery, open daily.' } });
     expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('group', { name: /needs? fixing/ })).toBeNull();
     expect(save().disabled).toBe(false);
   });
 
@@ -104,7 +108,7 @@ describe('StoreProfile live About checks', () => {
     mount(view({ aboutMaxLength: 10 }), true, terms);
     fireEvent.change(box(), { target: { value: 'x'.repeat(11) } });
     expect(save().disabled).toBe(true);
-    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.getByRole('group', { name: /needs? fixing/ })).toBeTruthy();
     fireEvent.change(box(), { target: { value: 'x'.repeat(10) } });
     expect(save().disabled).toBe(false);
   });
@@ -197,7 +201,7 @@ describe('StoreProfile About card', () => {
       '1 needs fixing',
     );
     // The error summary at the top links to the box.
-    const summary = screen.getByRole('alert');
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
     expect(summary.textContent).toContain(': Use at most 10 characters.');
     fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));

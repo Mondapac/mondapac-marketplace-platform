@@ -356,7 +356,6 @@ export function FleetSelectionPanel({
           invalid={invalidScores}
           onText={(fleet, value) => {
             setScores((current) => ({ ...current, [fleet]: value }));
-            live.touch(fleet);
           }}
           onLeave={(fleet) => live.touch(fleet)}
         />

@@ -255,7 +255,10 @@ describe('the fleet selection page', () => {
     fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
       target: { value: '120' },
     });
-    // The error shows as the score is typed, and Save is off until it is fixed.
+    // Nothing is flagged while typing; leaving the score shows the error, and Save is off until
+    // it is fixed.
+    expect(within(drive).queryByText('Enter a whole number from 0 to 100.')).toBeNull();
+    fireEvent.blur(within(drive).getByLabelText('Reliability (0 to 100)'));
     expect(within(drive).getByText('Enter a whole number from 0 to 100.')).toBeTruthy();
     expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(

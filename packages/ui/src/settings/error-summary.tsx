@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
 export interface SettingsErrorItem {
   /** The `id` given to the `SettingRow` of the invalid field. */
@@ -25,6 +25,7 @@ export interface SettingsErrorSummaryProps {
  */
 export function SettingsErrorSummary({ title, items, focusSignal = 0 }: SettingsErrorSummaryProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useEffect(() => {
     if (focusSignal > 0) ref.current?.focus();
   }, [focusSignal]);
@@ -32,11 +33,16 @@ export function SettingsErrorSummary({ title, items, focusSignal = 0 }: Settings
   return (
     <div
       ref={ref}
-      role="alert"
+      // Announced as an alert only after a Save press; before that it is a named group listing
+      // the fields the user has left wrong, so a screen reader is not interrupted while typing.
+      role={focusSignal > 0 ? 'alert' : 'group'}
+      aria-labelledby={focusSignal > 0 ? undefined : titleId}
       tabIndex={-1}
       className="rounded-md border border-critical-border bg-critical-bg px-4 py-3 text-sm text-critical-fg outline-offset-2"
     >
-      <p className="font-semibold">{title}</p>
+      <p id={titleId} className="font-semibold">
+        {title}
+      </p>
       <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
         {items.map((item) => (
           <li key={item.id}>
