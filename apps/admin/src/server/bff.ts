@@ -51,6 +51,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'commission-payouts/admin/payouts',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
+    // The service areas with their names (sellers, ADR-0041), read-only.
+    'sellers/admin/service-areas',
     // The marketplace product list (catalog), read-only (query: `view`, `q`, the filters, `sort`,
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
@@ -127,6 +129,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
+    // The names of one service area, set or restored (sellers, ADR-0041).
+    'sellers/admin/service-areas/names',
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
