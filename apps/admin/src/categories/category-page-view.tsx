@@ -27,6 +27,11 @@ export function CategoryPageView({
   const [tree, setTree] = useState<TreeBody | null>(null);
   const [version, setVersion] = useState(0);
   const latest = useRef(0);
+  // What the last write says; focus goes to this line after a write, because the buttons that
+  // started it are gone with the remounted details.
+  const [note, setNote] = useState<string | null>(null);
+  const noteLine = useRef<HTMLParagraphElement>(null);
+  const focusNote = useRef(false);
 
   const fetchTree = useCallback(async () => {
     if (!canEdit) return;
@@ -44,6 +49,12 @@ export function CategoryPageView({
     void fetchTree();
   }, [fetchTree]);
 
+  useEffect(() => {
+    if (!focusNote.current || note === null) return;
+    focusNote.current = false;
+    noteLine.current?.focus();
+  }, [note, version]);
+
   return (
     <div className="flex flex-col gap-4">
       <p>
@@ -52,13 +63,18 @@ export function CategoryPageView({
         </a>
       </p>
       {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
+      <p ref={noteLine} role="status" tabIndex={-1} className="m-0 min-h-5 text-sm text-fg-muted">
+        {note}
+      </p>
       <CategoryDetails
         key={version}
         id={id}
         tree={tree}
         canEdit={canEdit}
         csrfToken={csrfToken}
-        onChanged={() => {
+        onChanged={(message) => {
+          setNote(message ?? null);
+          focusNote.current = message !== undefined;
           setVersion((n) => n + 1);
           void fetchTree();
         }}

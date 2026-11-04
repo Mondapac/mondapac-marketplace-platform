@@ -19,6 +19,7 @@ import {
   type TreeBody,
 } from './types.ts';
 
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 type Load = 'loading' | 'ready' | 'failed';
 const WIDE = '(min-width: 1024px)';
 
@@ -41,6 +42,22 @@ export function CategoriesView({
   const [tree, setTree] = useState<TreeBody | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The picked category is kept in the address (`?c=<id>`), so a reload or a shared link opens it.
+  const choose = (id: string | null) => {
+    setSelectedId(id);
+    try {
+      const url = new URL(window.location.href);
+      if (id === null) url.searchParams.delete('c');
+      else url.searchParams.set('c', id);
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch {
+      // A browser that refuses the address change still has the pick in the page.
+    }
+  };
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('c');
+    if (wanted !== null && UUID_SHAPE.test(wanted)) setSelectedId(wanted);
+  }, []);
   const [typed, setTyped] = useState('');
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -101,10 +118,9 @@ export function CategoriesView({
   useEffect(() => {
     const id = focusAfter.current;
     if (id === null || load !== 'ready') return;
-    const row = document.querySelector<HTMLElement>(`[data-row-id="${id}"]`);
-    if (row === null) return;
+    // One try after the tree is read again; a row that is gone gets no focus and no later retry.
     focusAfter.current = null;
-    row.focus();
+    document.querySelector<HTMLElement>(`[data-row-id="${id}"]`)?.focus();
   }, [list, load]);
 
   const countText = (n: number): string =>
@@ -120,7 +136,7 @@ export function CategoriesView({
   /** A category was added: read the tree again, open its parent and pick it. */
   function created(id: string, parentId: string | null) {
     if (parentId !== null) setOpen(parentId, true);
-    setSelectedId(id);
+    choose(id);
     changed(t('toolbar.note-add'), id);
   }
   function pick(id: string) {
@@ -128,7 +144,7 @@ export function CategoriesView({
       router.push(`${CATEGORIES_PATH}/${id}`);
       return;
     }
-    setSelectedId(id);
+    choose(id);
   }
   function setOpen(id: string, open: boolean) {
     setExpanded((previous) => {

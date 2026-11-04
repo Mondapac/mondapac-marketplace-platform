@@ -31,7 +31,7 @@ export function useCategoryCall(csrfToken: string) {
         window.location.assign('/session-ended');
         return { ok: false, problem: null };
       }
-      const next = categoryProblemOf(result.failure);
+      const next = categoryProblemOf(result.failure, method);
       setProblem(next);
       return { ok: false, problem: next };
     },

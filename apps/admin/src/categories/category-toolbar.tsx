@@ -51,9 +51,9 @@ export function CategoryToolbar({
   // A hidden category is edited like an active one; the API refuses an archived or merged one.
   const editable = category.status === 'active' || category.status === 'hidden';
   const isHidden = category.status === 'hidden';
-  const closeAndRefresh = (note?: string) => {
+  const closeAndRefresh = (note?: string, focusId?: string) => {
     setOpen(null);
-    onChanged(note);
+    onChanged(note, focusId);
   };
   // A dialog that closes (saved or cancelled) hands focus back to the category's row in the tree;
   // where there is no tree beside the details (a narrow screen) the dialog's own return stands.
@@ -77,11 +77,11 @@ export function CategoryToolbar({
     if (answer.ok) onChanged(t(direction === 'up' ? 'note-up' : 'note-down'), category.id);
   }
 
-  if (!canEdit) return null;
   // The action map marks only `active` categories as allowed, and a hidden one is edited too, so
   // the buttons follow the permission and the status; the API checks both again on every write.
-  const rename = editable;
-  const canDiscard = isHidden && category.counts.liveProducts === 0 && !hasChildren;
+  // A reader sees every button, all off (the page above says why); the API checks every write.
+  const rename = canEdit && editable;
+  const canDiscard = canEdit && isHidden && category.counts.liveProducts === 0 && !hasChildren;
   // Why a Move button is off, shown as a line and linked to both buttons.
   const moveReason =
     firstSibling && lastSibling
@@ -91,6 +91,7 @@ export function CategoryToolbar({
         : lastSibling
           ? 'reason-last'
           : null;
+  const showReason = rename && moveReason !== null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -112,7 +113,7 @@ export function CategoryToolbar({
         <Button
           variant="secondary"
           disabled={!rename || firstSibling || move.pending}
-          aria-describedby={moveReason === null ? undefined : 'category-move-reason'}
+          aria-describedby={showReason ? 'category-move-reason' : undefined}
           onClick={() => void reorder('up')}
         >
           {t('move-up')}
@@ -120,7 +121,7 @@ export function CategoryToolbar({
         <Button
           variant="secondary"
           disabled={!rename || lastSibling || move.pending}
-          aria-describedby={moveReason === null ? undefined : 'category-move-reason'}
+          aria-describedby={showReason ? 'category-move-reason' : undefined}
           onClick={() => void reorder('down')}
         >
           {t('move-down')}
@@ -143,7 +144,7 @@ export function CategoryToolbar({
           </Button>
         ) : null}
       </div>
-      {moveReason === null || !rename ? null : (
+      {!showReason || moveReason === null ? null : (
         <p id="category-move-reason" className="m-0 text-sm text-fg-muted">
           {t(moveReason)}
         </p>
@@ -191,7 +192,13 @@ export function CategoryToolbar({
           descendants={descendants}
           csrfToken={csrfToken}
           onClose={() => setOpen(null)}
-          onDone={() => closeAndRefresh(t(`note-${open}`))}
+          onDone={() =>
+            // A discarded category has no row left: focus goes to its parent's.
+            closeAndRefresh(
+              t(`note-${open}`),
+              open === 'discard' ? (category.parentId ?? undefined) : undefined,
+            )
+          }
           onReload={() => closeAndRefresh()}
         />
       ) : null}

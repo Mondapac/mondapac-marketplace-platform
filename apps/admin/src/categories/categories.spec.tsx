@@ -116,6 +116,7 @@ const view = (ui: React.ReactElement) =>
   );
 
 beforeEach(() => {
+  window.history.replaceState(null, '', '/');
   call.mockReset();
   push.mockReset();
   wide(true);

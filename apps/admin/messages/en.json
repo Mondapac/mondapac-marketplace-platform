@@ -4293,7 +4293,7 @@
       "show": {
         "title": "Show {name}?",
         "action": "Show",
-        "body": "{name} and the categories this Hide hid come back to the menu and get their pages again."
+        "body": "{name} and the categories this Hide hid come back to the menu and get their pages again. Showing needs no image and no search-result text."
       },
       "discard": {
         "title": "Discard {name}?",
@@ -4303,7 +4303,6 @@
     },
     "error": {
       "unknown": "The change was not saved. Try again.",
-      "conflict_stale": "Someone changed the categories while this page was open. Read them again, then repeat your change.",
       "validation_failed": "Some fields need attention.",
       "category_not-found": "This category is gone. Read the tree again.",
       "category_parent-not-found": "The parent category is gone. Read the tree again.",
@@ -4325,7 +4324,9 @@
       "access_permission-missing": "Your role can not change categories.",
       "access_acting-as-refused": "Categories can not be changed while acting as someone else.",
       "access_unavailable": "The service is not available now. Try again.",
-      "catalog_categories-unavailable": "Categories are not available now. Try again."
+      "catalog_categories-unavailable": "Categories are not available now. Try again.",
+      "conflict_stale_tree": "The tree changed since you opened it. Reload.",
+      "conflict_stale_details": "Someone changed this category. Reload."
     }
   },
   "brands": {

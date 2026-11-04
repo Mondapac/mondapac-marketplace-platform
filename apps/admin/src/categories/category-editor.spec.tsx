@@ -120,6 +120,7 @@ async function pick(name: string) {
 }
 
 beforeEach(() => {
+  window.history.replaceState(null, '', '/');
   call.mockReset();
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
@@ -220,7 +221,8 @@ describe('category editor (C3b)', () => {
     await pick('Pantry');
     fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Also hides 2 subcategories.')).toBeTruthy();
+    // Pantry has Rice (active) and Oils (already hidden): Hide reaches only the active one.
+    expect(within(dialog).getByText('Also hides 1 subcategory.')).toBeTruthy();
     expect(writes()).toHaveLength(0);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Hide' }));
     await waitFor(() => expect(writes()).toHaveLength(1));
@@ -319,7 +321,7 @@ describe('category editor (C3b)', () => {
     await pick('Pantry');
     fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hide' }));
-    expect(await screen.findByText(/Someone changed the categories/)).toBeTruthy();
+    expect(await screen.findByText('The tree changed since you opened it. Reload.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Read again' })).toBeTruthy();
     cleanup();
 
@@ -341,6 +343,75 @@ describe('category editor (C3b)', () => {
     ).not.toHaveLength(0);
   });
 
+  it('says "Someone changed this category. Reload." when a details save is stale', async () => {
+    serve({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Pantry');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByText('Someone changed this category. Reload.')).toBeTruthy();
+  });
+
+  it('shows the refusal while acting as someone else', async () => {
+    serve({ ok: false, failure: { status: 403, code: 'access.acting-as-refused' } });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Pantry');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hide' }));
+    expect(
+      await screen.findByText('Categories can not be changed while acting as someone else.'),
+    ).toBeTruthy();
+  });
+
+  it.each(['fa', 'ar'])('shows a claim word refused in %s at that language field', async (code) => {
+    serve({
+      ok: false,
+      failure: {
+        status: 422,
+        code: 'category.claim-word',
+        details: { fields: [{ path: `texts.${code}.name`, code: 'claim-word' }] },
+      },
+    });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Pantry');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(
+      await within(dialog).findAllByText(/names a certification or a similar claim/),
+    ).not.toHaveLength(0);
+  });
+
+  it('sends a rejected session to sign-in from a write', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    serve({ ok: false, failure: { status: 401, code: 'auth.required' } });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Pantry');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hide' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    vi.unstubAllGlobals();
+  });
+
+  it('ignores a second click while a write runs', async () => {
+    let finish: (value: ApiResult<unknown>) => void = () => undefined;
+    call.mockImplementation((method: string, path: string) => {
+      if (method !== 'GET') return new Promise<ApiResult<unknown>>((resolve) => (finish = resolve));
+      if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree()));
+      const found = tree().categories.find((c) => path === `catalog/admin/categories/${c.id}`);
+      return Promise.resolve(found === undefined ? ok(null) : ok(detail(found)));
+    });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Rice');
+    const down = screen.getByRole('button', { name: 'Move down' });
+    fireEvent.click(down);
+    fireEvent.click(down);
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    finish(ok(written));
+  });
+
   it('filters by a missing language and counts what is missing in each', async () => {
     serve();
     view(<CategoriesView canEdit csrfToken="tok" />);
@@ -359,11 +430,15 @@ describe('category editor (C3b)', () => {
     );
   });
 
-  it('shows no change buttons to a reader', async () => {
+  it('shows the change buttons off to a reader', async () => {
     serve();
     view(<CategoriesView canEdit={false} />);
     await pick('Pantry');
-    expect(screen.queryByRole('button', { name: 'Edit details' })).toBeNull();
+    // The buttons stay, all off, so a reader sees what an editor can do.
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Edit details' }).disabled).toBe(
+      true,
+    );
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Hide' }).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Add category' })).toBeNull();
   });
 
@@ -442,5 +517,37 @@ describe('category editor (C3b)', () => {
     view(<CategoryPageView id={id(2)} canEdit csrfToken="tok" />);
     expect(await screen.findByRole('button', { name: 'Edit details' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Move up' })).toBeTruthy();
+  });
+  it('says what a write did on the page of one category and moves focus there', async () => {
+    serve();
+    view(<CategoryPageView id={id(2)} canEdit csrfToken="tok" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Move down' }));
+    const line = await screen.findByText('Moved down.');
+    expect(line.getAttribute('role')).toBe('status');
+    await waitFor(() => expect(document.activeElement).toBe(line));
+  });
+
+  it('keeps the picked category in the address and opens it from the address', async () => {
+    serve();
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Rice');
+    expect(new URLSearchParams(window.location.search).get('c')).toBe(id(2));
+    cleanup();
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    expect(await screen.findByRole('heading', { name: 'Rice' })).toBeTruthy();
+  });
+
+  it('keeps focus in the tree when a search removes the focused row', async () => {
+    serve();
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    const items = await screen.findAllByRole('treeitem');
+    const rice = items.find((el) => el.textContent?.includes('Rice'))!;
+    rice.focus();
+    expect(document.activeElement).toBe(rice);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search categories' }), {
+      target: { value: 'Drinks' },
+    });
+    await waitFor(() => expect(screen.queryByText('Rice')).toBeNull());
+    await waitFor(() => expect(document.activeElement?.getAttribute('role')).toBe('treeitem'));
   });
 });

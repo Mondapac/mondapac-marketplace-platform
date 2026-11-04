@@ -48,12 +48,19 @@ const RELOAD = new Set([
   'category.reorder-edge',
 ]);
 
-export function categoryProblemOf(failure: ApiFailure): CategoryProblem {
+export function categoryProblemOf(
+  failure: ApiFailure,
+  method: 'POST' | 'PATCH' = 'POST',
+): CategoryProblem {
   const code = KNOWN.has(failure.code) ? failure.code : 'unknown';
   const fields: Record<string, string> = {};
   for (const field of failure.details?.fields ?? []) fields[field.path] = field.code;
+  // One API code, two texts (amendment 7): a details save (PATCH) names the category version, every
+  // other write names the tree version.
+  const named =
+    code === 'conflict.stale' ? `conflict.stale.${method === 'PATCH' ? 'details' : 'tree'}` : code;
   return {
-    key: `categories.error.${code.replace(/\./g, '_')}`,
+    key: `categories.error.${named.replace(/\./g, '_')}`,
     fields,
     reload: RELOAD.has(code),
     ...(failure.details?.max === undefined ? {} : { max: failure.details.max }),

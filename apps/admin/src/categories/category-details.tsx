@@ -112,18 +112,15 @@ export function CategoryDetails({
           {body.path.map((entry) => entry.name ?? entry.slug).join(' › ')}
         </p>
       </div>
-      {tree !== undefined &&
-      tree !== null &&
-      canEdit &&
-      onChanged !== undefined &&
-      onCreated !== undefined ? (
+      {tree !== undefined && tree !== null ? (
         <ToolbarFor
           body={body}
           tree={tree}
+          canEdit={canEdit && onChanged !== undefined && onCreated !== undefined}
           csrfToken={csrfToken}
           title={title}
-          onChanged={onChanged}
-          onCreated={onCreated}
+          onChanged={onChanged ?? noop}
+          onCreated={onCreated ?? noop}
         />
       ) : null}
       <Tabs
@@ -142,6 +139,7 @@ export function CategoryDetails({
 function ToolbarFor({
   body,
   tree,
+  canEdit,
   csrfToken,
   title,
   onChanged,
@@ -149,6 +147,7 @@ function ToolbarFor({
 }: {
   readonly body: DetailBody;
   readonly tree: TreeBody;
+  readonly canEdit: boolean;
   readonly csrfToken: string;
   readonly title: string;
   readonly onChanged: (note?: string, focusId?: string) => void;
@@ -157,23 +156,26 @@ function ToolbarFor({
   const { category } = body;
   const { children } = indexOf(tree.categories);
   const siblings = children.get(category.parentId) ?? [];
+  // Hide reaches only the descendants that are active (the API's rule); a child of any status
+  // still stops a Discard.
   let descendants = 0;
   const walk = (parent: string): void => {
     for (const child of children.get(parent) ?? []) {
-      descendants += 1;
+      if (child.status === 'active') descendants += 1;
       walk(child.id);
     }
   };
   walk(category.id);
+  const hasChildren = (children.get(category.id) ?? []).length > 0;
   return (
     <CategoryToolbar
       body={body}
-      canEdit
+      canEdit={canEdit}
       csrfToken={csrfToken}
       supportedLocales={tree.supportedLocales}
       firstSibling={siblings[0]?.id === category.id}
       lastSibling={siblings[siblings.length - 1]?.id === category.id}
-      hasChildren={descendants > 0}
+      hasChildren={hasChildren}
       descendants={descendants}
       title={title}
       onChanged={onChanged}
@@ -181,6 +183,8 @@ function ToolbarFor({
     />
   );
 }
+
+const noop = (): void => undefined;
 
 function Row({ term, children }: { readonly term: string; readonly children: React.ReactNode }) {
   return (
