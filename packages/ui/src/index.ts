@@ -107,6 +107,7 @@ export {
   type SettingsHistoryItem,
   type SettingsHistoryState,
 } from './settings/settings-history.tsx';
+export {
   SettingsHub,
   type SettingsHubGroup,
   type SettingsHubLabels,
