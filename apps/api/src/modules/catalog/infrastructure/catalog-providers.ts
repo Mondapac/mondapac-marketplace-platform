@@ -44,6 +44,11 @@ import { FEATURE_SET_STORE, type FeatureSetStore } from '../application/ports/fe
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
 import { PrismaFeatureSetStore } from './prisma-feature-set.store';
+import {
+  CATEGORY_ATTRIBUTE_LINK_STORE,
+  type CategoryAttributeLinkStore,
+} from '../application/ports/category-attribute-link.store';
+import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
 import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
 import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
 import {
@@ -258,6 +263,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: FEATURE_SET_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): FeatureSetStore => new PrismaFeatureSetStore(prisma),
+  },
+  {
+    provide: CATEGORY_ATTRIBUTE_LINK_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryAttributeLinkStore =>
+      new PrismaCategoryAttributeLinkStore(prisma),
   },
   {
     provide: ATTRIBUTE_RELAXATION_STORE,

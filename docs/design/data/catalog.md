@@ -42,7 +42,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `product_code_counters` | The per-Market sequence for `productCode` (D 4.1) | Counter, one row per Market | 1 |
 | `category_trees` | One row per Market: the tree version (serialises structural edits; cache key) | Counter | 2 |
 | `platform_categories`, `platform_category_revisions`, `platform_category_revision_names` | `PlatformCategory` root, revisions of name and parent | V1 | 2 |
-| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions` | `AttributeDefinition`, `AttributeFamily` | V1 | 3 |
+| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions`, `category_attribute_links`, `category_attribute_link_revisions` | `AttributeDefinition`, `AttributeFamily`, `CategoryAttributeLink` | V1 | 3 |
 | `product_working_copies` | The working copy (D 2.3 M-2) | Mutable, one per product | 4 |
 | `product_revisions`, `product_revision_texts`, `product_revision_categories`, `product_revision_variants` | Revision content | V1 revision, insert-only + trigger | 4 |
 | `product_revision_decisions` | One terminal outcome per revision, with the named checks (D 8.3a) | V4, insert-only + trigger | 4; checks 10 |
@@ -295,6 +295,18 @@ or `optional` and `required` is true exactly for the first, both written by the 
 A4; the Core group `core` comes first and holds the brand and the country of origin), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
 `(market_id, family_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 family_id, id)`; unique per Market), `created_at`.
+
+`category_attribute_links` (root, attributes A4, categories C8): `(market_id, category_id)` primary
+key (one link per platform category, FK `RESTRICT`); `published_revision_id` (same-category FK to
+the revision); `version`; `created_at`. `category_attribute_link_revisions` (insert-only, the
+`reject_mutation` triggers): `id`; `category_id`; `revision_no` unique per category; `family_id`
+(nullable, FK to `attribute_families`; null means the category takes its parent's feature set);
+`filters jsonb` (array of attribute codes in the order buyers see them, at most 20, CHECK
+`jsonb_typeof = 'array'`); `author_account_id`; `created_at` (the revision's own time). The use case
+resolves inheritance (the nearest category up the tree that holds a feature set; the filters of
+every category from the root down, a code once) and checks that each filter is an active,
+filterable definition; the table stores only what an admin set. Grants: `SELECT, INSERT` on both,
+`UPDATE (published_revision_id, version)` on the root.
 
 **Two-person backstop triggers (Hassan M2; slice 21; SQL in 5.1; measured).** All `SECURITY
 INVOKER`, fixed `search_path`, schema-qualified, through one helper

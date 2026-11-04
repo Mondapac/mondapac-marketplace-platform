@@ -297,6 +297,28 @@ export const AttributeValueSuggestionDecidedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a category's attribute links (A4, categories C8). */
+export const CATALOG_CATEGORY_LINKS_TARGET = 'catalog.category';
+
+/** What the audit keeps of a category's links: counts and a flag, never a code or a name. */
+const linkShape = {
+  revisionNo: auditField.integer(),
+  hasFeatureSet: auditField.boolean(),
+  filterCount: auditField.integer(),
+};
+
+/**
+ * An admin changed the feature set or the filter list a category holds (A4). The first link of a
+ * category is recorded with `revisionNo` 0 before it.
+ */
+export const CategoryAttributesChangedAudit = defineAuditAction({
+  action: 'catalog.category-attributes.changed',
+  targetType: CATALOG_CATEGORY_LINKS_TARGET,
+  actors: ['authenticated'],
+  before: linkShape,
+  after: linkShape,
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -317,4 +339,5 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeFamilyRevisedAudit,
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
+  CategoryAttributesChangedAudit,
 ] as const;
