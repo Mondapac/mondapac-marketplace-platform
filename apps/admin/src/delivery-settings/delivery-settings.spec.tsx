@@ -305,18 +305,22 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('puts the error on the field as it is typed, lists it in the summary and keeps Save off', () => {
+  it('puts the error on the field once it is left, lists it in the summary and keeps Save off', () => {
     mount(settings());
 
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     // The amount is empty but was not typed in: no error yet, and Save can still be tried.
     expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '250' } });
+    // Still nothing while the amount is being typed.
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    fireEvent.blur(screen.getByLabelText('Percentage'));
 
     const field = screen.getByLabelText<HTMLInputElement>('Percentage');
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
-    const summary = screen.getByRole('alert');
+    expect(screen.queryByRole('alert')).toBeNull();
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
     // The summary names the field and the reason, the same text as under the field.
     expect(summary.textContent).toContain('Percentage: Enter a percentage from 0 to 100');
@@ -360,16 +364,18 @@ describe('the delivery settings page', () => {
     expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
   });
 
-  it('flags the cut-off time as soon as it is cleared', () => {
+  it('flags the cut-off time once it is cleared and left', () => {
     mount(settings());
 
     fireEvent.change(screen.getByLabelText('Cut-off time'), { target: { value: '' } });
+    fireEvent.blur(screen.getByLabelText('Cut-off time'));
 
-    expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
+    expect(summary.textContent).toContain('1 setting needs fixing');
     // Spec copy: the 12-hour wording, in the field's error and in the summary body.
     const reason = 'Enter a time between 12:00 am and 11:59 pm, such as 1:00 pm.';
     expect(screen.getByText(reason)).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toContain(`Cut-off time: ${reason}`);
+    expect(summary.textContent).toContain(`Cut-off time: ${reason}`);
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
       true,
     );

@@ -11,7 +11,10 @@ export interface LiveErrors<K extends string> {
    */
   readonly shown: readonly K[];
   readonly has: (key: K) => boolean;
-  /** The user edited or left this field: from now on it shows its error as soon as it fails. */
+  /**
+   * The user left this field (or made a choice in it): from now on it shows its error as soon as
+   * it fails, re-checked on every keystroke. A text box calls it on blur, not on change.
+   */
   readonly touch: (key: K) => void;
   /** Forget that the field was edited (its value was reset by the page, not typed). */
   readonly untouch: (key: K) => void;
@@ -26,8 +29,9 @@ export interface LiveErrors<K extends string> {
 /**
  * Live validation for a settings page. The page recomputes which fields fail from its draft on
  * every render and passes them here; the hook decides which of them to show. A field shows its
- * error once the user has typed in it or left it (not before: an untouched, loaded value is not
- * nagged), and the error goes away the moment the value is right. Nothing is stored or sent.
+ * error once the user has left it or pressed Save (not while first typing, and an untouched,
+ * loaded value is not nagged); from then on it re-checks as the user types, so the error goes
+ * away the moment the value is right. Nothing is stored or sent.
  */
 export function useLiveErrors<K extends string>(failing: readonly K[]): LiveErrors<K> {
   const [touched, setTouched] = useState<ReadonlySet<K>>(() => new Set());

@@ -189,9 +189,10 @@ export function DeliverySettingsPanel({
   const count = state.count;
   const dirty = canManage && count > 0;
 
-  const edit = (patch: Partial<SettingsForm>, field?: FormField) => {
+  // A typed field shows its error once it is left (or on Save); after that it re-checks as the
+  // user types, because `live.shown` is worked out again from the draft on every render.
+  const edit = (patch: Partial<SettingsForm>) => {
     state.setDraft((current) => ({ ...current, ...patch }));
-    if (field !== undefined) live.touch(field);
   };
   const errorOf = (field: FormField) =>
     !invalid.includes(field)
@@ -355,7 +356,7 @@ export function DeliverySettingsPanel({
             type="time"
             className="md:max-w-48"
             value={form.cutoff}
-            onChange={(event) => edit({ cutoff: event.target.value }, 'cutoff')}
+            onChange={(event) => edit({ cutoff: event.target.value })}
             onBlur={() => live.touch('cutoff')}
           />
         </SettingRow>
@@ -376,7 +377,7 @@ export function DeliverySettingsPanel({
             autoComplete="off"
             className="md:max-w-40"
             value={form.daysAhead}
-            onChange={(event) => edit({ daysAhead: event.target.value }, 'daysAhead')}
+            onChange={(event) => edit({ daysAhead: event.target.value })}
             onBlur={() => live.touch('daysAhead')}
           />
         </SettingRow>
@@ -429,7 +430,7 @@ export function DeliverySettingsPanel({
               autoComplete="off"
               className="md:max-w-40"
               value={form.marginValue}
-              onChange={(event) => edit({ marginValue: event.target.value }, 'marginValue')}
+              onChange={(event) => edit({ marginValue: event.target.value })}
               onBlur={() => live.touch('marginValue')}
             />
           </SettingRow>

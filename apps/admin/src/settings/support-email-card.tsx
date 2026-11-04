@@ -204,7 +204,6 @@ export function SupportEmailCard({
               value={text}
               onChange={(event) => {
                 form.setDraft(event.target.value);
-                live.touch('email');
               }}
               onBlur={() => live.touch('email')}
             />

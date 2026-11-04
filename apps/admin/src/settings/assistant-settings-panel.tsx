@@ -61,6 +61,16 @@ const FIELD_LABEL: Record<FieldKey, string> = {
   welcomeText: 'welcome.label',
 };
 
+/** Form keys typed into a text box: checked when left or on Save, not on the first keystroke. */
+const TYPED_KEYS: ReadonlySet<keyof AssistantForm> = new Set<keyof AssistantForm>([
+  'audiencePercent',
+  'welcomeText',
+  'guestMessageLimit',
+  'customerMessageLimit',
+  'dailySpendCap',
+  'monthlySpendCap',
+]);
+
 /** Form keys whose API field has another name. */
 const FIELD_OF: Partial<Record<keyof AssistantForm, FieldKey>> = {
   dailySpendCap: 'dailySpendCapUsdCents',
@@ -183,6 +193,8 @@ export function AssistantSettingsPanel({
   const leave = (key: keyof AssistantForm) => {
     const field = FIELD_OF[key] ?? key;
     if (field in FIELD_LABEL) live.touch(field as FieldKey);
+    // The daily cap may not pass the monthly one, so leaving the monthly cap re-checks the daily.
+    if (field === 'monthlySpendCapUsdCents') live.touch('dailySpendCapUsdCents');
   };
   const checkedNow = settingsOf(form, answer.unavailableOptions);
   const live = useLiveErrors<FieldKey>(checkedNow.ok ? [] : checkedNow.invalid);
@@ -192,11 +204,11 @@ export function AssistantSettingsPanel({
   ];
   const set = <K extends keyof AssistantForm>(key: K, value: AssistantForm[K]) => {
     settings.setDraft((current) => ({ ...current, [key]: value }));
-    // Typing in a field checks it as it goes; a server refusal of it is old news now.
+    // A choice is final when made, so it is checked at once; a typed field shows its error once
+    // it is left (`leave`) or on Save, then re-checks as the user types. A server refusal of the
+    // field is old news now.
     const field = FIELD_OF[key] ?? key;
-    if (field in FIELD_LABEL) live.touch(field as FieldKey);
-    // The daily cap may not pass the monthly one, so a monthly edit re-checks the daily cap too.
-    if (field === 'monthlySpendCapUsdCents') live.touch('dailySpendCapUsdCents');
+    if (!TYPED_KEYS.has(key) && field in FIELD_LABEL) live.touch(field as FieldKey);
     setRefusedKeys((current) => current.filter((name) => name !== field));
   };
   const errorOf = (key: FieldKey) => (invalid.includes(key) ? t(`${P}.invalid.${key}`) : undefined);

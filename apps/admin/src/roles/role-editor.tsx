@@ -337,7 +337,6 @@ export function RoleEditor({
                 setName(event.target.value);
                 setDone(false);
                 setNameError(null);
-                live.touch('name');
               }}
               onBlur={() => live.touch('name')}
             />

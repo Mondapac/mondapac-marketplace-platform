@@ -182,11 +182,15 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
-  it('names bad fields as they are typed, before calling the API', () => {
+  it('names bad fields once they are left, before calling the API', () => {
     mount(answer());
     fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '61' } });
     fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '300' } });
-    // No Save click: the errors, the count and the summary are already there.
+    // While typing nothing is flagged yet.
+    expect(screen.queryByText('Enter a whole number from 5 to 60.')).toBeNull();
+    fireEvent.blur(screen.getByLabelText('Messages per guest'));
+    fireEvent.blur(screen.getByLabelText('Daily cap'));
+    // No Save click: once left, the errors, the count and the summary are there.
     expect(screen.getByText('Enter a whole number from 5 to 60.')).toBeTruthy();
     expect(
       screen.getByText(/no more than the monthly cap/, { selector: 'p[id$="-error"]' }),
@@ -194,7 +198,8 @@ describe('AssistantSettingsPanel', () => {
     expect(call).not.toHaveBeenCalled();
     // The bar counts the errors and Save is off until they are fixed.
     expect(screen.getByText(/2 need fixing/)).toBeTruthy();
-    const summary = screen.getByRole('alert');
+    expect(screen.queryByRole('alert')).toBeNull();
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
     expect(summary.textContent).toContain('2 settings need fixing before you can save');
     fireEvent.click(screen.getByRole('link', { name: 'Messages per guest' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Messages per guest'));

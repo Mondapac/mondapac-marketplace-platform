@@ -107,7 +107,9 @@ describe('role editor', () => {
       false,
     );
     fireEvent.change(name, { target: { value: `Bad\u202Ename` } });
-    expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
+    expect(screen.getByRole('group', { name: /needs? fixing/ }).textContent).toContain(
+      '1 setting needs fixing',
+    );
   });
 
   it('shows a key the admin may not give as locked, and a protected one with its note', () => {
