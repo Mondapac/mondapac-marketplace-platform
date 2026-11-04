@@ -418,6 +418,84 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(await count({ status: 'confirmed' })).toBe(0);
   });
 
+  it('sorts the admin list by total and breaks a tie by id in the same direction', async () => {
+    const day = T0.add({ hours: 24 * 500 });
+    const priced = (n: number, amount: bigint) => {
+      const base = newOrder(ids.next<'Account'>(), day.add({ minutes: n }));
+      return {
+        ...base,
+        total: money(amount, currency),
+        sellerOrders: base.sellerOrders.map((part) => ({
+          ...part,
+          subtotal: amount,
+          total: amount,
+        })),
+        lines: base.lines.map((line) => ({
+          ...line,
+          unitPrice: money(amount / 2n, currency),
+          lineAmount: amount,
+        })),
+      };
+    };
+    const rows = [priced(0, 1000n), priced(1, 3000n), priced(2, 3000n), priced(3, 2000n)];
+    for (const row of rows) await value(market, () => repository.insert(market, row));
+    const filter = filterOf({ from: day, to: day.add({ hours: 1 }) });
+    const page = (direction: 'asc' | 'desc', offset = 0, n = 10) =>
+      value(market, () =>
+        repository.pageAll(market, filter, { key: 'total', direction }, offset, n),
+      );
+    const tied = [rows[1]!.id, rows[2]!.id].sort();
+
+    expect((await page('desc')).map((o) => o.id)).toEqual([
+      ...[...tied].reverse(),
+      rows[3]!.id,
+      rows[0]!.id,
+    ]);
+    expect((await page('asc')).map((o) => o.id)).toEqual([rows[0]!.id, rows[3]!.id, ...tied]);
+    // A page boundary inside the tie neither repeats nor skips a row.
+    expect((await page('desc', 0, 1)).map((o) => o.id)).toEqual([tied[1]]);
+    expect((await page('desc', 1, 1)).map((o) => o.id)).toEqual([tied[0]]);
+  });
+
+  it('filters the admin list on a fulfilment step that some seller part has', async () => {
+    const day = T0.add({ hours: 24 * 510 });
+    const base = newOrder(ids.next<'Account'>(), day);
+    const shipped = newOrder(ids.next<'Account'>(), day.add({ minutes: 1 }));
+    for (const row of [base, shipped]) await value(market, () => repository.insert(market, row));
+    // The part moves on through the fulfilment step, as the application does.
+    await value(market, () =>
+      repository.saveFulfilment(
+        market,
+        markShipped(
+          shipped.sellerOrders[0]!,
+          { carrier: 'Post', trackingRef: 'TRACK1' },
+          day.add({ minutes: 5 }),
+        )!,
+        'to-ship',
+      ),
+    );
+    const window = { from: day, to: day.add({ hours: 1 }) };
+    const ids_ = (fulfilment: OrderFilter['fulfilment']) =>
+      value(market, () =>
+        repository.pageAll(
+          market,
+          filterOf({ ...window, fulfilment }),
+          { key: 'created', direction: 'asc' },
+          0,
+          10,
+        ),
+      ).then((rows) => rows.map((o) => o.id));
+
+    expect(await ids_('to-ship')).toEqual([base.id]);
+    expect(await ids_('shipped')).toEqual([shipped.id]);
+    expect(await ids_('delivered')).toEqual([]);
+    expect(await ids_(null)).toEqual([base.id, shipped.id]);
+    // The shipment stays out of the worker's queue for the tests that follow.
+    await value(market, () =>
+      repository.markInventoryRecorded(market, shipped.sellerOrders[0]!.id, day.add({ hours: 2 })),
+    );
+  });
+
   it('refuses what the application never writes', async () => {
     const key = `checkout-${ids.next<'Order'>()}`;
     expect(await rawOrder({ stripe_idempotency_key: key })).toBeNull();
