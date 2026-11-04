@@ -27,6 +27,26 @@ import {
 } from '../application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX, type IdentifierIndex } from '../application/ports/identifier-index';
 import {
+  SELLER_HEALTH_POLICY,
+  type SellerHealthPolicy,
+} from '../application/ports/seller-health-policy';
+import {
+  SELLER_HEALTH_ROSTER,
+  type SellerHealthRoster,
+} from '../application/ports/seller-health-roster';
+import {
+  SELLER_HEALTH_SIGNALS,
+  type SellerHealthSignals,
+} from '../application/ports/seller-health-signals';
+import {
+  SELLER_HEALTH_STORE,
+  type SellerHealthStore,
+} from '../application/ports/seller-health.store';
+import { DefaultSellerHealthPolicy } from './default-seller-health-policy';
+import { LateBoundSellerHealthSignals } from './late-bound-seller-health-signals';
+import { PrismaSellerHealthRoster } from './prisma-seller-health-roster';
+import { PrismaSellerHealthStore } from './prisma-seller-health.store';
+import {
   ADMIN_FLAG_REPOSITORY,
   type AdminFlagRepository,
 } from '../application/ports/admin-flag.repository';
@@ -52,6 +72,15 @@ import {
   type BlogAccessRepository,
 } from '../application/ports/blog-access.repository';
 import { PrismaBlogAccessRepository } from './prisma-blog-access.repository';
+import {
+  AREA_NAME_SOURCE,
+  SERVICE_AREA_NAMES_REPOSITORY,
+  type AreaNameSource,
+  type ServiceAreaNamesRepository,
+} from '../application/ports/service-area-names.repository';
+import { CLOCK } from '../../../platform/clock/clock.module';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { Clock } from '@mondapac/shared-kernel';
 import {
   SELLING_FACTS_REPOSITORY,
   type SellingFactsRepository,
@@ -132,6 +161,8 @@ import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-confi
 import { MarketConfigSellerPolicy } from './market-config-seller-policy';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaSellerFileRepository } from './prisma-seller-file.repository';
+import { CachedAreaNameSource } from './cached-area-name-source';
+import { PrismaServiceAreaNamesRepository } from './prisma-service-area-names.repository';
 import { PrismaSellerListRepository } from './prisma-seller-list.repository';
 import { PrismaShopSlugRepository } from './prisma-shop-slug.repository';
 import { PrismaTaxProfileRepository } from './prisma-tax-profile.repository';
@@ -370,6 +401,21 @@ export const sellerProviders: readonly FactoryProvider[] = [
       new PrismaAdminFlagRepository(prisma),
   },
   {
+    provide: SERVICE_AREA_NAMES_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ServiceAreaNamesRepository =>
+      new PrismaServiceAreaNamesRepository(prisma),
+  },
+  {
+    provide: AREA_NAME_SOURCE,
+    inject: [UNIT_OF_WORK, SERVICE_AREA_NAMES_REPOSITORY, CLOCK],
+    useFactory: (
+      unitOfWork: UnitOfWork,
+      repository: ServiceAreaNamesRepository,
+      clock: Clock,
+    ): AreaNameSource => new CachedAreaNameSource(unitOfWork, repository, clock),
+  },
+  {
     provide: BLOG_ACCESS_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BlogAccessRepository =>
@@ -404,5 +450,25 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [SELLER_ACCESS_CONTRACT],
     useFactory: (identity: SellerAccessContract): SellerAccessDecider =>
       new IdentitySellerAccessDecider(identity),
+  },
+  {
+    provide: SELLER_HEALTH_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerHealthStore => new PrismaSellerHealthStore(prisma),
+  },
+  {
+    provide: SELLER_HEALTH_ROSTER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerHealthRoster => new PrismaSellerHealthRoster(prisma),
+  },
+  {
+    // The editable Market settings (ADM-06) replace this default in a later package.
+    provide: SELLER_HEALTH_POLICY,
+    useFactory: (): SellerHealthPolicy => new DefaultSellerHealthPolicy(),
+  },
+  {
+    // The feeds sit in modules that import sellers; SellerHealthModule binds them at start.
+    provide: SELLER_HEALTH_SIGNALS,
+    useFactory: (): SellerHealthSignals => new LateBoundSellerHealthSignals(),
   },
 ];

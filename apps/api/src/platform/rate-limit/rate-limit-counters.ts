@@ -7,10 +7,14 @@ export const RATE_LIMIT_WINDOW_SECONDS = 60;
  * The limit classes counted per subject rather than per origin, each with its own fixed window:
  * a module counts them through {@link SubjectRateLimits} and compares the count with its own
  * limit. `assistant-message`: the buyer assistant's messages per guest token, per origin and per
- * customer account (plan section 8: 10-minute windows, the limits are Market settings). A new
- * class also needs a migration that widens `rate_limit_counters_key_check`.
+ * customer account (plan section 8: 10-minute windows, the limits are Market settings).
+ * `checkout-payment`: the card payment attempts of a customer account (10-minute window; the limit
+ * is a constant of ordering). A new class also needs a migration that widens `rate_limit_counters_key_check`.
  */
-export const SUBJECT_LIMIT_WINDOWS = Object.freeze({ 'assistant-message': 600 } as const);
+export const SUBJECT_LIMIT_WINDOWS = Object.freeze({
+  'assistant-message': 600,
+  'checkout-payment': 600,
+} as const);
 export type SubjectLimitClass = keyof typeof SUBJECT_LIMIT_WINDOWS;
 
 /** Every class the counters keep: the guard's per-origin classes and the per-subject ones. */

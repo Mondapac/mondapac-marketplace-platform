@@ -8,6 +8,7 @@ import type { CertificationTypesSystem } from '../application/use-cases/certific
 import type { CertifiedCategories } from '../application/use-cases/certified-categories.use-case';
 import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
 import type { ClaimTermList } from '../application/use-cases/claim-term-list.use-case';
+import type { ClaimTermLocales } from '../application/use-cases/claim-term-locales.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
 import type { MatchClaimTermsSystem } from '../application/use-cases/match-claim-terms-system.use-case';
 import type {
@@ -28,6 +29,7 @@ export interface CertificationFacadeUseCases {
   readonly claimTermList: ClaimTermList;
   readonly matchClaimTerms: MatchClaimTerms;
   readonly matchClaimTermsSystem: MatchClaimTermsSystem;
+  readonly claimTermLocales: ClaimTermLocales;
   readonly certificationTypes: CertificationTypes;
   readonly certificationTypesSystem: CertificationTypesSystem;
   readonly sellerCertificateOverview: SellerCertificateOverview;
@@ -74,6 +76,10 @@ export class CertificationFacadeImplementation implements CertificationFacade {
     return result.error.code === 'access.denied'
       ? err(result.error)
       : err({ code: 'certification.unavailable' });
+  }
+
+  claimTermLocales(context: CallContext): Promise<Result<readonly string[], Failure>> {
+    return this.useCases.claimTermLocales.execute(context, {});
   }
 
   certificationTypes(

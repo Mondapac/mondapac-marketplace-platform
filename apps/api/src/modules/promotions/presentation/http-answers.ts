@@ -17,6 +17,7 @@ export const PROMOTIONS_STATUS: Readonly<Record<string, number>> = Object.freeze
   'promotions.invalid-state': 409,
   'promotions.not-editable': 409,
   'promotions.too-many-active': 409,
+  'promotions.referral-not-eligible': 409,
   'access.unavailable': 503,
   'promotions.unavailable': 503,
 });

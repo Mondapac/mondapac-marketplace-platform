@@ -7,6 +7,7 @@ import type { AdminOpenObligationsOfQuery } from '../application/use-cases/admin
 import type { OpenObligationsOfQuery } from '../application/use-cases/open-obligations-of.use-case';
 import type { OwnOpenObligationsQuery } from '../application/use-cases/own-open-obligations.use-case';
 import type { SellerOrderCustomerNames } from '../application/use-cases/seller-order-customer-names.use-case';
+import type { SellerHealthCountsQuery } from '../application/use-cases/seller-health-counts.use-case';
 import type { ShipmentNoticeQuery } from '../application/use-cases/shipment-notice.use-case';
 import type { ConfirmPayment } from '../application/use-cases/confirm-payment.use-case';
 import type { AuthorisedPayment, OrderingFacade } from '../contracts';
@@ -24,6 +25,7 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly delivered: MyDeliveredSellerOrders,
     private readonly paymentRef: OrderPaymentRefQuery,
     private readonly adminOpenObligations: AdminOpenObligationsOfQuery,
+    private readonly healthCounts: SellerHealthCountsQuery,
   ) {}
 
   orderPaymentRef(context: CallContext, orderId: string) {
@@ -73,5 +75,16 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     request: { readonly deliveredSince: Temporal.Instant; readonly sellerOrderId?: string },
   ) {
     return this.delivered.execute(context, request);
+  }
+
+  sellerHealthCounts(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    return this.healthCounts.execute(context, {
+      sellerId,
+      windows: windows.map((w) => ({ from: w.from.toString(), to: w.to.toString() })),
+    });
   }
 }

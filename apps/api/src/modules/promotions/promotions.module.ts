@@ -13,8 +13,15 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
+import { WalletModule } from '../wallet';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
+import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
+import { CUSTOMER_ORDER_HISTORY, STORE_FOLLOWS } from './application/ports/customer-facts';
+import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
+import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
+import { WALLET_CREDIT } from './application/ports/wallet-credit';
 import { BATCH_CODE_REPOSITORY } from './application/ports/batch-code.repository';
 import { FLASH_SALES } from './application/ports/flash-sales';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
@@ -29,6 +36,11 @@ import {
   SHIPPING_THRESHOLD_REPOSITORY,
 } from './application/ports/settings.repository';
 import type { PromotionsDependencies } from './application/promotions-dependencies';
+import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
+import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
+import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
+import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
 import { GenerateBatchCodes } from './application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from './application/use-cases/view-batch-code-summary.use-case';
 import { CheckWasPrice } from './application/use-cases/check-was-price.use-case';
@@ -65,8 +77,10 @@ import {
 import { promotionsProviders } from './infrastructure/promotions-providers';
 import {
   AdminPromotionsController,
+  CustomerReferralController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
+import { deliveryCreditSubscriptions } from './presentation/subscribers/delivery-credit.subscriptions';
 import { PromotionsFacadeImplementation } from './presentation/promotions.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: PromotionsDependencies) => U;
@@ -85,6 +99,13 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['flashSales', FLASH_SALES],
   ['sellerActivity', SELLER_ACTIVITY],
   ['priceHistory', PRICE_HISTORY],
+  ['orderHistory', CUSTOMER_ORDER_HISTORY],
+  ['storeFollows', STORE_FOLLOWS],
+  ['orderFacts', DELIVERED_ORDER_FACTS],
+  ['referralSignals', REFERRAL_SIGNALS],
+  ['walletCredit', WALLET_CREDIT],
+  ['credits', CREDIT_REPOSITORY],
+  ['referrals', REFERRAL_REPOSITORY],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
@@ -114,8 +135,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * reservation, the ledger and refunds come in later packages.
  */
 @Module({
-  imports: [PricingModule, SellersModule],
-  controllers: [AdminPromotionsController, SellerPromotionsController],
+  imports: [PricingModule, SellersModule, WalletModule],
+  controllers: [AdminPromotionsController, SellerPromotionsController, CustomerReferralController],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
     registerAuditActions('promotions', PROMOTIONS_AUDIT_ACTIONS),
@@ -150,7 +171,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SetCoFundingOptIn,
       QuoteDiscounts,
       CheckWasPrice,
+      ListPromotionCredits,
+      ApplyReferralCode,
+      ViewMyReferral,
+      CashbackOnDelivery,
+      QualifyReferralOnDelivery,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    // Phase 3: cashback and the refer-a-friend reward, after `ordering.seller-order-delivered.v1`.
+    registerSubscriptionsFrom(
+      'promotions',
+      [CashbackOnDelivery, QualifyReferralOnDelivery],
+      (cashback: CashbackOnDelivery, referral: QualifyReferralOnDelivery) =>
+        deliveryCreditSubscriptions(cashback, referral),
+    ),
     {
       provide: PROMOTIONS_FACADE,
       inject: [QuoteDiscounts, CheckWasPrice],

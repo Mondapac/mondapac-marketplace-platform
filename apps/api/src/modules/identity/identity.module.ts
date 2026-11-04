@@ -126,6 +126,7 @@ import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
 import { ChangePanelPreferences } from './application/use-cases/change-panel-preferences.use-case';
+import { ChangeCustomerLanguage } from './application/use-cases/change-customer-language.use-case';
 import { ChangeStorefrontAppearance } from './application/use-cases/change-storefront-appearance.use-case';
 import { ListOwnSessions } from './application/use-cases/list-own-sessions.use-case';
 import { SignOutOtherSessions } from './application/use-cases/sign-out-other-sessions.use-case';
@@ -163,6 +164,7 @@ import { CustomerShortNames } from './application/use-cases/customer-short-names
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
+import { OwnAccountTiedToSeller } from './application/use-cases/own-account-tied-to-seller.use-case';
 import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
 import { AdminEndCustomerSessions } from './application/use-cases/admin-end-customer-sessions.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
@@ -1004,6 +1006,11 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
     }),
+    // Buyer profile: a customer keeps the own language on the account.
+    useCaseProvider(ChangeCustomerLanguage, {
+      unitOfWork: true,
+      accounts: true,
+    }),
     // Profile package 4: the holder's own signed-in devices, and signing out the others.
     useCaseProvider(ListOwnSessions, { unitOfWork: true, sessions: true, clock: true }),
     useCaseProvider(SignOutOtherSessions, {
@@ -1040,6 +1047,10 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(CustomerAccountExists, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    useCaseProvider(OwnAccountTiedToSeller, {
       unitOfWork: true,
       accounts: true,
     }),
@@ -1760,6 +1771,7 @@ function useCaseProvider<D, U>(
         EndAllCustomerSessions,
         AdminEndCustomerSessions,
         CustomerAccountExists,
+        OwnAccountTiedToSeller,
         EraseCustomerAccount,
       ],
       useFactory: (
@@ -1779,6 +1791,7 @@ function useCaseProvider<D, U>(
         endAllCustomerSessions: EndAllCustomerSessions,
         adminEndCustomerSessions: AdminEndCustomerSessions,
         customerAccountExists: CustomerAccountExists,
+        ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
       ) =>
         new IdentityFacadeImplementation({
@@ -1798,6 +1811,7 @@ function useCaseProvider<D, U>(
           endAllCustomerSessions,
           adminEndCustomerSessions,
           customerAccountExists,
+          ownAccountTiedToSeller,
           eraseCustomerAccount,
         }),
     },

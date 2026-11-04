@@ -161,6 +161,7 @@ export class DeliverySettingsController {
       'sameDayCutoff',
       'scheduledDaysAhead',
       'scheduledWindowMinutes',
+      'readyPrepMinutes',
       'margin',
       'roundingStepMinor',
       'expectedVersion',

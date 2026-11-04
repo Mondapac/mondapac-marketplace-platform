@@ -1189,6 +1189,19 @@ const catalogSchema = z
      */
     maxVariantsPerProduct: z.number().int().min(1).max(100),
     /**
+     * The deepest level of the platform category tree (categories plan v7, Q1): 4 levels are
+     * department, group, category and subcategory; products sit on levels 3 and 4, so a Market
+     * that allows fewer than 3 cannot hold products. Required, no default; a value outside 3 to 4
+     * stops the start-up with the rest of the Market file. The editor reads it, never a literal.
+     */
+    maxCategoryDepth: z.number().int().min(3).max(4),
+    /**
+     * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
+     * configurable product whose feature set marks more option attributes is refused by the
+     * product type's variant check. Required: a Market never defaults it.
+     */
+    maxVariantAttributes: z.number().int().min(1).max(5),
+    /**
      * Whether a new product revision waits for review (true) or publishes at once when the
      * change is minor (false) (catalog design 4.2 row 1). The interim home of the ADR-0026
      * setting `catalog.approval-required` until that store lands (catalog slice 10).
@@ -1709,12 +1722,23 @@ const marketSchema = z
         bodyMaxLength: z.number().int().min(1).max(5000),
         pageSize: z.number().int().min(1).max(50),
         /**
+         * Seller replies (package 4): a seller may edit its reply this many days after writing it
+         * (default 7), and a reply is at most `replyMaxLength` characters (default 2000).
+         */
+        replyEditWindowDays: z.number().int().min(0).max(365).default(7),
+        replyMaxLength: z.number().int().min(1).max(2000).default(2000),
+        /**
          * How often the job recomputes the rating summaries from the source rows (minutes, default
          * 1440, daily). The write path refreshes a product summary at once; a SELLER summary is
          * written only by this job, so that several ratings land in one change and a poller cannot
          * read a single rating from it.
          */
         summaryRebuildMinutes: z.number().int().min(5).max(1440).default(1440),
+        /**
+         * The most "this review was helpful" votes one account may cast in 24 hours (package 5,
+         * default 200). A soft limit, like the daily limit of reviews; removing a vote never counts.
+         */
+        maxHelpfulVotesPerAccountPerDay: z.number().int().min(1).max(1000).default(200),
         autoChecks: z.strictObject({
           blockedTerms: z.array(z.string().trim().min(2).max(64)).max(1000),
           repeatedCharRun: z.number().int().min(4).max(100),
@@ -1765,6 +1789,16 @@ const marketSchema = z
      * code, whose entropy (`codeLength` x log2 of the alphabet size) must be at least 60 bits;
      * `maxPerBatch` the most codes one generating call makes; `maxPerPromotion` the most codes
      * one promotion may hold in all.
+     * Phase 3: `customerGroup.defaultReturningDays`: the days since a customer's last order that a
+     * returning-customer segment uses when its admin gives none (AU 60); absent means the admin
+     * must say. `referral` (refer a friend; absent means the Market has no referral program):
+     * `maxRewardMinor` the most either credit of a referral may be, `maxRewardedPerReferrer` the
+     * most rewarded referrals one referrer may have under one promotion, `qualifyWithinDays` the
+     * days a new customer has, from applying a code, to get a qualifying order delivered, and
+     * `codeLength` and `alphabet` (upper-case letters and digits, each once; at least 60 bits) of
+     * a referral code. `cashback` (absent means the Market has no cashback): `maxBps` the most of
+     * the goods paid that a promotion may credit and `maxCapMinor` the most one order may be
+     * credited. The credits themselves (amounts, caps, budgets) are promotion data.
      * Whether promotions are on is not config: an admin sets it at runtime
      * (`promotions.market_settings`), off by default.
      */
@@ -1800,6 +1834,33 @@ const marketSchema = z
             (value) => value.maxPerPromotion >= value.maxPerBatch,
             'maxPerPromotion must be at least maxPerBatch',
           )
+          .optional(),
+        customerGroup: z
+          .strictObject({
+            defaultReturningDays: z.number().int().min(1).max(3650),
+          })
+          .optional(),
+        referral: z
+          .strictObject({
+            maxRewardMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+            maxRewardedPerReferrer: z.number().int().min(1).max(10000),
+            qualifyWithinDays: z.number().int().min(1).max(365),
+            codeLength: z.number().int().min(8).max(32),
+            alphabet: z
+              .string()
+              .regex(/^[A-Z0-9]{16,36}$/, 'upper-case letters and digits, 16 to 36 of them')
+              .refine((value) => new Set(value).size === value.length, 'each character once'),
+          })
+          .refine(
+            (value) => value.codeLength * Math.log2(value.alphabet.length) >= 60,
+            'a code needs at least 60 bits of entropy (codeLength x log2 alphabet size)',
+          )
+          .optional(),
+        cashback: z
+          .strictObject({
+            maxBps: z.number().int().min(1).max(10000),
+            maxCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+          })
           .optional(),
         firstOrder: z
           .strictObject({
@@ -1888,7 +1949,29 @@ const marketSchema = z
      * is a closed list, never free text). `simple` splits words and folds case for any language.
      * Without this section the Market uses `simple`.
      */
-    search: z.strictObject({ textSearchConfig: z.enum(TEXT_SEARCH_CONFIGS) }).optional(),
+    search: z
+      .strictObject({
+        textSearchConfig: z.enum(TEXT_SEARCH_CONFIGS),
+        /**
+         * The rating boost of the text search (buyer reviews and ratings package 5, owner
+         * decision N9). Its own Market switch, OFF unless a Market sets `enabled` (the reviews
+         * switch must also be on, or there are no ratings to read). `weightBps`: the most the
+         * boost may move a result's relevance, in basis points (at most 1000, which is 10 %).
+         * `priorCount` and `priorMeanTimes100` make the Bayesian average: every product starts
+         * with `priorCount` imaginary ratings at that mean (hundredths of a star, 400 is 4.00),
+         * so one five-star review does not beat two hundred of 4.7 and an unrated product is not
+         * penalised. With the switch on, the `top-rated` sort is offered too.
+         */
+        ratingBoost: z
+          .strictObject({
+            enabled: z.boolean(),
+            weightBps: z.number().int().min(0).max(1000),
+            priorCount: z.number().int().min(1).max(1000),
+            priorMeanTimes100: z.number().int().min(100).max(500),
+          })
+          .optional(),
+      })
+      .optional(),
     /**
      * Customers settings, owned by `customers`: the delivery address book. `addressBookLimit`:
      * the most addresses one customer keeps (AU 20). `address`: the ISO 3166 country every

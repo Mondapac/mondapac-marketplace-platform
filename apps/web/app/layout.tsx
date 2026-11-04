@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import {
   DEFAULT_PALETTE,
@@ -10,8 +10,11 @@ import {
   paletteOf,
   textSizeOf,
 } from '../src/preferences/preferences.ts';
+import { Ga4 } from '../src/analytics/ga4.tsx';
+import { ga4IdFor } from '../src/analytics/ga4-config.ts';
+import { nonceOf } from '../src/security/nonce.ts';
 import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
-import { scriptFontHref } from '../src/i18n/fonts.ts';
+import { fontClassNames } from '../src/i18n/fonts.ts';
 import { directionOf, languageTag } from '../src/i18n/locale.ts';
 import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
 import { RegisterServiceWorker } from '../src/pwa/register-service-worker.tsx';
@@ -31,6 +34,7 @@ import {
 import { photoBase } from '../src/storefront/photo-source.ts';
 import './globals.css';
 // After globals.css: the store pictures refine the logo tile and the banner it defines.
+import '../src/reviews/reviews.css';
 import '../src/seller/store-images.css';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -67,6 +71,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     checkout,
     assistant,
     locator,
+    incoming,
   ] = await Promise.all([
     getMessages(),
     getLocale(),
@@ -78,28 +83,22 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     loadCheckout(),
     loadAssistant(),
     loadDeliveryLocator(),
+    headers(),
   ]);
+  const ga4Id = ga4IdFor(incoming.get('host'));
+  const consent = consentOf(jar.get(CONSENT_COOKIE)?.value);
   const lang = languageTag(locale);
-  const scriptFont = scriptFontHref(lang);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
   const textSize = textSizeOf(jar.get(TEXT_SIZE_COOKIE)?.value);
   return (
     <html
       lang={lang}
       dir={directionOf(lang)}
+      className={fontClassNames(lang)}
       data-palette={palette === DEFAULT_PALETTE ? undefined : palette}
       data-text-size={textSize === 'auto' ? undefined : textSize}
       suppressHydrationWarning
     >
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-        />
-        {scriptFont === null ? null : <link rel="stylesheet" href={scriptFont} />}
-      </head>
       <body>
         <NextIntlClientProvider messages={messages}>
           <StoreShell
@@ -109,7 +108,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             photoBase={photos}
             locator={locator}
             deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
-            consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
+            consent={consent}
+            analyticsAvailable={ga4Id !== null}
             signIn={checkout.customer}
             live={storefrontIsLive()}
             assistant={assistant}
@@ -118,6 +118,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </StoreShell>
         </NextIntlClientProvider>
         <RegisterServiceWorker />
+        {ga4Id === null ? null : (
+          <Ga4
+            id={ga4Id}
+            nonce={nonceOf(incoming.get('content-security-policy'))}
+            enabled={consent?.analytics === true}
+          />
+        )}
       </body>
     </html>
   );

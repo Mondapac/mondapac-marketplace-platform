@@ -15,7 +15,7 @@ import { loadAccount } from '../src/storefront/source.ts';
 vi.mock('next/navigation', () => ({
   usePathname: () => '/account',
   useSearchParams: () => new URLSearchParams(),
-  useRouter: () => ({ push: () => undefined, replace: () => undefined }),
+  useRouter: () => ({ push: () => undefined, replace: () => undefined, refresh: () => undefined }),
 }));
 
 interface Call {
@@ -270,6 +270,52 @@ describe('settings', () => {
       palette: 'B',
       textSize: 'large',
     });
+  });
+
+  it('keeps the chosen language on the account only when Save is pressed, and null for English', async () => {
+    signedIn({ 'PUT identity/customer/profile/language': { status: 200 } });
+    renderLive(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} />);
+    await screen.findByLabelText('Full name');
+    const select = within(main()).getByRole('combobox', { name: 'Site language' });
+    const save = within(main()).getByRole('button', { name: 'Save language' });
+    expect(save).toHaveProperty('disabled', true);
+
+    fireEvent.change(select, { target: { value: 'fa' } });
+    expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(0);
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(1),
+    );
+    expect(called('PUT', 'identity/customer/profile/language')[0]?.body).toEqual({ locale: 'fa' });
+    expect(await within(main()).findByText('Language saved to your account')).toBeTruthy();
+
+    fireEvent.change(select, { target: { value: 'en' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Save language' }));
+    await waitFor(() =>
+      expect(called('PUT', 'identity/customer/profile/language')).toHaveLength(2),
+    );
+    expect(called('PUT', 'identity/customer/profile/language')[1]?.body).toEqual({ locale: null });
+  });
+
+  it('shows a refused save and puts the saved language back in the select', async () => {
+    signedIn({
+      'PUT identity/customer/profile/language': {
+        status: 400,
+        body: { code: 'validation.failed' },
+      },
+    });
+    renderLive(<AccountSettings palette="B" textSize="auto" languages={['en', 'fa']} />);
+    await screen.findByLabelText('Full name');
+    const select = within(main()).getByRole<HTMLSelectElement>('combobox', {
+      name: 'Site language',
+    });
+
+    fireEvent.change(select, { target: { value: 'fa' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Save language' }));
+
+    const alert = await within(main()).findByRole('alert');
+    expect(alert.textContent).toContain('We could not save your language');
+    expect(select.value).toBe('en');
   });
 
   it.each([

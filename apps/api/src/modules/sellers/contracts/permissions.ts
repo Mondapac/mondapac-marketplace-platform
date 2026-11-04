@@ -103,12 +103,25 @@ export const SELLERS_BLOG_ACCESS_EDIT = definePermission('sellers', {
   protected: true,
 });
 
+/**
+ * Edit the display names of service areas (ADR-0041). Platform scope; unprotected: a name is
+ * display text, moves no money, certification or access, and the area itself (code, postcodes,
+ * flags) is configuration this key cannot change. No default role lists it yet: the Platform
+ * Administrator holds every key. Reading the page needs `sellers.seller.view`.
+ */
+export const SELLERS_SERVICE_AREA_EDIT = definePermission('sellers', {
+  key: 'sellers.service-area.edit',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_VIEW,
+  SELLERS_SERVICE_AREA_EDIT,
   SELLERS_STORE_PROFILE_EDIT,
   SELLERS_STORE_PROFILE_VIEW,
   SELLERS_STORE_SETTINGS_EDIT,

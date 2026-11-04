@@ -48,6 +48,7 @@ describe('storefront relay', () => {
     ['POST', 'identity/customer/change-password'],
     ['PUT', 'identity/customer/profile/display-name'],
     ['PUT', 'identity/customer/profile/appearance'],
+    ['PUT', 'identity/customer/profile/language'],
     ['GET', 'customers/me/addresses'],
     ['POST', 'customers/me/addresses'],
     ['PUT', `customers/me/addresses/${ID}`],

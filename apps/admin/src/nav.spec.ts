@@ -41,6 +41,21 @@ describe('admin nav: Catalogue', () => {
   });
 });
 
+describe('admin nav: Buyer reviews', () => {
+  it('shows the queue for reviews.moderation.queue, in the Reviews group', () => {
+    expect(ids(['reviews.moderation.queue'])).toEqual(['home', 'review-moderation']);
+    expect(adminNav.items.find((entry) => entry.id === 'review-moderation')).toMatchObject({
+      href: '/reviews/moderation',
+      group: 'reviews',
+      anyOf: ['reviews.moderation.queue'],
+    });
+  });
+
+  it('is hidden with only the moderate or remove key', () => {
+    expect(ids(['reviews.moderation.moderate', 'reviews.moderation.remove'])).toEqual(['home']);
+  });
+});
+
 describe('admin nav: Wallet', () => {
   it('lists the credit pages for wallet.credit.view; the switch is a settings page', () => {
     expect(ids(['wallet.credit.view'])).toEqual(['home', 'wallet-credits', 'wallet-requests']);
@@ -70,9 +85,13 @@ describe('admin nav: daily work only', () => {
     ).toEqual([
       'home',
       'products',
+      'categories',
       'offer-reviews',
+      'review-moderation',
       'price-holds',
+      'attributes',
       'brands',
+      'business-activities',
       'content',
       'sellers',
       'orders',
@@ -196,5 +215,43 @@ describe('admin nav: Brands', () => {
   it('is hidden without it, also with the edit key alone', () => {
     expect(ids([])).not.toContain('brands');
     expect(ids(['catalog.brand.edit'])).not.toContain('brands');
+  });
+});
+
+describe('admin nav: Attributes', () => {
+  it('is there for catalog.attribute.view, in the Catalog group before Brands', () => {
+    expect(ids(['catalog.attribute.view'])).toEqual(['home', 'attributes']);
+    expect(ids(['catalog.attribute.view', 'catalog.brand.read'])).toEqual([
+      'home',
+      'attributes',
+      'brands',
+    ]);
+    expect(adminNav.items.find((item) => item.id === 'attributes')).toMatchObject({
+      icon: 'sliders',
+      href: '/catalog/attributes',
+      labelKey: 'nav.attributes',
+      group: 'catalog',
+    });
+  });
+
+  it('is hidden without it, also with the protected edit key alone', () => {
+    expect(ids([])).not.toContain('attributes');
+    expect(ids(['catalog.attribute.edit'])).not.toContain('attributes');
+  });
+});
+
+describe('admin nav: Business activities', () => {
+  it('is there for catalog.business-activity.read, in the Catalog group', () => {
+    expect(ids(['catalog.business-activity.read'])).toEqual(['home', 'business-activities']);
+    expect(adminNav.items.find((item) => item.id === 'business-activities')).toMatchObject({
+      href: '/catalog/business-activities',
+      labelKey: 'nav.business-activities',
+      group: 'catalog',
+    });
+  });
+
+  it('is hidden without it, also with the edit key alone', () => {
+    expect(ids([])).not.toContain('business-activities');
+    expect(ids(['catalog.business-activity.edit'])).not.toContain('business-activities');
   });
 });

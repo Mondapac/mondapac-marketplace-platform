@@ -99,6 +99,9 @@ class MemoryImages implements ProductImageRepository {
     this.marks.set(imageId, mark);
     return Promise.resolve(true);
   }
+  unreferencedObjectKeys() {
+    return Promise.resolve([]);
+  }
   listUnattached() {
     return Promise.resolve([]);
   }
