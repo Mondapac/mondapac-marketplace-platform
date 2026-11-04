@@ -305,7 +305,14 @@ the revision); `version`; `created_at`. `category_attribute_link_revisions` (ins
 `jsonb_typeof = 'array'`); `author_account_id`; `created_at` (the revision's own time). The use case
 resolves inheritance (the nearest category up the tree that holds a feature set; the filters of
 every category from the root down, a code once) and checks that each filter is an active,
-filterable definition; the table stores only what an admin set. Grants: `SELECT, INSERT` on both,
+filterable definition; the table stores only what an admin set. Two rules stay in the
+application, not the database: a link may only be written for an `active` category and an `active`
+feature set (`categoryStatus` and the feature-set read), and a filter code has no foreign key. A
+definition archived or switched off as a filter after the save therefore leaves a code in the saved
+list; the read (`category-attribute-links.get`) drops such codes from what buyers get and keeps them
+in the category's own list until an admin saves again. The `names` and `groups` documents of a family
+revision and the `filters` of a link are bounded by the use case (counts and text lengths), the
+database only checks their JSON type and, for `filters`, the count. Grants: `SELECT, INSERT` on both,
 `UPDATE (published_revision_id, version)` on the root.
 
 **Two-person backstop triggers (Hassan M2; slice 21; SQL in 5.1; measured).** All `SECURITY
