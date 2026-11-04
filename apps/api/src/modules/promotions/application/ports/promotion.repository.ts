@@ -39,6 +39,8 @@ export interface PromotionRepository {
   insert(market: MarketContext, record: PromotionRecord): Promise<'inserted' | 'duplicate-code'>;
   /** Changes the editable columns and replaces the targets as a set. */
   update(market: MarketContext, record: PromotionRecord): Promise<void>;
+  /** Which of these (normalised) codes a promotion of the Market already has, in one lookup. */
+  existingCodes(market: MarketContext, codes: readonly string[]): Promise<ReadonlySet<string>>;
   find(market: MarketContext, id: Id<'Promotion'>): Promise<PromotionRecord | null>;
   /**
    * The promotion with its row locked until the unit ends, so two changes of one promotion run
@@ -61,6 +63,15 @@ export interface PromotionRepository {
     market: MarketContext,
     now: Temporal.Instant,
     scope: LiveScope,
+  ): Promise<readonly PromotionRecord[]>;
+  /**
+   * ACTIVE promotions of these types that have started and not ended at `now`, any owner, by id.
+   * For the wallet-credit types, which are not tied to a cart's sellers or products.
+   */
+  listLiveOfTypes(
+    market: MarketContext,
+    now: Temporal.Instant,
+    types: readonly PromotionRecord['type'][],
   ): Promise<readonly PromotionRecord[]>;
   /**
    * How many promotions of the seller count against the Market maximum: ACTIVE or PENDING_APPROVAL

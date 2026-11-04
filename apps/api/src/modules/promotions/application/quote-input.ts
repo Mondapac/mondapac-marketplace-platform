@@ -1,5 +1,6 @@
 import { err, money, ok, parseId, parseMinorUnits } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
+import type { CustomerFacts } from '../domain/calculation/types';
 import { normaliseCode, type FieldIssue } from '../domain/promotion';
 import type { QuoteLine, QuoteRequest, QuoteShipping } from '../contracts/promotions.facade';
 
@@ -138,4 +139,43 @@ export function parseQuoteRequest(
     testMode,
     orderCommission: money(commission.value, currency),
   });
+}
+
+/**
+ * The customer facts an admin types into a preview, to see a segment or follower promotion work
+ * (the real quote reads them from the owning modules). An unknown field stays unknown.
+ */
+export function parseSimulatedCustomer(
+  raw: unknown,
+): Result<CustomerFacts | null, readonly FieldIssue[]> {
+  if (raw === undefined || raw === null) return ok(null);
+  if (!isRecord(raw)) return err([{ path: 'customer', code: 'type' }]);
+  const issues: FieldIssue[] = [];
+  let days: number | null = null;
+  if (raw.daysSinceLastOrder !== undefined && raw.daysSinceLastOrder !== null) {
+    const value = raw.daysSinceLastOrder;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 36500) {
+      issues.push({ path: 'customer.daysSinceLastOrder', code: 'value' });
+    } else {
+      days = value;
+    }
+  }
+  let followed: string[] | null = null;
+  if (raw.followedSellerIds !== undefined && raw.followedSellerIds !== null) {
+    if (!Array.isArray(raw.followedSellerIds) || raw.followedSellerIds.length > MAX_LINES) {
+      issues.push({ path: 'customer.followedSellerIds', code: 'size' });
+    } else {
+      followed = [];
+      for (const [index, item] of raw.followedSellerIds.entries()) {
+        const parsed = typeof item === 'string' ? parseId<'Seller'>(item) : null;
+        if (parsed === null || !parsed.ok) {
+          issues.push({ path: `customer.followedSellerIds.${index}`, code: 'value' });
+        } else {
+          followed.push(parsed.value);
+        }
+      }
+    }
+  }
+  if (issues.length > 0) return err(issues);
+  return ok({ daysSinceLastOrder: days, followedSellerIds: followed });
 }

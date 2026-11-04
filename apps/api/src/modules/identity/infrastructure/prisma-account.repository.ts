@@ -160,6 +160,33 @@ export class PrismaAccountRepository implements AccountRepository {
     }));
   }
 
+  async customerSharesAddressWithSellerMember(
+    market: MarketContext,
+    customerId: Id<'Account'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<boolean> {
+    const tx = this.prisma.tx(market);
+    const customer = await tx.identityAccount.findFirst({
+      where: { marketId: market.marketId, population: 'customer', id: customerId },
+      select: { emailNormalized: true },
+    });
+    if (customer === null) return false;
+    const member = await tx.identitySellerMembership.findFirst({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        state: 'active',
+        account: {
+          marketId: market.marketId,
+          population: 'seller',
+          emailNormalized: customer.emailNormalized,
+        },
+      },
+      select: { id: true },
+    });
+    return member !== null;
+  }
+
   async customerStatus(
     market: MarketContext,
     id: Id<'Account'>,

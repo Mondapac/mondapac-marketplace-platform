@@ -15,6 +15,7 @@ import { useMemo, type MouseEvent, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
 import {
   ACCESS_CHANGED,
+  DELIVERY_PROBLEM,
   CERTIFICATE_DECIDED,
   CERTIFICATE_ENDED,
   CERTIFICATE_EXPIRING,
@@ -28,6 +29,9 @@ import {
   PRICE_HOLD_DECIDED,
   PRODUCT_CHANGES_REQUESTED,
   PRODUCT_PUBLISHED,
+  REVIEW_HIDDEN,
+  REVIEW_POSTED,
+  REVIEW_RESTORED,
   RINGING_KINDS,
   type ListedNotice,
 } from './types.ts';
@@ -88,6 +92,18 @@ function lookOf(notice: ListedNotice): Look {
       return { icon: 'tag', tone: bad ? 'attention' : 'success', category: 'prices' };
     case ACCESS_CHANGED:
       return { icon: 'key', tone: 'neutral', category: 'account' };
+    case REVIEW_POSTED:
+      // A low rating is the one a seller wants to answer first.
+      return {
+        icon: 'star',
+        tone: (notice.params.rating ?? 5) <= 2 ? 'attention' : 'info',
+        category: 'reviews',
+      };
+    case REVIEW_HIDDEN:
+    case REVIEW_RESTORED:
+      return { icon: 'star', tone: 'neutral', category: 'reviews' };
+    case DELIVERY_PROBLEM:
+      return { icon: 'alert-triangle', tone: 'attention', category: 'orders' };
     default:
       return { icon: 'bell', tone: 'neutral', category: 'other' };
   }
@@ -116,6 +132,12 @@ function hrefOf(notice: ListedNotice): string | null {
       return productId ? `/products/${productId}` : null;
     case ACCESS_CHANGED:
       return '/';
+    case REVIEW_POSTED:
+    case REVIEW_HIDDEN:
+    case REVIEW_RESTORED:
+      return '/reviews';
+    case DELIVERY_PROBLEM:
+      return '/reviews';
     default:
       return null;
   }
@@ -201,6 +223,14 @@ export function SellerNotifications({ csrfToken }: { readonly csrfToken: string 
         });
       case ACCESS_CHANGED:
         return t.rich('kind.access-changed', { strong, change: key(p.change) });
+      case REVIEW_POSTED:
+        return t.rich('kind.review-posted', { strong, rating: p.rating ?? 0 });
+      case REVIEW_HIDDEN:
+        return t.rich('kind.review-hidden', { strong });
+      case REVIEW_RESTORED:
+        return t.rich('kind.review-restored', { strong });
+      case DELIVERY_PROBLEM:
+        return t.rich('kind.delivery-problem', { strong });
       default:
         return t('kind.other');
     }

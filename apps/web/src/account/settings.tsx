@@ -2,7 +2,8 @@
 
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useId, useState } from 'react';
 import { Icon } from '../icons/icon.tsx';
 import { PalettePicker } from '../preferences/palette-picker.tsx';
 import type { Palette, TextSize } from '../preferences/preferences.ts';
@@ -11,6 +12,7 @@ import type { EmailChoices } from '../storefront/types.ts';
 import { AccountFrame } from './account-area.tsx';
 import { useAccount, type PasswordOutcome, type Profile } from './account-state.tsx';
 import { DeletionEntry, useDeletion } from './account-deletion.tsx';
+import { saveLanguage } from './customer-api.ts';
 import { AcField, PasswordField } from './fields.tsx';
 
 /**
@@ -23,14 +25,21 @@ import { AcField, PasswordField } from './fields.tsx';
 export function AccountSettings({
   palette,
   textSize,
+  languages = [],
+  language = null,
 }: {
   readonly palette: Palette;
   readonly textSize: TextSize;
+  /** The languages the Market has published, the default first; the Language card shows when there is more than one. */
+  readonly languages?: readonly string[];
+  /** The language kept on the account, or null. */
+  readonly language?: string | null;
 }) {
   const title = useTranslations('account.titles')('settings');
   return (
     <AccountFrame title={title}>
       <ProfileCard />
+      {languages.length > 1 ? <LanguageCard languages={languages} current={language} /> : null}
       <PasswordCard />
       <AppearanceCard palette={palette} textSize={textSize} />
       <EmailsCard />
@@ -82,6 +91,102 @@ function AppearanceCard({
       <span className="sr-only" role="status">
         {saved ? t('appearance-saved') : ''}
       </span>
+    </section>
+  );
+}
+
+/** Each language in its own script with its English name, so a reader finds theirs and the way back. */
+const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
+  en: 'English',
+  fa: 'فارسی (Persian)',
+  ar: 'العربية (Arabic)',
+};
+
+/**
+ * Language: the only place a buyer chooses one (no switcher in the header; guests and Google
+ * sign-in read English). Shown only when the Market has published another language. The choice is
+ * saved with a button, never on change (changing a select is not a request to change context);
+ * the page reloads in the language only after the save worked, and a refused save leaves the
+ * saved language in the select.
+ */
+function LanguageCard({
+  languages,
+  current,
+}: {
+  readonly languages: readonly string[];
+  readonly current: string | null;
+}) {
+  const t = useTranslations('account.settings');
+  const router = useRouter();
+  const { source } = useAccount();
+  const kept = current !== null && languages.includes(current) ? current : 'en';
+  const [saved, setSaved] = useState(kept);
+  const [value, setValue] = useState(kept);
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+  const id = useId();
+  return (
+    <section className="ac-card" aria-labelledby="settings-language">
+      <h2 id="settings-language">{t('language')}</h2>
+      <form
+        className="ac-f"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (value === saved || state === 'saving') return;
+          if (!source.live) {
+            setSaved(value);
+            return setState('saved');
+          }
+          setState('saving');
+          void saveLanguage(value === 'en' ? null : value).then((result) => {
+            if (result.kind !== 'ok') {
+              setValue(saved);
+              return setState('failed');
+            }
+            setSaved(value);
+            setState('saved');
+            router.refresh();
+          });
+        }}
+      >
+        <div className="ac-fld">
+          <label htmlFor={id}>{t('language-label')}</label>
+          <select
+            id={id}
+            value={value}
+            aria-describedby={`${id}-hint`}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setState('idle');
+            }}
+          >
+            {languages.map((code) => (
+              <option key={code} value={code} lang={code}>
+                {LANGUAGE_NAMES[code] ?? code}
+              </option>
+            ))}
+          </select>
+          <small id={`${id}-hint`}>{t('language-hint')}</small>
+        </div>
+        {state === 'failed' ? (
+          <p className="ac-note ac-warn" role="alert">
+            <Icon name="info" />
+            <span>{t('language-failed')}</span>
+          </p>
+        ) : null}
+        <div className="ac-acts ac-mid">
+          <button className="btn" type="submit" disabled={state === 'saving' || value === saved}>
+            {t('language-save')}
+          </button>
+          <span className="ac-live" role="status">
+            {state === 'saved' ? (
+              <span className="ac-badge ok">
+                <Icon name="check" />
+                {t('language-saved')}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      </form>
     </section>
   );
 }

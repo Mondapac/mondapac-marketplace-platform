@@ -105,6 +105,8 @@ export const OWN_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Object.f
   'file.active-content': 422,
   'file.too-complex': 422,
   'file.inspection-timeout': 422,
+  'file.infected': 422,
+  'file.scan-unavailable': 503,
   'request.throttled': 429,
 });
 
@@ -522,7 +524,7 @@ export class OwnCertificateController {
   @ApiUnprocessableEntityResponse({
     type: CertificationErrorBody,
     description:
-      'file.unreadable, file.too-many-pages, file.encrypted, file.active-content, file.too-complex or file.inspection-timeout',
+      'file.unreadable, file.too-many-pages, file.encrypted, file.active-content, file.too-complex, file.inspection-timeout or file.infected (503 file.scan-unavailable when the scanner gives no verdict)',
   })
   @ApiUnsupportedMediaTypeResponse({
     type: CertificationErrorBody,

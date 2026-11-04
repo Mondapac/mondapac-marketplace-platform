@@ -19,3 +19,9 @@ export function storeImageObjectKey(
 export async function removeObjects(store: ObjectStore, keys: readonly string[]): Promise<void> {
   await Promise.all(keys.map((key) => store.delete(key).catch(() => undefined)));
 }
+
+/** How old a store image file must be before the file sweep may remove it without a row, in hours. */
+export const ORPHAN_STORE_FILE_GRACE_HOURS = 48;
+/** Objects one file sweep run lists per page, and how many pages one run reads at most. */
+export const ORPHAN_STORE_FILE_PAGE = 1000;
+export const ORPHAN_STORE_FILE_MAX_PAGES = 50;

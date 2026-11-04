@@ -82,6 +82,7 @@ export class PrismaSellerListRepository implements SellerListRepository {
       marketId: market.marketId,
       status: 'pending',
       ...(query.kind === null ? {} : { kind: query.kind }),
+      ...(query.areaCode === null ? {} : { sellerFile: { serviceAreaCode: query.areaCode } }),
       ...(query.onlyIds === null ? {} : { sellerId: { in: [...query.onlyIds] } }),
       ...(cursor === null
         ? {}
@@ -148,6 +149,7 @@ export class PrismaSellerListRepository implements SellerListRepository {
         draftComplete: false,
         revisions: { none: { marketId: market.marketId, status: 'pending' } },
         ...(query.onlyIds === null ? {} : { sellerId: { in: [...query.onlyIds] } }),
+        ...(query.areaCode === null ? {} : { serviceAreaCode: query.areaCode }),
         ...(and.length === 0 ? {} : { AND: and }),
       },
       // Descending on both keys so the partial index (market_id, last_changed_at, seller_id)
@@ -167,6 +169,7 @@ export class PrismaSellerListRepository implements SellerListRepository {
       market,
       {
         marketId: market.marketId,
+        ...(query.areaCode === null ? {} : { serviceAreaCode: query.areaCode }),
         ...(Object.keys(bounds).length === 0 ? {} : { sellerId: bounds }),
       },
       // The seller id is a UUID v7: newest first, on the primary key.

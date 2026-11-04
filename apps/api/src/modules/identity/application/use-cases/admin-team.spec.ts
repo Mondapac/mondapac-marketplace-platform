@@ -83,7 +83,9 @@ const UNKNOWN = accountId(99);
 
 /** A platform custom role with protected keys, as a future role editor could store (5.6). */
 const LEAD_KEYS = [
+  'catalog.attribute.view',
   'catalog.brand.read',
+  'catalog.category-tree.view',
   'catalog.product.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
@@ -114,6 +116,7 @@ const LEAD_KEYS = [
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
+  'settings.list-paging.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {

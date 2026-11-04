@@ -64,6 +64,7 @@
     "bodyMaxLength": 2000,
     "pageSize": 10,
     "summaryRebuildMinutes": 1440,
+    "maxHelpfulVotesPerAccountPerDay": 200,
     "autoChecks": {
       "blockedTerms": [
         "fuck",
@@ -90,6 +91,21 @@
     "wasPrice": { "windowDays": 90, "minDaysAtPrice": 28 },
     "gstRulingConfirmed": false,
     "maxActivePromotionsPerSeller": 50,
+    "batchCodes": {
+      "codeLength": 12,
+      "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+      "maxPerBatch": 5000,
+      "maxPerPromotion": 50000
+    },
+    "customerGroup": { "defaultReturningDays": 60 },
+    "referral": {
+      "maxRewardMinor": 2000,
+      "maxRewardedPerReferrer": 10,
+      "qualifyWithinDays": 30,
+      "codeLength": 12,
+      "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    },
+    "cashback": { "maxBps": 1000, "maxCapMinor": 5000 },
     "firstOrder": {
       "enabled": true,
       "kind": "FIXED",
@@ -114,7 +130,13 @@
     }
   },
   "search": {
-    "textSearchConfig": "english"
+    "textSearchConfig": "english",
+    "ratingBoost": {
+      "enabled": false,
+      "weightBps": 1000,
+      "priorCount": 10,
+      "priorMeanTimes100": 400
+    }
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
@@ -418,6 +440,8 @@
       "variantRemoved": true
     },
     "maxVariantsPerProduct": 100,
+    "maxCategoryDepth": 4,
+    "maxVariantAttributes": 2,
     "approvalRequired": true,
     "productTypes": ["simple", "configurable"],
     "defaultFamily": "default",

@@ -1,4 +1,5 @@
 import 'server-only';
+import { sampleBrandOf } from './sample-brands.ts';
 import { SAMPLE_CERTIFICATION_NAMES, SAMPLE_PRODUCTS, sampleSellerId } from './sample-catalog.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import type {
@@ -91,12 +92,17 @@ const EXTRA: Readonly<Record<string, Extra>> = {
     description:
       'Whole free-range chicken from a Queensland farm, prepared by Kedron Halal Butchers and vacuum sealed for freshness. Ideal for roasting, grilling or portioning at home. The birds are raised outdoors on a family farm west of Brisbane and processed the same week they are sold. Kedron Halal Butchers prepares each one by hand, so the weight can vary slightly from the size shown. Keep it refrigerated and use it by the date shown on the pack, or freeze it for up to three months. For the best result, take it out of the fridge 30 minutes before cooking and pat the skin dry.',
     specifications: [
-      { label: 'Weight', value: 'About 1.6 kg' },
-      { label: 'Type', value: 'Free-range, whole' },
-      { label: 'Storage', value: 'Keep refrigerated at 0 to 4 °C' },
-      { label: 'Packaging', value: 'Vacuum sealed' },
-      { label: 'Origin', value: 'Queensland, Australia' },
-      { label: 'Use by', value: 'Shown on the pack' },
+      { label: 'Origin', value: 'Queensland, Australia', group: 'general', groupLabel: 'General' },
+      { label: 'Type', value: 'Free-range, whole', group: 'general', groupLabel: 'General' },
+      { label: 'Weight', value: 'About 1.6 kg', group: 'details', groupLabel: 'Details' },
+      {
+        label: 'Storage',
+        value: 'Keep refrigerated at 0 to 4 °C',
+        group: 'details',
+        groupLabel: 'Details',
+      },
+      { label: 'Packaging', value: 'Vacuum sealed', group: 'details', groupLabel: 'Details' },
+      { label: 'Use by', value: 'Shown on the pack', group: 'details', groupLabel: 'Details' },
     ],
     photos: ['chicken', 'meat', 'egg', 'cheese'],
     others: (product) => [
@@ -148,6 +154,7 @@ export function sampleProduct(id: string): ProductDetail | undefined {
       extra?.description ??
       `${product.name} from ${product.sellerName}, a local seller in Brisbane. Delivered by the seller in the window shown.`,
     specifications: extra?.specifications ?? [],
+    ...(sampleBrandOf(id) === undefined ? {} : { brand: sampleBrandOf(id)! }),
     photos,
     offers: [featuredOffer(product), ...(extra?.others?.(product) ?? [])],
     similar,

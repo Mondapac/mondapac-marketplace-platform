@@ -407,6 +407,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       clock: new FixedClock(T0),
       shelves,
       stores: { sellerIdOf: () => Promise.resolve({ sellerId: null }) },
+      brands: { productIdsOf: () => Promise.resolve({ productIds: [], truncated: false }) },
       images: { of: () => Promise.resolve(new Map()) },
       categories: { subtreeOf: (_context, categoryId) => Promise.resolve([categoryId]) },
     };
@@ -496,6 +497,76 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
 
       expect(names(await browse(seller))).toEqual(['Here']);
       expect(names(await browse(seller, { on: other }))).toEqual(['There']);
+    });
+  });
+
+  describe('browseByProducts', () => {
+    const browseProducts = (
+      productIds: readonly Id<'Product'>[],
+      options: {
+        categoryIds?: readonly Id<'Category'>[];
+        limit?: number;
+        offset?: number;
+        on?: MarketContext;
+      } = {},
+    ) =>
+      inUnit(
+        options.on ?? market,
+        () =>
+          shelves.browseByProducts(
+            options.on ?? market,
+            productIds,
+            options.categoryIds ?? null,
+            options.limit ?? 49,
+            options.offset ?? 0,
+          ),
+        true,
+      );
+
+    it('lists the Offers of the given products only, by name then Offer id, and pages by offset', async () => {
+      const [a, b, c] = [id<'Product'>(), id<'Product'>(), id<'Product'>()];
+      await seed(
+        market,
+        doc({ name: 'Cherry tea', productId: a }),
+        doc({ name: 'Apple tea', productId: b }),
+        doc({ name: 'Banana tea', productId: a }),
+        doc({ name: 'Not in the brand', productId: c }),
+      );
+
+      expect(names(await browseProducts([a, b]))).toEqual([
+        'Apple tea',
+        'Banana tea',
+        'Cherry tea',
+      ]);
+      expect(names(await browseProducts([a, b], { limit: 2 }))).toEqual([
+        'Apple tea',
+        'Banana tea',
+      ]);
+      expect(names(await browseProducts([a, b], { limit: 2, offset: 2 }))).toEqual(['Cherry tea']);
+      expect(await browseProducts([a, b], { offset: 3 })).toEqual([]);
+    });
+
+    it('answers nothing for no product ids, and narrows to a category', async () => {
+      const [a, b] = [id<'Product'>(), id<'Product'>()];
+      const tea = id<'Category'>();
+      await seed(
+        market,
+        doc({ name: 'Tea one', productId: a, categoryIds: [tea] }),
+        doc({ name: 'Other one', productId: b, categoryIds: [] }),
+      );
+
+      expect(await browseProducts([])).toEqual([]);
+      expect(names(await browseProducts([a, b], { categoryIds: [tea] }))).toEqual(['Tea one']);
+      expect(await browseProducts([a, b], { categoryIds: [id<'Category'>()] })).toEqual([]);
+    });
+
+    it("never shows another Market's documents, even for the same product id", async () => {
+      const product = id<'Product'>();
+      await seed(market, doc({ name: 'Here', productId: product }));
+      await seed(other, doc({ name: 'There', productId: product }));
+
+      expect(names(await browseProducts([product]))).toEqual(['Here']);
+      expect(names(await browseProducts([product], { on: other }))).toEqual(['There']);
     });
   });
 });

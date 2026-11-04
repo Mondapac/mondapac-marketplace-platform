@@ -11,10 +11,13 @@ import {
 } from '../domain/audit';
 import {
   approvalReason,
+  approvalRewardOf,
   checkDraft,
   countsTowardSellerCap,
+  isCreditType,
   needsFreshSecondFactor,
   parseDraft,
+  withMarketDefaults,
   type ApprovalReason,
   type Owner,
   type PromotionRecord,
@@ -150,7 +153,7 @@ export async function createPromotion(
 
   const parsed = parseDraft(input);
   if (!parsed.ok) return err(invalid(parsed.error));
-  const draft = parsed.value;
+  const draft = withMarketDefaults(parsed.value, settings.rules);
   const issues = checkDraft(draft, caller.owner, settings.rules);
   if (issues.length > 0) return err(invalid(issues));
 
@@ -160,7 +163,7 @@ export async function createPromotion(
   const reason: ApprovalReason | null =
     days === 'platform'
       ? null
-      : approvalReason({ sellerActiveDays: days, reward: draft.reward }, settings.rules);
+      : approvalReason({ sellerActiveDays: days, reward: approvalRewardOf(draft) }, settings.rules);
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
@@ -192,6 +195,14 @@ export async function createPromotion(
       createdAt: now,
       updatedAt: now,
     };
+    // One code per order: a public code cannot be the text of a generated single-use code.
+    if (
+      record.code !== null &&
+      deps.codeCrypto.available &&
+      (await deps.batchCodes.find(context.market, deps.codeCrypto.hash(record.code))) !== null
+    ) {
+      return err({ code: 'promotions.code-taken' });
+    }
     if ((await deps.promotions.insert(context.market, record)) === 'duplicate-code') {
       return err({ code: 'promotions.code-taken' });
     }
@@ -245,7 +256,7 @@ export async function editPromotion(
   delete draftInput.promotionId;
   const parsed = parseDraft(draftInput);
   if (!parsed.ok) return err(invalid(parsed.error));
-  const draft = parsed.value;
+  const draft = withMarketDefaults(parsed.value, settings.rules);
   const issues = checkDraft(draft, caller.owner, settings.rules);
   if (issues.length > 0) return err(invalid(issues));
 
@@ -254,7 +265,7 @@ export async function editPromotion(
   const reason: ApprovalReason | null =
     days === 'platform'
       ? null
-      : approvalReason({ sellerActiveDays: days, reward: draft.reward }, settings.rules);
+      : approvalReason({ sellerActiveDays: days, reward: approvalRewardOf(draft) }, settings.rules);
 
   return deps.unitOfWork.run<PromotionRecord, PromotionsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'promotions.disabled' });
@@ -443,7 +454,11 @@ export async function setBudget(
     }
     if (before.budgetMinor === budget.value) return ok(before);
     const usage = (await deps.promotions.usageOf(context.market, [id])).get(id);
-    if (usage !== undefined && budget.value < usage.spentMinor) {
+    // A wallet-credit promotion's spend is the credits it has reserved or paid.
+    const spentMinor = isCreditType(before.type)
+      ? await deps.credits.reservedTotal(context.market, id)
+      : (usage?.spentMinor ?? 0n);
+    if (budget.value < spentMinor) {
       return err(invalid([{ path: 'budgetMinor', code: 'below-spent' }]));
     }
     const after: PromotionRecord = { ...before, budgetMinor: budget.value, updatedAt: now };

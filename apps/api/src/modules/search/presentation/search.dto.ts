@@ -68,6 +68,13 @@ export class SearchQueryParams {
       '`category`. An unknown, retired or not-selling store answers an empty page.',
   })
   store?: string;
+  @ApiPropertyOptional({
+    maxLength: 80,
+    description:
+      "A brand address (slug): lists that brand's Offers by name. Not with `q` or `store`; may " +
+      'combine with `category`. An unknown, draft or archived brand answers an empty page.',
+  })
+  brand?: string;
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 1 }) page?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 48, default: 24 }) pageSize?: number;
 }
@@ -192,6 +199,38 @@ export class ProductDetailOfferBody {
   badges!: ProductDetailBadgeBody[];
 }
 
+export class ProductDetailBrandBody {
+  @ApiProperty({ description: 'The brand page slug: `/brands/{slug}` on the storefront.' })
+  slug!: string;
+  @ApiProperty() name!: string;
+}
+
+export class ProductDetailSpecificationValueBody {
+  @ApiProperty({ enum: ['text', 'list', 'number', 'boolean', 'date'] })
+  kind!: 'text' | 'list' | 'number' | 'boolean' | 'date';
+  @ApiPropertyOptional({ description: 'kind text: the text (a select label is in the locale).' })
+  text?: string;
+  @ApiPropertyOptional({ type: [String], description: 'kind list: option labels.' })
+  items?: string[];
+  @ApiPropertyOptional({
+    description: 'kind number: a decimal string; boolean: true or false; date: YYYY-MM-DD.',
+  })
+  value?: string | boolean;
+}
+
+export class ProductDetailSpecificationBody {
+  @ApiProperty() code!: string;
+  @ApiProperty({ description: 'The attribute name in the Market default locale.' }) name!: string;
+  @ApiProperty({ type: ProductDetailSpecificationValueBody })
+  value!: ProductDetailSpecificationValueBody;
+}
+
+export class ProductDetailSpecificationGroupBody {
+  @ApiProperty({ description: 'The family group code, e.g. details.' }) groupCode!: string;
+  @ApiProperty({ type: [ProductDetailSpecificationBody] })
+  specifications!: ProductDetailSpecificationBody[];
+}
+
 export class ProductDetailBody {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ description: 'The published name in the Market default locale.' })
@@ -200,6 +239,18 @@ export class ProductDetailBody {
   @ApiProperty({ nullable: true, type: String }) description!: string | null;
   @ApiProperty({ type: [String], description: 'Platform category ids, in the revision order.' })
   categoryIds!: string[];
+  @ApiProperty({
+    type: ProductDetailBrandBody,
+    nullable: true,
+    description: "The product's brand while it is active; null for none.",
+  })
+  brand!: ProductDetailBrandBody | null;
+  @ApiProperty({
+    type: [ProductDetailSpecificationGroupBody],
+    description:
+      'Attribute values the product page lists (not drafts, shown on the product page), grouped by family group in the family order; empty for none.',
+  })
+  specifications!: ProductDetailSpecificationGroupBody[];
   @ApiProperty({
     type: [ProductImageRefBody],
     description:
