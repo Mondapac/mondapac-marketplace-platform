@@ -42,7 +42,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `product_code_counters` | The per-Market sequence for `productCode` (D 4.1) | Counter, one row per Market | 1 |
 | `category_trees` | One row per Market: the tree version (serialises structural edits; cache key) | Counter | 2 |
 | `platform_categories`, `platform_category_revisions`, `platform_category_revision_names` | `PlatformCategory` root, revisions of name and parent | V1 | 2 |
-| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions` | `AttributeDefinition`, `AttributeFamily` | V1 | 3 |
+| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions`, `category_attribute_links`, `category_attribute_link_revisions` | `AttributeDefinition`, `AttributeFamily`, `CategoryAttributeLink` | V1 | 3 |
 | `product_working_copies` | The working copy (D 2.3 M-2) | Mutable, one per product | 4 |
 | `product_revisions`, `product_revision_texts`, `product_revision_categories`, `product_revision_variants` | Revision content | V1 revision, insert-only + trigger | 4 |
 | `product_revision_decisions` | One terminal outcome per revision, with the named checks (D 8.3a) | V4, insert-only + trigger | 4; checks 10 |
@@ -288,10 +288,43 @@ revision).
 
 `attribute_families` (root): `id`; `code` unique per Market; `status`; `published_revision_id`;
 `created_by_kind`; `version`; `created_at`. `attribute_family_revisions` (insert-only): `id`;
-`family_id`; `revision_no`; `groups jsonb` (array of `{ groupCode, attributes: [{ code, required,
-isVariantOption }] }`), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
+`family_id`; `revision_no`; `names jsonb` (the feature set's name per locale, `{}` for the seeded
+family; attributes A4, `jsonb_typeof = 'object'`); `groups jsonb` (array of `{ groupCode, names?,
+attributes: [{ code, required, isVariantOption, level? }] }`; `level` is `required`, `recommended`
+or `optional` and `required` is true exactly for the first, both written by the editor of attributes
+A4; the Core group `core` comes first and holds the brand and the country of origin), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
 `(market_id, family_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 family_id, id)`; unique per Market), `created_at`.
+
+`category_attribute_links` (root, attributes A4, categories C8): `(market_id, category_id)` primary
+key (one link per platform category, FK `RESTRICT`); `published_revision_id` (same-category FK to
+the revision); `version`; `created_at`. `category_attribute_link_revisions` (insert-only, the
+`reject_mutation` triggers): `id`; `category_id`; `revision_no` unique per category; `family_id`
+(nullable, FK to `attribute_families`; null means the category takes its parent's feature set);
+`filters jsonb` (array of attribute codes in the order buyers see them, at most 20, CHECK
+`jsonb_typeof = 'array'`); `author_account_id`; `created_at` (the revision's own time). The use case
+resolves inheritance (the nearest category up the tree that holds a feature set; the filters of
+every category from the root down, a code once) and checks that each filter is an active,
+filterable definition; the table stores only what an admin set. Two rules stay in the
+application, not the database: a link may only be written for an `active` category and an `active`
+feature set (`categoryStatus` and the feature-set read), and a filter code has no foreign key. A
+definition archived or switched off as a filter after the save therefore leaves a code in the saved
+list; the read (`category-attribute-links.get`) drops such codes from what buyers get and keeps them
+in the category's own list until an admin saves again. The `names` and `groups` documents of a family
+revision and the `filters` of a link are bounded by the use case (counts and text lengths), the
+database only checks their JSON type and, for `filters`, the count. Grants: `SELECT, INSERT` on both,
+`UPDATE (published_revision_id, version)` on the root.
+
+**Products missing required details (attributes plan A4, decision ت۷).** A feature set can gain a
+required attribute after products were approved under it. Those products stay on sale; the report
+`catalog.products-missing-details-list` (admin, `catalog.attribute.view`) finds them without a new
+table or SQL beyond one keyset read of published products by id (`PrismaProductDetailsGapReader`):
+the use case judges each product's published `attribute_values` against the current published
+schema of its `family_code` with the same `validateAttributeValues` a submit uses, and keeps the
+`attribute.required` issues. One call reads at most 2000 products and returns `nextAfterId`; a
+feature set that cannot be read (unknown, archived, naming a missing attribute) is named in the
+answer and its products are not judged. The next submit of such a product is refused by that same
+rule (`attribute.required`).
 
 **Two-person backstop triggers (Hassan M2; slice 21; SQL in 5.1; measured).** All `SECURITY
 INVOKER`, fixed `search_path`, schema-qualified, through one helper

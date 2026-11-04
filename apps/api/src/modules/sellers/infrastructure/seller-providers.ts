@@ -73,6 +73,15 @@ import {
 } from '../application/ports/blog-access.repository';
 import { PrismaBlogAccessRepository } from './prisma-blog-access.repository';
 import {
+  AREA_NAME_SOURCE,
+  SERVICE_AREA_NAMES_REPOSITORY,
+  type AreaNameSource,
+  type ServiceAreaNamesRepository,
+} from '../application/ports/service-area-names.repository';
+import { CLOCK } from '../../../platform/clock/clock.module';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { Clock } from '@mondapac/shared-kernel';
+import {
   SELLING_FACTS_REPOSITORY,
   type SellingFactsRepository,
 } from '../application/ports/selling-facts.repository';
@@ -152,6 +161,8 @@ import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-confi
 import { MarketConfigSellerPolicy } from './market-config-seller-policy';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaSellerFileRepository } from './prisma-seller-file.repository';
+import { CachedAreaNameSource } from './cached-area-name-source';
+import { PrismaServiceAreaNamesRepository } from './prisma-service-area-names.repository';
 import { PrismaSellerListRepository } from './prisma-seller-list.repository';
 import { PrismaShopSlugRepository } from './prisma-shop-slug.repository';
 import { PrismaTaxProfileRepository } from './prisma-tax-profile.repository';
@@ -388,6 +399,21 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminFlagRepository =>
       new PrismaAdminFlagRepository(prisma),
+  },
+  {
+    provide: SERVICE_AREA_NAMES_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ServiceAreaNamesRepository =>
+      new PrismaServiceAreaNamesRepository(prisma),
+  },
+  {
+    provide: AREA_NAME_SOURCE,
+    inject: [UNIT_OF_WORK, SERVICE_AREA_NAMES_REPOSITORY, CLOCK],
+    useFactory: (
+      unitOfWork: UnitOfWork,
+      repository: ServiceAreaNamesRepository,
+      clock: Clock,
+    ): AreaNameSource => new CachedAreaNameSource(unitOfWork, repository, clock),
   },
   {
     provide: BLOG_ACCESS_REPOSITORY,

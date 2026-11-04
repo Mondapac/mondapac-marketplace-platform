@@ -1596,6 +1596,7 @@
       },
       "link": {
         "support": "Support contact",
+        "service-areas": "Service areas",
         "assistant": "Smart assistant",
         "account-deletion": "Account deletion",
         "delivery": "Delivery rules",
@@ -4959,6 +4960,45 @@
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}."
+    }
+  },
+  "serviceAreas": {
+    "title": "Service areas",
+    "section": "Area names",
+    "permission-view": "Sellers: view",
+    "intro": "The names buyers and sellers see for each service area. The code, postcodes and switches come from configuration and do not change here.",
+    "read-only": "You can see the names but not change them. Changing a name needs the service area edit permission.",
+    "no-access": "You don't have access to service areas.",
+    "unavailable": "The service areas could not be loaded. Try again later.",
+    "col": {
+      "area": "Area",
+      "names": "Names",
+      "actions": "Actions"
+    },
+    "edited": "Edited",
+    "edit": "Edit names",
+    "edit-label": "Edit the names of {code}",
+    "dialog": {
+      "title": "Names of {code}",
+      "language": "Language",
+      "language-required": "{name} (required)",
+      "name": "Name",
+      "help-none": "The configuration has no name in this language.",
+      "help-configured": "Configured name: {name}",
+      "restore": "Restore configured name",
+      "required": "Enter a name, or restore the configured one.",
+      "cancel": "Cancel",
+      "save": "Save names",
+      "saved": "Names saved."
+    },
+    "error": {
+      "invalid": "A name was refused. Names have 1 to 120 characters and no control characters.",
+      "not-found": "This area no longer exists. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change service area names.",
+      "unavailable": "Service areas are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
     }
   }
 }

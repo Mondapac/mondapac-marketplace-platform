@@ -50,6 +50,7 @@ export function definitionRecord(
     readonly names?: LocalizedText;
     readonly material?: boolean;
     readonly isVariantOption?: boolean;
+    readonly canBeFilter?: boolean;
     readonly values?: readonly AttributeOption[];
     readonly revisionNo?: number;
   } = {},
@@ -68,6 +69,7 @@ export function definitionRecord(
       material: options.material ?? false,
       isVariantOption: options.isVariantOption ?? false,
       options: options.values ?? [],
+      display: { ...DEFAULT_DISPLAY_SETTINGS, canBeFilter: options.canBeFilter ?? false },
     }),
   };
 }
@@ -85,6 +87,8 @@ export function featureSetRecord(
     createdByKind: 'seed',
     createdAt: T0,
     revisionNo: 1,
+    version: 1,
+    names: {},
     groups,
   };
 }
