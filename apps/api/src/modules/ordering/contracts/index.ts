@@ -15,6 +15,8 @@ export {
   ORDERING_FACADE,
   type DeliveredSellerOrder,
   type DeliveredSellerOrdersFailure,
+  type SellerOrderHealthCount,
+  type SellerOrderHealthCountsFailure,
   type OrderNotice,
   type OrderNoticeFailure,
   type OwnOpenObligations,

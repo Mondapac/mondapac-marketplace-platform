@@ -112,6 +112,23 @@ function offerNode(offer: ProductOffer, url: string, origin: string): JsonLdNode
 const hasPrice = (offer: ProductOffer): boolean =>
   Number.isSafeInteger(offer.price.amount) && offer.price.amount > 0;
 
+/** The most `additionalProperty` entries of a Product node. */
+const MAX_PROPERTIES = 30;
+
+/**
+ * The listed specifications as `additionalProperty` (name and value as the page shows them, in
+ * plain text); a row whose name or value is empty once cleaned is left out.
+ */
+function propertiesOf(product: ProductDetail): JsonLdNode[] {
+  return product.specifications
+    .flatMap((row): JsonLdNode[] => {
+      const name = plainText(row.label);
+      const value = plainText(row.value);
+      return name === '' || value === '' ? [] : [{ '@type': 'PropertyValue', name, value }];
+    })
+    .slice(0, MAX_PROPERTIES);
+}
+
 /**
  * The Product node of a product page (merchant listing): ONE Offer, the buy box's offer, never an
  * AggregateOffer. None when that offer has no positive price.
@@ -133,6 +150,7 @@ export function productStructuredData(
   if (variants === undefined && !hasPrice(offer)) return null;
   const images = product.photos.flatMap((photo) => imageUrl(photo, origin) ?? []);
   const description = Array.from(plainText(product.description)).slice(0, DESCRIPTION_MAX).join('');
+  const properties = propertiesOf(product);
   const shared = {
     name: plainText(product.name),
     ...(images.length === 0 ? {} : { image: images }),
@@ -147,6 +165,7 @@ export function productStructuredData(
             url: absolute(`/brands/${encodeURIComponent(product.brand.slug)}`, origin),
           },
         }),
+    ...(properties.length === 0 ? {} : { additionalProperty: properties }),
   };
   const certificationsOf = (of: ProductOffer) => {
     const list = of.certifications.flatMap((badge) => certificationOf(badge) ?? []);

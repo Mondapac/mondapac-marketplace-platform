@@ -55,6 +55,7 @@ import type {
   PickupCodeVault,
   PickupKeyDestroyed,
 } from '../../src/modules/ordering/application/ports/pickup-code-vault';
+import type { ReadyRecord } from '../../src/modules/ordering/domain/seller-health-counts';
 import type { PickupCodeRepository } from '../../src/modules/ordering/application/ports/pickup-code.repository';
 import {
   PICKUP_MAX_FAILED_ATTEMPTS,
@@ -276,6 +277,38 @@ export class MemoryOrders implements OrderRepository {
       }
     }
     return Promise.resolve(accounts);
+  }
+  sellerHealthRows(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+    limit: number,
+  ) {
+    const inSpan = (at: Temporal.Instant) =>
+      at.epochNanoseconds >= from.epochNanoseconds && at.epochNanoseconds < to.epochNanoseconds;
+    const paidAt: Temporal.Instant[] = [];
+    const ready: ReadyRecord[] = [];
+    for (const order of this.rows.values()) {
+      if (order.status !== 'confirmed' || order.confirmedAt === null) continue;
+      for (const sellerOrder of order.sellerOrders) {
+        if (sellerOrder.sellerId !== sellerId) continue;
+        if (inSpan(order.confirmedAt)) paidAt.push(order.confirmedAt);
+        if (sellerOrder.readyAt !== null && inSpan(sellerOrder.readyAt)) {
+          ready.push({
+            readyAt: sellerOrder.readyAt,
+            confirmedAt: order.confirmedAt,
+            deliveryMethod: sellerOrder.deliveryMethod,
+            deliveryWindow: sellerOrder.deliveryWindow,
+            readyPrepMinutes: sellerOrder.readyPrepMinutes,
+          });
+        }
+      }
+    }
+    if (paidAt.length > limit || ready.length > limit) {
+      return Promise.reject(new RangeError('too many seller orders in the span'));
+    }
+    return Promise.resolve({ paidAt, ready });
   }
   deliveredSellerOrdersOf(
     _m: MarketContext,
@@ -732,6 +765,13 @@ export class FakeCommission implements CommissionPayoutsFacade {
     }
     this.delivered.push(delivered);
     return Promise.resolve(ok('anchored' as const));
+  }
+  sellerLostDisputes(
+    _c: CallContext,
+    _sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    return Promise.resolve(ok(windows.map(() => ({ lost: 0 }))));
   }
   recordRefund(
     _c: CallContext,

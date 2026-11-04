@@ -3404,6 +3404,14 @@ svg {
 .dmore[aria-expanded='true'] .ico {
   transform: rotate(-90deg);
 }
+.spec-group + .spec-group {
+  margin-top: 16px;
+}
+.spec-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 700;
+}
 .spec {
   margin: 0;
   display: grid;

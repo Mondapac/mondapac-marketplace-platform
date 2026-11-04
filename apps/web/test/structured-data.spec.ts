@@ -211,6 +211,30 @@ describe('Product brand', () => {
   });
 });
 
+describe('Product additionalProperty', () => {
+  it('lists the specifications as PropertyValue nodes in plain text, in page order', () => {
+    const node = productStructuredData(
+      product({
+        specifications: [
+          { label: 'Country of origin', value: 'Iran', group: 'details' },
+          { label: 'Pack\n size', value: '500  g' },
+          { label: '  ', value: 'blank name' },
+        ],
+      }),
+      ORIGIN,
+      URL_,
+    )!;
+    expect(node.additionalProperty).toEqual([
+      { '@type': 'PropertyValue', name: 'Country of origin', value: 'Iran' },
+      { '@type': 'PropertyValue', name: 'Pack size', value: '500 g' },
+    ]);
+  });
+
+  it('has none for a product without specifications', () => {
+    expect(productStructuredData(product(), ORIGIN, URL_)).not.toHaveProperty('additionalProperty');
+  });
+});
+
 describe('Brand page structured data', () => {
   const brand = {
     slug: 'saffron-co',

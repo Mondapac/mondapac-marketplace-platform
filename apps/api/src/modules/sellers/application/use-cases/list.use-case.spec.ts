@@ -28,6 +28,7 @@ import type {
 } from '../ports/seller-list.repository';
 import { SellerAccountAccessRefused } from '../ports/seller-account-directory';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { AreaNameSource } from '../ports/service-area-names.repository';
 import { SellerList, type SellerListPage } from './list.use-case';
 
 // The admin seller list (sellers design 7.8; slice 6) on both Market fixtures: the gate, the
@@ -62,6 +63,7 @@ class FakeListRepository implements SellerListRepository {
     const rows = this.of(market)
       .filter((row) => row.pending !== null)
       .filter((row) => query.kind === null || row.pending!.kind === query.kind)
+      .filter((row) => query.areaCode === null || row.serviceAreaCode === query.areaCode)
       .filter((row) => query.onlyIds === null || query.onlyIds.includes(row.sellerId))
       .sort(
         (a, b) =>
@@ -83,6 +85,7 @@ class FakeListRepository implements SellerListRepository {
     const open = new Set(query.openAreaCodes);
     const rows = this.of(market)
       .filter((row) => !row.hasApprovedRevision && !row.draftComplete && row.pending === null)
+      .filter((row) => query.areaCode === null || row.serviceAreaCode === query.areaCode)
       .filter((row) => query.onlyIds === null || query.onlyIds.includes(row.sellerId))
       .filter(
         (row) =>
@@ -107,6 +110,7 @@ class FakeListRepository implements SellerListRepository {
   all(market: MarketContext, query: ListPageQuery): Promise<readonly ListedSeller[]> {
     const cursor = query.after;
     const rows = this.of(market)
+      .filter((row) => query.areaCode === null || row.serviceAreaCode === query.areaCode)
       .filter((row) => query.onlyIds === null || query.onlyIds.includes(row.sellerId))
       .sort((a, b) => b.sellerId.localeCompare(a.sellerId))
       .filter((row) => cursor?.tab !== 'all' || row.sellerId < cursor.sellerId);
@@ -196,9 +200,23 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     },
   };
   const unitOfWork: UnitOfWork = { run: (_market, work) => work(), runOnce: noRunOnce };
+  const noEditedNames: AreaNameSource = {
+    edited: () => Promise.resolve(new Map()),
+    forget: () => {},
+  };
   const areas: OnboardingAreas = {
     openCodes: () => ['open-area'],
     nameOf: (_market, code) => (code === 'open-area' ? 'Open Area' : null),
+    all: () => [{ code: 'open-area', name: 'Open Area' }],
+    configured: () => [
+      {
+        code: 'open-area',
+        region: null,
+        names: { en: 'Open Area' },
+        sellerOnboardingEnabled: true,
+        deliveryEnabled: false,
+      },
+    ],
   };
 
   function setUp() {
@@ -210,6 +228,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       directory: new FakeDirectory(access),
       authorisation: strict,
       onboardingAreas: areas,
+      areaNames: noEditedNames,
     });
     return { repository, access, useCase };
   }
@@ -354,6 +373,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
               : strict.check(context, declaration),
         },
         onboardingAreas: areas,
+        areaNames: noEditedNames,
       });
 
       const result = await failing.execute(admin(true, market, true), { tab: 'all' });
@@ -410,6 +430,35 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     // One identity call per page, never one per row.
     expect(t.access.manyCalls.map((call) => call.length)).toEqual([2, 2, 1]);
     expect(firstPage.items.every((item) => item.status === 'details-incomplete')).toBe(true);
+  });
+
+  it('filters the file tabs by service area and lists the areas of the Market', async () => {
+    const t = setUp();
+    const inOpen = row({ draftComplete: false });
+    const inOther = row({ draftComplete: false, serviceAreaCode: 'other-area' });
+    for (const r of [inOpen, inOther]) {
+      t.repository.add(code, r);
+      t.access.set(r.sellerId, 'pending');
+    }
+
+    const all = await t.useCase.execute(admin(), { tab: 'all', areaCode: 'other-area' });
+    const incomplete = await t.useCase.execute(admin(), {
+      tab: 'incomplete',
+      areaCode: 'open-area',
+    });
+    const unknown = await t.useCase.execute(admin(), { tab: 'all', areaCode: 'no-such-area' });
+    const state = await t.useCase.execute(admin(), { tab: 'approved', areaCode: 'open-area' });
+
+    expect(all.ok && all.value.items.map((item) => item.sellerId)).toEqual([inOther.sellerId]);
+    expect(incomplete.ok && incomplete.value.items.map((item) => item.sellerId)).toEqual([
+      inOpen.sellerId,
+    ]);
+    expect(unknown.ok && unknown.value.items).toEqual([]);
+    expect(all.ok && all.value.areas).toEqual([{ code: 'open-area', name: 'Open Area' }]);
+    expect(state).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'areaCode', code: 'tab' }] },
+    });
   });
 
   it('shows the outside-service-area status and filters on it', async () => {
@@ -533,6 +582,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         directory,
         authorisation: strict,
         onboardingAreas: areas,
+        areaNames: noEditedNames,
       });
       return { ...t, directory, useCase };
     }

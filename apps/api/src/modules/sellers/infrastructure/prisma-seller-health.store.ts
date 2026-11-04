@@ -188,4 +188,15 @@ export class PrismaSellerHealthStore implements SellerHealthStore {
       return { day: toDay(row.day), health, inputs, computedAt: toInstant(row.computedAt) };
     });
   }
+
+  async purgeBefore(
+    market: MarketContext,
+    before: Temporal.PlainDate,
+  ): Promise<{ readonly days: number; readonly snapshots: number }> {
+    const tx = this.prisma.tx(market);
+    const where = { marketId: market.marketId, day: { lt: dayDate(before) } };
+    const days = await tx.sellersSellerHealthDay.deleteMany({ where });
+    const snapshots = await tx.sellersSellerHealthSnapshot.deleteMany({ where });
+    return { days: days.count, snapshots: snapshots.count };
+  }
 }

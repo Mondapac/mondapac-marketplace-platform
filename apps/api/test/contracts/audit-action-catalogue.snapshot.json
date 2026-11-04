@@ -1,5 +1,134 @@
 [
   {
+    "action": "catalog.attribute-definition.created",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.discarded",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "status": "enumOf(archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.published",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.revised",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "relaxationRequestId": "optional(id)",
+      "requestedByAccountId": "optional(id)",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.cancelled",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(requester|definition-changed)",
+      "requestId": "id",
+      "requestedByAccountId": "id"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.expired",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "requestId": "id",
+      "requestedByAccountId": "id"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.requested",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "definitionVersion": "integer",
+      "expiresAt": "instant",
+      "kind": "enumOf(clear-material|archive|remove-from-family)",
+      "requestId": "id"
+    }
+  },
+  {
+    "action": "catalog.attribute-value-suggestion.decided",
+    "targetType": "catalog.attribute-value-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "definitionId": "id",
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|rejected)"
+    }
+  },
+  {
+    "action": "catalog.attribute-value-suggestion.suggested",
+    "targetType": "catalog.attribute-value-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "definitionId": "id",
+      "productId": "id"
+    }
+  },
+  {
     "action": "catalog.product.paused",
     "targetType": "catalog.product",
     "targetId": "id",
@@ -2444,6 +2573,17 @@
       "startAs": "enumOf(inactive|active)",
       "state": "enumOf(queued)",
       "toImport": "integer"
+    }
+  },
+  {
+    "action": "sellers.service-area.change",
+    "targetType": "sellers.service-area",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "namesRestored": "integer",
+      "namesSet": "integer"
     }
   }
 ]

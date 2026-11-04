@@ -53,6 +53,19 @@ export interface OnboardingAreas {
    * names no area of the Market (an area removed from configuration): the caller falls back.
    */
   nameOf(market: MarketContext, code: string): string | null;
+  /** Every area of the Market (open or not) with its English name, for the list's area filter. */
+  all(market: MarketContext): readonly { readonly code: string; readonly name: string }[];
+  /** Every area of the Market as its configuration holds it, for the area names page. */
+  configured(market: MarketContext): readonly ConfiguredArea[];
+}
+
+/** An area as `config/service-areas/` defines it: names are the configured ones, not edits. */
+export interface ConfiguredArea {
+  readonly code: string;
+  readonly region: string | null;
+  readonly names: Readonly<Record<string, string>>;
+  readonly sellerOnboardingEnabled: boolean;
+  readonly deliveryEnabled: boolean;
 }
 
 export const ONBOARDING_AREAS = Symbol('ONBOARDING_AREAS');

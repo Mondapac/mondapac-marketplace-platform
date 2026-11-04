@@ -1,4 +1,8 @@
-import type { AttributeDefinitionState, AttributeOption } from './attribute-definition';
+import type {
+  AttributeDefinitionState,
+  AttributeDisplaySettings,
+  AttributeOption,
+} from './attribute-definition';
 import type { OfferState } from './offer';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
@@ -13,6 +17,7 @@ import type { RevisionContent, RevisionText, RevisionVariantContent } from './re
  * content type, in the same change as the type.
  */
 export const CLAIM_CHECKED_FIELD_IDS = [
+  'attribute-definition.help-text',
   'attribute-definition.name',
   'attribute-definition.option-label',
   'offer.description',
@@ -33,7 +38,14 @@ export function isClaimCheckedFieldId(value: unknown): value is ClaimCheckedFiel
 }
 
 /** Why a field is not matched: it holds no seller- or admin-written text a customer reads. */
-export type ExemptReason = 'identifier' | 'internal-code' | 'number' | 'timestamp' | 'reference';
+export type ExemptReason =
+  | 'identifier'
+  | 'internal-code'
+  | 'number'
+  | 'timestamp'
+  | 'reference'
+  /** Read by administrators only (an internal note); never shown to a seller or a customer. */
+  | 'admin-only';
 
 /**
  * What a content type's key is: a checked text field, an exempt one with its reason, or a nested
@@ -82,6 +94,17 @@ export const ATTRIBUTE_OPTION_FIELDS: Record<keyof AttributeOption, FieldDisposi
   labels: checked('attribute-definition.option-label'),
   active: exempt('internal-code'),
   position: exempt('number'),
+  mergedInto: exempt('internal-code'),
+};
+
+export const ATTRIBUTE_DISPLAY_FIELDS: Record<keyof AttributeDisplaySettings, FieldDisposition> = {
+  // Shown to sellers next to the field, so checked like the name (attributes A2).
+  helpText: checked('attribute-definition.help-text'),
+  showOnProductPage: exempt('internal-code'),
+  searchable: exempt('internal-code'),
+  canBeFilter: exempt('internal-code'),
+  internalNote: exempt('admin-only'),
+  position: exempt('number'),
 };
 
 export const ATTRIBUTE_DEFINITION_FIELDS: Record<keyof AttributeDefinitionState, FieldDisposition> =
@@ -100,8 +123,10 @@ export const ATTRIBUTE_DEFINITION_FIELDS: Record<keyof AttributeDefinitionState,
     bounds: exempt('number'),
     names: checked('attribute-definition.name'),
     options: nested('ATTRIBUTE_OPTION_FIELDS'),
+    display: nested('ATTRIBUTE_DISPLAY_FIELDS'),
     version: exempt('number'),
     createdAt: exempt('timestamp'),
+    revisedAt: exempt('timestamp'),
   };
 
 export const CATEGORY_NAME_FIELDS: Record<keyof CategoryName, FieldDisposition> = {
@@ -154,6 +179,7 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   REVISION_VARIANT_FIELDS,
   REVISION_CONTENT_FIELDS,
   ATTRIBUTE_OPTION_FIELDS,
+  ATTRIBUTE_DISPLAY_FIELDS,
   ATTRIBUTE_DEFINITION_FIELDS,
   CATEGORY_NAME_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
@@ -188,6 +214,25 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CheckedRow: { noCustomerText: 'the admin check result of a row' },
   AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
   AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
+  AttributeRelaxationRequest: {
+    noCustomerText: 'aggregate class around AttributeRelaxationRequestState',
+  },
+  AttributeValueSuggestion: {
+    noCustomerText: 'aggregate class around AttributeValueSuggestionState',
+  },
+  AttributeValueSuggestionState: {
+    noCustomerText:
+      "a seller's value suggestion: ids, status codes, times and the seller's own text, shown to admins only; an approval writes the value's labels through the attribute editor, which claim-checks them",
+  },
+  SuggestionNoticeFacts: {
+    noCustomerText: 'facts of the one mail to a seller about a suggestion; never shown to buyers',
+  },
+  SuggestionNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
+  AttributeRelaxationRequestState: {
+    noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
+  },
   LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
   OfferMovedPayloadRefused: { noCustomerText: 'refusal code with fixed paths' },
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
@@ -219,6 +264,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
+  AttributeDisplaySettings: { table: 'ATTRIBUTE_DISPLAY_FIELDS' },
   AttributeFamilyState: { noCustomerText: 'internal codes only; no name or label' },
   AttributeOption: { table: 'ATTRIBUTE_OPTION_FIELDS' },
   CatalogBatchTooLarge: { noCustomerText: 'refusal code' },
@@ -267,6 +313,22 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
   },
+  PublishedSpecification: {
+    noCustomerText:
+      'read copy of a published revision attribute value (seller text already claim-checked when the revision was frozen) and the attribute name or option label (admin text, claim-checked when written)',
+  },
+  SpecificationOption: {
+    noCustomerText:
+      'read copy of a published definition option label (admin text, claim-checked when written) and a merge target code',
+  },
+  SpecificationDefinition: {
+    noCustomerText:
+      'read copy of a published definition: type, flags, names and options (admin text, claim-checked when written)',
+  },
+  SpecificationLocales: { noCustomerText: 'two locale tags' },
+  PublishedSpecificationGroup: {
+    noCustomerText: 'a family group code and its PublishedSpecification rows',
+  },
   BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
@@ -292,6 +354,17 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
   },
   CategoryTreeUnavailableError: { noCustomerText: 'error with a fixed reason' },
+  AdminStoredCategory: {
+    noCustomerText:
+      'admin read copy of stored category rows in any status: ids, slug and the published CategoryName rows, already claim-checked when written',
+  },
+  AdminCategoryRow: {
+    noCustomerText:
+      'admin tree row: ids, slug, status, the published CategoryName rows (already claim-checked when written) and numbers',
+  },
+  CategoryProductFact: { noCustomerText: 'category ids and counts of Offers; no text' },
+  CategoryCounts: { noCustomerText: 'counts only' },
+  CategoryImpactCounts: { noCustomerText: 'counts only' },
   AssistantCategory: {
     noCustomerText:
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',

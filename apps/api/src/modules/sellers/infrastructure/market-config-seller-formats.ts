@@ -3,6 +3,7 @@ import type { MarketRegistry } from '../../../platform/market-config/market-regi
 import type { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import type {
   AddressFormats,
+  ConfiguredArea,
   DraftServiceArea,
   OnboardingAreas,
   ServiceAreas,
@@ -72,6 +73,22 @@ export class DirectoryServiceAreas implements ServiceAreas, OnboardingAreas {
       .areasOf(market.marketId)
       .filter((area) => area.sellerOnboardingEnabled)
       .map((area) => area.code);
+  }
+
+  all(market: MarketContext): readonly { readonly code: string; readonly name: string }[] {
+    return this.directory
+      .areasOf(market.marketId)
+      .map((area) => ({ code: area.code, name: area.names['en'] ?? area.code }));
+  }
+
+  configured(market: MarketContext): readonly ConfiguredArea[] {
+    return this.directory.areasOf(market.marketId).map((area) => ({
+      code: area.code,
+      region: area.region,
+      names: area.names,
+      sellerOnboardingEnabled: area.sellerOnboardingEnabled,
+      deliveryEnabled: area.deliveryEnabled,
+    }));
   }
 
   nameOf(market: MarketContext, code: string): string | null {

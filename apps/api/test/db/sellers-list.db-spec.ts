@@ -35,6 +35,7 @@ const BASE: ListPageQuery = {
   kind: null,
   outsideArea: false,
   openAreaCodes: ['open'],
+  areaCode: null,
   onlyIds: null,
   after: null,
   take: 50,
@@ -318,6 +319,19 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s', (code) => {
         serviceAreaCode: 'open',
       });
       expect(everyone.find((row) => row.sellerId === noAddress)?.hasAddress).toBe(false);
+    });
+
+    it('filters every file tab by service area', async () => {
+      const inOpen = await newFile(1, { address: envelope(60), area: 'open' });
+      const inClosed = await newFile(2, { address: envelope(60), area: 'closed' });
+
+      const incomplete = await read(() => list.incomplete(market, q({ areaCode: 'closed' })));
+      const all = await read(() => list.all(market, q({ areaCode: 'open' })));
+      const none = await read(() => list.all(market, q({ areaCode: 'nowhere' })));
+
+      expect(idsOf(incomplete)).toEqual([inClosed]);
+      expect(idsOf(all)).toEqual([inOpen]);
+      expect(none).toEqual([]);
     });
 
     it('uses the partial index of migration 7 (data design A4)', async () => {
