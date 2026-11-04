@@ -147,6 +147,32 @@ export interface PublishedProductVariant {
 }
 
 /**
+ * One value of a specification row, typed so the page formats it (digits, Yes/No, dates): text and
+ * list entries are in the asked locale (select labels, English fallback); a number is a decimal
+ * string in the attribute's own digits; a date is `YYYY-MM-DD`.
+ */
+export type PublishedSpecificationValue =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'list'; readonly items: readonly string[] }
+  | { readonly kind: 'number'; readonly value: string }
+  | { readonly kind: 'boolean'; readonly value: boolean }
+  | { readonly kind: 'date'; readonly value: string };
+
+/** One attribute of a published product that its page lists. */
+export interface PublishedSpecification {
+  readonly code: string;
+  /** The attribute's name in the asked locale, else the fallback. */
+  readonly name: string;
+  readonly value: PublishedSpecificationValue;
+}
+
+/** The specifications of one family group, in the family's order; never empty. */
+export interface PublishedSpecificationGroup {
+  readonly groupCode: string;
+  readonly specifications: readonly PublishedSpecification[];
+}
+
+/**
  * What `publishedProduct` gives: the content of a product's published revision. Texts are in the
  * asked locale with the INTL-13 fallback; seller-entered text: escape it. `categoryIds` are in the
  * revision's order and `variants` in position order, published Variants only.
@@ -161,6 +187,15 @@ export interface PublishedProduct {
   readonly variants: readonly PublishedProductVariant[];
   /** The product's ACTIVE brand (its public page slug and name), or null: none, or not active. */
   readonly brand: { readonly slug: string; readonly name: string } | null;
+  /**
+   * The published revision's attribute values for the product page: grouped by the revision's
+   * family groups and ordered as the family orders them. Only attributes that are not drafts and
+   * whose published definition shows them on the product page (`show_on_product_page`), with a
+   * value; the brand (shown as the brand link), long texts (shown as the description) and variant
+   * options (shown as Variant labels) are left out. Names and option labels are in the asked
+   * locale, English fallback; seller-entered text: escape it.
+   */
+  readonly specifications: readonly PublishedSpecificationGroup[];
 }
 
 /** The most product ids {@link CatalogFacade.brandProductIds} returns. */

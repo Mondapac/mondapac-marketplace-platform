@@ -99,6 +99,8 @@ export type AttributeDefinitionRefusal =
   | { readonly code: 'attribute-definition.position-invalid' }
   | { readonly code: 'attribute-definition.archived' }
   | { readonly code: 'attribute-definition.not-draft' }
+  /** A value is added to a published definition only (attributes A5). */
+  | { readonly code: 'attribute-definition.not-published' }
   | { readonly code: 'attribute-definition.option-removed'; readonly option: string }
   | { readonly code: 'attribute-definition.variant-locked' }
   | { readonly code: 'attribute-definition.material-relaxation-required' }
@@ -422,6 +424,41 @@ export class AttributeDefinition {
         revisedAt: input.now,
       }),
     );
+  }
+
+  /**
+   * The next revision with one more value, and nothing else changed (attributes A5: a seller's
+   * suggestion was approved). The definition must be published and select-like; the value goes
+   * last, active, with the labels given; every earlier value keeps its code, labels and place.
+   * The same checks as an edit apply (the default-locale label, the count, the texts).
+   */
+  addOption(input: {
+    readonly revisionId: Id<'AttributeDefinitionRevision'>;
+    readonly code: string;
+    readonly labels: LocalizedText;
+    readonly now: Temporal.Instant;
+  }): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const current = this.#state;
+    if (current.status === 'archived') return err({ code: 'attribute-definition.archived' });
+    if (current.status !== 'active') return err({ code: 'attribute-definition.not-published' });
+    if (current.options.some((option) => option.code === input.code)) {
+      return err({ code: 'attribute-definition.option-repeated' });
+    }
+    const position =
+      current.options.reduce((top, option) => Math.max(top, option.position), -1) + 1;
+    return this.revise({
+      revisionId: input.revisionId,
+      names: current.names,
+      material: current.material,
+      isVariantOption: current.isVariantOption,
+      bounds: current.bounds,
+      options: [
+        ...current.options,
+        { code: input.code, labels: input.labels, active: true, position },
+      ],
+      display: current.display,
+      now: input.now,
+    });
   }
 
   /**

@@ -43,6 +43,11 @@ import {
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
 import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
+import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import {
+  ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  type AttributeValueSuggestionStore,
+} from '../application/ports/attribute-value-suggestion.store';
 import {
   ATTRIBUTE_RELAXATION_STORE,
   type AttributeRelaxationStore,
@@ -257,6 +262,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeRelaxationStore =>
       new PrismaAttributeRelaxationStore(prisma),
+  },
+  {
+    provide: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeValueSuggestionStore =>
+      new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,

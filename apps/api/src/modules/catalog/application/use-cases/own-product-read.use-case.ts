@@ -8,6 +8,8 @@ import type { SensitiveReason } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
 import type { StoredRevision } from '../../domain/stored-revision';
 import type { OwnCatalogReader, ProductForm } from '../ports/own-catalog.reader';
+import type { AttributeDefinitionStore } from '../ports/attribute-definition.store';
+import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
@@ -63,7 +65,29 @@ export interface OwnProductReadOutput {
     readonly reasonCode: string;
     readonly decidedAt: string;
   } | null;
+  /**
+   * The seller's value suggestions for this product, newest first (attributes A5). An open one
+   * means the field stays empty until an admin decides; a decided one shows what became of it.
+   * Empty when the suggestion store is not wired.
+   */
+  readonly suggestions: readonly OwnSuggestionView[];
 }
+
+export interface OwnSuggestionView {
+  readonly id: string;
+  readonly attributeCode: string;
+  /** The seller's own text, back to them. */
+  readonly label: string;
+  readonly status: 'open' | 'approved' | 'mapped' | 'rejected';
+  /** The value added or chosen (approved, mapped). */
+  readonly optionCode: string | null;
+  /** The reviewer's words (rejected). */
+  readonly rejectReason: string | null;
+  readonly createdAt: string;
+}
+
+/** The most suggestions one product read lists. */
+export const OWN_SUGGESTIONS_MAX = 20;
 
 export type OwnProductReadFailure =
   | { readonly code: 'access.denied' }
@@ -78,6 +102,8 @@ export interface OwnProductReadDependencies {
   readonly revisions: ProductRevisionRepository;
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
+  readonly suggestions?: AttributeValueSuggestionStore;
+  readonly attributeStore?: AttributeDefinitionStore;
 }
 
 /**
@@ -145,8 +171,35 @@ export class OwnProductRead extends UseCase<
         const copy = await deps.workingCopies.find(market, state.id);
         const revisionOf = async (id: Id<'ProductRevision'> | null) =>
           id === null ? null : await deps.revisions.find(market, state.id, id);
+        const suggestions: OwnSuggestionView[] = [];
+        if (deps.suggestions !== undefined && deps.attributeStore !== undefined) {
+          const codes = new Map<string, string | null>();
+          for (const suggestion of await deps.suggestions.listOfProduct(
+            market,
+            state.id,
+            OWN_SUGGESTIONS_MAX,
+          )) {
+            const row = suggestion.state;
+            if (!codes.has(row.definitionId)) {
+              const definition = await deps.attributeStore.findById(market, row.definitionId);
+              codes.set(row.definitionId, definition === null ? null : definition.state.code);
+            }
+            const attributeCode = codes.get(row.definitionId);
+            if (attributeCode === null || attributeCode === undefined) continue;
+            suggestions.push({
+              id: row.id,
+              attributeCode,
+              label: row.label,
+              status: row.status,
+              optionCode: row.optionCode,
+              rejectReason: row.rejectReason,
+              createdAt: row.createdAt.toString(),
+            });
+          }
+        }
         return ok({
           product,
+          suggestions,
           form: await deps.ownReader.productForm(market, state.familyCode),
           copy,
           published: await revisionOf(state.publishedRevisionId),
@@ -158,7 +211,7 @@ export class OwnProductRead extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, form, copy, published, pending, changeRequest } = read.value;
+    const { product, form, copy, published, pending, changeRequest, suggestions } = read.value;
     const { state } = product;
     return ok({
       productId: state.id,
@@ -196,6 +249,7 @@ export class OwnProductRead extends UseCase<
               reasonCode: changeRequest.reasonCode,
               decidedAt: changeRequest.decidedAt.toString(),
             },
+      suggestions,
     });
   }
 }
