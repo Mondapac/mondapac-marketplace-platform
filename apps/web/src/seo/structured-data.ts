@@ -77,6 +77,23 @@ function certificationOf(badge: CertificationBadge): JsonLdNode | null {
   };
 }
 
+/** The most `additionalProperty` entries of a Product node. */
+const MAX_PROPERTIES = 30;
+
+/**
+ * The listed specifications as `additionalProperty` (name and value as the page shows them, in
+ * plain text); a row whose name or value is empty once cleaned is left out.
+ */
+function propertiesOf(product: ProductDetail): JsonLdNode[] {
+  return product.specifications
+    .flatMap((row): JsonLdNode[] => {
+      const name = plainText(row.label);
+      const value = plainText(row.value);
+      return name === '' || value === '' ? [] : [{ '@type': 'PropertyValue', name, value }];
+    })
+    .slice(0, MAX_PROPERTIES);
+}
+
 /**
  * The Product node of a product page (merchant listing): ONE Offer, the buy box's offer, never an
  * AggregateOffer. None when that offer has no positive price.
@@ -94,6 +111,7 @@ export function productStructuredData(
   const images = product.photos.flatMap((photo) => imageUrl(photo, origin) ?? []);
   const description = Array.from(plainText(product.description)).slice(0, DESCRIPTION_MAX).join('');
   const certifications = offer.certifications.flatMap((badge) => certificationOf(badge) ?? []);
+  const properties = propertiesOf(product);
   return {
     '@type': 'Product',
     name: plainText(product.name),
@@ -110,6 +128,7 @@ export function productStructuredData(
             url: absolute(`/brands/${encodeURIComponent(product.brand.slug)}`, origin),
           },
         }),
+    ...(properties.length === 0 ? {} : { additionalProperty: properties }),
     offers: {
       '@type': 'Offer',
       url,

@@ -252,3 +252,76 @@ export class AttributeWriteBody {
 export class AttributeWriteWrapBody {
   @ApiProperty({ type: AttributeWriteBody }) attribute!: AttributeWriteBody;
 }
+
+// The two-person request to clear `material` (catalog design 8.2; attributes A2 part 3).
+
+export class RelaxationRequestCreateRequest {
+  @ApiProperty({ description: 'The attribute version the admin saw.' }) version!: number;
+  @ApiProperty({
+    enum: ['clear-material'],
+    description: 'What to relax. Only clear-material today.',
+  })
+  kind!: string;
+}
+
+export class RelaxationVersionRequest {
+  @ApiProperty({ description: 'The request version the admin saw.' }) version!: number;
+}
+
+export class RelaxationWriteBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) attributeId!: string;
+  @ApiProperty({ enum: ['clear-material', 'archive', 'remove-from-family'] }) kind!: string;
+  @ApiProperty({ enum: ['open', 'confirmed', 'cancelled', 'expired'] }) status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ format: 'date-time' }) expiresAt!: string;
+}
+
+export class RelaxationWriteWrapBody {
+  @ApiProperty({ type: RelaxationWriteBody }) request!: RelaxationWriteBody;
+}
+
+export class RelaxationConfirmBody {
+  @ApiProperty({ type: RelaxationWriteBody }) request!: RelaxationWriteBody;
+  @ApiProperty({ type: AttributeWriteBody }) attribute!: AttributeWriteBody;
+}
+
+class RelaxationActionBody {
+  @ApiProperty() allowed!: boolean;
+  @ApiProperty({
+    required: false,
+    enum: ['relaxation.same-admin', 'relaxation.not-requester'],
+    description: 'Why not, when not allowed.',
+  })
+  reason?: string;
+}
+
+class RelaxationActionsBody {
+  @ApiProperty({ type: RelaxationActionBody }) confirm!: RelaxationActionBody;
+  @ApiProperty({ type: RelaxationActionBody }) cancel!: RelaxationActionBody;
+}
+
+class RelaxationAttributeBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALIZED) names!: Record<string, string>;
+  @ApiProperty() version!: number;
+}
+
+export class OpenRelaxationBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty({ enum: ['clear-material', 'archive', 'remove-from-family'] }) kind!: string;
+  @ApiProperty({ type: RelaxationAttributeBody }) attribute!: RelaxationAttributeBody;
+  @ApiProperty({ description: "The reader's own request: cancel, not confirm." }) mine!: boolean;
+  @ApiProperty({ format: 'uuid', description: 'The requesting administrator.' })
+  requestedByAccountId!: string;
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ format: 'date-time' }) expiresAt!: string;
+  @ApiProperty({ type: RelaxationActionsBody }) allowedActions!: RelaxationActionsBody;
+}
+
+export class OpenRelaxationListBody {
+  @ApiProperty({ type: [OpenRelaxationBody] }) requests!: OpenRelaxationBody[];
+}

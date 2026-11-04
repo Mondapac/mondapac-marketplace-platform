@@ -38,7 +38,20 @@ export interface AttributeDefinitionStore {
     market: MarketContext,
     definition: AttributeDefinition,
     authorAccountId: Id<'Account'>,
+    /** The confirmed `clear-material` request the revision applies (catalog design 8.2). */
+    relaxationRequestId?: Id<'AttributeRelaxationRequest'>,
   ): Promise<void>;
+
+  /**
+   * Locks the definition's row for the rest of the unit if its stored version is `version`, and
+   * answers whether it was. The relaxation units take the definition before the request (the lock
+   * order of the editor, which cancels an open request after its revision), so they never deadlock.
+   */
+  lockAtVersion(
+    market: MarketContext,
+    id: Id<'AttributeDefinition'>,
+    version: number,
+  ): Promise<boolean>;
 
   /** Writes the status of `publish` or `discard`, if the stored version is the one before. */
   saveStatus(market: MarketContext, definition: AttributeDefinition): Promise<void>;

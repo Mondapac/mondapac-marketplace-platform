@@ -120,7 +120,7 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
       if (isCodeViolation(error)) throw new AttributeCodeTakenError();
       throw error;
     }
-    await this.#insertRevision(market, state, authorAccountId);
+    await this.#insertRevision(market, state, authorAccountId, null);
     const { count } = await tx.catalogAttributeDefinition.updateMany({
       where: { marketId: market.marketId, id: state.id, version: state.version },
       data: { publishedRevisionId: state.revisionId },
@@ -132,15 +132,30 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
     market: MarketContext,
     definition: AttributeDefinition,
     authorAccountId: Id<'Account'>,
+    relaxationRequestId?: Id<'AttributeRelaxationRequest'>,
   ): Promise<void> {
     const state = definition.state;
     this.#sameMarket(market, state);
-    await this.#insertRevision(market, state, authorAccountId);
+    await this.#insertRevision(market, state, authorAccountId, relaxationRequestId ?? null);
     const { count } = await this.prisma.tx(market).catalogAttributeDefinition.updateMany({
       where: { marketId: market.marketId, id: state.id, version: state.version - 1 },
       data: { publishedRevisionId: state.revisionId, version: state.version },
     });
     if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
+  }
+
+  async lockAtVersion(
+    market: MarketContext,
+    id: Id<'AttributeDefinition'>,
+    version: number,
+  ): Promise<boolean> {
+    // An update that writes the version it read: the row lock lasts to the end of the unit, and
+    // the count says whether the version was still the one named.
+    const { count } = await this.prisma.tx(market).catalogAttributeDefinition.updateMany({
+      where: { marketId: market.marketId, id, version },
+      data: { version },
+    });
+    return count === 1;
   }
 
   async saveStatus(market: MarketContext, definition: AttributeDefinition): Promise<void> {
@@ -157,6 +172,7 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
     market: MarketContext,
     state: AttributeDefinitionState,
     authorAccountId: Id<'Account'>,
+    relaxationRequestId: Id<'AttributeRelaxationRequest'> | null,
   ): Promise<void> {
     const tx = this.prisma.tx(market);
     // A racing save of the same revision number fails on the unique (definition, revision_no)
@@ -181,7 +197,7 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
           position: state.display.position,
           authorKind: 'admin',
           authorAccountId,
-          relaxationRequestId: null,
+          relaxationRequestId,
           createdAt: toDate(state.revisedAt),
         },
         select: { id: true },

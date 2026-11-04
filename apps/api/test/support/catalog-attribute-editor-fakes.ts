@@ -1,7 +1,12 @@
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import { ok } from '@mondapac/shared-kernel';
 import type { AttributeDefinitionStore } from '../../src/modules/catalog/application/ports/attribute-definition.store';
 import { AttributeCodeTakenError } from '../../src/modules/catalog/application/ports/attribute-definition.store';
+import {
+  RelaxationAlreadyOpenError,
+  type AttributeRelaxationStore,
+} from '../../src/modules/catalog/application/ports/attribute-relaxation.store';
+import type { AttributeRelaxationRequest } from '../../src/modules/catalog/domain/attribute-relaxation-request';
 import type { ClaimTermLocales } from '../../src/modules/catalog/application/ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../../src/modules/catalog/application/ports/claim-text-matcher';
 import type { AttributeDefinition } from '../../src/modules/catalog/domain/attribute-definition';
@@ -13,7 +18,7 @@ import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 /** A store in memory, per Market, with the same version rule as the SQL one. */
 export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore {
   readonly rows = new Map<string, AttributeDefinition>();
-  readonly authors: { revisionId: string; author: string }[] = [];
+  readonly authors: { revisionId: string; author: string; relaxationRequestId?: string }[] = [];
   /** Set to make the next write lose a race. */
   raceNext = false;
 
@@ -46,11 +51,27 @@ export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore 
     return Promise.resolve();
   }
 
-  saveRevision(_m: MarketContext, definition: AttributeDefinition, author: Id<'Account'>) {
+  saveRevision(
+    _m: MarketContext,
+    definition: AttributeDefinition,
+    author: Id<'Account'>,
+    relaxationRequestId?: Id<'AttributeRelaxationRequest'>,
+  ) {
     this.#check(definition);
-    this.authors.push({ revisionId: definition.state.revisionId, author });
+    this.authors.push({
+      revisionId: definition.state.revisionId,
+      author,
+      ...(relaxationRequestId === undefined ? {} : { relaxationRequestId }),
+    });
     this.rows.set(definition.state.id, definition);
     return Promise.resolve();
+  }
+
+  lockAtVersion(market: MarketContext, id: Id<'AttributeDefinition'>, version: number) {
+    const row = this.rows.get(id);
+    return Promise.resolve(
+      row?.state.marketId === market.marketId && row.state.version === version,
+    );
   }
 
   saveStatus(_m: MarketContext, definition: AttributeDefinition) {
@@ -65,6 +86,73 @@ export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore 
       this.raceNext = false;
       throw new StaleAggregateError('attribute-definition', definition.state.id);
     }
+  }
+}
+
+/** Relaxation requests in memory, with the SQL store's one-open and from-open-at-version rules. */
+export class MemoryAttributeRelaxationStore implements AttributeRelaxationStore {
+  readonly rows = new Map<string, AttributeRelaxationRequest>();
+
+  reset(): void {
+    this.rows.clear();
+  }
+
+  findById(market: MarketContext, id: Id<'AttributeRelaxationRequest'>) {
+    const row = this.rows.get(id);
+    return Promise.resolve(row?.state.marketId === market.marketId ? row : null);
+  }
+
+  openOf(market: MarketContext, definitionId: Id<'AttributeDefinition'>) {
+    return Promise.resolve(
+      [...this.rows.values()].find(
+        (row) =>
+          row.state.marketId === market.marketId &&
+          row.state.definitionId === definitionId &&
+          row.state.status === 'open',
+      ) ?? null,
+    );
+  }
+
+  async add(market: MarketContext, request: AttributeRelaxationRequest) {
+    if ((await this.openOf(market, request.state.definitionId)) !== null) {
+      throw new RelaxationAlreadyOpenError();
+    }
+    this.rows.set(request.state.id, request);
+  }
+
+  saveMove(_m: MarketContext, request: AttributeRelaxationRequest) {
+    const stored = this.rows.get(request.state.id);
+    if (stored?.state.status !== 'open' || stored.state.version !== request.state.version - 1) {
+      return Promise.reject(
+        new StaleAggregateError('attribute-relaxation-request', request.state.id),
+      );
+    }
+    this.rows.set(request.state.id, request);
+    return Promise.resolve();
+  }
+
+  #open(market: MarketContext, now: Temporal.Instant, expired: boolean, limit: number) {
+    return [...this.rows.values()]
+      .filter(
+        (row) =>
+          row.state.marketId === market.marketId &&
+          row.state.status === 'open' &&
+          Temporal.Instant.compare(row.state.expiresAt, now) <= 0 === expired,
+      )
+      .sort(
+        (a, b) =>
+          Temporal.Instant.compare(a.state.expiresAt, b.state.expiresAt) ||
+          a.state.id.localeCompare(b.state.id),
+      )
+      .slice(0, limit);
+  }
+
+  listOpen(market: MarketContext, now: Temporal.Instant, limit: number) {
+    return Promise.resolve(this.#open(market, now, false, limit));
+  }
+
+  listExpired(market: MarketContext, now: Temporal.Instant, limit: number) {
+    return Promise.resolve(this.#open(market, now, true, limit));
   }
 }
 

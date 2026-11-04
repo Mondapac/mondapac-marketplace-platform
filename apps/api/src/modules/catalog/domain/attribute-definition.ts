@@ -99,9 +99,13 @@ export type AttributeDefinitionRefusal =
   | { readonly code: 'attribute-definition.position-invalid' }
   | { readonly code: 'attribute-definition.archived' }
   | { readonly code: 'attribute-definition.not-draft' }
+  /** A value is added to a published definition only (attributes A5). */
+  | { readonly code: 'attribute-definition.not-published' }
   | { readonly code: 'attribute-definition.option-removed'; readonly option: string }
   | { readonly code: 'attribute-definition.variant-locked' }
   | { readonly code: 'attribute-definition.material-relaxation-required' }
+  /** A relaxation was asked of a definition that is not a published `material` one. */
+  | { readonly code: 'attribute-definition.not-material' }
   | { readonly code: 'attribute-definition.default-name-required'; readonly locale: string }
   | {
       readonly code: 'attribute-definition.default-label-required';
@@ -423,6 +427,41 @@ export class AttributeDefinition {
   }
 
   /**
+   * The next revision with one more value, and nothing else changed (attributes A5: a seller's
+   * suggestion was approved). The definition must be published and select-like; the value goes
+   * last, active, with the labels given; every earlier value keeps its code, labels and place.
+   * The same checks as an edit apply (the default-locale label, the count, the texts).
+   */
+  addOption(input: {
+    readonly revisionId: Id<'AttributeDefinitionRevision'>;
+    readonly code: string;
+    readonly labels: LocalizedText;
+    readonly now: Temporal.Instant;
+  }): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const current = this.#state;
+    if (current.status === 'archived') return err({ code: 'attribute-definition.archived' });
+    if (current.status !== 'active') return err({ code: 'attribute-definition.not-published' });
+    if (current.options.some((option) => option.code === input.code)) {
+      return err({ code: 'attribute-definition.option-repeated' });
+    }
+    const position =
+      current.options.reduce((top, option) => Math.max(top, option.position), -1) + 1;
+    return this.revise({
+      revisionId: input.revisionId,
+      names: current.names,
+      material: current.material,
+      isVariantOption: current.isVariantOption,
+      bounds: current.bounds,
+      options: [
+        ...current.options,
+        { code: input.code, labels: input.labels, active: true, position },
+      ],
+      display: current.display,
+      now: input.now,
+    });
+  }
+
+  /**
    * Draft to active (attributes A2): the name in the Market's default locale is required, and a
    * select type needs at least one active value, each active value with a default-locale label.
    * Other locales may be missing; buyers in those languages do not see the missing text.
@@ -434,6 +473,43 @@ export class AttributeDefinition {
     if (problem !== null) return err(problem);
     return ok(
       new AttributeDefinition({ ...current, status: 'active', version: current.version + 1 }),
+    );
+  }
+
+  /**
+   * Whether `material` may be cleared on this definition through a two-person request (catalog
+   * design 8.2): only a published definition that is `material` now. A draft clears it by an edit.
+   */
+  relaxableMaterial(): AttributeDefinitionRefusal | null {
+    const current = this.#state;
+    if (current.status === 'archived') return { code: 'attribute-definition.archived' };
+    if (current.status !== 'active' || !current.material) {
+      return { code: 'attribute-definition.not-material' };
+    }
+    return null;
+  }
+
+  /**
+   * The next revision with `material` cleared and nothing else changed, applied by a confirmed
+   * two-person request (catalog design 8.2). The store records the request on the revision, and
+   * the database refuses the revision without a confirmed request of this definition.
+   */
+  clearMaterial(input: {
+    readonly revisionId: Id<'AttributeDefinitionRevision'>;
+    readonly now: Temporal.Instant;
+  }): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const problem = this.relaxableMaterial();
+    if (problem !== null) return err(problem);
+    const current = this.#state;
+    return ok(
+      new AttributeDefinition({
+        ...current,
+        revisionId: input.revisionId,
+        revisionNo: current.revisionNo + 1,
+        material: false,
+        version: current.version + 1,
+        revisedAt: input.now,
+      }),
     );
   }
 

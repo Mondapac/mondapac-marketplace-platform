@@ -17,6 +17,8 @@ describe('ConfigCatalogMarketPolicy', () => {
   it('answers each Market from its own file', async () => {
     expect(policy.maxVariantsPerProduct(au)).toBe(100);
     expect(policy.maxVariantsPerProduct(zz)).toBe(3);
+    expect(policy.maxCategoryDepth(au)).toBe(4);
+    expect(policy.maxCategoryDepth(zz)).toBe(3);
     await expect(policy.approvalRequired(au)).resolves.toBe(true);
     await expect(policy.approvalRequired(zz)).resolves.toBe(false);
     expect(policy.taxCategoryCodes(au)).toEqual(['taxable', 'gst_free']);
@@ -53,6 +55,7 @@ describe('ConfigCatalogMarketPolicy', () => {
     const unconfigured = new ConfigCatalogMarketPolicy(bare);
 
     expect(() => unconfigured.maxVariantsPerProduct(au)).toThrow(CatalogNotConfiguredError);
+    expect(() => unconfigured.maxCategoryDepth(au)).toThrow(CatalogNotConfiguredError);
     await expect(unconfigured.approvalRequired(au)).rejects.toBeInstanceOf(
       CatalogNotConfiguredError,
     );
