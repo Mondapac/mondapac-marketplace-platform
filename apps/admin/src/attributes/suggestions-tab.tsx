@@ -27,6 +27,10 @@ import {
 } from './types.ts';
 
 const LABEL_MAX = 120;
+const CODE_RE = /^[a-z][a-z0-9-]{0,62}$/;
+
+/** Whether the words give a code by themselves (the API makes it from Latin letters and digits). */
+const hasLatin = (text: string): boolean => /[a-z0-9]/i.test(text.normalize('NFKD'));
 const REASON_MAX = 300;
 
 type Load =
@@ -49,6 +53,8 @@ const BY_CODE: Readonly<Record<string, { key: string; reload: boolean }>> = {
   'attribute-definition.archived': { key: 'attribute-unavailable', reload: true },
   'attribute-definition.option-repeated': { key: 'value-exists', reload: false },
   'attribute.claim-word': { key: 'claim', reload: false },
+  'attribute.locale-uncheckable': { key: 'locale-uncheckable', reload: false },
+  'claim-text.check-unavailable': { key: 'check-unavailable', reload: false },
   'suggestion.option-invalid': { key: 'option-invalid', reload: true },
   'suggestion.reason-invalid': { key: 'invalid', reload: false },
   'access.denied': { key: 'denied', reload: false },
@@ -181,6 +187,7 @@ function SuggestionCard({
   const [mode, setMode] = useState<Mode>('none');
   const [labels, setLabels] = useState<Record<string, string>>({ [defaultLocale]: item.label });
   const [optionCode, setOptionCode] = useState('');
+  const [newCode, setNewCode] = useState('');
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; reload: boolean } | null>(null);
@@ -232,7 +239,12 @@ function SuggestionCard({
     }
   }, [mode]);
 
-  const missing = locales.some((locale) => (labels[locale] ?? '').trim() === '');
+  const codeNeeded = !hasLatin(labels[defaultLocale] ?? '');
+  const codeBad = newCode !== '' && !CODE_RE.test(newCode);
+  const missing =
+    codeBad ||
+    (codeNeeded && newCode === '') ||
+    locales.some((locale) => (labels[locale] ?? '').trim() === '');
   return (
     <section ref={card} className="rounded-lg border border-line bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -253,15 +265,25 @@ function SuggestionCard({
       )}
       {mode === 'none' ? (
         <div className="mt-3 flex flex-wrap gap-3">
-          <Button onClick={() => setMode('approve')}>{t('approve')}</Button>
+          <Button
+            aria-label={t('approve-for', { label: item.label })}
+            onClick={() => setMode('approve')}
+          >
+            {t('approve')}
+          </Button>
           <Button
             variant="secondary"
+            aria-label={t('map-for', { label: item.label })}
             disabled={item.attribute.options.length === 0}
             onClick={() => setMode('map')}
           >
             {t('map')}
           </Button>
-          <Button variant="secondary" onClick={() => setMode('reject')}>
+          <Button
+            variant="secondary"
+            aria-label={t('reject-for', { label: item.label })}
+            onClick={() => setMode('reject')}
+          >
             {t('reject')}
           </Button>
           {item.attribute.options.length === 0 ? (
@@ -277,7 +299,10 @@ function SuggestionCard({
             event.preventDefault();
             const sent: Record<string, string> = {};
             for (const locale of locales) sent[locale] = (labels[locale] ?? '').trim();
-            void decide('approve', { labels: sent });
+            void decide('approve', {
+              labels: sent,
+              ...(newCode === '' ? {} : { optionCode: newCode }),
+            });
           }}
         >
           <p className="text-sm text-fg-muted">{t('approve-note')}</p>
@@ -294,6 +319,17 @@ function SuggestionCard({
               onChange={(event) => setLabels({ ...labels, [locale]: event.target.value })}
             />
           ))}
+          <TextField
+            name="option-code"
+            label={t('value-code')}
+            help={codeNeeded ? t('value-code-needed') : t('value-code-help')}
+            value={newCode}
+            maxLength={63}
+            dir="ltr"
+            autoComplete="off"
+            error={codeBad ? t('value-code-bad') : undefined}
+            onChange={(event) => setNewCode(event.target.value.trim().toLowerCase())}
+          />
           <Actions
             busy={pending}
             disabled={missing}

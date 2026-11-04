@@ -88,11 +88,11 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
   it('approves with a name in every required language and the version seen', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve “<b>Oat</b> & honey”' }));
     const inputs = screen.getAllByRole('textbox');
-    expect(inputs).toHaveLength(required.length);
+    expect(inputs).toHaveLength(required.length + 1);
     expect((inputs[0] as HTMLInputElement).value).toBe('<b>Oat</b> & honey');
-    const second = inputs[1] as HTMLInputElement | undefined;
+    const second = required.length > 1 ? (inputs[1] as HTMLInputElement) : undefined;
     const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Approve value' });
     if (second !== undefined) {
       expect(confirm.disabled).toBe(true);
@@ -113,10 +113,39 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     await expectToast('Value added. The seller was told.');
   });
 
+  it('asks for a value code when the default name has no Latin letters, and sends it', async () => {
+    const list0 = list(locales, required);
+    const first = list0.items[0];
+    if (first === undefined) throw new Error('fixture');
+    call.mockResolvedValueOnce(ok({ ...list0, items: [{ ...first, label: 'جو' }] }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve “جو”' }));
+    for (const input of screen.getAllByRole('textbox')) {
+      if (input.getAttribute('name') !== 'option-code') {
+        fireEvent.change(input, { target: { value: 'جو' } });
+      }
+    }
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Approve value' });
+    const code = screen.getByLabelText('Value code');
+    // The default name has no Latin letters in the AU fixture's text too: a code is needed.
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(code, { target: { value: 'Barley' } });
+    expect(confirm.disabled).toBe(false);
+    call.mockResolvedValueOnce(
+      ok({ suggestion: { id: id(1), status: 'approved', version: 4, optionCode: 'barley' } }),
+    );
+    call.mockResolvedValueOnce(ok({ ...list0, items: [] }));
+    fireEvent.click(confirm);
+    await waitFor(() => expect(screen.getByText('Nothing is waiting for you.')).toBeTruthy());
+    expect(call.mock.calls[1]?.[2]).toMatchObject({ version: 3, optionCode: 'barley' });
+  });
+
   it('maps to an existing value', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Map to existing' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Map “<b>Oat</b> & honey” to an existing value' }),
+    );
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'plain' } });
     call.mockResolvedValueOnce(
       ok({ suggestion: { id: id(1), status: 'mapped', version: 4, optionCode: 'plain' } }),
@@ -130,7 +159,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
   it('rejects with a reason the seller will read', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject “<b>Oat</b> & honey”' }));
     const reject = screen.getByRole<HTMLButtonElement>('button', { name: 'Reject suggestion' });
     expect(reject.disabled).toBe(true);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Not a flavour' } });
@@ -146,7 +175,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
   it('tells the admin above the list, without a skeleton, when someone decided it first', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject “<b>Oat</b> & honey”' }));
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
     call.mockResolvedValueOnce(fail(409, 'suggestion.stale'));
     call.mockResolvedValueOnce(ok({ ...list(locales, required), items: [] }));
@@ -159,8 +188,10 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
   it('keeps the form open on a refusal that the admin can fix', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
-    for (const input of screen.getAllByRole('textbox')) {
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve “<b>Oat</b> & honey”' }));
+    for (const input of screen
+      .getAllByRole('textbox')
+      .filter((box) => box.getAttribute('name') !== 'option-code')) {
       fireEvent.change(input, { target: { value: 'Oat honey' } });
     }
     call.mockResolvedValueOnce(fail(422, 'attribute.claim-word'));
@@ -173,7 +204,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
   it('sends a decision once on a double click', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject “<b>Oat</b> & honey”' }));
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
     call.mockResolvedValueOnce(
       ok({ suggestion: { id: id(1), status: 'rejected', version: 4, optionCode: null } }),
@@ -202,7 +233,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
   it('moves focus into the form it opens', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject “<b>Oat</b> & honey”' }));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox')));
   });
 });
