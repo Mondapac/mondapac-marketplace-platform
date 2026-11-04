@@ -314,6 +314,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'seller.not-eligible': 403,
       'offer.exists-for-product': 409,
       'offer.sku-taken': 409,
+      'offer.none-selling': 422,
       'type.not-allowed': 422,
       'setting.sell-from-catalogue-off': 422,
       'claim-text.refused': 422,

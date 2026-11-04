@@ -231,6 +231,12 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
 export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Record<string, { readonly table: string } | { readonly noCustomerText: string }>
 > = {
+  SellUnitState: {
+    noCustomerText:
+      'a variant id, a printable-ASCII SKU (1 to 64, no space) and a flag; no free text',
+  },
+  SellUnitChange: { noCustomerText: 'the same fields as SellUnitState, as requested' },
+  SellUnitOutcome: { noCustomerText: 'lists of SellUnitState' },
   ImportColumn: { noCustomerText: 'fixed header names of the import template' },
   IgnoredColumn: { noCustomerText: 'a header of the file, shown to the admin only' },
   MappedColumns: { noCustomerText: 'column positions' },

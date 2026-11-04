@@ -32,6 +32,10 @@ const orNull = (date: Date | null): Temporal.Instant | null =>
 
 const UNIQUE_ONE_PER_PRODUCT = 'offers_market_id_seller_id_product_id_open_key';
 const UNIQUE_SKU = 'offers_market_id_seller_id_seller_sku_open_key';
+/** The trigger that refuses an Offer SKU equal to one of the seller's variant SKUs (V5). */
+const UNIQUE_SKU_VS_UNIT = 'offers_vs_unit_sku';
+const isSkuClash = (name: string | null): boolean =>
+  name === UNIQUE_SKU || name === UNIQUE_SKU_VS_UNIT;
 
 type OfferRow = Prisma.CatalogOfferGetPayload<object>;
 type TagRow = Prisma.CatalogOfferTagGetPayload<object>;
@@ -205,7 +209,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
     } catch (error) {
       const unique = this.prisma.violatedConstraint(error);
       if (unique === UNIQUE_ONE_PER_PRODUCT) return 'offer.exists-for-product';
-      if (unique === UNIQUE_SKU) return 'offer.sku-taken';
+      if (isSkuClash(unique)) return 'offer.sku-taken';
       throw error;
     }
     await tx.catalogOfferHistory.create({
@@ -273,7 +277,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
       });
       if (count !== 1) throw new StaleAggregateError('offer', state.id);
     } catch (error) {
-      if (this.prisma.violatedConstraint(error) === UNIQUE_SKU) return 'offer.sku-taken';
+      if (isSkuClash(this.prisma.violatedConstraint(error))) return 'offer.sku-taken';
       throw error;
     }
     if (history !== null) {

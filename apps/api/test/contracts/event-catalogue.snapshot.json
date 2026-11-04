@@ -153,6 +153,15 @@
     }
   },
   {
+    "type": "catalog.offer-sell-unit-changed.v1",
+    "aggregateType": "offer-sell-unit",
+    "fields": {
+      "offerId": "id",
+      "selling": "boolean",
+      "variantId": "id"
+    }
+  },
+  {
     "type": "catalog.offer-tag-added.v1",
     "aggregateType": "offer",
     "fields": {

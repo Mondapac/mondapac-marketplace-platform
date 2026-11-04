@@ -5,6 +5,7 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
+import { PrismaOfferSellUnitRepository } from '../../src/modules/catalog/infrastructure/prisma-offer-sell-unit.repository';
 import { PrismaOfferSellUnitsReader } from '../../src/modules/catalog/infrastructure/prisma-offer-sell-units.reader';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { TEST_MARKETS } from '../support/test-config';
@@ -282,9 +283,50 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
       await run(market, () => offers.add(market, offer, actor));
       const map = await run(market, () => reader.read(market, [offer.state.id]));
       expect(map.get(offer.state.id)?.sellUnits).toEqual([
-        { variantId: variants[0]!.id, state: 'proposed' },
-        { variantId: variants[1]!.id, state: 'published' },
+        { variantId: variants[0]!.id, state: 'proposed', selling: true, variantSku: null },
+        { variantId: variants[1]!.id, state: 'published', selling: true, variantSku: null },
       ]);
+    });
+
+    it('reads the per-unit switch and SKU of an Offer, and the repository refuses a taken SKU', async () => {
+      const product = await newProduct();
+      const sellerId = uuid7() as Id<'Seller'>;
+      const offer = newOffer(product, sellerId, 'SKU-UNITS');
+      await run(market, () => offers.add(market, offer, actor));
+      const variantId = product.state.variants[0]!.id;
+      const units = new PrismaOfferSellUnitRepository(persistence.service, ids);
+      const now = Temporal.Instant.from('2026-11-05T00:00:00Z');
+      const first = await run(market, () =>
+        units.save(
+          market,
+          { id: offer.state.id, sellerId },
+          [{ variantId, variantSku: 'VAR-1', selling: false }],
+          now,
+        ),
+      );
+      expect(first).toMatchObject({ refusal: null, stored: [{ variantId, version: 1 }] });
+      const again = await run(market, () =>
+        units.save(
+          market,
+          { id: offer.state.id, sellerId },
+          [{ variantId, variantSku: 'VAR-1', selling: true }],
+          now,
+        ),
+      );
+      expect(again).toMatchObject({ refusal: null, stored: [{ variantId, version: 2 }] });
+      const listed = await run(market, () =>
+        units.unitsOf(market, offer.state.id, product.state.id),
+      );
+      expect(listed[0]).toMatchObject({ variantId, variantSku: 'VAR-1', selling: true });
+      const map = await run(market, () => reader.read(market, [offer.state.id]));
+      expect(map.get(offer.state.id)?.sellUnits[0]).toMatchObject({
+        variantId,
+        selling: true,
+        variantSku: 'VAR-1',
+      });
+      // The variant SKU is taken for the same seller, whichever side comes second (answered).
+      const second = newOffer(await newProduct(), sellerId, 'VAR-1');
+      expect(await run(market, () => offers.add(market, second, actor))).toBe('offer.sku-taken');
     });
 
     it('returns the Offer with its non-retired variants, and omits unknown and other-Market ids', async () => {
@@ -308,6 +350,8 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
         sellUnits: product.state.variants.map((variant) => ({
           variantId: variant.id,
           state: variant.state,
+          selling: true,
+          variantSku: null,
         })),
       });
     });
