@@ -41,6 +41,10 @@ import { REGISTER_LOOKUP_POLICY } from './application/ports/register-lookup-poli
 import { REGISTERED_SELLER_SOURCE } from './application/ports/registered-seller-source';
 import { SELLER_FILE_CIPHER } from './application/ports/seller-file-cipher';
 import { SELLER_LIST_REPOSITORY } from './application/ports/seller-list.repository';
+import {
+  AREA_NAME_SOURCE,
+  SERVICE_AREA_NAMES_REPOSITORY,
+} from './application/ports/service-area-names.repository';
 import { SELLER_FILE_REPOSITORY } from './application/ports/seller-file.repository';
 import {
   ADDRESS_FORMATS,
@@ -86,6 +90,8 @@ import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
+import { ServiceAreaNamesEdit } from './application/use-cases/service-area-names-edit.use-case';
+import { ServiceAreaNamesList } from './application/use-cases/service-area-names-list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
 import { ActiveSinceSystem } from './application/use-cases/active-since-system.use-case';
@@ -123,6 +129,7 @@ import { MyFileController } from './presentation/my-file.controller';
 import { ReviewReadController } from './presentation/review-read.controller';
 import { ReviewRegisterCheckController } from './presentation/review-register-check.controller';
 import { SellerListController } from './presentation/seller-list.controller';
+import { ServiceAreaNamesController } from './presentation/service-area-names.controller';
 import { PublicStoreController } from './presentation/public-store.controller';
 import { PublishedStoreList } from './application/use-cases/published-store-list.use-case';
 import { PublishedStoreRead } from './application/use-cases/published-store-read.use-case';
@@ -166,6 +173,8 @@ const PORT = {
   zones: TIMEZONE_RESOLVER,
   areas: SERVICE_AREAS,
   onboardingAreas: ONBOARDING_AREAS,
+  areaNames: AREA_NAME_SOURCE,
+  areaNameStore: SERVICE_AREA_NAMES_REPOSITORY,
   list: SELLER_LIST_REPOSITORY,
   locationZones: LOCATION_TIMEZONE_RESOLVER,
   identifierSchemes: BUSINESS_IDENTIFIER_SCHEMES,
@@ -295,6 +304,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewDecisionController,
     BlogAccessController,
     SellerListController,
+    ServiceAreaNamesController,
     StoreSettingsController,
     OwnZoneController,
     PublicStoreController,
@@ -605,6 +615,21 @@ const REVIEW_DECISION_PORTS = {
       directory: true,
       authorisation: true,
       onboardingAreas: true,
+      areaNames: true,
+    }),
+    // Editable service area names (ADR-0041), over HTTP through ServiceAreaNamesController: the
+    // page under `sellers.seller.view`, the edit under `sellers.service-area.edit`.
+    useCaseProvider(ServiceAreaNamesList, {
+      onboardingAreas: true,
+      areaNames: true,
+    }),
+    useCaseProvider(ServiceAreaNamesEdit, {
+      unitOfWork: true,
+      areaNameStore: true,
+      onboardingAreas: true,
+      areaNames: true,
+      audit: true,
+      clock: true,
     }),
     useCaseProvider(FormDescriptorsRead, { addressFormats: true, zones: true, policy: true }),
     useCaseProvider(SellerSummariesSystem, {

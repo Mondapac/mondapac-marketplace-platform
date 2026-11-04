@@ -1599,3 +1599,18 @@ refuses, the seller `reviewer-notice` reservation is released (the Market one st
 - `admin_flags`: one open flag per (market, seller, code), code `identifier-claim-conflict` only. Grants SELECT, INSERT and UPDATE of the two clearing columns.
 - Simplifications: the `review_checks` FK carries `seller_id` (every read names the seller). `down.sql` drops in reverse order; `db:check-reversible` passes.
 
+
+## Editable service area names: migration `20261104020000_sellers_service_area_names` (2026-11-04; ADR-0041)
+
+One table, `sellers.service_area_names(market_id, tenant_id, area_code, locale, name, updated_by,
+updated_at)`, primary key `(market_id, area_code, locale)`. A row overrides the display name that
+`config/service-areas/<MARKET>.json` holds for that language; deleting it restores the configured
+name. `area_code` is not a foreign key: areas are configuration, so the application checks the code
+against the Market's configured areas. CHECKs: tenant shape, area code `^[a-z0-9][a-z0-9-]{0,63}$`,
+language tag, name trimmed and 1 to 120 characters. Grants: `SELECT, INSERT, DELETE` and
+`UPDATE (name, updated_by, updated_at)` for `mondapac_app`.
+
+Access paths: the Market's whole set (`WHERE market_id = $1`, a prefix of the primary key; a Market
+has a handful of areas, so a scan of the prefix is bounded by areas times languages) and a write of
+one `(market, area, language)` row. No other index is needed. Growth: at most areas times
+languages rows per Market. Reversible: `down.sql` drops the table (the edited names are lost).
