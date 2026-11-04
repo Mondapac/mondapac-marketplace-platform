@@ -1547,7 +1547,7 @@
     },
     "leave": {
       "title": "Leave without saving?",
-      "message": "You have {count, plural, one {# unsaved change} other {# unsaved changes}} on {page}. If you leave now, they are lost.",
+      "message": "You have {count, plural, one {# unsaved change on {page}. If you leave now, it is lost.} other {# unsaved changes on {page}. If you leave now, they are lost.}}",
       "stay": "Stay",
       "leave": "Leave"
     },
