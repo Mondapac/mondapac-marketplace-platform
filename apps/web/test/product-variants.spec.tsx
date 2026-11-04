@@ -93,7 +93,7 @@ describe('Variants from the API answer', () => {
       detail,
       'https://shop.example',
       'https://shop.example/p/r',
-    ) as {
+    ) as unknown as {
       hasVariant: { offers: { availability: string } }[];
     };
     expect(node.hasVariant[1]!.offers.availability.endsWith('InStock')).toBe(true);
