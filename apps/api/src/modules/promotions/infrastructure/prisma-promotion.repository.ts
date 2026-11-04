@@ -14,6 +14,7 @@ import type {
   PausedBy,
   PromotionRecord,
   PromotionStatus,
+  SegmentKind,
 } from '../domain/promotion';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -55,6 +56,9 @@ interface Row {
   readonly maxRepeatsPerOrder: number | null;
   readonly flashUnitLimit: number | null;
   readonly flashTimeZone: string | null;
+  readonly segmentKind: string | null;
+  readonly segmentMinDays: number | null;
+  readonly refereeRewardMinor: bigint | null;
   readonly targets: readonly { readonly kind: string; readonly value: string }[];
   readonly tiers: readonly {
     readonly thresholdMinor: bigint;
@@ -124,6 +128,9 @@ function toRecord(row: Row): PromotionRecord {
     maxRepeatsPerOrder: row.maxRepeatsPerOrder,
     flashUnitLimit: row.flashUnitLimit,
     flashTimeZone: row.flashTimeZone,
+    segmentKind: row.segmentKind as SegmentKind | null,
+    segmentMinDays: row.segmentMinDays,
+    refereeRewardMinor: row.refereeRewardMinor,
     createdByAccountId: row.createdByAccountId as Id<'Account'>,
     createdAt: fromDate(row.createdAt),
     updatedAt: fromDate(row.updatedAt),
@@ -157,6 +164,9 @@ const editable = (record: PromotionRecord) => ({
   maxRepeatsPerOrder: record.maxRepeatsPerOrder,
   flashUnitLimit: record.flashUnitLimit,
   flashTimeZone: record.flashTimeZone,
+  segmentKind: record.segmentKind,
+  segmentMinDays: record.segmentMinDays,
+  refereeRewardMinor: record.refereeRewardMinor,
   updatedAt: toDate(record.updatedAt),
 });
 
@@ -361,6 +371,26 @@ export class PrismaPromotionRepository implements PromotionRepository {
             ],
           },
         ],
+      },
+      include: WITH_CHILDREN,
+      orderBy: { id: 'asc' },
+    });
+    return rows.map(toRecord);
+  }
+
+  async listLiveOfTypes(
+    market: MarketContext,
+    now: Temporal.Instant,
+    types: readonly PromotionRecord['type'][],
+  ): Promise<readonly PromotionRecord[]> {
+    const at = toDate(now);
+    const rows = await this.prisma.tx(market).promotionsPromotion.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'ACTIVE',
+        type: { in: [...types] },
+        startsAt: { lte: at },
+        OR: [{ endsAt: null }, { endsAt: { gt: at } }],
       },
       include: WITH_CHILDREN,
       orderBy: { id: 'asc' },

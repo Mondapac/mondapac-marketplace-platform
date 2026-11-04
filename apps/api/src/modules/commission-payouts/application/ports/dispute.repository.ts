@@ -87,6 +87,20 @@ export interface DisputeRepository {
     sellerId: Id<'Seller'>,
   ): Promise<readonly DisputeDecision[]>;
 
+  /**
+   * When each seller-fault decision of the seller was taken inside `[from, to)`: the decisions
+   * where the seller bears the loss and no later decision reverses them (a reinstated chargeback
+   * is not the seller's fault any more). One read for the whole span. Fails with a `RangeError`
+   * when the seller has more than `limit` of them: a cut-off count would be a wrong score.
+   */
+  sellerFaultDecisionTimes(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Temporal.Instant[]>;
+
   /** Inserts a decision; false on a unique clash (a first decision or a reversal already there). */
   insertDecision(market: MarketContext, decision: DisputeDecision): Promise<boolean>;
 }

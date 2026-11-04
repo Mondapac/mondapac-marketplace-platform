@@ -326,6 +326,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['valid_to'],
     },
+    // Seller health (package 3): counters and snapshots are set by the rollup and replaced on a
+    // recalculation; deleted only by the retention purge (400 days).
+    'sellers.seller_health_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'sellers.seller_health_snapshots': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
@@ -590,6 +600,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Reviews (buyer reviews and ratings, package 1): the moderation log and the signals are
     // insert-only (triggers refuse more for every role); the rest change only the columns named
     // and are never deleted (a trigger refuses DELETE and TRUNCATE for every role).
+    'reviews.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'reviews.moderation_actions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.review_signals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reviews.product_reviews': {
@@ -601,6 +612,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'created_at',
         'deleted_at',
         'edited_at',
+        'helpful_count',
         'last_purchase_at',
         'last_seller_order_id',
         'locale',
@@ -642,6 +654,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],
     },
+    // Package 5: a helpful vote is inserted and deleted by its voter (a trigger refuses UPDATE and
+    // keeps `product_reviews.helpful_count` exact).
+    'reviews.helpful_votes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Blog (blog package 1): a post changes its slug, status, pointers, schedule and stamps (never
     // its kind, owner or seller); a version's content and review stamps change while it is a draft
     // or is decided (a trigger refuses the rest); links and tags are rewritten with the draft; an
@@ -753,9 +768,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'paused_by',
         'platform_split_bps',
         'prior_approved',
+        'referee_reward_minor',
         'reward_amount_minor',
         'reward_bps',
         'reward_kind',
+        'segment_kind',
+        'segment_min_days',
         'special_campaign',
         'starts_at',
         'status',
@@ -773,6 +791,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 3: a referral code is insert-only; a referral and a credit change state only and are
+    // never deleted; the inbox of the delivery-credit handlers is appended to.
+    'promotions.referral_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.referrals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'qualifying_order_id',
+        'qualifying_seller_order_id',
+        'reject_reason',
+        'status',
+      ],
+    },
+    'promotions.credit_issuances': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['failure_code', 'settled_at', 'status', 'wallet_journal_id'],
+    },
+    'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['decided_by_account_id', 'opted_in_at', 'withdrawn_at'],
@@ -972,6 +1008,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'margin_fixed_minor',
         'margin_kind',
         'pickup_enabled',
+        'ready_prep_minutes',
         'rounding_step_minor',
         'same_day_cutoff_minutes',
         'same_day_enabled',
@@ -1038,6 +1075,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'short_text',
         'text_search_config',
       ],
+    },
+    // Search rating boost (buyer reviews and ratings package 5): the star totals of a product,
+    // copied from reviews by a job; upserted and deleted when a product has no published review.
+    'search.product_ratings': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['bayes_times_1000', 'boost_ppm', 'rating_count', 'rating_sum', 'synced_at'],
     },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Tax step 3: a refund is written once and only settles (state, Stripe refund id, attempts,
@@ -1177,6 +1220,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['resolution', 'resolved_at', 'resolved_by', 'status'],
     },
+    // Catalog business-activity package: the code and creator never change; names and category links
+    // are replaced as a set, so they may be deleted (as the activity itself, while unused).
+    'catalog.business_activities': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['description', 'status', 'updated_at', 'version'],
+    },
+    'catalog.business_activity_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name'],
+    },
+    'catalog.business_activity_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['published_at', 'retired_at', 'state'],
@@ -1187,10 +1244,25 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.category_trees': { table: ['INSERT', 'SELECT'], columnUpdate: ['version'] },
     'catalog.platform_categories': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['merged_into_id', 'parent_id', 'published_revision_id', 'status', 'version'],
+      columnUpdate: [
+        'image_id',
+        'merged_into_id',
+        'parent_id',
+        'position',
+        'published_revision_id',
+        'seo_description',
+        'seo_noindex',
+        'seo_title',
+        'show_in_menu',
+        'status',
+        'version',
+      ],
     },
     'catalog.platform_category_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_revision_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C2: per-locale content and the slug history are insert-only.
+    'catalog.platform_category_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.platform_category_slug_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.
@@ -1199,6 +1271,27 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'status', 'version'],
     },
     'catalog.attribute_definition_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Attributes A2: the status moves once, in these columns only (data design 3.21).
+    'catalog.attribute_relaxation_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
+    },
+    // Attributes A5: a decision and a notice move are the only updates, in these columns (data
+    // design 3.30); a suggestion is never deleted.
+    'catalog.attribute_value_suggestions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'option_code',
+        'reject_reason',
+        'status',
+        'version',
+      ],
+    },
     'catalog.attribute_definition_revision_options': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [],

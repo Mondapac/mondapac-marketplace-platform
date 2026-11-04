@@ -57,6 +57,9 @@ const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
   '@@',
   '@>',
   '&&',
+  // Multiplication, in the one shape of the rating boost (ADR-0030 amendment, `search`):
+  // `ts_rank(<column>, websearch_to_tsquery(...)) * COALESCE(<column>, <integer>)`.
+  '*',
 ]);
 
 /** The types a cast may name (`pg_catalog` or unqualified); anything else is refused. */
@@ -250,6 +253,29 @@ function isTsQueryCall(node: unknown): boolean {
   );
 }
 
+/** `ts_rank(...)` as an operand; its own arguments are checked when it is visited. */
+function isTsRankCall(node: unknown): boolean {
+  const entry = only(node);
+  return (
+    entry !== null &&
+    entry[0] === 'FuncCall' &&
+    isNode(entry[1]) &&
+    strings(entry[1].funcname)?.join('.') === 'ts_rank'
+  );
+}
+
+/** `COALESCE(<column>, <integer literal>)`: a stored factor with a fixed default for a missing row. */
+function isColumnOrInteger(node: unknown): boolean {
+  const entry = only(node);
+  if (entry === null || entry[0] !== 'CoalesceExpr' || !isNode(entry[1])) return false;
+  const args = Array.isArray(entry[1].args) ? entry[1].args : [];
+  if (args.length !== 2 || !isColumn(args[0])) return false;
+  const literal = only(args[1]);
+  return (
+    literal !== null && literal[0] === 'A_Const' && isNode(literal[1]) && isNode(literal[1].ival)
+  );
+}
+
 function checkCast(cast: Node, walk: Walk): void {
   const target = isNode(cast.typeName) ? strings(cast.typeName.names) : null;
   const name = target?.[target.length - 1];
@@ -421,7 +447,9 @@ function visit(value: unknown, walk: Walk): void {
             ? isColumn(child.lexpr) && isTsQueryCall(child.rexpr)
             : operator?.[0] === '@>' || operator?.[0] === '&&'
               ? isColumn(child.lexpr) && isParamCast(child.rexpr, 'uuid')
-              : true;
+              : operator?.[0] === '*'
+                ? isTsRankCall(child.lexpr) && isColumnOrInteger(child.rexpr)
+                : true;
         if (!shaped) walk.violations.add(`operator-shape:${operator?.[0] ?? '?'}`);
         for (const operand of [child.lexpr, child.rexpr]) {
           const column = only(operand);

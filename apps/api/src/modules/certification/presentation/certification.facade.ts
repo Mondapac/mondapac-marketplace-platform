@@ -7,6 +7,7 @@ import type { CertificationTypes } from '../application/use-cases/certification-
 import type { CertificationTypesSystem } from '../application/use-cases/certification-types-system.use-case';
 import type { CertifiedCategories } from '../application/use-cases/certified-categories.use-case';
 import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
+import type { ClaimTermLocales } from '../application/use-cases/claim-term-locales.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
 import type { MatchClaimTermsSystem } from '../application/use-cases/match-claim-terms-system.use-case';
 import type {
@@ -26,6 +27,7 @@ export interface CertificationFacadeUseCases {
   readonly evaluateClaimsSystem: EvaluateClaimsSystem;
   readonly matchClaimTerms: MatchClaimTerms;
   readonly matchClaimTermsSystem: MatchClaimTermsSystem;
+  readonly claimTermLocales: ClaimTermLocales;
   readonly certificationTypes: CertificationTypes;
   readonly certificationTypesSystem: CertificationTypesSystem;
   readonly sellerCertificateOverview: SellerCertificateOverview;
@@ -62,6 +64,10 @@ export class CertificationFacadeImplementation implements CertificationFacade {
         ? this.useCases.matchClaimTermsSystem
         : this.useCases.matchClaimTerms;
     return useCase.execute(context, { texts });
+  }
+
+  claimTermLocales(context: CallContext): Promise<Result<readonly string[], Failure>> {
+    return this.useCases.claimTermLocales.execute(context, {});
   }
 
   certificationTypes(

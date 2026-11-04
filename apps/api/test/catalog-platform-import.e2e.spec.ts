@@ -5,6 +5,7 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { RATE_COUNTER_REPOSITORY } from '../src/modules/catalog/application/ports/rate-counter.repository';
+import { xlsxParseRunning } from '../src/modules/catalog/infrastructure/xlsx/isolated-xlsx-parser';
 import { PLATFORM_IMPORT_STATUS } from '../src/modules/catalog/presentation/platform-import.controller';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
@@ -59,6 +60,12 @@ describe('admin platform import over HTTP (integration)', () => {
   let clock: FixedClock;
   const http = () => request(app.getHttpServer());
   const marketOf = (code: string): MarketContext => testMarketContext(code, PLATFORM_TENANT_ID);
+
+  // One XLSX parse at a time is process-wide: a spec that fails while its parse still runs must not
+  // hand the next spec a busy parser (`file.busy`, 503). The parse always ends, by its time limit.
+  afterEach(async () => {
+    while (xlsxParseRunning()) await new Promise((resolve) => setTimeout(resolve, 20));
+  }, 30_000);
 
   async function boot() {
     ({ app } = await createTestApp({
@@ -200,6 +207,13 @@ describe('admin platform import over HTTP (integration)', () => {
     }
   }, 30_000);
 
+  // These specs start the real XLSX worker thread (one or two parses) on top of the app. Each
+  // thread compiles nothing once the test cache is warm, but on a machine where every core is busy
+  // (a full `pnpm test`) a thread can still take seconds to start, so they get the same time as the
+  // OpenAPI spec above rather than Jest's 5 s default. The time limit itself is asserted in
+  // isolated-xlsx-parser.spec.ts.
+  const WORKER_SPEC_TIMEOUT_MS = 30_000;
+
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     it('answers 401 without a session and 403 without the import key', async () => {
       await boot();
@@ -273,84 +287,96 @@ describe('admin platform import over HTTP (integration)', () => {
       }
     });
 
-    it('reads the file type from the content: a zip that is no workbook is 415, a PDF too', async () => {
-      await boot();
-      await seeded(code);
-      const session = sessionOf(code, MODERATOR, 2);
+    it(
+      'reads the file type from the content: a zip that is no workbook is 415, a PDF too',
+      async () => {
+        await boot();
+        await seeded(code);
+        const session = sessionOf(code, MODERATOR, 2);
 
-      const zip = await upload(
-        code,
-        asData(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])),
-        session,
-      );
-      expect(zip.status).toBe(415);
-      expect(zip.body).toMatchObject({
-        code: 'file.unsupported-type',
-        details: { detected: 'other' },
-      });
-      const macro = await upload(
-        code,
-        asData(zipOf(workbookSkeleton('application/vnd.ms-excel.sheet.macroEnabled.main+xml'))),
-        session,
-      );
-      expect(macro.status).toBe(415);
-      expect(macro.body).toMatchObject({ code: 'file.unsupported-type' });
-      const pdf = await upload(code, asData(Buffer.from('%PDF-1.7 not a csv')), session);
-      expect(pdf.status).toBe(415);
-      expect(pdf.body).toMatchObject({ details: { detected: 'other' } });
-    });
+        const zip = await upload(
+          code,
+          asData(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])),
+          session,
+        );
+        expect(zip.status).toBe(415);
+        expect(zip.body).toMatchObject({
+          code: 'file.unsupported-type',
+          details: { detected: 'other' },
+        });
+        const macro = await upload(
+          code,
+          asData(zipOf(workbookSkeleton('application/vnd.ms-excel.sheet.macroEnabled.main+xml'))),
+          session,
+        );
+        expect(macro.status).toBe(415);
+        expect(macro.body).toMatchObject({ code: 'file.unsupported-type' });
+        const pdf = await upload(code, asData(Buffer.from('%PDF-1.7 not a csv')), session);
+        expect(pdf.status).toBe(415);
+        expect(pdf.body).toMatchObject({ details: { detected: 'other' } });
+      },
+      WORKER_SPEC_TIMEOUT_MS,
+    );
 
-    it('reads an XLSX workbook: wrong columns are 422, a formula is 422 with its row', async () => {
-      await boot();
-      await seeded(code);
-      const session = sessionOf(code, MODERATOR, 2);
+    it(
+      'reads an XLSX workbook: wrong columns are 422, a formula is 422 with its row',
+      async () => {
+        await boot();
+        await seeded(code);
+        const session = sessionOf(code, MODERATOR, 2);
 
-      const wrong = await upload(
-        code,
-        asData(
-          await workbookBytes([
-            ['Name', 'Colour'],
-            ['A', 'B'],
-          ]),
-        ),
-        session,
-      );
-      expect(wrong.status).toBe(422);
-      expect(wrong.body).toMatchObject({ code: 'columns.missing' });
+        const wrong = await upload(
+          code,
+          asData(
+            await workbookBytes([
+              ['Name', 'Colour'],
+              ['A', 'B'],
+            ]),
+          ),
+          session,
+        );
+        expect(wrong.status).toBe(422);
+        expect(wrong.body).toMatchObject({ code: 'columns.missing' });
 
-      const formula = await upload(
-        code,
-        asData(
-          await workbookBytes([
-            ['Title', 'Main category', 'Product type'],
-            ['A', { formula: '"Meat"', result: 'Meat' }, 'simple'],
-          ]),
-        ),
-        session,
-      );
-      expect(formula.status).toBe(422);
-      expect(formula.body).toMatchObject({
-        code: 'file.formula-cell',
-        details: { rowNumber: 2 },
-      });
-    });
+        const formula = await upload(
+          code,
+          asData(
+            await workbookBytes([
+              ['Title', 'Main category', 'Product type'],
+              ['A', { formula: '"Meat"', result: 'Meat' }, 'simple'],
+            ]),
+          ),
+          session,
+        );
+        expect(formula.status).toBe(422);
+        expect(formula.body).toMatchObject({
+          code: 'file.formula-cell',
+          details: { rowNumber: 2 },
+        });
+      },
+      WORKER_SPEC_TIMEOUT_MS,
+    );
 
-    it('answers 413 for a workbook that would unpack past the limit (zip bomb)', async () => {
-      await boot();
-      await seeded(code);
+    it(
+      'answers 413 for a workbook that would unpack past the limit (zip bomb)',
+      async () => {
+        await boot();
+        await seeded(code);
 
-      const bomb = zipOf([
-        ...workbookSkeleton(),
-        { name: 'xl/worksheets/sheet1.xml', data: Buffer.alloc(60 * 1024 * 1024) },
-      ]);
-      const response = await upload(code, asData(bomb), sessionOf(code, MODERATOR, 2));
+        const bomb = zipOf([
+          ...workbookSkeleton(),
+          { name: 'xl/worksheets/sheet1.xml', data: Buffer.alloc(60 * 1024 * 1024) },
+        ]);
+        const response = await upload(code, asData(bomb), sessionOf(code, MODERATOR, 2));
 
-      expect(response.status).toBe(413);
-      expect(response.body).toMatchObject({
-        code: 'file.unpacked-too-large',
-        details: { maxBytes: 50 * 1024 * 1024 },
-      });
-    });
+        expect(response.status).toBe(413);
+        expect(response.body).toMatchObject({
+          code: 'file.unpacked-too-large',
+          details: { maxBytes: 50 * 1024 * 1024 },
+        });
+      },
+      WORKER_SPEC_TIMEOUT_MS,
+    );
 
     it('answers 422 for an empty-of-rows file and for the wrong columns', async () => {
       await boot();

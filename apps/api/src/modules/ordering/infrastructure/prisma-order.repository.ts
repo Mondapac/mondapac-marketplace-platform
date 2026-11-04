@@ -66,6 +66,7 @@ interface OrderRow {
     readonly deliveryWindowStart: Date | null;
     readonly deliveryWindowEnd: Date | null;
     readonly readyAt: Date | null;
+    readonly readyPrepMinutes: number | null;
     readonly deliveryAttention: string | null;
     readonly deliveryQuoteId: string | null;
     readonly deliveryQuoteFleet: string | null;
@@ -119,6 +120,7 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
       ? null
       : { start: toInstant(s.deliveryWindowStart), end: toInstant(s.deliveryWindowEnd) },
   readyAt: optionalInstant(s.readyAt),
+  readyPrepMinutes: s.readyPrepMinutes,
   deliveryAttention: s.deliveryAttention as DeliveryAttention | null,
   deliveryQuote:
     s.deliveryQuoteId === null ||
@@ -249,6 +251,7 @@ export class PrismaOrderRepository implements OrderRepository {
         deliveryMethod: s.deliveryMethod,
         deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
         deliveryWindowEnd: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.end),
+        readyPrepMinutes: s.readyPrepMinutes,
         deliveryQuoteId: s.deliveryQuote?.quoteId ?? null,
         deliveryQuoteFleet: s.deliveryQuote?.fleet ?? null,
         deliveryQuoteAmount: s.deliveryQuote?.quoteAmount ?? null,
@@ -501,6 +504,70 @@ export class PrismaOrderRepository implements OrderRepository {
             },
           ],
     );
+  }
+
+  async sellerHealthRows(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+    limit: number,
+  ) {
+    const tx = this.prisma.tx(market);
+    const paid = await tx.orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        order: { status: 'confirmed', confirmedAt: { gte: toDate(from), lt: toDate(to) } },
+      },
+      select: { order: { select: { confirmedAt: true } } },
+      take: limit + 1,
+    });
+    const ready = await tx.orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        readyAt: { gte: toDate(from), lt: toDate(to) },
+        order: { status: 'confirmed' },
+      },
+      select: {
+        readyAt: true,
+        deliveryMethod: true,
+        deliveryWindowStart: true,
+        deliveryWindowEnd: true,
+        readyPrepMinutes: true,
+        order: { select: { confirmedAt: true } },
+      },
+      take: limit + 1,
+    });
+    // A cut-off count would be a wrong score, so a seller past the limit fails the read instead.
+    if (paid.length > limit || ready.length > limit) {
+      throw new RangeError('ordering.seller-health: too many seller orders in the span');
+    }
+    return {
+      paidAt: paid.flatMap((row) =>
+        row.order.confirmedAt === null ? [] : [toInstant(row.order.confirmedAt)],
+      ),
+      ready: ready.flatMap((row) =>
+        row.readyAt === null || row.order.confirmedAt === null
+          ? []
+          : [
+              {
+                readyAt: toInstant(row.readyAt),
+                confirmedAt: toInstant(row.order.confirmedAt),
+                deliveryMethod: row.deliveryMethod as DeliveryMethod,
+                deliveryWindow:
+                  row.deliveryWindowStart === null || row.deliveryWindowEnd === null
+                    ? null
+                    : {
+                        start: toInstant(row.deliveryWindowStart),
+                        end: toInstant(row.deliveryWindowEnd),
+                      },
+                readyPrepMinutes: row.readyPrepMinutes,
+              },
+            ],
+      ),
+    };
   }
 
   async saveFulfilment(market: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {

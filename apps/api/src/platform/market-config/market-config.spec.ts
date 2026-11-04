@@ -2101,6 +2101,8 @@ describe('loadMarketConfigs', () => {
         variantRemoved: true,
       },
       maxVariantsPerProduct: 100,
+      maxCategoryDepth: 4,
+      maxVariantAttributes: 2,
       approvalRequired: true,
       productTypes: ['simple', 'configurable'],
       defaultFamily: 'default',
@@ -2128,6 +2130,10 @@ describe('loadMarketConfigs', () => {
 
       expect(au?.maxVariantsPerProduct).toBe(100);
       expect(zz?.maxVariantsPerProduct).toBe(3);
+      expect(au?.maxCategoryDepth).toBe(4);
+      expect(zz?.maxCategoryDepth).toBe(3);
+      expect(au?.maxVariantAttributes).toBe(2);
+      expect(zz?.maxVariantAttributes).toBe(3);
       expect(au?.approvalRequired).toBe(true);
       expect(zz?.approvalRequired).toBe(false);
       expect(au?.taxCategories.map((c) => c.code)).not.toEqual(
@@ -2180,6 +2186,17 @@ describe('loadMarketConfigs', () => {
       ['a variant limit above the lock set', { ...VALID_CATALOG, maxVariantsPerProduct: 101 }],
       ['a fractional variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: 2.5 }],
       ['a string variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: '100' }],
+      ['no category depth', without('maxCategoryDepth')],
+      [
+        'a category depth of 2 (products sit on levels 3 and 4)',
+        { ...VALID_CATALOG, maxCategoryDepth: 2 },
+      ],
+      ['a category depth of 5', { ...VALID_CATALOG, maxCategoryDepth: 5 }],
+      ['a fractional category depth', { ...VALID_CATALOG, maxCategoryDepth: 3.5 }],
+      ['a string category depth', { ...VALID_CATALOG, maxCategoryDepth: '4' }],
+      ['no variant attribute limit', without('maxVariantAttributes')],
+      ['a zero variant attribute limit', { ...VALID_CATALOG, maxVariantAttributes: 0 }],
+      ['a variant attribute limit above 5', { ...VALID_CATALOG, maxVariantAttributes: 6 }],
       ['no approval setting', without('approvalRequired')],
       ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
       ['no product types', without('productTypes')],
@@ -2358,5 +2375,81 @@ describe('promotions.batchCodes (single-use code batches)', () => {
     ['an unknown key', { ...BATCH, prefix: 'X' }],
   ])('rejects %s', (_label, batchCodes) => {
     expect(() => load(batchCodes)).toThrow(InvalidMarketConfigError);
+  });
+});
+
+describe('promotions phase 3 limits (customer group, referral, cashback)', () => {
+  const PROMOTIONS = {
+    lineDiscountCapBps: 8000,
+    sellerMaxDiscountBps: 7000,
+    platformBudgetStepUpMinor: 200000,
+    freeShippingThresholdMinor: 5000,
+    newSellerDays: 30,
+    priorApprovalDiscountBps: 5000,
+    wasPrice: { windowDays: 90, minDaysAtPrice: 28 },
+    gstRulingConfirmed: false,
+    maxActivePromotionsPerSeller: 50,
+  };
+  const REFERRAL = {
+    maxRewardMinor: 2000,
+    maxRewardedPerReferrer: 10,
+    qualifyWithinDays: 30,
+    codeLength: 12,
+    alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+  };
+  const CASHBACK = { maxBps: 1000, maxCapMinor: 5000 };
+  const load = (extra: Record<string, unknown>) =>
+    loadMarketConfigs(
+      [directoryWith({ 'QQ.json': { ...VALID, promotions: { ...PROMOTIONS, ...extra } } })],
+      [QQ],
+    ).get(QQ)!.promotions;
+
+  it('are all optional, and load when valid', () => {
+    const none = load({});
+    expect(none?.customerGroup).toBeUndefined();
+    expect(none?.referral).toBeUndefined();
+    expect(none?.cashback).toBeUndefined();
+    const all = load({
+      customerGroup: { defaultReturningDays: 60 },
+      referral: REFERRAL,
+      cashback: CASHBACK,
+    });
+    expect(all?.customerGroup).toEqual({ defaultReturningDays: 60 });
+    expect(all?.referral).toMatchObject({ maxRewardMinor: 2000, codeLength: 12 });
+    expect(all?.cashback).toEqual(CASHBACK);
+  });
+
+  it('differ between the two Market fixtures', () => {
+    const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+    const [first, second] = [...markets.values()].map((m) => m.promotions);
+    for (const key of ['customerGroup', 'referral', 'cashback'] as const) {
+      expect(first?.[key]).toBeDefined();
+      expect(second?.[key]).toBeDefined();
+      expect(first?.[key]).not.toEqual(second?.[key]);
+    }
+  });
+
+  it.each([
+    ['zero default days', { customerGroup: { defaultReturningDays: 0 } }],
+    ['too many default days', { customerGroup: { defaultReturningDays: 4000 } }],
+    ['an unknown customer-group key', { customerGroup: { defaultReturningDays: 5, x: 1 } }],
+    ['a referral code with too little entropy', { referral: { ...REFERRAL, codeLength: 8 } }],
+    [
+      'a referral alphabet with a repeated character',
+      { referral: { ...REFERRAL, alphabet: 'AABCDEFGHJKLMNPQRSTUVWXYZ23456789' } },
+    ],
+    [
+      'a lower-case referral alphabet (codes are typed in any case)',
+      { referral: { ...REFERRAL, alphabet: 'abcdefghjklmnpqrstuvwxyz23456789' } },
+    ],
+    ['a zero referral reward limit', { referral: { ...REFERRAL, maxRewardMinor: 0 } }],
+    ['a zero rewarded-referrals limit', { referral: { ...REFERRAL, maxRewardedPerReferrer: 0 } }],
+    ['a zero qualifying window', { referral: { ...REFERRAL, qualifyWithinDays: 0 } }],
+    ['an unknown referral key', { referral: { ...REFERRAL, bonus: 1 } }],
+    ['a cashback above 100 percent', { cashback: { ...CASHBACK, maxBps: 10001 } }],
+    ['a zero cashback cap', { cashback: { ...CASHBACK, maxCapMinor: 0 } }],
+    ['an unknown cashback key', { cashback: { ...CASHBACK, rate: 1 } }],
+  ])('rejects %s', (_label, extra) => {
+    expect(() => load(extra)).toThrow(InvalidMarketConfigError);
   });
 });

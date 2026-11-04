@@ -5,6 +5,7 @@ import { LegalModule } from './legal';
 import { CustomersModule } from './customers';
 import { CustomersAccountDeletionModule } from './customers/account-deletion.module';
 import { SellersModule } from './sellers';
+import { SellerHealthModule } from './sellers/seller-health.module';
 import { SellerStoreProfileModule } from './sellers/store-profile.module';
 import { CertificationModule } from './certification';
 import { CatalogModule } from './catalog';
@@ -61,11 +62,13 @@ export const CORE_MODULES = [
  * certification's claim-term matching to the sellers store profile texts; sellers cannot import
  * certification without a module cycle. `CustomersAccountDeletionModule` runs the buyer's account
  * deletion flow, which asks ordering, wallet, identity and engagement (ordering imports customers).
- * `CommissionPayoutsDisputesModule` binds the dispute consumer of commission-payouts to payments
+ * `SellerHealthModule` binds the three health feeds (ordering, reviews, commission-payouts) to the
+ * sellers nightly run. `CommissionPayoutsDisputesModule` binds the dispute consumer of commission-payouts to payments
  * and ordering, which reach commission-payouts.
  */
 export const BINDING_MODULES = [
   SellerStoreProfileModule,
+  SellerHealthModule,
   CustomersAccountDeletionModule,
   CommissionPayoutsDisputesModule,
 ];
