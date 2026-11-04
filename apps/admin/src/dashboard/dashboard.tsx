@@ -188,7 +188,7 @@ function Applications({ data }: { readonly data: AdminDashboardData }) {
       header: ts('col.area'),
       kind: 'labelled',
       size: 'figure',
-      cell: (row) => areaName(row.serviceAreaCode) ?? ts('not-given'),
+      cell: (row) => areaName(row.serviceAreaCode, row.serviceAreaName) ?? ts('not-given'),
     },
     {
       id: 'submitted',

@@ -2,7 +2,15 @@ import { Temporal } from '@mondapac/shared-kernel';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  STEP_UP_CONSUMER,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
@@ -10,34 +18,56 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
+import { IdentityModule } from '../identity';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { REVIEW_REPOSITORY } from './application/ports/review.repository';
 import { REVIEWER_NAMES } from './application/ports/reviewer-names';
 import { REVIEWS_POLICY } from './application/ports/reviews-policy';
 import { SELLER_AFFINITY } from './application/ports/seller-affinity';
+import { SELLER_OVERLAP_SOURCE } from './application/ports/seller-overlap';
 import type { ReviewsDependencies } from './application/reviews-dependencies';
+import { CastHelpfulVote } from './application/use-cases/cast-helpful-vote.use-case';
+import { ListModerationQueue } from './application/use-cases/list-moderation-queue.use-case';
+import { ModerateReview } from './application/use-cases/moderate-review.use-case';
+import { RemoveReview } from './application/use-cases/remove-review.use-case';
+import { ViewModerationReview } from './application/use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from './application/use-cases/delete-product-review.use-case';
+import { CountSellerReviews } from './application/use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from './application/use-cases/detach-author.use-case';
 import { EditProductReview } from './application/use-cases/edit-product-review.use-case';
 import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case';
+import { ListProductRatingTotals } from './application/use-cases/list-product-rating-totals.use-case';
 import { ListProductReviews } from './application/use-cases/list-product-reviews.use-case';
+import { EditReviewReply } from './application/use-cases/edit-review-reply.use-case';
+import { ListSellerReviews } from './application/use-cases/list-seller-reviews.use-case';
+import { ReplyToReview } from './application/use-cases/reply-to-review.use-case';
+import { ReportReview } from './application/use-cases/report-review.use-case';
 import { ListToReview } from './application/use-cases/list-to-review.use-case';
 import { RateSellerOrder } from './application/use-cases/rate-seller-order.use-case';
 import { RebuildRatingSummaries } from './application/use-cases/rebuild-rating-summaries.use-case';
+import { RemoveHelpfulVote } from './application/use-cases/remove-helpful-vote.use-case';
 import { SetReviewsStatus } from './application/use-cases/set-reviews-status.use-case';
 import { SubmitProductReview } from './application/use-cases/submit-product-review.use-case';
 import { ViewProductSummary } from './application/use-cases/view-product-summary.use-case';
 import { ViewReviewsSettings } from './application/use-cases/view-reviews-settings.use-case';
 import { ViewSellerSummary } from './application/use-cases/view-seller-summary.use-case';
-import { REVIEWS_AUDIT_ACTIONS, REVIEWS_FACADE, REVIEWS_PERMISSIONS } from './contracts';
+import {
+  REVIEWS_AUDIT_ACTIONS,
+  REVIEWS_FACADE,
+  REVIEWS_PERMISSIONS,
+  REVIEWS_STEP_UP_ACTIONS,
+} from './contracts';
+import { REVIEWS_EVENTS } from './domain/events';
 import { reviewsProviders } from './infrastructure/reviews-providers';
 import { rebuildRatingSummariesJob } from './presentation/jobs/rebuild-rating-summaries.job';
 import {
+  AdminModerationController,
   AdminReviewsController,
   BuyerReviewsController,
   PublicReviewsController,
 } from './presentation/reviews.controller';
+import { SellerReviewsController } from './presentation/seller-reviews.controller';
 import { ReviewsFacadeImplementation } from './presentation/reviews.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ReviewsDependencies) => U;
@@ -51,7 +81,10 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
   ['catalog', CATALOG_FACADE],
   ['names', REVIEWER_NAMES],
   ['affinity', SELLER_AFFINITY],
+  ['overlap', SELLER_OVERLAP_SOURCE],
   ['audit', AUDIT_WRITER],
+  ['outbox', OUTBOX_WRITER],
+  ['stepUp', STEP_UP_CONSUMER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -83,16 +116,25 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Reviews (buyer reviews and ratings, package 1): product reviews, seller ratings, the automatic
  * checks, the insert-only moderation log and rebuilt rating summaries, in the `reviews` schema.
  * Eligibility is asked of ordering through its facade at write time. The Market switch (off by
- * default) is moved at runtime by an admin. Sellers' replies, reports and the moderator queue
- * come in later packages.
+ * default) is moved at runtime by an admin. The admin moderation queue (package 2) publishes, hides, restores or removes a review with a reason
+ * code, behind the admin's two-step proof. The seller's side (package 4) lists the shop's reviews, writes and edits one public reply and reports a review.
  */
 @Module({
-  imports: [OrderingModule, CatalogModule],
-  controllers: [BuyerReviewsController, PublicReviewsController, AdminReviewsController],
+  imports: [OrderingModule, CatalogModule, IdentityModule],
+  controllers: [
+    BuyerReviewsController,
+    PublicReviewsController,
+    AdminReviewsController,
+    AdminModerationController,
+    SellerReviewsController,
+  ],
   providers: [
+    PersistenceModule.outboxWriterFor('reviews'),
     PersistenceModule.auditWriterFor('reviews'),
+    registerEvents('reviews', REVIEWS_EVENTS),
     registerAuditActions('reviews', REVIEWS_AUDIT_ACTIONS),
     registerPermissions('reviews', REVIEWS_PERMISSIONS),
+    registerStepUpActions('reviews', REVIEWS_STEP_UP_ACTIONS),
     ...reviewsProviders,
     ...[
       SubmitProductReview,
@@ -106,14 +148,37 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewSellerSummary,
       ViewReviewsSettings,
       SetReviewsStatus,
+      ListModerationQueue,
+      ViewModerationReview,
+      ModerateReview,
+      RemoveReview,
       RebuildRatingSummaries,
       DetachAuthor,
+      CountSellerReviews,
+      CastHelpfulVote,
+      RemoveHelpfulVote,
+      ListProductRatingTotals,
+      ListSellerReviews,
+      ReplyToReview,
+      EditReviewReply,
+      ReportReview,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: REVIEWS_FACADE,
-      inject: [ViewProductSummary, ViewSellerSummary, DetachAuthor],
-      useFactory: (product: ViewProductSummary, seller: ViewSellerSummary, detach: DetachAuthor) =>
-        new ReviewsFacadeImplementation(product, seller, detach),
+      inject: [
+        ViewProductSummary,
+        ViewSellerSummary,
+        DetachAuthor,
+        ListProductRatingTotals,
+        CountSellerReviews,
+      ],
+      useFactory: (
+        product: ViewProductSummary,
+        seller: ViewSellerSummary,
+        detach: DetachAuthor,
+        totals: ListProductRatingTotals,
+        count: CountSellerReviews,
+      ) => new ReviewsFacadeImplementation(product, seller, detach, totals, count),
     },
     registerJobsFrom(
       'reviews',

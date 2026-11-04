@@ -2,11 +2,15 @@ import { CertificationModule } from '../certification';
 import { CatalogReferencesModule } from './infrastructure/catalog-references.module';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import {
+  AUTHORISATION_CHECK,
+  JOB_CALL_CONTEXTS,
   registerPermissions,
   registerStepUpActions,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -53,6 +57,40 @@ import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handl
 import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
+import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
+import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
+import { AdminProductListController } from './presentation/admin-product-list.controller';
+import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
+import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
+import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
+import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
+import { PlatformImportDiscard } from './application/use-cases/platform-import-discard.use-case';
+import { PlatformImportResume } from './application/use-cases/platform-import-resume.use-case';
+import { PlatformImportStart } from './application/use-cases/platform-import-start.use-case';
+import { PlatformImportCheck } from './application/use-cases/platform-import-check.use-case';
+import { PlatformImportRead } from './application/use-cases/platform-import-read.use-case';
+import { PlatformImportReport } from './application/use-cases/platform-import-report.use-case';
+import { PlatformImportTemplate } from './application/use-cases/platform-import-template.use-case';
+import { PlatformImportPurge } from './application/use-cases/platform-import-purge.use-case';
+import { PlatformImportRowSave } from './application/use-cases/platform-import-row-save.use-case';
+import { PlatformImportRowSubmit } from './application/use-cases/platform-import-row-submit.use-case';
+import { PlatformImportRun } from './application/use-cases/platform-import-run.use-case';
+import { PlatformImportController } from './presentation/platform-import.controller';
+import { platformImportRunJob } from './presentation/jobs/platform-import-run.job';
+import { purgePlatformImportsJob } from './presentation/jobs/purge-platform-imports.job';
+import { AdminProductResume } from './application/use-cases/admin-product-resume.use-case';
+import { AdminProductWithdraw } from './application/use-cases/admin-product-withdraw.use-case';
+import { PlatformProductRetire } from './application/use-cases/platform-product-retire.use-case';
+import { AdminProductsBulk } from './application/use-cases/admin-products-bulk.use-case';
+import { AdminProductsExport } from './application/use-cases/admin-products-export.use-case';
+import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
+import { SavedFilterCreate } from './application/use-cases/saved-filter-create.use-case';
+import { SavedFilterDelete } from './application/use-cases/saved-filter-delete.use-case';
+import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import { SavedFilterUpdate } from './application/use-cases/saved-filter-update.use-case';
+import { SavedFiltersList } from './application/use-cases/saved-filters-list.use-case';
+import { SavedFilterController } from './presentation/saved-filter.controller';
+import { CATALOG_AUDIT_ACTIONS } from './domain/audit';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
@@ -118,6 +156,8 @@ import {
   type ProductImageRepository,
 } from './application/ports/product-image.repository';
 import { IMAGE_PROCESSOR } from './application/ports/image-processor';
+import { IMPORT_FILE_PARSERS } from './application/ports/import-file-parsers';
+import { SHEET_WRITER } from './application/ports/sheet-writer';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { TAG_REEVALUATION_REQUESTS } from './application/ports/tag-reevaluation-requests';
 import { TAG_SELECTION_READER } from './application/ports/tag-selection.reader';
@@ -153,7 +193,9 @@ import { ProductImageReviewController } from './presentation/product-image-revie
 import { ProductImageAdminRead } from './application/use-cases/product-image-admin-read.use-case';
 import { ProductImageTakeDown } from './application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
+import { SweepOrphanImageFiles } from './application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from './application/use-cases/sweep-orphan-images.use-case';
+import { sweepOrphanImageFilesJob } from './presentation/jobs/sweep-orphan-image-files.job';
 import { sweepOrphanImagesJob } from './presentation/jobs/sweep-orphan-images.job';
 import { ReevaluateTags } from './application/use-cases/reevaluate-tags.use-case';
 import { OfferBadgesQuery } from './application/use-cases/offer-badges.use-case';
@@ -177,6 +219,13 @@ import { BRAND_READER } from './application/ports/brand.reader';
 import { BRAND_REPOSITORY } from './application/ports/brand.repository';
 import { BrandApprove } from './application/use-cases/brand-approve.use-case';
 import { BrandArchive } from './application/use-cases/brand-archive.use-case';
+import { BUSINESS_ACTIVITY_READER } from './application/ports/business-activity.reader';
+import { BUSINESS_ACTIVITY_REPOSITORY } from './application/ports/business-activity.repository';
+import { BusinessActivityCreate } from './application/use-cases/business-activity-create.use-case';
+import { BusinessActivityEdit } from './application/use-cases/business-activity-edit.use-case';
+import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
+import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
+import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
 import { BrandCreate } from './application/use-cases/brand-create.use-case';
 import { BrandEdit } from './application/use-cases/brand-edit.use-case';
 import { BrandGet } from './application/use-cases/brand-get.use-case';
@@ -185,9 +234,60 @@ import { BrandMerge } from './application/use-cases/brand-merge.use-case';
 import { BrandMergeQueueDismiss } from './application/use-cases/brand-merge-queue-dismiss.use-case';
 import { BrandMergeQueueList } from './application/use-cases/brand-merge-queue-list.use-case';
 import { OwnBrandPropose } from './application/use-cases/own-brand-propose.use-case';
+import { BrandProductIdsQuery } from './application/use-cases/brand-product-ids.use-case';
 import { PublicBrandQuery } from './application/use-cases/public-brand.use-case';
 import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.use-case';
 import { BrandAdminController } from './presentation/brand-admin.controller';
+import { AttributeAdminController } from './presentation/attribute-admin.controller';
+import { AttributeRelaxationController } from './presentation/attribute-relaxation.controller';
+import { OwnAttributeValueSuggest } from './application/use-cases/own-attribute-value-suggest.use-case';
+import { AttributeSuggestionList } from './application/use-cases/attribute-suggestion-list.use-case';
+import { AttributeSuggestionApprove } from './application/use-cases/attribute-suggestion-approve.use-case';
+import { AttributeSuggestionMap } from './application/use-cases/attribute-suggestion-map.use-case';
+import { AttributeSuggestionReject } from './application/use-cases/attribute-suggestion-reject.use-case';
+import { SendAttributeSuggestionNotices } from './application/use-cases/send-attribute-suggestion-notices.use-case';
+import { sendAttributeSuggestionNoticesJob } from './presentation/jobs/send-attribute-suggestion-notices.job';
+import { AttributeSuggestionController } from './presentation/attribute-suggestion.controller';
+import { OwnAttributeSuggestionController } from './presentation/own-attribute-suggestion.controller';
+import {
+  ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  type AttributeValueSuggestionStore,
+} from './application/ports/attribute-value-suggestion.store';
+import { AttributeDefinitionCreate } from './application/use-cases/attribute-definition-create.use-case';
+import { AttributeDefinitionEdit } from './application/use-cases/attribute-definition-edit.use-case';
+import { AttributeDefinitionDiscard } from './application/use-cases/attribute-definition-discard.use-case';
+import { AttributeDefinitionPublish } from './application/use-cases/attribute-definition-publish.use-case';
+import { AttributeRelaxationRequestCreate } from './application/use-cases/attribute-relaxation-request.use-case';
+import { AttributeRelaxationConfirm } from './application/use-cases/attribute-relaxation-confirm.use-case';
+import { AttributeRelaxationCancel } from './application/use-cases/attribute-relaxation-cancel.use-case';
+import { AttributeRelaxationListOpen } from './application/use-cases/attribute-relaxation-list-open.use-case';
+import { ExpireRelaxationRequests } from './application/use-cases/expire-relaxation-requests.use-case';
+import { expireRelaxationRequestsJob } from './presentation/jobs/expire-relaxation-requests.job';
+import { ATTRIBUTE_RELAXATION_STORE } from './application/ports/attribute-relaxation.store';
+import { ATTRIBUTE_DEFINITION_STORE } from './application/ports/attribute-definition.store';
+import { FEATURE_SET_STORE } from './application/ports/feature-set.store';
+import { FeatureSetCreate } from './application/use-cases/feature-set-create.use-case';
+import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-case';
+import { CategoryAttributeLinksSet } from './application/use-cases/category-attribute-links-set.use-case';
+import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
+import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
+import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
+import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
+import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
+import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
+import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-list.use-case';
+import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
+import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-gap.reader';
+import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
+import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
+import type { CategoryActionProbes } from './application/categories/category-admin-views';
+import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
+import { CategoryImportProbe } from './application/use-cases/category-import-probe.use-case';
+import { CategoryRestructureProbe } from './application/use-cases/category-restructure-probe.use-case';
+import { CategoryAdminGet } from './application/use-cases/category-admin-get.use-case';
+import { CategoryAdminTree } from './application/use-cases/category-admin-tree.use-case';
+import { CategoryImpact } from './application/use-cases/category-impact.use-case';
+import { CategoryAdminController } from './presentation/category-admin.controller';
 import { OwnBrandController } from './presentation/own-brand.controller';
 import { PublicBrandController } from './presentation/public-brand.controller';
 import { catalogProviders } from './infrastructure/catalog-providers';
@@ -201,6 +301,9 @@ import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job'
  * The Nest token of each dependency name the use cases of catalog share: a use case's dependency
  * object is built from these by {@link useCaseProvider}, so a name always means the same port.
  */
+/** The three key probes the category reads use for their allowed actions (categories C1). */
+const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
+
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
   categories: PLATFORM_CATEGORY_REPOSITORY,
@@ -241,6 +344,7 @@ const PORT = {
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
+  adminProductsReader: ADMIN_PRODUCTS_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
   objectStore: OBJECT_STORE,
@@ -253,9 +357,37 @@ const PORT = {
   mailTransport: MAIL_TRANSPORT,
   mailSettings: OFFER_OWNER_MAIL_SETTINGS,
   notices: OFFER_OWNER_NOTICES,
+  audit: AUDIT_WRITER,
+  pause: AdminProductPause,
+  resume: AdminProductResume,
+  withdraw: AdminProductWithdraw,
+  retire: PlatformProductRetire,
+  importJobs: PLATFORM_IMPORT_REPOSITORY,
+  importFiles: IMPORT_FILE_STORE,
+  importParsers: IMPORT_FILE_PARSERS,
+  sheetWriter: SHEET_WRITER,
+  authorisation: AUTHORISATION_CHECK,
+  jobContexts: JOB_CALL_CONTEXTS,
+  platformCreate: PlatformProductCreate,
+  rowSave: PlatformImportRowSave,
+  rowSubmit: PlatformImportRowSubmit,
+  savedFilters: SAVED_FILTER_REPOSITORY,
+  shareCheck: SavedFilterShareCheck,
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
+  adminCategoryReader: ADMIN_CATEGORY_READER,
+  categoryProbes: CATEGORY_ACTION_PROBES,
+  attributeAdminReader: ATTRIBUTE_ADMIN_READER,
+  detailsGapReader: PRODUCT_DETAILS_GAP_READER,
+  attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  featureSetStore: FEATURE_SET_STORE,
+  linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
+  relaxations: ATTRIBUTE_RELAXATION_STORE,
+  suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
+  activities: BUSINESS_ACTIVITY_REPOSITORY,
+  activityReader: BUSINESS_ACTIVITY_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -323,17 +455,29 @@ const productTypeProvider: FactoryProvider<string> = {
     OwnProductController,
     ProductImageController,
     OfferReviewController,
+    AdminProductListController,
+    AdminProductBulkController,
+    PlatformImportController,
+    SavedFilterController,
     ProductReviewController,
     ProductImageReviewController,
     PublicCategoryController,
     PublicProductImageController,
     BrandAdminController,
+    AttributeAdminController,
+    AttributeRelaxationController,
+    AttributeSuggestionController,
+    OwnAttributeSuggestionController,
+    CategoryAdminController,
+    BusinessActivityAdminController,
     OwnBrandController,
     PublicBrandController,
   ],
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
+    PersistenceModule.auditWriterFor('catalog'),
+    registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS),
     registerEvents('catalog', CATALOG_EVENTS),
     productTypeProvider,
     {
@@ -389,13 +533,16 @@ const productTypeProvider: FactoryProvider<string> = {
         CATALOG_MARKET_POLICY,
         PRODUCT_TYPE_LOOKUP,
         PRODUCT_IMAGE_REPOSITORY,
+        ATTRIBUTE_VALUE_SUGGESTION_STORE,
       ],
       useFactory: (
         attributes: AttributeRepository,
         policy: CatalogMarketPolicy,
         handlerFor: ProductTypeLookup,
         images: ProductImageRepository,
-      ): FreezeRevision => new FreezeRevision({ attributes, policy, handlerFor, images }),
+        suggestions: AttributeValueSuggestionStore,
+      ): FreezeRevision =>
+        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions }),
     },
     serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
     serviceProvider(SubmitProduct, {
@@ -411,9 +558,245 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
       offers: true,
       requests: true,
+      audit: true,
       brandAssigner: true,
     }),
+    useCaseProvider(BusinessActivityList, {
+      unitOfWork: true,
+      activityReader: true,
+      policy: true,
+    }),
+    useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
+    useCaseProvider(BusinessActivityCreate, {
+      unitOfWork: true,
+      activities: true,
+      treeReader: true,
+      policy: true,
+      matcher: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(BusinessActivityEdit, {
+      unitOfWork: true,
+      activities: true,
+      treeReader: true,
+      policy: true,
+      matcher: true,
+      clock: true,
+    }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(AttributeAdminList, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AttributeAdminGet, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(FeatureSetAdminList, { unitOfWork: true, attributeAdminReader: true }),
+    useCaseProvider(AttributeDefinitionCreate, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeDefinitionEdit, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationRequestCreate, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationConfirm, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationCancel, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeRelaxationListOpen, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnAttributeValueSuggest, {
+      unitOfWork: true,
+      products: true,
+      attributes: true,
+      attributeStore: true,
+      suggestions: true,
+      eligibility: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeSuggestionList, {
+      unitOfWork: true,
+      suggestions: true,
+      attributeStore: true,
+      products: true,
+      policy: true,
+    }),
+    useCaseProvider(AttributeSuggestionApprove, {
+      unitOfWork: true,
+      attributeStore: true,
+      suggestions: true,
+      audit: true,
+      clock: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeSuggestionMap, {
+      unitOfWork: true,
+      attributeStore: true,
+      suggestions: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AttributeSuggestionReject, {
+      unitOfWork: true,
+      attributeStore: true,
+      suggestions: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendAttributeSuggestionNotices, {
+      unitOfWork: true,
+      suggestions: true,
+      attributeStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(ExpireRelaxationRequests, {
+      unitOfWork: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AttributeDefinitionPublish, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      audit: true,
+      matcher: true,
+      claimLocales: true,
+    }),
+    useCaseProvider(AttributeDefinitionDiscard, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      audit: true,
+    }),
+    useCaseProvider(FeatureSetCreate, {
+      unitOfWork: true,
+      featureSetStore: true,
+      attributeAdminReader: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(FeatureSetEdit, {
+      unitOfWork: true,
+      featureSetStore: true,
+      attributeAdminReader: true,
+      relaxations: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryAttributeLinksSet, {
+      unitOfWork: true,
+      linkStore: true,
+      attributeAdminReader: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryAttributeLinksGet, {
+      unitOfWork: true,
+      linkStore: true,
+      treeReader: true,
+      attributeAdminReader: true,
+    }),
+    useCaseProvider(ProductsMissingDetailsList, {
+      unitOfWork: true,
+      detailsGapReader: true,
+      attributes: true,
+      policy: true,
+    }),
+    useCaseProvider(FeatureSetAdminGet, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    ...[CategoryEditProbe, CategoryRestructureProbe, CategoryImportProbe].map(
+      (probe): FactoryProvider => ({
+        provide: probe,
+        inject: [USE_CASE_GATE],
+        useFactory: (gate: UseCaseGate) => new probe(gate),
+      }),
+    ),
+    {
+      provide: CATEGORY_ACTION_PROBES,
+      inject: [CategoryEditProbe, CategoryRestructureProbe, CategoryImportProbe],
+      useFactory: (
+        edit: CategoryEditProbe,
+        restructure: CategoryRestructureProbe,
+        importing: CategoryImportProbe,
+      ): CategoryActionProbes => ({ edit, restructure, importing }),
+    },
+    useCaseProvider(CategoryAdminTree, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+      categoryProbes: true,
+    }),
+    useCaseProvider(CategoryAdminGet, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+      categoryProbes: true,
+    }),
+    useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),
     useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true }),
@@ -430,6 +813,7 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       ids: true,
     }),
+    useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandsAzQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PlatformProductCreate, {
@@ -558,6 +942,154 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       sellerNames: true,
     }),
+    useCaseProvider(AdminProductsList, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      sellerNames: true,
+    }),
+    useCaseProvider(PlatformImportCheck, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      importJobs: true,
+      importFiles: true,
+      importParsers: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(PlatformImportStart, {
+      unitOfWork: true,
+      importJobs: true,
+      authorisation: true,
+      counters: true,
+      counterKeys: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformImportRead, { unitOfWork: true, importJobs: true }),
+    useCaseProvider(PlatformImportReport, { unitOfWork: true, importJobs: true, clock: true }),
+    useCaseProvider(PlatformImportTemplate, { policy: true, sheetWriter: true }),
+    useCaseProvider(PlatformImportDiscard, {
+      unitOfWork: true,
+      importJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformImportResume, { unitOfWork: true, importJobs: true, clock: true }),
+    useCaseProvider(PlatformImportRun, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      importJobs: true,
+      importFiles: true,
+      importParsers: true,
+      products: true,
+      outbox: true,
+      clock: true,
+      jobContexts: true,
+      platformCreate: true,
+      rowSave: true,
+      rowSubmit: true,
+    }),
+    useCaseProvider(PlatformImportRowSave, { saveDraft: true }),
+    useCaseProvider(PlatformImportRowSubmit, { submit: true, authorisation: true }),
+    useCaseProvider(PlatformImportPurge, {
+      unitOfWork: true,
+      importJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
+    {
+      provide: SavedFilterShareCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    useCaseProvider(SavedFiltersList, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      adminProductsReader: true,
+      policy: true,
+    }),
+    useCaseProvider(SavedFilterCreate, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SavedFilterUpdate, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SavedFilterDelete, {
+      unitOfWork: true,
+      savedFilters: true,
+      shareCheck: true,
+      audit: true,
+    }),
+    useCaseProvider(AdminProductPause, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminProductResume, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      claims: true,
+      evaluator: true,
+    }),
+    useCaseProvider(AdminProductWithdraw, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(PlatformProductRetire, {
+      unitOfWork: true,
+      products: true,
+      offers: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminProductsBulk, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      pause: true,
+      resume: true,
+      withdraw: true,
+      retire: true,
+    }),
+    useCaseProvider(AdminProductsExport, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      policy: true,
+      sellerNames: true,
+      sheetWriter: true,
+      clock: true,
+    }),
     useCaseProvider(ProductRevisionApprove, {
       unitOfWork: true,
       products: true,
@@ -655,6 +1187,12 @@ const productTypeProvider: FactoryProvider<string> = {
       objectStore: true,
       clock: true,
     }),
+    useCaseProvider(SweepOrphanImageFiles, {
+      unitOfWork: true,
+      images: true,
+      objectStore: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,
@@ -663,6 +1201,8 @@ const productTypeProvider: FactoryProvider<string> = {
       revisions: true,
       ownReader: true,
       policy: true,
+      suggestions: true,
+      attributeStore: true,
     }),
     useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnOfferRead, {
@@ -723,24 +1263,39 @@ const productTypeProvider: FactoryProvider<string> = {
         SeedCategoryTree,
         SeedAttributes,
         SweepOrphanImages,
+        SweepOrphanImageFiles,
         ReevaluateTags,
         ReconcileTags,
         SendOfferOwnerNotices,
+        PlatformImportRun,
+        PlatformImportPurge,
+        ExpireRelaxationRequests,
+        SendAttributeSuggestionNotices,
       ],
       (
         categories: SeedCategoryTree,
         attributes: SeedAttributes,
         sweep: SweepOrphanImages,
+        sweepFiles: SweepOrphanImageFiles,
         reevaluate: ReevaluateTags,
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
+        importRun: PlatformImportRun,
+        importPurge: PlatformImportPurge,
+        expireRelaxations: ExpireRelaxationRequests,
+        suggestionNotices: SendAttributeSuggestionNotices,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
         sweepOrphanImagesJob(sweep),
+        sweepOrphanImageFilesJob(sweepFiles),
         reevaluateTagsJob(reevaluate),
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),
+        platformImportRunJob(importRun),
+        purgePlatformImportsJob(importPurge),
+        expireRelaxationRequestsJob(expireRelaxations),
+        sendAttributeSuggestionNoticesJob(suggestionNotices),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).
@@ -845,6 +1400,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferListingsSystemQuery,
         OfferBadgesQuery,
         PublishedProductQuery,
+        BrandProductIdsQuery,
         PublishedProductImagesQuery,
         PendingProductRevisionsQuery,
         SellerProductOwnersQuery,
@@ -860,6 +1416,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerListingsSystem: OfferListingsSystemQuery,
         offerBadges: OfferBadgesQuery,
         publishedProduct: PublishedProductQuery,
+        brandProductIds: BrandProductIdsQuery,
         publishedProductImages: PublishedProductImagesQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
         sellerProductOwners: SellerProductOwnersQuery,
@@ -875,6 +1432,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerListingsSystem,
           offerBadges,
           publishedProduct,
+          brandProductIds,
           publishedProductImages,
           pendingProductRevisions,
           sellerProductOwners,

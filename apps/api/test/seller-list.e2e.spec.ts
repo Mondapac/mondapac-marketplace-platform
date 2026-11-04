@@ -22,6 +22,10 @@ import {
   type ListedSeller,
   type SellerListRepository,
 } from '../src/modules/sellers/application/ports/seller-list.repository';
+import {
+  SELLER_HEALTH_STORE,
+  type SellerHealthSummary,
+} from '../src/modules/sellers/application/ports/seller-health.store';
 import type { AccessState } from '../src/modules/sellers/domain/seller-status';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
@@ -115,6 +119,24 @@ class StubAccess implements SellerAccessReader {
   }
 }
 
+/** The latest health of listed sellers: summaries by seller id; the Market is not part of the key. */
+class StubHealth {
+  summaries = new Map<string, SellerHealthSummary>();
+  failing = false;
+  calls = 0;
+  latest(_market: MarketContext, ids: readonly Id<'Seller'>[]) {
+    this.calls += 1;
+    if (this.failing) return Promise.reject(new Error('health down'));
+    return Promise.resolve(
+      new Map(
+        ids.flatMap((one) =>
+          this.summaries.has(one) ? [[one, this.summaries.get(one)!] as const] : [],
+        ),
+      ),
+    );
+  }
+}
+
 const OWNER = { displayName: 'Canary Owner Wombat', email: 'canary-owner-wombat@example.com' };
 
 /** `identity`'s admin read over the stub access: state from `access`, one owner for seller 1. */
@@ -177,6 +199,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
   const list = new StubList();
   const access = new StubAccess();
   const directory = new StubDirectory(access);
+  const health = new StubHealth();
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -193,7 +216,9 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
           .overrideProvider(SELLER_ACCESS_READER)
           .useValue(access)
           .overrideProvider(SELLER_ACCOUNT_DIRECTORY)
-          .useValue(directory),
+          .useValue(directory)
+          .overrideProvider(SELLER_HEALTH_STORE)
+          .useValue(health),
     }));
   }
 
@@ -340,6 +365,9 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
     access.unknown = false;
     list.overflow = false;
     access.state = 'pending';
+    health.summaries = new Map();
+    health.failing = false;
+    health.calls = 0;
   });
   afterEach(async () => {
     await app.close();
@@ -369,6 +397,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
       'SellerListRequest',
       'SellerListBody',
       'SellerListRowView',
+      'SellerListHealthView',
       'SellerListOwnerView',
       'SellerListStateCounts',
     ]) {
@@ -402,9 +431,12 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
         kind: 'onboarding',
         submittedAt: START.toString(),
         serviceAreaCode: 'open',
+        // 'open' is no area of the test Market configuration: no name, never a guess.
+        serviceAreaName: null,
         timezone: 'Australia/Brisbane',
         createdAt: START.toString(),
         lastChangedAt: START.toString(),
+        health: null,
       });
       expect(list.queries.map((q) => q.marketId)).toEqual([code]);
       expect(access.calls).toEqual([[sellerId(1), sellerId(2)]]);
@@ -416,6 +448,45 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
       });
       // The owner's name and address go into the answer only, never into a log line.
       expect(JSON.stringify(logLines)).not.toMatch(/wombat/i);
+    });
+
+    it('adds the latest health to each row, in one read, and still lists when the health store fails', async () => {
+      await boot();
+      await seeded(code);
+      list.rows.set(code, [row(1), row(2)]);
+      health.summaries.set(sellerId(1), {
+        day: Temporal.PlainDate.from('2026-10-09'),
+        kind: 'scored',
+        band: 'unhealthy',
+        score: 20,
+        lowestMetric: 'late-ready',
+      });
+
+      const listed = await post(code, sessionHeaders(code, ROOT, 31), {});
+      health.failing = true;
+      const degraded = await post(code, sessionHeaders(code, ROOT, 32), {});
+
+      const items = (listed.body as { items: { sellerId: string; health: unknown }[] }).items;
+      expect(items.map((item) => [item.sellerId, item.health])).toEqual([
+        [
+          sellerId(1),
+          {
+            day: '2026-10-09',
+            kind: 'scored',
+            band: 'unhealthy',
+            score: 20,
+            lowestMetric: 'late-ready',
+          },
+        ],
+        [sellerId(2), null],
+      ]);
+      expect((listed.body as { healthUnavailable: boolean }).healthUnavailable).toBe(false);
+      expect(health.calls).toBe(2);
+      expect(degraded.status).toBe(200);
+      expect((degraded.body as { healthUnavailable: boolean }).healthUnavailable).toBe(true);
+      expect(
+        (degraded.body as { items: { health: unknown }[] }).items.map((i) => i.health),
+      ).toEqual([null, null]);
     });
 
     it('serves an identity state tab newest first to an admin holding identity.seller-access.view, and refuses the list key alone', async () => {

@@ -19,6 +19,7 @@ const COLUMNS = [
       ['offers', '/offers'],
       ['express', '/express'],
       ['sellers', '/sellers'],
+      ['brands', '/brands'],
       ['certified', '/certified'],
       ['saved', '/account/lists'],
     ],

@@ -45,6 +45,7 @@ vi.mock('../src/storefront/source.ts', async (importOriginal) => {
   const { sampleProduct } = await import('../src/storefront/sample-product.ts');
   const { sampleUnavailableProduct } = await import('../src/storefront/sample-unavailable.ts');
   const { sampleSeller } = await import('../src/storefront/sample-seller.ts');
+  const { sampleBrandIndex, sampleBrandPage } = await import('../src/storefront/sample-brands.ts');
   return {
     ...actual,
     get SAMPLE_DATA() {
@@ -53,6 +54,9 @@ vi.mock('../src/storefront/source.ts', async (importOriginal) => {
     loadProduct: (id: string) => Promise.resolve(sampleProduct(id)),
     loadUnavailableProduct: (id: string) => Promise.resolve(sampleUnavailableProduct(id)),
     loadSeller: (slug: string) => Promise.resolve(lock.seller ?? sampleSeller(slug)),
+    loadBrands: () => Promise.resolve(sampleBrandIndex()),
+    loadBrand: (slug: string, page = 1, all = false) =>
+      Promise.resolve(sampleBrandPage(slug, page, all ? 24 : 8, all)),
   };
 });
 
@@ -211,6 +215,39 @@ const ROWS: readonly Row[] = [
     load: () => page(() => import('../app/account/(member)/orders/page.tsx')),
     title: 'My orders | Mondapac',
     canonical: '/account/orders',
+    noindex: true,
+  },
+  {
+    url: '/brands',
+    load: () => page(() => import('../app/brands/page.tsx')),
+    title: 'Brands | Mondapac',
+    canonical: '/brands',
+    noindex: false,
+  },
+  {
+    url: '/brands/saffron-co',
+    load: () => page(() => import('../app/brands/[slug]/page.tsx')),
+    params: { slug: 'saffron-co' },
+    title: 'Saffron & Co | Mondapac',
+    canonical: '/brands/saffron-co',
+    noindex: false,
+  },
+  {
+    // The full list and its pages are copies of the brand page: canonical to it, out of the index.
+    url: '/brands/saffron-co?all=1&page=2',
+    load: () => page(() => import('../app/brands/[slug]/page.tsx')),
+    params: { slug: 'saffron-co' },
+    title: 'Saffron & Co | Mondapac',
+    canonical: '/brands/saffron-co',
+    noindex: true,
+  },
+  {
+    // A brand with no live product is left out of the index.
+    url: '/brands/zahra-kitchen',
+    load: () => page(() => import('../app/brands/[slug]/page.tsx')),
+    params: { slug: 'zahra-kitchen' },
+    title: 'Zahra Kitchen | Mondapac',
+    canonical: '/brands/zahra-kitchen',
     noindex: true,
   },
   {

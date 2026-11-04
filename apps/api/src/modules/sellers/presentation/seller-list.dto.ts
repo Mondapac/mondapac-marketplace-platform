@@ -40,6 +40,13 @@ export class SellerListRequest {
   outsideArea?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      'The tabs read from the seller files only: files whose service area has this code. A code ' +
+      'that names no area lists nothing. Not for the identity state tabs.',
+  })
+  areaCode?: string;
+
+  @ApiPropertyOptional({
     minLength: SEARCH_MIN_LENGTH,
     maxLength: SEARCH_MAX_LENGTH,
     description:
@@ -71,6 +78,31 @@ export class SellerListOwnerView {
 
   @ApiProperty({ description: 'The sign-in address, as typed.' })
   email!: string;
+}
+
+export class SellerListHealthView {
+  @ApiProperty({ description: 'The local date of the snapshot (YYYY-MM-DD).' })
+  day!: string;
+
+  @ApiProperty({
+    enum: ['scored', 'new', 'no-data'],
+    description: '`new` below the Market minimum of orders; `no-data` when no metric has data.',
+  })
+  kind!: 'scored' | 'new' | 'no-data';
+
+  @ApiProperty({ type: String, enum: ['healthy', 'at-risk', 'unhealthy'], nullable: true })
+  band!: 'healthy' | 'at-risk' | 'unhealthy' | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: '0 to 100; null unless `scored`.' })
+  score!: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The metric that set the score (show it next to the number); null unless `scored`.',
+  })
+  lowestMetric!: string | null;
 }
 
 /**
@@ -133,6 +165,13 @@ export class SellerListRowView {
   @ApiProperty({ type: String, nullable: true })
   serviceAreaCode!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'English display name of the service area; null when none is configured.',
+  })
+  serviceAreaName!: string | null;
+
   @ApiProperty({ type: String, nullable: true, description: 'IANA zone id of the seller.' })
   timezone!: string | null;
 
@@ -141,6 +180,15 @@ export class SellerListRowView {
 
   @ApiProperty({ description: 'ISO instant of the latest change of the file.' })
   lastChangedAt!: string;
+
+  @ApiProperty({
+    type: SellerListHealthView,
+    nullable: true,
+    description:
+      'The latest stored health of the seller; null before any night has measured it, or when ' +
+      'the health store could not answer (the list still answers).',
+  })
+  health!: SellerListHealthView | null;
 }
 
 export class SellerListAwaitingCounts {
@@ -176,6 +224,14 @@ export class SellerListStateCounts {
   suspended!: number;
 }
 
+export class SellerListAreaView {
+  @ApiProperty()
+  code!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
 export class SellerListBody {
   @ApiProperty({ enum: LIST_TABS })
   tab!: (typeof LIST_TABS)[number];
@@ -194,6 +250,12 @@ export class SellerListBody {
   counts!: SellerListCounts;
 
   @ApiProperty({
+    type: [SellerListAreaView],
+    description: 'Every service area of the Market with its English name, for the area filter.',
+  })
+  areas!: SellerListAreaView[];
+
+  @ApiProperty({
     type: SellerListStateCounts,
     nullable: true,
     description:
@@ -201,4 +263,11 @@ export class SellerListBody {
       'page of a file tab, and when the caller does not also hold identity.seller-access.view.',
   })
   stateCounts!: SellerListStateCounts | null;
+
+  @ApiProperty({
+    description:
+      "True when the health of this page could not be loaded: every row's `health` is then null " +
+      'because of the failure, not because the seller is unmeasured.',
+  })
+  healthUnavailable!: boolean;
 }

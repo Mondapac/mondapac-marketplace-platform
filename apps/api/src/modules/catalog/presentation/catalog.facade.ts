@@ -9,11 +9,13 @@ import type { OfferListingsQuery } from '../application/use-cases/offer-listings
 import type { OfferListingsSystemQuery } from '../application/use-cases/offer-listings-system.use-case';
 import type { OfferBadgesQuery } from '../application/use-cases/offer-badges.use-case';
 import type { PublishedProductQuery } from '../application/use-cases/published-product.use-case';
+import type { BrandProductIdsQuery } from '../application/use-cases/brand-product-ids.use-case';
 import type { PublishedProductImagesQuery } from '../application/use-cases/published-product-images.use-case';
 import type { PendingProductRevisionsQuery } from '../application/use-cases/pending-product-revisions.use-case';
 import type { ProductsForLinkingQuery } from '../application/use-cases/products-for-linking.use-case';
 import type { SellerProductOwnersQuery } from '../application/use-cases/seller-product-owners.use-case';
 import type {
+  BrandProductIds,
   CatalogBatchTooLarge,
   CatalogFacade,
   CatalogValidationFailed,
@@ -38,6 +40,7 @@ export interface CatalogFacadeUseCases {
   readonly offerListingsSystem: OfferListingsSystemQuery;
   readonly offerBadges: OfferBadgesQuery;
   readonly publishedProduct: PublishedProductQuery;
+  readonly brandProductIds: BrandProductIdsQuery;
   readonly publishedProductImages: PublishedProductImagesQuery;
   readonly pendingProductRevisions: PendingProductRevisionsQuery;
   readonly sellerProductOwners: SellerProductOwnersQuery;
@@ -128,6 +131,13 @@ export class CatalogFacadeImplementation implements CatalogFacade {
     locale: string,
   ): Promise<Result<PublishedProduct | null, AccessDenied | CatalogValidationFailed>> {
     return this.useCases.publishedProduct.execute(context, { productId, locale });
+  }
+
+  brandProductIds(
+    context: CallContext,
+    slug: string,
+  ): Promise<Result<BrandProductIds, AccessDenied | CatalogValidationFailed>> {
+    return this.useCases.brandProductIds.execute(context, { slug });
   }
 
   publishedProductImages(

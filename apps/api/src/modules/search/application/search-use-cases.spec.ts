@@ -17,6 +17,7 @@ import type { SellerEligibility } from './ports/seller-eligibility';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { StoreResolver } from './ports/store-resolver';
+import type { BrandProducts } from './ports/brand-products';
 import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
 import { RebuildOfferIndex } from './use-cases/rebuild-offer-index.use-case';
@@ -188,6 +189,17 @@ class StubStores implements StoreResolver {
   }
 }
 
+class StubBrands implements BrandProducts {
+  brands = new Map<string, { productIds: Id<'Product'>[]; truncated: boolean }>();
+  failing = false;
+  readonly asked: string[] = [];
+  productIdsOf(_context: CallContext, slug: string) {
+    this.asked.push(slug);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve(this.brands.get(slug) ?? { productIds: [], truncated: false });
+  }
+}
+
 class StubCategories implements CategorySubtreeSource {
   children = new Map<Id<'Category'>, Id<'Category'>[]>();
   failing = false;
@@ -219,6 +231,25 @@ class StubShelves implements ShelfDocumentsReader {
   }
   browseAll() {
     return Promise.resolve([]);
+  }
+  readonly browsedProducts: {
+    market: string;
+    productIds: readonly Id<'Product'>[];
+    categoryIds: readonly Id<'Category'>[] | null;
+    limit: number;
+    offset: number;
+  }[] = [];
+  browseByProducts(
+    market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+    categoryIds: readonly Id<'Category'>[] | null,
+    limit: number,
+    offset: number,
+  ) {
+    this.browsedProducts.push({ market: market.marketId, productIds, categoryIds, limit, offset });
+    return Promise.resolve(
+      this.hits.filter((h) => productIds.includes(h.productId)).slice(offset, offset + limit),
+    );
   }
   browseBySeller(
     market: MarketContext,
@@ -259,6 +290,8 @@ describe.each([
   ['ZZ', 'ja-JP', 'simple', 'JPY'],
 ] as const)('product search in market %s', (code, locale, config, currency) => {
   const market = testMarketContext(code, 'default');
+  // The rating boost is off in AU (the default) and on in the synthetic Market.
+  const boostOf = code === 'ZZ' ? { weightBps: 500, priorCount: 5, priorMeanTimes100: 300 } : null;
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
   const system = testCallContext(market, 'system', 'search-system-abcd');
   const anonymous = testCallContext(market, 'anonymous', 'search-anon-abcdef');
@@ -270,6 +303,7 @@ describe.each([
   let sellers: StubSellers;
   let images: StubImages;
   let stores: StubStores;
+  let brands: StubBrands;
   let shelves: StubShelves;
   let categories: StubCategories;
   let deps: SearchDependencies;
@@ -282,6 +316,7 @@ describe.each([
     sellers = new StubSellers();
     images = new StubImages();
     stores = new StubStores();
+    brands = new StubBrands();
     shelves = new StubShelves();
     categories = new StubCategories();
     deps = {
@@ -295,6 +330,7 @@ describe.each([
       clock: new FixedClock(T0),
       shelves,
       stores,
+      brands,
       images,
       categories,
     };
@@ -302,7 +338,12 @@ describe.each([
 
   describe('the Market settings', () => {
     it('come from the Market file, never from a default Market', () => {
-      expect(deps.policy.settings(market)).toEqual({ textSearchConfig: config, locale, currency });
+      expect(deps.policy.settings(market)).toEqual({
+        textSearchConfig: config,
+        locale,
+        currency,
+        ratingBoost: boostOf,
+      });
     });
   });
 
@@ -544,9 +585,61 @@ describe.each([
             categoryIds: null,
             limit: 11,
             offset: 0,
+            ...(boostOf === null ? {} : { ratingBoost: boostOf }),
           },
         },
       ]);
+    });
+
+    describe('the rating boost and the Top rated sort', () => {
+      it('asks for the Top rated order only while the Market has the boost on', async () => {
+        reader.hits = [hit(1)];
+        const result = await search({ q: 'sausages', sort: 'top-rated' });
+        if (boostOf === null) {
+          expect(result).toEqual({
+            ok: false,
+            error: { code: 'validation.failed', fields: [{ path: 'sort', code: 'unavailable' }] },
+          });
+          expect(reader.requests).toEqual([]);
+        } else {
+          expect(result).toMatchObject({ ok: true });
+          expect(reader.requests[0]?.request).toMatchObject({
+            sort: 'top-rated',
+            ratingBoost: boostOf,
+          });
+        }
+      });
+
+      it('leaves the default order alone: relevance names no sort, and never a boost while off', async () => {
+        reader.hits = [hit(1)];
+        await search({ q: 'sausages', sort: 'relevance' });
+        const request = reader.requests[0]!.request;
+        expect(request.sort).toBeUndefined();
+        expect(request.ratingBoost).toEqual(boostOf ?? undefined);
+      });
+
+      it('takes Top rated for a category browse too', async () => {
+        reader.hits = [hit(1)];
+        const result = await search({ category: CATEGORY, sort: 'top-rated' });
+        if (boostOf === null) expect(result).toMatchObject({ ok: false });
+        else {
+          expect(result).toMatchObject({ ok: true });
+          expect(reader.requests[0]?.request).toMatchObject({ text: null, sort: 'top-rated' });
+        }
+      });
+
+      it.each([
+        [{ q: 'sausages', sort: 'popular' }, 'value'],
+        [{ sort: 'top-rated', store: 'halal-shop' }, 'with-store'],
+        [{ sort: 'top-rated', brand: 'acme' }, 'with-brand'],
+      ])('refuses %j before any read', async (input, code_) => {
+        const result = await search(input);
+        expect(result).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'sort', code: code_ }] },
+        });
+        expect(reader.requests).toEqual([]);
+      });
     });
 
     it('browses a category without text, and pages by offset', async () => {
@@ -763,6 +856,120 @@ describe.each([
         });
         expect(shelves.browsed).toEqual([]);
       });
+    });
+
+    describe('a brand', () => {
+      const BRAND_PRODUCT = id<'Product'>(0x92);
+      const brandHit = (n: number, productId: Id<'Product'> = BRAND_PRODUCT): OfferHit => ({
+        ...hit(n),
+        productId,
+      });
+
+      it("lists the Offers of the brand's live products through catalog's ids, never the text index", async () => {
+        brands.brands.set('saffron-co', { productIds: [BRAND_PRODUCT], truncated: false });
+        shelves.hits = [brandHit(1), brandHit(2, PRODUCT), brandHit(3)];
+
+        const result = await search({ brand: 'saffron-co', page: 1, pageSize: 10 });
+
+        expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([
+          offer(1),
+          offer(3),
+        ]);
+        expect(shelves.browsedProducts).toEqual([
+          {
+            market: code,
+            productIds: [BRAND_PRODUCT],
+            categoryIds: null,
+            limit: 11,
+            offset: 0,
+          },
+        ]);
+        expect(brands.asked).toEqual(['saffron-co']);
+        expect(reader.requests).toEqual([]);
+        expect(shelves.browsed).toEqual([]);
+      });
+
+      it('combines with a category and its subcategories', async () => {
+        categories.children.set(CATEGORY, [SUBCATEGORY]);
+        brands.brands.set('saffron-co', { productIds: [BRAND_PRODUCT], truncated: false });
+        shelves.hits = [brandHit(1)];
+
+        await search({ brand: 'saffron-co', category: CATEGORY });
+
+        expect(shelves.browsedProducts[0]).toMatchObject({ categoryIds: [CATEGORY, SUBCATEGORY] });
+      });
+
+      it('still drops an Offer that catalog or sellers no longer show', async () => {
+        brands.brands.set('saffron-co', { productIds: [BRAND_PRODUCT], truncated: false });
+        shelves.hits = [brandHit(1), brandHit(2)];
+        visibility.hidden = new Set([offer(1)]);
+
+        const result = await search({ brand: 'saffron-co' });
+
+        expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([offer(2)]);
+      });
+
+      it('pages by offset and says hasMore from the extra row', async () => {
+        brands.brands.set('saffron-co', { productIds: [BRAND_PRODUCT], truncated: false });
+        shelves.hits = Array.from({ length: 4 }, (_, i) => brandHit(i + 1));
+
+        const first = await search({ brand: 'saffron-co', page: 1, pageSize: 3 });
+        const second = await search({ brand: 'saffron-co', page: 2, pageSize: 3 });
+
+        expect(first.ok && first.value.hasMore).toBe(true);
+        expect(second.ok && second.value.items.map((item) => item.offerId)).toEqual([offer(4)]);
+        expect(second.ok && second.value.hasMore).toBe(false);
+      });
+
+      it('answers an empty page, not an error, for a brand with no live product or no such brand', async () => {
+        shelves.hits = [brandHit(1)];
+
+        const result = await search({ brand: 'no-such-brand', page: 2, pageSize: 5 });
+
+        expect(result).toEqual({
+          ok: true,
+          value: { items: [], page: 2, pageSize: 5, hasMore: false },
+        });
+        expect(shelves.browsedProducts).toEqual([]);
+        expect(reader.requests).toEqual([]);
+        expect(images.asked).toEqual([]);
+      });
+
+      it('fails closed when catalog cannot name the products of the brand', async () => {
+        shelves.hits = [brandHit(1)];
+        brands.failing = true;
+
+        expect(await search({ brand: 'saffron-co' })).toEqual({
+          ok: false,
+          error: { code: 'search.unavailable' },
+        });
+        expect(shelves.browsedProducts).toEqual([]);
+      });
+
+      it.each([
+        ['text', { q: 'saffron' }, 'with-text'],
+        ['a store', { store: 'halal-shop' }, 'with-store'],
+      ])('is refused together with %s', async (_name, other, code2) => {
+        expect(await search({ brand: 'saffron-co', ...other })).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'brand', code: code2 }],
+          },
+        });
+        expect(brands.asked).toEqual([]);
+      });
+
+      it.each(['Saffron', 'a_b', '-x', 'x-', 'a--b', 'x'.repeat(81)])(
+        'refuses a malformed address %j before any read',
+        async (brand) => {
+          expect(await search({ brand })).toEqual({
+            ok: false,
+            error: { code: 'validation.failed', fields: [{ path: 'brand', code: 'format' }] },
+          });
+          expect(brands.asked).toEqual([]);
+        },
+      );
     });
 
     it('fails closed when the visibility check cannot be made', async () => {

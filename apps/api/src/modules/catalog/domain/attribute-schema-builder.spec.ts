@@ -98,4 +98,11 @@ describe('buildAttributeSchema', () => {
     );
     expect(buildAttributeSchema(family, archived)).toEqual({ ok: false, missingCodes: ['brand'] });
   });
+
+  it('treats a draft definition as missing: a seller never sees an unpublished attribute', () => {
+    const drafts = definitions.map((d) =>
+      d.code === 'brand' ? { ...d, status: 'draft' as const } : d,
+    );
+    expect(buildAttributeSchema(family, drafts)).toEqual({ ok: false, missingCodes: ['brand'] });
+  });
 });

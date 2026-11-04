@@ -33,6 +33,8 @@ export class MemoryBrands implements BrandRepository, BrandReader {
   /** `${marketId}:${sellerId}` of sellers with an ownBrand product. */
   readonly ownBrandSellers = new Set<string>();
   readonly liveCounts = new Map<string, number>();
+  /** `${marketId}:${brandId}` -> ids of the live products. */
+  readonly liveProducts = new Map<string, Id<'Product'>[]>();
 
   seed(state: BrandState): void {
     this.brands.set(state.id, state);
@@ -51,6 +53,7 @@ export class MemoryBrands implements BrandRepository, BrandReader {
     this.productCounts.clear();
     this.ownBrandSellers.clear();
     this.liveCounts.clear();
+    this.liveProducts.clear();
   }
 
   // --- BrandRepository
@@ -245,6 +248,18 @@ export class MemoryBrands implements BrandRepository, BrandReader {
       brand,
       liveProductCount: this.liveCounts.get(`${market.marketId}:${brand.id}`) ?? 0,
     });
+  }
+
+  liveProductIds(
+    market: MarketContext,
+    slug: string,
+    limit: number,
+  ): Promise<readonly Id<'Product'>[]> {
+    const brand = [...this.brands.values()].find((row) => row.slug === slug);
+    if (brand === undefined || brand.status !== 'active') return Promise.resolve([]);
+    return Promise.resolve(
+      (this.liveProducts.get(`${market.marketId}:${brand.id}`) ?? []).slice(0, limit),
+    );
   }
 
   publicActive(_market: MarketContext, limit: number): Promise<readonly BrandState[]> {

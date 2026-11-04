@@ -18,6 +18,7 @@ const CAUSES = [
   'off_sale_product_retired',
   'off_sale_product_not_listed',
   'off_sale_tag_suspended',
+  'off_sale_product_paused',
   'off_sale_description_claim_text',
 ] as const;
 let sequence = 0;
@@ -92,6 +93,7 @@ describe.each(TEST_MARKETS)('catalog offers schema in market %s (database integr
       off_sale_product_retired: false,
       off_sale_product_not_listed: false,
       off_sale_tag_suspended: false,
+      off_sale_product_paused: false,
       off_sale_description_claim_text: false,
       listed: false,
       submitted_at: null,
@@ -315,7 +317,7 @@ describe.each(TEST_MARKETS)('catalog offers schema in market %s (database integr
         `status = 'published', listed = true, first_published_at = $2, version = 3,
          off_sale_type_not_allowed = false, off_sale_product_retired = false,
          off_sale_product_not_listed = false, off_sale_tag_suspended = false,
-         off_sale_description_claim_text = false`,
+         off_sale_product_paused = false, off_sale_description_claim_text = false`,
         [T1],
       ),
     ).toBeNull();

@@ -168,10 +168,10 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
       `INSERT INTO catalog.offers (id, market_id, tenant_id, seller_id, product_id, seller_sku,
          condition_code, description, handling, attestation_recorded_at, attestation_account_id,
          status, off_sale_type_not_allowed, off_sale_product_retired, off_sale_product_not_listed,
-         off_sale_tag_suspended, off_sale_description_claim_text, listed, submitted_at,
+         off_sale_tag_suspended, off_sale_product_paused, off_sale_description_claim_text, listed, submitted_at,
          first_published_at, version, created_at)
        VALUES ($1,$2,$3,$4,$5,'SKU-FULL','used','{"en":"x"}','SEALED_ORIGINAL',$6,$7,'published',
-         false,true,false,true,false,false,$6,$6,3,$6)`,
+         false,true,false,true,false,false,false,$6,$6,3,$6)`,
       [id, market.marketId, market.tenantId, seller, product.state.id, T0.toString(), account],
     );
     const found = await run(market, () => offers.findById(market, id as Id<'Offer'>));
