@@ -67,6 +67,10 @@ describe.each(['AU', 'ZZ'] as const)(
         productCode: 'P00000001',
         status: 'published',
         discardedAt: null,
+        withdrawnAt: null,
+        retiredAt: null,
+        pausedAt: null,
+        pausedByAccountId: null,
         ownBrand: false,
         lastChangedAt: T0,
         version: 3,
@@ -298,6 +302,7 @@ describe.each(['AU', 'ZZ'] as const)(
       ['a SELLER product', 'seller'],
       ['an unpublished product', 'draft'],
       ['a retired product', 'retired'],
+      ['a paused product', 'paused'],
     ] as const)('answers a byte-identical product.not-found for %s', async (_label, kind) => {
       const product =
         kind === null
@@ -310,7 +315,12 @@ describe.each(['AU', 'ZZ'] as const)(
               })
             : kind === 'draft'
               ? productState({ status: 'draft', publishedRevisionId: null })
-              : productState({ status: 'retired' });
+              : kind === 'paused'
+                ? productState({
+                    pausedAt: T0,
+                    pausedByAccountId: ids.next<'Account'>(),
+                  })
+                : productState({ status: 'retired' });
       const r = rig({ product });
       const outcome = await r.useCase.execute(
         contextOf('seller'),

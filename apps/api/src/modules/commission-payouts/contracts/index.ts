@@ -29,6 +29,8 @@ export {
   type RefundedSellerOrder,
   type RefundedShipping,
   type RefundLossBearer,
+  type SellerLostDisputeCount,
+  type SellerLostDisputesFailure,
   type SellerOrderDelivered,
 } from './commission-payouts.facade';
 export {

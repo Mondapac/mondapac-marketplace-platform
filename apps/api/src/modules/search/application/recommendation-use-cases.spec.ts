@@ -83,6 +83,9 @@ class MemoryShelves implements ShelfDocumentsReader {
   browseBySeller() {
     return Promise.resolve([]);
   }
+  browseByProducts() {
+    return Promise.resolve([]);
+  }
 }
 
 class StubImages implements ProductImages {

@@ -53,6 +53,17 @@ export interface BrandReader {
   /** The active brand with this slug, with its live product count; null for any other status. */
   publicBySlug(market: MarketContext, slug: string): Promise<PublicBrandRecord | null>;
 
+  /**
+   * The ids of the live products (the rule of {@link PublicBrandRecord}) of the active brand with
+   * this slug in this Market, at most `limit`, by product id; empty for an unknown, draft or
+   * archived slug.
+   */
+  liveProductIds(
+    market: MarketContext,
+    slug: string,
+    limit: number,
+  ): Promise<readonly Id<'Product'>[]>;
+
   /** Every active brand, at most `limit`, in no particular order. */
   publicActive(market: MarketContext, limit: number): Promise<readonly BrandState[]>;
 

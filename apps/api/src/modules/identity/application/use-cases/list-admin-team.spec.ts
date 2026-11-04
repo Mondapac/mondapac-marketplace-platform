@@ -85,7 +85,9 @@ const PARTIAL_ROLE = id<'Role'>('01990000-0000-7000-8000-00000000c0dd');
 
 /** A platform custom role with protected keys but not the system role (as in 8a-2's spec). */
 const LEAD_KEYS = [
+  'catalog.attribute.view',
   'catalog.brand.read',
+  'catalog.category-tree.view',
   'catalog.product.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
@@ -116,6 +118,7 @@ const LEAD_KEYS = [
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
+  'settings.list-paging.view',
 ];
 
 type AccountAction = keyof AdminTeamAccountRow['actions'];

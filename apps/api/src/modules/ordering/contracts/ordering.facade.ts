@@ -5,10 +5,21 @@ import type { AccessDenied } from '../../../platform/authz';
 export interface AuthorisedPayment {
   readonly orderId: string;
   readonly paymentIntentId: string;
-  /** The Checkout session that created the payment; it must be the one stored on the order. */
-  readonly sessionId: string;
+  /**
+   * The Checkout session that created the payment; it must be the one stored on the order. `null`
+   * for a card payment made on the MondaPac page (a PaymentIntent with no session): the order must
+   * have no session, and no other PaymentIntent.
+   */
+  readonly sessionId: string | null;
   /** What the provider holds; it must equal the order total or the payment is voided. */
   readonly amount: Money;
+  /**
+   * The payment method the provider holds, read from the provider. Required for a card payment
+   * on the MondaPac page (`sessionId: null`): it is checked again here, because the browser can
+   * confirm the same PaymentIntent with another card after the first token was checked. A
+   * method that is not an accepted card is voided, never captured. Ignored for a hosted session.
+   */
+  readonly card?: { readonly methodType: string; readonly brand: string | null } | null;
 }
 
 export type PaymentFailure =
@@ -85,6 +96,18 @@ export interface DeliveredSellerOrder {
   readonly deliveredAt: Temporal.Instant;
   readonly offerIds: readonly Id<'Offer'>[];
 }
+
+/** The seller health feed's counters for one window. */
+export interface SellerOrderHealthCount {
+  /** Seller orders whose order was paid in the window. */
+  readonly paid: number;
+  /** Seller orders marked ready in the window that carry a ready-by promise. */
+  readonly ready: number;
+  /** Of those, the ones marked ready after the ready-by time. */
+  readonly lateReady: number;
+}
+
+export type SellerOrderHealthCountsFailure = AccessDenied | { readonly code: 'validation.failed' };
 
 export type DeliveredSellerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
 
@@ -214,6 +237,18 @@ export interface OrderingFacade {
     context: CallContext,
     request: { readonly deliveredSince: Temporal.Instant; readonly sellerOrderId?: string },
   ): Promise<Result<readonly DeliveredSellerOrder[], DeliveredSellerOrdersFailure>>;
+
+  /**
+   * The seller health feed (rule `system`): for each window `[from, to)` (at most 8, in the
+   * order given) the seller orders paid in it, the ones marked ready in it that carry a promise,
+   * and the late ones, in one read. The caller works the windows out in the seller's own zone
+   * (ADR-0005). Counters only. A seller with too many orders in the span fails the call.
+   */
+  sellerHealthCounts(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<Result<readonly SellerOrderHealthCount[], SellerOrderHealthCountsFailure>>;
 }
 
 /** Nest token of the {@link OrderingFacade}, provided and exported by `OrderingModule`. */

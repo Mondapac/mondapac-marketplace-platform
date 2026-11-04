@@ -16,8 +16,11 @@ import { callApi } from '../api/client.ts';
 import {
   CERTIFICATE_SUBMITTED,
   DELIVERY_FALLBACK_OVER_CAP,
+  PLATFORM_IMPORT_FINISHED,
   PRICE_HOLD_OPENED,
   PRODUCT_REVISION_SUBMITTED,
+  REVIEW_HELD,
+  REVIEW_REPORTED,
   RINGING_KINDS,
   SELLER_FILE_SUBMITTED,
   type AdminNotice,
@@ -36,6 +39,9 @@ const LOOK: Readonly<
   [SELLER_FILE_SUBMITTED]: { icon: 'store', tone: 'neutral', category: 'sellers' },
   [PRICE_HOLD_OPENED]: { icon: 'tag', tone: 'attention', category: 'prices' },
   [DELIVERY_FALLBACK_OVER_CAP]: { icon: 'map-pin', tone: 'attention', category: 'delivery' },
+  [PLATFORM_IMPORT_FINISHED]: { icon: 'package', tone: 'info', category: 'products' },
+  [REVIEW_HELD]: { icon: 'star', tone: 'info', category: 'reviews' },
+  [REVIEW_REPORTED]: { icon: 'star', tone: 'attention', category: 'reviews' },
 };
 const UNKNOWN_LOOK = { icon: 'bell', tone: 'neutral', category: 'other' } as const;
 
@@ -48,7 +54,11 @@ function hrefOf(notice: AdminNotice): string | null {
     return `/sellers/${notice.params.sellerId}`;
   }
   if (notice.kind === PRICE_HOLD_OPENED) return '/price-holds';
+  if (notice.kind === REVIEW_HELD || notice.kind === REVIEW_REPORTED) return '/reviews';
   if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/settings/delivery';
+  if (notice.kind === PLATFORM_IMPORT_FINISHED && notice.params.importId !== undefined) {
+    return `/catalog/products/import?id=${notice.params.importId}`;
+  }
   return null;
 }
 
@@ -107,6 +117,15 @@ export function AdminNotifications({ csrfToken }: { readonly csrfToken: string }
         });
       case DELIVERY_FALLBACK_OVER_CAP:
         return t.rich('kind.delivery-fallback-over-cap', { strong });
+      case PLATFORM_IMPORT_FINISHED:
+        return t.rich('kind.platform-import-finished', {
+          strong,
+          outcome: notice.params.outcome ?? 'completed',
+        });
+      case REVIEW_HELD:
+        return t.rich('kind.review-held', { strong });
+      case REVIEW_REPORTED:
+        return t.rich('kind.review-reported', { strong });
       default:
         return t('kind.other');
     }

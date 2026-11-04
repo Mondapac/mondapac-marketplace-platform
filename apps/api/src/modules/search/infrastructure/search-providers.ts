@@ -17,6 +17,7 @@ import {
   type PricingFacade,
   type PricingSpecialsFacade,
 } from '../../pricing';
+import { REVIEWS_FACADE, type ReviewsFacade } from '../../reviews';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import {
   OFFER_DOCUMENT_REPOSITORY,
@@ -43,13 +44,23 @@ import {
   type ProductDetailSources,
 } from '../application/ports/product-detail-sources';
 import { PRODUCT_IMAGES, type ProductImages } from '../application/ports/product-images';
+import { BRAND_PRODUCTS, type BrandProducts } from '../application/ports/brand-products';
 import { STORE_RESOLVER, type StoreResolver } from '../application/ports/store-resolver';
 import {
   CATEGORY_SUBTREE_SOURCE,
   type CategorySubtreeSource,
 } from '../application/ports/category-subtree';
+import {
+  PRODUCT_RATING_REPOSITORY,
+  PRODUCT_RATING_SOURCE,
+  type ProductRatingRepository,
+  type ProductRatingSource,
+} from '../application/ports/product-rating';
+import { FacadeProductRatingSource } from './facade-product-rating-source';
+import { PrismaProductRatingRepository } from './prisma-product-rating.repository';
 import { FacadeCategorySubtree } from './facade-category-subtree';
 import { FacadeProductImages } from './facade-product-images';
+import { FacadeBrandProducts } from './facade-brand-products';
 import { FacadeStoreResolver } from './facade-store-resolver';
 import { PERSONAL_SIGNALS, type PersonalSignals } from '../application/ports/personal-signals';
 import { FacadePersonalSignals } from './facade-personal-signals';
@@ -134,6 +145,11 @@ export const searchProviders: readonly FactoryProvider[] = [
     useFactory: (sellers: SellersFacade): StoreResolver => new FacadeStoreResolver(sellers),
   },
   {
+    provide: BRAND_PRODUCTS,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): BrandProducts => new FacadeBrandProducts(catalog),
+  },
+  {
     provide: CATEGORY_SUBTREE_SOURCE,
     inject: [CATALOG_ASSISTANT_FACADE],
     useFactory: (catalog: CatalogAssistantFacade): CategorySubtreeSource =>
@@ -156,5 +172,17 @@ export const searchProviders: readonly FactoryProvider[] = [
       inventory: InventoryFacade,
       sellers: SellersFacade,
     ): ProductDetailSources => new FacadeProductDetailSources(catalog, pricing, inventory, sellers),
+  },
+  {
+    provide: PRODUCT_RATING_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductRatingRepository =>
+      new PrismaProductRatingRepository(prisma),
+  },
+  {
+    provide: PRODUCT_RATING_SOURCE,
+    inject: [REVIEWS_FACADE],
+    useFactory: (reviews: ReviewsFacade): ProductRatingSource =>
+      new FacadeProductRatingSource(reviews),
   },
 ];

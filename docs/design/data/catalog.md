@@ -42,7 +42,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `product_code_counters` | The per-Market sequence for `productCode` (D 4.1) | Counter, one row per Market | 1 |
 | `category_trees` | One row per Market: the tree version (serialises structural edits; cache key) | Counter | 2 |
 | `platform_categories`, `platform_category_revisions`, `platform_category_revision_names` | `PlatformCategory` root, revisions of name and parent | V1 | 2 |
-| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions` | `AttributeDefinition`, `AttributeFamily` | V1 | 3 |
+| `attribute_definitions`, `attribute_definition_revisions`, `attribute_definition_revision_options`, `attribute_families`, `attribute_family_revisions`, `category_attribute_links`, `category_attribute_link_revisions` | `AttributeDefinition`, `AttributeFamily`, `CategoryAttributeLink` | V1 | 3 |
 | `product_working_copies` | The working copy (D 2.3 M-2) | Mutable, one per product | 4 |
 | `product_revisions`, `product_revision_texts`, `product_revision_categories`, `product_revision_variants` | Revision content | V1 revision, insert-only + trigger | 4 |
 | `product_revision_decisions` | One terminal outcome per revision, with the named checks (D 8.3a) | V4, insert-only + trigger | 4; checks 10 |
@@ -55,9 +55,12 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `claim_text_rescans` | Rescan progress (D 6.4) | Job state | 18 |
 | `attribute_relaxation_requests` | Two-admin rule for `material` relaxations (D 8.2, 19.2 item 8) | One-way status, guard trigger | 21 |
 | `product_url_keys` | URL key per Market (CAT-12) | Held / retired keys | 22 (Q-K9) |
+| `attribute_value_suggestions` | A seller's request for a value a select attribute lacks (attributes A5) | One-way status, guard trigger | 30 |
 | `seller_categories`, `seller_category_names`, `category_proposals` | `SellerCategory`, `CategoryProposal` | Roots | 23 |
 | `import_jobs`, `import_job_errors` | `ImportJob` (outline) | Root; errors insert-only | 24 |
 | `ai_listing_suggestions`, `ai_claim_flags` | AIS-03, AIA-03 (outline) | Purged with the draft; insert-only | 25, 26 |
+| `saved_filters` | A named saved view of an admin list (3.28) | Preference; physical delete | Catalogue > Products |
+| `platform_import_jobs`, `platform_import_rows` | The admin import of PLATFORM products and one result per data row (3.29) | Job root; rows cascade | Catalogue > Products |
 
 ```
            sellers / identity / certification (other schemas: ids only, no FK)
@@ -68,6 +71,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
  attribute_definitions --< attribute_definition_revisions --< ..._revision_options
    |-- attribute_relaxation_requests (open -> confirmed | cancelled | expired)
  attribute_families --< attribute_family_revisions
+ attribute_definitions --< attribute_value_suggestions >-- products (open -> approved | mapped | rejected)
  product_code_counters (1 per Market)
  products (published_/pending_revision_id: same-product FKs)
    |--< product_variants (one-way state)            |-- product_working_copies (0..1)
@@ -128,6 +132,7 @@ migration in 8. "Privileges" lines are in 7.
 | `own_brand` | `boolean` | no | 1 | CAT-46; insert writes `false` |
 | `matched_into_product_id` | `uuid` | yes | 1 | FK `(market_id, matched_into_product_id)` → `products`. CHECK `(status = 'matched') = (matched_into_product_id IS NOT NULL)`; CHECK `<> id` |
 | `promoted_at`, `retired_at`, `withdrawn_at` | `timestamptz(6)` | yes | 1 | CHECK `(status = 'retired') = (retired_at IS NOT NULL)`, the same for `withdrawn`; `promoted_at IS NULL OR scope = 'PLATFORM'` |
+| `paused_at`, `paused_by_account_id` | `timestamptz(6)`, `uuid` | yes | 1 | The admin pause (domain 4.1a). CHECK `(paused_at IS NULL) = (paused_by_account_id IS NULL)` and `paused_at IS NULL OR status = 'published'`. Migration `20261031100000_catalog_product_pause` (reviewed by Mojtaba, 2026-10-31) |
 | `published_revision_id` | `uuid` | yes | 4 | V1 pointer. FK `(market_id, id, published_revision_id)` → `product_revisions (market_id, product_id, id)`: only a revision **of this product** (CE4). CHECK `status NOT IN ('published', 'retired') OR published_revision_id IS NOT NULL` |
 | `pending_revision_id` | `uuid` | yes | 4 | **The one pending revision** (VER-01; D 17.1 "at most one pending revision per product"): one column, so the rule holds by construction, as CE-data 3.4. Same-product FK. CHECK `pending_revision_id IS NULL OR pending_revision_id IS DISTINCT FROM published_revision_id` |
 | `pending_submitted_at` | `timestamptz(6)` | yes | 4 | Queue sort key, written with the pointer in the same statement. CHECK `(pending_revision_id IS NULL) = (pending_submitted_at IS NULL)` |
@@ -202,11 +207,16 @@ database stays the source of truth.
 | `parent_id` | `uuid` | yes | FK `(market_id, parent_id)` → `platform_categories`. CHECK `<> id`. NULL = a root |
 | `vertical_root_code` | `text` | yes | Optional Vertical root marker (CA4); CHECK `vertical_root_code IS NULL OR parent_id IS NULL` |
 | `slug` | `text COLLATE "C"` | no | CHECK `^[a-z0-9]+(-[a-z0-9]+)*$`, 2 to 80. **Unique `(market_id, slug)`** (D 17.1) |
-| `status` | `text` | no | CHECK `active`, `merged`, `archived` |
+| `status` | `text` | no | CHECK `active`, `hidden`, `merged`, `archived` (`hidden` added by categories C2: reversible, the category leaves menus and filters, products stay on sale) |
 | `merged_into_id` | `uuid` | yes | FK to `platform_categories`. CHECK `(status = 'merged') = (merged_into_id IS NOT NULL)` |
 | `published_revision_id` | `uuid` | yes | Current revision (name, parent). FK `(market_id, id, published_revision_id)` → revisions of this category. Nullable (Q-K10, as CE-data 3.1): the creating unit inserts the root with NULL, then revision 1, then sets the pointer; NULL is never visible after commit. Plain FK, no deferred constraint |
 | `created_by_kind` | `text` | no | CHECK `seed`, `admin` (D 17.1 item 4). Never updated |
 | `version`, `created_at` | | no | CA1 |
+| `position` | `integer` | no | Order among siblings (roots are siblings). CHECK `>= 0`. **Unique `(market_id, parent_id, position)`**, `NULLS NOT DISTINCT`, `DEFERRABLE INITIALLY IMMEDIATE` (constraint `platform_categories_market_id_parent_id_position_key`): a reorder defers the check and swaps inside one unit. Backfilled by the order of the first-locale name per parent (lower-case, then slug). A row inserted without one, or with `-1` (the seed repository), goes last among its siblings under a transaction advisory lock on the sibling set (trigger `platform_categories_default_position`, `BEFORE INSERT`), so concurrent inserts take consecutive positions |
+| `show_in_menu` | `boolean` | no | Default `true` |
+| `image_id` | `uuid` | yes | The category image from the product image intake (purpose `category-image`, wired in C3). **No foreign key**: `product_images` rows belong to a product (`product_id NOT NULL`); C3 decides the link |
+| `seo_title`, `seo_description` | `text` | yes | English only. CHECK 1 to 60 and 1 to 160 characters, trimmed, no control or bidi characters |
+| `seo_noindex` | `boolean` | no | Default `false` |
 
 - **No-cycle trigger** `platform_categories_no_cycle` (BEFORE INSERT OR UPDATE OF `parent_id`): walks
   the ancestors of the new parent one PK probe at a time (a loop, not a recursive query) and refuses
@@ -218,10 +228,27 @@ database stays the source of truth.
   sequential read of the Market's rows (2,000 rows: 0.6 ms).
 - `platform_category_revisions` (insert-only): `id` PK; `category_id` FK; `revision_no` unique per
   category; `parent_id` (the parent at that revision, no FK: history may name an archived id, C4);
-  `change_kind` CHECK `created`, `renamed`, `moved`, `merged`, `archived`; `author_kind` CHECK `seed`,
+  `change_kind` CHECK `created`, `renamed`, `moved`, `merged`, `archived`, and (C2) `details-changed`,
+  `reordered`, `hidden`, `shown`, `slug-changed`, `discarded`; `reason text` NULL, CHECK 10 to 500
+  characters, trimmed, no control or bidi characters (required for `moved`, `merged` and `archived` by
+  the use case, not by a CHECK: a seed row has none); `author_kind` CHECK `seed`,
   `admin`; `author_account_id` (NULL iff seed); `created_at`. Unique `(market_id, category_id, id)`.
 - `platform_category_revision_names` (insert-only): PK `(market_id, revision_id, locale)`; `name text`
   1 to 120, CA5.
+- `platform_category_revision_texts` (C2, insert-only): PK `(market_id, revision_id, locale)`; `name`
+  as above (CA5); `short_description` NULL, CHECK 1 to 300; `keywords text[]` NOT NULL default `{}`, CHECK
+  (no function, so PUBLIC executes nothing new: the array is joined with U+0001 and matched against a regex; at most 20, none NULL, each 1 to 40 characters, trimmed). It carries
+  everything a locale says about a revision. The migration copied every existing name into it; the
+  names table is kept (readable, insert-only) and the trigger `platform_category_revision_names_copy_to_texts`
+  copies each new name row (`ON CONFLICT DO NOTHING`) until the editor (C3) writes the texts itself.
+- `platform_category_slug_history` (C2, insert-only): PK `(market_id, slug, retired_at)`; `category_id`
+  FK `(market_id, category_id)`; slug shape as the live slug. A slug retired by one category is not
+  given to another for 12 months: the use case checks, and trigger `platform_categories_slug_not_recently_retired`
+  (`BEFORE INSERT OR UPDATE OF slug`) refuses what it missed (`23514`); the category's own old slug may
+  return. The key lets a slug be retired again after a later reuse; a lookup takes the latest row (the
+  redirect is for a slug nobody holds now). Index `(market_id, category_id)`.
+- **Slug is still not in the application's `UPDATE` list.** The package that builds Change URL name grants
+  it together with the writer of the history row.
 - The seed only inserts (D 7.2, B4): the application has no grant that a seed could use to rewrite a
   category other than the editor's column list, and the seed use case has no update path. A test
   applies the seed twice and asserts no `UPDATE` reached the table (statement counter of the unit).
@@ -231,7 +258,9 @@ database stays the source of truth.
 `attribute_definitions` (root): `id`; `code` CA4, **unique `(market_id, code)`**, never updated;
 `data_type` CHECK `text`, `long-text`, `integer`, `decimal`, `boolean`, `select`, `multi-select`,
 `date` (D 3.3; no `image`, no money), never updated; `localizable boolean`, never updated; `status`
-CHECK `active`, `archived`; `published_revision_id` (same-definition FK, nullable as 3.4, Q-K10; families the same);
+CHECK `draft`, `active`, `archived` (`draft` from attributes A2: created by an admin, never seen by a
+seller; `draft → active` on publish, `draft → archived` on discard; transitions are the use case's,
+no trigger yet); `published_revision_id` (same-definition FK, nullable as 3.4, Q-K10; families the same);
 `archived_by_request_id uuid` (slice 21; FK `(market_id, id, archived_by_request_id)` →
 `attribute_relaxation_requests (market_id, definition_id, id)`, unique `(market_id,
 archived_by_request_id)`, CHECK `archived_by_request_id IS NULL OR status = 'archived'`; set once, at
@@ -244,26 +273,69 @@ boolean NOT NULL` (ADR-0012 d3; set by people, D 2.1); `is_variant_option boolea
 `(market_id, definition_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 definition_id, id)`; unique `(market_id, relaxation_request_id)`: a request is used once; NULL unless
 this revision clears `material`); CHECK `NOT is_variant_option OR` the root's type is `select` cannot be expressed
-across tables: aggregate (5). `created_at`.
+across tables: aggregate (5). Attributes A2 adds the display settings: `help_text jsonb NOT NULL
+DEFAULT '{}'` (locale → help text; CHECK an object; length and plain text are the domain's);
+`show_on_product_page`, `searchable`, `can_be_filter boolean NOT NULL`; `internal_note text` (admin
+only, never claim-checked, never in history; CHECK 1 to 1,000 characters); `position smallint NOT
+NULL DEFAULT 0` (CHECK `>= 0`). `created_at`.
 
 `attribute_definition_revision_options` (insert-only): PK `(market_id, revision_id, option_code)`;
 `labels jsonb`; `active boolean` (an option is deactivated, never deleted, D 2.1); `position
-smallint`.
+smallint`; `merged_into text` (attributes A2 column, used by A8: the value this one was merged
+into; CHECK code format and not its own code; self-FK `(market_id, revision_id, merged_into)` →
+`(market_id, revision_id, option_code)`, `RESTRICT`, so the target is a value of the same
+revision).
 
 `attribute_families` (root): `id`; `code` unique per Market; `status`; `published_revision_id`;
 `created_by_kind`; `version`; `created_at`. `attribute_family_revisions` (insert-only): `id`;
-`family_id`; `revision_no`; `groups jsonb` (array of `{ groupCode, attributes: [{ code, required,
-isVariantOption }] }`), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
+`family_id`; `revision_no`; `names jsonb` (the feature set's name per locale, `{}` for the seeded
+family; attributes A4, `jsonb_typeof = 'object'`); `groups jsonb` (array of `{ groupCode, names?,
+attributes: [{ code, required, isVariantOption, level? }] }`; `level` is `required`, `recommended`
+or `optional` and `required` is true exactly for the first, both written by the editor of attributes
+A4; the Core group `core` comes first and holds the brand and the country of origin), `author_kind`, `author_account_id`, `relaxation_request_id` (same-family FK
 `(market_id, family_id, relaxation_request_id)` → `attribute_relaxation_requests (market_id,
 family_id, id)`; unique per Market), `created_at`.
+
+`category_attribute_links` (root, attributes A4, categories C8): `(market_id, category_id)` primary
+key (one link per platform category, FK `RESTRICT`); `published_revision_id` (same-category FK to
+the revision); `version`; `created_at`. `category_attribute_link_revisions` (insert-only, the
+`reject_mutation` triggers): `id`; `category_id`; `revision_no` unique per category; `family_id`
+(nullable, FK to `attribute_families`; null means the category takes its parent's feature set);
+`filters jsonb` (array of attribute codes in the order buyers see them, at most 20, CHECK
+`jsonb_typeof = 'array'`); `author_account_id`; `created_at` (the revision's own time). The use case
+resolves inheritance (the nearest category up the tree that holds a feature set; the filters of
+every category from the root down, a code once) and checks that each filter is an active,
+filterable definition; the table stores only what an admin set. Two rules stay in the
+application, not the database: a link may only be written for an `active` category and an `active`
+feature set (`categoryStatus` and the feature-set read), and a filter code has no foreign key. A
+definition archived or switched off as a filter after the save therefore leaves a code in the saved
+list; the read (`category-attribute-links.get`) drops such codes from what buyers get and keeps them
+in the category's own list until an admin saves again. The `names` and `groups` documents of a family
+revision and the `filters` of a link are bounded by the use case (counts and text lengths), the
+database only checks their JSON type and, for `filters`, the count. Grants: `SELECT, INSERT` on both,
+`UPDATE (published_revision_id, version)` on the root.
+
+**Products missing required details (attributes plan A4, decision ت۷).** A feature set can gain a
+required attribute after products were approved under it. Those products stay on sale; the report
+`catalog.products-missing-details-list` (admin, `catalog.attribute.view`) finds them without a new
+table or SQL beyond one keyset read of published products by id (`PrismaProductDetailsGapReader`):
+the use case judges each product's published `attribute_values` against the current published
+schema of its `family_code` with the same `validateAttributeValues` a submit uses, and keeps the
+`attribute.required` issues. One call reads at most 2000 products and returns `nextAfterId`; a
+feature set that cannot be read (unknown, archived, naming a missing attribute) is named in the
+answer and its products are not judged. The next submit of such a product is refused by that same
+rule (`attribute.required`).
 
 **Two-person backstop triggers (Hassan M2; slice 21; SQL in 5.1; measured).** All `SECURITY
 INVOKER`, fixed `search_path`, schema-qualified, through one helper
 `catalog.relaxation_confirmed(market, request, definition, kind)` (a `STABLE` SQL function, no grant):
 - `attribute_definition_revisions_relaxation` (`BEFORE INSERT`): when the definition's current
   revision has `material = true` and the new one `false`, `relaxation_request_id` must name a
-  `confirmed` `clear-material` request of this definition (`23514`); any other revision with a
-  request id is refused.
+  `confirmed` `clear-material` request of this definition, and `author_account_id` must be its
+  confirmer (`23514`); any other revision with a request id is refused. A definition still in
+  `draft` is exempt (never shown to sellers); `attribute_definitions_guard` keeps a definition
+  from moving back into `draft` or out of `archived`, and its published pointer from moving to an
+  older revision, so the exemption cannot be reused (A2 reviews, 2026-11-02).
 - `attribute_definitions_archive_relaxation` (`BEFORE UPDATE OF status, archived_by_request_id`):
   `active → archived` of a definition whose current revision is `material` needs
   `archived_by_request_id` naming a `confirmed` `archive` request of this definition (`23514`);
@@ -341,7 +413,12 @@ revisions, A14).
 
 PK `(market_id, revision_id, category_id)`; FK to `product_revisions`; FK `(market_id, category_id)` →
 `platform_categories` (a revision names only platform categories of its Market, never a shelf: AC 11);
-`position smallint` (order as entered). Insert-only. CHECK "≥ 1 per revision" is cross-row: aggregate.
+`position smallint` (order as entered); `is_primary boolean` NOT NULL default `false` (C2): the revision's
+primary category, **partial unique `product_revision_categories_market_id_revision_id_primary_key`
+`(market_id, revision_id) WHERE is_primary`** (at most one; "exactly one" and "at most 3 categories"
+are domain rules, C5). The migration marked the lowest-position row of every existing revision, with the
+insert-only guard switched off and on again inside it; new revisions mark their first category until C5
+lets the admin choose. Insert-only. CHECK "≥ 1 per revision" is cross-row: aggregate.
 
 **Index `(market_id, category_id, revision_id)`**: the category re-ask and the impact count (A9,
 A10), joined to `products` by the published-revision partial unique. Old revisions stay in it (about
@@ -416,7 +493,7 @@ Position 1 is the primary image. Index `(market_id, image_id)` for "which revisi
 | `attestation_recorded_at`, `attestation_account_id` | `timestamptz(6)`, `uuid` | yes | Both or neither (CHECK). Written only by `own-offer.record-attestation` (D 2.1, B1) |
 | `shelf_category_id` | `uuid` | yes | Slice 23. FK `(market_id, shelf_category_id, seller_id)` → `seller_categories (market_id, id, seller_id)`: **the shelf belongs to the Offer's seller** (CE4; AC 35; measured) |
 | `status` | `text` | no | CHECK `draft`, `pending-first-publish`, `changes-needed`, `published`, `deleted` |
-| `off_sale_type_not_allowed`, `off_sale_product_retired`, `off_sale_product_not_listed`, `off_sale_tag_suspended`, `off_sale_description_claim_text` | `boolean` | no | The stored causes (D 2.3 M-5, 6.4). Booleans, not an array: each is a plain column in Prisma, a CHECK and an index predicate can name it, and adding a cause later is an `ADD COLUMN` plus a CHECK swap (8.2) |
+| `off_sale_type_not_allowed`, `off_sale_product_retired`, `off_sale_product_paused`, `off_sale_product_not_listed`, `off_sale_tag_suspended`, `off_sale_description_claim_text` | `boolean` | no | The stored causes (D 2.3 M-5, 6.4). Booleans, not an array: each is a plain column in Prisma, a CHECK and an index predicate can name it, and adding a cause later is an `ADD COLUMN` plus a CHECK swap (8.2) |
 | `listed` | `boolean` | no | **CHECK `offers_listed_check`: `listed = (status = 'published' AND NOT (<any cause>))`** (measured). Stored so a partial index and one-row reads can use it; it cannot disagree with the causes. The domain rule also needs "product published" (D 4.4): held by the transitions (5) |
 | `submitted_at` | `timestamptz(6)` | yes | Last submit for review; queue sort. CHECK `status <> 'pending-first-publish' OR submitted_at IS NOT NULL` |
 | `first_published_at` | `timestamptz(6)` | yes | |
@@ -781,7 +858,7 @@ slice 25 after `platform/ai` part 1.
 `^catalog\.[a-z0-9-]+\.v[1-9][0-9]*$`; `inbox_handler_check` `^catalog\.[a-z0-9-]+$`; unique
 `(market_id, aggregate_id, aggregate_version)`; claim index `(market_id, event_id) WHERE published_at
 IS NULL`). Aggregate types: `product`, `offer`, `platform-category`, `attribute-definition`,
-`attribute-family`, `seller-category`, `category-proposal`, `product-image`, `import-job`. Payloads ids,
+`attribute-family`, `seller-category`, `category-proposal`, `product-image`, `import-job`, `platform-import`. Payloads ids,
 codes, booleans (D 9.4). A unit writing n events for one aggregate raises its `version` by n, one version
 per event in a fixed order; the unique key above is unchanged (Q-K3).
 
@@ -791,7 +868,7 @@ module's rate-counter key, fixed window, `count >= 0`, reserve before the work, 
 `draft-save.account.day`, `claim-text-check.account.minute`, `claim-text-check.account.day` (30 and
 1,000, Hassan L6; D 17.1 item 8), `submit.seller.hour`, `photo-upload.seller.day`,
 `search.account.minute`, `import-start.seller.day`, `ai-suggest.seller.day`,
-`reviewer-mail.market.hour`. The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
+`reviewer-mail.market.hour`, `platform-import-check.account.hour`, `platform-import-check.account.day`, `platform-import-start.account.day` (domain 14a). The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
 limits are request validation: **no storage**.
 
 ### 3.27 `offer_owner_notices` (certification slice 15; request C-6; Hassan M1, Mojtaba N2)
@@ -812,6 +889,163 @@ own unit. No address is stored; it is read from `identity` at send time.
 - Grants `SELECT, INSERT, UPDATE (state, outcome, attempts, next_attempt_at, settled_at)`; no DELETE
   until a purge of settled rows lands (as 3.18).
 - Migration `20261018220000_catalog_offer_owner_notices`, with `down.sql`.
+
+### 3.28 `saved_filters` (Catalogue > Products saved views; domain 9.2d)
+
+A named saved view of an admin list: the tab, search, filters and sort, for one admin (`me`) or for
+every admin of the Market who can see the list (`everyone`). Catalog owns the table because the
+first list is the product list; `list_key` (`admin.catalog.products` today) lets another admin list
+keep its views here without a migration (the application holds the list of known keys and each
+list's document vocabulary). It is a preference, so a delete is physical and there is no history;
+only filters shared with everyone are audited (domain 9.2d). The platform has no per-user
+preference store to reuse (the command palette's pins and recents live in the browser), and a
+filter shared with a whole Market needs a server-side home, so this is a new table.
+
+- Columns: `id` (uuid, PK), `market_id`, `tenant_id`, `owner_account_id` (an identity account id,
+  no foreign key: no cross-module reference), `visibility` (`me`, `everyone`), `list_key`, `name`,
+  `payload` (jsonb), `position` (>= 1, per owner and list, set at insert), `created_at`,
+  `updated_at` (>= `created_at`).
+- CHECKs: Market and tenant code shapes; `visibility`; `list_key` is a dotted lower-case key of
+  at most 64 characters; `name` is trimmed, 1 to 60 characters, no control character; `payload` is a
+  JSON object of at most 2 KB. The payload's keys are **not** a CHECK: the application validates
+  them on write against the list's closed document (`v`, `view`, optional `q`, `filters`, `sort`,
+  `direction` for the product list) and reads them back through the same validation, so a document
+  the vocabulary no longer accepts is left out of the list rather than served.
+- Unique `(market_id, id)` (the Prisma target). Unique expression indexes, both case-insensitive:
+  `saved_filters_owner_name_key (market_id, list_key, owner_account_id, lower(name))` (one name per
+  owner and list, whatever the visibility; also the access path of "my filters") and
+  `saved_filters_shared_name_key (market_id, list_key, lower(name)) WHERE visibility = 'everyone'`
+  (the tabs of a list never repeat a shared name; also the access path of "the shared filters"). Two
+  admins may keep the same private name.
+- Caps are the application's, under `SERIALIZABLE` (the invariant spans rows, P 3.1 row 6): 50
+  filters per owner and list, 20 shared with everyone per list and Market. Counts are over this
+  table with the Market in `where`; both are well under one index page.
+- Read path: `WHERE market_id = $1 AND list_key = $2 AND (owner_account_id = $3 OR visibility =
+  'everyone')`, at most 140 rows, one statement per list read. The Prisma `OR` is two index
+  ranges (the two uniques above).
+- Grants as in section 7: no column grant on `payload`, `owner_account_id`, `list_key`,
+  `position` or `market_id`; a different view is a new filter.
+- Retention: none; a filter lives until its owner (or a holder of the share key, for a shared one)
+  deletes it. An admin account's erasure leaves the id in the owner column (an identity id, not
+  personal data on its own); a sweep of filters owned by erased accounts is open (14, O8).
+- Migration `20261031110000_catalog_saved_filters` (reviewed by Mojtaba, 2026-10-31: signed off), with `down.sql`. A new,
+  empty table; no lock beyond `CREATE TABLE`.
+
+### 3.29 `platform_import_jobs`, `platform_import_rows` (admin Import products; domain 14a)
+
+The job of an admin's CSV import of PLATFORM products and one result per data row of its file.
+Migration `20261031120000_catalog_platform_import`, with `down.sql` (reviewed by Mojtaba, 2026-10-31; his B2 and
+naming findings are applied below). `platform_import_rows.product_id` has **no foreign key** to
+`products`, although both tables are in this schema: it is deliberate, because a draft product delete
+(10.1) would otherwise conflict with the `platform_import_rows_added_check` of a row that remembers it,
+and a row is a record of what the run did, not a reference to keep alive.
+
+A running import stops when the admin who started it changes their own password or signs out elsewhere,
+even though that admin's current session is kept: `identity.accounts.sessions_invalidated_at` (identity.md
+3.x) is then later than the session's start, and `resumeAdmin` refuses the job's next step. This fails
+closed and is intended; the admin starts the import again (Mojtaba S2; test in
+`admin-job-identity-resolver.bulk.spec.ts`).
+
+- `platform_import_jobs`: `id`, `market_id`, `tenant_id`, `started_by_account_id`,
+  `started_by_session_id` (the identity the run resumes; no credential), `state` (`checked`,
+  `queued`, `running`, `finished`, `stopped`, `discarded`), `format` (`csv`, `xlsx`), `file_label`
+  (1 to 80 characters, cleaned by code, no control character), `file_key` (built from the Market and
+  the id; object storage, ADR-0016: **the file is never in the database**), `file_sha256` (32 bytes;
+  the run checks it before reading), `file_bytes` (1 to 10,485,760), `file_deleted_at`, `total_rows`
+  (1 to 5,000), `ready_rows`, `error_rows`, `warning_rows` (`ready + error = total`),
+  `ignored_columns` (jsonb: header and a certification flag), `start_as`, `skip_errors`, `to_import`
+  (set together at the confirm), `added_rows`, `failed_rows`, `stop_reason` (`rate-limited`,
+  `access-lost`, `pause-failed`, `file-missing`, `unexpected`; set exactly when `stopped`), `not_before`,
+  `lease_until` (CHECK `(state = 'running') = (lease_until IS NOT NULL)`; `not_before` only on a `queued` job: CHECK `not_before IS NULL OR state = 'queued'`), `version`, `created_at`, `checked_at`, `started_at`,
+  `finished_at` (set exactly when `finished` or `discarded`).
+- `platform_import_rows`: PK `(market_id, job_id, row_number)` (row 2 to 5,002), `tenant_id`,
+  `check_state` (`ready`, `error`), `issues` (jsonb, at most 12: severity, column, code, the cell
+  shortened and cleaned), `summary` (jsonb: title, category, type, brand), `run_state` (`pending`,
+  `added`, `failed`, `skipped`), `run_code`, `product_id`, `product_code` (set at the moment the
+  product exists, so a retry never creates a second one). Composite FK to the job, `ON DELETE
+  CASCADE`.
+- Indexes: unique `(market_id, id)`; `platform_import_jobs_market_id_account_created_at_idx
+  (market_id, started_by_account_id, created_at DESC)` (the admin's latest job); the partial unique
+  `platform_import_jobs_market_id_account_running_key (market_id, started_by_account_id) WHERE
+  state IN ('queued','running')` (one running import per admin; the twin of
+  `import_jobs_market_id_seller_id_running_key`); `platform_import_jobs_market_id_queue_idx` (the
+  run's claim order, partial on `queued`/`running`); `platform_import_jobs_market_id_file_purge_idx`
+  (partial, `WHERE file_deleted_at IS NULL`). The run reads the `pending` rows by the rows' primary key (a
+  range of at most 5,000 rows), so no partial index of `pending` rows exists.
+- Grants (app role): `SELECT, INSERT, DELETE` on both; `UPDATE` only on the columns the flows change
+  (job: state, choice, counts, stop reason, schedule, lease, version, timestamps, file deletion; rows:
+  run state, code, product). Nothing else. No `TRUNCATE`.
+- Growth and retention (Mojtaba B2). A 5,000-row job is about 2.4 MB (499 bytes a row, measured; an
+  error-heavy file with 12 issues a row is several times that). Retention depends on the state:
+  - **Discarded** (the admin discarded the check, a new upload replaced it, or its file went
+    unconfirmed for 7 days): the job and its rows are deleted **as soon as the file is gone**, at
+    discard or by the purge job at the latest. They are never read again.
+  - **Finished and stopped**: the file 7 days after the check; the job and its rows 90 days after
+    creation (the report stays available that long).
+  - The purge works in units of **5 jobs** (at most 25,000 rows in one transaction), looped within a
+    time budget of 30 seconds a run (hourly), so a backlog never becomes one long transaction.
+  - A **daily cap** of 100 checks an account (`platform-import-check.account.day`, on top of 20 an
+    hour) bounds the churn and the parser work of one account. Each new check discards the admin's
+    previous unconfirmed one, which is then deleted at once, so an admin holds at most one
+    unconfirmed check at a time. What stays is the confirmed work: 10 starts a day (14a), so at
+    most 900 finished or stopped jobs per admin over the 90 days (about 2 GB at 5,000 full rows
+    each), and only for admins who really run imports. The earlier worst case (480 discarded jobs a
+    day kept 90 days, about 100 GB) no longer exists.
+- `rate_counters` kinds `platform-import-check.account.hour`, `platform-import-check.account.day`
+  and `platform-import-start.account.day` join the CHECK; `down.sql` deletes those counter rows
+  before restoring the old CHECK.
+- Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
+
+### 3.30 `attribute_value_suggestions` (attributes package A5)
+
+One row per seller's request for a value that a select or multi-select attribute does not offer.
+Born `open` at version 1; an admin moves it once to `approved` (the value was added to the
+attribute as its next revision; `option_code` names it), `mapped` (an existing value was chosen;
+`option_code`) or `rejected` (`reject_reason`, the words the seller reads). Then one mail tells the
+seller: the `notice_*` columns are the send marker of that one notice (`none` while open, then
+`pending`, then `sent`, `skipped` or `failed`), so a failed send is tried again without touching
+the decision. Not insert-only: only the decision and the notice marker change (guard trigger).
+Nothing is deleted. The audit rows are `catalog.attribute-value-suggestion.suggested` and
+`.decided` (ids and the outcome only: never the seller's text, the labels or the reason); an
+approval also writes `catalog.attribute-definition.revised`.
+
+`(market_id, id)` primary key; `tenant_id`; `definition_id` with `(market_id, definition_id)` →
+`attribute_definitions`; `seller_id` (a Seller of `sellers`, no FK across modules); `product_id`
+with `(market_id, product_id)` → `products`; `label` (the seller's own text in the Market's default
+locale, 1 to 120 characters, trimmed, no control character; shown to admins only); `status`;
+`option_code`; `reject_reason` (1 to 300 characters); `decided_by_account_id` (an `identity`
+account, no FK) and `decided_at`; `notice_state`, `notice_attempts` (0 to 10),
+`notice_next_attempt_at`; `version`; `created_at`.
+
+- CHECKs: the Market and tenant formats; the label and reason shapes; the status and notice
+  vocabularies; **decision shape** (`open` has no decision; `approved` and `mapped` name a value
+  and the deciding admin and time; `rejected` gives a reason and the admin and time); an open
+  suggestion has `notice_state = 'none'` and a decided one does not; only a `pending` notice has
+  `notice_next_attempt_at`; `version >= 1`.
+- **Partial unique** `attribute_value_suggestions_open_product_definition_key`
+  `(market_id, product_id, definition_id) WHERE status = 'open'`: one waiting suggestion per field
+  of a product (the seller's second request is `suggestion.already-open`).
+- Indexes: `(market_id, status, created_at, id)` for the admin queue; `(market_id, seller_id,
+  status)` for the per-seller cap (10 open); `(market_id, product_id)` for the product read and the
+  submit gate; the partial `attribute_value_suggestions_notice_due_idx`
+  `(market_id, notice_next_attempt_at, id) WHERE notice_state = 'pending'` for the notice job.
+- Guard trigger `attribute_value_suggestions_guard()` (`BEFORE INSERT OR UPDATE OR DELETE`): a
+  delete is refused; an insert is `open` at version 1 with no attempts and a `created_at` within
+  five minutes of the statement; the identity columns and the label never change; the version
+  rises by one; out of `open` the move is a decision whose notice starts `pending` and whose
+  `decided_at` is within five minutes of the statement; a decided row never changes its decision;
+  only a `pending` notice moves, and its attempts never go down. A no-truncate trigger
+  (`reject_mutation`) refuses `TRUNCATE`.
+- Grants: `SELECT`, `INSERT`, and `UPDATE` on `status`, `option_code`, `reject_reason`,
+  `decided_by_account_id`, `decided_at`, `notice_state`, `notice_attempts`,
+  `notice_next_attempt_at`, `version` only.
+- Writes are conditional updates at the version read (`StaleAggregateError` when another admin
+  decided first); the notice job's marker is one conditional update out of `pending`.
+- A product with an open suggestion keeps the field empty. `FreezeRevision` reads
+  `openAttributeCodesOfProduct` and, for a required field that is empty because of it, reports
+  `attribute.suggestion-pending` instead of `attribute.required`.
+- Reversible: `pnpm db:check-reversible` passes (`down.sql` drops the trigger functions and the
+  table).
 
 ## 4. What is never stored
 
@@ -938,6 +1172,11 @@ BEGIN
   RETURN NEW;
 END; $$;
 
+-- As built (migration 20261102200000, after the A2 reviews) the guard above also runs on INSERT
+-- (a new row is open at version 1), the revision trigger below also requires author_account_id =
+-- the confirmer and skips a draft, attribute_definitions_guard refuses moves into draft, out of
+-- archived and of the published pointer backwards, and relaxation_confirmed() is executable by
+-- mondapac_app only. The migration is the reference for those bodies.
 -- 3.5 (Hassan M2): helper and the definition-revision trigger; the archive and family triggers follow
 -- the same shape (family: EXCEPT of the codes of the current and the new `groups`, joined to
 -- definitions by (market_id, code) and to their current revision, `WHERE material`)
@@ -1105,17 +1344,20 @@ No sequence; no function gets a grant.
 |---|---|---|---|
 | `outbox` | `SELECT, INSERT`, `UPDATE (published_at)` | Never | PM2 |
 | `inbox` | `SELECT, INSERT` | Prune job | PM4 |
-| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
+| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
 | `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | Never (the guard refuses it for every role) | M-1 |
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |
-| `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version)` | Never | Slug, creator kind immutable; never deleted |
+| `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version, position, show_in_menu, image_id, seo_title, seo_description, seo_noindex)` | Never | Slug (until Change URL name is built), creator kind immutable; never deleted |
 | `attribute_definitions`, `attribute_families` | `SELECT, INSERT`, `UPDATE (status, published_revision_id, version)`; definitions also `archived_by_request_id` (slice 21) | Never: "delete" means archive (Q-K6) | Code, type, localizable immutable |
 | `product_working_copies` | `SELECT, INSERT, UPDATE, DELETE` | 4 (discard and prune, 10.1) | |
 | `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | Never (a discarded draft's Offer becomes `deleted`) | `seller_id` never changes (PRC 2.3) |
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
 | `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at)` | Purge (10.3) | |
 | `offer_owner_notices` | `SELECT, INSERT`, `UPDATE (state, outcome, attempts, next_attempt_at, settled_at)` | Purge (open) | Certification slice 15 (3.27) |
+| `saved_filters` | `SELECT, INSERT`, `UPDATE (visibility, name, updated_at)` | The application (a filter is a preference, not a record to keep) | Saved filters (3.28); the document, owner, list and position never change after the insert |
+| `platform_import_jobs` | `SELECT, INSERT, DELETE`, `UPDATE (state, file_deleted_at, start_as, skip_errors, to_import, added_rows, failed_rows, stop_reason, not_before, lease_until, version, started_at, finished_at)` | Purge (10.3, 10.4): discarded jobs at once, finished and stopped after 90 days | Admin import (3.29); the owner, file, counts of the check and the creation time never change |
+| `platform_import_rows` | `SELECT, INSERT, DELETE`, `UPDATE (run_state, run_code, product_id, product_code)` | With the job (cascade) | Admin import (3.29); the check result never changes |
 | `product_images` | `SELECT, INSERT, DELETE`, `UPDATE (state, refusal_code, raw_object_key, master_object_key, master_sha256, media_type, pixel_width, pixel_height, taken_down_at, taken_down_by_account_id, takedown_reason_code, version)` | 13 (draft images of a discarded draft; master retention); the delete guard limits it to `received`, `scanning`, `clean`, `refused` | Hassan L3 |
 | `claim_text_rescans` | `SELECT, INSERT, UPDATE` | Never | |
 | `seller_categories`, `category_proposals` | `SELECT, INSERT, UPDATE` | Never | |
@@ -1125,6 +1367,7 @@ No sequence; no function gets a grant.
 | `import_jobs` | `SELECT, INSERT, UPDATE` | 24 (retention) | |
 | `ai_listing_suggestions` | `SELECT, INSERT, DELETE` | 25 | Purged with the draft |
 | `rate_counters` | `SELECT, INSERT, UPDATE, DELETE` | 4 | Counters |
+| `platform_category_revision_texts`, `platform_category_slug_history` | `SELECT, INSERT` | Never | Categories C2; insert-only (CA3) |
 | Every table of the 5.1 insert-only list | `SELECT, INSERT` | Never | CA3 |
 
 **`test:db` assertions** (CE-data 8, Hassan L-a): for each insert-only table, on the application
@@ -1172,7 +1415,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 10 | 12 | `catalog_tag_selection` | Three selection indexes and the reconciliation index of 3.15 (issuer and type-code indexes with their handlers); request `cause`, `subject_id`; F1 |
 | 11 | 13 | `catalog_images` | `product_images` (raw-key and master-prefix CHECKs, raw-key partial index, delete guard, column-level `UPDATE` grant), renditions, `product_revision_images`; `products.photo_taken_down_at` |
 | 12 | 18 | `catalog_claim_text_rescan` | `claim_text_rescans`; `products.claim_text_flagged_at` |
-| 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the two FK-target uniques, the status index, the open partial unique and the guard trigger; `attribute_definitions.archived_by_request_id` with its FK, unique and CHECK; the same-definition and same-family FKs from the revisions' `relaxation_request_id` and their uniques (`NOT VALID`, then `VALIDATE`); `relaxation_confirmed()` and the three M2 triggers. `down.sql`: drop the M2 triggers and functions, the FKs, uniques and the root column, then the guard trigger, its function and the table |
+| 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the two FK-target uniques, the status index, the open partial unique and the guard trigger; `attribute_definitions.archived_by_request_id` with its FK, unique and CHECK; the same-definition and same-family FKs from the revisions' `relaxation_request_id` and their uniques (`NOT VALID`, then `VALIDATE`); `relaxation_confirmed()` and the three M2 triggers. `down.sql`: drop the M2 triggers and functions, the FKs, uniques and the root column, then the guard trigger, its function and the table. **Built in part (2026-11-02, attributes A2 part 3, `20261102200000_catalog_attribute_relaxation`):** the table with every CHECK, the definition FK-target unique, the status index, the open partial unique, the guard and TRUNCATE triggers, the revisions' same-definition FK and its unique, `relaxation_confirmed()` and the definition-revision M2 trigger (a draft clears `material` freely; the clearing revision's author must be the confirmer). After the A2 reviews (Mojtaba M1 and M2, Hassan M1 to M3): the guard also runs on INSERT and admits only an `open` row at version 1; `attribute_definitions_guard` refuses any status move into `draft` or out of `archived` and any move of `published_revision_id` to a lower `revision_no` or to NULL. The status index is named `attribute_relaxation_requests_market_id_status_expires_at_idx`. `archived_by_request_id`, the same-family FK-target unique and FK, and the archive and family M2 triggers come with the use cases that archive a published definition and change a family's members |
 | 14 | 22 | `catalog_url_keys` | `product_url_keys` (Q-K9) |
 | 15 | 23 | `catalog_seller_categories` | The tables of 3.22; `offers.shelf_category_id` and its FK (`NOT VALID`, `VALIDATE`) |
 | 16 | 24 | `catalog_import` | 3.24 |
@@ -1293,7 +1536,9 @@ holds rows in a deployed environment is `CREATE INDEX CONCURRENTLY`, alone in it
 an environment holds products by then. Adding an off-sale cause later: `ADD COLUMN … boolean` (nullable),
 backfill `false` in batches by a worker job, then `SET NOT NULL` through the CHECK route of SL-data
 9.3, then swap `offers_listed_check` (`DROP` and `ADD … NOT VALID`, `VALIDATE`) in one file.
-Backfills never run inside a migration.
+Backfills never run inside a migration, with one bounded exception: while no environment is deployed
+and the tables hold only seed rows, a small backfill, a `SET NOT NULL` scan and a CHECK without `NOT VALID`
+may run in the file. The categories C2 migration is that case (six seed rows); it states so in its header.
 
 ### 8.3 `down.sql` and reversibility
 
@@ -1328,7 +1573,10 @@ Backfills never run inside a migration.
   `product_images_market_id_created_at_raw_idx`, `attribute_relaxation_requests_open_definition_key`,
   `category_proposals_market_id_seller_id_pending_idx`,
   `category_proposals_market_id_created_at_pending_idx`, `import_jobs_market_id_seller_id_running_key`,
-  `product_url_keys_market_id_product_id_held_key`, `outbox_market_id_event_id_unpublished_idx`.
+  `saved_filters_shared_name_key` (3.28), `platform_import_jobs_market_id_account_running_key`,
+  `platform_import_jobs_market_id_queue_idx`, `platform_import_jobs_market_id_file_purge_idx` (3.29),
+  `product_url_keys_market_id_product_id_held_key`, `outbox_market_id_event_id_unpublished_idx`,
+  `product_revision_categories_market_id_revision_id_primary_key` (C2).
 - Every partial-index predicate is a literal in the SQL Prisma sends as a parameter; the plans hold
   under unnamed statements (platform.md 10.9). This design relies on that section.
 
@@ -1392,6 +1640,8 @@ delete and the sweep both fail.
 | `inbox` | Platform prune job |
 | Revisions, decisions, histories | Kept (ADR-0009 d7: published revisions kept; VER-06 references them) |
 | Abandoned drafts | `catalog.prune-abandoned-drafts`, 180 days (10.1, 10.4) |
+| Platform import files | `catalog.purge-platform-imports`: 7 days after the check (a discarded job's file at once; never while queued or running) |
+| Platform import jobs and rows | Same job: a discarded or unconfirmed check as soon as its file is gone; finished and stopped jobs 90 days after creation. Units of 5 jobs, looped within 30 s (3.29) |
 
 ### 10.4 Jobs
 
@@ -1404,6 +1654,7 @@ delete and the sweep both fail.
 | `catalog.sweep-raw-uploads` | 15 min, per hosted Market | `2649158803317752041` | 10.2: stuck intake and unconfirmed raw deletes |
 | `catalog.purge-expired` | Hourly | `1158342076693420958` | 10.3 |
 | `catalog.prune-abandoned-drafts` | Daily, per hosted Market | `8836021957413306627` | A22, 10.1: one product per unit, keyset by `(last_saved_at, product_id)` |
+| `catalog.purge-platform-imports` | Hourly, per hosted Market | `-5101961643104699775` (`jobLockKey`) | 10.3, 3.29: files by retention, discarded checks at once, finished and stopped jobs after 90 days; units of 5 jobs within a 30 s budget |
 | `catalog.expire-relaxation-requests` | 15 min, per hosted Market | `5307714682290153049` | A21: each `open` row past `expires_at` → `expired` in its own unit (expected `version`), audit and `catalog.material-request-expired.v1` |
 
 None equals Prisma Migrate's `72707369` or a key of identity, sellers or certification (a test
@@ -1537,6 +1788,7 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | O4 | The rate-counter key (HKDF split as SL-data 4.4) | Kazem, Hassan |
 | O6 | Closed: Q-K15 confirmed in D 2.1 (Mohammad, 2026-10-07) | — |
 | O7 | Storage lifecycle rule expiring the intake prefix within 24 h, required by ADR-0029 (Proposed 2026-10-07, decision 3): the backstop if both the delete and the sweep of 10.2 fail (Hassan M3) | Ali (ADR-0029), Kazem |
+| O8 | A sweep of saved filters owned by erased admin accounts (3.28): the table keeps an identity id only, which is not personal data alone; the sweep joins the erasure job when identity publishes the event it needs | Mojtaba, Hossein |
 
 ## 15. Follow-up changes
 
@@ -1548,4 +1800,5 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | `docs/adr/0029-*` (Proposed 2026-10-07) | Storage lifecycle rule: the intake prefix expires within 24 h (Hassan M3, O7) | With ADR-0029 |
 | `docs/design/domain/catalog.md` | Done: Q-K15 confirmed in D 2.1 (Mohammad); Q-K8 ruled (Ali) | Before slice 1 |
 | `catalog.product_images`, `product_image_renditions`, `product_revision_images` (migration `20261014120000_catalog_product_images`; slice 13, PR #288) | Simplified media path: one row per uploaded photo plus three JPEG renditions (thumb, medium, large) whose bytes live in the `ObjectStore` port (`platform/storage`, local disk stand-in, key `<productId>/<imageId>/<size>`). Images are insert-only into revisions and only `clean` ones may join (trigger). Limits: 8 per product, 4 MiB upload (raw 5800kb body parser on that one route), 24 MP, sides 200 to 12000 px. Takedown (`20261017100000_catalog_image_takedown`): `clean` to `taken-down` only (trigger `product_images_state_guard`), column-level `UPDATE` on the state and the three takedown columns, key `catalog.product.approve` (not `.delete`, undeclared), event `catalog.image-taken-down.v1`; the clean-image trigger locks the photo `FOR SHARE`. Orphan sweep `catalog.sweep-orphan-images` (hourly, 48 h grace, skips photos a draft names). Not built: S3 adapter, scanner, sweep of files without a row (the `ObjectStore` port cannot list), `photoTakenDownAt` flag | Done in PR #288; handoff `catalog-media.md` |
+| Categories C2 (migration `20261103100000_catalog_category_management_model`; plan v7) | Data model of the category editor: `position` (unique per sibling, deferrable), `hidden` status, `show_in_menu`, `image_id`, SEO columns; revision kinds and `reason`; `platform_category_revision_texts` (name, short description, keywords per locale; names copied by backfill and trigger); `platform_category_slug_history` with the 12-month trigger; `product_revision_categories.is_primary` with its partial unique index. Backfills run in the file (nothing deployed, six seed rows): 8.2 forbids that only for large tables. Market config `catalog.maxCategoryDepth` (AU 4, ZZ 3, schema range 3 to 4). Use cases and UI follow in C3 on; test `catalog-category-model.db-spec.ts` | Done in the C2 PR; Mojtaba, Hassan (grants) |
 | Public photo reads (storefront images package; no migration) | Two read-only readers over the slice 13 tables, `PrismaPublishedImagesReader`: the public photos of a published product's `published_revision_id` (revision rows by `position`, joined to the photo's state in one statement, `clean` only, at most 8 per product) and one rendition key of such a photo. Every statement is scoped by `market_id` and the revision's own `product_id`. Uses the existing grants and indexes (`product_revision_images` primary key and `(market_id, revision_id, position)`); no new index needed at this size | Done; `test/db/catalog-published-images.db-spec.ts` |

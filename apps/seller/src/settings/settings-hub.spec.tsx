@@ -2,7 +2,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import messages from '../../messages/en.json';
-import { SettingsHub } from './settings-hub.tsx';
+import { SettingsHub } from '@mondapac/ui';
 import { visibleSettings } from './settings-nav.ts';
 import { SettingsSubNav } from './settings-sub-nav.tsx';
 

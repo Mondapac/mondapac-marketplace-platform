@@ -6,6 +6,9 @@ export const PRODUCT_REVISION_SUBMITTED = 'admin.product-revision-submitted';
 export const SELLER_FILE_SUBMITTED = 'admin.seller-file-submitted';
 export const PRICE_HOLD_OPENED = 'admin.price-hold-opened';
 export const DELIVERY_FALLBACK_OVER_CAP = 'admin.delivery-fallback-over-cap';
+export const PLATFORM_IMPORT_FINISHED = 'admin.platform-import-finished';
+export const REVIEW_HELD = 'admin.review-held';
+export const REVIEW_REPORTED = 'admin.review-reported';
 
 /** Every admin kind asks for a review, so every one plays the sound when it is switched on. */
 export const RINGING_KINDS: ReadonlySet<string> = new Set([
@@ -14,6 +17,9 @@ export const RINGING_KINDS: ReadonlySet<string> = new Set([
   SELLER_FILE_SUBMITTED,
   PRICE_HOLD_OPENED,
   DELIVERY_FALLBACK_OVER_CAP,
+  PLATFORM_IMPORT_FINISHED,
+  REVIEW_HELD,
+  REVIEW_REPORTED,
 ]);
 
 /**
@@ -26,6 +32,8 @@ export const NOTICES_PERMISSIONS: readonly string[] = [
   'sellers.seller-file.review',
   'pricing.price-hold.decide',
   'shipping.delivery-settings.view',
+  'catalog.platform-import.run',
+  'reviews.moderation.queue',
 ];
 
 /** Whether the admin holds a permission behind at least one notice kind (shows the bell). */
@@ -49,6 +57,11 @@ export interface AdminNoticeParams {
   readonly direction?: 'up' | 'down';
   /** admin.delivery-fallback-over-cap (sellerId above too). */
   readonly sellerOrderId?: string;
+  /** admin.platform-import-finished. */
+  readonly importId?: string;
+  readonly outcome?: 'completed' | 'stopped';
+  /** admin.review-held and admin.review-reported (the report adds nothing else). */
+  readonly reviewId?: string;
 }
 
 export interface AdminNotice {

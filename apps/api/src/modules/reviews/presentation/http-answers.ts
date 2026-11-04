@@ -11,15 +11,20 @@ export const REVIEWS_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'reviews.not-eligible': 403,
   'reviews.own-store': 403,
+  'reviews.own-review': 403,
   'reviews.disabled': 404,
   'reviews.not-found': 404,
   'reviews.window-closed': 409,
   'reviews.already-reviewed': 409,
+  'reviews.already-replied': 409,
   'reviews.already-rated': 409,
   'reviews.not-editable': 409,
   'reviews.edit-window-closed': 409,
+  'reviews.not-moderatable': 409,
   'reviews.rate-limited': 429,
   'reviews.unavailable': 503,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
