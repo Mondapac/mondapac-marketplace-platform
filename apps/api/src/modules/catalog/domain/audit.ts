@@ -310,7 +310,6 @@ export const PlatformCategoryDiscardedAudit = defineAuditAction({
   after: { status: categoryEditStatus },
 });
 
-
 /** The audit target type of a seller's value suggestion (attributes plan, package A5). */
 export const CATALOG_ATTRIBUTE_SUGGESTION_TARGET = 'catalog.attribute-value-suggestion';
 
