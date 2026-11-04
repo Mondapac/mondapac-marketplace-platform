@@ -9,6 +9,11 @@ import {
 import type { AttributeRelaxationRequest } from '../../src/modules/catalog/domain/attribute-relaxation-request';
 import type { ClaimTermLocales } from '../../src/modules/catalog/application/ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../../src/modules/catalog/application/ports/claim-text-matcher';
+import {
+  FeatureSetCodeTakenError,
+  type FeatureSetStore,
+} from '../../src/modules/catalog/application/ports/feature-set.store';
+import type { AttributeFamily } from '../../src/modules/catalog/domain/attribute-family';
 import type { AttributeDefinition } from '../../src/modules/catalog/domain/attribute-definition';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 
@@ -86,6 +91,54 @@ export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore 
       this.raceNext = false;
       throw new StaleAggregateError('attribute-definition', definition.state.id);
     }
+  }
+}
+
+/** Feature sets in memory, per Market, with the same version rule as the SQL store. */
+export class MemoryFeatureSetStore implements FeatureSetStore {
+  readonly rows = new Map<string, AttributeFamily>();
+  readonly authors: { revisionId: string; author: string }[] = [];
+  /** Set to make the next write lose a race. */
+  raceNext = false;
+
+  reset(): void {
+    this.rows.clear();
+    this.authors.length = 0;
+    this.raceNext = false;
+  }
+
+  findById(market: MarketContext, id: Id<'AttributeFamily'>) {
+    const row = this.rows.get(id);
+    return Promise.resolve(row?.state.marketId === market.marketId ? row : null);
+  }
+
+  codeTaken(market: MarketContext, code: string) {
+    return Promise.resolve(
+      [...this.rows.values()].some(
+        (row) => row.state.marketId === market.marketId && row.state.code === code,
+      ),
+    );
+  }
+
+  addNew(_m: MarketContext, family: AttributeFamily, author: Id<'Account'>) {
+    if (this.raceNext) {
+      this.raceNext = false;
+      return Promise.reject(new FeatureSetCodeTakenError());
+    }
+    this.rows.set(family.state.id, family);
+    this.authors.push({ revisionId: family.state.revisionId, author });
+    return Promise.resolve();
+  }
+
+  saveRevision(_m: MarketContext, family: AttributeFamily, author: Id<'Account'>) {
+    const stored = this.rows.get(family.state.id);
+    if (this.raceNext || stored?.state.version !== family.state.version - 1) {
+      this.raceNext = false;
+      throw new StaleAggregateError('attribute-family', family.state.id);
+    }
+    this.authors.push({ revisionId: family.state.revisionId, author });
+    this.rows.set(family.state.id, family);
+    return Promise.resolve();
   }
 }
 
