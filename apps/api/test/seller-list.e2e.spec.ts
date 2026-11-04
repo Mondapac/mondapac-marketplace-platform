@@ -468,11 +468,22 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
 
       const items = (listed.body as { items: { sellerId: string; health: unknown }[] }).items;
       expect(items.map((item) => [item.sellerId, item.health])).toEqual([
-        [sellerId(1), { day: '2026-10-09', kind: 'scored', band: 'unhealthy', score: 20 }],
+        [
+          sellerId(1),
+          {
+            day: '2026-10-09',
+            kind: 'scored',
+            band: 'unhealthy',
+            score: 20,
+            lowestMetric: 'late-ready',
+          },
+        ],
         [sellerId(2), null],
       ]);
+      expect((listed.body as { healthUnavailable: boolean }).healthUnavailable).toBe(false);
       expect(health.calls).toBe(2);
       expect(degraded.status).toBe(200);
+      expect((degraded.body as { healthUnavailable: boolean }).healthUnavailable).toBe(true);
       expect(
         (degraded.body as { items: { health: unknown }[] }).items.map((i) => i.health),
       ).toEqual([null, null]);

@@ -80,10 +80,6 @@ export class SellerListOwnerView {
   email!: string;
 }
 
-/**
- * One row of the admin list: clear fields of the seller file, no business data; the owner only
- * for a caller holding identity.seller-access.view.
- */
 export class SellerListHealthView {
   @ApiProperty({ description: 'The local date of the snapshot (YYYY-MM-DD).' })
   day!: string;
@@ -99,8 +95,20 @@ export class SellerListHealthView {
 
   @ApiProperty({ type: Number, nullable: true, description: '0 to 100; null unless `scored`.' })
   score!: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The metric that set the score (show it next to the number); null unless `scored`.',
+  })
+  lowestMetric!: string | null;
 }
 
+/**
+ * One row of the admin list: clear fields of the seller file, no business data; the owner only
+ * for a caller holding identity.seller-access.view.
+ */
 export class SellerListRowView {
   @ApiProperty({ description: 'The seller id (UUID v7).' })
   sellerId!: string;
@@ -255,4 +263,11 @@ export class SellerListBody {
       'page of a file tab, and when the caller does not also hold identity.seller-access.view.',
   })
   stateCounts!: SellerListStateCounts | null;
+
+  @ApiProperty({
+    description:
+      "True when the health of this page could not be loaded: every row's `health` is then null " +
+      'because of the failure, not because the seller is unmeasured.',
+  })
+  healthUnavailable!: boolean;
 }

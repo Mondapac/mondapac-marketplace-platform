@@ -589,24 +589,37 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         kind: 'scored',
         band: 'at-risk',
         score: 55,
+        lowestMetric: 'late-ready',
       });
       expect(byId.get(second.sellerId)?.health).toBeNull();
+      expect(result.ok && result.value.healthUnavailable).toBe(false);
       expect(t.health.asked).toHaveLength(1);
       expect(t.health.asked[0]).toMatchObject({ from: '2026-10-06', to: '2026-10-09' });
       expect(new Set(t.health.asked[0]!.ids)).toEqual(new Set([first.sellerId, second.sellerId]));
     });
 
-    it('still lists, with an empty column, when the health store cannot answer', async () => {
+    it('still lists, says the health is unavailable, and logs the failure without personal data', async () => {
       const t = setUp();
-      t.repository.add(code, row({ pending: pendingOf(1), storeName: 'A' }));
+      const listed = row({ pending: pendingOf(1), storeName: 'Canary Store Narwhal' });
+      t.repository.add(code, listed);
       t.health.failing = true;
-      const warn = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
       const result = await t.useCase.execute(admin(), {});
 
       expect(result.ok && result.value.items.map((item) => item.health)).toEqual([null]);
-      expect(warn).toHaveBeenCalled();
-      warn.mockRestore();
+      expect(result.ok && result.value.healthUnavailable).toBe(true);
+      const failures = logged.filter((line) => line.includes('sellers.list.health-failed'));
+      expect(failures).toHaveLength(1);
+      const entry = JSON.parse(failures[0]!) as Record<string, unknown>;
+      expect(entry).toMatchObject({
+        msg: 'sellers.list.health-failed',
+        error: 'Error',
+        marketId: code,
+      });
+      // The error name only: no message, no store name, no seller id.
+      expect(failures[0]).not.toContain('health down');
+      expect(failures[0]).not.toContain('Narwhal');
+      expect(failures[0]).not.toContain(listed.sellerId);
     });
 
     it('does not read health for an empty page', async () => {
