@@ -137,6 +137,12 @@ function offsetRequest(
       : null;
   const page = whole(input.page, MAX_PAGED_ROWS);
   if (page === null) fields.push({ path: 'page', code: 'range' });
+  // A page number and a cursor (or a limit) are two ways to say where to start.
+  for (const path of ['cursor', 'limit'] as const) {
+    if (input[path] !== undefined && !fields.some((field) => field.path === path)) {
+      fields.push({ path, code: 'with-page' });
+    }
+  }
   let pageSize = DEFAULT_PAGE_SIZE;
   if (input.pageSize !== undefined) {
     const given = whole(input.pageSize, MAX_PAGE_SIZE);
