@@ -213,6 +213,11 @@ import {
   type AttributeAdminReader,
 } from '../application/ports/attribute-admin.reader';
 import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
+import {
+  PRODUCT_DETAILS_GAP_READER,
+  type ProductDetailsGapReader,
+} from '../application/ports/product-details-gap.reader';
+import { PrismaProductDetailsGapReader } from './prisma-product-details-gap.reader';
 import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
 import {
   BUSINESS_ACTIVITY_REPOSITORY,
@@ -315,6 +320,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeAdminReader =>
       new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: PRODUCT_DETAILS_GAP_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductDetailsGapReader =>
+      new PrismaProductDetailsGapReader(prisma),
   },
   {
     provide: BUSINESS_ACTIVITY_REPOSITORY,

@@ -452,3 +452,32 @@ export class CategoryLinksSetBody {
 export class CategoryLinksSetWrapBody {
   @ApiProperty({ type: CategoryLinksSetBody }) links!: CategoryLinksSetBody;
 }
+
+export class MissingDetailsItemBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty() productCode!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The name in the default locale.' })
+  name!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'Null for a PLATFORM product.',
+  })
+  sellerId!: string | null;
+  @ApiProperty() featureSetCode!: string;
+  @ApiProperty({ type: [String], description: 'Codes of the required attributes with no value.' })
+  missing!: string[];
+}
+
+export class MissingDetailsListBody {
+  @ApiProperty({ type: [MissingDetailsItemBody] }) items!: MissingDetailsItemBody[];
+  @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next call.' })
+  nextAfterId!: string | null;
+  @ApiProperty({ description: 'Published products this call read.' }) scanned!: number;
+  @ApiProperty({
+    type: [String],
+    description: 'Feature sets that could not be read; their products are not judged.',
+  })
+  unreadableFeatureSets!: string[];
+}

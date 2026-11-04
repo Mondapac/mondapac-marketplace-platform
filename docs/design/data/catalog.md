@@ -315,6 +315,17 @@ revision and the `filters` of a link are bounded by the use case (counts and tex
 database only checks their JSON type and, for `filters`, the count. Grants: `SELECT, INSERT` on both,
 `UPDATE (published_revision_id, version)` on the root.
 
+**Products missing required details (attributes plan A4, decision ت۷).** A feature set can gain a
+required attribute after products were approved under it. Those products stay on sale; the report
+`catalog.products-missing-details-list` (admin, `catalog.attribute.view`) finds them without a new
+table or SQL beyond one keyset read of published products by id (`PrismaProductDetailsGapReader`):
+the use case judges each product's published `attribute_values` against the current published
+schema of its `family_code` with the same `validateAttributeValues` a submit uses, and keeps the
+`attribute.required` issues. One call reads at most 2000 products and returns `nextAfterId`; a
+feature set that cannot be read (unknown, archived, naming a missing attribute) is named in the
+answer and its products are not judged. The next submit of such a product is refused by that same
+rule (`attribute.required`).
+
 **Two-person backstop triggers (Hassan M2; slice 21; SQL in 5.1; measured).** All `SECURITY
 INVOKER`, fixed `search_path`, schema-qualified, through one helper
 `catalog.relaxation_confirmed(market, request, definition, kind)` (a `STABLE` SQL function, no grant):
