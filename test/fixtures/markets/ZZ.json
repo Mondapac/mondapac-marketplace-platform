@@ -340,6 +340,7 @@
       "variantRemoved": false
     },
     "maxVariantsPerProduct": 3,
+    "maxCategoryDepth": 3,
     "maxVariantAttributes": 3,
     "units": [
       { "code": "g", "labels": { "ja-JP": "g" } },

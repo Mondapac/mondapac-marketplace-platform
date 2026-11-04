@@ -1195,6 +1195,13 @@ const catalogSchema = z
      */
     maxVariantsPerProduct: z.number().int().min(1).max(100),
     /**
+     * The deepest level of the platform category tree (categories plan v7, Q1): 4 levels are
+     * department, group, category and subcategory; products sit on levels 3 and 4, so a Market
+     * that allows fewer than 3 cannot hold products. Required, no default; a value outside 3 to 4
+     * stops the start-up with the rest of the Market file. The editor reads it, never a literal.
+     */
+    maxCategoryDepth: z.number().int().min(3).max(4),
+    /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the
      * product type's variant check. Required: a Market never defaults it.
