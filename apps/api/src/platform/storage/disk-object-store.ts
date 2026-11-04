@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { assertObjectKey, ObjectStoreUnavailableError, type ObjectStore } from './object-store';
+import {
+  assertObjectKey,
+  isValidObjectKey,
+  ObjectStoreUnavailableError,
+  type ObjectStore,
+} from './object-store';
 
 /**
  * The local object store: one file per key under a root directory. It is the stand-in for the
@@ -39,6 +44,27 @@ export class DiskObjectStore implements ObjectStore {
     }
   }
 
+  /** Every stored key, for the disk-to-S3 migration. Skips temporary files and stray names. */
+  async keys(): Promise<string[]> {
+    const found: string[] = [];
+    const walk = async (relative: string[]): Promise<void> => {
+      let entries;
+      try {
+        entries = await readdir(path.join(this.root, ...relative), { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw new ObjectStoreUnavailableError();
+      }
+      for (const entry of entries) {
+        const next = [...relative, entry.name];
+        if (entry.isDirectory()) await walk(next);
+        else if (entry.isFile() && isValidObjectKey(next.join('/'))) found.push(next.join('/'));
+      }
+    };
+    await walk([]);
+    return found.sort();
+  }
+
   async delete(key: string): Promise<void> {
     const target = this.#pathOf(key);
     try {
@@ -62,20 +88,20 @@ export class UnconfiguredObjectStore implements ObjectStore {
   }
 }
 
-/** Test double: objects kept in memory. */
+/** Test double: objects kept in memory. A bad key rejects the promise, as the other adapters do. */
 export class MemoryObjectStore implements ObjectStore {
   readonly objects = new Map<string, Buffer>();
   put(key: string, bytes: Buffer): Promise<void> {
-    assertObjectKey(key);
+    if (!isValidObjectKey(key)) return Promise.reject(new Error('invalid object key'));
     this.objects.set(key, Buffer.from(bytes));
     return Promise.resolve();
   }
   get(key: string): Promise<Buffer | null> {
-    assertObjectKey(key);
+    if (!isValidObjectKey(key)) return Promise.reject(new Error('invalid object key'));
     return Promise.resolve(this.objects.get(key) ?? null);
   }
   delete(key: string): Promise<void> {
-    assertObjectKey(key);
+    if (!isValidObjectKey(key)) return Promise.reject(new Error('invalid object key'));
     this.objects.delete(key);
     return Promise.resolve();
   }
