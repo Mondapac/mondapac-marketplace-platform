@@ -9,12 +9,14 @@ export {
   ORDERING_SELLER_ORDER_MARK_READY,
   ORDERING_SELLER_ORDER_VIEW,
 } from './permissions';
-export { ORDERING_EVENTS, OrderPaid, OrderShipped } from '../domain/events';
+export { ORDERING_EVENTS, OrderPaid, OrderShipped, SellerOrderDelivered } from '../domain/events';
 export {
   MAX_DELIVERED_SELLER_ORDERS,
   ORDERING_FACADE,
   type DeliveredSellerOrder,
   type DeliveredSellerOrdersFailure,
+  type SellerOrderHealthCount,
+  type SellerOrderHealthCountsFailure,
   type OrderNotice,
   type OrderNoticeFailure,
   type OwnOpenObligations,

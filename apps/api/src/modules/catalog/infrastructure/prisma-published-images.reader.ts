@@ -26,6 +26,7 @@ export class PrismaPublishedImagesReader implements PublishedImagesReader {
         marketId: market.marketId,
         id: { in: [...productIds] },
         status: 'published',
+        pausedAt: null,
         publishedRevisionId: { not: null },
       },
       select: { id: true, publishedRevisionId: true },
@@ -77,7 +78,7 @@ export class PrismaPublishedImagesReader implements PublishedImagesReader {
   ): Promise<string | null> {
     const tx = this.prisma.tx(market);
     const product = await tx.catalogProduct.findFirst({
-      where: { marketId: market.marketId, id: productId, status: 'published' },
+      where: { marketId: market.marketId, id: productId, status: 'published', pausedAt: null },
       select: { publishedRevisionId: true },
     });
     if (product === null || product.publishedRevisionId === null) return null;

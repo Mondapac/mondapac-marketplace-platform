@@ -26,6 +26,12 @@ const files = [
   ...readdirSync(path.join(src, 'disputes'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'disputes', name)),
+  ...readdirSync(path.join(src, 'reviews'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'reviews', name)),
+  ...readdirSync(path.join(src, 'payouts'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'payouts', name)),
   ...readdirSync(path.join(src, 'account-deletion'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'account-deletion', name)),
@@ -40,9 +46,14 @@ function calls(): { method: string; target: string }[] {
       const method = match[1]!;
       const template = (match[3] ?? '').split('?')[0]!;
       // `${kind}` is approve or reject; any other placeholder is an id.
+      // `${action}` is one of the five buyer-review moderation actions.
       const variants = template.includes('${kind}')
         ? ['approve', 'reject'].map((kind) => template.replace('${kind}', kind))
-        : [template];
+        : template.includes('${action}')
+          ? ['publish', 'hide', 'restore', 'remove', 'dismiss-reports'].map((action) =>
+              template.replace('${action}', action),
+            )
+          : [template];
       for (const variant of variants) {
         found.push({
           method,
@@ -54,7 +65,7 @@ function calls(): { method: string; target: string }[] {
   return found;
 }
 
-describe('every path the wallet, dispute, account deletion and step-up client code calls passes the relay allowlist', () => {
+describe('every path the wallet, dispute, review moderation, account deletion and step-up client code calls passes the relay allowlist', () => {
   const found = calls();
 
   it('finds the calls it is meant to check', () => {
@@ -69,8 +80,24 @@ describe('every path the wallet, dispute, account deletion and step-up client co
         'POST wallet/admin/credit-requests/:id/approve',
         'POST wallet/admin/credit-requests/:id/reject',
         'GET commission-payouts/admin/disputes',
+        'GET reviews/admin/moderation',
+        'GET reviews/admin/moderation/:id',
+        'POST reviews/admin/moderation/:id/publish',
+        'POST reviews/admin/moderation/:id/hide',
+        'POST reviews/admin/moderation/:id/restore',
+        'POST reviews/admin/moderation/:id/remove',
+        'POST reviews/admin/moderation/:id/dismiss-reports',
         'GET commission-payouts/admin/disputes/:id',
         'POST commission-payouts/admin/disputes/:id/seller-orders/:id/decision',
+        'GET commission-payouts/admin/payouts',
+        'GET commission-payouts/admin/payouts/:id',
+        'POST commission-payouts/admin/payouts/:id/approve',
+        'GET commission-payouts/admin/sellers/:id/payout-terms',
+        'PUT commission-payouts/admin/sellers/:id/payout-terms',
+        'DELETE commission-payouts/admin/sellers/:id/payout-terms',
+        'GET commission-payouts/admin/sellers/:id/payout-holds',
+        'POST commission-payouts/admin/sellers/:id/payout-holds',
+        'POST commission-payouts/admin/payout-holds/:id/release',
         'POST identity/admin/step-up/verify',
         'GET customers/admin/account-deletion-settings',
         'PUT customers/admin/account-deletion-settings',

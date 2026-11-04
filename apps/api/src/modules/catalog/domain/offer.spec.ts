@@ -580,6 +580,97 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
     if (!created.ok) throw new Error(created.error.code);
     expect(Object.isFrozen(created.value.state)).toBe(true);
   });
+
+  describe('changeCauses (the product pause, catalog design 4.1a, 4.4)', () => {
+    const later = T0.add({ hours: 3 });
+    const published = (overrides: Partial<OfferState> = {}) => {
+      const created = create();
+      if (!created.ok) throw new Error(created.error.code);
+      return Offer.restore({
+        ...created.value.state,
+        status: 'published',
+        listed: true,
+        offSaleCauses: [],
+        version: 5,
+        ...overrides,
+      });
+    };
+
+    it('adds product-paused: off sale, one history row, one listing event', () => {
+      const offer = published();
+
+      expect(offer.changeCauses({ add: ['product-paused'], now: later })).toBe(true);
+
+      expect(offer.state).toMatchObject({
+        offSaleCauses: ['product-paused'],
+        listed: false,
+        version: 6,
+      });
+      expect(offer.pendingHistory).toEqual({
+        changeKind: 'causes-changed',
+        changedFields: [],
+        occurredAt: later,
+      });
+      expect(offer.pendingEvents.map((event) => event.type)).toEqual([
+        'catalog.offer-listing-changed.v1',
+      ]);
+      expect(offer.pendingEvents[0]).toMatchObject({
+        aggregateId: offerId,
+        payload: { offerId, listed: false },
+      });
+    });
+
+    it('keeps the Offer off sale while another cause stands, and announces nothing', () => {
+      const offer = published({ offSaleCauses: ['tag-suspended'], listed: false });
+
+      expect(offer.changeCauses({ add: ['product-paused'], now: later })).toBe(true);
+      // Kept in the fixed order of OFF_SALE_CAUSES.
+      expect(offer.state.offSaleCauses).toEqual(
+        OFF_SALE_CAUSES.filter((cause) => cause === 'tag-suspended' || cause === 'product-paused'),
+      );
+      expect(offer.pendingEvents).toEqual([]);
+
+      expect(offer.changeCauses({ clear: ['product-paused'], now: later })).toBe(true);
+      expect(offer.state).toMatchObject({ offSaleCauses: ['tag-suspended'], listed: false });
+      expect(offer.pendingEvents).toEqual([]);
+    });
+
+    it('clears the last cause: back on sale with a listing event', () => {
+      const offer = published({ offSaleCauses: ['product-paused'], listed: false });
+
+      expect(offer.changeCauses({ clear: ['product-paused'], now: later })).toBe(true);
+
+      expect(offer.state).toMatchObject({ offSaleCauses: [], listed: true });
+      expect(offer.pendingEvents[0]).toMatchObject({ payload: { offerId, listed: true } });
+    });
+
+    it('changes nothing when the causes already are as asked', () => {
+      const offer = published({ offSaleCauses: ['product-paused'], listed: false });
+
+      expect(offer.changeCauses({ add: ['product-paused'], now: later })).toBe(false);
+      expect(published().changeCauses({ clear: ['product-paused'], now: later })).toBe(false);
+      expect(offer.state.version).toBe(5);
+      expect(offer.pendingEvents).toEqual([]);
+      expect(offer.pendingHistory).toBeNull();
+    });
+
+    it('leaves a deleted Offer alone', () => {
+      const offer = published({ status: 'deleted', listed: false });
+
+      expect(offer.changeCauses({ add: ['product-paused'], now: later })).toBe(false);
+      expect(offer.state.offSaleCauses).toEqual([]);
+    });
+
+    it('never lists a draft that has its cause cleared', () => {
+      const created = create();
+      if (!created.ok) throw new Error(created.error.code);
+      const draft = Offer.restore({ ...created.value.state, offSaleCauses: ['product-paused'] });
+
+      draft.changeCauses({ clear: ['product-paused'], now: later });
+
+      expect(draft.state.listed).toBe(false);
+    });
+  });
 });
 
 describe('isListed (data design 3.13: listed = published and no cause)', () => {

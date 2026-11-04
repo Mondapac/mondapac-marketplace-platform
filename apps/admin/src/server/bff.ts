@@ -43,12 +43,47 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
     'commission-payouts/admin/disputes',
+    // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
+    // `limit`); one review is read by its dialog and again after an action.
+    'reviews/admin/moderation',
+    // The seller payouts (commission-payouts, package 6d), read-only list (query: `status`,
+    // `cursor`, `limit`); one payout is read by the page server and again by the approve dialog.
+    'commission-payouts/admin/payouts',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
+    // The service areas with their names (sellers, ADR-0041), read-only.
+    'sellers/admin/service-areas',
+    // The marketplace product list (catalog), read-only (query: `view`, `q`, the filters, `sort`,
+    // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
+    'catalog/admin/products',
+    'catalog/categories',
+    // The export of the product list as a file (catalog): the chosen ids or the list's own query.
+    'catalog/admin/products/export',
+    // Import products (catalog): the CSV and XLSX templates and the admin's current import.
+    'catalog/admin/platform-imports/template',
+    'catalog/admin/platform-imports/current',
+    // The saved views of the product list (catalog), read-only (query: `listKey`).
+    'catalog/admin/saved-filters',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
+    // queue. One brand is not read by the panel: the list rows carry the version a change needs.
+    'catalog/admin/brands',
+    'catalog/admin/brands/merge-queue',
+    // The category tree and one category with its path and history (catalog), read-only.
+    'catalog/admin/categories',
+    // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
+    'catalog/admin/business-activities',
+    // The attributes (catalog; query: `search`, `type`, `status`, `usedIn`, `missing`, `afterId`,
+    // `limit`) and the feature sets (attribute families), read only (attributes package A1).
+    'catalog/admin/attributes',
+    'catalog/admin/feature-sets',
+    // The value suggestions waiting for a decision (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions',
+    // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
+    'catalog/admin/attribute-relaxations',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -96,6 +131,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
+    // The names of one service area, set or restored (sellers, ADR-0041).
+    'sellers/admin/service-areas/names',
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
@@ -105,6 +142,21 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).
     'identity/admin/step-up/verify',
+    // A new brand (catalog), and keeping a group of the merge queue apart.
+    'catalog/admin/brands',
+    'catalog/admin/brands/merge-queue/dismiss',
+    // A new business activity (catalog).
+    'catalog/admin/business-activities',
+    // Add an attribute as a draft (catalog, attributes package A2).
+    'catalog/admin/attributes',
+    // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
+    // the chosen products (at most 200 ids) or the whole filter; the body is capped at 16 KB.
+    'catalog/admin/products/bulk',
+    // Import products (catalog): the checked file, as base64 in a JSON body (the one path with a
+    // larger body cap, see UPLOAD_PATH).
+    'catalog/admin/platform-imports',
+    // Save the product list's current view as a tab (catalog): a closed body, for me or everyone.
+    'catalog/admin/saved-filters',
   ]),
 };
 
@@ -114,6 +166,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // Start, resume or discard one checked import (catalog).
+    'catalog/admin/platform-imports/:id/start',
+    'catalog/admin/platform-imports/:id/resume',
+    'catalog/admin/platform-imports/:id/discard',
     'identity/admin/accounts/:id/disable',
     'identity/admin/accounts/:id/enable',
     'identity/admin/accounts/:id/role',
@@ -130,6 +186,23 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
+    // merge other brands into it.
+    'catalog/admin/brands/:id/approve',
+    'catalog/admin/brands/:id/archive',
+    'catalog/admin/brands/:id/merge',
+    // Publish or discard a draft attribute, with the version seen (catalog, attributes A2).
+    'catalog/admin/attributes/:id/publish',
+    'catalog/admin/attributes/:id/discard',
+    // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions/:id/approve',
+    'catalog/admin/attribute-suggestions/:id/map',
+    'catalog/admin/attribute-suggestions/:id/reject',
+    // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
+    // (catalog, attributes A2 part 3: two administrators).
+    'catalog/admin/attributes/:id/relaxation-requests',
+    'catalog/admin/attribute-relaxations/:id/confirm',
+    'catalog/admin/attribute-relaxations/:id/cancel',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
@@ -144,8 +217,21 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'wallet/admin/credit-requests/:id/reject',
     // Who bears a lost chargeback, per seller order (commission-payouts), behind a two-step code.
     'commission-payouts/admin/disputes/:id/seller-orders/:id/decision',
+    // Approve a seller payout that waits (commission-payouts), behind a two-step code; the body
+    // echoes the transfer amount the admin saw.
+    'commission-payouts/admin/payouts/:id/approve',
+    // Place a hold on a seller, and release one (commission-payouts), behind a two-step code.
+    'commission-payouts/admin/sellers/:id/payout-holds',
+    'commission-payouts/admin/payout-holds/:id/release',
     // Delete a buyer's account for them, from a support ticket (customers), behind a two-step code.
     'customers/admin/buyers/:id/deletion-requests',
+    // Publish, hide, restore or remove a buyer review, or dismiss its reports (reviews); all but
+    // the dismissal are behind a two-step code.
+    'reviews/admin/moderation/:id/publish',
+    'reviews/admin/moderation/:id/hide',
+    'reviews/admin/moderation/:id/restore',
+    'reviews/admin/moderation/:id/remove',
+    'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -156,17 +242,45 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
     'commission-payouts/admin/sellers/:id/commission-rate',
+    // The seller's own payout terms (commission-payouts), behind a two-step code.
+    'commission-payouts/admin/sellers/:id/payout-terms',
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
+    // The whole content of a brand, with the version seen (catalog).
+    'catalog/admin/brands/:id',
+    // The whole content of a business activity, with the version seen (catalog).
+    'catalog/admin/business-activities/:id',
+    // The whole content of an attribute, a new revision, with the version seen (attributes A2).
+    'catalog/admin/attributes/:id',
+    // A saved view's name and who can use it (catalog).
+    'catalog/admin/saved-filters/:id',
   ],
   DELETE: [
     'identity/admin/roles/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
+    // Back to the Market's payout terms; the version and reason code are in the query.
+    'commission-payouts/admin/sellers/:id/payout-terms',
     // Cancel a pending buyer deletion request (customers), behind a two-step code.
     'customers/admin/deletion-requests/:id',
+    // A saved view of the product list (catalog).
+    'catalog/admin/saved-filters/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // One category with its path and history, and the impact of a change on its subtree
+    // (catalog, read-only; the impact takes the `action`).
+    'catalog/admin/categories/:id',
+    'catalog/admin/categories/:id/impact',
+    // The primary photo of a listed product, thumbnail size only (catalog).
+    'catalog/admin/products/:id/images/:id/thumb',
+    // One import and its report CSV (catalog): the report takes the query `kind`.
+    'catalog/admin/platform-imports/:id',
+    'catalog/admin/platform-imports/:id/report',
+    // One business activity (catalog), read again after a conflict.
+    'catalog/admin/business-activities/:id',
+    // One attribute with its values, uses and history, and one feature set (catalog, package A1).
+    'catalog/admin/attributes/:id',
+    'catalog/admin/feature-sets/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -175,6 +289,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'wallet/admin/customers/:id',
     // One dispute case, read again after a decision (commission-payouts).
     'commission-payouts/admin/disputes/:id',
+    // One buyer review for the moderator dialog (reviews).
+    'reviews/admin/moderation/:id',
+    // One seller payout (commission-payouts), read by the approve dialog.
+    'commission-payouts/admin/payouts/:id',
+    // A seller's payout terms and holds (commission-payouts), read again after a change.
+    'commission-payouts/admin/sellers/:id/payout-terms',
+    'commission-payouts/admin/sellers/:id/payout-holds',
     // The delivery methods of a seller (shipping), read again after a conflict.
     'shipping/admin/sellers/:id/delivery-methods',
   ],
@@ -191,7 +312,38 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
+  'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
+  'catalog/admin/products': [
+    'view',
+    'q',
+    'scope',
+    'status',
+    'categoryId',
+    'typeCode',
+    'sellerId',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+  ],
+  'catalog/admin/saved-filters': ['listKey'],
+  'catalog/admin/products/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'q',
+    'scope',
+    'status',
+    'categoryId',
+    'typeCode',
+    'sellerId',
+  ],
+  'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
+  'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -201,16 +353,73 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
+  'reviews/admin/moderation': {
+    tab: /^(held|reported|actioned)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the submission, an underscore and the review id.
+    cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/,
+  },
   'commission-payouts/admin/disputes': {
     filter: /^(needs-response|decision-needed|under-review|won|closed)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the opening, a dot and the dispute id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
+  'catalog/admin/products': {
+    view: /^(active|all|inactive)$/,
+    scope: /^(PLATFORM|SELLER)$/,
+    status: /^(published|paused|unpublished|withdrawn|retired|matched)$/,
+    categoryId: UUID,
+    typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    sellerId: UUID,
+    sort: /^(name|updated|created)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'catalog/admin/products/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(code|offers|updated|type|scope|seller|created)(,(code|offers|updated|type|scope|seller|created)){0,6}$/,
+    // At most 200 product ids, the cap of the bulk action.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(active|all|inactive)$/,
+    scope: /^(PLATFORM|SELLER)$/,
+    status: /^(published|paused|unpublished|withdrawn|retired|matched)$/,
+    categoryId: UUID,
+    typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    sellerId: UUID,
+  },
+  'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
+  'commission-payouts/admin/payouts': {
+    status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
   'customers/admin/deletion-requests': {
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'catalog/admin/brands': {
+    status: /^(draft|active|archived)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/categories/:id/impact': { action: /^(move|merge|archive)$/ },
+  'catalog/admin/business-activities': {
+    status: /^(active|inactive)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/attributes': {
+    type: /^(text|long-text|integer|decimal|boolean|date|select|multi-select|measure)$/,
+    status: /^(draft|active|archived)$/,
+    usedIn: UUID,
+    missing: /^[a-z]{2,3}(-[A-Z][a-z]{3})?(-[A-Z]{2}|-[0-9]{3})?$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
   },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {
@@ -226,8 +435,22 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
+  'catalog/admin/platform-imports/:id/report': ['kind'],
+  'catalog/admin/categories/:id/impact': ['action'],
+};
+/** DELETE templates whose query crosses: the version seen and the closed reason code. */
+const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'commission-payouts/admin/sellers/:id/payout-terms': {
+    expectedVersion: /^[0-9]{1,9}$/,
+    reasonCode: /^(seller-request|risk-review|correction|policy)$/,
+  },
 };
 const QUERY_VALUE_MAX = 512;
+/** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
+const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
+  'catalog/admin/products/export:ids': 7400,
+  'catalog/admin/attributes:search': 120,
+};
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, target: string, requestUrl: string): string {
@@ -237,14 +460,25 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
     .split('/')
     .map((part) => (UUID.test(part) ? ':id' : part))
     .join('/');
-  const keys = method === 'GET' ? (QUERY_KEYS[target] ?? QUERY_KEYS_WITH_ID[template]) : undefined;
+  const deleteKeys = method === 'DELETE' ? DELETE_QUERY_KEYS_WITH_ID[template] : undefined;
+  const keys =
+    method === 'GET'
+      ? (QUERY_KEYS[target] ?? QUERY_KEYS_WITH_ID[template])
+      : deleteKeys === undefined
+        ? undefined
+        : Object.keys(deleteKeys);
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
-  const shapes = QUERY_SHAPES[target];
+  const shapes = deleteKeys ?? QUERY_SHAPES[target] ?? QUERY_SHAPES[template];
   const kept = new URLSearchParams();
   for (const key of keys) {
     const value = source.get(key);
-    if (value === null || value.length > QUERY_VALUE_MAX) continue;
+    if (
+      value === null ||
+      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX)
+    ) {
+      continue;
+    }
     if (shapes?.[key]?.test(value) !== false) kept.set(key, value);
   }
   const text = kept.toString();
@@ -277,7 +511,12 @@ const FORWARDED_REQUEST_HEADERS = [
 ] as const;
 
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
-const FORWARDED_RESPONSE_HEADERS = ['content-type', 'retry-after'] as const;
+const FORWARDED_RESPONSE_HEADERS = [
+  'content-type',
+  'retry-after',
+  // The product export (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
+  'content-disposition',
+] as const;
 
 /** The API issues the correlation id and returns it in this header (ADR-0034 decision 3). */
 const CORRELATION_HEADER = 'x-correlation-id';
@@ -287,6 +526,12 @@ export type RelayLog = (line: Record<string, string | number>) => void;
 const stdoutLog: RelayLog = (line) => console.log(JSON.stringify(line));
 
 const MAX_BODY_BYTES = 16 * 1024;
+/**
+ * The import upload carries a file of at most 10 MiB as base64 (about 14 MB). The API accepts
+ * 14500 kB for this one path and checks the real size itself; every other path keeps 16 KB.
+ */
+const UPLOAD_PATH = 'catalog/admin/platform-imports';
+const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
 
 /** Lower case, no trailing dot on the host name; the port stays. */
 export function normaliseHost(raw: string | null): string | null {
@@ -301,14 +546,30 @@ export function panelHostFor(config: PanelConfig, rawHost: string | null): Panel
   return host === null ? undefined : config.hosts.find((entry) => entry.host === host);
 }
 
+/**
+ * Set on every answer of the relay itself. The panel's `proxy.ts` does not run for `/api/` (its
+ * body buffer would cut a large upload), so the one header a file download needs, `nosniff`, is
+ * set here: a CSV or workbook from the API is never read as another type.
+ */
+const withSafetyHeaders = (headers: Record<string, string>): Record<string, string> => ({
+  ...headers,
+  'x-content-type-options': 'nosniff',
+});
+
 const jsonError = (status: number, code: string): Response =>
   new Response(JSON.stringify({ statusCode: status, code }), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: withSafetyHeaders({
+      'content-type': 'application/json',
+      'cache-control': 'no-store',
+    }),
   });
 
 const notFound = (): Response =>
-  new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
+  new Response(null, {
+    status: 404,
+    headers: withSafetyHeaders({ 'cache-control': 'no-store' }),
+  });
 
 /**
  * Headers for a request to the API: the allowlist plus the Market of the host, and, when this
@@ -384,12 +645,14 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
+  const bodyCap =
+    request.method === 'POST' && target === UPLOAD_PATH ? MAX_UPLOAD_BODY_BYTES : MAX_BODY_BYTES;
   const declared = Number(request.headers.get('content-length') ?? 0);
-  if (declared > MAX_BODY_BYTES) return jsonError(413, 'request.too-large');
+  if (declared > bodyCap) return jsonError(413, 'request.too-large');
   let body: string | undefined;
   if (request.method !== 'GET') {
     // Read the stream with a hard cap, so a chunked body without Content-Length is refused too.
-    const read = await readCapped(request, MAX_BODY_BYTES);
+    const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
   }
@@ -439,6 +702,7 @@ export async function relay(
   }
   // Session answers must never be cached; the API sets no-store itself, this is the default.
   headers.set('cache-control', upstream.headers.get('cache-control') ?? 'private, no-store');
+  headers.set('x-content-type-options', 'nosniff');
   for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);
   return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {
     status: upstream.status,

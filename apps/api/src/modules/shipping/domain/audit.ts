@@ -89,6 +89,7 @@ const SETTINGS_SHAPE = {
   sameDayCutoffMinutes: auditField.integer(),
   scheduledDaysAhead: auditField.integer(),
   scheduledWindowMinutes: auditField.integer(),
+  readyPrepMinutes: auditField.integer(),
   marginKind: auditField.enumOf(['none', 'percent', 'fixed'] as const),
   /** Basis points for `percent`, minor units for `fixed`, 0 for `none`. */
   marginValue: auditField.integer(),

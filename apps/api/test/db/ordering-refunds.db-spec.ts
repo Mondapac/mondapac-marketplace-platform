@@ -53,6 +53,7 @@ import {
   FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
+  FakeAttemptLimits,
   FakePickupVault,
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
@@ -172,6 +173,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       deliveryMethods: new AllowAllDeliveryMethods(),
       pickupCodes: new PrismaPickupCodeRepository(db.service),
       pickupVault: new FakePickupVault(),
+      attempts: new FakeAttemptLimits(),
     };
   });
 
@@ -229,6 +231,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           deliveryMethod: 'instant',
           deliveryWindow: null,
           readyAt: null,
+          readyPrepMinutes: null,
           deliveryAttention: null,
           deliveryQuote: null,
         },
@@ -989,6 +992,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           recordRefund: (context, facts) =>
             new RecordRefund(gate, ledgerDeps).execute(context, facts),
           recordSellerOrderDelivered: () => Promise.reject(new Error('not used')),
+          sellerLostDisputes: () => Promise.reject(new Error('not used')),
         },
       };
     });

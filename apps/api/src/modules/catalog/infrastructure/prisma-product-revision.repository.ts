@@ -93,6 +93,8 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         revisionId: revision.id,
         categoryId,
         position: index + 1,
+        // The first category is the primary one until the editor of C5 chooses.
+        isPrimary: index === 0,
       })),
     });
     await tx.catalogProductRevisionVariant.createMany({

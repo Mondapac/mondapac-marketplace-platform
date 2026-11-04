@@ -8,6 +8,7 @@ import {
   OfferTagRemoved,
   OfferTagRestored,
   OfferTagSuspended,
+  PlatformImportFinished,
   ProductImageTakenDown,
   ProductRevisionChangesRequested,
   ProductRevisionPublished,
@@ -31,6 +32,7 @@ import { DeliveryFallbackOverCap } from '../../../shipping';
 import { BusinessFileSubmitted } from '../../../sellers';
 import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+  ADMIN_PLATFORM_IMPORT_FINISHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
@@ -72,6 +74,7 @@ export const ADMIN_SELLER_FILE_NOTICE_SUBSCRIBER = 'notifications.admin-seller-f
 export const ADMIN_PRICE_HOLD_NOTICE_SUBSCRIBER = 'notifications.admin-price-hold-notice';
 export const ADMIN_DELIVERY_FALLBACK_NOTICE_SUBSCRIBER =
   'notifications.admin-delivery-fallback-notice';
+export const ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER = 'notifications.admin-platform-import-notice';
 
 /** The seller notice subscribers (package 4), one per event; each is an inbox handler. */
 export const SELLER_NOTICE_SUBSCRIBERS = {
@@ -119,6 +122,7 @@ export function inAppNoticeSubscriptions(
   const sellerFile = review(ADMIN_SELLER_FILE_NOTICE_SUBSCRIBER);
   const priceHold = review(ADMIN_PRICE_HOLD_NOTICE_SUBSCRIBER);
   const deliveryFallback = review(ADMIN_DELIVERY_FALLBACK_NOTICE_SUBSCRIBER);
+  const platformImport = review(ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER);
   const seller =
     (name: string) =>
     async (item: SellerNoticeItem, delivery: EventDelivery, context: CallContext) => {
@@ -474,6 +478,20 @@ export function inAppNoticeSubscriptions(
             kind: ADMIN_DELIVERY_FALLBACK_OVER_CAP,
             sellerOrderId: event.payload.sellerOrderId,
             sellerId: event.payload.sellerId,
+          },
+          delivery,
+          context,
+        ),
+    }),
+    subscription({
+      name: ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER,
+      event: PlatformImportFinished,
+      handle: (event, delivery, context) =>
+        platformImport(
+          {
+            kind: ADMIN_PLATFORM_IMPORT_FINISHED,
+            importId: event.payload.importId,
+            outcome: event.payload.outcome,
           },
           delivery,
           context,

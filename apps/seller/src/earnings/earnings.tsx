@@ -17,6 +17,8 @@ import { DisputedOrders } from '../disputes/disputed-orders.tsx';
 import type { OwnDispute } from '../disputes/types.ts';
 import { shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
+import { PayoutSections } from './payout-sections.tsx';
+import type { PayoutsInitial } from './payout-types.ts';
 import type { Ledger, LedgerEntry, LedgerKind } from './types.ts';
 
 const PAGE = 20;
@@ -72,10 +74,13 @@ const shortId = (id: string): string => id.slice(-8).toUpperCase();
 export function Earnings({
   initial,
   disputes = [],
+  payouts,
 }: {
   readonly initial: Ledger;
   /** The orders a dispute holds now, listed in a card above the ledger. */
   readonly disputes?: readonly OwnDispute[];
+  /** The next payout, the money on hold and the payout history; absent shows none of them. */
+  readonly payouts?: PayoutsInitial;
 }) {
   const t = useTranslations('earnings');
   const locale = useLocale();
@@ -120,8 +125,22 @@ export function Earnings({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      <LedgerTotals items={totalItems(totals, t, money)} />
-      <DisputedOrders disputes={disputes} />
+      {payouts === undefined ? (
+        <>
+          <LedgerTotals items={totalItems(totals, t, money)} />
+          <DisputedOrders disputes={disputes} />
+        </>
+      ) : (
+        <PayoutSections
+          initial={payouts}
+          currency={currency}
+          balance={totals.balance}
+          disputes={disputes}
+        >
+          <LedgerTotals items={totalItems(totals, t, money)} />
+          <DisputedOrders disputes={disputes} />
+        </PayoutSections>
+      )}
       {/* An empty ledger is its own region: the empty state's heading stands for it. */}
       {rows.length === 0 ? null : <h2 className="text-lg font-semibold">{t('ledger')}</h2>}
       {rows.length === 0 ? (

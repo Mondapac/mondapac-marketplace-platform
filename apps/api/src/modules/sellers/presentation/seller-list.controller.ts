@@ -101,6 +101,7 @@ export class SellerListController {
     return {
       ...result.value,
       items: [...result.value.items],
+      areas: [...result.value.areas],
     };
   }
 }

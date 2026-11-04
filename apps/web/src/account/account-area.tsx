@@ -51,7 +51,7 @@ export function AccountArea({
 export function backTarget(path: string): AccountBack | null {
   // An order's page has its own back link to Orders.
   if (/^\/account\/orders\/[^/]+/.test(path)) return null;
-  if (/^\/account\/(orders|addresses|lists|settings)(\/|$)/.test(path))
+  if (/^\/account\/(orders|addresses|lists|settings|reviews)(\/|$)/.test(path))
     return { href: '/account', key: 'account' };
   return null;
 }

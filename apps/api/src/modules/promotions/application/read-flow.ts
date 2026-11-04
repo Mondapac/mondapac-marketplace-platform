@@ -1,6 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
-import { PROMOTION_STATUSES, type PromotionRecord } from '../domain/promotion';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { isCreditType, PROMOTION_STATUSES, type PromotionRecord } from '../domain/promotion';
 import { wasPriceEligible } from '../domain/was-price';
 import { adminAccountId, sellerCaller } from './caller';
 import type { PromotionsFailure } from './failures';
@@ -59,6 +59,35 @@ function filterOf(
   return ok(status === undefined ? { limit } : { status, limit });
 }
 
+/**
+ * The usage of the wallet-credit promotions comes from their credits, not from the discount
+ * counters: the money reserved or paid is the platform's spend, and a use is a rewarded referral
+ * or a credit. Called inside the read unit.
+ */
+async function usageWithCredits(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  records: readonly PromotionRecord[],
+  usage: ReadonlyMap<Id<'Promotion'>, UsageRecord>,
+): Promise<ReadonlyMap<Id<'Promotion'>, UsageRecord>> {
+  const merged = new Map(usage);
+  for (const record of records) {
+    if (!isCreditType(record.type)) continue;
+    const spent = await deps.credits.reservedTotal(context.market, record.id);
+    const uses =
+      record.type === 'REFERRAL'
+        ? await deps.referrals.countByPromotion(context.market, record.id, 'QUALIFIED')
+        : await deps.credits.countLive(context.market, record.id);
+    merged.set(record.id, {
+      usesCount: uses,
+      spentMinor: spent,
+      sellerShareMinor: 0n,
+      platformShareMinor: spent,
+    });
+  }
+  return merged;
+}
+
 async function listWith<V>(
   deps: PromotionsDependencies,
   context: CallContext,
@@ -74,9 +103,14 @@ async function listWith<V>(
     context.market,
     async () => {
       const records = await deps.promotions.list(context.market, { ...filter.value, ...scope });
-      const usage = await deps.promotions.usageOf(
-        context.market,
-        records.map((record) => record.id),
+      const usage = await usageWithCredits(
+        deps,
+        context,
+        records,
+        await deps.promotions.usageOf(
+          context.market,
+          records.map((record) => record.id),
+        ),
       );
       return ok(records.map((record) => view(record, usage.get(record.id))));
     },
@@ -131,7 +165,12 @@ export async function viewOne(
     async () => {
       const record = await deps.promotions.find(context.market, id.value);
       if (record === null) return err({ code: 'promotions.not-found' });
-      const usage = await deps.promotions.usageOf(context.market, [record.id]);
+      const usage = await usageWithCredits(
+        deps,
+        context,
+        [record],
+        await deps.promotions.usageOf(context.market, [record.id]),
+      );
       return ok(promotionViewOf(record, usage.get(record.id)));
     },
     { readOnly: true },
