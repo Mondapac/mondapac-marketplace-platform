@@ -1,0 +1,5 @@
+<resources>
+    <!-- Same values as apps/web/src/pwa/pwa-config.ts. Keep them in step. -->
+    <color name="theme_color">#0E5A57</color>
+    <color name="background_color">#FFFFFF</color>
+</resources>
