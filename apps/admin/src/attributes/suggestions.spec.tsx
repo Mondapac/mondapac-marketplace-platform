@@ -70,6 +70,7 @@ afterEach(() => cleanup());
 describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }) => {
   beforeEach(() => {
     vi.clearAllMocks();
+    call.mockReset();
   });
 
   it('shows the seller words as plain text and asks nothing without the decide key', async () => {
@@ -142,7 +143,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     expect(call.mock.calls[1]?.[2]).toEqual({ version: 3, reason: 'Not a flavour' });
   });
 
-  it('says so and reads the list again when someone decided it first', async () => {
+  it('tells the admin above the list, without a skeleton, when someone decided it first', async () => {
     call.mockResolvedValueOnce(ok(list(locales, required)));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
@@ -150,7 +151,58 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     call.mockResolvedValueOnce(fail(409, 'suggestion.stale'));
     call.mockResolvedValueOnce(ok({ ...list(locales, required), items: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Reject suggestion' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText(/Someone else already decided/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Nothing is waiting for you.')).toBeTruthy());
     expect(call.mock.calls[2]?.[0]).toBe('GET');
+  });
+
+  it('keeps the form open on a refusal that the admin can fix', async () => {
+    call.mockResolvedValueOnce(ok(list(locales, required)));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    for (const input of screen.getAllByRole('textbox')) {
+      fireEvent.change(input, { target: { value: 'Oat honey' } });
+    }
+    call.mockResolvedValueOnce(fail(422, 'attribute.claim-word'));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve value' }));
+    expect(await screen.findByText(/only a certificate can back/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approve value' })).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends a decision once on a double click', async () => {
+    call.mockResolvedValueOnce(ok(list(locales, required)));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
+    call.mockResolvedValueOnce(
+      ok({ suggestion: { id: id(1), status: 'rejected', version: 4, optionCode: null } }),
+    );
+    call.mockResolvedValue(ok({ ...list(locales, required), items: [] }));
+    const button = screen.getByRole('button', { name: 'Reject suggestion' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByText('Nothing is waiting for you.')).toBeTruthy());
+    expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(1);
+  });
+
+  it('shows a retry when the list cannot be read, and the denied text on a 403', async () => {
+    call.mockResolvedValueOnce(fail(500, 'unknown'));
+    mount();
+    expect(await screen.findByText('The suggestions could not be loaded.')).toBeTruthy();
+    call.mockResolvedValueOnce(ok(list(locales, required)));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('“<b>Oat</b> & honey”')).toBeTruthy();
+    cleanup();
+    call.mockResolvedValueOnce(fail(403, 'access.denied'));
+    mount();
+    expect(await screen.findByText(/You cannot decide value suggestions/)).toBeTruthy();
+  });
+
+  it('moves focus into the form it opens', async () => {
+    call.mockResolvedValueOnce(ok(list(locales, required)));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox')));
   });
 });

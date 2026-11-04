@@ -13,7 +13,7 @@ import {
   toast,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
 import {
@@ -43,7 +43,12 @@ const BY_CODE: Readonly<Record<string, { key: string; reload: boolean }>> = {
   'suggestion.not-open': { key: 'stale', reload: true },
   'suggestion.not-found': { key: 'stale', reload: true },
   'suggestion.attribute-unavailable': { key: 'attribute-unavailable', reload: true },
-  'suggestion.value-exists': { key: 'value-exists', reload: false },
+  'suggestion.attribute-protected': { key: 'attribute-unavailable', reload: true },
+  'suggestion.label-invalid': { key: 'invalid', reload: false },
+  'attribute-definition.not-published': { key: 'attribute-unavailable', reload: true },
+  'attribute-definition.archived': { key: 'attribute-unavailable', reload: true },
+  'attribute-definition.option-repeated': { key: 'value-exists', reload: false },
+  'attribute.claim-word': { key: 'claim', reload: false },
   'suggestion.option-invalid': { key: 'option-invalid', reload: true },
   'suggestion.reason-invalid': { key: 'invalid', reload: false },
   'access.denied': { key: 'denied', reload: false },
@@ -54,8 +59,6 @@ const BY_CODE: Readonly<Record<string, { key: string; reload: boolean }>> = {
 function problemOf(failure: ApiFailure): { key: string; reload: boolean } {
   const known = BY_CODE[failure.code];
   if (known !== undefined) return known;
-  // A claim-word refusal of a label names its own code family; anything unknown is shown plainly.
-  if (failure.code.startsWith('claim.')) return { key: 'claim', reload: false };
   return {
     key: failure.status === 0 || failure.status >= 500 ? 'unavailable' : 'unknown',
     reload: false,
@@ -79,8 +82,11 @@ export function SuggestionsTab({
   const tl = useTranslations('load');
   const [load, setLoad] = useState<Load>(canDecide ? { state: 'loading' } : { state: 'denied' });
 
-  const fetchList = useCallback(async () => {
-    setLoad({ state: 'loading' });
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // The first read shows the skeleton; a later read keeps the list on screen and replaces it in place.
+  const fetchList = useCallback(async (quiet = false) => {
+    if (!quiet) setLoad({ state: 'loading' });
     const result = await callApi<SuggestionList>('GET', API_SUGGESTIONS);
     if (result.ok) {
       setLoad({ state: 'ready', value: result.body });
@@ -90,6 +96,7 @@ export function SuggestionsTab({
       window.location.assign('/session-ended');
       return;
     }
+    if (quiet) return;
     setLoad({ state: result.failure.status === 403 ? 'denied' : 'failed' });
   }, []);
 
@@ -111,24 +118,41 @@ export function SuggestionsTab({
     );
   }
   const { items, requiredLocales, locales } = load.value;
+  const banner =
+    notice === null ? null : (
+      <div role="alert">
+        <Banner tone="info">{t(`error.${notice}`)}</Banner>
+      </div>
+    );
   if (items.length === 0) {
-    return <EmptyState size="card" icon="inbox" title={t('empty')} body={t('empty-body')} />;
+    return (
+      <div className="flex flex-col gap-4">
+        {banner}
+        <EmptyState size="card" icon="inbox" title={t('empty')} body={t('empty-body')} />
+      </div>
+    );
   }
   return (
-    <ul className="flex flex-col gap-4" aria-label={t('list-label')}>
-      {items.map((item) => (
-        <li key={`${item.id}:${item.version}`}>
-          <SuggestionCard
-            item={item}
-            requiredLocales={requiredLocales}
-            defaultLocale={locales.default}
-            supported={locales.supported}
-            csrfToken={csrfToken}
-            onSettled={() => void fetchList()}
-          />
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-4">
+      {banner}
+      <ul className="flex flex-col gap-4" aria-label={t('list-label')}>
+        {items.map((item) => (
+          <li key={`${item.id}:${item.version}`}>
+            <SuggestionCard
+              item={item}
+              requiredLocales={requiredLocales}
+              defaultLocale={locales.default}
+              supported={locales.supported}
+              csrfToken={csrfToken}
+              onSettled={(why) => {
+                setNotice(why ?? null);
+                void fetchList(true);
+              }}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -147,14 +171,18 @@ function SuggestionCard({
   readonly defaultLocale: string;
   readonly supported: readonly string[];
   readonly csrfToken: string;
-  readonly onSettled: () => void;
+  /** The list is read again; `why` is an error key to tell the admin, after a refused decision. */
+  readonly onSettled: (why?: string) => void;
 }) {
   const t = useTranslations('attributes.suggestions');
+  const busy = useRef(false);
+  const card = useRef<HTMLElement>(null);
+  const opened = useRef(false);
   const [mode, setMode] = useState<Mode>('none');
   const [labels, setLabels] = useState<Record<string, string>>({ [defaultLocale]: item.label });
   const [optionCode, setOptionCode] = useState('');
   const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; reload: boolean } | null>(null);
 
   const attributeName = textIn(
@@ -166,8 +194,9 @@ function SuggestionCard({
   const locales = requiredLocales.length === 0 ? [defaultLocale] : requiredLocales;
 
   async function decide(action: Mode, body: Record<string, unknown>) {
-    if (busy || action === 'none') return;
-    setBusy(true);
+    if (busy.current || action === 'none') return;
+    busy.current = true;
+    setPending(true);
     setProblem(null);
     const result = await callApi<SuggestionDecided>(
       'POST',
@@ -175,7 +204,8 @@ function SuggestionCard({
       { version: item.version, ...body },
       csrfToken,
     );
-    setBusy(false);
+    busy.current = false;
+    setPending(false);
     if (result.ok) {
       toast.success(t(`decided.${result.body.suggestion.status}`));
       onSettled();
@@ -186,13 +216,25 @@ function SuggestionCard({
       return;
     }
     const next = problemOf(result.failure);
-    setProblem(next);
-    if (next.reload) onSettled();
+    // A stale card goes away with its list refresh, so the reason is told above the list.
+    if (next.reload) onSettled(next.key);
+    else setProblem(next);
   }
+
+  // Opening a form moves focus to its first field; cancelling returns it to the first action.
+  useEffect(() => {
+    if (mode !== 'none') {
+      opened.current = true;
+      card.current?.querySelector<HTMLElement>('form input, form select, form textarea')?.focus();
+    } else if (opened.current) {
+      opened.current = false;
+      card.current?.querySelector<HTMLElement>('button')?.focus();
+    }
+  }, [mode]);
 
   const missing = locales.some((locale) => (labels[locale] ?? '').trim() === '');
   return (
-    <section className="rounded-lg border border-line bg-surface p-4">
+    <section ref={card} className="rounded-lg border border-line bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 className="min-w-0 text-base font-semibold wrap-anywhere text-fg">“{item.label}”</h3>
         <Badge tone="attention">{t('open')}</Badge>
@@ -222,6 +264,9 @@ function SuggestionCard({
           <Button variant="secondary" onClick={() => setMode('reject')}>
             {t('reject')}
           </Button>
+          {item.attribute.options.length === 0 ? (
+            <p className="basis-full text-sm text-fg-muted">{t('map-none')}</p>
+          ) : null}
         </div>
       ) : null}
       {mode === 'approve' ? (
@@ -250,7 +295,7 @@ function SuggestionCard({
             />
           ))}
           <Actions
-            busy={busy}
+            busy={pending}
             disabled={missing}
             confirm={t('approve-confirm')}
             onCancel={() => setMode('none')}
@@ -279,7 +324,7 @@ function SuggestionCard({
             />
           </div>
           <Actions
-            busy={busy}
+            busy={pending}
             disabled={optionCode === ''}
             confirm={t('map-confirm')}
             onCancel={() => setMode('none')}
@@ -302,11 +347,12 @@ function SuggestionCard({
             rows={3}
             value={reason}
             maxLength={REASON_MAX}
+            dir="auto"
             counter={`${reason.length} / ${REASON_MAX}`}
             onChange={(event) => setReason(event.target.value)}
           />
           <Actions
-            busy={busy}
+            busy={pending}
             disabled={reason.trim() === ''}
             confirm={t('reject-confirm')}
             onCancel={() => setMode('none')}
