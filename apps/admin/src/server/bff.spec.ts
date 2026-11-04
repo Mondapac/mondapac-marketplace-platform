@@ -608,6 +608,18 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
   });
 
+  it('relays the service areas: a read, and the name edit as a POST on its exact path', async () => {
+    const base = 'sellers/admin/service-areas';
+    const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, base.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', `${base}/names`)).status).toBe(200);
+    expect((await call('POST', base)).status).toBe(404);
+    expect((await call('PUT', `${base}/names`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/names`)).status).toBe(404);
+    expect((await call('POST', `${base}/names/extra`)).status).toBe(404);
+  });
+
   it('relays the delivery settings of the Market and of a seller on their exact paths only', async () => {
     const base = 'shipping/admin/delivery-settings';
     const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
