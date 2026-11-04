@@ -96,6 +96,11 @@ import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.rea
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
 import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaCustomVariantLabelsReader } from './prisma-custom-variant-labels.reader';
+import {
+  CUSTOM_VARIANT_LABELS_READER,
+  type CustomVariantLabelsReader,
+} from '../application/ports/custom-variant-labels.reader';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import {
   SAVED_FILTER_REPOSITORY,
@@ -413,6 +418,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminProductsReader =>
       new PrismaAdminProductsReader(prisma),
+  },
+  {
+    provide: CUSTOM_VARIANT_LABELS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomVariantLabelsReader =>
+      new PrismaCustomVariantLabelsReader(prisma),
   },
   {
     provide: SAVED_FILTER_REPOSITORY,

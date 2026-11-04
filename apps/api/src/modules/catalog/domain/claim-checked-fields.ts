@@ -430,6 +430,9 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   SensitiveChangesPolicy: { noCustomerText: 'flags per change kind' },
   StoredRevision: { noCustomerText: 'record around the content; the texts are RevisionContent' },
+  LabelDifference: {
+    noCustomerText: 'admin report row: a stored label and the built one, never sent to a buyer',
+  },
   VariantAxisValue: {
     noCustomerText: 'option label of the attribute definition, checked there (option-label)',
   },

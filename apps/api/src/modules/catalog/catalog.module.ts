@@ -57,6 +57,9 @@ import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handl
 import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
+import { AdminCustomVariantLabels } from './application/use-cases/admin-custom-variant-labels.use-case';
+import { CUSTOM_VARIANT_LABELS_READER } from './application/ports/custom-variant-labels.reader';
+import { AdminCustomVariantLabelsController } from './presentation/admin-custom-variant-labels.controller';
 import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
 import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
 import { AdminProductListController } from './presentation/admin-product-list.controller';
@@ -345,6 +348,7 @@ const PORT = {
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
   adminProductsReader: ADMIN_PRODUCTS_READER,
+  customVariantLabelsReader: CUSTOM_VARIANT_LABELS_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
   objectStore: OBJECT_STORE,
@@ -456,6 +460,7 @@ const productTypeProvider: FactoryProvider<string> = {
     ProductImageController,
     OfferReviewController,
     AdminProductListController,
+    AdminCustomVariantLabelsController,
     AdminProductBulkController,
     PlatformImportController,
     SavedFilterController,
@@ -941,6 +946,11 @@ const productTypeProvider: FactoryProvider<string> = {
       ownReader: true,
       policy: true,
       sellerNames: true,
+    }),
+    useCaseProvider(AdminCustomVariantLabels, {
+      unitOfWork: true,
+      customVariantLabelsReader: true,
+      policy: true,
     }),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,
