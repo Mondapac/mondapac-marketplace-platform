@@ -192,7 +192,6 @@ function toOrder(row: OrderRow): OrderState {
 
 const INCLUDE = { sellerOrders: true, lines: true } as const;
 
-/** Rows older than the cursor, newest first: `(created_at, id) < (cursor)`. */
 /** The admin list's filter as a Market-scoped `where`; every field is optional. */
 const filterWhere = (market: MarketContext, filter: OrderFilter) => ({
   marketId: market.marketId,
@@ -221,6 +220,7 @@ const filterWhere = (market: MarketContext, filter: OrderFilter) => ({
       }),
 });
 
+/** Rows older than the cursor, newest first: `(created_at, id) < (cursor)`. */
 const afterCursor = (page: OrderPage) =>
   page.after === null
     ? {}

@@ -302,6 +302,23 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       ]);
     });
 
+    it('passes a malformed page number on as one the use case refuses, answering 400', async () => {
+      await boot();
+      next = err({
+        code: 'validation.failed',
+        fields: [{ path: 'page', code: 'range' }],
+      });
+
+      const res = await call('get', 'seller', `${ORDERS}?page=abc&pageSize=1e3`, seller());
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'page', code: 'range' }] },
+      });
+      expect(calls).toEqual([{ name: 'list', input: { page: -1, pageSize: -1 } }]);
+    });
+
     it('reads one order and maps not found, a bad id and a denial', async () => {
       await boot();
       const session = seller();

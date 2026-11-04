@@ -67,6 +67,8 @@ import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
+import { encodeSellerCursor } from './fulfilment-flow';
+import { encodeCursor } from './read-flow';
 
 // Checkout, payment confirmation and the order reads in memory on both Market fixtures (AU in
 // AUD, ZZ in JPY): the seller split and totals, stock reserved before the page opens, committed
@@ -1198,6 +1200,15 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect(await list({ sort: 'total' })).toEqual(
           refused([{ path: 'sort', code: 'needs-page' }]),
         );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list({ page: 2, cursor: encodeCursor(T0, id<'Order'>(1)), limit: 10 }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
+        );
         expect(
           await list({
             paymentState: 'paid',
@@ -1686,6 +1697,46 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect(await list(sellerA, { page: 1, sort: 'created' })).toEqual(
           refused([{ path: 'sort', code: 'value' }]),
         );
+        expect(await list(sellerA, { page: 1, pageSize: 101 })).toEqual(
+          refused([{ path: 'pageSize', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, direction: 'up' })).toEqual(
+          refused([{ path: 'direction', code: 'value' }]),
+        );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list(sellerA, {
+            page: 2,
+            cursor: encodeSellerCursor(T0, id<'SellerOrder'>(1)),
+            limit: 10,
+          }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
+        );
+        expect(await list(sellerA, { page: 1, cursor: 'nope' })).toEqual(
+          refused([{ path: 'cursor', code: 'format' }]),
+        );
+      });
+
+      it('counts only the shop itself, and takes the day range in cursor mode too', async () => {
+        await paid();
+
+        const mine = await list(sellerA, { page: 1 });
+        const other = await list(sellerB, { page: 1 });
+        const cursorModeIn = await list(sellerA, { from: '2000-01-01T00:00:00Z' });
+        const cursorModeOut = await list(sellerA, { from: '2999-01-01T00:00:00Z' });
+
+        expect(mine.ok && mine.value.paging?.total).toBe(1);
+        expect(other.ok && other.value.paging?.total).toBe(1);
+        expect(mine.ok && other.ok && mine.value.sellerOrders[0]!.sellerOrderId).not.toBe(
+          other.ok && other.value.sellerOrders[0]!.sellerOrderId,
+        );
+        expect(cursorModeIn.ok && cursorModeIn.value.sellerOrders).toHaveLength(1);
+        expect(cursorModeIn.ok && cursorModeIn.value.paging).toBeNull();
+        expect(cursorModeOut.ok && cursorModeOut.value.sellerOrders).toEqual([]);
       });
 
       it('filters by payment time and refuses a backwards or malformed range', async () => {
