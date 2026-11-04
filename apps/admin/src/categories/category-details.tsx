@@ -29,7 +29,8 @@ const STATUS_TONE: Record<CategoryStatus, 'success' | 'neutral' | 'attention'> =
 /** A count, "at least" when the API stopped counting at its time bound. */
 function useCount(complete: boolean) {
   const t = useTranslations('categories');
-  return (n: number) => (complete ? String(n) : t('at-least', { n }));
+  // "at least 0" says nothing a plain 0 does not.
+  return (n: number) => (complete || n === 0 ? String(n) : t('at-least', { n }));
 }
 
 /**
@@ -51,7 +52,7 @@ export function CategoryDetails({
   readonly canEdit?: boolean;
   readonly csrfToken?: string;
   /** A change was saved: the owner reads the tree again and remounts this view. */
-  readonly onChanged?: () => void;
+  readonly onChanged?: (note?: string, focusId?: string) => void;
   readonly onCreated?: (id: string, parentId: string) => void;
 }) {
   const t = useTranslations('categories');
@@ -150,7 +151,7 @@ function ToolbarFor({
   readonly tree: TreeBody;
   readonly csrfToken: string;
   readonly title: string;
-  readonly onChanged: () => void;
+  readonly onChanged: (note?: string, focusId?: string) => void;
   readonly onCreated: (id: string, parentId: string) => void;
 }) {
   const { category } = body;
@@ -296,15 +297,31 @@ function ProductsTab({ body }: { readonly body: DetailBody }) {
   );
 }
 
+const KNOWN_KINDS = new Set([
+  'created',
+  'renamed',
+  'moved',
+  'merged',
+  'archived',
+  'details-changed',
+  'reordered',
+  'hidden',
+  'shown',
+  'slug-changed',
+  'discarded',
+]);
+
 function HistoryTab({ body }: { readonly body: DetailBody }) {
   const t = useTranslations('categories');
+  const kindLabel = (kind: string): string =>
+    KNOWN_KINDS.has(kind) ? t(`history.kind.${kind}`) : t('history.kind-unknown');
   if (body.revisions.length === 0) return <EmptyState icon="clock" title={t('history.empty')} />;
   return (
     <ol className="m-0 list-none p-0">
       {body.revisions.map((revision) => (
         <li key={revision.revisionNo} className="flex flex-col gap-0.5 border-b border-line py-3">
           <span className="font-medium">
-            {t('history.revision', { no: revision.revisionNo })} · {revision.changeKind}
+            {t('history.revision', { no: revision.revisionNo })} · {kindLabel(revision.changeKind)}
           </span>
           <span className="text-sm text-fg-muted">
             {t(`history.by-${revision.authorKind}`)} · <When iso={revision.createdAt} missing="" />

@@ -48,6 +48,10 @@ export function CategoriesView({
   const [adding, setAdding] = useState(false);
   const [version, setVersion] = useState(0);
   const latest = useRef(0);
+  // What the last write says (read out politely, also shown), and the row to focus once the tree
+  // has been read again.
+  const [note, setNote] = useState<string | null>(null);
+  const focusAfter = useRef<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setQ(typed.trim()), 250);
@@ -92,11 +96,24 @@ export function CategoriesView({
   );
   const list = useMemo(() => visibleRows(rows, expanded, filter), [rows, expanded, filter]);
 
+  // After a write the tree is read again: focus goes to the row the admin worked on (the moved
+  // one, the new one, the one whose dialog closed). A row that is gone gets no focus.
+  useEffect(() => {
+    const id = focusAfter.current;
+    if (id === null || load !== 'ready') return;
+    const row = document.querySelector<HTMLElement>(`[data-row-id="${id}"]`);
+    if (row === null) return;
+    focusAfter.current = null;
+    row.focus();
+  }, [list, load]);
+
   const countText = (n: number): string =>
-    tree?.complete === false ? t('at-least', { n }) : String(n);
+    tree?.complete === false && n > 0 ? t('at-least', { n }) : String(n);
 
   /** A change was saved: read the tree again; the details of the picked category are read again. */
-  function changed() {
+  function changed(message?: string, focusId?: string) {
+    setNote(message ?? null);
+    focusAfter.current = focusId ?? selectedId;
     setVersion((n) => n + 1);
     void fetchTree();
   }
@@ -104,7 +121,7 @@ export function CategoriesView({
   function created(id: string, parentId: string | null) {
     if (parentId !== null) setOpen(parentId, true);
     setSelectedId(id);
-    changed();
+    changed(t('toolbar.note-add'), id);
   }
   function pick(id: string) {
     if (typeof window.matchMedia === 'function' && !window.matchMedia(WIDE).matches) {
@@ -152,6 +169,9 @@ export function CategoriesView({
       <p className="max-w-prose text-fg-muted">{canEdit ? t('intro-edit') : t('intro')}</p>
       {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
       {tree.complete ? null : <Banner tone="info">{t('counts-partial')}</Banner>}
+      <p role="status" className="m-0 min-h-5 text-sm text-fg-muted">
+        {note}
+      </p>
       <div className="grid gap-6 lg:grid-cols-3">
         <section aria-label={t('tree-label')} className="flex flex-col gap-3 lg:col-span-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -230,7 +250,7 @@ export function CategoriesView({
         </section>
         <aside
           aria-label={t('details.label')}
-          className="hidden rounded-lg border border-line bg-surface p-4 lg:block"
+          className="hidden rounded-lg border border-line bg-surface p-4 lg:sticky lg:top-4 lg:block lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto"
         >
           {selectedId === null ? (
             <p className="text-fg-muted">{t('details.pick')}</p>

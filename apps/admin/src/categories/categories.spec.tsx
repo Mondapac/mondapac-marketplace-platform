@@ -145,6 +145,8 @@ describe('CategoriesView', () => {
     view(<CategoriesView canEdit={false} />);
     await screen.findAllByRole('treeitem');
     expect(screen.getAllByText(/at least/).length).toBeGreaterThan(0);
+    // A partial count of nothing is a plain 0, never "at least 0".
+    expect(screen.queryByText('at least 0')).toBeNull();
     expect(screen.getByText("Your role can't change categories.")).toBeTruthy();
   });
 

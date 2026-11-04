@@ -138,7 +138,8 @@ export function CategoryTree({
                 type="button"
                 tabIndex={-1}
                 aria-hidden="true"
-                className="flex size-6 shrink-0 items-center justify-center rounded text-icon"
+                // 44 px to hit, 24 px of layout (the row is the keyboard target; this is for the pointer).
+                className="-mx-2.5 flex size-11 shrink-0 items-center justify-center rounded text-icon"
                 onClick={(event) => {
                   event.stopPropagation();
                   onExpand(row.id, !expanded);
@@ -149,7 +150,10 @@ export function CategoryTree({
             ) : (
               <span aria-hidden="true" className="size-6 shrink-0" />
             )}
-            <span dir={direction} className="min-w-0 flex-1 truncate">
+            <span
+              dir={row.names.some((entry) => entry.locale === locale) ? direction : 'auto'}
+              className="min-w-0 flex-1 truncate"
+            >
               {name}
             </span>
             {row.status === 'active' ? null : (

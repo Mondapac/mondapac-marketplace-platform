@@ -479,6 +479,9 @@ export function ConfirmCategoryDialog({
       <div className="flex flex-col gap-3">
         <CategoryProblemBanner problem={problem} />
         <p className="m-0">{t(`${kind}.body`, { name, count: descendants })}</p>
+        {kind === 'hide' && descendants > 0 ? (
+          <p className="m-0">{t('hide.cascade', { count: descendants })}</p>
+        ) : null}
       </div>
     </Dialog>
   );

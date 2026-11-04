@@ -2,7 +2,7 @@
 
 import { Button } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ChangeSlugDialog,
   ConfirmCategoryDialog,
@@ -40,7 +40,7 @@ export function CategoryToolbar({
   readonly descendants: number;
   readonly title: string;
   /** A write is done (or the page read old data): read the tree and the category again. */
-  readonly onChanged: () => void;
+  readonly onChanged: (note?: string, focusId?: string) => void;
   /** A child was added: the owner opens the parent and picks the new one. */
   readonly onCreated: (id: string, parentId: string) => void;
 }) {
@@ -51,10 +51,22 @@ export function CategoryToolbar({
   // A hidden category is edited like an active one; the API refuses an archived or merged one.
   const editable = category.status === 'active' || category.status === 'hidden';
   const isHidden = category.status === 'hidden';
-  const closeAndRefresh = () => {
+  const closeAndRefresh = (note?: string) => {
     setOpen(null);
-    onChanged();
+    onChanged(note);
   };
+  // A dialog that closes (saved or cancelled) hands focus back to the category's row in the tree;
+  // where there is no tree beside the details (a narrow screen) the dialog's own return stands.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open !== null) {
+      wasOpen.current = true;
+      return;
+    }
+    if (!wasOpen.current) return;
+    wasOpen.current = false;
+    document.querySelector<HTMLElement>(`[data-row-id="${category.id}"]`)?.focus();
+  }, [open, category.id]);
 
   async function reorder(direction: 'up' | 'down') {
     const answer = await move.run<WriteWrap>('POST', `${API_CATEGORIES}/${category.id}/reorder`, {
@@ -62,7 +74,7 @@ export function CategoryToolbar({
       treeVersion: body.treeVersion,
     });
     // A refusal stays in view with a button to read again; reading at once would clear it.
-    if (answer.ok) onChanged();
+    if (answer.ok) onChanged(t(direction === 'up' ? 'note-up' : 'note-down'), category.id);
   }
 
   if (!canEdit) return null;
@@ -70,13 +82,22 @@ export function CategoryToolbar({
   // the buttons follow the permission and the status; the API checks both again on every write.
   const rename = editable;
   const canDiscard = isHidden && category.counts.liveProducts === 0 && !hasChildren;
+  // Why a Move button is off, shown as a line and linked to both buttons.
+  const moveReason =
+    firstSibling && lastSibling
+      ? 'reason-only'
+      : firstSibling
+        ? 'reason-first'
+        : lastSibling
+          ? 'reason-last'
+          : null;
 
   return (
     <div className="flex flex-col gap-2">
       <CategoryProblemBanner problem={move.problem} />
       {move.problem?.reload === true ? (
         <div>
-          <Button variant="secondary" onClick={onChanged}>
+          <Button variant="secondary" onClick={() => onChanged()}>
             {t('reload')}
           </Button>
         </div>
@@ -91,6 +112,7 @@ export function CategoryToolbar({
         <Button
           variant="secondary"
           disabled={!rename || firstSibling || move.pending}
+          aria-describedby={moveReason === null ? undefined : 'category-move-reason'}
           onClick={() => void reorder('up')}
         >
           {t('move-up')}
@@ -98,6 +120,7 @@ export function CategoryToolbar({
         <Button
           variant="secondary"
           disabled={!rename || lastSibling || move.pending}
+          aria-describedby={moveReason === null ? undefined : 'category-move-reason'}
           onClick={() => void reorder('down')}
         >
           {t('move-down')}
@@ -120,14 +143,19 @@ export function CategoryToolbar({
           </Button>
         ) : null}
       </div>
+      {moveReason === null || !rename ? null : (
+        <p id="category-move-reason" className="m-0 text-sm text-fg-muted">
+          {t(moveReason)}
+        </p>
+      )}
       {open === 'edit' ? (
         <EditDetailsDialog
           body={body}
           supportedLocales={supportedLocales}
           csrfToken={csrfToken}
           onClose={() => setOpen(null)}
-          onSaved={closeAndRefresh}
-          onReload={closeAndRefresh}
+          onSaved={() => closeAndRefresh(t('note-edit'))}
+          onReload={() => closeAndRefresh()}
         />
       ) : null}
       {open === 'add-child' ? (
@@ -143,7 +171,7 @@ export function CategoryToolbar({
             setOpen(null);
             onCreated(id, category.id);
           }}
-          onReload={closeAndRefresh}
+          onReload={() => closeAndRefresh()}
         />
       ) : null}
       {open === 'slug' ? (
@@ -151,8 +179,8 @@ export function CategoryToolbar({
           body={body}
           csrfToken={csrfToken}
           onClose={() => setOpen(null)}
-          onSaved={closeAndRefresh}
-          onReload={closeAndRefresh}
+          onSaved={() => closeAndRefresh(t('note-slug'))}
+          onReload={() => closeAndRefresh()}
         />
       ) : null}
       {open === 'hide' || open === 'show' || open === 'discard' ? (
@@ -163,8 +191,8 @@ export function CategoryToolbar({
           descendants={descendants}
           csrfToken={csrfToken}
           onClose={() => setOpen(null)}
-          onDone={closeAndRefresh}
-          onReload={closeAndRefresh}
+          onDone={() => closeAndRefresh(t(`note-${open}`))}
+          onReload={() => closeAndRefresh()}
         />
       ) : null}
     </div>

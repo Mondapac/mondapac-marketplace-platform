@@ -4184,7 +4184,21 @@
       "empty": "No changes are recorded for this category.",
       "revision": "Revision {no}",
       "by-seed": "Set up with the platform",
-      "by-admin": "Changed by an admin"
+      "by-admin": "Changed by an admin",
+      "kind": {
+        "created": "Added",
+        "renamed": "Renamed",
+        "moved": "Moved",
+        "merged": "Merged",
+        "archived": "Archived",
+        "details-changed": "Details changed",
+        "reordered": "Order changed",
+        "hidden": "Hidden",
+        "shown": "Shown",
+        "slug-changed": "URL name changed",
+        "discarded": "Discarded"
+      },
+      "kind-unknown": "Changed"
     },
     "intro-edit": "The category tree of this Market. Products and Offers sit in the categories below it. New categories start hidden until you show them.",
     "missing-label": "Missing a name",
@@ -4201,7 +4215,18 @@
       "show": "Show",
       "change-slug": "Change URL name",
       "discard": "Discard",
-      "reload": "Read again"
+      "reload": "Read again",
+      "note-edit": "Details saved.",
+      "note-slug": "URL name changed.",
+      "note-hide": "Category hidden.",
+      "note-show": "Category shown.",
+      "note-discard": "Category discarded.",
+      "note-add": "Category added.",
+      "note-up": "Moved up.",
+      "note-down": "Moved down.",
+      "reason-first": "Move up is off: this is the first category at its level.",
+      "reason-last": "Move down is off: this is the last category at its level.",
+      "reason-only": "Move is off: this is the only category at its level."
     },
     "form": {
       "tabs": "Sections",
@@ -4262,7 +4287,8 @@
       "hide": {
         "title": "Hide {name}?",
         "action": "Hide",
-        "body": "{name} and the {count, plural, one {# category} other {# categories}} below it leave the menu and their pages. Products stay on sale. Show brings back exactly the ones this Hide hid."
+        "body": "{name} leaves the menu and its page. Its products stay on sale.",
+        "cascade": "Also hides {count, plural, one {# subcategory} other {# subcategories}}."
       },
       "show": {
         "title": "Show {name}?",

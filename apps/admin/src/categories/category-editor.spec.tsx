@@ -220,7 +220,7 @@ describe('category editor (C3b)', () => {
     await pick('Pantry');
     fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText(/2 categories below it/)).toBeTruthy();
+    expect(within(dialog).getByText('Also hides 2 subcategories.')).toBeTruthy();
     expect(writes()).toHaveLength(0);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Hide' }));
     await waitFor(() => expect(writes()).toHaveLength(1));
@@ -259,6 +259,43 @@ describe('category editor (C3b)', () => {
       { direction: 'down', treeVersion: 7 },
       'tok',
     ]);
+  });
+
+  it('lets the browser pick the direction of a name that fell back to another language', async () => {
+    call.mockImplementation((method: string, path: string) => {
+      if (method === 'GET' && path === 'catalog/admin/categories') {
+        return Promise.resolve(
+          ok({
+            ...tree(),
+            categories: [row(9, null, 0, 'x', { names: [{ locale: 'fa', name: 'برنج' }] })],
+          }),
+        );
+      }
+      return Promise.resolve(ok(null));
+    });
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await screen.findAllByRole('treeitem');
+    expect(screen.getByText('برنج').getAttribute('dir')).toBe('auto');
+  });
+
+  it('says why Move is off at the edge, and links the reason to the disabled button', async () => {
+    serve();
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Rice');
+    const reason = screen.getByText('Move up is off: this is the first category at its level.');
+    expect(screen.getByRole('button', { name: 'Move up' }).getAttribute('aria-describedby')).toBe(
+      reason.id,
+    );
+  });
+
+  it('keeps focus on the moved row and says what happened in a status line', async () => {
+    serve();
+    view(<CategoriesView canEdit csrfToken="tok" />);
+    await pick('Rice');
+    fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+    expect(await screen.findByText('Moved down.')).toBeTruthy();
+    expect(screen.getAllByRole('status').map((el) => el.textContent)).toContain('Moved down.');
+    await waitFor(() => expect(document.activeElement?.getAttribute('data-row-id')).toBe(id(2)));
   });
 
   it('warns about search engines when the URL name changes', async () => {
