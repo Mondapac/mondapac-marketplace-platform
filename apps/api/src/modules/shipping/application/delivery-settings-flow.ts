@@ -75,6 +75,7 @@ function settingsShape(settings: DeliverySettings) {
     sameDayCutoffMinutes: settings.sameDayCutoffMinutes,
     scheduledDaysAhead: settings.scheduledDaysAhead,
     scheduledWindowMinutes: settings.scheduledWindowMinutes,
+    readyPrepMinutes: settings.readyPrepMinutes,
     marginKind: margin.kind,
     marginValue:
       margin.kind === 'percent'
@@ -143,7 +144,10 @@ export async function setDeliverySettings(
       if (before.version !== version) return err({ code: 'shipping.delivery-settings-conflict' });
       const saved = await deps.deliverySettings.saveSettings(
         context.market,
-        parsed.value,
+        {
+          ...parsed.value,
+          readyPrepMinutes: parsed.value.readyPrepMinutes ?? before.readyPrepMinutes,
+        },
         version,
         admin,
         now,
@@ -382,6 +386,8 @@ export interface DeliveryChoiceVerdict {
   readonly allowed: boolean;
   /** Why not: a method reason or a window reason; null when allowed. */
   readonly reason: ChoiceRefusal | null;
+  /** Minutes the Market gives a seller to get a paid order ready. */
+  readonly readyPrepMinutes: number;
 }
 
 const windowOf = (
@@ -422,7 +428,11 @@ export async function deliveryChoice(
   if (!offer.ok) return offer;
   const { facts } = factsOf(deps, context, offer.value, sellerId, deps.clock.now());
   const reason = checkChoice(facts, { method: input.method, window });
-  return ok({ allowed: reason === null, reason });
+  return ok({
+    allowed: reason === null,
+    reason,
+    readyPrepMinutes: offer.value.settings.readyPrepMinutes,
+  });
 }
 
 /**

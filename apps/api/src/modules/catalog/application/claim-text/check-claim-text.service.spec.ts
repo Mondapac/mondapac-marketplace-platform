@@ -106,6 +106,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
         throw new Error('not used');
       },
       maxVariantsPerProduct: () => 1,
+      maxVariantAttributes: () => 2,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

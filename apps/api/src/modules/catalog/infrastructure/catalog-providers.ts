@@ -35,6 +35,30 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
+import {
+  ATTRIBUTE_DEFINITION_STORE,
+  type AttributeDefinitionStore,
+} from '../application/ports/attribute-definition.store';
+import { FEATURE_SET_STORE, type FeatureSetStore } from '../application/ports/feature-set.store';
+import { CertificationClaimTermLocales } from './certification-claim-term-locales';
+import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
+import { PrismaFeatureSetStore } from './prisma-feature-set.store';
+import {
+  CATEGORY_ATTRIBUTE_LINK_STORE,
+  type CategoryAttributeLinkStore,
+} from '../application/ports/category-attribute-link.store';
+import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
+import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
+import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import {
+  ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  type AttributeValueSuggestionStore,
+} from '../application/ports/attribute-value-suggestion.store';
+import {
+  ATTRIBUTE_RELAXATION_STORE,
+  type AttributeRelaxationStore,
+} from '../application/ports/attribute-relaxation.store';
 import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
 import { OWN_OFFER_FINDER } from '../application/ports/own-offer-finder';
 import { CLAIM_EVALUATOR, type ClaimEvaluator } from '../application/ports/claim-evaluator';
@@ -71,6 +95,16 @@ import { SellersAllowedProductTypesReader } from './sellers-allowed-product-type
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
+import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import {
+  SAVED_FILTER_REPOSITORY,
+  type SavedFilterRepository,
+} from '../application/ports/saved-filter.repository';
+import {
+  ADMIN_PRODUCTS_READER,
+  type AdminProductsReader,
+} from '../application/ports/admin-products.reader';
 import {
   PRODUCT_IMAGE_REPOSITORY,
   type ProductImageRepository,
@@ -78,6 +112,14 @@ import {
 import { IMAGE_PROCESSOR, type ImageProcessor } from '../application/ports/image-processor';
 import { PrismaProductImageRepository } from './prisma-product-image.repository';
 import { SharpImageProcessor } from './sharp-image-processor';
+import { csvParser } from '../domain/platform-import/import-file';
+import {
+  IMPORT_FILE_PARSERS,
+  type ImportFileParsers,
+} from '../application/ports/import-file-parsers';
+import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
+import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
+import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
 import {
@@ -120,7 +162,15 @@ import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
 import { HmacRateCounterKeys, localCatalogSecret } from './hmac-rate-counter-keys';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaProductRevisionRepository } from './prisma-product-revision.repository';
+import { OBJECT_STORE, type ObjectStore } from '../../../platform/storage/object-store';
 import { PrismaWorkingCopyRepository } from './prisma-working-copy.repository';
+import { PrismaPlatformImportRepository } from './prisma-platform-import.repository';
+import { ObjectImportFileStore } from './object-import-file-store';
+import { IMPORT_FILE_STORE, type ImportFileStore } from '../application/ports/import-file-store';
+import {
+  PLATFORM_IMPORT_REPOSITORY,
+  type PlatformImportRepository,
+} from '../application/ports/platform-import.repository';
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
@@ -158,9 +208,34 @@ import {
 import { PrismaPublishedImagesReader } from './prisma-published-images.reader';
 import { BRAND_REPOSITORY, type BrandRepository } from '../application/ports/brand.repository';
 import { BRAND_READER, type BrandReader } from '../application/ports/brand.reader';
+import {
+  ATTRIBUTE_ADMIN_READER,
+  type AttributeAdminReader,
+} from '../application/ports/attribute-admin.reader';
+import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
+import {
+  PRODUCT_DETAILS_GAP_READER,
+  type ProductDetailsGapReader,
+} from '../application/ports/product-details-gap.reader';
+import { PrismaProductDetailsGapReader } from './prisma-product-details-gap.reader';
 import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
+import {
+  BUSINESS_ACTIVITY_REPOSITORY,
+  type BusinessActivityRepository,
+} from '../application/ports/business-activity.repository';
+import {
+  BUSINESS_ACTIVITY_READER,
+  type BusinessActivityReader,
+} from '../application/ports/business-activity.reader';
+import { PrismaBusinessActivityRepository } from './prisma-business-activity.repository';
+import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
+import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
+import {
+  ADMIN_CATEGORY_READER,
+  type AdminCategoryReader,
+} from '../application/ports/admin-category.reader';
 import { PrismaBrandAssigner } from './prisma-brand.assigner';
 
 const CATALOG_SECRET = Symbol('CATALOG_SECRET');
@@ -176,6 +251,41 @@ export const catalogProviders: readonly Provider[] = [
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
       new CertificationClaimTextMatcher(certification),
+  },
+  {
+    provide: CLAIM_TERM_LOCALES,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): ClaimTermLocales =>
+      new CertificationClaimTermLocales(certification),
+  },
+  {
+    provide: ATTRIBUTE_DEFINITION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeDefinitionStore =>
+      new PrismaAttributeDefinitionStore(prisma),
+  },
+  {
+    provide: FEATURE_SET_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): FeatureSetStore => new PrismaFeatureSetStore(prisma),
+  },
+  {
+    provide: CATEGORY_ATTRIBUTE_LINK_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryAttributeLinkStore =>
+      new PrismaCategoryAttributeLinkStore(prisma),
+  },
+  {
+    provide: ATTRIBUTE_RELAXATION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeRelaxationStore =>
+      new PrismaAttributeRelaxationStore(prisma),
+  },
+  {
+    provide: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeValueSuggestionStore =>
+      new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,
@@ -195,9 +305,39 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaBrandRepository(prisma, ids),
   },
   {
+    provide: ADMIN_CATEGORY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminCategoryReader =>
+      new PrismaAdminCategoryReader(prisma),
+  },
+  {
     provide: BRAND_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
+  },
+  {
+    provide: ATTRIBUTE_ADMIN_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeAdminReader =>
+      new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: PRODUCT_DETAILS_GAP_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductDetailsGapReader =>
+      new PrismaProductDetailsGapReader(prisma),
+  },
+  {
+    provide: BUSINESS_ACTIVITY_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BusinessActivityRepository =>
+      new PrismaBusinessActivityRepository(prisma),
+  },
+  {
+    provide: BUSINESS_ACTIVITY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BusinessActivityReader =>
+      new PrismaBusinessActivityReader(prisma),
   },
   {
     provide: BRAND_ASSIGNER,
@@ -267,6 +407,18 @@ export const catalogProviders: readonly Provider[] = [
     provide: OWN_CATALOG_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OwnCatalogReader => new PrismaOwnCatalogReader(prisma),
+  },
+  {
+    provide: ADMIN_PRODUCTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminProductsReader =>
+      new PrismaAdminProductsReader(prisma),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(prisma),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,
@@ -359,6 +511,17 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (): AttributeSeed => new CheckedInAttributeSeed(),
   },
   {
+    provide: PLATFORM_IMPORT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PlatformImportRepository =>
+      new PrismaPlatformImportRepository(prisma),
+  },
+  {
+    provide: IMPORT_FILE_STORE,
+    inject: [OBJECT_STORE],
+    useFactory: (store: ObjectStore): ImportFileStore => new ObjectImportFileStore(store),
+  },
+  {
     provide: WORKING_COPY_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): WorkingCopyRepository =>
@@ -375,6 +538,15 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ProductImageRepository =>
       new PrismaProductImageRepository(prisma),
+  },
+  {
+    // CSV is read by the domain; XLSX by exceljs, behind the container checks (catalog 14a).
+    provide: IMPORT_FILE_PARSERS,
+    useFactory: (): ImportFileParsers => [csvParser, xlsxParser],
+  },
+  {
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
   },
   {
     provide: IMAGE_PROCESSOR,

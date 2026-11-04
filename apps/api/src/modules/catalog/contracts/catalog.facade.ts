@@ -147,6 +147,32 @@ export interface PublishedProductVariant {
 }
 
 /**
+ * One value of a specification row, typed so the page formats it (digits, Yes/No, dates): text and
+ * list entries are in the asked locale (select labels, English fallback); a number is a decimal
+ * string in the attribute's own digits; a date is `YYYY-MM-DD`.
+ */
+export type PublishedSpecificationValue =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'list'; readonly items: readonly string[] }
+  | { readonly kind: 'number'; readonly value: string }
+  | { readonly kind: 'boolean'; readonly value: boolean }
+  | { readonly kind: 'date'; readonly value: string };
+
+/** One attribute of a published product that its page lists. */
+export interface PublishedSpecification {
+  readonly code: string;
+  /** The attribute's name in the asked locale, else the fallback. */
+  readonly name: string;
+  readonly value: PublishedSpecificationValue;
+}
+
+/** The specifications of one family group, in the family's order; never empty. */
+export interface PublishedSpecificationGroup {
+  readonly groupCode: string;
+  readonly specifications: readonly PublishedSpecification[];
+}
+
+/**
  * What `publishedProduct` gives: the content of a product's published revision. Texts are in the
  * asked locale with the INTL-13 fallback; seller-entered text: escape it. `categoryIds` are in the
  * revision's order and `variants` in position order, published Variants only.
@@ -159,6 +185,27 @@ export interface PublishedProduct {
   readonly description: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
   readonly variants: readonly PublishedProductVariant[];
+  /** The product's ACTIVE brand (its public page slug and name), or null: none, or not active. */
+  readonly brand: { readonly slug: string; readonly name: string } | null;
+  /**
+   * The published revision's attribute values for the product page: grouped by the revision's
+   * family groups and ordered as the family orders them. Only attributes that are not drafts and
+   * whose published definition shows them on the product page (`show_on_product_page`), with a
+   * value; the brand (shown as the brand link), long texts (shown as the description) and variant
+   * options (shown as Variant labels) are left out. Names and option labels are in the asked
+   * locale, English fallback; seller-entered text: escape it.
+   */
+  readonly specifications: readonly PublishedSpecificationGroup[];
+}
+
+/** The most product ids {@link CatalogFacade.brandProductIds} returns. */
+export const MAX_BRAND_PRODUCT_IDS = 1000;
+
+/** The live products of a brand: ids only, by product id, cut at {@link MAX_BRAND_PRODUCT_IDS}. */
+export interface BrandProductIds {
+  readonly productIds: readonly Id<'Product'>[];
+  /** True when the brand has more live products than the answer lists. */
+  readonly truncated: boolean;
 }
 
 /** The most photos a product page shows (the library limit of a product is the same). */
@@ -308,6 +355,17 @@ export interface CatalogFacade {
     productId: Id<'Product'>,
     locale: string,
   ): Promise<Result<PublishedProduct | null, AccessDenied | CatalogValidationFailed>>;
+
+  /**
+   * The live products of the ACTIVE brand with this slug in the context's Market: published, with
+   * an Offer on sale (the rule of the brand page's count). Rule `anonymous`; an unknown, draft or
+   * archived slug is an empty answer, byte-identical. Ids only. In-process only; `search` uses it
+   * to list a brand's products.
+   */
+  brandProductIds(
+    context: CallContext,
+    slug: string,
+  ): Promise<Result<BrandProductIds, AccessDenied | CatalogValidationFailed>>;
 
   /**
    * The photos of each requested product's PUBLISHED revision, in the revision's order, at most

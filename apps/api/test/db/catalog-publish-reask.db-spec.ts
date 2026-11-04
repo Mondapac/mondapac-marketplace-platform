@@ -212,6 +212,7 @@ describe.each(TEST_MARKETS)(
         off_sale_product_retired: false,
         off_sale_product_not_listed: false,
         off_sale_tag_suspended: false,
+        off_sale_product_paused: false,
         off_sale_description_claim_text: false,
         listed: published,
         submitted_at: published ? T0 : null,

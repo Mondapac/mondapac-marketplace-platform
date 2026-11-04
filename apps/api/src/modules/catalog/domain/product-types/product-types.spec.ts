@@ -47,18 +47,23 @@ describe('the structural product types', () => {
 describe('Simple: validateVariants', () => {
   it('takes exactly one variant with no option value', () => {
     const schema = schemaOf();
-    expect(simpleProductType.validateVariants(schema, [{ optionValues: {} }], 100)).toEqual({
+    expect(simpleProductType.validateVariants(schema, [{ optionValues: {} }], 100, 2)).toEqual({
       ok: true,
     });
-    expect(simpleProductType.validateVariants(schema, [], 100)).toEqual({
+    expect(simpleProductType.validateVariants(schema, [], 100, 2)).toEqual({
       ok: false,
       issues: [{ path: 'variants', code: 'variants.none' }],
     });
     expect(
-      simpleProductType.validateVariants(schema, [{ optionValues: {} }, { optionValues: {} }], 100),
+      simpleProductType.validateVariants(
+        schema,
+        [{ optionValues: {} }, { optionValues: {} }],
+        100,
+        2,
+      ),
     ).toEqual({ ok: false, issues: [{ path: 'variants', code: 'variants.too-many' }] });
     expect(
-      simpleProductType.validateVariants(schema, [{ optionValues: { size: 's' } }], 100),
+      simpleProductType.validateVariants(schema, [{ optionValues: { size: 's' } }], 100, 2),
     ).toEqual({ ok: false, issues: [{ path: 'variants[0]', code: 'variants.option-unknown' }] });
   });
 });
@@ -74,35 +79,52 @@ describe('Configurable: validateVariants', () => {
           { optionValues: { size: 'm', colour: 'red' } },
         ],
         100,
+        2,
       ),
     ).toEqual({ ok: true });
   });
 
   it('needs an option attribute of the family', () => {
     expect(
-      configurableProductType.validateVariants(schemaOf(), [{ optionValues: {} }], 100),
+      configurableProductType.validateVariants(schemaOf(), [{ optionValues: {} }], 100, 2),
     ).toEqual({
       ok: false,
       issues: [{ path: 'variants', code: 'variants.option-attribute-missing' }],
     });
     const notSelect: AttributeField = { ...option('size', []), dataType: 'text' };
     expect(
-      configurableProductType.validateVariants(schemaOf(notSelect), [{ optionValues: {} }], 100).ok,
+      configurableProductType.validateVariants(schemaOf(notSelect), [{ optionValues: {} }], 100, 2)
+        .ok,
     ).toBe(false);
   });
 
   it('needs at least one variant and at most the limit', () => {
-    expect(configurableProductType.validateVariants(SIZE_COLOUR, [], 100)).toEqual({
+    expect(configurableProductType.validateVariants(SIZE_COLOUR, [], 100, 2)).toEqual({
       ok: false,
       issues: [{ path: 'variants', code: 'variants.none' }],
     });
     const three = ['s', 'm', 's'].map((size, index) => ({
       optionValues: { size, colour: index === 2 ? 'blue' : 'red' },
     }));
-    expect(configurableProductType.validateVariants(SIZE_COLOUR, three, 2)).toEqual({
+    expect(configurableProductType.validateVariants(SIZE_COLOUR, three, 2, 2)).toEqual({
       ok: false,
       issues: [{ path: 'variants', code: 'variants.too-many' }],
     });
+  });
+
+  it('refuses more option attributes than the Market allows (A2: catalog.maxVariantAttributes)', () => {
+    const three = schemaOf(
+      option('size', ['s']),
+      option('colour', ['red']),
+      option('material', ['cotton']),
+    );
+    const variants = [{ optionValues: { size: 's', colour: 'red', material: 'cotton' } }];
+    expect(configurableProductType.validateVariants(three, variants, 100, 2)).toEqual({
+      ok: false,
+      issues: [{ path: 'variants', code: 'variants.too-many-option-attributes' }],
+    });
+    // Another Market may allow three (the ZZ fixture does).
+    expect(configurableProductType.validateVariants(three, variants, 100, 3)).toEqual({ ok: true });
   });
 
   it('refuses a missing, unknown or unlisted option value', () => {
@@ -114,6 +136,7 @@ describe('Configurable: validateVariants', () => {
         { optionValues: { size: 's', colour: 'red', weight: '1' } },
       ],
       100,
+      2,
     );
     expect(result).toEqual({
       ok: false,
@@ -134,6 +157,7 @@ describe('Configurable: validateVariants', () => {
           { optionValues: { colour: 'red', size: 's' } },
         ],
         100,
+        2,
       ),
     ).toEqual({
       ok: false,

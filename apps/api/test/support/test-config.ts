@@ -108,6 +108,9 @@ export function testMarketId(code: string): MarketId {
 /** {@link TEST_MARKETS} as parsed Market ids. */
 export const TEST_MARKET_IDS: readonly MarketId[] = TEST_MARKETS.map(testMarketId);
 
+/** A fixed public pepper for the keyed hash of single-use codes: tests need no real secret. */
+export const TEST_CODE_PEPPER = 'test-only-promotions-code-pepper-0123456789';
+
 /**
  * Application config for tests: both markets hosted, the `api` role, logging quiet unless
  * overridden (`testAppConfig({ APP_ROLE: 'worker' })` for the worker role).
@@ -118,6 +121,7 @@ export function testAppConfig(overrides: Record<string, string> = {}): AppConfig
       NODE_ENV: 'test',
       APP_ROLE: 'api',
       HOSTED_MARKETS: TEST_MARKETS.join(','),
+      PROMOTIONS_CODE_PEPPER: TEST_CODE_PEPPER,
       // Never connected to unless a suite overrides it with a real database.
       DATABASE_URL: 'postgresql://unused:unused@127.0.0.1:1/unused',
       ...overrides,

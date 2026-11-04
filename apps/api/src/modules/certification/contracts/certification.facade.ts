@@ -86,6 +86,13 @@ export interface CertificationFacade {
   ): Promise<Result<readonly (readonly ClaimTermMatch[])[], Failure>>;
 
   /**
+   * The locales in which every type of the Market has at least one claim term, sorted. A text in
+   * any other locale cannot be checked for claim words, so a caller refuses it (fail closed). A
+   * failed or incomplete read is `certification.unavailable`. Rule `anonymous`.
+   */
+  claimTermLocales(context: CallContext): Promise<Result<readonly string[], Failure>>;
+
+  /**
    * The Market's types with their published revision's form settings and texts, in code order.
    * `status` filters. Same pair of use cases and the same fail-closed read.
    */

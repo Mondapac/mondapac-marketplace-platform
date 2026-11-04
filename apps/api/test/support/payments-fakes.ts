@@ -27,6 +27,7 @@ import type {
 } from '../../src/modules/payments/application/ports/stripe-event-inbox';
 import type {
   CheckoutSessionSnapshot,
+  PaymentIntentSnapshot,
   ReadFailure,
   StripeSessionReader,
 } from '../../src/modules/payments/application/ports/stripe-session-reader';
@@ -182,6 +183,14 @@ export class FakeSessionReader implements StripeSessionReader {
     this.reads.push(sessionId);
     return Promise.resolve(this.answer);
   }
+  readonly intentReads: string[] = [];
+  intentAnswer: Result<PaymentIntentSnapshot, ReadFailure> = err({
+    code: 'payment.provider-unavailable',
+  });
+  readPaymentIntent(intentId: string) {
+    this.intentReads.push(intentId);
+    return Promise.resolve(this.intentAnswer);
+  }
 }
 
 export class FakeOrderingFacade implements OrderingFacade {
@@ -228,6 +237,10 @@ export class FakeOrderingFacade implements OrderingFacade {
   }
 
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
+    return Promise.resolve(ok([]));
+  }
+
+  sellerHealthCounts(): ReturnType<OrderingFacade['sellerHealthCounts']> {
     return Promise.resolve(ok([]));
   }
 }

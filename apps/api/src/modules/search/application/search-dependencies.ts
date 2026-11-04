@@ -1,5 +1,6 @@
 import type { Clock } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { BrandProducts } from './ports/brand-products';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { OfferFeed } from './ports/offer-feed';
@@ -24,6 +25,8 @@ export interface SearchDependencies {
   /** A store's list is read from the same documents, by seller (Prisma, no raw SQL). */
   readonly shelves: ShelfDocumentsReader;
   readonly stores: StoreResolver;
+  /** A brand's list is read from the same documents, by the brand's product ids (catalog's). */
+  readonly brands: BrandProducts;
   readonly images: ProductImages;
   /** A category filter covers the category and its subcategories (catalog's live tree). */
   readonly categories: CategorySubtreeSource;

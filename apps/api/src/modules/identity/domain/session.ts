@@ -117,21 +117,23 @@ export function lastSeenIsDue(session: Session, now: Temporal.Instant): boolean 
  * slice 7b: a second factor activated or replaced (every other session, D), or reset (every
  * session, 3.6).
  */
-export type SessionRevokedReason =
-  | 'sign-out'
-  | 'password-reset'
-  | 'password-changed'
-  | 'second-factor-activated'
-  | 'second-factor-replaced'
-  | 'second-factor-reset'
+export const SESSION_REVOKED_REASONS = [
+  'sign-out',
+  'password-reset',
+  'password-changed',
+  'second-factor-activated',
+  'second-factor-replaced',
+  'second-factor-reset',
   /** An admin disabled the account (3.1; slice 8b). */
-  | 'account-disabled'
+  'account-disabled',
   /** The member was removed from the seller's team (R4; slice 11). */
-  | 'membership-removed'
+  'membership-removed',
   /** Every session of the seller's accounts: the seller was rejected or suspended (3.3; slice 9). */
-  | 'seller-rejected'
-  | 'seller-suspended'
+  'seller-rejected',
+  'seller-suspended',
   /** The holder signed out of every other device from the profile (profile package 4). */
-  | 'signed-out-elsewhere'
+  'signed-out-elsewhere',
   /** The account is being erased for account deletion: every session ends first (customers package 5b). */
-  | 'account-erasure';
+  'account-erasure',
+] as const;
+export type SessionRevokedReason = (typeof SESSION_REVOKED_REASONS)[number];

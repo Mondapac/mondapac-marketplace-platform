@@ -120,6 +120,28 @@ export class PrismaProductImageRepository implements ProductImageRepository {
     return count === 1;
   }
 
+  async unreferencedObjectKeys(
+    market: MarketContext,
+    keys: readonly string[],
+  ): Promise<readonly string[]> {
+    if (keys.length === 0) return [];
+    const tx = this.prisma.tx(market);
+    const productIds = [...new Set(keys.map((key) => key.split('/')[0] ?? ''))];
+    const [products, named] = await Promise.all([
+      tx.catalogProduct.findMany({
+        where: { marketId: market.marketId, id: { in: productIds } },
+        select: { id: true },
+      }),
+      tx.catalogProductImageRendition.findMany({
+        where: { marketId: market.marketId, objectKey: { in: [...keys] } },
+        select: { objectKey: true },
+      }),
+    ]);
+    const owned = new Set(products.map((product) => product.id));
+    const referenced = new Set(named.map((row) => row.objectKey));
+    return keys.filter((key) => owned.has(key.split('/')[0] ?? '') && !referenced.has(key));
+  }
+
   async listUnattached(
     market: MarketContext,
     query: {

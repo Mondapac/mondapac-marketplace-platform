@@ -1,5 +1,7 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CatalogFacade } from '../../catalog';
 import type { OrderingFacade } from '../../ordering';
@@ -8,6 +10,7 @@ import type { ReviewRepository } from './ports/review.repository';
 import type { ReviewerNames } from './ports/reviewer-names';
 import type { ReviewsPolicy } from './ports/reviews-policy';
 import type { SellerAffinity } from './ports/seller-affinity';
+import type { SellerOverlapSource } from './ports/seller-overlap';
 
 /** What every reviews use case may need; one object built from the same ports. */
 export interface ReviewsDependencies {
@@ -21,7 +24,13 @@ export interface ReviewsDependencies {
   readonly catalog: CatalogFacade;
   readonly names: ReviewerNames;
   readonly affinity: SellerAffinity;
+  /** Facts for the same-address and same-payment-fingerprint signals (package 5). */
+  readonly overlap: SellerOverlapSource;
   readonly audit: AuditWriter;
+  /** Package 4b: the events the notices follow, written in the unit of the change. */
+  readonly outbox: OutboxWriter;
+  /** Spends an admin's two-step proof once, inside the unit that makes the change (ADR-0018). */
+  readonly stepUp: StepUpProofConsumer;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }

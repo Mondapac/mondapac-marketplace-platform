@@ -69,6 +69,16 @@ export interface StoreImageRepository {
     image: NewStoreImage,
   ): Promise<RemovedStoreImage>;
 
+  /**
+   * Of the given object keys, those whose seller (the first segment) has a file in this Market and
+   * that no rendition row names: files a crash or a replace left behind. A key whose seller is not
+   * in this Market is never returned, so one Market's sweep cannot take another's files.
+   */
+  unreferencedObjectKeys(
+    market: MarketContext,
+    keys: readonly string[],
+  ): Promise<readonly string[]>;
+
   /** Removes the current image of the kind and answers it, or null when there was none. */
   remove(
     market: MarketContext,

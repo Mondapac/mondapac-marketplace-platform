@@ -9,9 +9,23 @@ export const CHECKOUT_EVENT_TYPES = [
   'checkout.session.expired',
   'checkout.session.async_payment_failed',
 ] as const;
-/** The platform's events the receiver keeps: Checkout, disputes (8a) and transfers (6c). */
+/**
+ * The PaymentIntent events of a card payment made on the MondaPac page (checkout payment API):
+ * the card holds the money, the payment failed, or the PaymentIntent was cancelled.
+ */
+export const CARD_PAYMENT_EVENT_TYPES = [
+  'payment_intent.amount_capturable_updated',
+  'payment_intent.payment_failed',
+  'payment_intent.canceled',
+] as const;
+export const isCardPaymentEventType = (
+  type: string,
+): type is (typeof CARD_PAYMENT_EVENT_TYPES)[number] =>
+  (CARD_PAYMENT_EVENT_TYPES as readonly string[]).includes(type);
+/** The platform's events the receiver keeps: Checkout, card payments, disputes (8a), transfers (6c). */
 export const PLATFORM_EVENT_TYPES = [
   ...CHECKOUT_EVENT_TYPES,
+  ...CARD_PAYMENT_EVENT_TYPES,
   ...DISPUTE_EVENT_TYPES,
   ...TRANSFER_EVENT_TYPES,
 ] as const;
@@ -59,7 +73,7 @@ export type EventOutcome =
 export interface ReceivedEvent {
   readonly eventId: string;
   readonly type: KeptEventType;
-  /** The Checkout session (cs_...), dispute (dp_..., du_...), transfer (tr_...) or account (acct_...). */
+  /** The Checkout session (cs_...), PaymentIntent (pi_...), dispute (dp_..., du_...), transfer (tr_...) or account (acct_...). */
   readonly objectId: string;
   readonly receivedAt: Temporal.Instant;
 }

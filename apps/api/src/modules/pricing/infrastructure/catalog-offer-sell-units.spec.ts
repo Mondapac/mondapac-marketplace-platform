@@ -34,6 +34,7 @@ describe.each(['AU', 'ZZ'])('CatalogOfferSellUnits in market %s', (code) => {
       offerListings: () => Promise.resolve(ok(new Map())),
       offerBadges: () => Promise.resolve(ok(new Map())),
       publishedProduct: () => Promise.resolve(ok(null)),
+      brandProductIds: () => Promise.resolve(ok({ productIds: [], truncated: false })),
       publishedProductImages: () => Promise.resolve(ok(new Map())),
       pendingProductRevisions: () => Promise.resolve(ok(new Set())),
       sellerProductOwners: () => Promise.resolve(ok(new Map())),

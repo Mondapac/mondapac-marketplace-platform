@@ -7,7 +7,9 @@ import { settingsViewKeys } from './settings/settings-nav.ts';
 // visible item shows that item flat (navSections).
 export const adminNav: NavConfig = {
   groups: [
+    { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'package' },
     { id: 'reviews', labelKey: 'nav.group.reviews', icon: 'shield-check' },
+    { id: 'catalog', labelKey: 'nav.group.catalog', icon: 'package' },
     { id: 'content', labelKey: 'nav.group.content', icon: 'layout' },
     { id: 'sellers', labelKey: 'nav.group.sellers', icon: 'store' },
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
@@ -15,6 +17,22 @@ export const adminNav: NavConfig = {
   ],
   items: [
     { id: 'home', icon: 'home', labelKey: 'nav.home', href: '/' },
+    {
+      id: 'products',
+      icon: 'package',
+      labelKey: 'nav.products',
+      href: '/catalog/products',
+      group: 'catalogue',
+      anyOf: ['catalog.product.view'],
+    },
+    {
+      id: 'categories',
+      icon: 'layout',
+      labelKey: 'nav.categories',
+      href: '/catalog/categories',
+      group: 'catalogue',
+      anyOf: ['catalog.category-tree.view'],
+    },
     {
       id: 'offer-reviews',
       icon: 'inbox',
@@ -24,12 +42,44 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'review-moderation',
+      icon: 'shield-check',
+      labelKey: 'nav.review-moderation',
+      href: '/reviews/moderation',
+      group: 'reviews',
+      anyOf: ['reviews.moderation.queue'],
+    },
+    {
       id: 'price-holds',
       icon: 'clock',
       labelKey: 'nav.price-holds',
       href: '/price-holds',
       group: 'reviews',
       anyOf: ['pricing.price-hold.view'],
+    },
+    {
+      id: 'attributes',
+      icon: 'sliders',
+      labelKey: 'nav.attributes',
+      href: '/catalog/attributes',
+      group: 'catalog',
+      anyOf: ['catalog.attribute.view'],
+    },
+    {
+      id: 'brands',
+      icon: 'tag',
+      labelKey: 'nav.brands',
+      href: '/catalog/brands',
+      group: 'catalog',
+      anyOf: ['catalog.brand.read'],
+    },
+    {
+      id: 'business-activities',
+      icon: 'store',
+      labelKey: 'nav.business-activities',
+      href: '/catalog/business-activities',
+      group: 'catalog',
+      anyOf: ['catalog.business-activity.read'],
     },
     {
       id: 'content',
@@ -62,6 +112,14 @@ export const adminNav: NavConfig = {
       href: '/customers',
       group: 'orders',
       anyOf: ['identity.customer-account.view'],
+    },
+    {
+      id: 'payouts',
+      icon: 'receipt',
+      labelKey: 'nav.payouts',
+      href: '/payouts',
+      group: 'money',
+      anyOf: ['commission-payouts.payout.view'],
     },
     {
       id: 'payout-accounts',

@@ -6,33 +6,33 @@
 /// FulfillmentStrategy), stored once the carrier confirmed it. No personal data: the carrier holds
 /// the two stops. `progress` only moves forward; the CHECKs are hand-written in the migration.
 model ShippingCarrierBooking {
-  id               String   @id @db.Uuid
-  marketId         String   @map("market_id") @db.VarChar(8)
-  tenantId         String   @map("tenant_id")
+  id               String    @id @db.Uuid
+  marketId         String    @map("market_id") @db.VarChar(8)
+  tenantId         String    @map("tenant_id")
   /// One booking per seller order: also the carrier's `externalReference`.
-  sellerOrderId    String   @map("seller_order_id") @db.Uuid
+  sellerOrderId    String    @map("seller_order_id") @db.Uuid
   /// Plain ids of ordering and sellers (no foreign key across schemas).
-  orderId          String   @map("order_id") @db.Uuid
-  sellerId         String   @map("seller_id") @db.Uuid
+  orderId          String    @map("order_id") @db.Uuid
+  sellerId         String    @map("seller_id") @db.Uuid
   /// The fleet that booked it (mondapac_drive | uber_direct | zoom2u | doordash_drive | auspost | fake_test, CHECK).
   fleet            String
   /// The fleet's own id of the delivery: the tracking reference.
-  carrierReference String   @map("carrier_reference")
+  carrierReference String    @map("carrier_reference")
   /// booked | picked-up | delivered | exception | cancelled (CHECK).
   progress         String
   /// The carrier's last status code as received, for an admin.
-  carrierStatus    String   @map("carrier_status")
+  carrierStatus    String    @map("carrier_status")
   /// Raised by each change; the aggregate version of its event.
   version          Int
   /// A link the buyer can follow, only when the fleet gave one and it is https (CHECK).
-  trackingUrl      String?  @map("tracking_url")
+  trackingUrl      String?   @map("tracking_url")
   /// When the fleet reported that proof of delivery exists. Only the instant: never the photo, the
   /// signature image or the recipient's name.
   podRecordedAt    DateTime? @map("pod_recorded_at") @db.Timestamptz(6)
   /// When the status poll last asked the fleet (null: never). Orders the poll fairly.
   polledAt         DateTime? @map("polled_at") @db.Timestamptz(6)
-  createdAt        DateTime @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @map("updated_at") @db.Timestamptz(6)
+  createdAt        DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @map("updated_at") @db.Timestamptz(6)
 
   @@unique([marketId, sellerOrderId])
   @@unique([marketId, fleet, carrierReference])
@@ -188,6 +188,8 @@ model ShippingDeliverySettings {
   sameDayCutoffMinutes   Int      @map("same_day_cutoff_minutes")
   scheduledDaysAhead     Int      @map("scheduled_days_ahead")
   scheduledWindowMinutes Int      @map("scheduled_window_minutes")
+  /// Minutes a seller has to get a paid order ready, 5 to 2880 (CHECK); default 60.
+  readyPrepMinutes       Int      @default(60) @map("ready_prep_minutes")
   /// none | percent | fixed (CHECK); the amount column of the kind is set, the other is null.
   marginKind             String   @map("margin_kind")
   marginBasisPoints      Int?     @map("margin_basis_points")
