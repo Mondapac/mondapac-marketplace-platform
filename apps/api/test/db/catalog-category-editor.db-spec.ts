@@ -4,6 +4,7 @@ import { Client } from 'pg';
 import type { NewCategory } from '../../src/modules/catalog/application/ports/category-edit.store';
 import type { EditableCategory } from '../../src/modules/catalog/domain/category-edit';
 import { PrismaAdminCategoryReader } from '../../src/modules/catalog/infrastructure/prisma-admin-category.reader';
+import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastructure/prisma-category-paths.reader';
 import { PrismaCategoryEditStore } from '../../src/modules/catalog/infrastructure/prisma-category-edit.store';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { TEST_MARKETS } from '../support/test-config';
@@ -301,6 +302,45 @@ describe.each(TEST_MARKETS)('catalog category editor store in market %s (databas
       hiddenById: null,
     });
     expect(await load(market, id)).toMatchObject({ status: 'archived' });
+  });
+
+  it('keeps a hidden category in a product path (claim path) and the lock takes slugs in order', async () => {
+    // A hidden category keeps its products on sale (plan decision 6): the claim path through it is
+    // the same as before it was hidden, so a category-policy lookup still sees its selectors.
+    const top = await add(market, null, 'Path top');
+    const mid = await add(market, top, 'Path mid');
+    const leaf = await add(market, mid, 'Path leaf');
+    for (const id of [top, mid, leaf]) {
+      await change(market, await load(market, id), 'hidden', { status: 'hidden' });
+    }
+    const paths = new PrismaCategoryPathsReader(db.service);
+    expect(await read(market, () => paths.livePaths(market, [leaf]))).toEqual([[top, mid, leaf]]);
+    // Two units naming the same pair of slugs in opposite order do not deadlock: both lock sorted.
+    const pair = [slugOf(), slugOf()];
+    await Promise.all([
+      write(market, () => store.lockSlugs(market, [pair[0]!, pair[1]!])),
+      write(market, () => store.lockSlugs(market, [pair[1]!, pair[0]!])),
+    ]);
+  });
+
+  it('refuses a nested keywords array', async () => {
+    const id = await add(market, null, 'Nested keywords');
+    const found = await owner.query<{ revision_id: string; tenant_id: string }>(
+      `SELECT r.id AS revision_id, r.tenant_id FROM catalog.platform_category_revisions r
+        WHERE r.market_id = $1 AND r.category_id = $2 LIMIT 1`,
+      [market.marketId, id],
+    );
+    const { revision_id: revisionId, tenant_id: tenantId } = found.rows[0]!;
+    await expect(
+      owner.query(
+        `INSERT INTO catalog.platform_category_revision_texts
+           (market_id, tenant_id, revision_id, locale, name, keywords)
+         VALUES ($1, $2, $3, 'de', 'Nested', '{{a},{b}}')`,
+        [market.marketId, tenantId, revisionId],
+      ),
+      // The C2 keywords check fails first (it cannot search a nested array); the ndims check
+      // is the explicit rule behind it.
+    ).rejects.toThrow(/keywords_ndims_check|multidimensional/);
   });
 
   it('never shows another Market a category and keeps slugs per Market', async () => {

@@ -2594,12 +2594,18 @@
     "actors": ["authenticated"],
     "before": {
       "localeCount": "integer",
-      "revisionNo": "integer"
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
     },
     "after": {
       "localeCount": "integer",
       "noindex": "boolean",
       "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
       "showInMenu": "boolean"
     }
   },

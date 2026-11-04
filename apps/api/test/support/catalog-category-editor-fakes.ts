@@ -33,6 +33,7 @@ export class MemoryCategoryEditStore implements CategoryEditStore {
     this.revisions.length = 0;
     this.retired.length = 0;
     this.heldSlugs.clear();
+    this.lockedSlugs.length = 0;
     this.facts.clear();
   }
 
@@ -42,6 +43,14 @@ export class MemoryCategoryEditStore implements CategoryEditStore {
 
   loadAll(): Promise<readonly EditableCategory[]> {
     return Promise.resolve([...this.rows.values()]);
+  }
+
+  /** The slugs locked, in the order asked (one list per call). */
+  readonly lockedSlugs: string[][] = [];
+
+  lockSlugs(_m: MarketContext, slugs: readonly string[]) {
+    this.lockedSlugs.push([...new Set(slugs)].sort());
+    return Promise.resolve();
   }
 
   slugUnavailable(_m: MarketContext, slug: string, exceptId: Id<'Category'> | null) {

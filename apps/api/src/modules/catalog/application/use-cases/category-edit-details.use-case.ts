@@ -161,12 +161,21 @@ export class CategoryEditDetails extends UseCase<
         await this.deps.audit.record(
           context,
           PlatformCategoryDetailsChangedAudit.entry(target.id, {
-            before: { revisionNo: target.revisionNo, localeCount: target.texts.length },
+            before: {
+              revisionNo: target.revisionNo,
+              localeCount: target.texts.length,
+              showInMenu: target.showInMenu,
+              noindex: target.seo.noindex,
+              seoTitleSet: target.seo.title !== null,
+              seoDescriptionSet: target.seo.description !== null,
+            },
             after: {
               revisionNo: target.revisionNo + 1,
               localeCount: texts.value.length,
               showInMenu,
               noindex: seo.value.noindex,
+              seoTitleSet: seo.value.title !== null,
+              seoDescriptionSet: seo.value.description !== null,
             },
           }),
         );

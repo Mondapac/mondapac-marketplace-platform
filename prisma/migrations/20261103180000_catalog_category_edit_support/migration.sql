@@ -5,6 +5,8 @@
 --  2. The app role may now change the slug (the use case writes the old slug into
 --     `platform_category_slug_history` in the same unit; the C2 trigger keeps another category
 --     from taking a slug retired in the last 12 months).
+--  3. The keywords array is one-dimensional (review amendment): `array_ndims` is NULL for an empty
+--     array and 1 for a flat one, so a nested array literal is refused by the database too.
 SET lock_timeout = '5s';
 
 ALTER TABLE "catalog"."platform_categories" ADD COLUMN "hidden_by_id" UUID;
@@ -21,5 +23,11 @@ ALTER TABLE "catalog"."platform_categories"
 ALTER TABLE "catalog"."platform_categories" VALIDATE CONSTRAINT "platform_categories_hidden_by_check";
 ALTER TABLE "catalog"."platform_categories"
   VALIDATE CONSTRAINT "platform_categories_market_id_hidden_by_id_fkey";
+
+ALTER TABLE "catalog"."platform_category_revision_texts"
+  ADD CONSTRAINT "platform_category_revision_texts_keywords_ndims_check" CHECK (
+    array_ndims("keywords") <= 1) NOT VALID;
+ALTER TABLE "catalog"."platform_category_revision_texts"
+  VALIDATE CONSTRAINT "platform_category_revision_texts_keywords_ndims_check";
 
 GRANT UPDATE ("slug", "hidden_by_id") ON TABLE "catalog"."platform_categories" TO "mondapac_app";

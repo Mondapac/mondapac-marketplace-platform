@@ -51,6 +51,12 @@ export interface CategoryEditStore {
   /** Every category of the Market in any status with its current texts, at most `limit`. */
   loadAll(market: MarketContext, limit: number): Promise<readonly EditableCategory[]>;
 
+  /**
+   * Takes the transaction lock of each slug (`catalog.lock-category-slug`), in sorted order so two
+   * units naming the same pair cannot wait for each other. Call it before `slugUnavailable`.
+   */
+  lockSlugs(market: MarketContext, slugs: readonly string[]): Promise<void>;
+
   /** Whether a slug is the current slug of a category, or was retired from another one < 12 months ago. */
   slugUnavailable(
     market: MarketContext,

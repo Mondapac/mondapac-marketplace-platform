@@ -90,6 +90,9 @@ export class CategoryChangeSlug extends UseCase<
       if (target === undefined) return err({ code: 'category.not-found' } as const);
       if (!isEditable(target.status)) return err({ code: 'category.not-editable' } as const);
       if (target.slug === slug) return err({ code: 'category.slug-unchanged' } as const);
+      // The new and the retiring slug are locked together (plan amendment, C3a): a parallel create
+      // or change naming either one waits, then sees this unit's rows.
+      await store.lockSlugs(market, [slug, target.slug]);
       if (await store.slugUnavailable(market, slug, target.id, clock.now())) {
         return err({ code: 'category.slug-taken' } as const);
       }

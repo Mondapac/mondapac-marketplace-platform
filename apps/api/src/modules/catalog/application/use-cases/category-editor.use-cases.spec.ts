@@ -621,6 +621,12 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       });
       expect(store.revisions.map((r) => r.kind)).toEqual(['details-changed']);
       expect(audits.map((a) => a.action)).toEqual(['catalog.platform-category.details-changed']);
+      // The audit carries flags and counts for the menu and search-result fields, never their text.
+      expect(audits[0]).toMatchObject({
+        before: { showInMenu: true, noindex: false, seoTitleSet: false, seoDescriptionSet: false },
+        after: { showInMenu: false, noindex: true, seoTitleSet: true, seoDescriptionSet: false },
+      });
+      expect(JSON.stringify(audits[0])).not.toContain('Mondapac');
       expect(events.map((e) => e.type)).toEqual(['catalog.platform-category-changed.v1']);
       expect(tree.version).toBe(1);
       expect(claimInsideUnit).toBe(false);
@@ -842,6 +848,8 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       });
       expect(answer.ok && answer.value.category).toMatchObject({ slug: 'new-name', revisionNo: 2 });
       expect(store.retired).toEqual([{ id: cat(1), slug: 'old-name' }]);
+      // Both the new and the retiring slug are locked, in sorted order, before the availability check.
+      expect(store.lockedSlugs).toEqual([['new-name', 'old-name']]);
       expect(store.rows.get(cat(1))!.slug).toBe('new-name');
       expect(store.revisions.map((r) => r.kind)).toEqual(['slug-changed']);
       expect(matched.map((t) => t.text)).toEqual(['new-name']);
