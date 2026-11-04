@@ -29,6 +29,7 @@ import type {
 import { SellerAccountAccessRefused } from '../ports/seller-account-directory';
 import type { SellerHealthStore, SellerHealthSummary } from '../ports/seller-health.store';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { AreaNameSource } from '../ports/service-area-names.repository';
 import { SellerList, type SellerListPage } from './list.use-case';
 
 // The admin seller list (sellers design 7.8; slice 6) on both Market fixtures: the gate, the
@@ -229,10 +230,23 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     },
   };
   const unitOfWork: UnitOfWork = { run: (_market, work) => work(), runOnce: noRunOnce };
+  const noEditedNames: AreaNameSource = {
+    edited: () => Promise.resolve(new Map()),
+    forget: () => {},
+  };
   const areas: OnboardingAreas = {
     openCodes: () => ['open-area'],
     nameOf: (_market, code) => (code === 'open-area' ? 'Open Area' : null),
     all: () => [{ code: 'open-area', name: 'Open Area' }],
+    configured: () => [
+      {
+        code: 'open-area',
+        region: null,
+        names: { en: 'Open Area' },
+        sellerOnboardingEnabled: true,
+        deliveryEnabled: false,
+      },
+    ],
   };
 
   function setUp() {
@@ -247,6 +261,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       onboardingAreas: areas,
       healthStore: health.store,
       clock: healthClock,
+      areaNames: noEditedNames,
     });
     return { repository, access, useCase, health };
   }
@@ -393,6 +408,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         onboardingAreas: areas,
         healthStore: t.health.store,
         clock: healthClock,
+        areaNames: noEditedNames,
       });
 
       const result = await failing.execute(admin(true, market, true), { tab: 'all' });
@@ -674,6 +690,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         onboardingAreas: areas,
         healthStore: t.health.store,
         clock: healthClock,
+        areaNames: noEditedNames,
       });
       return { ...t, directory, useCase };
     }

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, ContentHash, Id, MarketContext, Result } from '@mondapac/shared-kernel';
-import type { ObjectStore } from '../../../../platform/storage/object-store';
+import type { ObjectListPage, ObjectStore } from '../../../../platform/storage/object-store';
 import type { StoreImageKind } from '../../domain/store-image';
 import {
   canonicalStoreContent,
@@ -223,6 +223,10 @@ export class MapObjectStore implements ObjectStore {
 
   get(key: string): Promise<Buffer | null> {
     return Promise.resolve(this.objects.get(key) ?? null);
+  }
+
+  list(): Promise<ObjectListPage> {
+    return Promise.reject(new Error('MapObjectStore does not list'));
   }
 
   delete(key: string): Promise<void> {
