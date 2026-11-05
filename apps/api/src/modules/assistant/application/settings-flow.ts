@@ -13,13 +13,17 @@ import {
   type ReplyLanguage,
 } from '../domain/assistant-settings';
 import { AssistantSettingsChanged } from '../domain/audit';
+import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import type { AssistantDependencies } from './assistant-dependencies';
 
 export type AssistantSettingsFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldError[] }
-  /** Another admin changed the settings first; the screen reloads and tries again. */
-  | { readonly code: 'assistant.conflict' };
+  /**
+   * Another admin changed the settings first; the screen reloads and tries again. `lastChanged`
+   * is the winning save, null when it cannot be read.
+   */
+  | { readonly code: 'assistant.conflict'; readonly lastChanged?: LastChanged | null };
 
 /** What the admin settings screen reads. The API key is reported as set or not, never shown. */
 export interface AssistantSettingsView {
@@ -43,6 +47,18 @@ export interface AssistantSettingsView {
     readonly lastAutoOff: { readonly at: string; readonly cap: 'daily' | 'monthly' } | null;
   };
 }
+
+/** The settings page's read model: the view and the latest change. */
+export interface AssistantSettingsPage extends AssistantSettingsView {
+  /** Null while the built-in defaults are in force (never changed). */
+  readonly lastChanged: LastChanged | null;
+}
+
+/** The audit rows of the settings page: the fields the row names are the changed ones. */
+export const ASSISTANT_SETTINGS_CHANGES: ChangeScope = {
+  actions: [AssistantSettingsChanged.action],
+  targetId: 'assistant-settings',
+};
 
 /** What the storefront may read without a session: the safe subset only. */
 export interface StorefrontAssistantView {

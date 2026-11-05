@@ -552,6 +552,23 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the category editor on its exact paths and methods only (categories C3)', async () => {
+    const id = ID;
+    const base = 'catalog/admin/categories';
+    expect((await call('POST', base)).status).toBe(200);
+    expect((await call('PATCH', `${base}/${id}`)).status).toBe(200);
+    for (const action of ['reorder', 'hide', 'show', 'change-slug', 'discard']) {
+      expect((await call('POST', `${base}/${id}/${action}`)).status).toBe(200);
+      expect((await call('PUT', `${base}/${id}/${action}`)).status).toBe(404);
+    }
+    expect((await call('PUT', `${base}/${id}`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/${id}`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}`)).status).toBe(404);
+    expect((await call('PATCH', `${base}/not-a-uuid`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}/merge`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}/archive`)).status).toBe(404);
+  });
+
   it('relays the assistant settings read and write on their exact path only', async () => {
     const path = 'assistant/admin/settings';
     const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
@@ -1154,6 +1171,11 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/cancel`],
+    ['GET', `catalog/admin/attributes/${id}/impact`],
+    ['POST', `catalog/admin/attributes/${id}/merge-values`],
+    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['POST', `catalog/admin/attributes/${id}/archive-requests`],
+    ['POST', `catalog/admin/attribute-archive-requests/${id}/confirm`],
     ['GET', 'catalog/admin/feature-sets'],
     ['GET', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
@@ -1193,7 +1215,6 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/delete`],
     ['POST', 'catalog/admin/brands/merge-queue'],
     ['GET', 'catalog/admin/brands/merge-queue/dismiss'],
-    ['POST', 'catalog/admin/categories'],
     ['PUT', `catalog/admin/categories/${id}`],
     ['DELETE', `catalog/admin/categories/${id}`],
     ['GET', 'catalog/admin/categories/not-a-uuid'],
@@ -1216,10 +1237,15 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/cancel'],
     ['POST', 'catalog/admin/attributes/not-a-uuid/relaxation-requests'],
     ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/confirm'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/merge-values'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/archive'],
+    ['POST', 'catalog/admin/attribute-archive-requests/not-a-uuid/confirm'],
+    ['GET', `catalog/admin/attribute-archive-requests/${id}/confirm`],
+    ['POST', `catalog/admin/attributes/${id}/impact`],
     ['GET', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}`],
     ['POST', 'catalog/admin/attributes/not-a-uuid/publish'],
-    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['GET', `catalog/admin/attributes/${id}/archive`],
     ['GET', `catalog/admin/attributes/${id}/publish`],
     ['GET', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', 'catalog/admin/feature-sets'],

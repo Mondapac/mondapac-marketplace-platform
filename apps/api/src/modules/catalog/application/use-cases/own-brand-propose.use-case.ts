@@ -1,9 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
+import { BrandProposedAudit } from '../../domain/audit';
 import {
   Brand,
   brandNameKey,
@@ -58,6 +60,7 @@ export interface OwnBrandProposeDependencies {
   readonly eligibility: SellerEligibilityReader;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  readonly audit: AuditWriter;
 }
 
 const PROPOSE_KEYS = ['name', 'summary', 'originCountry'] as const;
@@ -160,6 +163,12 @@ export class OwnBrandPropose extends UseCase<
       if (!created.ok) return err(created.error);
       const added = await brands.add(market, created.value);
       if (added !== null) return err({ code: added } as const);
+      await this.deps.audit.record(
+        context,
+        BrandProposedAudit.entry(created.value.state.id, {
+          after: { status: 'draft', origin: 'seller' },
+        }),
+      );
       return ok({
         brandId: created.value.state.id,
         slug: created.value.state.slug,

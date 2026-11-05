@@ -21,6 +21,7 @@ import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
+import { ArchiveDialog, MergeValuesDialog } from './restructure-dialogs.tsx';
 import type { FieldErrors } from './editor.ts';
 import { changeLineOf } from './history.ts';
 import { useRevealWhenStacked } from './reveal.ts';
@@ -45,7 +46,7 @@ type Load =
   | { readonly state: 'missing' }
   | { readonly state: 'failed' };
 
-type Confirm = 'publish' | 'discard' | 'relax' | null;
+type Confirm = 'publish' | 'discard' | 'relax' | 'merge' | 'archive' | null;
 
 /** Refusals of publish that only an edit of the text clears. */
 const TEXT_FIX: ReadonlySet<string> = new Set(['claim-word', 'locale-uncheckable']);
@@ -61,6 +62,7 @@ export function AttributeDetailPanel({
   attributeId,
   onClose,
   canEdit = false,
+  canRestructure = false,
   csrfToken = '',
   onChanged,
   onOpenWaiting,
@@ -68,6 +70,8 @@ export function AttributeDetailPanel({
   readonly attributeId: string | null;
   readonly onClose: () => void;
   readonly canEdit?: boolean;
+  /** `catalog.attribute.restructure`: merge values and archive (attributes A8). */
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
   /** An attribute was saved, published or discarded: the list reads it again. */
   readonly onChanged?: () => void;
@@ -155,23 +159,40 @@ export function AttributeDetailPanel({
             detail={load.detail}
             onClose={onClose}
             actions={
-              canEdit && !editing && load.detail.status !== 'archived' ? (
+              !editing && load.detail.status !== 'archived' && (canEdit || canRestructure) ? (
                 <>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setEditErrors(undefined);
-                      setEditing(true);
-                    }}
-                  >
-                    {t('edit')}
-                  </Button>
-                  {load.detail.status === 'active' && load.detail.material ? (
+                  {canEdit ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setEditErrors(undefined);
+                        setEditing(true);
+                      }}
+                    >
+                      {t('edit')}
+                    </Button>
+                  ) : null}
+                  {canRestructure && load.detail.status === 'active' ? (
+                    <>
+                      {CHOICE_TYPES.has(load.detail.dataType) &&
+                      load.detail.options.filter(
+                        (option) => option.active && (option.mergedInto ?? null) === null,
+                      ).length >= 2 ? (
+                        <Button variant="secondary" onClick={() => setConfirm('merge')}>
+                          {t('merge-values')}
+                        </Button>
+                      ) : null}
+                      <Button variant="secondary" onClick={() => setConfirm('archive')}>
+                        {t('archive')}
+                      </Button>
+                    </>
+                  ) : null}
+                  {canEdit && load.detail.status === 'active' && load.detail.material ? (
                     <Button variant="secondary" onClick={() => setConfirm('relax')}>
                       {t('turn-off-material')}
                     </Button>
                   ) : null}
-                  {load.detail.status === 'draft' ? (
+                  {canEdit && load.detail.status === 'draft' ? (
                     <>
                       <Button onClick={() => setConfirm('publish')}>{t('publish')}</Button>
                       <Button variant="destructive" onClick={() => setConfirm('discard')}>
@@ -200,7 +221,39 @@ export function AttributeDetailPanel({
               onOpenWaiting={onOpenWaiting}
             />
           ) : null}
-          {confirm === null || confirm === 'relax' ? null : (
+          {confirm === 'merge' ? (
+            <MergeValuesDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('merged'))}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+            />
+          ) : null}
+          {confirm === 'archive' ? (
+            <ArchiveDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('archived'))}
+              onRequested={() => {
+                toast.success(t('archive-requested'));
+                setConfirm(null);
+              }}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+              onOpenWaiting={onOpenWaiting}
+            />
+          ) : null}
+          {confirm === null ||
+          confirm === 'relax' ||
+          confirm === 'merge' ||
+          confirm === 'archive' ? null : (
             <StatusDialog
               kind={confirm}
               detail={load.detail}
@@ -619,6 +672,11 @@ function ValuesTab({ detail }: { readonly detail: AttributeDetail }) {
                 <Badge tone={option.active ? 'success' : 'neutral'}>
                   {option.active ? t('values.active') : t('values.inactive')}
                 </Badge>
+                {(option.mergedInto ?? null) === null ? null : (
+                  <span className="text-sm wrap-anywhere text-fg-muted">
+                    {t('values.merged-into', { code: option.mergedInto ?? '' })}
+                  </span>
+                )}
                 <span className="text-sm whitespace-nowrap text-fg-muted">
                   {t('row.products', { count: option.productCount })}
                 </span>

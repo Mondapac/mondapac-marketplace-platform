@@ -123,6 +123,11 @@ import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
 import {
+  SEARCH_FILTER_READER,
+  type SearchFilterReader,
+} from '../application/ports/search-filter.reader';
+import { PrismaSearchFilterReader } from './prisma-search-filter.reader';
+import {
   SELL_UNIT_LABELS_READER,
   type SellUnitLabelsReader,
 } from '../application/ports/sell-unit-labels.reader';
@@ -214,6 +219,11 @@ import {
 } from '../application/ports/attribute-admin.reader';
 import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
 import {
+  ATTRIBUTE_IMPACT_READER,
+  type AttributeImpactReader,
+} from '../application/ports/attribute-impact.reader';
+import { PrismaAttributeImpactReader } from './prisma-attribute-impact.reader';
+import {
   PRODUCT_DETAILS_GAP_READER,
   type ProductDetailsGapReader,
 } from '../application/ports/product-details-gap.reader';
@@ -232,6 +242,11 @@ import { PrismaBusinessActivityReader } from './prisma-business-activity.reader'
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
+import { PrismaCategoryEditStore } from './prisma-category-edit.store';
+import {
+  CATEGORY_EDIT_STORE,
+  type CategoryEditStore,
+} from '../application/ports/category-edit.store';
 import {
   ADMIN_CATEGORY_READER,
   type AdminCategoryReader,
@@ -311,6 +326,11 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAdminCategoryReader(prisma),
   },
   {
+    provide: CATEGORY_EDIT_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryEditStore => new PrismaCategoryEditStore(prisma),
+  },
+  {
     provide: BRAND_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
@@ -320,6 +340,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeAdminReader =>
       new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: ATTRIBUTE_IMPACT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeImpactReader =>
+      new PrismaAttributeImpactReader(prisma),
   },
   {
     provide: PRODUCT_DETAILS_GAP_READER,
@@ -489,6 +515,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferSearchFactsReader =>
       new PrismaOfferSearchFactsReader(prisma),
+  },
+  {
+    provide: SEARCH_FILTER_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SearchFilterReader => new PrismaSearchFilterReader(prisma),
   },
   {
     provide: PLATFORM_CATEGORY_REPOSITORY,

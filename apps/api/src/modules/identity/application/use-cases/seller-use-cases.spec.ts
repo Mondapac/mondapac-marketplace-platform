@@ -316,10 +316,13 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // `blog.post.read` and the Viewer holds it too (blog package 1).
     // `commission-payouts.payout.view` is also left out: the payouts of the sellers are finance
     // data and the Viewer sees none (commission-payouts design 5.3; the brief of package 6d).
+    // `commission-payouts.payout-terms.view` is left out for the same reason (design 5.3; the
+    // owner's decision of 2026-11-04, viewer seed version 28).
     const DECRYPTING_VIEW_KEYS = [
       'sellers.business-details.view',
       'certification.issuer.view',
       'commission-payouts.payout.view',
+      'commission-payouts.payout-terms.view',
     ];
     // The brand read key is named `.read` too (catalog brand package).
     const READ_KEYS_OF_THE_VIEWER = ['blog.post.read', 'catalog.brand.read'];

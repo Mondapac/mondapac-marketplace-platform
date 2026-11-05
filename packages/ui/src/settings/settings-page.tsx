@@ -1,6 +1,7 @@
 'use client';
 
 import type { FormEvent, ReactNode } from 'react';
+import { SettingsTitle } from './settings-title.tsx';
 import { useUnsavedChangesGuard, type LeaveLabels } from './unsaved-changes-guard.tsx';
 
 export interface SettingsPageProps {
@@ -12,9 +13,16 @@ export interface SettingsPageProps {
   readonly lastChanged?: {
     readonly text: string;
     readonly historyHref?: string;
+    /** With `historyHref` or `onHistory`: the link's words ("View history"). */
     readonly historyLabel?: string;
+    /** Opens the history in place (a drawer); the link is then a button. */
+    readonly onHistory?: () => void;
+    /** Whether that drawer is open (`aria-expanded`). */
+    readonly historyOpen?: boolean;
+    /** An ISO instant: the text becomes a `<time>` for assistive technology. */
+    readonly dateTime?: string;
   };
-  /** Buttons at the end of the header (pin, help). */
+  /** Buttons at the end of the header (help). The pin star sits beside the title, not here. */
   readonly actions?: ReactNode;
   /** A read-only, conflict or error-summary `Banner` above the sections. */
   readonly banner?: ReactNode;
@@ -27,6 +35,8 @@ export interface SettingsPageProps {
   /** How many changes are unsaved: the leave message says it ("You have 2 unsaved changes on ..."). */
   readonly dirtyCount?: number;
   readonly leave?: LeaveLabels;
+  /** Dialogs and drawers of the page (the history drawer), outside the form. */
+  readonly overlay?: ReactNode;
   /** `SettingsSection`s. */
   readonly children: ReactNode;
 }
@@ -47,6 +57,7 @@ export function SettingsPage({
   dirty = false,
   dirtyCount = 0,
   leave,
+  overlay,
   children,
 }: SettingsPageProps) {
   const guard = useUnsavedChangesGuard(
@@ -64,14 +75,31 @@ export function SettingsPage({
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold text-fg">{title}</h1>
+          <SettingsTitle>{title}</SettingsTitle>
           {description ? (
             <p className="mt-1 max-w-prose text-sm text-fg-muted">{description}</p>
           ) : null}
           {lastChanged ? (
-            <p className="mt-1 text-xs text-fg-muted">
-              {lastChanged.text}
-              {lastChanged.historyHref && lastChanged.historyLabel ? (
+            <p className="mt-1 text-xs text-fg-muted" data-testid="last-changed">
+              {lastChanged.dateTime ? (
+                <time dateTime={lastChanged.dateTime}>{lastChanged.text}</time>
+              ) : (
+                lastChanged.text
+              )}
+              {lastChanged.historyLabel && lastChanged.onHistory ? (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={lastChanged.onHistory}
+                    aria-haspopup="dialog"
+                    aria-expanded={lastChanged.historyOpen ?? false}
+                    className="font-medium text-link underline focus-visible:outline-2 focus-visible:outline-focus"
+                  >
+                    {lastChanged.historyLabel}
+                  </button>
+                </>
+              ) : lastChanged.historyHref && lastChanged.historyLabel ? (
                 <>
                   {' · '}
                   <a href={lastChanged.historyHref} className="font-medium text-link underline">
@@ -100,6 +128,7 @@ export function SettingsPage({
         body
       )}
       {guard.dialog}
+      {overlay}
     </div>
   );
 }

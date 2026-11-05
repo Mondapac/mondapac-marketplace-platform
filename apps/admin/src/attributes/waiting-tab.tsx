@@ -15,7 +15,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
 import { useAttributeCall } from './use-attribute-call.ts';
-import { API_RELAXATIONS, type OpenRelaxation, type OpenRelaxationList } from './types.ts';
+import {
+  API_ARCHIVE_REQUESTS,
+  API_RELAXATIONS,
+  type OpenRelaxation,
+  type OpenRelaxationList,
+} from './types.ts';
 
 type Load =
   | { readonly state: 'loading' }
@@ -43,10 +48,13 @@ function nameOf(request: OpenRelaxation, locale: string): string {
  */
 export function WaitingTab({
   canEdit,
+  canRestructure = false,
   csrfToken,
   onOpenAttribute,
 }: {
   readonly canEdit: boolean;
+  /** `catalog.attribute.restructure`: an archive request is confirmed with it (attributes A8). */
+  readonly canRestructure?: boolean;
   readonly csrfToken: string;
   readonly onOpenAttribute: (attributeId: string) => void;
 }) {
@@ -152,7 +160,8 @@ export function WaitingTab({
                   >
                     {t('open-attribute')}
                   </Button>
-                  {request.allowedActions.confirm.allowed ? (
+                  {request.allowedActions.confirm.allowed &&
+                  (request.kind !== 'archive' || canRestructure) ? (
                     <Button
                       aria-label={t('confirm-named', { name })}
                       onClick={() => setPending({ kind: 'confirm', request })}
@@ -183,7 +192,15 @@ export function WaitingTab({
           csrfToken={csrfToken}
           onClose={() => setPending(null)}
           onDone={() => {
-            toast.success(t(pending.kind === 'confirm' ? 'confirmed' : 'withdrawn'));
+            toast.success(
+              t(
+                pending.kind === 'confirm'
+                  ? pending.request.kind === 'archive'
+                    ? 'confirmed-archive'
+                    : 'confirmed'
+                  : 'withdrawn',
+              ),
+            );
             setPending(null);
             void fetchRequests(true);
           }}
@@ -219,13 +236,16 @@ function DecisionDialog({
   const te = useTranslations('attributes.editor');
   const call = useAttributeCall(csrfToken);
   const action = kind === 'confirm' ? 'confirm' : 'cancel';
+  // The words of an archive request differ from those of turning Material off.
+  const words = request.kind === 'archive' ? `${kind}-archive` : kind;
 
   async function decide() {
-    const answer = await call.run(
-      'POST',
-      `${API_RELAXATIONS}/${encodeURIComponent(request.id)}/${action}`,
-      { version: request.version },
-    );
+    // An archive request is confirmed on its own route, under its own key (attributes A8).
+    const base =
+      request.kind === 'archive' && action === 'confirm' ? API_ARCHIVE_REQUESTS : API_RELAXATIONS;
+    const answer = await call.run('POST', `${base}/${encodeURIComponent(request.id)}/${action}`, {
+      version: request.version,
+    });
     if (answer.ok) onDone();
   }
 
@@ -233,7 +253,7 @@ function DecisionDialog({
   return (
     <Dialog
       open
-      title={t(`${kind}-title`, { name })}
+      title={t(`${words}-title`, { name })}
       onClose={onClose}
       actions={
         <>
@@ -257,7 +277,7 @@ function DecisionDialog({
     >
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
-        <p>{t(`${kind}-body`)}</p>
+        <p>{t(`${words}-body`)}</p>
       </div>
     </Dialog>
   );
