@@ -396,13 +396,13 @@ describe('AccountDeletionSettingsPanel', () => {
     fireEvent.click(save());
     typeReason(dialogNamed('Turn on account deletion for all buyers?'));
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
-    await screen.findByRole('button', { name: 'Compare' });
+    await screen.findByRole('button', { name: 'Show what changed' });
     expect(call).toHaveBeenLastCalledWith('GET', SETTINGS);
     // The draft is kept (still On), the baseline is what the other admin saved.
     expect(enabledBox().checked).toBe(true);
     expect(daysSelect().value).toBe('30');
     expect(screen.getByText('Saved version 4')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(screen.getAllByText(/60 days/).length).toBeGreaterThan(0);
     call.mockResolvedValueOnce(ok(answer(true, 30, 5)));
     fireEvent.click(save());

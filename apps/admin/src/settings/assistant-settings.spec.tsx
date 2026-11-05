@@ -182,21 +182,25 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
-  it('names bad fields before calling the API', () => {
+  it('names bad fields once they are left, before calling the API', () => {
     mount(answer());
     fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '61' } });
     fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '300' } });
-    save();
+    // While typing nothing is flagged yet.
+    expect(screen.queryByText('Enter a whole number from 5 to 60.')).toBeNull();
+    fireEvent.blur(screen.getByLabelText('Messages per guest'));
+    fireEvent.blur(screen.getByLabelText('Daily cap'));
+    // No Save click: once left, the errors, the count and the summary are there.
     expect(screen.getByText('Enter a whole number from 5 to 60.')).toBeTruthy();
     expect(
       screen.getByText(/no more than the monthly cap/, { selector: 'p[id$="-error"]' }),
     ).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
-    // The bar counts the errors and Save waits until they are fixed.
+    // The bar counts the errors and Save is off until they are fixed.
     expect(screen.getByText(/2 need fixing/)).toBeTruthy();
-    const summary = screen.getByRole('alert');
+    expect(screen.queryByRole('alert')).toBeNull();
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
     expect(summary.textContent).toContain('2 settings need fixing before you can save');
-    expect(document.activeElement).toBe(summary);
     fireEvent.click(screen.getByRole('link', { name: 'Messages per guest' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Messages per guest'));
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
@@ -205,6 +209,11 @@ describe('AssistantSettingsPanel', () => {
     fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '30' } });
     expect(screen.queryByText('Enter a whole number from 5 to 60.')).toBeNull();
     expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '3' } });
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      false,
+    );
   });
 
   it('marks changed fields, counts them and discards them', () => {
@@ -252,7 +261,7 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('21');
     expect(screen.getByText('Saved version 4')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(compared('Messages per guest')).toMatchObject({ saved: '30', yours: '21' });
     // The welcome message is user content: shown as text, never as markup.
     const welcome = compared('Welcome message');
@@ -287,7 +296,8 @@ describe('AssistantSettingsPanel', () => {
     mount(answer());
     touch();
     save();
-    expect(await screen.findByText(/without < or >/)).toBeTruthy();
+    // Under the field and in the summary banner.
+    expect(await screen.findAllByText(/without < or >/)).toHaveLength(2);
     expect(
       screen.getByText('Some settings were refused. Check the fields and try again.'),
     ).toBeTruthy();
@@ -349,5 +359,46 @@ describe('assistant form', () => {
         },
       }),
     ).toEqual(['guestMessageLimit']);
+  });
+});
+
+describe('last changed and history (panel settings T3a)', () => {
+  it('shows who changed the page last and opens its own history route', async () => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    vi.mocked(callApi).mockReset();
+    vi.mocked(callApi).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { items: [], next: null },
+    });
+    mount(
+      answer(
+        {},
+        {
+          lastChanged: {
+            at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+            byDisplayName: 'Sara K.',
+            byKind: 'member' as const,
+          },
+        },
+      ),
+    );
+
+    expect(screen.getByTestId('last-changed').textContent).toBe(
+      'Last changed by Sara K. · 2 days ago · View history',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }));
+    await waitFor(() =>
+      expect(vi.mocked(callApi)).toHaveBeenCalledWith(
+        'GET',
+        'assistant/admin/settings/history?limit=20',
+      ),
+    );
+    expect(await screen.findByText('No changes yet')).toBeTruthy();
   });
 });

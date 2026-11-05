@@ -1,3 +1,4 @@
+import type { LastChangedValue } from '@mondapac/ui';
 // Answers of the admin fleet-selection routes (apps/api fleet-selection.controller.ts).
 
 export const FLEET_VIEW_PERMISSION = 'shipping.fleet-selection.view';
@@ -53,6 +54,8 @@ export interface FleetRow {
 }
 
 export interface Selection {
+  /** The newest change, from the audit log; null while it was never changed. */
+  readonly lastChanged?: LastChangedValue | null;
   /** The page version (0 before the first save); sent back as `expectedVersion`. */
   readonly version: number;
   readonly models: readonly Model[];

@@ -17,7 +17,8 @@ import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
-import { IdentityModule } from '../identity';
+import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
+import { changeTrailProvider, IdentityModule } from '../identity';
 import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-file-revision.repository';
 import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
@@ -25,6 +26,7 @@ import { SELLER_HEALTH_POLICY } from './application/ports/seller-health-policy';
 import { SELLER_HEALTH_ROSTER } from './application/ports/seller-health-roster';
 import { SELLER_HEALTH_SIGNALS } from './application/ports/seller-health-signals';
 import { SELLER_HEALTH_STORE } from './application/ports/seller-health.store';
+import { SellerHealthQueueRead } from './application/use-cases/seller-health-queue.use-case';
 import { SellerHealthRead } from './application/use-cases/seller-health-read.use-case';
 import { SellerHealthController } from './presentation/seller-health.controller';
 import { PurgeSellerHealth } from './application/use-cases/purge-seller-health.use-case';
@@ -93,6 +95,7 @@ import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-bu
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
+import { SweepOrphanStoreImageFiles } from './application/use-cases/sweep-orphan-store-image-files.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { ServiceAreaNamesEdit } from './application/use-cases/service-area-names-edit.use-case';
 import { ServiceAreaNamesList } from './application/use-cases/service-area-names-list.use-case';
@@ -123,6 +126,7 @@ import { StoreSettingsController } from './presentation/store-settings.controlle
 import { SELLERS_EVENTS } from './domain/events';
 import { sellerProviders } from './infrastructure/seller-providers';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
+import { sweepOrphanStoreImageFilesJob } from './presentation/jobs/sweep-orphan-store-image-files.job';
 import { reconcileDecisionsJob } from './presentation/jobs/reconcile-decisions.job';
 import { ReviewDecisionController } from './presentation/review-decision.controller';
 import { decisionSubscriptions } from './presentation/subscribers/decision.subscriptions';
@@ -152,7 +156,10 @@ import { PublishedStoreImageRead } from './application/use-cases/published-store
 import { StoreImageReadOwn } from './application/use-cases/store-image-read-own.use-case';
 import { StoreImageRemove } from './application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from './application/use-cases/store-image-save.use-case';
+import { StoreProfileClaimTerms } from './application/use-cases/store-profile-claim-terms.use-case';
+import { StoreProfileHistory } from './application/use-cases/store-profile-history.use-case';
 import { StoreProfileRead } from './application/use-cases/store-profile-read.use-case';
+import { StoreProfileSave } from './application/use-cases/store-profile-save.use-case';
 import { StoreProfileSaveAbout } from './application/use-cases/store-profile-save-about.use-case';
 import { storeProfileProviders } from './infrastructure/store-profile-providers';
 import { PublicStoreImageController } from './presentation/public-store-image.controller';
@@ -191,6 +198,7 @@ const PORT = {
   audit: AUDIT_WRITER,
   auditTrail: AUDIT_TRAIL_READER,
   teamMembers: TEAM_MEMBER_LABEL_SOURCE,
+  trail: CHANGE_TRAIL,
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
@@ -268,6 +276,7 @@ const STORE_PROFILE_READ_PORTS = {
   storeImages: true,
   contentSealer: true,
   localesPolicy: true,
+  trail: true,
 } as const;
 
 /** The ports of the reviewer's approve and reject (slice 7a-decide). */
@@ -320,6 +329,7 @@ const REVIEW_DECISION_PORTS = {
     PersistenceModule.outboxWriterFor('sellers'),
     PersistenceModule.auditWriterFor('sellers'),
     PersistenceModule.auditTrailReaderFor('sellers'),
+    changeTrailProvider(),
     registerEvents('sellers', SELLERS_EVENTS),
     registerAuditActions('sellers', SELLERS_AUDIT_ACTIONS),
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
@@ -359,6 +369,7 @@ const REVIEW_DECISION_PORTS = {
     // Slice 12 part 2, the seller's own store profile (design 3.7, 6.2) over HTTP through
     // StoreProfileController, under `sellers.store-profile.view` / `.edit`, approved sellers only.
     useCaseProvider(StoreProfileRead, STORE_PROFILE_READ_PORTS),
+    useCaseProvider(StoreProfileClaimTerms, { claimCheck: true }),
     useCaseProvider(StoreProfileSaveAbout, {
       ...STORE_PROFILE_READ_PORTS,
       audit: true,
@@ -369,6 +380,19 @@ const REVIEW_DECISION_PORTS = {
       ids: true,
       clock: true,
     }),
+    useCaseProvider(StoreProfileSave, {
+      ...STORE_PROFILE_READ_PORTS,
+      audit: true,
+      outbox: true,
+      counters: true,
+      counterKeys: true,
+      claimCheck: true,
+      imageProcessor: true,
+      objectStore: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(StoreProfileHistory, { trail: true }),
     useCaseProvider(StoreImageSave, {
       ...STORE_PROFILE_READ_PORTS,
       imageProcessor: true,
@@ -754,7 +778,19 @@ const REVIEW_DECISION_PORTS = {
         }),
     },
     useCaseProvider(PurgeExpired, { unitOfWork: true, counters: true, clock: true }),
+    useCaseProvider(SweepOrphanStoreImageFiles, {
+      unitOfWork: true,
+      storeImages: true,
+      objectStore: true,
+      clock: true,
+    }),
     // Seller health, nightly per seller zone (package 4): the feeds are bound by SellerHealthModule.
+    useCaseProvider(SellerHealthQueueRead, {
+      unitOfWork: true,
+      healthStore: true,
+      list: true,
+      clock: true,
+    }),
     useCaseProvider(SellerHealthRead, {
       unitOfWork: true,
       files: true,
@@ -772,17 +808,26 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(PurgeSellerHealth, { unitOfWork: true, healthStore: true, clock: true }),
     registerJobsFrom(
       'sellers',
-      [BackfillSellerFiles, PurgeExpired, ReconcileDecisions, RunSellerHealth, PurgeSellerHealth],
+      [
+        BackfillSellerFiles,
+        PurgeExpired,
+        ReconcileDecisions,
+        SweepOrphanStoreImageFiles,
+        RunSellerHealth,
+        PurgeSellerHealth,
+      ],
       (
         backfill: BackfillSellerFiles,
         purge: PurgeExpired,
         reconcile: ReconcileDecisions,
+        sweepFiles: SweepOrphanStoreImageFiles,
         health: RunSellerHealth,
         purgeHealth: PurgeSellerHealth,
       ) => [
         backfillSellerFilesJob(backfill),
         purgeExpiredJob(purge),
         reconcileDecisionsJob(reconcile),
+        sweepOrphanStoreImageFilesJob(sweepFiles),
         sellerHealthJob(health),
         purgeSellerHealthJob(purgeHealth),
       ],

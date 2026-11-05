@@ -18,6 +18,7 @@ export { IDENTITY_STEP_UP_ACTIONS, STEP_UP_PROOF_MINUTES, type StepUpFailure } f
 export {
   IDENTITY_FACADE,
   type ActorDescription,
+  type ChangeActorLabel,
   type ConfirmSecondFactorFailure,
   type ContactEmailTarget,
   type CustomerAccountOfFailure,
@@ -28,3 +29,4 @@ export {
   type IdentityValidationFailed,
   type SellerMembershipSummary,
 } from './identity.facade';
+export { changeActorSourceOf, changeTrailProvider } from './change-actor-source';

@@ -68,6 +68,13 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    // "View history" of a settings page (query: `after`, `limit`): when, who by display name and
+    // which fields changed, from the audit log.
+    'assistant/admin/settings/history',
+    'notifications/admin/support-contact/history',
+    'shipping/admin/delivery-settings/history',
+    'shipping/admin/fleet-selection/history',
+    'wallet/admin/settings/history',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
@@ -80,6 +87,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
     'catalog/admin/attributes',
     'catalog/admin/feature-sets',
+    // The value suggestions waiting for a decision (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
   ]),
@@ -201,6 +210,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/show',
     'catalog/admin/categories/:id/change-slug',
     'catalog/admin/categories/:id/discard',
+    // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions/:id/approve',
+    'catalog/admin/attribute-suggestions/:id/map',
+    'catalog/admin/attribute-suggestions/:id/reject',
     // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
     // (catalog, attributes A2 part 3: two administrators).
     'catalog/admin/attributes/:id/relaxation-requests',

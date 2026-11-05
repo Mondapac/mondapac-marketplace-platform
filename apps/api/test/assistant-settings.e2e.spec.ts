@@ -9,6 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SetAssistantSettings } from '../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettings } from '../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
+import { ViewAssistantSettingsHistory } from '../src/modules/assistant/application/use-cases/view-assistant-settings-history.use-case';
 import { ViewStorefrontAssistant } from '../src/modules/assistant/application/use-cases/view-storefront-assistant.use-case';
 import { DEFAULT_ASSISTANT_SETTINGS } from '../src/modules/assistant/domain/assistant-settings';
 import { ASSISTANT_STATUS } from '../src/modules/assistant/presentation/http-answers';
@@ -47,6 +48,16 @@ const VIEW = {
     { tier: 'balanced', modelId: null },
   ],
   unavailableOptions: { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] },
+};
+const LAST_CHANGED = {
+  at: Temporal.Instant.from('2026-10-18T09:30:00Z'),
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
+} as const;
+const LAST_CHANGED_BODY = {
+  at: '2026-10-18T09:30:00Z',
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
 };
 const STOREFRONT = {
   enabled: true,
@@ -98,6 +109,8 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
           .useValue(stub('view'))
           .overrideProvider(SetAssistantSettings)
           .useValue(stub('set'))
+          .overrideProvider(ViewAssistantSettingsHistory)
+          .useValue(stub('history'))
           .overrideProvider(ViewStorefrontAssistant)
           .useValue(stub('public')),
     }));
@@ -164,7 +177,7 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     clock = new FixedClock(START);
     calls = [];
     actorKinds = [];
-    next = ok(VIEW);
+    next = ok({ ...VIEW, lastChanged: LAST_CHANGED });
   });
   afterEach(async () => {
     await app?.close();
@@ -177,7 +190,7 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     const read = await call('get', 'admin', session);
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
-    expect(read.body).toEqual(VIEW);
+    expect(read.body).toEqual({ ...VIEW, lastChanged: LAST_CHANGED_BODY });
 
     const settings = { ...DEFAULT_ASSISTANT_SETTINGS, enabled: true };
     const set = await call('put', 'admin', session, { expectedVersion: 2, settings });
@@ -194,6 +207,7 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     const read = await call('get', 'admin', sessionOf('admin', 2));
     expect(Object.keys(read.body as object).sort()).toEqual([
       'apiKey',
+      'lastChanged',
       'models',
       'settings',
       'unavailableOptions',
@@ -297,6 +311,39 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     expect(calls).toEqual([]);
   });
 
+  it('lists the history for an admin and passes the paging', async () => {
+    await boot();
+    next = ok({
+      items: [{ id: 'row-1', ...LAST_CHANGED, fields: ['enabled', 'dailySpendCapUsdCents'] }],
+      next: 'row-1',
+    });
+    const session = sessionOf('admin', 2);
+    const read = await http()
+      .get(`${PATH}/history?limit=5&after=abc`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      items: [{ id: 'row-1', ...LAST_CHANGED_BODY, fields: ['enabled', 'dailySpendCapUsdCents'] }],
+      next: 'row-1',
+    });
+    expect(calls).toEqual([{ name: 'history', input: { after: 'abc', limit: 5 } }]);
+
+    next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+    const bad = await http()
+      .get(`${PATH}/history?limit=x`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    expect(bad.status).toBe(400);
+    expect(calls.at(-1)).toEqual({ name: 'history', input: { after: null, limit: 'invalid' } });
+
+    // The controller only authenticates; the use case decides (application-layer authorisation).
+    next = err({ code: 'access.denied' });
+    const seller = await http()
+      .get(`${PATH}/history`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...sessionOf('seller', 4) });
+    expect(seller.status).toBe(403);
+  });
+
   it('maps invalid, conflict and denied', async () => {
     await boot();
     const session = sessionOf('admin', 2);
@@ -313,6 +360,15 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     const conflict = await put();
     expect(conflict.status).toBe(409);
     expect(conflict.body).toEqual({ statusCode: 409, code: 'assistant.conflict' });
+    // The winning save: who and when.
+    next = err({ code: 'assistant.conflict', lastChanged: LAST_CHANGED });
+    const named = await put();
+    expect(named.status).toBe(409);
+    expect(named.body).toEqual({
+      statusCode: 409,
+      code: 'assistant.conflict',
+      details: { lastChanged: LAST_CHANGED_BODY },
+    });
     next = err({ code: 'access.denied' });
     expect((await put()).status).toBe(403);
   });

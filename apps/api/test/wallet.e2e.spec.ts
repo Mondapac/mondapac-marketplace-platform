@@ -6,6 +6,7 @@ import request from 'supertest';
 import { SetWalletStatus } from '../src/modules/wallet/application/use-cases/set-wallet-status.use-case';
 import { ViewMyHistory } from '../src/modules/wallet/application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from '../src/modules/wallet/application/use-cases/view-my-wallet.use-case';
+import { ViewWalletSettingsHistory } from '../src/modules/wallet/application/use-cases/view-wallet-settings-history.use-case';
 import { ViewWalletSettings } from '../src/modules/wallet/application/use-cases/view-wallet-settings.use-case';
 import { WALLET_STATUS } from '../src/modules/wallet/presentation/http-answers';
 import type { AccountState } from '../src/modules/identity/domain/account';
@@ -85,6 +86,8 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
           .useValue(stub('my-history'))
           .overrideProvider(ViewWalletSettings)
           .useValue(stub('view-settings'))
+          .overrideProvider(ViewWalletSettingsHistory)
+          .useValue(stub('history'))
           .overrideProvider(SetWalletStatus)
           .useValue(stub('set-status')),
     }));
@@ -174,7 +177,15 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
       .get(path)
       .set({ 'x-market-id': code, ...headers });
 
-  const settings = { status: 'paused', reason: 'wind-down', updatedAt: START, version: 4 };
+  const LAST_CHANGED = { at: START, byDisplayName: 'Sara K.', byKind: 'member' } as const;
+  const LAST_CHANGED_BODY = { at: START.toString(), byDisplayName: 'Sara K.', byKind: 'member' };
+  const settings = {
+    status: 'paused',
+    reason: 'wind-down',
+    updatedAt: START,
+    version: 4,
+    lastChanged: LAST_CHANGED,
+  };
 
   beforeEach(() => {
     fakes.reset();
@@ -197,6 +208,7 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
       reason: 'wind-down',
       updatedAt: START.toString(),
       version: 4,
+      lastChanged: LAST_CHANGED_BODY,
     });
     const set = await asAdmin('put', session, {
       status: 'paused',
@@ -211,6 +223,35 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
         input: { status: 'paused', reasonCode: 'wind-down', expectedVersion: 4 },
       },
     ]);
+  });
+
+  it('lists the history for an admin and passes the paging', async () => {
+    await boot();
+    next = ok({
+      items: [{ id: 'row-1', ...LAST_CHANGED, fields: ['reason', 'status'] }],
+      next: null,
+    });
+    const session = admin();
+    const get = (path: string) =>
+      http()
+        .get(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    const read = await get('/wallet/admin/settings/history?limit=5&after=abc');
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      items: [{ id: 'row-1', ...LAST_CHANGED_BODY, fields: ['reason', 'status'] }],
+      next: null,
+    });
+    expect(calls).toEqual([{ name: 'history', input: { after: 'abc', limit: 5 } }]);
+
+    next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+    expect((await get('/wallet/admin/settings/history?limit=x')).status).toBe(400);
+    expect(calls.at(-1)).toEqual({ name: 'history', input: { after: null, limit: 'invalid' } });
+
+    // The controller only authenticates; the use case decides (application-layer authorisation).
+    next = err({ code: 'access.denied' });
+    expect((await get('/wallet/admin/settings/history')).status).toBe(403);
   });
 
   it('refuses the switch without a fresh step-up proof of the session (issue #491)', async () => {
@@ -288,9 +329,18 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
     const stale = await asAdmin('put', session, { status: 'active', expectedVersion: 1 });
     expect(stale.status).toBe(409);
     expect(stale.body).toEqual({ statusCode: 409, code: 'wallet.settings-conflict' });
+    // The winning change: who and when.
+    next = err({ code: 'wallet.settings-conflict', lastChanged: LAST_CHANGED });
+    const named = await asAdmin('put', session, { status: 'active', expectedVersion: 1 });
+    expect(named.body).toEqual({
+      statusCode: 409,
+      code: 'wallet.settings-conflict',
+      details: { lastChanged: LAST_CHANGED_BODY },
+    });
     // The route guard only reads the proof; the use case spends it (and did not, here).
     expect(fakes.stepUpProofs.size).toBe(1);
     expect(calls).toEqual([
+      { name: 'set-status', input: { status: 'active', expectedVersion: 1 } },
       { name: 'set-status', input: { status: 'active', expectedVersion: 1 } },
     ]);
   });
