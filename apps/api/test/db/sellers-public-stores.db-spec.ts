@@ -154,6 +154,7 @@ describe.each(TEST_MARKETS)('public store reads in market %s', (code) => {
       slug: `kedron-${suffix}`,
       name: 'Kedron Halal',
       serviceAreaCode: 'area-new',
+      operatingPostcode: null,
       operatingTimezone: 'Australia/Brisbane',
       firstApprovedAt: Temporal.Instant.from('2025-02-01T00:00:00Z'),
     });
