@@ -9,6 +9,7 @@ import {
 import {
   AttributeDefinition,
   type AttributeBounds,
+  type AttributeMergeOption,
   type AttributeDefinitionState,
   type AttributeDefinitionStatus,
   type LocalizedText,
@@ -166,6 +167,33 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
       data: { status: state.status, version: state.version },
     });
     if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
+  }
+
+  async saveMerge(
+    market: MarketContext,
+    source: AttributeDefinition,
+    target: Id<'AttributeDefinition'>,
+    options: readonly AttributeMergeOption[],
+  ): Promise<void> {
+    const state = source.state;
+    this.#sameMarket(market, state);
+    const tx = this.prisma.tx(market);
+    const { count } = await tx.catalogAttributeDefinition.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: state.version - 1 },
+      data: { status: state.status, version: state.version, mergedIntoId: target },
+    });
+    if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
+    if (options.length > 0) {
+      await tx.catalogAttributeMergeOption.createMany({
+        data: options.map((option) => ({
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          sourceId: state.id,
+          sourceCode: option.sourceCode,
+          targetCode: option.targetCode,
+        })),
+      });
+    }
   }
 
   async #insertRevision(

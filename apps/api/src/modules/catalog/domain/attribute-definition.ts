@@ -116,7 +116,13 @@ export type AttributeDefinitionRefusal =
   /** A value merge or conversion names a type that has no values (attributes A8). */
   | { readonly code: 'attribute-definition.not-select' }
   /** The two values of a merge are not two different, usable values (attributes A8). */
-  | { readonly code: 'attribute-definition.merge-invalid' };
+  | { readonly code: 'attribute-definition.merge-invalid' }
+  /** Two attributes of a merge are of different types (attributes A8). */
+  | { readonly code: 'attribute-definition.merge-type-mismatch' }
+  /** A value of the merged attribute has no target value, or a target that cannot be used. */
+  | { readonly code: 'attribute-definition.merge-unmapped'; readonly option: string }
+  /** A `material` attribute is archived, and so merged, only with a second administrator. */
+  | { readonly code: 'attribute-definition.merge-material' };
 
 /** `true` when the text is one an administrator may show a customer (CA5, PlainText). */
 function validText(text: string): boolean {
@@ -620,4 +626,52 @@ export class AttributeDefinition {
   get state(): AttributeDefinitionState {
     return this.#state;
   }
+}
+
+/** Where one value of a merged attribute goes (attributes A8). */
+export interface AttributeMergeOption {
+  readonly sourceCode: string;
+  readonly targetCode: string;
+}
+
+/**
+ * Plans the merge of an attribute into another (attributes A8, plan decision ت۶): both are
+ * published and of one type, the source is not `material`, and every value of a choice
+ * attribute, active or not, goes to an active value of the target. A type without values has no
+ * mapping. Nothing here reads products: the use case reads the impact, and products keep their
+ * values and are mapped when they are read.
+ */
+export function planAttributeMerge(
+  source: AttributeDefinition,
+  target: AttributeDefinition,
+  mapping: Readonly<Record<string, string>>,
+): Result<readonly AttributeMergeOption[], AttributeDefinitionRefusal> {
+  const from = source.state;
+  const to = target.state;
+  if (from.id === to.id) return err({ code: 'attribute-definition.merge-invalid' });
+  const archivable = source.archivable();
+  if (archivable !== null) return err(archivable);
+  if (to.status !== 'active') return err({ code: 'attribute-definition.merge-invalid' });
+  if (from.dataType !== to.dataType) return err({ code: 'attribute-definition.merge-type-mismatch' });
+  if (from.material) return err({ code: 'attribute-definition.merge-material' });
+  const choice = from.dataType === 'select' || from.dataType === 'multi-select';
+  if (!choice) {
+    return Object.keys(mapping).length === 0
+      ? ok([])
+      : err({ code: 'attribute-definition.not-select' });
+  }
+  const targets = new Set(to.options.filter((option) => option.active).map((option) => option.code));
+  const known = new Set(from.options.map((option) => option.code));
+  for (const key of Object.keys(mapping)) {
+    if (!known.has(key)) return err({ code: 'attribute-definition.merge-unmapped', option: key });
+  }
+  const plan: AttributeMergeOption[] = [];
+  for (const option of from.options) {
+    const goes = mapping[option.code];
+    if (goes === undefined || !targets.has(goes)) {
+      return err({ code: 'attribute-definition.merge-unmapped', option: option.code });
+    }
+    plan.push({ sourceCode: option.code, targetCode: goes });
+  }
+  return ok(plan);
 }

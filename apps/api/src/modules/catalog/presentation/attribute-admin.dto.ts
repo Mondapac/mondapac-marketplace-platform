@@ -528,6 +528,21 @@ export class AttributeImpactBody {
   @ApiProperty({ type: ImpactBody }) impact!: ImpactBody;
 }
 
+export class AttributeMergeRequest {
+  @ApiProperty({ description: 'The version of the attribute that is merged away.' })
+  version!: number;
+  @ApiProperty({ description: 'The id of the active attribute of the same type it goes into.' })
+  target!: string;
+  @ApiProperty({ description: 'The version of the target the impact dialog showed.' })
+  targetVersion!: number;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: 'For a choice attribute: every value code of the source to a target value code.',
+  })
+  options?: Record<string, string>;
+}
+
 export class ValuesMergeRequest {
   @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
   version!: number;
