@@ -35,6 +35,13 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
+import {
+  ATTRIBUTE_DEFINITION_STORE,
+  type AttributeDefinitionStore,
+} from '../application/ports/attribute-definition.store';
+import { CertificationClaimTermLocales } from './certification-claim-term-locales';
+import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
 import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
 import { OWN_OFFER_FINDER } from '../application/ports/own-offer-finder';
 import { CLAIM_EVALUATOR, type ClaimEvaluator } from '../application/ports/claim-evaluator';
@@ -184,9 +191,29 @@ import {
 import { PrismaPublishedImagesReader } from './prisma-published-images.reader';
 import { BRAND_REPOSITORY, type BrandRepository } from '../application/ports/brand.repository';
 import { BRAND_READER, type BrandReader } from '../application/ports/brand.reader';
+import {
+  ATTRIBUTE_ADMIN_READER,
+  type AttributeAdminReader,
+} from '../application/ports/attribute-admin.reader';
+import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
 import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
+import {
+  BUSINESS_ACTIVITY_REPOSITORY,
+  type BusinessActivityRepository,
+} from '../application/ports/business-activity.repository';
+import {
+  BUSINESS_ACTIVITY_READER,
+  type BusinessActivityReader,
+} from '../application/ports/business-activity.reader';
+import { PrismaBusinessActivityRepository } from './prisma-business-activity.repository';
+import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
+import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
+import {
+  ADMIN_CATEGORY_READER,
+  type AdminCategoryReader,
+} from '../application/ports/admin-category.reader';
 import { PrismaBrandAssigner } from './prisma-brand.assigner';
 
 const CATALOG_SECRET = Symbol('CATALOG_SECRET');
@@ -202,6 +229,18 @@ export const catalogProviders: readonly Provider[] = [
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
       new CertificationClaimTextMatcher(certification),
+  },
+  {
+    provide: CLAIM_TERM_LOCALES,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): ClaimTermLocales =>
+      new CertificationClaimTermLocales(certification),
+  },
+  {
+    provide: ATTRIBUTE_DEFINITION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeDefinitionStore =>
+      new PrismaAttributeDefinitionStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,
@@ -221,9 +260,33 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaBrandRepository(prisma, ids),
   },
   {
+    provide: ADMIN_CATEGORY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminCategoryReader =>
+      new PrismaAdminCategoryReader(prisma),
+  },
+  {
     provide: BRAND_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
+  },
+  {
+    provide: ATTRIBUTE_ADMIN_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeAdminReader =>
+      new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: BUSINESS_ACTIVITY_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BusinessActivityRepository =>
+      new PrismaBusinessActivityRepository(prisma),
+  },
+  {
+    provide: BUSINESS_ACTIVITY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BusinessActivityReader =>
+      new PrismaBusinessActivityReader(prisma),
   },
   {
     provide: BRAND_ASSIGNER,

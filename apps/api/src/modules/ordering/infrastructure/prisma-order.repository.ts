@@ -7,6 +7,7 @@ import type {
   OrderPage,
   OrderRepository,
   SellerOrderFilter,
+  SellerOrderSort,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../application/ports/order.repository';
@@ -67,6 +68,7 @@ interface OrderRow {
     readonly deliveryWindowStart: Date | null;
     readonly deliveryWindowEnd: Date | null;
     readonly readyAt: Date | null;
+    readonly readyPrepMinutes: number | null;
     readonly deliveryAttention: string | null;
     readonly deliveryQuoteId: string | null;
     readonly deliveryQuoteFleet: string | null;
@@ -120,6 +122,7 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
       ? null
       : { start: toInstant(s.deliveryWindowStart), end: toInstant(s.deliveryWindowEnd) },
   readyAt: optionalInstant(s.readyAt),
+  readyPrepMinutes: s.readyPrepMinutes,
   deliveryAttention: s.deliveryAttention as DeliveryAttention | null,
   deliveryQuote:
     s.deliveryQuoteId === null ||
@@ -278,6 +281,7 @@ export class PrismaOrderRepository implements OrderRepository {
         deliveryMethod: s.deliveryMethod,
         deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
         deliveryWindowEnd: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.end),
+        readyPrepMinutes: s.readyPrepMinutes,
         deliveryQuoteId: s.deliveryQuote?.quoteId ?? null,
         deliveryQuoteFleet: s.deliveryQuote?.fleet ?? null,
         deliveryQuoteAmount: s.deliveryQuote?.quoteAmount ?? null,
@@ -443,18 +447,39 @@ export class PrismaOrderRepository implements OrderRepository {
     page: SellerOrderPage,
   ) {
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
-      where: {
-        marketId: market.marketId,
-        sellerId,
-        ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
-        order: { status: 'confirmed' },
-        ...sellerCursor(page),
-      },
+      where: { ...sellerWhere(market, sellerId, filter), ...sellerCursor(page) },
       include: SELLER_INCLUDE,
       orderBy: [{ order: { confirmedAt: 'desc' } }, { id: 'desc' }],
       take: page.limit,
     });
     return rows.map(toRecord);
+  }
+
+  async pageForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    sort: SellerOrderSort,
+    offset: number,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: sellerWhere(market, sellerId, filter),
+      include: SELLER_INCLUDE,
+      orderBy:
+        sort.key === 'total'
+          ? [{ totalAmount: sort.direction }, { id: sort.direction }]
+          : [{ order: { confirmedAt: sort.direction } }, { id: sort.direction }],
+      skip: offset,
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  countMatchingForSeller(market: MarketContext, sellerId: Id<'Seller'>, filter: SellerOrderFilter) {
+    return this.prisma
+      .tx(market)
+      .orderingSellerOrder.count({ where: sellerWhere(market, sellerId, filter) });
   }
 
   async countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts> {
@@ -545,6 +570,70 @@ export class PrismaOrderRepository implements OrderRepository {
             },
           ],
     );
+  }
+
+  async sellerHealthRows(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+    limit: number,
+  ) {
+    const tx = this.prisma.tx(market);
+    const paid = await tx.orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        order: { status: 'confirmed', confirmedAt: { gte: toDate(from), lt: toDate(to) } },
+      },
+      select: { order: { select: { confirmedAt: true } } },
+      take: limit + 1,
+    });
+    const ready = await tx.orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        readyAt: { gte: toDate(from), lt: toDate(to) },
+        order: { status: 'confirmed' },
+      },
+      select: {
+        readyAt: true,
+        deliveryMethod: true,
+        deliveryWindowStart: true,
+        deliveryWindowEnd: true,
+        readyPrepMinutes: true,
+        order: { select: { confirmedAt: true } },
+      },
+      take: limit + 1,
+    });
+    // A cut-off count would be a wrong score, so a seller past the limit fails the read instead.
+    if (paid.length > limit || ready.length > limit) {
+      throw new RangeError('ordering.seller-health: too many seller orders in the span');
+    }
+    return {
+      paidAt: paid.flatMap((row) =>
+        row.order.confirmedAt === null ? [] : [toInstant(row.order.confirmedAt)],
+      ),
+      ready: ready.flatMap((row) =>
+        row.readyAt === null || row.order.confirmedAt === null
+          ? []
+          : [
+              {
+                readyAt: toInstant(row.readyAt),
+                confirmedAt: toInstant(row.order.confirmedAt),
+                deliveryMethod: row.deliveryMethod as DeliveryMethod,
+                deliveryWindow:
+                  row.deliveryWindowStart === null || row.deliveryWindowEnd === null
+                    ? null
+                    : {
+                        start: toInstant(row.deliveryWindowStart),
+                        end: toInstant(row.deliveryWindowEnd),
+                      },
+                readyPrepMinutes: row.readyPrepMinutes,
+              },
+            ],
+      ),
+    };
   }
 
   async saveFulfilment(market: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
@@ -650,6 +739,24 @@ export class PrismaOrderRepository implements OrderRepository {
 const SELLER_INCLUDE = { lines: true, order: true } as const;
 
 /** Rows paid before the cursor, newest first: `(confirmed_at, id) < (cursor)`. */
+/** The seller list's filter as a Market-scoped `where`: paid orders of this seller only. */
+const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: SellerOrderFilter) => ({
+  marketId: market.marketId,
+  sellerId,
+  ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
+  order: {
+    status: 'confirmed',
+    ...(filter.from === null && filter.to === null
+      ? {}
+      : {
+          confirmedAt: {
+            ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+            ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+          },
+        }),
+  },
+});
+
 const sellerCursor = (page: SellerOrderPage) =>
   page.after === null
     ? {}

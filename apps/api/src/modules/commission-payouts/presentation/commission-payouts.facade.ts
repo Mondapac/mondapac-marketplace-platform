@@ -1,8 +1,9 @@
-import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
 import type { CommissionRates } from '../application/use-cases/commission-rates.use-case';
 import type { RecordSellerOrderDelivered } from '../application/use-cases/record-seller-order-delivered.use-case';
 import type { RecordRefund } from '../application/use-cases/record-refund.use-case';
 import type { RecordSellerOrderPaid } from '../application/use-cases/record-seller-order-paid.use-case';
+import type { SellerLostDisputes } from '../application/use-cases/seller-lost-disputes.use-case';
 import type {
   CommissionPayoutsFacade,
   PaidSellerOrder,
@@ -17,6 +18,7 @@ export class CommissionPayoutsFacadeImplementation implements CommissionPayoutsF
     private readonly recordPaid: RecordSellerOrderPaid,
     private readonly recordRefunded: RecordRefund,
     private readonly recordDelivered: RecordSellerOrderDelivered,
+    private readonly lostDisputes: SellerLostDisputes,
   ) {}
 
   commissionRates(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
@@ -33,5 +35,16 @@ export class CommissionPayoutsFacadeImplementation implements CommissionPayoutsF
 
   recordSellerOrderDelivered(context: CallContext, delivered: SellerOrderDelivered) {
     return this.recordDelivered.execute(context, delivered);
+  }
+
+  sellerLostDisputes(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    return this.lostDisputes.execute(context, {
+      sellerId,
+      windows: windows.map((w) => ({ from: w.from.toString(), to: w.to.toString() })),
+    });
   }
 }

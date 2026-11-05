@@ -8,6 +8,7 @@ import type {
   SellerOrder,
 } from '../../domain/order';
 import type { OrderStatusCounts, SellerOrderCounts } from '../../domain/order-views';
+import type { ReadyRecord } from '../../domain/seller-health-counts';
 
 /** Newest first; the cursor is the last row of the previous page. */
 export interface OrderPage {
@@ -38,6 +39,15 @@ export interface OrderSort {
 /** The seller list's filter; null keeps every paid seller order. */
 export interface SellerOrderFilter {
   readonly fulfilment: Fulfilment | null;
+  /** Paid at or after `from` and before `to`; null keeps every payment time. */
+  readonly from: Temporal.Instant | null;
+  readonly to: Temporal.Instant | null;
+}
+
+/** The sort of a seller's offset page; ties break on the seller order id in the same direction. */
+export interface SellerOrderSort {
+  readonly key: 'paid' | 'total';
+  readonly direction: 'asc' | 'desc';
 }
 
 /** A seller's page of paid seller orders, newest payment first. */
@@ -65,6 +75,17 @@ export interface DeliveredSellerOrderRecord {
   readonly sellerId: Id<'Seller'>;
   readonly deliveredAt: Temporal.Instant;
   readonly offerIds: readonly Id<'Offer'>[];
+}
+
+/**
+ * What the seller health feed reads for a span of instants: when the seller's orders were paid and
+ * which were marked ready. The use case buckets them into the windows asked for.
+ */
+export interface SellerHealthRows {
+  /** Payment times of the seller's seller orders paid in the span (confirmed orders only). */
+  readonly paidAt: readonly Temporal.Instant[];
+  /** Seller orders of the seller marked ready in the span (confirmed orders only). */
+  readonly ready: readonly ReadyRecord[];
 }
 
 /**
@@ -143,6 +164,23 @@ export interface OrderRepository {
     page: SellerOrderPage,
   ): Promise<readonly SellerOrderRecord[]>;
 
+  /** One offset page of the seller's paid seller orders that match `filter`, in `sort` order. */
+  pageForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    sort: SellerOrderSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly SellerOrderRecord[]>;
+
+  /** How many of the seller's paid seller orders match `filter` (the total behind page numbers). */
+  countMatchingForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+  ): Promise<number>;
+
   /** The seller's paid seller orders per fulfilment step (one grouped count). */
   countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts>;
 
@@ -177,6 +215,19 @@ export interface OrderRepository {
       readonly limit: number;
     },
   ): Promise<readonly DeliveredSellerOrderRecord[]>;
+
+  /**
+   * The seller health feed: when the seller's orders were paid in `[from, to)` and which were
+   * marked ready in it, in one read. Orders cancelled before payment are never read; counters and
+   * instants only. Fails past `limit` rows rather than answer with a cut-off count.
+   */
+  sellerHealthRows(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+    limit: number,
+  ): Promise<SellerHealthRows>;
 
   /**
    * Writes the fulfilment fields of one seller order only if it still stands at `from`; `stale`

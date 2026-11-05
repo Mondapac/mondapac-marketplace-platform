@@ -1,5 +1,71 @@
 [
   {
+    "action": "catalog.attribute-definition.created",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.discarded",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "status": "enumOf(archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.published",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.revised",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
     "action": "catalog.product.paused",
     "targetType": "catalog.product",
     "targetId": "id",
@@ -1917,7 +1983,25 @@
       "status": "enumOf(off|active)"
     },
     "after": {
-      "status": "enumOf(off|active)"
+      "status": "enumOf(off|active)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "reviews.review.moderated",
+    "targetType": "reviews.product-review",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(published|held|hidden|removed|deleted-by-author)"
+    },
+    "after": {
+      "action": "enumOf(publish|hide|restore|remove|dismiss-reports)",
+      "reasonCode": "enumOf(checked-ok|personal-information|abusive|irrelevant|not-a-purchase|extortion|incentivised|spam|other|reinstated|hidden-in-error|illegal|defamatory|not-against-policy|duplicate)",
+      "status": "enumOf(published|held|hidden|removed|deleted-by-author)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)"
     }
   },
   {
@@ -2012,6 +2096,7 @@
       "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
       "marginKind": "enumOf(none|percent|fixed)",
       "marginValue": "integer",
+      "readyPrepMinutes": "integer",
       "roundingStepMinor": "integer",
       "sameDayCutoffMinutes": "integer",
       "scheduledDaysAhead": "integer",
@@ -2022,6 +2107,7 @@
       "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
       "marginKind": "enumOf(none|percent|fixed)",
       "marginValue": "integer",
+      "readyPrepMinutes": "integer",
       "roundingStepMinor": "integer",
       "sameDayCutoffMinutes": "integer",
       "scheduledDaysAhead": "integer",

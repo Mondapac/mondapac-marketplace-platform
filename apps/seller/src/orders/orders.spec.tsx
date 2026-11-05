@@ -134,12 +134,11 @@ describe('SellerOrders list', () => {
     expect(screen.queryByRole('button', { name: 'Show more orders' })).toBeNull();
   });
 
-  it('keeps the state in "Show more" and shows an empty state when a state has no orders', async () => {
+  it('shows an empty state when a state has no orders, and Previous and Next walk the cursors', async () => {
     call.mockResolvedValueOnce({ ok: true, status: 200, body: page([]) });
     mountList(page([order()], '1.cursor'));
     fireEvent.click(screen.getByRole('button', { name: 'Delivered' }));
     expect(await screen.findByRole('heading', { name: 'No orders in this state' })).toBeTruthy();
-    expect(screen.queryByText(/Show more orders to look further back/)).toBeNull();
     call.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -147,9 +146,11 @@ describe('SellerOrders list', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Shipped' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
-    await screen.findByRole('button', { name: 'Show more orders' });
-    call.mockResolvedValueOnce({ ok: true, status: 200, body: page([]) });
-    fireEvent.click(screen.getByRole('button', { name: 'Show more orders' }));
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Next' }).disabled).toBe(false),
+    );
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: page([order()]) });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(call.mock.calls[2]?.[1]).toBe(
       'ordering/seller/orders?limit=20&status=shipped&cursor=2.cursor',
@@ -164,25 +165,107 @@ describe('SellerOrders list', () => {
     expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(1);
   });
 
-  it('loads the next page by cursor and skips an order it already shows', async () => {
-    call.mockResolvedValue({
+  it('walks to the next page with Next, skipping nothing, and back with Previous', async () => {
+    call.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      body: page([order(), order({ sellerOrderId: '0190a000-0000-7000-8000-0000000000a2' })]),
+      body: page([order({ sellerOrderId: '0190a000-0000-7000-8000-0000000000a2' })]),
     });
     mountList(page([order()], '1.cursor'));
-    fireEvent.click(screen.getByRole('button', { name: 'Show more orders' }));
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Previous' }).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call.mock.calls[0]?.[1]).toBe('ordering/seller/orders?limit=20&cursor=1.cursor');
-    await waitFor(() => expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(2));
+    expect(await screen.findByRole('link', { name: /000000A2/ })).toBeTruthy();
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: page([order()], '1.cursor') });
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: /000000A1/ })).toBeTruthy();
+    expect(call.mock.calls[1]?.[1]).toBe('ordering/seller/orders?limit=20');
     expect(screen.queryByRole('button', { name: 'Show more orders' })).toBeNull();
   });
 
-  it('says so when the next page cannot be loaded', async () => {
+  it('says so and keeps the rows when the next page cannot be loaded', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 503, code: 'x' } });
     mountList(page([order()], '1.cursor'));
-    fireEvent.click(screen.getByRole('button', { name: 'Show more orders' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText(/Orders are not available right now/)).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(1);
+  });
+});
+
+describe('SellerOrders list in page mode', () => {
+  const pagesPage = (total: number, pageNo = 1): SellerOrderPage => ({
+    ...page([order()]),
+    total,
+    page: pageNo,
+    pageSize: 25,
+  });
+  const mountPages = (initial = pagesPage(60)) =>
+    render(wrap(<SellerOrders initial={initial} paging="pages" />));
+
+  it('shows the range, page buttons and no "Show more"', () => {
+    mountPages();
+    expect(screen.getByText('1 to 1 of 60')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Page 3' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Show more orders' })).toBeNull();
+    expect(screen.getByLabelText('Sort by')).toBeTruthy();
+  });
+
+  it('asks the API for the page, the sort and the days that were chosen', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(60, 2) });
+    mountPages();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[1]).toBe(
+      'ordering/seller/orders?page=2&pageSize=25&sort=paid&direction=desc',
+    );
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'total-high' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls[1]?.[1]).toBe(
+      'ordering/seller/orders?page=1&pageSize=25&sort=total&direction=desc',
+    );
+    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call.mock.calls[2]?.[1]).toContain('from=2026-10-01T00%3A00%3A00.000Z');
+  });
+
+  it('keeps the page, range and rows on screen when another page cannot be loaded', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 503, code: 'x' } });
+    mountPages();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    expect(await screen.findByText(/Orders are not available right now/)).toBeTruthy();
+    expect(screen.getByText('1 to 1 of 60')).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: /^#/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Page 1' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+  });
+
+  it('moves the focus to the top of the list after a page change', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(60, 2) });
+    mountPages();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('table').parentElement?.parentElement),
+    );
+  });
+
+  it('asks nothing for a backwards range and says so', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(0) });
+    mountPages();
+    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-05' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    call.mockClear();
+    fireEvent.change(screen.getByLabelText('Paid until (UTC)'), {
+      target: { value: '2026-10-01' },
+    });
+    expect(await screen.findByText('The end day is before the start day.')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('says that page numbers stop at 10,000 orders', () => {
+    mountPages(pagesPage(12_000));
+    expect(screen.getByText(/Page numbers stop at the first 10,000 orders/)).toBeTruthy();
   });
 });
 

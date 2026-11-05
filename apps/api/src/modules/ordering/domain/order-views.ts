@@ -192,6 +192,12 @@ export interface LabelledSellerOrderPageView {
   readonly counts: SellerOrderCounts;
   /** Pass back as `cursor` for the next page; null on the last page. */
   readonly nextCursor: string | null;
+  /** Set only in page-number mode (`page` asked for); null in cursor mode. */
+  readonly paging: {
+    readonly total: number;
+    readonly page: number;
+    readonly pageSize: number;
+  } | null;
 }
 
 /** The admin list: a page of labelled orders and the Market's counts per status. */

@@ -1,11 +1,15 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import { markDelivered, markShipped } from '../../src/modules/ordering/domain/order';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
-import type { OrderFilter } from '../../src/modules/ordering/application/ports/order.repository';
+import type {
+  OrderFilter,
+  SellerOrderFilter,
+  SellerOrderSort,
+} from '../../src/modules/ordering/application/ports/order.repository';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { TEST_MARKETS } from '../support/test-config';
 import {
@@ -108,6 +112,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           deliveryMethod: 'instant',
           deliveryWindow: null,
           readyAt: null,
+          readyPrepMinutes: null,
           deliveryAttention: null,
           deliveryQuote: null,
         },
@@ -766,7 +771,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       repository.listForSeller(
         market,
         seller.sellerId,
-        { fulfilment: null },
+        { fulfilment: null, from: null, to: null },
         { limit: 10, after: null },
       ),
     );
@@ -774,7 +779,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       repository.listForSeller(
         market,
         seller.sellerId,
-        { fulfilment: 'to-ship' },
+        { fulfilment: 'to-ship', from: null, to: null },
         { limit: 10, after: null },
       ),
     );
@@ -782,7 +787,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       repository.listForSeller(
         market,
         seller.sellerId,
-        { fulfilment: 'shipped' },
+        { fulfilment: 'shipped', from: null, to: null },
         { limit: 10, after: null },
       ),
     );
@@ -810,6 +815,125 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(foreign).toBeNull();
     expect(notPaid).toBeNull();
     expect(elsewhere).toBeNull();
+  });
+
+  it("pages a seller's paid seller orders by offset with a total, a date range and a sort", async () => {
+    const mine = ids.next<'Seller'>();
+    const rival = ids.next<'Seller'>();
+    const day = T0.add({ hours: 24 * 600 });
+    const paidFor = async (
+      seller: Id<'Seller'>,
+      paidAt: Temporal.Instant,
+      amount: bigint,
+      owner: MarketContext = market,
+    ) => {
+      const base = newOrder(ids.next<'Account'>(), paidAt.add({ minutes: -10 }));
+      const order: OrderState = {
+        ...base,
+        marketId: owner.marketId,
+        total: money(amount, currency),
+        sellerOrders: base.sellerOrders.map((part) => ({
+          ...part,
+          sellerId: seller,
+          subtotal: amount,
+          total: amount,
+        })),
+        lines: base.lines.map((line) => ({
+          ...line,
+          unitPrice: money(amount / 2n, currency),
+          lineAmount: amount,
+        })),
+      };
+      await value(owner, () => repository.insert(owner, order));
+      await value(owner, () =>
+        repository.save(owner, {
+          ...order,
+          status: 'confirmed',
+          paymentState: 'captured',
+          stripePaymentIntentId: `pi_test_${order.id}`,
+          confirmedAt: paidAt,
+        }),
+      );
+      return order.sellerOrders[0]!;
+    };
+    // Mine: 4 paid parts with distinct payment times; two share a total. A rival shop in the same
+    // Market and one more paid part of mine in another Market must never show up.
+    const parts = [
+      await paidFor(mine, day.add({ minutes: 0 }), 1000n),
+      await paidFor(mine, day.add({ minutes: 1 }), 3000n),
+      await paidFor(mine, day.add({ minutes: 2 }), 3000n),
+      await paidFor(mine, day.add({ minutes: 3 }), 2000n),
+    ];
+    await paidFor(rival, day.add({ minutes: 1 }), 3000n);
+    await paidFor(mine, day.add({ minutes: 1 }), 3000n, other);
+    // An unpaid part of mine is not listed either.
+    const unpaid = newOrder(ids.next<'Account'>(), day);
+    await value(market, () =>
+      repository.insert(market, {
+        ...unpaid,
+        sellerOrders: unpaid.sellerOrders.map((part) => ({ ...part, sellerId: mine })),
+      }),
+    );
+
+    const all = { fulfilment: null, from: null, to: null } as const;
+    const window = { ...all, from: day, to: day.add({ hours: 1 }) };
+    const idsOf = (filter: SellerOrderFilter, sort: SellerOrderSort, offset = 0, limit = 10) =>
+      value(market, () => repository.pageForSeller(market, mine, filter, sort, offset, limit)).then(
+        (rows) => rows.map((r) => r.sellerOrder.id),
+      );
+    const tied = [parts[1]!.id, parts[2]!.id].sort();
+
+    // Paid time: the whole shop, none of the rival's, and a page edge is exact.
+    expect(await idsOf(window, { key: 'paid', direction: 'desc' })).toEqual([
+      parts[3]!.id,
+      parts[2]!.id,
+      parts[1]!.id,
+      parts[0]!.id,
+    ]);
+    expect(await idsOf(window, { key: 'paid', direction: 'asc' }, 1, 2)).toEqual([
+      parts[1]!.id,
+      parts[2]!.id,
+    ]);
+    // Total: a tie breaks on the id in the same direction, and a page edge inside it is exact.
+    expect(await idsOf(window, { key: 'total', direction: 'desc' })).toEqual([
+      ...[...tied].reverse(),
+      parts[3]!.id,
+      parts[0]!.id,
+    ]);
+    expect(await idsOf(window, { key: 'total', direction: 'asc' })).toEqual([
+      parts[0]!.id,
+      parts[3]!.id,
+      ...tied,
+    ]);
+    expect(await idsOf(window, { key: 'total', direction: 'desc' }, 0, 1)).toEqual([tied[1]]);
+    expect(await idsOf(window, { key: 'total', direction: 'desc' }, 1, 1)).toEqual([tied[0]]);
+    // The range is half open on the payment time.
+    const range = (from: Temporal.Instant | null, to: Temporal.Instant | null) =>
+      idsOf({ ...all, from, to }, { key: 'paid', direction: 'asc' });
+    expect(await range(day.add({ minutes: 1 }), day.add({ minutes: 3 }))).toEqual([
+      parts[1]!.id,
+      parts[2]!.id,
+    ]);
+    expect(await range(day.add({ minutes: 4 }), null)).toEqual([]);
+    expect(await range(null, day)).toEqual([]);
+    // The totals behind the page numbers follow the same filter, per shop and per Market.
+    const count = (filter: SellerOrderFilter, owner: MarketContext = market, id = mine) =>
+      value(owner, () => repository.countMatchingForSeller(owner, id, filter));
+    expect(await count(window)).toBe(4);
+    expect(await count({ ...window, fulfilment: 'shipped' })).toBe(0);
+    expect(await count({ ...window, fulfilment: 'to-ship' })).toBe(4);
+    expect(await count(window, market, rival)).toBe(1);
+    expect(await count(window, other)).toBe(1);
+    // The cursor list takes the same range.
+    const cursorList = await value(market, () =>
+      repository.listForSeller(
+        market,
+        mine,
+        { ...all, from: day.add({ minutes: 2 }), to: day.add({ hours: 1 }) },
+        { limit: 10, after: null },
+      ),
+    );
+    expect(cursorList.map((r) => r.sellerOrder.id)).toEqual([parts[3]!.id, parts[2]!.id]);
   });
 
   it('queues shipped orders for inventory once and marks them recorded', async () => {
@@ -951,6 +1075,82 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       expect(await value(market, () => repository.saveAttention(market, flagged))).toBe('stale');
       const read = await value(market, () => repository.findById(market, order.id));
       expect(read?.sellerOrders[0]?.deliveryAttention).toBe('no-carrier');
+    });
+  });
+
+  describe('seller health feed', () => {
+    const sellerId = ids.next<'Seller'>();
+    /** An order of `sellerId`, paid at `paidAt` and (when given) marked ready at `readyAt`. */
+    const paidOrder = async (
+      owner: MarketContext,
+      seller: Id<'Seller'>,
+      paidAt: Temporal.Instant | null,
+      readyAt: Temporal.Instant | null,
+    ) => {
+      const base = newOrder(ids.next<'Account'>(), T0.add({ hours: -30 }));
+      const order: OrderState = {
+        ...base,
+        marketId: owner.marketId,
+        sellerOrders: [{ ...base.sellerOrders[0]!, sellerId: seller, readyPrepMinutes: 45 }],
+      };
+      await value(owner, () => repository.insert(owner, order));
+      if (paidAt === null) return order;
+      await value(owner, () =>
+        repository.save(owner, {
+          ...order,
+          status: 'confirmed',
+          paymentState: 'captured',
+          stripePaymentIntentId: `pi_test_${order.id}`,
+          confirmedAt: paidAt,
+        }),
+      );
+      if (readyAt !== null) {
+        await value(owner, () =>
+          repository.saveReady(owner, { ...order.sellerOrders[0]!, readyAt }),
+        );
+      }
+      return order;
+    };
+
+    it('answers the paid and ready seller orders of one seller in a span, and nothing else', async () => {
+      const from = T0.add({ hours: -24 });
+      const to = T0;
+      await paidOrder(market, sellerId, T0.add({ hours: -20 }), T0.add({ hours: -19 }));
+      await paidOrder(market, sellerId, T0.add({ hours: -10 }), null);
+      // Outside the span, unpaid, another seller, another Market: none of these count.
+      await paidOrder(market, sellerId, T0.add({ hours: -40 }), T0.add({ hours: -39 }));
+      await paidOrder(market, sellerId, null, null);
+      await paidOrder(market, ids.next<'Seller'>(), T0.add({ hours: -5 }), T0.add({ hours: -4 }));
+      await paidOrder(other, sellerId, T0.add({ hours: -5 }), T0.add({ hours: -4 }));
+
+      const rows = await value(market, () =>
+        repository.sellerHealthRows(market, sellerId, from, to, 100),
+      );
+
+      expect(rows.paidAt.map(String).sort()).toEqual(
+        [T0.add({ hours: -20 }), T0.add({ hours: -10 })].map(String).sort(),
+      );
+      expect(rows.ready).toEqual([
+        {
+          readyAt: T0.add({ hours: -19 }),
+          confirmedAt: T0.add({ hours: -20 }),
+          deliveryMethod: 'instant',
+          deliveryWindow: null,
+          readyPrepMinutes: 45,
+        },
+      ]);
+    });
+
+    it('fails the read, rather than cut the count, when the seller has more rows than the limit', async () => {
+      const busy = ids.next<'Seller'>();
+      await paidOrder(market, busy, T0.add({ hours: -3 }), T0.add({ hours: -2 }));
+      await paidOrder(market, busy, T0.add({ hours: -4 }), T0.add({ hours: -3 }));
+
+      await expect(
+        value(market, () =>
+          repository.sellerHealthRows(market, busy, T0.add({ hours: -24 }), T0, 1),
+        ),
+      ).rejects.toThrow(RangeError);
     });
   });
 });

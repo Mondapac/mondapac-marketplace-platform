@@ -52,6 +52,15 @@ export { FieldAction, type FieldActionProps } from './form/field-action.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
 export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
+export {
+  SearchSelect,
+  SEARCH_THRESHOLD,
+  type SearchSelectLabels,
+  type SearchSelectMultiProps,
+  type SearchSelectOption,
+  type SearchSelectProps,
+  type SearchSelectSingleProps,
+} from './select/search-select.tsx';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
@@ -108,6 +117,13 @@ export {
 } from './settings/use-settings-form.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
+export {
+  Pagination,
+  PrevNext,
+  pageWindow,
+  type PageItem,
+  type PaginationLabels,
+} from './data/pagination.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
 export { addressLines } from './data/address.ts';

@@ -38,6 +38,27 @@ export class CheckoutStartedView {
   @ApiProperty({ type: MoneyView }) total!: MoneyView;
 }
 
+export class CardPaymentStartedView {
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({
+    enum: ['authorised', 'requires-action'],
+    description:
+      'authorised: the card holds the money and the order is confirmed a moment later (poll ' +
+      'GET /orders/{orderId}). requires-action: finish the bank check with clientSecret in the ' +
+      'browser, then poll the order.',
+  })
+  status!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Only for requires-action. A secret of this browser session: do not store or log.',
+  })
+  clientSecret!: string | null;
+  @ApiProperty({ format: 'date-time', description: 'The order is held for payment until then.' })
+  payBy!: string;
+  @ApiProperty({ type: MoneyView }) total!: MoneyView;
+}
+
 export class OrderLineBody {
   @ApiProperty({ format: 'uuid' }) lineId!: string;
   @ApiProperty({ format: 'uuid' }) offerId!: string;
@@ -287,6 +308,24 @@ export class CheckoutRequest {
   >;
 }
 
+export class PayByCardRequest extends CheckoutRequest {
+  @ApiProperty({
+    description:
+      "The ConfirmationToken id (ctoken_...) from Stripe's Payment Element. The only thing of " +
+      'the card that reaches the server; single use.',
+  })
+  confirmationToken!: string;
+
+  @ApiProperty({
+    required: false,
+    type: MoneyView,
+    description:
+      'The total the buyer saw. Only compared with the total the server computes now; a ' +
+      'difference is refused (ordering.price-changed) before anything is reserved or charged.',
+  })
+  expectedTotal?: MoneyView;
+}
+
 export class LabelledOrderLineBody extends OrderLineBody {
   @ApiProperty({
     type: String,
@@ -473,6 +512,16 @@ export class SellerOrderPageBody {
     description: "The shop's paid orders per fulfilment step, whatever the page or filter.",
   })
   counts!: SellerOrderCountsBody;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Page mode only: how many orders match the filter.',
+  })
+  total!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
+  page!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
+  pageSize!: number | null;
 }
 
 export const sellerOrderDetailBody = (
@@ -516,6 +565,9 @@ export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOr
   sellerOrders: page.sellerOrders.map(sellerOrderDetailBody),
   nextCursor: page.nextCursor,
   counts: { ...page.counts },
+  total: page.paging?.total ?? null,
+  page: page.paging?.page ?? null,
+  pageSize: page.paging?.pageSize ?? null,
 });
 
 export const orderBody = (order: OrderView): OrderBody => ({

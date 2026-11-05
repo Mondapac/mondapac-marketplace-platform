@@ -1,0 +1,275 @@
+/* Reviews and ratings (buyer pages). Logical properties only, so the pages read right to left
+   without a second set of rules. Colours are the storefront tokens. */
+.rv-stars {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  font-size: calc(18px * var(--fs));
+}
+.rv-stars-bg {
+  color: var(--sf-line);
+}
+.rv-stars-fg {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  overflow: hidden;
+  color: var(--sf-saffron);
+}
+.rv-sum {
+  display: grid;
+  gap: 20px;
+  margin-block-end: 20px;
+}
+.rv-avg {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.rv-avg > b {
+  font-size: calc(40px * var(--fs));
+  line-height: 1.1;
+  font-weight: 800;
+}
+.rv-avg small,
+.rv-by,
+.rv-todo small {
+  color: var(--sf-slate);
+}
+.rv-bars {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  max-inline-size: 420px;
+}
+.rv-bar {
+  display: grid;
+  grid-template-columns: 36px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+  min-block-size: 44px;
+  padding: 0 8px;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sf-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.rv-bar[aria-pressed='true'] {
+  border-color: var(--sf-teal);
+  background: var(--sf-mist-soft);
+}
+.rv-bar:disabled {
+  color: var(--sf-slate);
+  cursor: default;
+}
+.rv-bar :last-child {
+  text-align: end;
+}
+.rv-track {
+  block-size: 8px;
+  border-radius: 4px;
+  background: var(--sf-line);
+  overflow: hidden;
+}
+.rv-track > span {
+  display: block;
+  block-size: 100%;
+  background: var(--sf-saffron);
+}
+.rv-clear {
+  justify-self: start;
+  min-block-size: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--sf-teal);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.rv-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.rv-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+}
+.rv-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.rv-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rv-by {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: calc(13px * var(--fs));
+}
+.rv-chip {
+  padding: 0 8px;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-ok-soft);
+  color: var(--sf-ok-ink);
+  font-weight: 700;
+}
+.rv-none,
+.rv-err {
+  margin: 0 0 16px;
+}
+.rv-err {
+  color: var(--sf-error-ink);
+}
+.rv-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-surface);
+}
+.rv-form h3 {
+  margin: 0;
+  font-size: calc(16px * var(--fs));
+}
+.rv-pick {
+  display: grid;
+  gap: 6px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.rv-pick legend {
+  padding: 0;
+  font-weight: 700;
+  font-size: calc(14px * var(--fs));
+}
+.rv-pick-row,
+.rv-yn {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.rv-pick-row label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  color: var(--sf-line);
+  font-size: calc(30px * var(--fs));
+  cursor: pointer;
+}
+.rv-pick-row label.on {
+  color: var(--sf-saffron);
+}
+.rv-pick-row input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.rv-pick-row label:has(input:focus-visible) {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 1px;
+  border-radius: 8px;
+}
+.rv-yn label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 44px;
+}
+.rv-pick.bad legend,
+.rv-pick .err {
+  color: var(--sf-error);
+}
+.rv-text,
+.rv-select {
+  box-sizing: border-box;
+  inline-size: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--sf-line);
+  border-radius: 10px;
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font: inherit;
+}
+.rv-select {
+  min-block-size: 46px;
+}
+.ac-fld .rv-text:focus-visible,
+.rv-select:focus-visible {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 1px;
+}
+.ac-fld.bad .rv-text {
+  border-color: var(--sf-error);
+}
+.rv-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-block-size: 44px;
+}
+.rv-check input {
+  inline-size: 22px;
+  block-size: 22px;
+  margin-block-start: 2px;
+}
+.rv-check small {
+  display: block;
+  color: var(--sf-slate);
+}
+.rv-todo {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv-todo > li,
+.rv-own {
+  display: grid;
+  gap: 10px;
+}
+.rv-todo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.rv-todo-row > span {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+@media (min-width: 700px) {
+  .rv-sum {
+    grid-template-columns: auto 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+}

@@ -14,6 +14,7 @@ import {
   FakeCommission,
   FakeCustomers,
   FakeLabels,
+  FakeAttemptLimits,
   FakePickupVault,
   AllowAllDeliveryMethods,
   FakeShipping,
@@ -57,6 +58,7 @@ import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
 import type { OrderState } from '../domain/order';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
+import { SellerHealthCountsQuery } from './use-cases/seller-health-counts.use-case';
 import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-delivery.use-case';
 import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
@@ -65,6 +67,7 @@ import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
+import { encodeSellerCursor } from './fulfilment-flow';
 import { encodeCursor } from './read-flow';
 
 // Checkout, payment confirmation and the order reads in memory on both Market fixtures (AU in
@@ -190,6 +193,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deliveryMethods: new AllowAllDeliveryMethods(),
       pickupCodes: new MemoryPickupCodes(),
       pickupVault: new FakePickupVault(),
+      attempts: new FakeAttemptLimits(),
     };
   });
 
@@ -436,6 +440,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method) => {
             asked.push([sellerId, method]);
             return Promise.resolve(!(sellerId === SELLER_B && method === 'instant'));
@@ -466,6 +471,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       deps = {
         ...deps,
         deliveryMethods: {
+          readyPrepMinutes: () => Promise.resolve(60),
           allows: (_c, sellerId, method, window) => {
             seen.push([
               sellerId,
@@ -496,6 +502,23 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(seen).toEqual([
         [SELLER_A, 'scheduled', `${windowStart.toString()}/${windowEnd.toString()}`],
         [SELLER_B, 'instant', null],
+      ]);
+    });
+
+    it('freezes the preparation minutes of each seller order as the policy gave them', async () => {
+      deps = {
+        ...deps,
+        deliveryMethods: {
+          readyPrepMinutes: (_c, sellerId) => Promise.resolve(sellerId === SELLER_A ? 45 : 120),
+          allows: () => Promise.resolve(true),
+        },
+      };
+
+      const order = await placed();
+
+      expect(order.sellerOrders.map((s) => [s.sellerId, s.readyPrepMinutes])).toEqual([
+        [SELLER_A, 45],
+        [SELLER_B, 120],
       ]);
     });
   });
@@ -1446,6 +1469,105 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     });
   });
 
+  describe('seller-health-counts', () => {
+    const sellerCtx = (sellerId: Id<'Seller'>, n: number) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: id<'Account'>(n),
+          sessionId: id<'Session'>(n + 0x100),
+          sellerId,
+        }),
+        `health-seller-${n}`,
+      );
+    const counts = (input: unknown, context: CallContext = system) =>
+      new SellerHealthCountsQuery(gate, deps).execute(context, input as never);
+    const windowOf = (hoursBefore: number, hoursAfter: number) => ({
+      from: T0.subtract({ hours: hoursBefore }).toString(),
+      to: T0.add({ hours: hoursAfter }).toString(),
+    });
+
+    it('counts paid, ready and late-ready per seller and per window', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      const idOf = (sellerId: Id<'Seller'>) =>
+        orders.rows.get(order.id)!.sellerOrders.find((s) => s.sellerId === sellerId)!.id;
+      // Seller A is ready at once; seller B is ready two hours later, past any prep promise.
+      const a = await new SellerMarkOrderReady(gate, deps).execute(sellerCtx(SELLER_A, 0x71), {
+        sellerOrderId: idOf(SELLER_A),
+      });
+      expect(a.ok).toBe(true);
+      clock.advance(Temporal.Duration.from({ hours: 2 }));
+      const b = await new SellerMarkOrderReady(gate, deps).execute(sellerCtx(SELLER_B, 0x72), {
+        sellerOrderId: idOf(SELLER_B),
+      });
+      expect(b.ok).toBe(true);
+
+      const wide = {
+        from: T0.subtract({ hours: 1 }).toString(),
+        to: T0.add({ hours: 5 }).toString(),
+      };
+      const narrow = {
+        from: T0.subtract({ hours: 1 }).toString(),
+        to: T0.add({ hours: 1 }).toString(),
+      };
+      const resultA = await counts({ sellerId: SELLER_A, windows: [wide, narrow] });
+      const resultB = await counts({ sellerId: SELLER_B, windows: [wide, narrow] });
+
+      expect(resultA.ok && resultA.value.map((w) => w.paid)).toEqual([1, 1]);
+      expect(resultA.ok && resultA.value.map((w) => w.lateReady)).toEqual([0, 0]);
+      // Seller B was ready only in the wide window.
+      expect(resultA).toEqual(
+        ok([
+          { paid: 1, ready: 1, lateReady: 0 },
+          { paid: 1, ready: 1, lateReady: 0 },
+        ]),
+      );
+      // Seller B was ready two hours late, and only inside the wide window.
+      expect(resultB).toEqual(
+        ok([
+          { paid: 1, ready: 1, lateReady: 1 },
+          { paid: 1, ready: 0, lateReady: 0 },
+        ]),
+      );
+    });
+
+    it('counts nothing for a seller without orders and for a window before the order', async () => {
+      const order = await placed();
+      await confirm(order.id);
+      const other = await counts({ sellerId: id<'Seller'>(0x99), windows: [windowOf(1, 5)] });
+      const before = await counts({
+        sellerId: SELLER_A,
+        windows: [
+          { from: T0.subtract({ hours: 10 }).toString(), to: T0.subtract({ hours: 5 }).toString() },
+        ],
+      });
+      expect(other.ok && other.value[0]).toMatchObject({ paid: 0, ready: 0, lateReady: 0 });
+      expect(before.ok && before.value[0]).toMatchObject({ paid: 0, ready: 0, lateReady: 0 });
+    });
+
+    it('is for the system only and refuses bad windows', async () => {
+      expect((await counts({ sellerId: SELLER_A, windows: [windowOf(1, 1)] }, anonymous)).ok).toBe(
+        false,
+      );
+      for (const windows of [
+        [],
+        'x',
+        [{ from: 'nope', to: T0.toString() }],
+        [{ from: T0.toString(), to: T0.toString() }],
+        Array.from({ length: 9 }, () => windowOf(1, 1)),
+      ]) {
+        expect(await counts({ sellerId: SELLER_A, windows })).toEqual(
+          err({ code: 'validation.failed' }),
+        );
+      }
+      expect(await counts({ sellerId: 'not-an-id', windows: [windowOf(1, 1)] })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+    });
+  });
+
   describe('seller fulfilment', () => {
     const sellerOf = (sellerId: Id<'Seller'>, n = 0x71) =>
       testCallContext(
@@ -1526,6 +1648,118 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(bad).toEqual({
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] },
+      });
+    });
+
+    describe('page mode', () => {
+      const refused = (fields: { path: string; code: string }[]) => ({
+        ok: false,
+        error: { code: 'validation.failed', fields },
+      });
+
+      it('answers an offset page with the total of the filter and no cursor', async () => {
+        const order = await paid();
+        await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+        const first = await list(sellerA, {
+          page: 1,
+          pageSize: 10,
+          sort: 'total',
+          direction: 'asc',
+        });
+        const shipped = await list(sellerA, { page: 1, status: 'shipped' });
+        const toShip = await list(sellerA, { page: 1, status: 'to-ship' });
+        const beyond = await list(sellerA, { page: 2, pageSize: 10 });
+
+        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.nextCursor).toBeNull();
+        expect(shipped.ok && shipped.value.sellerOrders).toHaveLength(1);
+        expect(toShip.ok && toShip.value.paging?.total).toBe(0);
+        expect(beyond.ok && beyond.value.sellerOrders).toEqual([]);
+        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+      });
+
+      it('keeps the cursor page free of paging and refuses stray or deep params', async () => {
+        await paid();
+
+        const cursorMode = await list(sellerA, {});
+        expect(cursorMode.ok && cursorMode.value.paging).toBeNull();
+        expect(await list(sellerA, { sort: 'total' })).toEqual(
+          refused([{ path: 'sort', code: 'needs-page' }]),
+        );
+        expect(await list(sellerA, { page: 400, pageSize: 25 })).toMatchObject({ ok: true });
+        expect(await list(sellerA, { page: 401, pageSize: 25 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+        expect(await list(sellerA, { page: 0 })).toEqual(
+          refused([{ path: 'page', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, sort: 'created' })).toEqual(
+          refused([{ path: 'sort', code: 'value' }]),
+        );
+        expect(await list(sellerA, { page: 1, pageSize: 101 })).toEqual(
+          refused([{ path: 'pageSize', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, direction: 'up' })).toEqual(
+          refused([{ path: 'direction', code: 'value' }]),
+        );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list(sellerA, {
+            page: 2,
+            cursor: encodeSellerCursor(T0, id<'SellerOrder'>(1)),
+            limit: 10,
+          }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
+        );
+        expect(await list(sellerA, { page: 1, cursor: 'nope' })).toEqual(
+          refused([{ path: 'cursor', code: 'format' }]),
+        );
+      });
+
+      it('counts only the shop itself, and takes the day range in cursor mode too', async () => {
+        await paid();
+
+        const mine = await list(sellerA, { page: 1 });
+        const other = await list(sellerB, { page: 1 });
+        const cursorModeIn = await list(sellerA, { from: '2000-01-01T00:00:00Z' });
+        const cursorModeOut = await list(sellerA, { from: '2999-01-01T00:00:00Z' });
+
+        expect(mine.ok && mine.value.paging?.total).toBe(1);
+        expect(other.ok && other.value.paging?.total).toBe(1);
+        expect(mine.ok && other.ok && mine.value.sellerOrders[0]!.sellerOrderId).not.toBe(
+          other.ok && other.value.sellerOrders[0]!.sellerOrderId,
+        );
+        expect(cursorModeIn.ok && cursorModeIn.value.sellerOrders).toHaveLength(1);
+        expect(cursorModeIn.ok && cursorModeIn.value.paging).toBeNull();
+        expect(cursorModeOut.ok && cursorModeOut.value.sellerOrders).toEqual([]);
+      });
+
+      it('filters by payment time and refuses a backwards or malformed range', async () => {
+        await paid();
+        const far = '2999-01-01T00:00:00Z';
+
+        const before = await list(sellerA, { page: 1, to: '2000-01-01T00:00:00Z' });
+        const after = await list(sellerA, { page: 1, from: far });
+        const inside = await list(sellerA, {
+          page: 1,
+          from: '2000-01-01T00:00:00Z',
+          to: far,
+        });
+
+        expect(before.ok && before.value.paging?.total).toBe(0);
+        expect(after.ok && after.value.paging?.total).toBe(0);
+        expect(inside.ok && inside.value.paging?.total).toBe(1);
+        expect(await list(sellerA, { from: far, to: '2000-01-01T00:00:00Z' })).toEqual(
+          refused([{ path: 'to', code: 'range' }]),
+        );
+        expect(await list(sellerA, { from: 'yesterday' })).toEqual(
+          refused([{ path: 'from', code: 'format' }]),
+        );
       });
     });
 

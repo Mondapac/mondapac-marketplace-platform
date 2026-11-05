@@ -348,6 +348,7 @@ export class IdentityFakes {
             : [{ id, displayName: state.displayName, email: state.email.typed }];
         }),
       ),
+    customerSharesAddressWithSellerMember: () => Promise.resolve(false),
     customerStatus: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
       return Promise.resolve(

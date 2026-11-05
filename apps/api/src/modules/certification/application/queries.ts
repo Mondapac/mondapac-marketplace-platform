@@ -80,6 +80,33 @@ export async function matchClaimTermsFor(
   }
 }
 
+/**
+ * The locales in which every type of the Market (active or inactive) has at least one claim term
+ * (attributes package A2). A text in another locale cannot be checked: its claim words would pass
+ * unseen, so the consumer refuses it. A Market with no types, a type with no term, or a reader that
+ * does not say which locales carry the terms is `certification.unavailable`, never "all covered".
+ */
+export async function claimTermLocalesFor(
+  reader: PublishedTypesReader,
+  context: CallContext,
+): Promise<Result<readonly string[], CertificationUnavailable>> {
+  try {
+    const entries = await reader.claimVocabulary(context.market);
+    if (
+      entries.length === 0 ||
+      entries.some((entry) => entry.terms.length === 0 || entry.termLocales === undefined)
+    ) {
+      throw new Error('incomplete vocabulary');
+    }
+    const [first, ...rest] = entries.map((entry) => new Set(entry.termLocales));
+    const covered = [...first!].filter((locale) => rest.every((set) => set.has(locale)));
+    return ok(covered.sort());
+  } catch (error) {
+    logger.error(`claimTermLocales failed: ${error instanceof Error ? error.name : 'unknown'}`);
+    return err(UNAVAILABLE);
+  }
+}
+
 function project(t: CertificationTypeView): CertificationTypeView {
   return {
     typeId: t.typeId,

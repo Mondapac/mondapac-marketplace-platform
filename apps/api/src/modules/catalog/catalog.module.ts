@@ -217,6 +217,13 @@ import { BRAND_READER } from './application/ports/brand.reader';
 import { BRAND_REPOSITORY } from './application/ports/brand.repository';
 import { BrandApprove } from './application/use-cases/brand-approve.use-case';
 import { BrandArchive } from './application/use-cases/brand-archive.use-case';
+import { BUSINESS_ACTIVITY_READER } from './application/ports/business-activity.reader';
+import { BUSINESS_ACTIVITY_REPOSITORY } from './application/ports/business-activity.repository';
+import { BusinessActivityCreate } from './application/use-cases/business-activity-create.use-case';
+import { BusinessActivityEdit } from './application/use-cases/business-activity-edit.use-case';
+import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
+import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
+import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
 import { BrandCreate } from './application/use-cases/brand-create.use-case';
 import { BrandEdit } from './application/use-cases/brand-edit.use-case';
 import { BrandGet } from './application/use-cases/brand-get.use-case';
@@ -229,6 +236,27 @@ import { BrandProductIdsQuery } from './application/use-cases/brand-product-ids.
 import { PublicBrandQuery } from './application/use-cases/public-brand.use-case';
 import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.use-case';
 import { BrandAdminController } from './presentation/brand-admin.controller';
+import { AttributeAdminController } from './presentation/attribute-admin.controller';
+import { AttributeDefinitionCreate } from './application/use-cases/attribute-definition-create.use-case';
+import { AttributeDefinitionEdit } from './application/use-cases/attribute-definition-edit.use-case';
+import { AttributeDefinitionDiscard } from './application/use-cases/attribute-definition-discard.use-case';
+import { AttributeDefinitionPublish } from './application/use-cases/attribute-definition-publish.use-case';
+import { ATTRIBUTE_DEFINITION_STORE } from './application/ports/attribute-definition.store';
+import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
+import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
+import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
+import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
+import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-list.use-case';
+import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
+import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
+import type { CategoryActionProbes } from './application/categories/category-admin-views';
+import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
+import { CategoryImportProbe } from './application/use-cases/category-import-probe.use-case';
+import { CategoryRestructureProbe } from './application/use-cases/category-restructure-probe.use-case';
+import { CategoryAdminGet } from './application/use-cases/category-admin-get.use-case';
+import { CategoryAdminTree } from './application/use-cases/category-admin-tree.use-case';
+import { CategoryImpact } from './application/use-cases/category-impact.use-case';
+import { CategoryAdminController } from './presentation/category-admin.controller';
 import { OwnBrandController } from './presentation/own-brand.controller';
 import { PublicBrandController } from './presentation/public-brand.controller';
 import { catalogProviders } from './infrastructure/catalog-providers';
@@ -242,6 +270,9 @@ import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job'
  * The Nest token of each dependency name the use cases of catalog share: a use case's dependency
  * object is built from these by {@link useCaseProvider}, so a name always means the same port.
  */
+/** The three key probes the category reads use for their allowed actions (categories C1). */
+const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
+
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
   categories: PLATFORM_CATEGORY_REPOSITORY,
@@ -313,7 +344,14 @@ const PORT = {
   shareCheck: SavedFilterShareCheck,
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
+  adminCategoryReader: ADMIN_CATEGORY_READER,
+  categoryProbes: CATEGORY_ACTION_PROBES,
+  attributeAdminReader: ATTRIBUTE_ADMIN_READER,
+  attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
+  activities: BUSINESS_ACTIVITY_REPOSITORY,
+  activityReader: BUSINESS_ACTIVITY_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -390,6 +428,9 @@ const productTypeProvider: FactoryProvider<string> = {
     PublicCategoryController,
     PublicProductImageController,
     BrandAdminController,
+    AttributeAdminController,
+    CategoryAdminController,
+    BusinessActivityAdminController,
     OwnBrandController,
     PublicBrandController,
   ],
@@ -478,7 +519,109 @@ const productTypeProvider: FactoryProvider<string> = {
       audit: true,
       brandAssigner: true,
     }),
+    useCaseProvider(BusinessActivityList, {
+      unitOfWork: true,
+      activityReader: true,
+      policy: true,
+    }),
+    useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
+    useCaseProvider(BusinessActivityCreate, {
+      unitOfWork: true,
+      activities: true,
+      treeReader: true,
+      policy: true,
+      matcher: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(BusinessActivityEdit, {
+      unitOfWork: true,
+      activities: true,
+      treeReader: true,
+      policy: true,
+      matcher: true,
+      clock: true,
+    }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(AttributeAdminList, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AttributeAdminGet, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(FeatureSetAdminList, { unitOfWork: true, attributeAdminReader: true }),
+    useCaseProvider(AttributeDefinitionCreate, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeDefinitionEdit, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeDefinitionPublish, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      audit: true,
+      matcher: true,
+      claimLocales: true,
+    }),
+    useCaseProvider(AttributeDefinitionDiscard, {
+      unitOfWork: true,
+      attributeStore: true,
+      policy: true,
+      audit: true,
+    }),
+    useCaseProvider(FeatureSetAdminGet, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
+    ...[CategoryEditProbe, CategoryRestructureProbe, CategoryImportProbe].map(
+      (probe): FactoryProvider => ({
+        provide: probe,
+        inject: [USE_CASE_GATE],
+        useFactory: (gate: UseCaseGate) => new probe(gate),
+      }),
+    ),
+    {
+      provide: CATEGORY_ACTION_PROBES,
+      inject: [CategoryEditProbe, CategoryRestructureProbe, CategoryImportProbe],
+      useFactory: (
+        edit: CategoryEditProbe,
+        restructure: CategoryRestructureProbe,
+        importing: CategoryImportProbe,
+      ): CategoryActionProbes => ({ edit, restructure, importing }),
+    },
+    useCaseProvider(CategoryAdminTree, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+      categoryProbes: true,
+    }),
+    useCaseProvider(CategoryAdminGet, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+      categoryProbes: true,
+    }),
+    useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, { unitOfWork: true, brands: true, clock: true, ids: true }),
     useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true }),

@@ -64,6 +64,10 @@ export interface SellerOrderView {
 export interface SellerOrderPage {
   readonly sellerOrders: readonly SellerOrderView[];
   readonly nextCursor: string | null;
+  /** Page mode only: how many orders match the filter, the page shown and its size. */
+  readonly total?: number | null;
+  readonly page?: number | null;
+  readonly pageSize?: number | null;
 }
 
 export const FULFILMENT_FILTERS = ['all', 'to-ship', 'shipped', 'delivered'] as const;

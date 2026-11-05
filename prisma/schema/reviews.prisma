@@ -42,7 +42,11 @@ model ReviewsProductReview {
   deletedAt         DateTime?                 @map("deleted_at") @db.Timestamptz(6)
   /// When the latest qualifying purchase was delivered.
   lastPurchaseAt    DateTime                  @map("last_purchase_at") @db.Timestamptz(6)
+  /// How many accounts voted this review helpful. Kept exact by triggers on `helpful_votes` (never
+  /// written by the application); 0 or more (CHECK).
+  helpfulCount      Int                       @default(0) @map("helpful_count")
   replies           ReviewsReply[]
+  helpfulVotes      ReviewsHelpfulVote[]
   reports           ReviewsReport[]
   moderationActions ReviewsModerationAction[]
 
@@ -57,6 +61,24 @@ model ReviewsProductReview {
   /// The author's own list and the daily limit.
   @@index([marketId, accountId, createdAt(sort: Desc)])
   @@map("product_reviews")
+  @@schema("reviews")
+}
+
+/// One account's "this review was helpful" vote (package 5). One vote per (review, account); the
+/// vote is removed again by the voter, or when the voter's account is deleted. Votes never carry
+/// text and are never shown with their voter.
+model ReviewsHelpfulVote {
+  marketId  String               @map("market_id") @db.VarChar(8)
+  tenantId  String               @map("tenant_id")
+  reviewId  String               @map("review_id") @db.Uuid
+  accountId String               @map("account_id") @db.Uuid
+  createdAt DateTime             @map("created_at") @db.Timestamptz(6)
+  review    ReviewsProductReview @relation(fields: [marketId, reviewId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, reviewId, accountId])
+  /// The voter's own votes (the daily limit and account deletion).
+  @@index([marketId, accountId, createdAt(sort: Desc)])
+  @@map("helpful_votes")
   @@schema("reviews")
 }
 
@@ -98,14 +120,15 @@ model ReviewsReply {
   reviewId  String               @map("review_id") @db.Uuid
   sellerId  String               @map("seller_id") @db.Uuid
   body      String
-  /// published, hidden or removed (CHECK).
+  /// published, hidden, removed or superseded (CHECK).
   status    String
   createdAt DateTime             @map("created_at") @db.Timestamptz(6)
   editedAt  DateTime?            @map("edited_at") @db.Timestamptz(6)
   review    ReviewsProductReview @relation(fields: [marketId, reviewId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
-  /// One reply per review.
-  @@unique([marketId, reviewId])
+  /// One published reply per review: a partial unique index written by
+  /// hand in the migration. A reply of an earlier seller is 'superseded' when the review moves.
+  @@index([marketId, reviewId])
   @@map("review_replies")
   @@schema("reviews")
 }
@@ -213,5 +236,36 @@ model ReviewsMarketSetting {
 
   @@id([marketId])
   @@map("market_settings")
+  @@schema("reviews")
+}
+
+/// Reviews' outbox: the events of package 4b (published, held, hidden, restored, reported, a
+/// delivery problem). Ids and a star count only, never text. Every outbox of every module has
+/// exactly these fields.
+model ReviewsOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "reviews.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
   @@schema("reviews")
 }
