@@ -210,6 +210,7 @@ export function specificationsOf(
       if (!isText(item.name) || value === null) continue;
       seen.add(item.code);
       out.push({
+        code: item.code,
         label: item.name,
         value,
         group: group.groupCode,

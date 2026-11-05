@@ -1,3 +1,4 @@
+import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
 import { encodePayload, err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
@@ -181,6 +182,7 @@ describe.each([
       webhookSignature: undefined as never,
       uberWebhookSignature: undefined as never,
       securityEvents: undefined as never,
+      trail: unusedChangeTrail,
     };
   });
 
@@ -572,6 +574,7 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
         webhookSignature: undefined as never,
         uberWebhookSignature: undefined as never,
         securityEvents: undefined as never,
+        trail: unusedChangeTrail,
       };
       const request = {
         orderId: ORDER,

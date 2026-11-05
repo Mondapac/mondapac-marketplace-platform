@@ -108,7 +108,7 @@ export function ProductPage({
                         )}
                         <dl className="spec">
                           {group.rows.map((s) => (
-                            <div key={s.label}>
+                            <div key={s.code ?? s.label}>
                               <dt>{s.label}</dt>
                               <dd>{s.value}</dd>
                             </div>

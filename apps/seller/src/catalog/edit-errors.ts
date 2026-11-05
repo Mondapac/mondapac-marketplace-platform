@@ -36,7 +36,11 @@ export function editProblemOf(failure: ApiFailure): EditProblem {
   const lines = [...(failure.details?.fields ?? []), ...(failure.details?.issues ?? [])].map(
     (item) => `${item.path}: ${item.code}`,
   );
-  const named = BY_CODE[failure.code];
+  const pending = (failure.details?.issues ?? []).some(
+    (item) => item.code === 'attribute.suggestion-pending',
+  );
+  const named =
+    pending && failure.code === 'revision.not-ready' ? 'suggestion-pending' : BY_CODE[failure.code];
   const name =
     named ??
     (failure.code === 'request.throttled'

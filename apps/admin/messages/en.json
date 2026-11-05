@@ -615,7 +615,7 @@
       "conflict": {
         "title": "Someone saved this role first",
         "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
-        "compare": "Compare",
+        "compare": "Show what changed",
         "hide": "Hide comparison",
         "name": "Saved name: {saved}. Your name: {yours}.",
         "saved-only": "In the saved role but not in yours: {keys}.",
@@ -1549,15 +1549,19 @@
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
       "yours-label": "Yours:",
       "same": "Your draft now matches what is saved.",
-      "unset": "not set"
+      "unset": "not set",
+      "saved-by-named": "{name} saved {subject} {when}",
+      "saved-by-platform": "Mondapac saved {subject} {when}",
+      "subject-settings": "these settings",
+      "subject-store-profile": "the store profile"
     },
     "support": {
       "title": "Support contact",
@@ -1743,6 +1747,27 @@
       },
       "not-configured-option": "{option} (not configured on the server)",
       "version-defaults": "Built-in defaults, never saved"
+    },
+    "last-changed": {
+      "named": "Last changed by {name} · {when}",
+      "platform": "Last changed by Mondapac · {when}",
+      "unnamed": "Last changed {when}",
+      "view-history": "View history"
+    },
+    "history": {
+      "title": "History",
+      "close": "Close history",
+      "loading": "Loading history",
+      "empty-title": "No changes yet",
+      "empty-body": "When someone saves this page, the change shows up here.",
+      "error": "The history could not be loaded.",
+      "retry": "Try again",
+      "load-more": "Show older changes",
+      "more-failed": "Older changes could not be loaded.",
+      "who-platform": "Mondapac",
+      "who-unnamed": "Someone",
+      "changed": "Changed: {fields}",
+      "saved": "Saved"
     }
   },
   "fleets": {
@@ -1875,7 +1900,7 @@
       "title": "Someone else saved the fleet settings first",
       "model-title": "This page changed while you were editing",
       "body": "{count, plural, one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
-      "compare": "Compare",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "same": "Your draft now matches what is saved.",
       "line": "{field}: saved now {saved}, yours {yours}"
@@ -3150,7 +3175,7 @@
       "line-none": "A fleet quote of {quote} stays {total} for the buyer: no margin added."
     },
     "invalid": {
-      "cutoff": "Enter a time such as 12:00.",
+      "cutoff": "Enter a time between 12:00 am and 11:59 pm, such as 1:00 pm.",
       "daysAhead": "Enter a whole number of days from 1 to 30.",
       "margin-percent": "Enter a percentage from 0 to 100, with up to two decimals.",
       "margin-fixed": "Enter an amount up to {max}, with no more decimals than the currency uses."
@@ -5013,6 +5038,59 @@
         "in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
         "live-variants": "Live products use it as a variant option, so it cannot be archived."
       }
+    },
+    "suggestions": {
+      "list-label": "Value suggestions",
+      "loading": "Loading suggestions",
+      "load-failed": "The suggestions could not be loaded.",
+      "empty": "Nothing is waiting for you.",
+      "empty-body": "Values that sellers ask for on a product form will show here.",
+      "open": "Waiting",
+      "asked": "Asked for on {attribute}, product {product}.",
+      "no-product-code": "without a code",
+      "approve": "Approve",
+      "map": "Map to existing",
+      "reject": "Reject",
+      "cancel": "Cancel",
+      "approve-note": "Approving adds the value to the field for every seller. Name it in each required language.",
+      "name-in": "Name in {language}",
+      "approve-confirm": "Approve value",
+      "map-none": "This field has no values to map to yet.",
+      "map-to": "Existing value",
+      "map-choose": "Choose a value",
+      "map-confirm": "Map to this value",
+      "reason": "Reason for the seller",
+      "reason-help": "The seller reads this in an email.",
+      "reject-confirm": "Reject suggestion",
+      "decided": {
+        "approved": "Value added. The seller was told.",
+        "mapped": "Mapped to an existing value. The seller was told.",
+        "rejected": "Suggestion rejected. The seller was told."
+      },
+      "error": {
+        "invalid": "Check the names and try again.",
+        "claim": "A name uses a word that only a certificate can back. Choose another word.",
+        "stale": "Someone else already decided this suggestion. The list is read again.",
+        "attribute-unavailable": "The field changed or is no longer open to suggestions. The list is read again.",
+        "value-exists": "The field already has a value with that code or name. Map the suggestion to it instead.",
+        "option-invalid": "That value is no longer available. The list is read again.",
+        "denied": "You cannot decide value suggestions.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not reachable. Try again.",
+        "unknown": "The decision could not be saved.",
+        "locale-uncheckable": "A name is in a language that cannot be checked for certification words yet.",
+        "check-unavailable": "The certification-wording check is unavailable. Try again in a moment.",
+        "reload-failed": "The list could not be refreshed and may be out of date. Reload the page."
+      },
+      "approve-for": "Approve “{label}”",
+      "map-for": "Map to existing: “{label}”",
+      "reject-for": "Reject “{label}”",
+      "value-code": "Value code",
+      "value-code-help": "Optional. Letters a to z, digits and hyphens. Made from the name if left empty.",
+      "value-code-needed": "Required: the name has no Latin letters or digits. Use letters a to z, digits and hyphens.",
+      "value-code-bad": "Start with a letter; use only letters a to z, digits and hyphens.",
+      "title": "Value suggestions from sellers"
     }
   },
   "serviceAreas": {

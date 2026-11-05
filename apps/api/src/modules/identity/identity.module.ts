@@ -199,6 +199,7 @@ import { socialSignInProviders } from './infrastructure/social/social-sign-in-pr
 import { CustomerSocialSignInController } from './presentation/customer-social-sign-in.controller';
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
 import { SignOut } from './application/use-cases/sign-out.use-case';
+import { ChangeActorLabels } from './application/use-cases/change-actor-labels.use-case';
 import { TeamMemberLabels } from './application/use-cases/team-member-labels.use-case';
 import { TeamMembershipOf } from './application/use-cases/team-membership-of.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
@@ -901,6 +902,13 @@ function useCaseProvider<D, U>(
       accounts: true,
       memberships: true,
       roles: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
+    useCaseProvider(ChangeActorLabels, {
+      unitOfWork: true,
+      accounts: true,
+      memberships: true,
       grants: true,
       effectiveKeys: true,
     }),
@@ -1758,6 +1766,7 @@ function useCaseProvider<D, U>(
         CustomerAccountSummaries,
         CustomerShortNames,
         TeamMemberLabels,
+        ChangeActorLabels,
         EndOtherCustomerSessions,
         EndAllCustomerSessions,
         AdminEndCustomerSessions,
@@ -1777,6 +1786,7 @@ function useCaseProvider<D, U>(
         customerAccountSummaries: CustomerAccountSummaries,
         customerShortNames: CustomerShortNames,
         teamMemberLabels: TeamMemberLabels,
+        changeActorLabels: ChangeActorLabels,
         endOtherCustomerSessions: EndOtherCustomerSessions,
         endAllCustomerSessions: EndAllCustomerSessions,
         adminEndCustomerSessions: AdminEndCustomerSessions,
@@ -1796,6 +1806,7 @@ function useCaseProvider<D, U>(
           customerAccountSummaries,
           customerShortNames,
           teamMemberLabels,
+          changeActorLabels,
           endOtherCustomerSessions,
           endAllCustomerSessions,
           adminEndCustomerSessions,

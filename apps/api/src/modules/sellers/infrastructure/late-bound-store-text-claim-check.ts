@@ -31,4 +31,11 @@ export class LateBoundStoreTextClaimCheck implements StoreTextClaimCheck {
     }
     return this.#bound.flagged(context, texts);
   }
+
+  terms(context: CallContext): Promise<Result<readonly string[], ClaimCheckUnavailable>> {
+    if (this.#bound === null) {
+      return Promise.resolve(err({ code: 'claim-text.check-unavailable' } as const));
+    }
+    return this.#bound.terms(context);
+  }
 }

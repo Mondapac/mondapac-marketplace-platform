@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { AttributesView } from '../../../../src/attributes/attributes-view.tsx';
 import {
   BRANDS_READ_PERMISSION,
+  DECIDE_PERMISSION,
   EDIT_PERMISSION,
   RESTRUCTURE_PERMISSION,
   TABS,
@@ -58,6 +59,7 @@ export default async function AttributesPage({
           canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
           csrfToken={csrfToken}
           canSeeBrands={permissionKeys.includes(BRANDS_READ_PERMISSION)}
+          canDecide={permissionKeys.includes(DECIDE_PERMISSION)}
           initialTab={tab}
           initialId={selectedId}
         />

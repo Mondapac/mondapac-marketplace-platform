@@ -1,10 +1,13 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import { ok } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SHIPPING_FLEET_SELECTION_MANAGE } from '../../contracts/permissions';
 import {
+  FLEET_SELECTION_CHANGES,
+  FLEET_SELECTION_CONFLICTS,
   setFleetSelection,
   type FleetSelectionFailure,
-  type FleetSelectionView,
+  type FleetSelectionPage,
 } from '../fleet-selection-flow';
 import type { ShippingDependencies } from '../shipping-dependencies';
 
@@ -21,7 +24,7 @@ interface SetFleetSelectionInput {
  */
 export class SetFleetSelection extends UseCase<
   SetFleetSelectionInput,
-  FleetSelectionView,
+  FleetSelectionPage,
   FleetSelectionFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -36,7 +39,21 @@ export class SetFleetSelection extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext, input: SetFleetSelectionInput) {
-    return setFleetSelection(this.deps, context, input);
+  protected async handle(
+    context: CallContext,
+    input: SetFleetSelectionInput,
+  ): Promise<Result<FleetSelectionPage, FleetSelectionFailure>> {
+    const result = await setFleetSelection(this.deps, context, input);
+    if (!result.ok) {
+      // On a conflict the winning save is named.
+      return this.deps.trail.namingTheWinner(
+        context,
+        FLEET_SELECTION_CHANGES,
+        result,
+        FLEET_SELECTION_CONFLICTS,
+      );
+    }
+    const lastChanged = await this.deps.trail.lastChanged(context, FLEET_SELECTION_CHANGES);
+    return ok({ ...result.value, lastChanged });
   }
 }
