@@ -58,8 +58,9 @@ export class CategoryProposalsSettingController {
   @ApiOperation({
     summary: 'Allow or stop category proposals for a seller (admin)',
     description:
-      "Off by default. Turning it off closes the seller's pending proposals in catalog " +
-      '(reason permission-revoked). Needs sellers.seller-settings.edit.',
+      'Off by default. Turning it on raises sellers.category-proposals-granted.v1 and turning ' +
+      'it off raises sellers.category-proposals-revoked.v1 for catalog to act on. Needs ' +
+      'sellers.seller-settings.edit.',
   })
   @ApiParam({ name: 'sellerId', description: 'The seller id (UUID).' })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
