@@ -210,6 +210,11 @@ export function AttributeDetailPanel({
             }
           />
           {load.detail.status === 'draft' ? <Banner tone="info">{t('draft-note')}</Banner> : null}
+          {load.detail.mergedInto === undefined || load.detail.mergedInto === null ? null : (
+            <Banner tone="info">
+              {t('merged-into-note', { code: load.detail.mergedInto.code })}
+            </Banner>
+          )}
           {confirm === 'relax' ? (
             <RelaxDialog
               detail={load.detail}

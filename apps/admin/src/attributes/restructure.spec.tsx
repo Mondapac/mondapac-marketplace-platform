@@ -413,6 +413,16 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
+  it('says on an archived attribute which attribute it was merged into', async () => {
+    base({
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(
+        detail(locales, { status: 'archived', mergedInto: { id: id(2), code: 'container' } }),
+      ),
+    });
+    mount(true);
+    expect(await screen.findByText(/Merged into container\./)).toBeTruthy();
+  });
+
   describe('merge into another attribute', () => {
     const targetRow = (over: Partial<AttributePage['items'][number]> = {}) => ({
       id: id(2),
