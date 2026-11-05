@@ -40,6 +40,8 @@ export class OwnCategoryProposalCancel extends UseCase<
   static override readonly access: AccessDeclaration = {
     name: 'catalog.own-category-proposal-cancel',
     rule: { kind: 'permissions', allOf: [CATALOG_OWN_CATEGORY_PROPOSE.key] },
+    // Withdrawing is always open to the seller, approved or not.
+    whenSellerNotApproved: 'allow',
   };
 
   readonly #logger = new Logger('OwnCategoryProposalCancel');
