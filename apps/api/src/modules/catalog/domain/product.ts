@@ -651,6 +651,30 @@ export class Product {
   }
 
   /**
+   * The seller's mark that the product carries their own brand (attributes A5, closing #552's
+   * open point): it lets the seller propose a brand. SELLER products only, and not once the
+   * product has ended (`discarded`, `withdrawn`, `retired`). Setting the value it already has
+   * changes nothing and returns `false`; the caller writes only when this returns `true`.
+   */
+  setOwnBrand(input: {
+    readonly ownBrand: boolean;
+    readonly now: Temporal.Instant;
+  }): Result<boolean, ProductRefusal> {
+    const state = this.#state;
+    if (state.scope !== 'SELLER') return err({ code: 'product.seller-only' });
+    if (
+      state.status === 'discarded' ||
+      state.status === 'withdrawn' ||
+      state.status === 'retired'
+    ) {
+      return err({ code: 'product.not-editable' });
+    }
+    if (state.ownBrand === input.ownBrand) return ok(false);
+    this.#applyRecords(input.now, { ownBrand: input.ownBrand }, []);
+    return ok(true);
+  }
+
+  /**
    * The admin pause (catalog design 4.1a): a `published` product that is not paused gets the mark
    * `pausedAt` with the admin's account id and `catalog.product-paused.v1`. The status stays
    * `published`; the use case adds the Offer cause `product-paused` in the same unit.

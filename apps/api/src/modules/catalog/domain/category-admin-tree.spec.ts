@@ -25,6 +25,8 @@ const node = (
   names: [{ locale: 'en', name }],
   revisionNo: 1,
   version: 1,
+  position: 0,
+  showInMenu: true,
 });
 
 // 1 Pantry > 2 Rice > 3 Basmati; 1 > 4 Spices; 5 Meat; 6 Old (archived, under 5).

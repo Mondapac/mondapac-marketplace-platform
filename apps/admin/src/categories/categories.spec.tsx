@@ -76,6 +76,19 @@ const detail = (r: CategoryRow, over: Partial<DetailBody> = {}): DetailBody => (
   ],
   complete: true,
   actions: {},
+  details: {
+    texts: r.names.map((entry) => ({
+      locale: entry.locale,
+      name: entry.name,
+      shortDescription: null,
+      keywords: [],
+    })),
+    seo: { title: null, description: null, noindex: false },
+    showInMenu: true,
+    imageId: null,
+    hiddenById: null,
+  },
+  treeVersion: 1,
   ...over,
 });
 const ok = (body: unknown): ApiResult<unknown> => ({ ok: true, status: 200, body });
@@ -103,6 +116,7 @@ const view = (ui: React.ReactElement) =>
   );
 
 beforeEach(() => {
+  window.history.replaceState(null, '', '/');
   call.mockReset();
   push.mockReset();
   wide(true);
@@ -132,6 +146,8 @@ describe('CategoriesView', () => {
     view(<CategoriesView canEdit={false} />);
     await screen.findAllByRole('treeitem');
     expect(screen.getAllByText(/at least/).length).toBeGreaterThan(0);
+    // A partial count of nothing is a plain 0, never "at least 0".
+    expect(screen.queryByText('at least 0')).toBeNull();
     expect(screen.getByText("Your role can't change categories.")).toBeTruthy();
   });
 

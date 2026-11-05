@@ -39,7 +39,8 @@ export function chooseAxes(
 ): AxesResult {
   const candidates = axisCandidates(schema);
   const issues: AxisIssue[] = [];
-  const asked = requested ?? candidates;
+  // No request: a published product keeps its axes, a new one varies on every candidate.
+  const asked = requested ?? lockedTo ?? candidates;
   if (requested !== undefined && requested.length === 0) {
     issues.push({ path: 'variantAxes', code: 'variants.axes-none' });
   }

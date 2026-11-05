@@ -109,7 +109,7 @@ function Revision({
           }),
           {
             label: t('sellers.review.field.service-area'),
-            value: areaName(revision.serviceAreaCode),
+            value: areaName(revision.serviceAreaCode, revision.serviceAreaName),
           },
           { label: t('sellers.review.field.timezone'), value: revision.operatingTimezone },
         ]}

@@ -1,4 +1,4 @@
-import { BackLink, LoadError, NoAccess } from '@mondapac/ui';
+import { BackLink, LoadError, NoAccess, SettingsTitle } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { RequestsList } from '../../../../../src/account-deletion/requests-list.tsx';
 import {
@@ -26,7 +26,9 @@ export default async function DeletionRequestsPage() {
     // Nested: the breadcrumb is Settings / Marketplace / Account deletion, then this page.
     <SettingsShell session={gate.session} linkId="account-deletion" title={title} nested>
       <BackLink href={SETTINGS_HREF} label={t('account-deletion.requests.back')} />
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <div className="mb-4">
+        <SettingsTitle>{title}</SettingsTitle>
+      </div>
       {keys.has(REQUESTS_VIEW_PERMISSION) ? (
         <RequestsList
           canCancel={keys.has(BUYER_DELETE_PERMISSION)}
@@ -34,13 +36,14 @@ export default async function DeletionRequestsPage() {
         />
       ) : (
         <NoAccess
+          pageTitle={title}
           title={t('settings.no-access-title')}
           body={t('settings.no-access-needs', {
             page: title,
             permission: t('account-deletion.requests.permission-view'),
           })}
-          backHref="/"
-          backLabel={t('settings.back-home')}
+          backHref="/settings"
+          backLabel={t('settings.sub.back')}
         />
       )}
     </SettingsShell>

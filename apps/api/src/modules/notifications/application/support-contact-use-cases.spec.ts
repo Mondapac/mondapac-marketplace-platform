@@ -6,6 +6,11 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import {
+  changeTrailOf,
+  FakeChangeActors,
+  InMemoryAuditTrail,
+} from '../../../../test/support/change-trail-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
@@ -23,6 +28,7 @@ import type {
 } from './ports/support-contact.repository';
 import { SetSupportContact } from './use-cases/set-support-contact.use-case';
 import { ViewSupportContact } from './use-cases/view-support-contact.use-case';
+import { ViewSupportContactHistory } from './use-cases/view-support-contact-history.use-case';
 
 // The support email in memory on both Market fixtures (AU has a configured default, ZZ has none):
 // an admin reads it, changes it with a version and an audit row, and nobody else can.
@@ -36,12 +42,10 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const ADMIN = id<'Account'>(0xad);
 
-class RecordingAudit implements AuditWriter {
-  readonly entries: AuditEntry[] = [];
-  record(_context: CallContext, entry: AuditEntry): Promise<void> {
+class RecordingAudit extends InMemoryAuditTrail implements AuditWriter {
+  override record(context: CallContext, entry: AuditEntry): Promise<void> {
     if (entry.action !== SupportContactChanged.action) throw new Error('audit: unknown action');
-    this.entries.push(entry);
-    return Promise.resolve();
+    return super.record(context, entry);
   }
 }
 
@@ -117,17 +121,22 @@ describe.each([
 
   let contacts: MemoryContacts;
   let audit: RecordingAudit;
+  let actors: FakeChangeActors;
+  let unitOfWork: FakeUnitOfWork;
   let deps: NotificationsDependencies;
 
   beforeEach(() => {
     contacts = new MemoryContacts();
-    audit = new RecordingAudit();
+    audit = new RecordingAudit(clock);
+    actors = new FakeChangeActors();
+    unitOfWork = new FakeUnitOfWork();
     deps = {
-      unitOfWork: new FakeUnitOfWork(),
+      unitOfWork,
       contacts,
       policy: new ConfigNotificationsPolicy(markets),
       audit,
       clock,
+      trail: changeTrailOf(unitOfWork, audit, actors),
     };
   });
 
@@ -141,12 +150,16 @@ describe.each([
   ) => new SetSupportContact(gate, deps).execute(context, { email, expectedVersion });
 
   it('shows the Market default (version 0) until an admin changes it', async () => {
-    expect(await view()).toEqual(ok({ email: configured, version: 0 }));
+    expect(await view()).toEqual(ok({ email: configured, version: 0, lastChanged: null }));
   });
 
   it('stores each change as a new version with who, when and the old address, and audits it', async () => {
-    expect(await set('Help@Example.com')).toEqual(ok({ email: 'help@example.com', version: 1 }));
-    expect(await set('care@example.com')).toEqual(ok({ email: 'care@example.com', version: 2 }));
+    expect(await set('Help@Example.com')).toMatchObject(
+      ok({ email: 'help@example.com', version: 1 }),
+    );
+    expect(await set('care@example.com')).toMatchObject(
+      ok({ email: 'care@example.com', version: 2 }),
+    );
     expect(contacts.rows).toEqual([
       {
         version: 1,
@@ -163,7 +176,7 @@ describe.each([
         changedBy: ADMIN,
       },
     ]);
-    expect(await view()).toEqual(ok({ email: 'care@example.com', version: 2 }));
+    expect(await view()).toMatchObject(ok({ email: 'care@example.com', version: 2 }));
     expect(audit.entries.map((e) => [e.action, e.targetId, e.before, e.after])).toEqual([
       ['notifications.support-contact.changed', 'support-email', { version: 0 }, { version: 1 }],
       ['notifications.support-contact.changed', 'support-email', { version: 1 }, { version: 2 }],
@@ -172,13 +185,16 @@ describe.each([
 
   it('writes nothing when the same address is set again', async () => {
     await set('help@example.com');
-    expect(await set(' HELP@example.com ')).toEqual(ok({ email: 'help@example.com', version: 1 }));
+    expect(await set(' HELP@example.com ')).toMatchObject(
+      ok({ email: 'help@example.com', version: 1 }),
+    );
     expect(contacts.rows).toHaveLength(1);
     expect(audit.entries).toHaveLength(1);
     if (configured !== null) {
       contacts.rows.length = 0;
+      audit.rows.length = 0;
       audit.entries.length = 0;
-      expect(await set(configured)).toEqual(ok({ email: configured, version: 0 }));
+      expect(await set(configured)).toMatchObject(ok({ email: configured, version: 0 }));
       expect(contacts.rows).toEqual([]);
     }
   });
@@ -194,7 +210,7 @@ describe.each([
 
   it('refuses a save from an older version, and a missing or bad expected version', async () => {
     await set('help@example.com');
-    expect(await set('care@example.com', admin, 0)).toEqual(
+    expect(await set('care@example.com', admin, 0)).toMatchObject(
       err({ code: 'notifications.conflict' }),
     );
     for (const bad of ['x', -1, 1.5, '1', null, NaN]) {
@@ -208,8 +224,92 @@ describe.each([
 
   it('answers a conflict when another admin saved the same version first', async () => {
     contacts.taken = true;
-    expect(await set('help@example.com')).toEqual(err({ code: 'notifications.conflict' }));
+    expect(await set('help@example.com')).toMatchObject(err({ code: 'notifications.conflict' }));
     expect(audit.entries).toEqual([]);
+  });
+
+  it('says who changed the address last and when, on the read and on the save', async () => {
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+    const saved = await set('help@example.com');
+    expect(saved).toEqual(
+      ok({
+        email: 'help@example.com',
+        version: 1,
+        lastChanged: { at: T0, byDisplayName: 'Sara K.', byKind: 'member' },
+      }),
+    );
+    expect(await view()).toEqual(saved);
+  });
+
+  it('keeps the change when its author cannot be named any more, and for a system change', async () => {
+    await set('help@example.com');
+    expect(await view()).toMatchObject({
+      value: { lastChanged: { at: T0, byDisplayName: null, byKind: 'member' } },
+    });
+    audit.rows[0] = { ...audit.rows[0]!, actorType: 'SYSTEM', actorId: null };
+    expect(await view()).toMatchObject({
+      value: { lastChanged: { at: T0, byDisplayName: null, byKind: 'system' } },
+    });
+  });
+
+  it('still shows the page when the names cannot be read', async () => {
+    await set('help@example.com');
+    actors.failure = new Error('identity is down');
+    expect(await view()).toEqual(ok({ email: 'help@example.com', version: 1, lastChanged: null }));
+  });
+
+  it('names the winning save on a conflict', async () => {
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+    await set('help@example.com');
+    expect(await set('care@example.com', admin, 0)).toEqual(
+      err({
+        code: 'notifications.conflict',
+        lastChanged: { at: T0, byDisplayName: 'Sara K.', byKind: 'member' },
+      }),
+    );
+  });
+
+  it('lists the changes newest first with the field name and the author, never an address', async () => {
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+    await set('help@example.com');
+    clock.advance(Temporal.Duration.from({ minutes: 5 }));
+    await set('care@example.com');
+    const page = await new ViewSupportContactHistory(gate, deps).execute(admin, { limit: 1 });
+    expect(page).toMatchObject(
+      ok({
+        items: [
+          {
+            at: T0.add({ minutes: 5 }),
+            byDisplayName: 'Sara K.',
+            byKind: 'member',
+            fields: ['email'],
+          },
+        ],
+      }),
+    );
+    const next = page.ok ? page.value.next : null;
+    expect(next).not.toBeNull();
+    const second = await new ViewSupportContactHistory(gate, deps).execute(admin, { after: next });
+    expect(second.ok && second.value.items.map((i) => i.at)).toEqual([T0]);
+    expect(second.ok && second.value.next).toBeNull();
+    expect(JSON.stringify([page, second])).not.toContain('example.com');
+  });
+
+  it('refuses a bad page request, and a history to anyone but an admin', async () => {
+    const history = (context: CallContext, input: object) =>
+      new ViewSupportContactHistory(gate, deps).execute(context, input);
+    expect(await history(admin, { limit: 0 })).toEqual(
+      err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] }),
+    );
+    expect(await history(admin, { after: 'nope' })).toEqual(
+      err({ code: 'validation.failed', fields: [{ path: 'after', code: 'format' }] }),
+    );
+    expect(await history(admin, { after: id<'Account'>(0x999) })).toEqual(
+      err({ code: 'validation.failed', fields: [{ path: 'after', code: 'unknown' }] }),
+    );
+    for (const context of [actor('seller'), actor('customer')]) {
+      expect((await history(context, {})).ok).toBe(false);
+    }
   });
 
   it('lets only an admin read or set it: a seller, a customer, an anonymous caller and the system cannot', async () => {

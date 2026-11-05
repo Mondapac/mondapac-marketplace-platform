@@ -84,6 +84,7 @@ export {
   useUnsavedChangesGuard,
   leavesPage,
   type ClickInfo,
+  type LeaveInfo,
   type LeaveLabels,
 } from './settings/unsaved-changes-guard.tsx';
 export {
@@ -92,6 +93,23 @@ export {
   type SettingsErrorSummaryProps,
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
+export { SettingsSubNav, type SubNavGroup } from './settings/settings-sub-nav.tsx';
+export { SettingsTitle } from './settings/settings-title.tsx';
+export {
+  relativeTime,
+  whoKind,
+  type ChangeByKind,
+  type LastChangedValue,
+  type WhoKind,
+} from './settings/change-time.ts';
+export {
+  SettingsHistoryDrawer,
+  useSettingsHistory,
+  type HistoryPageData,
+  type SettingsHistoryDrawerProps,
+  type SettingsHistoryItem,
+  type SettingsHistoryState,
+} from './settings/settings-history.tsx';
 export {
   SettingsHub,
   type SettingsHubGroup,
@@ -115,6 +133,7 @@ export {
   type SettingsForm,
   type UseSettingsFormOptions,
 } from './settings/use-settings-form.ts';
+export { useLiveErrors, type LiveErrors } from './settings/use-live-errors.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';

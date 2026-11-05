@@ -50,6 +50,7 @@ const OTHER_PRODUCT = '01990000-0000-7000-8000-0000000000b2' as Id<'Product'>;
 const DEFINITION = '01990000-0000-7000-8000-0000000000c1' as Id<'AttributeDefinition'>;
 const MATERIAL = '01990000-0000-7000-8000-0000000000c2' as Id<'AttributeDefinition'>;
 const BRAND_TEXT = '01990000-0000-7000-8000-0000000000c3' as Id<'AttributeDefinition'>;
+const SIZE = '01990000-0000-7000-8000-0000000000c4' as Id<'AttributeDefinition'>;
 
 describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
@@ -188,7 +189,9 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
             ? MATERIAL
             : codeOf === 'brand-text'
               ? BRAND_TEXT
-              : null,
+              : codeOf === 'size-option'
+                ? SIZE
+                : null,
       ),
   };
   const eligibility = { isEligible: () => Promise.resolve(eligible) };
@@ -273,6 +276,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
     address = 'seller@example.test';
     definitions.rows.set(DEFINITION, definition(DEFINITION, 'pack-size'));
     definitions.rows.set(MATERIAL, definition(MATERIAL, 'origin-material', { material: true }));
+    definitions.rows.set(SIZE, definition(SIZE, 'size-option', { isVariantOption: true }));
     suggestions.codes.set(DEFINITION, 'pack-size');
   });
 
@@ -317,6 +321,21 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       expect((await suggest('Cubed', 'cuts')).ok).toBe(true);
     });
 
+    it('takes a suggestion on a variant option, and an approval adds the option to it', async () => {
+      const answer = await suggest('Extra large', 'size-option');
+      if (!answer.ok) throw new Error(answer.error.code);
+      expect(answer.value).toMatchObject({ attributeCode: 'size-option', status: 'open' });
+      const approved = await build().approve.execute(context('admin'), {
+        suggestionId: answer.value.id,
+        version: 1,
+        labels: { [english]: 'Extra large' },
+      });
+      expect(approved).toMatchObject({ ok: true, value: { suggestion: { status: 'approved' } } });
+      const stored = definitions.rows.get(SIZE)!.state;
+      expect(stored.isVariantOption).toBe(true);
+      expect(stored.options.map((o) => o.code)).toEqual(['small', 'large', 'extra-large']);
+    });
+
     it('answers the same product.not-found for another seller’s product and an unknown one', async () => {
       const other = await suggest('X', 'pack-size', OTHER_PRODUCT);
       const unknown = await suggest('X', 'pack-size', '01990000-0000-7000-8000-0000000000ff');
@@ -324,8 +343,8 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       expect(unknown).toEqual(other);
     });
 
-    it('refuses a field that is material, a variant option, not a select or not in the schema', async () => {
-      for (const attributeCode of ['origin-material', 'size-option', 'brand-text', 'nothing']) {
+    it('refuses a field that is material, not a select or not in the schema', async () => {
+      for (const attributeCode of ['origin-material', 'brand-text', 'nothing']) {
         expect(await suggest('X', attributeCode)).toEqual(
           err({ code: 'attribute.not-suggestable' }),
         );

@@ -231,6 +231,12 @@ export function PanelTools({
     [entries, labels.shortcuts.title, labels.shortcuts.openSearch],
   );
 
+  // "?" in the palette's empty field: the list opens and later gives focus back to the palette's opener.
+  const openHelpFromPalette = useCallback(() => {
+    helpOpener.current = opener.current;
+    setHelpOpen(true);
+  }, []);
+
   const choose = useCallback(
     (entry: PaletteEntry): boolean => {
       if (entry.id === HELP_ENTRY_ID) {
@@ -284,12 +290,14 @@ export function PanelTools({
     [resolve, recent, currentPage],
   );
 
+  const pinnedEntries = useMemo(() => resolve(pins), [resolve, pins]);
+
   const value = useMemo<PanelToolsValue>(
     () => ({
       labels,
       openPalette,
       openHelp,
-      pinnedEntries: resolve(pins),
+      pinnedEntries,
       recentEntries,
       currentPage,
       onPageItself,
@@ -300,7 +308,7 @@ export function PanelTools({
       labels,
       openPalette,
       openHelp,
-      resolve,
+      pinnedEntries,
       pins,
       recentEntries,
       currentPage,
@@ -316,10 +324,12 @@ export function PanelTools({
         open={paletteOpen}
         onClose={closePalette}
         entries={paletteEntries}
+        pinned={pinnedEntries}
         recent={recentEntries}
         labels={labels.palette}
         onChoose={choose}
         navigate={navigate}
+        onShortcutKey={singleKeys ? openHelpFromPalette : undefined}
       />
       <ShortcutsDialog
         open={helpOpen}

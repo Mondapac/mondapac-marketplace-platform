@@ -55,4 +55,21 @@ export class PrismaSellerHealthRoster implements SellerHealthRoster {
       return [{ sellerId: pointer.sellerId as Id<'Seller'>, zone: revision.operatingTimezone }];
     });
   }
+
+  async one(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<SellerHealthRosterEntry | null> {
+    const tx = this.prisma.tx(market);
+    const file = await tx.sellersSellerFile.findFirst({
+      where: { marketId: market.marketId, sellerId, approvedRevisionId: { not: null } },
+      select: { approvedRevisionId: true },
+    });
+    if (file === null || file.approvedRevisionId === null) return null;
+    const revision = await tx.sellersBusinessFileRevision.findFirst({
+      where: { marketId: market.marketId, sellerId, id: file.approvedRevisionId },
+      select: { operatingTimezone: true },
+    });
+    return revision === null ? null : { sellerId, zone: revision.operatingTimezone };
+  }
 }

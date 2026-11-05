@@ -5,25 +5,32 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { AttributesTab } from './attributes-tab.tsx';
 import { FeatureSetsTab } from './feature-sets-tab.tsx';
+import { SuggestionsTab } from './suggestions-tab.tsx';
 import { WaitingTab } from './waiting-tab.tsx';
 import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
 
 /**
  * The Attributes page (attributes plan 16, package A1): four tabs. Attributes and Feature sets
  * are a list with the chosen row's details beside it (below it on a narrow screen); Brands is the
- * brands page; Waiting for you lists the requests to turn off Material (A2 part 3). An admin with `catalog.attribute.edit`
+ * brands page; Waiting for you holds the requests to turn off Material (A2 part 3) and the sellers' value
+ * suggestions (A5). An admin with `catalog.attribute.edit`
  * adds and edits attributes (package A2); any other admin sees the view-only notice.
  */
 export function AttributesView({
   canEdit,
+  canRestructure = false,
   csrfToken,
   canSeeBrands,
+  canDecide,
   initialTab,
   initialId,
 }: {
   readonly canEdit: boolean;
+  /** `catalog.attribute.restructure`: merge values, archive and confirm an archive request. */
+  readonly canRestructure?: boolean;
   readonly csrfToken: string;
   readonly canSeeBrands: boolean;
+  readonly canDecide: boolean;
   readonly initialTab: Tab;
   readonly initialId: string | null;
 }) {
@@ -71,6 +78,7 @@ export function AttributesView({
           selectedId={selected}
           onSelect={setSelected}
           canEdit={canEdit}
+          canRestructure={canRestructure}
           csrfToken={csrfToken}
           onOpenWaiting={() => {
             setTab('waiting');
@@ -91,6 +99,7 @@ export function AttributesView({
       {tab === 'waiting' ? (
         <WaitingTab
           canEdit={canEdit}
+          canRestructure={canRestructure}
           csrfToken={csrfToken}
           onOpenAttribute={(id) => {
             setTab('attributes');
@@ -98,6 +107,7 @@ export function AttributesView({
           }}
         />
       ) : null}
+      {tab === 'waiting' && canDecide ? <SuggestionsTab csrfToken={csrfToken} /> : null}
     </div>
   );
 }

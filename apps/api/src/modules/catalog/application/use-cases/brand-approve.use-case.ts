@@ -1,10 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_BRAND_EDIT } from '../../contracts/permissions';
+import { BrandApprovedAudit } from '../../domain/audit';
 import type { BrandRefusal } from '../../domain/brand';
 import {
   adminAccountOf,
@@ -35,6 +37,7 @@ export interface BrandApproveDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly clock: Clock;
+  readonly audit: AuditWriter;
 }
 
 /**
@@ -100,6 +103,16 @@ export class BrandApprove extends UseCase<
           const next = found.approve({ accountId, now: this.deps.clock.now() });
           if (!next.ok) return err(next.error);
           await this.deps.brands.save(market, next.value);
+          await this.deps.audit.record(
+            context,
+            BrandApprovedAudit.entry(found.state.id, {
+              before: { status: 'draft' },
+              after: {
+                status: 'active',
+                proposedBySeller: found.state.proposedBySellerId !== null,
+              },
+            }),
+          );
           return ok({ brand: viewOf(next.value.state) });
         },
       );

@@ -143,16 +143,44 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     const groups = family.groups as unknown as FamilyGroup[];
     const codes = [...new Set(groups.flatMap((group) => group.attributes.map((a) => a.code)))];
     if (codes.length === 0) return [];
-    const definitionRows = await tx.catalogAttributeDefinition.findMany({
+    const select = {
+      id: true,
+      code: true,
+      dataType: true,
+      localizable: true,
+      status: true,
+      publishedRevisionId: true,
+      mergedIntoId: true,
+    } as const;
+    const listed = await tx.catalogAttributeDefinition.findMany({
       where: { marketId, code: { in: codes } },
-      select: {
-        code: true,
-        dataType: true,
-        localizable: true,
-        status: true,
-        publishedRevisionId: true,
-      },
+      select,
     });
+    // A merged attribute reads as its target (attributes A8), which the family need not list.
+    const have = new Set(listed.map((row) => row.id));
+    const targetIds = [
+      ...new Set(
+        listed.flatMap((row) =>
+          row.mergedIntoId === null || have.has(row.mergedIntoId) ? [] : [row.mergedIntoId],
+        ),
+      ),
+    ];
+    const targets =
+      targetIds.length === 0
+        ? []
+        : await tx.catalogAttributeDefinition.findMany({
+            where: { marketId, id: { in: targetIds } },
+            select,
+          });
+    const definitionRows = [...listed, ...targets];
+    const mergeRows = await tx.catalogAttributeMergeOption.findMany({
+      where: {
+        marketId,
+        sourceId: { in: listed.flatMap((row) => (row.mergedIntoId === null ? [] : [row.id])) },
+      },
+      select: { sourceId: true, sourceCode: true, targetCode: true },
+    });
+    const codeOfId = new Map(definitionRows.map((row) => [row.id, row.code] as const));
     const revisionIds = definitionRows.flatMap((row) =>
       row.publishedRevisionId === null ? [] : [row.publishedRevisionId],
     );
@@ -177,7 +205,19 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
           mergedInto: option.mergedInto,
         });
       }
+      const targetCode = row.mergedIntoId === null ? undefined : codeOfId.get(row.mergedIntoId);
       definitions.set(row.code, {
+        mergedInto:
+          targetCode === undefined
+            ? null
+            : {
+                code: targetCode,
+                options: new Map(
+                  mergeRows
+                    .filter((merge) => merge.sourceId === row.id)
+                    .map((merge) => [merge.sourceCode, merge.targetCode] as const),
+                ),
+              },
         dataType: row.dataType as AttributeDataType,
         localizable: row.localizable,
         status: row.status as SpecificationDefinition['status'],
