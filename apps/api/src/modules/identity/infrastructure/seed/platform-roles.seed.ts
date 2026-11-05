@@ -39,8 +39,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `certification.issuer.view` (certification slice 6: the issuer request queue and the typed
     // name); answering needs the protected `certification.issuer.edit`, not listed. Version 7
     // adds `certification.type.view` (certification slice 12: every default admin role reads the
-    // types; the protected `certification.type.edit` is not listed).
-    seedVersion: 7,
+    // types; the protected `certification.type.edit` is not listed). Version 8 adds
+    // `sellers.seller-health.recalculate` (seller health: the admin's "Recalculate now" queues a
+    // recount of one seller; owner decision 5 Nov 2026).
+    seedVersion: 8,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
@@ -54,6 +56,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.seller-certificate.review',
       'certification.issuer.view',
       'certification.type.view',
+      'sellers.seller-health.recalculate',
     ],
   },
   {

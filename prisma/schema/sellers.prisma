@@ -146,6 +146,7 @@ model SellersSellerFile {
   adminFlags                     SellersAdminFlag[]
   healthDays                     SellersSellerHealthDay[]
   healthSnapshots                SellersSellerHealthSnapshot[]
+  healthRequests                 SellersSellerHealthRequest[]
 
   /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
   @@unique([marketId, sellerId])
@@ -626,6 +627,33 @@ model SellersSellerHealthSnapshot {
   @@id([marketId, sellerId, day])
   @@index([marketId, day, score])
   @@map("seller_health_snapshots")
+  @@schema("sellers")
+}
+
+/// A request to measure one seller's health again now (seller health, option A of 5 Nov 2026): the
+/// admin's "Recalculate now" and, later, the seller's "Refresh now". A click only writes this row;
+/// a frequent job reads the pending rows as the system actor, because the three feeds accept only
+/// the system actor. `requestedByAccountId` is a plain id (C4) of the admin or seller account.
+/// The partial unique "one pending request per (Market, seller)", the pick-up index, the CHECKs
+/// and the grants are hand-written in the migration. A request is never deleted by the app;
+/// `finishedAt` is set exactly when it is not pending (CHECK).
+model SellersSellerHealthRequest {
+  id                   String            @id @db.Uuid
+  marketId             String            @map("market_id") @db.VarChar(8)
+  tenantId             String            @map("tenant_id")
+  sellerId             String            @map("seller_id") @db.Uuid
+  /// admin | seller (CHECK): who asked, for the cooldown a later package puts on the seller's.
+  source               String
+  requestedByAccountId String            @map("requested_by_account_id") @db.Uuid
+  requestedAt          DateTime          @map("requested_at") @db.Timestamptz(6)
+  /// pending | done | failed (CHECK).
+  status               String
+  finishedAt           DateTime?         @map("finished_at") @db.Timestamptz(6)
+  sellerFile           SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The partial indexes (one pending per seller; the pick-up order) are hand-written.
+  @@index([marketId, sellerId, requestedAt(sort: Desc)], map: "seller_health_requests_market_id_seller_id_requested_at_idx")
+  @@map("seller_health_requests")
   @@schema("sellers")
 }
 

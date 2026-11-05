@@ -1,6 +1,8 @@
-import { Controller, Get, Logger, Param, Res } from '@nestjs/common';
+import { Controller, Get, HttpCode, Logger, Param, Post, Res } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -11,15 +13,21 @@ import {
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
+import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { RequestSellerHealthRecalculation } from '../application/use-cases/request-seller-health-recalculation.use-case';
 import { SellerHealthQueueRead } from '../application/use-cases/seller-health-queue.use-case';
 import { SellerHealthRead } from '../application/use-cases/seller-health-read.use-case';
 import { errorOf } from './my-file.answer';
 import { SellersErrorBody } from './my-file.dto';
-import { SellerHealthBody, SellerHealthQueueBody } from './seller-health.dto';
+import {
+  SellerHealthBody,
+  SellerHealthQueueBody,
+  SellerHealthRecalculationBody,
+} from './seller-health.dto';
 
 /**
  * The admin's seller health card over HTTP (seller health package 5). A thin adapter: the
@@ -37,6 +45,7 @@ export class SellerHealthController {
   constructor(
     private readonly read: SellerHealthRead,
     private readonly queue: SellerHealthQueueRead,
+    private readonly recalculate: RequestSellerHealthRecalculation,
   ) {}
 
   @Get('health-queue')
@@ -118,5 +127,45 @@ export class SellerHealthController {
             },
       trend: result.value.trend.map((point) => ({ ...point })),
     };
+  }
+
+  @Post(':sellerId/health/recalculate')
+  @HttpCode(202)
+  @ReadsSession()
+  @ApiOperation({
+    summary: "Recalculate a seller's health now (admin)",
+    description:
+      'Queues a recount of one seller. The job measures it within about two minutes and the ' +
+      'card then shows the new score; nothing is computed in this request. A second request ' +
+      'while one waits adds nothing. Health only informs: nothing happens to the seller. ' +
+      'Needs sellers.seller-health.recalculate.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiAcceptedResponse({ type: SellerHealthRecalculationBody })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({
+    type: SellersErrorBody,
+    description: 'file.not-found (no such seller, or not approved yet, in this Market)',
+  })
+  @ApiServiceUnavailableResponse({ type: SellersErrorBody, description: 'sellers.unavailable' })
+  async recalculateHealth(
+    @Call() context: CallContext,
+    @Param('sellerId') sellerId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<SellerHealthRecalculationBody> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.recalculate.execute(context, { sellerId });
+    this.#logger.log({
+      msg: 'sellers.seller-health-recalculate-route',
+      outcome: result.ok ? result.value.status : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) throw errorOf(result.error, response);
+    return { status: result.value.status };
   }
 }

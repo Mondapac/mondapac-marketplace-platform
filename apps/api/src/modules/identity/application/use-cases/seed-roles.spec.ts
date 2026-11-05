@@ -93,7 +93,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       kind: 'default',
       sellerId: null,
-      seedVersion: 7,
+      seedVersion: 8,
       permissionKeys: [
         'certification.issuer.view',
         'certification.seller-certificate.review',
@@ -105,6 +105,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         'identity.seller-account.create',
         'sellers.business-details.view',
         'sellers.seller-file.review',
+        'sellers.seller-health.recalculate',
         'sellers.seller.view',
       ],
     });
@@ -138,7 +139,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     );
   });
 
-  it('upgrades onboarding-compliance from version 1 to 7: adds the sellers and certification keys, one seed-applied row, other roles untouched', async () => {
+  it('upgrades onboarding-compliance from version 1 to 8: adds the sellers and certification keys, one seed-applied row, other roles untouched', async () => {
     const REVIEW = 'sellers.seller-file.review';
     const VIEW = 'sellers.seller.view';
     const DETAILS = 'sellers.business-details.view';
@@ -146,6 +147,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     const CERT_REVIEW = 'certification.seller-certificate.review';
     const ISSUER_VIEW = 'certification.issuer.view';
     const TYPE_VIEW = 'certification.type.view';
+    const RECALCULATE = 'sellers.seller-health.recalculate';
     // The previous build's definition: version 1 without the sellers and certification keys.
     const v1 = seedWith((role) =>
       role.seedCode === 'onboarding-compliance'
@@ -160,7 +162,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
                 key !== CERT_VIEW &&
                 key !== CERT_REVIEW &&
                 key !== ISSUER_VIEW &&
-                key !== TYPE_VIEW,
+                key !== TYPE_VIEW &&
+                key !== RECALCULATE,
             ),
           }
         : role,
@@ -178,7 +181,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       id: before.id,
-      seedVersion: 7,
+      seedVersion: 8,
       permissionKeys: [
         ...before.permissionKeys,
         REVIEW,
@@ -188,6 +191,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         CERT_REVIEW,
         ISSUER_VIEW,
         TYPE_VIEW,
+        RECALCULATE,
       ].sort(),
     });
     expect(roleOf('platform', 'viewer')).toEqual(viewerBefore);
@@ -196,7 +200,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 7,
+            seedVersion: 8,
             addedKeys: [
               REVIEW,
               VIEW,
@@ -205,6 +209,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
               CERT_REVIEW,
               ISSUER_VIEW,
               TYPE_VIEW,
+              RECALCULATE,
             ].sort(),
             removedKeys: [],
           },
