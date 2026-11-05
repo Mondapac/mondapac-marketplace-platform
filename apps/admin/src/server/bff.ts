@@ -57,6 +57,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
     'catalog/categories',
+    // What the platform product create form offers (catalog): the Market's types and languages.
+    'catalog/admin/platform-products/options',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
@@ -168,6 +170,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Import products (catalog): the checked file, as base64 in a JSON body (the one path with a
     // larger body cap, see UPLOAD_PATH).
     'catalog/admin/platform-imports',
+    // A new platform product, as a draft (catalog): the body names the type only.
+    'catalog/admin/platform-products',
     // Save the product list's current view as a tab (catalog): a closed body, for me or everyone.
     'catalog/admin/saved-filters',
   ]),
@@ -199,6 +203,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // Submit (publish) a platform product's working copy (catalog).
+    'catalog/admin/platform-products/:id/submit',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -281,6 +287,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attributes/:id',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
+    // The working copy of a platform product, saved as a draft (catalog).
+    'catalog/admin/platform-products/:id/draft',
   ],
   // The details of one platform category (catalog, categories C3), with the version seen.
   PATCH: ['catalog/admin/categories/:id'],
@@ -300,6 +308,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // One platform product with its working copy, for the product form (catalog).
+    'catalog/admin/platform-products/:id',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // One import and its report CSV (catalog): the report takes the query `kind`.

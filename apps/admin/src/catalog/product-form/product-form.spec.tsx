@@ -1,0 +1,394 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import messages from '../../../messages/en.json';
+
+vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+
+import { callApi } from '../../api/client.ts';
+import { expectToast } from '../../../test/toast-spy.ts';
+import { ProductCreateForm } from './create-form.tsx';
+import { contentWithTexts, ProductEdit, textsOf } from './edit-form.tsx';
+import { problemOf } from './errors.ts';
+import type { ProductView } from './types.ts';
+
+const call = vi.mocked(callApi);
+const ID = '0190a000-0000-7000-8000-0000000000c1';
+const CATEGORY = '0190a000-0000-7000-8000-0000000000d1';
+const CHILD = '0190a000-0000-7000-8000-0000000000d2';
+const assign = vi.fn();
+
+const view = (over: Partial<ProductView> = {}): ProductView => ({
+  productId: ID,
+  productCode: 'P00000001',
+  typeCode: 'simple',
+  familyCode: 'default',
+  variantModel: 'single',
+  status: 'draft',
+  variants: [{ variantId: '0190a000-0000-7000-8000-0000000000e1', state: 'proposed' }],
+  maxVariants: 100,
+  lastChangedAt: '2026-11-05T01:00:00.000Z',
+  createdAt: '2026-11-05T01:00:00.000Z',
+  form: {
+    taxCategoryCodes: ['gst-free', 'gst'],
+    fields: [
+      {
+        code: 'origin',
+        dataType: 'select',
+        localizable: false,
+        required: false,
+        isVariantOption: false,
+        bounds: {},
+        names: { en: 'Country of origin' },
+        options: [
+          { code: 'in', labels: { en: 'India' } },
+          { code: 'au', labels: { en: 'Australia' } },
+        ],
+      },
+      {
+        code: 'grain',
+        dataType: 'text',
+        localizable: false,
+        required: true,
+        isVariantOption: false,
+        bounds: { maxLength: 10 },
+        names: { en: 'Grain length' },
+        options: [],
+      },
+    ],
+    categories: [
+      { categoryId: CATEGORY, parentId: null, names: { en: 'Pantry' } },
+      { categoryId: CHILD, parentId: CATEGORY, names: { en: 'Rice' } },
+    ],
+  },
+  locales: { default: 'en', supported: ['en', 'ar'] },
+  workingCopy: {
+    content: {
+      texts: {
+        en: { name: 'Sella rice', shortDescription: 'Short', description: 'Long grain' },
+        ar: { name: 'أرز' },
+      },
+      imageIds: ['img-1'],
+    },
+    lastSavedAt: '2026-11-05T01:00:00.000Z',
+    baseRevisionId: null,
+  },
+  published: null,
+  ...over,
+});
+
+function mountEdit() {
+  return render(
+    <NextIntlClientProvider locale="en-AU" messages={messages}>
+      <ProductEdit productId={ID} csrfToken="csrf-1" />
+    </NextIntlClientProvider>,
+  );
+}
+const ok = <T,>(body: T) => ({ ok: true as const, status: 200, body });
+const fail = (status: number, code: string, details?: object) => ({
+  ok: false as const,
+  failure: { status, code, ...(details === undefined ? {} : { details }) },
+});
+const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string, unknown>;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  call.mockReset();
+  Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+});
+afterEach(cleanup);
+
+describe('the create form', () => {
+  const mount = () =>
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <ProductCreateForm csrfToken="csrf-1" />
+      </NextIntlClientProvider>,
+    );
+
+  it('reads the options, asks for a type, and creates the draft with the type only', async () => {
+    call.mockResolvedValueOnce(
+      ok({
+        productTypes: ['simple', 'configurable'],
+        locales: { default: 'en', supported: ['en'] },
+      }),
+    );
+    mount();
+    expect(await screen.findByRole('heading', { name: 'Add product' })).toBeTruthy();
+    expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
+      'GET',
+      'catalog/admin/platform-products/options',
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    expect(screen.getByText('Choose a product type.')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('Product type'), { target: { value: 'configurable' } });
+    call.mockResolvedValueOnce(ok({ productId: ID, productCode: 'P1', variantIds: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/catalog/products/${ID}/edit`));
+    expect(call.mock.calls[1]).toEqual([
+      'POST',
+      'catalog/admin/platform-products',
+      { typeCode: 'configurable' },
+      'csrf-1',
+    ]);
+  });
+
+  it('says why a create was refused and keeps the form', async () => {
+    call.mockResolvedValueOnce(
+      ok({ productTypes: ['simple'], locales: { default: 'en', supported: ['en'] } }),
+    );
+    mount();
+    await screen.findByLabelText('Product type');
+    fireEvent.change(screen.getByLabelText('Product type'), { target: { value: 'simple' } });
+    call.mockResolvedValueOnce(fail(422, 'product.type-not-offered'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    expect(await screen.findByText("This Market doesn't offer that product type.")).toBeTruthy();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('shows a load error with a retry, and goes to sign-in on a 401', async () => {
+    call.mockResolvedValueOnce(fail(503, 'access.unavailable'));
+    mount();
+    expect(await screen.findByText('The product could not be loaded.')).toBeTruthy();
+    call.mockResolvedValueOnce(
+      ok({ productTypes: ['simple'], locales: { default: 'en', supported: ['en'] } }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByLabelText('Product type')).toBeTruthy();
+    cleanup();
+    call.mockResolvedValueOnce(fail(401, 'session.invalid'));
+    mount();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+  });
+});
+
+describe('the edit form', () => {
+  it('shows the saved English title and description, no language picker, and the lock note', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    expect((await screen.findByLabelText<HTMLInputElement>('Title')).value).toBe('Sella rice');
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/Description/).value).toBe('Long grain');
+    expect(screen.queryByRole('combobox', { name: /language/i })).toBeNull();
+    expect(screen.getByText('One size')).toBeTruthy();
+    expect(screen.getByText(/can't switch between these after the first publish/)).toBeTruthy();
+    expect(screen.getByText('Draft')).toBeTruthy();
+    expect(screen.getByText('Platform product')).toBeTruthy();
+    expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
+      'GET',
+      `catalog/admin/platform-products/${ID}`,
+    ]);
+  });
+
+  it('saves the draft writing the default language only and keeping every other key', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.change(await screen.findByLabelText('Title'), {
+      target: { value: ' Basmati rice ' },
+    });
+    fireEvent.change(screen.getByLabelText('Tax category'), { target: { value: 'gst-free' } });
+    call.mockResolvedValueOnce(
+      ok({ variantIds: ['0190a000-0000-7000-8000-0000000000e1'], refusedFields: [] }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expectToast('Draft saved.'));
+    expect(call.mock.calls[1]?.slice(0, 2)).toEqual([
+      'PUT',
+      `catalog/admin/platform-products/${ID}/draft`,
+    ]);
+    expect(lastBody(1)).toEqual({
+      content: {
+        texts: {
+          en: { name: 'Basmati rice', shortDescription: 'Short', description: 'Long grain' },
+          ar: { name: 'أرز' },
+        },
+        imageIds: ['img-1'],
+        taxCategoryCode: 'gst-free',
+      },
+      variantIds: ['0190a000-0000-7000-8000-0000000000e1'],
+    });
+  });
+
+  it('files a product in categories picked by their full path from a searchable list', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    const box = await screen.findByRole('combobox', { name: /Product category/ });
+    fireEvent.click(box);
+    fireEvent.click(await screen.findByRole('option', { name: 'Pantry › Rice' }));
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect((lastBody(1)['content'] as Record<string, unknown>)['categoryIds']).toEqual([CHILD]);
+  });
+
+  it('publishes: saves first, then submits without replacing anything, and shows Published', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    call.mockResolvedValueOnce(ok({ revisionId: 'r1', revisionNo: 1, published: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expectToast('Product published.'));
+    expect(call.mock.calls[1]?.[0]).toBe('PUT');
+    expect(call.mock.calls[2]).toEqual([
+      'POST',
+      `catalog/admin/platform-products/${ID}/submit`,
+      { replacePending: false },
+      'csrf-1',
+    ]);
+    expect(screen.getByText('Published')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publish changes' })).toBeTruthy();
+  });
+
+  it('does not submit when a text kept its last value, and marks the field', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.change(await screen.findByLabelText('Title'), {
+      target: { value: 'Certified halal rice' },
+    });
+    call.mockResolvedValueOnce(
+      ok({
+        variantIds: [],
+        refusedFields: [
+          { field: 'platform-product.name', ref: null, locale: 'en', code: 'claim-text.found' },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(await screen.findByText(/Not saved: this text holds a claim/)).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('lists what a draft still lacks when the submit says it is not ready', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    // Nothing was edited, so Publish submits the saved draft without saving again.
+    call.mockResolvedValueOnce(
+      fail(422, 'revision.not-ready', { issues: [{ path: 'taxCategoryCode', code: 'required' }] }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(await screen.findByText("The product isn't ready to publish yet:")).toBeTruthy();
+    expect(screen.getByText('taxCategoryCode: required')).toBeTruthy();
+  });
+
+  it('reads the product again after a stale save', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    call.mockResolvedValueOnce(fail(409, 'conflict.stale'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText(/Someone else changed this product/)).toBeTruthy();
+    call.mockResolvedValueOnce(ok(view({ status: 'published' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Read the product again' }));
+    expect(await screen.findByText('Published')).toBeTruthy();
+  });
+
+  it('edits the attributes: a searchable list and a text with its bounds', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.click(await screen.findByRole('combobox', { name: /Country of origin/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'India' }));
+    fireEvent.change(screen.getByLabelText('Grain length'), {
+      target: { value: 'Extra long grain' },
+    });
+    expect(screen.getByText('At most 10 characters.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Grain length'), { target: { value: 'Extra long' } });
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect((lastBody(1)['content'] as Record<string, unknown>)['attributeValues']).toEqual({
+      origin: 'in',
+      grain: 'Extra long',
+    });
+  });
+
+  it('adds a variant to a configurable product, mints its id, and writes the draft again', async () => {
+    const minted = '0190a000-0000-7000-8000-0000000000e9';
+    call.mockResolvedValueOnce(
+      ok(
+        view({
+          variantModel: 'configurable',
+          variants: [],
+          form: {
+            ...view().form,
+            fields: [
+              {
+                code: 'size',
+                dataType: 'select',
+                localizable: false,
+                required: true,
+                isVariantOption: true,
+                bounds: {},
+                names: { en: 'Size' },
+                options: [{ code: 'l', labels: { en: 'Large' } }],
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    mountEdit();
+    expect(await screen.findByText('Different sizes or flavours')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add variant' }));
+    fireEvent.change(screen.getByLabelText('Size'), { target: { value: 'l' } });
+    call.mockResolvedValueOnce(ok({ variantIds: [minted], refusedFields: [] }));
+    call.mockResolvedValueOnce(ok({ variantIds: [minted], refusedFields: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(lastBody(1)['variantIds']).toEqual([null]);
+    expect(lastBody(2)['variantIds']).toEqual([minted]);
+    expect((lastBody(2)['content'] as { variants: unknown[] }).variants).toEqual([
+      { variantId: minted, optionValues: { size: 'l' } },
+    ]);
+  });
+
+  it('says a product is missing, and offers the way back', async () => {
+    call.mockResolvedValueOnce(fail(404, 'product.not-found'));
+    mountEdit();
+    expect(await screen.findByText(/does not exist, or it is not a platform product/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to products' }).getAttribute('href')).toBe(
+      '/catalog/products',
+    );
+  });
+});
+
+describe('the helpers', () => {
+  it('reads and writes only the default language texts', () => {
+    const content = {
+      texts: { en: { name: 'A', description: 'B', shortDescription: 'C' }, fr: { name: 'D' } },
+    };
+    expect(textsOf(content, 'en')).toEqual({ name: 'A', description: 'B' });
+    expect(textsOf(undefined, 'en')).toEqual({ name: '', description: '' });
+    expect(contentWithTexts(content, 'en', { name: 'X', description: '' })).toEqual({
+      texts: { en: { name: 'X', shortDescription: 'C' }, fr: { name: 'D' } },
+    });
+    expect(contentWithTexts(undefined, 'en', { name: ' ', description: '' })).toEqual({
+      texts: {},
+    });
+  });
+
+  it('maps refusal codes to messages and flags the ones that need a fresh read', () => {
+    expect(problemOf({ status: 409, code: 'conflict.stale' })).toMatchObject({
+      key: 'stale',
+      reload: true,
+    });
+    expect(
+      problemOf({ status: 422, code: 'variant.limit-reached', details: { max: 100 } }),
+    ).toMatchObject({
+      key: 'variant',
+      values: { max: 100 },
+    });
+    expect(problemOf({ status: 0, code: 'network' }).key).toBe('unavailable');
+    expect(problemOf({ status: 418, code: 'odd' }).key).toBe('unknown');
+  });
+});

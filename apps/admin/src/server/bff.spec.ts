@@ -1702,6 +1702,49 @@ describe('relay of the product list', () => {
     });
   });
 
+  describe('the platform product form', () => {
+    const request = (method: string, path: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body: '{}' }),
+      });
+
+    it('relays the options, one product, the create, the draft save and the submit', async () => {
+      for (const [method, path] of [
+        ['GET', 'catalog/admin/platform-products/options'],
+        ['GET', `catalog/admin/platform-products/${id}`],
+        ['POST', 'catalog/admin/platform-products'],
+        ['PUT', `catalog/admin/platform-products/${id}/draft`],
+        ['POST', `catalog/admin/platform-products/${id}/submit`],
+      ] as const) {
+        const ok = upstreamOk();
+        expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+        expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      }
+    });
+
+    it('refuses other methods, other shapes of id and other paths', async () => {
+      for (const [method, path] of [
+        ['GET', 'catalog/admin/platform-products'],
+        ['PUT', 'catalog/admin/platform-products'],
+        ['PUT', 'catalog/admin/platform-products/options'],
+        ['GET', 'catalog/admin/platform-products/not-a-uuid'],
+        ['GET', `catalog/admin/platform-products/${id}/draft`],
+        ['GET', `catalog/admin/platform-products/${id}/submit`],
+        ['POST', `catalog/admin/platform-products/${id}`],
+        ['DELETE', `catalog/admin/platform-products/${id}`],
+        ['PUT', `catalog/admin/platform-products/${id}/submit`],
+        ['POST', `catalog/admin/platform-products/${id}/retire`],
+      ] as const) {
+        const fetchImpl = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        expect(fetchImpl).not.toHaveBeenCalled();
+      }
+    });
+  });
+
   describe('the saved filters of the product list', () => {
     const base = ['catalog', 'admin', 'saved-filters'];
     const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>

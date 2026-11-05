@@ -2279,7 +2279,8 @@
           "help-own": "Rename or delete your filters. Your role can’t share filters."
         }
       },
-      "import": "Import"
+      "import": "Import",
+      "add": "Add product"
     },
     "import": {
       "title": "Import products",
@@ -2532,6 +2533,125 @@
           "title": "The file could not be checked",
           "body": "Try again. If it keeps happening, check the status page."
         }
+      }
+    },
+    "productForm": {
+      "back": "Back to products",
+      "loading": "Loading the product",
+      "load-failed": "The product could not be loaded.",
+      "retry": "Try again",
+      "not-found": "This product does not exist, or it is not a platform product.",
+      "no-access": "You don't have access to add or edit platform products.",
+      "optional": "optional",
+      "refused": "Some text was not saved because it holds a claim or a hidden character. Those fields kept their last saved value.",
+      "refused-field": "Not saved: this text holds a claim or a hidden character.",
+      "reload": "Read the product again",
+      "create": {
+        "title": "Add product",
+        "subtitle": "Platform product",
+        "type": "Product type",
+        "type-help": "The type decides the product's fields and whether it is one size or has variants. It can't be changed later.",
+        "choose": "Choose a type",
+        "type-required": "Choose a product type.",
+        "submit": "Create draft",
+        "cancel": "Cancel"
+      },
+      "edit": {
+        "title": "Edit product",
+        "subtitle": "{code} · {type} · Platform product"
+      },
+      "save-draft": "Save draft",
+      "publish": "Publish",
+      "publish-changes": "Publish changes",
+      "title-card": "Title and description",
+      "field": {
+        "name": "Title",
+        "name-help": "In English. It is translated when a new buyer language is published.",
+        "description": "Description",
+        "categories": "Product category",
+        "categories-help": "Its feature set adds the details below and suggests variant types.",
+        "categories-placeholder": "Search categories",
+        "tax": "Tax category",
+        "tax-help": "Required. Separate from the product category: it decides GST on every seller's offer."
+      },
+      "category": "Category",
+      "details": "Product details",
+      "attribute": {
+        "unset": "Not set",
+        "yes": "Yes",
+        "no": "No",
+        "problem": {
+          "whole": "Enter a whole number.",
+          "decimal": "Enter a number, for example 12.5.",
+          "range": "This number is outside the allowed range.",
+          "length": "At most {length} characters."
+        }
+      },
+      "variants": "Variants",
+      "model": {
+        "single": "One size",
+        "single-help": "Sold as a single item. Sellers add their offer to it.",
+        "configurable": "Different sizes or flavours",
+        "configurable-help": "Sellers choose which variants they sell. Variant types come from the category's feature set.",
+        "lock-note": "You can't switch between these after the first publish. Variant types are fixed once published.",
+        "locked": "This product is published, so its variant types are fixed."
+      },
+      "variants-count": "{count} of {max} variants",
+      "variant-n": "Variant {n}",
+      "variant-label": "Variant label",
+      "variant-published": "Published variants stay; they can't be removed here.",
+      "variant-remove": "Remove variant",
+      "variant-add": "Add variant",
+      "status": {
+        "title": "Status",
+        "draft": "Draft",
+        "published": "Published",
+        "paused": "Paused",
+        "unpublished": "Unpublished",
+        "matched": "Matched",
+        "retired": "Retired",
+        "withdrawn": "Withdrawn",
+        "discarded": "Discarded",
+        "draft-help": "Sellers can't find it until you publish. Save draft keeps your work.",
+        "live-help": "Publish changes puts your edits live for buyers and sellers."
+      },
+      "organisation": {
+        "title": "Organisation",
+        "type": "Type",
+        "scope": "Scope",
+        "platform": "Platform product",
+        "help": "No tags or collections: categories drive the menu and filters. Certification badges belong to each seller's offer, never to the product."
+      },
+      "notice": {
+        "saved": "Draft saved.",
+        "published": "Product published.",
+        "submitted": "Product submitted."
+      },
+      "select": {
+        "search": "Search",
+        "no-results": "No results",
+        "loading": "Loading…",
+        "retry": "Try again",
+        "remove": "Remove {name}",
+        "limit": "You can pick up to {max}"
+      },
+      "error": {
+        "claim-text": "A text holds a claim. Claims are made through a certificate, never in free text.",
+        "not-ready": "The product isn't ready to publish yet:",
+        "invalid-content": "The draft has content the form doesn't know. Read the product again.",
+        "no-draft": "This product has no draft. Read the product again.",
+        "stale": "Someone else changed this product. Read it again, then redo your change.",
+        "not-editable": "This product can't be edited in its current state.",
+        "not-found": "This product no longer exists.",
+        "type-not-offered": "This Market doesn't offer that product type.",
+        "variant": "The variants can't be saved. Check the variant types and the limit of {max}.",
+        "denied": "You don't have access to do this.",
+        "throttled": "Too many saves. Wait {seconds} seconds and try again.",
+        "invalid": "Some fields are not valid.",
+        "csrf": "Your session has changed. Reload the page.",
+        "unavailable": "The product service is unavailable. Try again shortly.",
+        "unknown": "Something went wrong. Try again.",
+        "partial": "The new variants were created but the draft wasn't saved with them. Save again."
       }
     }
   },
