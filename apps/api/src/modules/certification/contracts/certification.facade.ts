@@ -147,7 +147,9 @@ export interface CertificationFacade {
    * category is gone, and its lapse could relax a claim). `SELLER_OR_MANUFACTURER` rows do not
    * block. A move passes the moved subtree and its old ancestors that are not ancestors after the
    * move (a row on such an ancestor stops matching the moved products' paths); a merge passes the
-   * source and its ancestors that are not the target's; an archive passes the category. 1 to 5000
+   * source and its ancestors that are not the target's; an archive passes the category and each
+   * ancestor that some product on it leaves (one its remaining live categories are not under).
+   * Each also passes the `merged` categories whose products resolve to an id it passes. 1 to 5000
    * distinct ids; an empty, larger or malformed call is refused whole. A failed read is
    * `certification.unavailable`: the caller refuses its change (fail closed). The answer is the
    * same for every caller. Two use cases: `anonymous` for request actors, `system` for handlers
