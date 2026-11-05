@@ -22,7 +22,10 @@ export interface ChangeCategoryProposalsInput {
 
 export interface ChangeCategoryProposalsResult {
   readonly allowed: boolean;
-  /** False when the switch already held the value: nothing written. */
+  /**
+   * False when the switch already held the value: no audit row and no event (the row lock still
+   * raised the settings row's version).
+   */
   readonly changed: boolean;
 }
 
@@ -53,7 +56,9 @@ const BODY_KEYS = ['allowed'] as const;
  * audit row `sellers.category-proposals.changed` is written and the event
  * `sellers.category-proposals-granted.v1` or `-revoked.v1` goes to the outbox. `catalog` consumes
  * the revoke and cancels the seller's pending proposals in its own unit (CAT-51). A repeat of the
- * value already held is `changed: false` and writes nothing. An unknown seller and another
+ * value already held is `changed: false` with no audit row and no event (the lock still raised
+ * the row's version). Rule for the shared aggregate: at most one `seller-admin-settings` event
+ * per version bump, so the product-types and AI events can share it later. An unknown seller and another
  * Market's seller are both `file.not-found`.
  */
 export class ChangeCategoryProposalsUseCase extends UseCase<

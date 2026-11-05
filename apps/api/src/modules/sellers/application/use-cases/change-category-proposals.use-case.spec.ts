@@ -30,6 +30,7 @@ import type {
 import type { SellingFactsRepository } from '../ports/selling-facts.repository';
 import { MayProposeCategoriesSystem } from './may-propose-categories-system.use-case';
 import { MayProposeCategories } from './may-propose-categories.use-case';
+import { SellersFacadeImplementation } from '../../presentation/sellers.facade';
 import { ChangeCategoryProposalsUseCase } from './change-category-proposals.use-case';
 
 // The category-proposals switch of a seller (SEL-26; categories C9-0) in memory, on both Market
@@ -86,6 +87,7 @@ function setUp() {
     },
   };
   let held = true;
+  let readFails: 'throw' | 'unit-err' | null = null;
   const checked: unknown[] = [];
   const authorisation: AuthorisationCheck = {
     check: (...args: unknown[]) => {
@@ -96,11 +98,16 @@ function setUp() {
     },
   };
   const gate = createUseCaseGate(markets, authorisation);
-  const unitOfWork: UnitOfWork = { run: (_market, work) => work(), runOnce: noRunOnce };
-  let failRead = false;
+  const unitOfWork: UnitOfWork = {
+    run: ((_market: unknown, work: () => Promise<unknown>, options?: { readOnly?: boolean }) =>
+      readFails === 'unit-err' && options?.readOnly === true
+        ? Promise.resolve({ ok: false, error: { code: 'unit.failed' } })
+        : work()) as UnitOfWork['run'],
+    runOnce: noRunOnce,
+  };
   const sellingFacts = {
     categoryProposalsAllowed: (market: MarketContext, sellerId: Id<'Seller'>) =>
-      failRead
+      readFails === 'throw'
         ? Promise.reject(new Error('read failed'))
         : Promise.resolve(rows.rows.get(`${market.marketId}|${sellerId}`)?.allowed ?? null),
   } as unknown as SellingFactsRepository;
@@ -112,7 +119,7 @@ function setUp() {
     events,
     checked,
     withhold: () => void (held = false),
-    failRead: () => void (failRead = true),
+    failRead: (how: 'throw' | 'unit-err' = 'throw') => void (readFails = how),
     read: new MayProposeCategories(gate, { unitOfWork, sellingFacts }),
     readSystem: new MayProposeCategoriesSystem(gate, { unitOfWork, sellingFacts }),
     set: new ChangeCategoryProposalsUseCase(gate, {
@@ -258,20 +265,23 @@ describe.each([['AU'], ['ZZ']])('category proposals switch (SEL-26) in %s', (cod
     expect(t.events).toEqual([]);
   });
 
-  it('fails closed on a read error: never "allowed"', async () => {
-    const t = setUp();
-    const sellerId = t.ids.next<'Seller'>();
-    t.rows.seed(market, sellerId, true);
-    t.failRead();
-    expect(await t.read.execute(anonymousIn(), { sellerId })).toEqual({
-      ok: false,
-      error: { code: 'sellers.unavailable' },
-    });
-    expect(await t.readSystem.execute(testCallContext(market, 'system'), { sellerId })).toEqual({
-      ok: false,
-      error: { code: 'sellers.unavailable' },
-    });
-  });
+  it.each([['throw'], ['unit-err']] as const)(
+    'fails closed on a read error (%s): never "allowed"',
+    async (how) => {
+      const t = setUp();
+      const sellerId = t.ids.next<'Seller'>();
+      t.rows.seed(market, sellerId, true);
+      t.failRead(how);
+      expect(await t.read.execute(anonymousIn(), { sellerId })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+      expect(await t.readSystem.execute(testCallContext(market, 'system'), { sellerId })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    },
+  );
 
   it('is refused to an admin without the key, a seller and the system', async () => {
     const t = setUp();
@@ -299,6 +309,50 @@ describe.each([['AU'], ['ZZ']])('category proposals switch (SEL-26) in %s', (cod
     expect(t.rows.rows.get(`${code}|${sellerId}`)?.allowed).toBe(false);
     expect(t.audits).toEqual([]);
     expect(t.events).toEqual([]);
+  });
+
+  it('refuses a seller in the handler even when the gate lets the call through', async () => {
+    const t = setUp();
+    const sellerId = t.ids.next<'Seller'>();
+    t.rows.seed(market, sellerId);
+    const sellerContext = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: t.ids.next<'Account'>(),
+        sessionId: t.ids.next<'Session'>(),
+        sellerId,
+      }),
+    );
+    const result = await t.set.execute(sellerContext, { sellerId, body: { allowed: true } });
+    expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    expect(t.checked.length).toBeGreaterThan(0);
+    expect(t.rows.rows.get(`${code}|${sellerId}`)?.allowed).toBe(false);
+    expect(t.events).toEqual([]);
+  });
+
+  it('is routed by the facade: the system actor to the system case, a request to the anonymous one', async () => {
+    const t = setUp();
+    const sellerId = t.ids.next<'Seller'>();
+    t.rows.seed(market, sellerId, true);
+    const calls: string[] = [];
+    const spy = (name: string, useCase: { execute: (...args: never[]) => unknown }) =>
+      ({
+        execute: (...args: never[]) => {
+          calls.push(name);
+          return useCase.execute(...args);
+        },
+      }) as never;
+    const facade = new SellersFacadeImplementation({
+      mayProposeCategories: spy('request', t.read),
+      mayProposeCategoriesSystem: spy('system', t.readSystem),
+    } as unknown as ConstructorParameters<typeof SellersFacadeImplementation>[0]);
+    expect(await facade.mayProposeCategories(testCallContext(market, 'system'), sellerId)).toEqual(
+      ok(true),
+    );
+    expect(await facade.mayProposeCategories(anonymousIn(), sellerId)).toEqual(ok(true));
+    expect(await facade.mayProposeCategories(adminOf(t, code), sellerId)).toEqual(ok(true));
+    expect(calls).toEqual(['system', 'request', 'request']);
   });
 
   it('keeps the request reader away from the system actor and the system reader from requests', async () => {
