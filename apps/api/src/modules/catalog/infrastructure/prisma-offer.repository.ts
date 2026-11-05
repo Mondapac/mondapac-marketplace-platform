@@ -277,6 +277,11 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
       throw error;
     }
     if (history !== null) {
+      // The shelf is not part of the aggregate (categories C9a): the snapshot reads it as stored.
+      const shelf = await tx.catalogOffer.findFirst({
+        where: { marketId: market.marketId, id: state.id },
+        select: { shelfCategoryId: true },
+      });
       await tx.catalogOfferHistory.create({
         data: {
           id: this.ids.next<'OfferHistory'>(),
@@ -293,7 +298,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
           description: { ...state.description },
           handling: state.handling,
           attestationRecorded: state.attestationRecordedAt !== null,
-          shelfCategoryId: null,
+          shelfCategoryId: shelf?.shelfCategoryId ?? null,
           listed: state.listed,
           offSaleCauses: [...state.offSaleCauses],
           actorKind: actor.kind,

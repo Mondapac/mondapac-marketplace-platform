@@ -249,7 +249,43 @@ export const CATALOG_ATTRIBUTE_SUGGESTION_DECIDE = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Propose a shelf under a platform category, and cancel a waiting proposal (categories C9a; CAT-51;
+ * catalog design 6.1). Seller scope, not protected; the command also asks `sellers`
+ * `mayProposeCategories` (SEL-26), so the key alone is not enough. Default role mapping (Store
+ * Manager) is `identity`'s seed; the Seller Owner holds every seller key.
+ */
+export const CATALOG_OWN_CATEGORY_PROPOSE = definePermission('catalog', {
+  key: 'catalog.own-category.propose',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
+ * Approve or reject seller category proposals (categories C9a; CAT-52; catalog design 6.1).
+ * Platform scope, not protected; always required, whatever CAT-36 says. Default role mapping
+ * (Catalogue Moderator) is `identity`'s seed.
+ */
+export const CATALOG_CATEGORY_PROPOSAL_DECIDE = definePermission('catalog', {
+  key: 'catalog.category-proposal.decide',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Promote a seller shelf into the platform tree, or merge it into a platform category (categories
+ * C9a; CAT-53; catalog design 6.1). Platform scope and protected: only the Platform Administrator.
+ */
+export const CATALOG_SELLER_CATEGORY_PROMOTE_MERGE = definePermission('catalog', {
+  key: 'catalog.seller-category.promote-merge',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
+  CATALOG_OWN_CATEGORY_PROPOSE,
+  CATALOG_CATEGORY_PROPOSAL_DECIDE,
+  CATALOG_SELLER_CATEGORY_PROMOTE_MERGE,
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
