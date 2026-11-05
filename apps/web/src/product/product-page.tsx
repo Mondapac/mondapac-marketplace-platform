@@ -162,21 +162,3 @@ export function ProductPage({
     </SellerCards>
   );
 }
-
-/** The loading state, shaped like the page so nothing jumps when it lands. */
-export function ProductLoading({ label }: { readonly label: string }) {
-  return (
-    <div role="status" aria-label={label} className="loading">
-      <div className="skel line" />
-      <div className="pdp" aria-hidden="true">
-        <div className="pl1">
-          <div className="skel title" />
-          <div className="skel gphoto" />
-        </div>
-        <div className="pr1">
-          <div className="skel bbox" />
-        </div>
-      </div>
-    </div>
-  );
-}

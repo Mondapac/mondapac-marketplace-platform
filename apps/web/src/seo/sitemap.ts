@@ -192,16 +192,16 @@ export async function productPaths(
 ): Promise<string[] | null> {
   const range = pageRange(n);
   if (range === null) return null;
-  const ids = new Set<string>();
+  const names = new Map<string, string>();
   for (let page = range.first; page <= range.last; page += 1) {
     const live = await productPage(page, read);
-    for (const card of live.items) ids.add(card.id);
+    for (const card of live.items) names.set(card.id, card.name);
     if (!live.hasMore) break;
     if (page === MAX_PAGE) {
       log({ msg: 'storefront.sitemap-product-cap', products: MAX_PAGE * PRODUCT_PAGE_SIZE });
     }
   }
-  return [...ids].map(productHref);
+  return [...names].map(([id, name]) => productHref(id, name));
 }
 
 /** The index children, kept per Market origin for CACHE_MS. */
