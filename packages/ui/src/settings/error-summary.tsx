@@ -12,7 +12,7 @@ export interface SettingsErrorItem {
 }
 
 export interface SettingsErrorSummaryProps {
-  /** "2 settings need fixing before you can save" */
+  /** "2 settings need fixing" */
   readonly title: string;
   readonly items: readonly SettingsErrorItem[];
   /** Raise it after each failed Save: focus moves to the summary. 0 never moves focus. */
@@ -45,7 +45,7 @@ export function SettingsErrorSummary({ title, items, focusSignal = 0 }: Settings
       </p>
       <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
         {items.map((item) => (
-          <li key={item.id}>
+          <li key={item.id} className="min-w-0">
             <a
               href={`#${item.id}`}
               className="font-medium underline"

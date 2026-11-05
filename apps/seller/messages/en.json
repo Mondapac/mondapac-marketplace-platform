@@ -1254,7 +1254,7 @@
   "stock": {
     "title": "Stock locations",
     "section": "Your locations",
-    "view-only": "You can see your stock locations but not change them. Ask the store owner for access.",
+    "view-only": "You can see your stock locations but not change them. The store owner can give you access.",
     "intro": "Where you keep stock, in the order we use it to fill orders. You can have up to {max} locations.",
     "optional": "optional",
     "default": "Default",
@@ -2024,7 +2024,7 @@
     "title": "Store profile",
     "intro": "What buyers see on your store page. Changes are public as soon as you save them.",
     "loading": "Loading the store profile",
-    "view-only": "You can see the store profile but not change it. Ask the store owner for access.",
+    "view-only": "You can see the store profile but not change it. The store owner can give you access.",
     "error": {
       "unavailable": "The store profile could not be loaded"
     },
@@ -2089,7 +2089,7 @@
       "title": "You don't have access to this page",
       "body": "Store profile needs the permission \"View store profile\". The store owner can add it."
     },
-    "saved": "Saved. Buyers can see it now.",
+    "saved": "Store profile saved. Buyers can see it now.",
     "pictures": {
       "title": "Pictures",
       "help": "JPEG, PNG or WebP, under 25 MB.",
@@ -2211,7 +2211,7 @@
     "title": "Settings",
     "back-home": "Back to Dashboard",
     "errors": {
-      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+      "title": "{count, plural, one {# setting needs fixing} other {# settings need fixing}}"
     },
     "bar": {
       "region": "Unsaved changes",
@@ -2231,7 +2231,7 @@
       "title": "Someone else saved these settings first",
       "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
       "compare": "Show what changed",
-      "hide": "Hide comparison",
+      "hide": "Hide what changed",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
@@ -2267,6 +2267,9 @@
     "sub": {
       "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "view-only": {
+      "title": "View only"
     },
     "last-changed": {
       "named": "Last changed by {name} · {when}",

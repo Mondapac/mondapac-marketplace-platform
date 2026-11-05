@@ -111,6 +111,10 @@ export {
   type SettingsHistoryState,
 } from './settings/settings-history.tsx';
 export {
+  SettingsViewOnlyBanner,
+  type SettingsViewOnlyBannerProps,
+} from './settings/view-only-banner.tsx';
+export {
   SettingsHub,
   type SettingsHubGroup,
   type SettingsHubLabels,

@@ -10,6 +10,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   SettingsPage,
   SettingsSection,
   toast,
@@ -269,9 +270,9 @@ export function DeliverySettingsPanel({
         : marginLabel;
   const banners = [
     readOnly ? (
-      <Banner key="viewer-only" tone="info">
-        {t(`${P}.viewer-only`)}
-      </Banner>
+      <SettingsViewOnlyBanner key="viewer-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ) : null,
     invalid.length === 0 ? null : (
       <SettingsErrorSummary

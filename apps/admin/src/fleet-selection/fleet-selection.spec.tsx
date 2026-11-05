@@ -517,7 +517,8 @@ describe('the review changes', () => {
 
   it('says a viewer can look but not change', () => {
     mount(selection(), false);
-    expect(screen.getByText('You can view but not change delivery fleets.')).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(screen.getByText(/^Your role can see these settings but not change them/)).toBeTruthy();
   });
 
   it('ties a weights error to its inputs and focuses the first one', () => {

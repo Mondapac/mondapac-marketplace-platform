@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, SaveBar, SettingsPage } from '@mondapac/ui';
+import { SaveBar, SettingsPage, SettingsViewOnlyBanner } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useChangeHistory } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
@@ -34,9 +34,9 @@ export function StoreProfile({
 
   const banners = [
     canEdit ? null : (
-      <Banner key="view-only" tone="info">
+      <SettingsViewOnlyBanner key="view-only" title={t('settings.view-only.title')}>
         {t('store-profile.view-only')}
-      </Banner>
+      </SettingsViewOnlyBanner>
     ),
     ...profile.banners,
   ].filter((node) => node !== null);
