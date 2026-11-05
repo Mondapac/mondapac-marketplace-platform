@@ -1280,11 +1280,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'catalog.product_code_counters': { table: ['INSERT', 'SELECT'], columnUpdate: ['next_value'] },
     // docs/design/data/catalog.md section 7 (slice 2): the tree is never deleted from; a category's
-    // slug and creator kind never change; revisions and their names are insert-only.
+    // creator kind never changes (C3a: the slug may change, its old value goes to the history); revisions and their names are insert-only.
     'catalog.category_trees': { table: ['INSERT', 'SELECT'], columnUpdate: ['version'] },
     'catalog.platform_categories': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
+        'hidden_by_id',
         'image_id',
         'merged_into_id',
         'parent_id',
@@ -1294,6 +1295,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'seo_noindex',
         'seo_title',
         'show_in_menu',
+        'slug',
         'status',
         'version',
       ],

@@ -3,6 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import type { CategorySeo, CategoryText } from '../../domain/category-edit';
 import { adminCategoryTree, categoryNameIn, categoryPath } from '../../domain/category-admin-tree';
 import { CategoryTreeUnavailableError, MAX_TREE_NODES } from '../../domain/category-tree';
 import { CATALOG_CATEGORY_TREE_VIEW } from '../../contracts/permissions';
@@ -54,6 +55,16 @@ export interface CategoryAdminGetOutput {
   readonly revisions: readonly CategoryRevisionView[];
   readonly complete: boolean;
   readonly actions: ActionMap;
+  /** What the edit form starts from: the whole text per locale and the flags. */
+  readonly details: {
+    readonly texts: readonly CategoryText[];
+    readonly seo: CategorySeo;
+    readonly showInMenu: boolean;
+    readonly imageId: string | null;
+    readonly hiddenById: string | null;
+  };
+  /** `category_trees.version`: what a structural change of this category must name. */
+  readonly treeVersion: number;
 }
 
 export type CategoryAdminGetFailure =
@@ -134,13 +145,16 @@ export class CategoryAdminGet extends UseCase<
           id.value,
           CATEGORY_HISTORY_LIMIT,
         );
-        return ok({ nodes, counted, revisions });
+        const detail = await adminCategoryReader.detail(market, id.value);
+        const treeVersion = await adminCategoryReader.treeVersion(market);
+        if (detail === null) return ok(null);
+        return ok({ nodes, counted, revisions, detail, treeVersion });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'category.not-found' });
-    const { nodes, counted, revisions } = read.value;
+    const { nodes, counted, revisions, detail, treeVersion } = read.value;
     let row;
     let path;
     try {
@@ -176,6 +190,14 @@ export class CategoryAdminGet extends UseCase<
       })),
       complete: counted.complete,
       actions: await categoryActions(context, this.deps.categoryProbes, row.status),
+      details: {
+        texts: detail.texts,
+        seo: detail.seo,
+        showInMenu: detail.showInMenu,
+        imageId: detail.imageId,
+        hiddenById: detail.hiddenById,
+      },
+      treeVersion,
     });
   }
 }

@@ -132,6 +132,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
         throw new Error('not used');
       },
       maxVariantAttributes: () => 2,
+      maxCategoryDepth: () => 4,
       maxVariantsPerProduct: () => {
         if (policy === 'throws') throw new Error('policy down');
         return maxVariants;

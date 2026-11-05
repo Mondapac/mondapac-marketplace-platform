@@ -15,6 +15,9 @@ export interface AdminStoredCategory {
   readonly revisionNo: number;
   /** Optimistic version of the category root. */
   readonly version: number;
+  /** Place among siblings (unique per parent); the tree is ordered by it. */
+  readonly position: number;
+  readonly showInMenu: boolean;
 }
 
 /**
@@ -50,8 +53,9 @@ export interface AdminCategoryRow {
   readonly names: readonly CategoryName[];
   /** 0 for a department. */
   readonly depth: number;
-  /** Place among its siblings from 0: by name until the position column exists (C2). */
+  /** Place among its siblings from 0, in the order the editor set. */
   readonly position: number;
+  readonly showInMenu: boolean;
   readonly version: number;
   readonly counts: CategoryCounts;
 }
@@ -121,6 +125,7 @@ function siblingsOrdered(
 ): readonly AdminStoredCategory[] {
   const collator = new Intl.Collator(locale);
   return [...list].sort((a, b) => {
+    if (a.position !== b.position) return a.position - b.position;
     const byName = collator.compare(
       categoryNameIn(a.names, locale) ?? '',
       categoryNameIn(b.names, locale) ?? '',
@@ -177,6 +182,7 @@ export function adminCategoryTree(
         names: [...node.names].sort((a, b) => (a.locale < b.locale ? -1 : 1)),
         depth,
         position,
+        showInMenu: node.showInMenu,
         version: node.version,
         counts: {
           liveProducts: live.get(node.id) ?? 0,

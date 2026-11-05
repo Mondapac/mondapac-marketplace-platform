@@ -72,6 +72,8 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     names,
     revisionNo: 1,
     version: 3,
+    position: 0,
+    showInMenu: true,
   });
   let nodes: AdminStoredCategory[] = [];
   let facts: CategoryProductFact[] = [];
@@ -80,6 +82,14 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     categories: () => Promise.resolve(nodes),
     treeVersion: () => Promise.resolve(7),
     productFacts: () => Promise.resolve({ facts, complete }),
+    detail: () =>
+      Promise.resolve({
+        texts: [],
+        seo: { title: null, description: null, noindex: false },
+        showInMenu: true,
+        imageId: null,
+        hiddenById: null,
+      }),
     revisions: (_m, id) =>
       Promise.resolve(
         nodes.some((n) => n.id === id)
