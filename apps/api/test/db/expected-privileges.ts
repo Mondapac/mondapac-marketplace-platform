@@ -1311,6 +1311,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Categories package C2: per-locale content and the slug history are insert-only.
     'catalog.platform_category_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_slug_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C3c: one image per category; a replace deletes the old row (its renditions
+    // go by cascade) and inserts the new one, so neither table is ever updated.
+    'catalog.category_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.category_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.
