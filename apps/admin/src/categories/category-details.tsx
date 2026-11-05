@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
+import { CategoryImageSection } from './category-image.tsx';
 import { CategoryToolbar } from './category-toolbar.tsx';
 import { directionOf, indexOf } from './tree-model.ts';
 import {
@@ -129,7 +130,14 @@ export function CategoryDetails({
         activeId={tab}
         onSelect={(value) => setTab(value as DetailTab)}
       />
-      {tab === 'details' ? <DetailsTab body={body} /> : null}
+      {tab === 'details' ? (
+        <DetailsTab
+          body={body}
+          canEdit={canEdit && onChanged !== undefined}
+          csrfToken={csrfToken}
+          onChanged={onChanged ?? noop}
+        />
+      ) : null}
       {tab === 'products' ? <ProductsTab body={body} /> : null}
       {tab === 'history' ? <HistoryTab body={body} /> : null}
     </div>
@@ -195,7 +203,17 @@ function Row({ term, children }: { readonly term: string; readonly children: Rea
   );
 }
 
-function DetailsTab({ body }: { readonly body: DetailBody }) {
+function DetailsTab({
+  body,
+  canEdit,
+  csrfToken,
+  onChanged,
+}: {
+  readonly body: DetailBody;
+  readonly canEdit: boolean;
+  readonly csrfToken: string;
+  readonly onChanged: (note?: string, focusId?: string) => void;
+}) {
   const t = useTranslations('categories');
   const { category } = body;
   const count = useCount(body.complete);
@@ -240,6 +258,12 @@ function DetailsTab({ body }: { readonly body: DetailBody }) {
         <Row term={t('details.offers')}>{count(category.counts.offers)}</Row>
         <Row term={t('details.version')}>{category.version}</Row>
       </dl>
+      <CategoryImageSection
+        body={body}
+        canEdit={canEdit}
+        csrfToken={csrfToken}
+        onChanged={(note) => onChanged(note, category.id)}
+      />
     </div>
   );
 }

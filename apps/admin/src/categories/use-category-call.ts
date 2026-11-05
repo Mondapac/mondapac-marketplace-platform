@@ -18,7 +18,12 @@ export function useCategoryCall(csrfToken: string) {
   const busy = useRef(false);
 
   const run = useCallback(
-    async <T>(method: 'POST' | 'PATCH', path: string, body: unknown): Promise<Outcome<T>> => {
+    async <T>(
+      method: 'POST' | 'PUT' | 'PATCH',
+      path: string,
+      body: unknown,
+      options: { readonly namesCategoryVersion?: boolean } = {},
+    ): Promise<Outcome<T>> => {
       if (busy.current) return { ok: false, problem: null };
       busy.current = true;
       setPending(true);
@@ -31,7 +36,11 @@ export function useCategoryCall(csrfToken: string) {
         window.location.assign('/session-ended');
         return { ok: false, problem: null };
       }
-      const next = categoryProblemOf(result.failure, method);
+      const next = categoryProblemOf(
+        result.failure,
+        method,
+        options.namesCategoryVersion ?? method !== 'POST',
+      );
       setProblem(next);
       return { ok: false, problem: next };
     },

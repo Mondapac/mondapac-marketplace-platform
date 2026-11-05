@@ -305,6 +305,10 @@ import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-
 import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
 import { CATEGORY_EDIT_STORE } from './application/ports/category-edit.store';
+import { CATEGORY_IMAGE_STORE } from './application/ports/category-image.store';
+import { CategoryImageRead } from './application/use-cases/category-image-read.use-case';
+import { CategoryImageRemove } from './application/use-cases/category-image-remove.use-case';
+import { CategoryImageSet } from './application/use-cases/category-image-set.use-case';
 import { CategoryCreate } from './application/use-cases/category-create.use-case';
 import { CategoryEditDetails } from './application/use-cases/category-edit-details.use-case';
 import { CategoryReorder } from './application/use-cases/category-reorder.use-case';
@@ -412,6 +416,7 @@ const PORT = {
   brandReader: BRAND_READER,
   adminCategoryReader: ADMIN_CATEGORY_READER,
   store: CATEGORY_EDIT_STORE,
+  categoryImages: CATEGORY_IMAGE_STORE,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
@@ -991,6 +996,33 @@ const productTypeProvider: FactoryProvider<string> = {
       outbox: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(CategoryImageSet, {
+      unitOfWork: true,
+      categoryImages: true,
+      categories: true,
+      imageProcessor: true,
+      objectStore: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryImageRemove, {
+      unitOfWork: true,
+      categoryImages: true,
+      categories: true,
+      imageProcessor: true,
+      objectStore: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryImageRead, {
+      unitOfWork: true,
+      categoryImages: true,
+      objectStore: true,
     }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, {

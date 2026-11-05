@@ -216,7 +216,7 @@ database stays the source of truth.
 | `position` | `integer` | no | Order among siblings (roots are siblings). CHECK `>= 0`. **Unique `(market_id, parent_id, position)`**, `NULLS NOT DISTINCT`, `DEFERRABLE INITIALLY IMMEDIATE` (constraint `platform_categories_market_id_parent_id_position_key`): a reorder swaps in one unit through a parking value (2 000 000 000) so no check is deferred in the C3a code; the constraint stays deferrable. Backfilled by the order of the first-locale name per parent (lower-case, then slug). A row inserted without one, or with `-1` (the seed repository), goes last among its siblings under a transaction advisory lock on the sibling set (trigger `platform_categories_default_position`, `BEFORE INSERT`), so concurrent inserts take consecutive positions |
 | `hidden_by_id` | `uuid` | yes | C3a. The category whose Hide cascaded to this one; NULL when hidden on its own. FK `(market_id, hidden_by_id)` → `platform_categories`; CHECK `hidden_by_id IS NULL OR (status = 'hidden' AND hidden_by_id <> id)`. Show restores exactly the descendants that name the shown category here |
 | `show_in_menu` | `boolean` | no | Default `true` |
-| `image_id` | `uuid` | yes | The category image from the product image intake (purpose `category-image`, wired in C3). **No foreign key**: `product_images` rows belong to a product (`product_id NOT NULL`); C3 decides the link |
+| `image_id` | `uuid` | yes | The category image (C3c): FK `(market_id, image_id, id)` → `category_images(market_id, id, category_id)`, so a category points only at its own image in its own Market, and the current image cannot be deleted. Set and cleared only by the image use cases, never by a details save |
 | `seo_title`, `seo_description` | `text` | yes | English only. CHECK 1 to 60 and 1 to 160 characters, trimmed, no control or bidi characters |
 | `seo_noindex` | `boolean` | no | Default `false` |
 
@@ -255,6 +255,29 @@ database stays the source of truth.
 - The seed only inserts (D 7.2, B4): the application has no grant that a seed could use to rewrite a
   category other than the editor's column list, and the seed use case has no update path. A test
   applies the seed twice and asserts no `UPDATE` reached the table (statement counter of the unit).
+
+#### `category_images`, `category_image_renditions` (categories C3c)
+
+The category image goes through the product image pipeline (decoded and written again as three
+metadata-free JPEG renditions; the raw upload is never stored), with its own tables because a
+`product_images` row belongs to a product. Migration `20261105200000_catalog_category_images`.
+
+- `category_images`: PK `(market_id, id)`; `category_id` FK `(market_id, category_id)` →
+  `platform_categories`; `uploader_account_id`; `pixel_width`, `pixel_height` (the largest rendition,
+  CHECK 1 to 12 000); `byte_size` of the upload (CHECK > 0); `created_at`. **Unique
+  `(market_id, category_id)`**: at most one image per category. Unique `(market_id, id, category_id)`,
+  the target of the category's pointer and of the renditions.
+- `category_image_renditions`: PK `(market_id, image_id, size_code)`; FK
+  `(market_id, image_id, category_id)` → `category_images` `ON DELETE CASCADE`; `size_code` CHECK
+  `thumb`, `medium`, `large`; `object_key` CHECK `= 'category-images/' || category_id || '/' ||
+  image_id || '/' || size_code` and unique per Market; `sha256` 32 bytes; sizes as above.
+- A replace runs in one unit: the guarded update of `platform_categories` clears `image_id` and
+  raises the version, the old image row is deleted (its renditions by the cascade), the new one is
+  inserted and the pointer set. The files are written before the unit and the old ones deleted after
+  the commit; a failed unit removes the new files. The keys sit under `category-images/`, outside the
+  product photo sweep's key shape.
+- Grants: `SELECT, INSERT, DELETE` on `category_images`; `SELECT, INSERT` on the renditions. No
+  `UPDATE`.
 
 ### 3.5 Attribute definitions and families (slice 3)
 

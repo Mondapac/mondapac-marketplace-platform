@@ -7,6 +7,8 @@ import { ADMIN_CATEGORY_READER } from '../src/modules/catalog/application/ports/
 import type { AdminCategoryReader } from '../src/modules/catalog/application/ports/admin-category.reader';
 import { CATEGORY_ADMIN_STATUS } from '../src/modules/catalog/presentation/category-admin.controller';
 import { CATEGORY_EDIT_STORE } from '../src/modules/catalog/application/ports/category-edit.store';
+import { CATEGORY_IMAGE_STORE } from '../src/modules/catalog/application/ports/category-image.store';
+import { IMAGE_PROCESSOR } from '../src/modules/catalog/application/ports/image-processor';
 import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
 import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
 import { PLATFORM_CATEGORY_REPOSITORY } from '../src/modules/catalog/application/ports/platform-category.repository';
@@ -17,11 +19,14 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
+import { MemoryObjectStore } from '../src/platform/storage/disk-object-store';
+import { OBJECT_STORE } from '../src/platform/storage/object-store';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import {
   MemoryCategoryEditStore,
   MemoryTreeVersion,
 } from './support/catalog-category-editor-fakes';
+import { MemoryCategoryImages } from './support/catalog-category-image-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -52,6 +57,21 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 const editStore = new MemoryCategoryEditStore();
+const categoryImages = new MemoryCategoryImages();
+let imageFiles = new MemoryObjectStore();
+/** Decodes nothing: three fixed renditions for any upload. */
+const imageProcessor = {
+  process: () =>
+    Promise.resolve({
+      ok: true as const,
+      value: (['thumb', 'medium', 'large'] as const).map((size, index) => ({
+        size,
+        bytes: Buffer.from(`${size}-jpeg`),
+        width: 400 * (index + 1),
+        height: 300 * (index + 1),
+      })),
+    }),
+};
 const treeVersion = new MemoryTreeVersion();
 const halalOnlyMatcher = {
   match: (_context: unknown, texts: readonly { text: string }[]) =>
@@ -134,6 +154,8 @@ describe.each(TEST_MARKETS)(
     beforeEach(async () => {
       fakes.reset();
       editStore.reset();
+      categoryImages.reset();
+      imageFiles = new MemoryObjectStore();
       treeVersion.version = 1;
       ({ app } = await createTestApp({
         env: { LOG_LEVEL: 'info', API_DOCS_ENABLED: 'true' },
@@ -149,6 +171,12 @@ describe.each(TEST_MARKETS)(
             .useValue(editStore)
             .overrideProvider(PLATFORM_CATEGORY_REPOSITORY)
             .useValue(treeVersion)
+            .overrideProvider(CATEGORY_IMAGE_STORE)
+            .useValue(categoryImages)
+            .overrideProvider(OBJECT_STORE)
+            .useValue(imageFiles)
+            .overrideProvider(IMAGE_PROCESSOR)
+            .useValue(imageProcessor)
             .overrideProvider(CLAIM_TEXT_MATCHER)
             .useValue(halalOnlyMatcher)
             .overrideProvider(CLAIM_TERM_LOCALES)
@@ -483,6 +511,128 @@ describe.each(TEST_MARKETS)(
       });
     });
 
+    describe('the image routes (C3c)', () => {
+      const DATA = 'AAAA';
+
+      it('maps the refusals of the image routes to their status', () => {
+        expect(CATEGORY_ADMIN_STATUS).toMatchObject({
+          'image.not-found': 404,
+          'file.too-large': 413,
+          'file.unsupported-type': 415,
+          'file.unreadable': 422,
+        });
+      });
+
+      it('sets, serves, replaces and removes the image of a category', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const session = adminSession(MODERATOR, 30);
+        const set = await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 3, data: DATA })
+          .expect(200);
+        const first = set.body as {
+          category: { version: number; treeVersion: number };
+          image: { imageId: string; width: number; height: number };
+        };
+        expect(first.category.version).toBe(4);
+        expect(first.image).toMatchObject({ width: 1200, height: 900 });
+
+        const served = await http()
+          .get(`${BASE}/${LEAF}/images/${first.image.imageId}/medium`)
+          .set(adminSession(VIEWER, 31))
+          .expect(200);
+        expect(served.headers['content-type']).toBe('image/jpeg');
+        expect(served.headers['cache-control']).toBe('private, no-store');
+        expect(served.headers['content-security-policy']).toBe('sandbox');
+        expect(Buffer.from(served.body as Buffer).toString()).toBe('medium-jpeg');
+
+        const replaced = await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 4, data: DATA })
+          .expect(200);
+        const second = replaced.body as { image: { imageId: string } };
+        expect(second.image.imageId).not.toBe(first.image.imageId);
+        await http()
+          .get(`${BASE}/${LEAF}/images/${first.image.imageId}/medium`)
+          .set(adminSession(VIEWER, 32))
+          .expect(404);
+
+        const removed = await http()
+          .post(`${BASE}/${LEAF}/image/remove`)
+          .set(session)
+          .send({ version: 5 })
+          .expect(200);
+        expect(removed.body).toMatchObject({ category: { version: 6 }, image: null });
+        expect(imageFiles.objects.size).toBe(0);
+      });
+
+      it('answers 409 for a stale version and 404 for an unknown category, and writes no file', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const session = adminSession(MODERATOR, 33);
+        const stale = await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 2, data: DATA })
+          .expect(409);
+        expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.stale' });
+        await http()
+          .put(`${BASE}/${MISSING}/image`)
+          .set(session)
+          .send({ version: 1, data: DATA })
+          .expect(404);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 3, data: DATA, colour: 'red' })
+          .expect(400);
+        expect(imageFiles.objects.size).toBe(0);
+      });
+
+      it('refuses a Viewer with 403 on both image writes and no session with 401', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const viewer = adminSession(VIEWER, 34);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(viewer)
+          .send({ version: 3, data: DATA })
+          .expect(403);
+        await http()
+          .post(`${BASE}/${LEAF}/image/remove`)
+          .set(viewer)
+          .send({ version: 3 })
+          .expect(403);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
+          .send({ version: 3, data: DATA })
+          .expect(401);
+        await http()
+          .get(`${BASE}/${LEAF}/images/${MISSING}/thumb`)
+          .set(adminSession(NOKEY, 35))
+          .expect(403);
+        expect(categoryImages.rows.get(LEAF)?.version).toBe(3);
+      });
+
+      it('takes a picture larger than the 64 KiB JSON limit on the image route only', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const session = adminSession(MODERATOR, 36);
+        // 200 KB of base64: over the JSON parser's limit, under the image route's.
+        const large = 'A'.repeat(200 * 1024);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 3, data: large })
+          .expect(200);
+        await http()
+          .post(`${BASE}/${LEAF}/image/remove`)
+          .set(session)
+          .send({ version: 4, data: large })
+          .expect(413);
+      });
+    });
+
     it('documents the routes in OpenAPI', async () => {
       const document = (await http().get('/docs-json').expect(200)).body as {
         paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
@@ -492,9 +642,13 @@ describe.each(TEST_MARKETS)(
       expect(document.paths[`${BASE}/{categoryId}/impact`]?.get?.responses).toHaveProperty('400');
       expect(document.paths[BASE]).toHaveProperty('post');
       expect(document.paths[`${BASE}/{categoryId}`]).toHaveProperty('patch');
-      for (const action of ['reorder', 'hide', 'show', 'change-slug', 'discard']) {
+      for (const action of ['reorder', 'hide', 'show', 'change-slug', 'discard', 'image/remove']) {
         expect(document.paths[`${BASE}/{categoryId}/${action}`]).toHaveProperty('post');
       }
+      expect(document.paths[`${BASE}/{categoryId}/image`]?.put?.responses).toHaveProperty('413');
+      expect(
+        document.paths[`${BASE}/{categoryId}/images/{imageId}/{size}`]?.get?.responses,
+      ).toHaveProperty('404');
     });
   },
 );

@@ -248,6 +248,11 @@ import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
 import { PrismaCategoryEditStore } from './prisma-category-edit.store';
+import { PrismaCategoryImageStore } from './prisma-category-image.store';
+import {
+  CATEGORY_IMAGE_STORE,
+  type CategoryImageStore,
+} from '../application/ports/category-image.store';
 import {
   CATEGORY_EDIT_STORE,
   type CategoryEditStore,
@@ -334,6 +339,11 @@ export const catalogProviders: readonly Provider[] = [
     provide: CATEGORY_EDIT_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): CategoryEditStore => new PrismaCategoryEditStore(prisma),
+  },
+  {
+    provide: CATEGORY_IMAGE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryImageStore => new PrismaCategoryImageStore(prisma),
   },
   {
     provide: BRAND_READER,

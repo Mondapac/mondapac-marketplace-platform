@@ -369,6 +369,18 @@ export const PlatformCategoryDiscardedAudit = defineAuditAction({
   after: { status: categoryEditStatus },
 });
 
+/**
+ * An admin set, replaced or removed the image of a category (categories package C3c). The ids
+ * only: the picture itself is never in the audit log. `imageId` is absent when there is none.
+ */
+export const PlatformCategoryImageChangedAudit = defineAuditAction({
+  action: 'catalog.platform-category.image-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { imageId: auditField.optional(auditField.id()) },
+  after: { imageId: auditField.optional(auditField.id()) },
+});
+
 /** The audit target type of a brand (catalog brand package; attributes package A5). */
 export const CATALOG_BRAND_TARGET = 'catalog.brand';
 
@@ -559,6 +571,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   PlatformCategoryShownAudit,
   PlatformCategorySlugChangedAudit,
   PlatformCategoryDiscardedAudit,
+  PlatformCategoryImageChangedAudit,
   BrandCreatedAudit,
   BrandProposedAudit,
   BrandEditedAudit,

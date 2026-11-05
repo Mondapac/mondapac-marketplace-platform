@@ -36,6 +36,11 @@ const KNOWN = new Set([
   'access.acting-as-refused',
   'access.unavailable',
   'catalog.categories-unavailable',
+  'file.too-large',
+  'file.unsupported-type',
+  'file.too-many-pixels',
+  'file.too-small',
+  'file.unreadable',
 ]);
 
 const RELOAD = new Set([
@@ -50,15 +55,18 @@ const RELOAD = new Set([
 
 export function categoryProblemOf(
   failure: ApiFailure,
-  method: 'POST' | 'PATCH' = 'POST',
+  method: 'POST' | 'PUT' | 'PATCH' = 'POST',
+  namesCategoryVersion: boolean = method !== 'POST',
 ): CategoryProblem {
   const code = KNOWN.has(failure.code) ? failure.code : 'unknown';
   const fields: Record<string, string> = {};
   for (const field of failure.details?.fields ?? []) fields[field.path] = field.code;
-  // One API code, two texts (amendment 7): a details save (PATCH) names the category version, every
-  // other write names the tree version.
+  // One API code, two texts (amendment 7): a details save (PATCH) and the image writes name the
+  // category version, every other write names the tree version.
   const named =
-    code === 'conflict.stale' ? `conflict.stale.${method === 'PATCH' ? 'details' : 'tree'}` : code;
+    code === 'conflict.stale'
+      ? `conflict.stale.${namesCategoryVersion ? 'details' : 'tree'}`
+      : code;
   return {
     key: `categories.error.${named.replace(/\./g, '_')}`,
     fields,
