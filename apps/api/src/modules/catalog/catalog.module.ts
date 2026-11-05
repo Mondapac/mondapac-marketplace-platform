@@ -272,6 +272,7 @@ import { AttributeDefinitionPublish } from './application/use-cases/attribute-de
 import { AttributeRelaxationRequestCreate } from './application/use-cases/attribute-relaxation-request.use-case';
 import { AttributeRelaxationConfirm } from './application/use-cases/attribute-relaxation-confirm.use-case';
 import { AttributeRelaxationCancel } from './application/use-cases/attribute-relaxation-cancel.use-case';
+import { AttributeArchiveRequestListOpen } from './application/use-cases/attribute-archive-request-list-open.use-case';
 import { AttributeRelaxationListOpen } from './application/use-cases/attribute-relaxation-list-open.use-case';
 import { ExpireRelaxationRequests } from './application/use-cases/expire-relaxation-requests.use-case';
 import { expireRelaxationRequestsJob } from './presentation/jobs/expire-relaxation-requests.job';
@@ -731,6 +732,12 @@ const productTypeProvider: FactoryProvider<string> = {
       audit: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(AttributeArchiveRequestListOpen, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      clock: true,
     }),
     useCaseProvider(AttributeRelaxationListOpen, {
       unitOfWork: true,

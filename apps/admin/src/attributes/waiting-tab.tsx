@@ -44,7 +44,7 @@ function nameOf(request: OpenRelaxation, locale: string): string {
  * The Waiting for you tab (attributes A2 part 3): requests to turn off Material that wait for a
  * second administrator, oldest first. Another administrator's request can be
  * confirmed; the reader's own can be withdrawn. Both ask first. Only an admin with
- * `catalog.attribute.edit` reads the list; any other admin sees the empty state.
+ * `catalog.attribute.edit` reads the clear-material requests and `catalog.attribute.restructure` the archive requests; any other admin sees the empty state.
  */
 export function WaitingTab({
   canEdit,
@@ -70,36 +70,49 @@ export function WaitingTab({
    * Reads the list. After a decision the rows already shown stay while it reads (`quiet`), and
    * focus moves to the list, since the row whose button opened the dialog may be gone.
    */
-  const fetchRequests = useCallback(async (quiet = false) => {
-    if (quiet) setRefreshing(true);
-    else setLoad({ state: 'loading' });
-    const result = await callApi<OpenRelaxationList>('GET', API_RELAXATIONS);
-    setRefreshing(false);
-    if (result.ok) {
-      setLoad({ state: 'ready', requests: result.body.requests });
-      if (quiet) section.current?.focus();
-      return;
-    }
-    if (result.failure.status === 401) {
-      window.location.assign('/session-ended');
-      return;
-    }
-    setLoad({ state: 'failed' });
-  }, []);
+  const fetchRequests = useCallback(
+    async (quiet = false) => {
+      if (quiet) setRefreshing(true);
+      else setLoad({ state: 'loading' });
+      // Each list needs its own key: the clear-material list `catalog.attribute.edit`, the archive
+      // list `catalog.attribute.restructure` (attributes A8). An admin with one reads only that one.
+      const answers = await Promise.all([
+        canEdit ? callApi<OpenRelaxationList>('GET', API_RELAXATIONS) : null,
+        canRestructure ? callApi<OpenRelaxationList>('GET', API_ARCHIVE_REQUESTS) : null,
+      ]);
+      setRefreshing(false);
+      const used = answers.filter((answer) => answer !== null);
+      if (used.some((answer) => !answer.ok && answer.failure.status === 401)) {
+        window.location.assign('/session-ended');
+        return;
+      }
+      if (used.every((answer) => answer.ok)) {
+        const requests = used
+          .flatMap((answer) => (answer.ok ? answer.body.requests : []))
+          .sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+        setLoad({ state: 'ready', requests });
+        if (quiet) section.current?.focus();
+        return;
+      }
+      setLoad({ state: 'failed' });
+    },
+    [canEdit, canRestructure],
+  );
 
+  const canRead = canEdit || canRestructure;
   useEffect(() => {
-    if (canEdit) void fetchRequests();
-  }, [canEdit, fetchRequests]);
+    if (canRead) void fetchRequests();
+  }, [canRead, fetchRequests]);
 
   const empty = (
     <EmptyState
       size="card"
       icon="inbox"
       title={t('empty')}
-      body={t(canEdit ? 'body' : 'view-only-body')}
+      body={t(canRead ? 'body' : 'view-only-body')}
     />
   );
-  if (!canEdit) return empty;
+  if (!canRead) return empty;
 
   return (
     <section
@@ -161,7 +174,7 @@ export function WaitingTab({
                     {t('open-attribute')}
                   </Button>
                   {request.allowedActions.confirm.allowed &&
-                  (request.kind !== 'archive' || canRestructure) ? (
+                  (request.kind === 'archive' ? canRestructure : canEdit) ? (
                     <Button
                       aria-label={t('confirm-named', { name })}
                       onClick={() => setPending({ kind: 'confirm', request })}
@@ -169,7 +182,7 @@ export function WaitingTab({
                       {t('confirm')}
                     </Button>
                   ) : null}
-                  {request.allowedActions.cancel.allowed ? (
+                  {request.allowedActions.cancel.allowed && canEdit ? (
                     <Button
                       variant="destructive"
                       aria-label={t('withdraw-named', { name })}

@@ -268,14 +268,17 @@ export function ArchiveDialog({
   }
 
   const problem = call.problem;
+  // The archive cannot be undone, so Cancel has the first focus (a request can be withdrawn).
+  const cancel = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open
       title={t(material ? 'archive-request-title' : 'archive-title', { name })}
       onClose={onClose}
+      {...(material ? {} : { initialFocus: cancel })}
       actions={
         <>
-          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+          <Button ref={cancel} variant="secondary" disabled={call.pending} onClick={onClose}>
             {te('cancel')}
           </Button>
           {problem?.key === 'relaxation-already-open' && onOpenWaiting !== undefined ? (
@@ -330,8 +333,8 @@ type TargetLoad =
  * Merge an attribute into another of the same type (attributes A8). The admin picks the target
  * from the active attributes of the type, maps every value of a choice attribute to a value of the
  * target, reads what the change reaches and confirms. The merged attribute is archived and points
- * at the target: products keep what they have, the storefront, filters and search read the target,
- * and a product's next save stores the target's code. Both versions are the ones the dialog read.
+ * at the target: products keep what they have and product pages read the target; filters and
+ * search do not read the merge yet. Both versions are the ones the dialog read.
  */
 export function MergeAttributesDialog({
   detail,

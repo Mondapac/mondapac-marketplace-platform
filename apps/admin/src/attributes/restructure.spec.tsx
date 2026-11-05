@@ -23,6 +23,7 @@ import type {
 // archived by a request.
 
 const call = vi.mocked(callApi);
+const WAITING_EMPTY = 'Nothing is waiting for you.';
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const MARKETS: readonly { readonly name: string; readonly locales: MarketLocales }[] = [
   { name: 'AU', locales: { default: 'en-AU', supported: ['en-AU'] } },
@@ -324,7 +325,8 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     };
     let open = [request];
     serve({
-      'GET catalog/admin/attribute-relaxations': () => ok({ requests: open }),
+      'GET catalog/admin/attribute-relaxations': () => ok({ requests: [] }),
+      'GET catalog/admin/attribute-archive-requests': () => ok({ requests: open }),
       [`POST catalog/admin/attribute-archive-requests/${id(801)}/confirm`]: () => {
         open = [];
         return ok({});
@@ -355,6 +357,37 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       'csrf-1',
     ]);
   });
+  it('reads each waiting list with its own key', async () => {
+    const reads = () => call.mock.calls.map(([, path]) => String(path));
+    const view = (canEdit: boolean, canRestructure: boolean) => (
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <AttributesView
+          canEdit={canEdit}
+          canRestructure={canRestructure}
+          csrfToken="csrf-1"
+          canSeeBrands={false}
+          canDecide={false}
+          initialTab="waiting"
+          initialId={null}
+        />
+      </NextIntlClientProvider>
+    );
+    serve({
+      'GET catalog/admin/attribute-relaxations': ok({ requests: [] }),
+      'GET catalog/admin/attribute-archive-requests': ok({ requests: [] }),
+    });
+    const only = async (canEdit: boolean, canRestructure: boolean) => {
+      call.mockClear();
+      render(view(canEdit, canRestructure));
+      await screen.findByText(WAITING_EMPTY);
+      const paths = reads();
+      cleanup();
+      return paths;
+    };
+    expect(await only(true, false)).toEqual(['catalog/admin/attribute-relaxations']);
+    expect(await only(false, true)).toEqual(['catalog/admin/attribute-archive-requests']);
+  });
+
   describe('merge into another attribute', () => {
     const targetRow = (over: Partial<AttributePage['items'][number]> = {}) => ({
       id: id(2),
