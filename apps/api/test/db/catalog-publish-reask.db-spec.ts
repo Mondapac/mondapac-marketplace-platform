@@ -179,6 +179,7 @@ describe.each(TEST_MARKETS)(
         ...base,
         product_id: productId,
         variant_model: 'single',
+        variant_no: 1,
         state: 'published',
         created_at: T0,
         published_at: T0,

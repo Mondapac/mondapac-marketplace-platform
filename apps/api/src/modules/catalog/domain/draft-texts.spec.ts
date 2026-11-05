@@ -1,4 +1,10 @@
-import { changedTexts, draftTextsOf, restoreRefused, valueAt } from './draft-texts';
+import {
+  changedTexts,
+  draftTextsOf,
+  restoreRefused,
+  valueAt,
+  withoutVariantLabels,
+} from './draft-texts';
 
 // The closed draft shape and the per-field restore of catalog design 6.1, 6.2. Locales come from
 // the Market, so both fixtures' locale sets are exercised.
@@ -9,8 +15,48 @@ const FIXTURES = [
 
 describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLocale }) => {
   const [first, second] = supported;
+  // The walk of a frozen revision, which carries the built variant labels; a seller's draft does not.
   const read = (content: Record<string, unknown>) =>
-    draftTextsOf(content, supported, defaultLocale);
+    draftTextsOf(content, supported, defaultLocale, 'revision');
+
+  it('drops a variant label a client still sends, keeping everything else (V2 transition)', () => {
+    const content = {
+      texts: { [first]: { name: 'N' } },
+      variants: [
+        { variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } },
+        { variantId: 'v2', optionValues: { size: 's' } },
+      ],
+    };
+    const stripped = withoutVariantLabels(content);
+    expect(stripped).toEqual({
+      texts: content.texts,
+      variants: [
+        { variantId: 'v1', optionValues: { size: 'l' } },
+        { variantId: 'v2', optionValues: { size: 's' } },
+      ],
+    });
+    // The input is untouched, and a draft without variants passes through.
+    expect(content.variants[0]).toHaveProperty('labels');
+    expect(withoutVariantLabels({ texts: {} })).toEqual({ texts: {} });
+    expect(draftTextsOf(stripped, supported, defaultLocale).ok).toBe(true);
+  });
+
+  it('still refuses a variant label if one reaches the draft walk (defence in depth)', () => {
+    const variants = [
+      { variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } },
+    ];
+    expect(draftTextsOf({ variants }, supported, defaultLocale)).toEqual({
+      ok: false,
+      error: { code: 'working-copy.invalid-content' },
+    });
+    expect(
+      draftTextsOf(
+        { variants: [{ variantId: 'v1', optionValues: { size: 'l' } }] },
+        supported,
+        defaultLocale,
+      ).ok,
+    ).toBe(true);
+  });
 
   it('finds every text field of a full draft with its place', () => {
     const content = {

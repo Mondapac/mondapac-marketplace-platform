@@ -104,6 +104,11 @@ export interface OfferListing {
   readonly variantBelongs: boolean;
   readonly productName: string | null;
   readonly variantLabel: string | null;
+  /** The variant's number within its product, or null when it is not in the published revision. */
+  readonly variantNo: number | null;
+  /** `{productCode}-{nn}`, or null as `variantNo`. */
+  readonly variantCode: string | null;
+  readonly axes: readonly VariantAxisValue[];
   readonly primaryImageId: Id | null;
   readonly tags: readonly OfferListingTag[];
 }
@@ -139,11 +144,25 @@ export interface OfferBadge {
  */
 export type OfferBadgesMap = ReadonlyMap<Id<'Offer'>, readonly OfferBadge[]>;
 
+/** One axis of a variant: the attribute, the option chosen and its label in the asked locale. */
+export interface VariantAxisValue {
+  readonly attributeCode: string;
+  readonly optionCode: string;
+  readonly label: string;
+}
+
 /** One Variant of a published product, as a buyer sees it. */
 export interface PublishedProductVariant {
   readonly variantId: Id<'Variant'>;
   readonly position: number;
+  /** The automatic label in the asked locale (built from the option labels), or null. */
   readonly label: string | null;
+  /** The number within the product (1, 2, 3 ...), never reused. */
+  readonly variantNo: number;
+  /** `{productCode}-{nn}`, e.g. MP-004127-02; read-only. */
+  readonly variantCode: string;
+  /** The option chosen on each axis, with its label in the asked locale. */
+  readonly axes: readonly VariantAxisValue[];
 }
 
 /**

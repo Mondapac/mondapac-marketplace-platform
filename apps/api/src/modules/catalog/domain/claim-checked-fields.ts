@@ -496,6 +496,9 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   SensitiveChangesPolicy: { noCustomerText: 'flags per change kind' },
   StoredRevision: { noCustomerText: 'record around the content; the texts are RevisionContent' },
+  VariantAxisValue: {
+    noCustomerText: 'option label of the attribute definition, checked there (option-label)',
+  },
   VariantDraft: { noCustomerText: 'ids and option codes; labels are RevisionVariantContent' },
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },

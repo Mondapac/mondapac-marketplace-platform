@@ -19,6 +19,9 @@ let sequence = 0;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 
+// A variant number is unique within its product; one running number is unique everywhere.
+let variantNoSeq = 0;
+
 describe.each(TEST_MARKETS)('catalog revisions in market %s (database integration)', (code) => {
   const market = marketOf(code);
   const other = marketOf(otherMarketOf(code));
@@ -86,6 +89,7 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       ...base(),
       product_id: productId,
       variant_model: 'options',
+      variant_no: ++variantNoSeq,
       state,
       created_at: T0,
     });

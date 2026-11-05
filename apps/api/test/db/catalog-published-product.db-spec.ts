@@ -28,6 +28,9 @@ const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 const LOCALES = { requested: 'en-AU', fallback: 'ja-JP' };
 
+// A variant number is unique within its product; one running number is unique everywhere.
+let variantNoSeq = 0;
+
 describe.each(TEST_MARKETS)('catalog published product in market %s (database)', (code) => {
   const market = marketOf(code);
   const other = marketOf(otherMarketOf(code));
@@ -138,6 +141,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         ...base,
         product_id: productId,
         variant_model: 'options',
+        variant_no: ++variantNoSeq,
         state: 'proposed',
         created_at: T0.toString(),
       });
@@ -250,8 +254,8 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       description: 'Medjool',
       categoryIds: [...a.categoryIds].reverse(),
       variants: [
-        { variantId: a.variantIds[0], position: 0, label: '500 g' },
-        { variantId: a.variantIds[1], position: 1, label: '1 kg' },
+        expect.objectContaining({ variantId: a.variantIds[0], position: 0, label: '500 g' }),
+        expect.objectContaining({ variantId: a.variantIds[1], position: 1, label: '1 kg' }),
       ],
       brand: null,
       specifications: [],
@@ -591,9 +595,16 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
 
     const answer = await read(a.productId);
 
+    // Each variant carries its number, its code `{productCode}-{nn}` and its axes (V2).
+    expect(answer?.variants.every((v) => /-\d{2,}$/.test(v.variantCode) && v.variantNo >= 1)).toBe(
+      true,
+    );
+    expect(answer?.variants.map((v) => v.variantNo)).toEqual(
+      [...(answer?.variants.map((v) => v.variantNo) ?? [])].sort((x, y) => x - y),
+    );
     expect(answer?.variants).toEqual([
-      { variantId: a.variantIds[0], position: 0, label: 'A' },
-      { variantId: a.variantIds[3], position: 3, label: null },
+      expect.objectContaining({ variantId: a.variantIds[0], position: 0, label: 'A' }),
+      expect.objectContaining({ variantId: a.variantIds[3], position: 3, label: null }),
     ]);
   });
 

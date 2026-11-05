@@ -29,6 +29,7 @@ export function revisionTextsOf(
     },
     supportedLocales,
     defaultLocale,
+    'revision',
   );
 }
 

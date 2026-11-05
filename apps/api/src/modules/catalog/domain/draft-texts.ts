@@ -59,14 +59,39 @@ function idList(value: unknown): boolean {
 }
 
 /**
+ * The draft without any variant `labels` (variants V2, transition rule). Labels are built by the
+ * server at revision build time, so a label a client still sends is dropped before the draft is
+ * checked and stored, not refused: an older seller form keeps saving while the new one rolls out.
+ * Nothing else changes; the input is not modified.
+ */
+export function withoutVariantLabels(
+  content: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const variants = content['variants'];
+  if (!Array.isArray(variants)) return { ...content };
+  return {
+    ...content,
+    variants: (variants as unknown[]).map((variant) => {
+      if (!isObject(variant) || !Object.hasOwn(variant, 'labels')) return variant;
+      const { labels: _dropped, ...rest } = variant;
+      void _dropped;
+      return rest;
+    }),
+  };
+}
+
+/**
  * Walks a draft and answers every checked text with its place, or `working-copy.invalid-content`
  * when the draft holds anything the closed shape does not name. `defaultLocale` is the locale of
- * a text that is not localizable.
+ * a text that is not localizable. A variant label is built by the server (variants V2), so a
+ * seller's draft (`source` `draft`, the default) refuses a `labels` key; a frozen revision
+ * (`source` `revision`) carries the built labels and they are checked like any customer text.
  */
 export function draftTextsOf(
   content: Readonly<Record<string, unknown>>,
   supportedLocales: readonly string[],
   defaultLocale: string,
+  source: 'draft' | 'revision' = 'draft',
 ): Result<DraftText[], Invalid> {
   const found: DraftText[] = [];
   if (!closedKeys(content, TOP_KEYS)) return invalid;
@@ -135,7 +160,15 @@ export function draftTextsOf(
     if (!Array.isArray(variants) || variants.length > MAX_LIST) return invalid;
     const seenIds = new Set<string>();
     for (const variant of variants as unknown[]) {
-      if (!isObject(variant) || !closedKeys(variant, ['variantId', 'optionValues', 'labels'])) {
+      if (
+        !isObject(variant) ||
+        !closedKeys(
+          variant,
+          source === 'revision'
+            ? ['variantId', 'optionValues', 'labels']
+            : ['variantId', 'optionValues'],
+        )
+      ) {
         return invalid;
       }
       const variantId = variant['variantId'];
