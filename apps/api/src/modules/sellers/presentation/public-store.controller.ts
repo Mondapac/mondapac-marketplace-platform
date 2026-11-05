@@ -45,6 +45,13 @@ export class PublishedStoreBody {
     description: 'The ServiceArea code of the store (Market configuration); never an address.',
   })
   serviceAreaCode!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The English name of the area (edited in admin, else configured); null when the code names no area. The buyer site shows this, never the code.',
+  })
+  serviceAreaName!: string | null;
   @ApiProperty({ description: "The year of the first approval, in the seller's own zone." })
   sellingSince!: number;
   @ApiPropertyOptional({
@@ -131,6 +138,7 @@ const bodyOf = (store: PublishedStore): PublishedStoreBody => {
     slug: store.slug,
     name: store.name,
     serviceAreaCode: store.serviceAreaCode,
+    serviceAreaName: store.serviceAreaName,
     sellingSince: store.sellingSince,
   };
   if (store.about !== undefined) body.about = store.about;
