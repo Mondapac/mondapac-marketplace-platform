@@ -91,6 +91,7 @@
     "setup": "Seller account",
     "products": "Products",
     "offers": "Offers",
+    "suggestions": "Value suggestions",
     "orders": "Orders",
     "reviews": "Reviews",
     "earnings": "Earnings",
@@ -1177,7 +1178,71 @@
         "unknown": "Something went wrong. Try again."
       }
     },
-    "not-given": "Not given"
+    "not-given": "Not given",
+    "suggestions": {
+      "title": "Value suggestions",
+      "intro": "When a field of your product does not have the value you need, suggest it here. A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer.",
+      "back": "Back to value suggestions",
+      "sent": "Suggestion sent. A reviewer will decide; leave that field empty until then.",
+      "waiting": "{count} of {max} waiting for a decision",
+      "full": "You have the most suggestions that can wait at once. You can send another when a reviewer decides one.",
+      "filter": "Filter by status",
+      "filters": {
+        "all": "All",
+        "open": "Waiting",
+        "approved": "Added",
+        "mapped": "Matched",
+        "rejected": "Not added"
+      },
+      "col": {
+        "value": "Your value",
+        "field": "Field",
+        "product": "Product",
+        "status": "Status",
+        "outcome": "Outcome",
+        "sent": "Sent"
+      },
+      "status": {
+        "open": "Waiting",
+        "approved": "Added",
+        "mapped": "Matched",
+        "rejected": "Not added",
+        "unknown": "Unknown"
+      },
+      "outcome": {
+        "open": "A reviewer will decide. Leave the field empty until then.",
+        "approved": "Added as “{value}”. Pick it in the product form.",
+        "mapped": "Matched to “{value}”. Pick that value in the product form.",
+        "rejected": "Not added.",
+        "rejected-reason": "Not added: {reason}"
+      },
+      "field-gone": "Field no longer available",
+      "product-gone": "Product no longer available",
+      "empty": {
+        "title": "No suggestions yet",
+        "body": "When a field does not have the value you need, suggest it and follow the answer here."
+      },
+      "new": {
+        "start": "Suggest a value",
+        "title": "Suggest a value",
+        "product": "Product",
+        "product-placeholder": "Choose a product",
+        "product-help": "Values belong to a field of a product type. Choose the product that needs the value.",
+        "no-products": "You have no product that can be changed now. Add a product first.",
+        "continue": "Continue",
+        "for": "For {product}.",
+        "change-product": "Change product",
+        "no-fields": "This product has no list field that takes suggestions.",
+        "field": "Field",
+        "field-placeholder": "Choose a field",
+        "values": "Values on the list now: {values}",
+        "values-none": "This field has no values yet.",
+        "label": "Value you need",
+        "help": "English, 1 to 120 characters. Say it in a few words.",
+        "send": "Send suggestion",
+        "cancel": "Cancel"
+      }
+    }
   },
   "stock": {
     "title": "Stock locations",
