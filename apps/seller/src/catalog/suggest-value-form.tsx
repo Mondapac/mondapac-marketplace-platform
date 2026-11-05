@@ -76,7 +76,12 @@ export function SuggestValueForm({
         void send();
       }}
     >
-      {error === null ? null : <Banner tone="critical">{tError(`error.${error}`)}</Banner>}
+      {error === null ? null : (
+        <Banner tone="critical">
+          {/* The product form's wording points at its own list; this page has none above. */}
+          {error === 'value-exists' ? t('value-exists') : tError(`error.${error}`)}
+        </Banner>
+      )}
       <Select
         name="attributeCode"
         label={t('field')}
@@ -84,15 +89,16 @@ export function SuggestValueForm({
         options={fields.map((field) => ({ value: field.code, label: field.label }))}
         value={code}
         onChange={(event) => setCode(event.target.value)}
+        // The values the field has now, tied to the field so a screen reader reads them with it.
+        help={
+          chosen === undefined
+            ? undefined
+            : chosen.values.length === 0
+              ? t('values-none')
+              : t('values', { values: chosen.values.join(', ') })
+        }
         required
       />
-      {chosen === undefined ? null : (
-        <p className="text-sm text-fg-muted" data-testid="current-values">
-          {chosen.values.length === 0
-            ? t('values-none')
-            : t('values', { values: chosen.values.join(', ') })}
-        </p>
-      )}
       <TextField
         name="label"
         label={t('label')}

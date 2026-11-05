@@ -72,6 +72,12 @@ export class ReviewRevisionBody {
   @ApiProperty({ enum: REVISION_STATUSES }) status!: RevisionStatus;
   @ApiProperty({ description: 'ISO instant of the submission.' }) createdAt!: string;
   @ApiProperty() serviceAreaCode!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'English display name of the area; null when the code names no area.',
+  })
+  serviceAreaName!: string | null;
   @ApiProperty({ description: 'IANA zone the seller chose.' }) operatingTimezone!: string;
   @ApiProperty({ type: ReviewRegisterAtSubmissionBody })
   registerAtSubmission!: ReviewRegisterAtSubmissionBody;

@@ -3,6 +3,7 @@
 export * from './catalog.facade';
 export * from './catalog-index.facade';
 export * from './catalog-assistant.facade';
+export * from './catalog-activities.facade';
 export * from './catalog-filters.facade';
 export {
   OfferCreated,

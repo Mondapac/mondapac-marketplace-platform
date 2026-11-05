@@ -18,11 +18,11 @@ export function SuggestProductPicker({
   const t = useTranslations('catalog.suggestions.new');
   return (
     <form method="get" action="/value-suggestions/new" className="flex flex-col gap-4">
-      <p className="text-sm text-fg-muted">{t('product-help')}</p>
       <Select
         name="product"
         label={t('product')}
         placeholder={t('product-placeholder')}
+        help={t('product-help', { count: products.length })}
         options={products.map((product) => ({ value: product.id, label: product.label }))}
         defaultValue=""
         required

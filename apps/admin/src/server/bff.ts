@@ -154,6 +154,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/brands/merge-queue/dismiss',
     // A new business activity (catalog).
     'catalog/admin/business-activities',
+    // A new platform category, as a hidden one (catalog, categories C3).
+    'catalog/admin/categories',
     // Add an attribute as a draft (catalog, attributes package A2).
     'catalog/admin/attributes',
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
@@ -201,6 +203,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Publish or discard a draft attribute, with the version seen (catalog, attributes A2).
     'catalog/admin/attributes/:id/publish',
     'catalog/admin/attributes/:id/discard',
+    // A platform category (catalog, categories C3): move up or down, hide, show, new URL name,
+    // and discard a category that never went live. Each names the tree version the page read.
+    'catalog/admin/categories/:id/reorder',
+    'catalog/admin/categories/:id/hide',
+    'catalog/admin/categories/:id/show',
+    'catalog/admin/categories/:id/change-slug',
+    'catalog/admin/categories/:id/discard',
     // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
@@ -262,6 +271,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
   ],
+  // The details of one platform category (catalog, categories C3), with the version seen.
+  PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
     'identity/admin/roles/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',

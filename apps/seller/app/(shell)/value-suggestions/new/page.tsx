@@ -40,7 +40,8 @@ export default async function NewValueSuggestionPage({
   const back = <BackLink href="/value-suggestions" label={t('catalog.suggestions.back')} />;
 
   if (productId === undefined) {
-    // Step 1: the product. The newest 50 are offered; a link from a product carries its id.
+    // Step 1: the product. The newest 50 are offered; for an older one the product page links here
+    // with its id ("Suggest a value" beside "Edit product").
     const page = await loadCatalogPage<Page<ProductListItem>>(
       'catalog/seller/products?limit=50',
       EDIT_PERMISSION,
@@ -95,7 +96,10 @@ export default async function NewValueSuggestionPage({
       <h1 className="mb-1 text-2xl font-semibold">{title}</h1>
       <p className="mb-4 text-sm text-fg-muted" data-testid="chosen-product">
         {t('catalog.suggestions.new.for', { product: name ?? product.productCode })}{' '}
-        <a className="text-link underline" href="/value-suggestions/new">
+        <a
+          className="text-link underline"
+          href={`/value-suggestions/new${fieldCode === undefined ? '' : `?field=${fieldCode}`}`}
+        >
           {t('catalog.suggestions.new.change-product')}
         </a>
       </p>

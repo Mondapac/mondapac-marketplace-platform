@@ -97,6 +97,17 @@ export const PlatformCategoryCreated = defineEvent({
 });
 
 /**
+ * A platform category was changed by the tree editor (categories C3a): details, order, hidden or
+ * shown, or a new URL name. Subscribers (search, storefront) read the tree for the category, so
+ * the payload holds the id only. One event per changed category, in the unit that changed it.
+ */
+export const PlatformCategoryChanged = defineEvent({
+  type: 'catalog.platform-category-changed.v1',
+  aggregateType: 'platform-category',
+  payload: { categoryId: eventField.id() },
+});
+
+/**
  * A revision of a product was submitted (catalog design 4.2 row 1; 9.4). Written for every
  * submit, whether the revision then waits for review or is published at once. Ids and the scope.
  */
@@ -281,6 +292,7 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   OfferChangesRequested,
   OfferMoved,
   PlatformCategoryCreated,
+  PlatformCategoryChanged,
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
