@@ -22,6 +22,7 @@ export class FacadeOfferFeed implements OfferFeed {
         name: value.text?.name ?? null,
         shortText: value.text?.shortDescription ?? null,
         categoryIds: value.categoryIds,
+        attributes: value.attributes,
       });
     }
     return facts;

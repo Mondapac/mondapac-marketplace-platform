@@ -92,6 +92,10 @@ import { SavedFiltersList } from './application/use-cases/saved-filters-list.use
 import { SavedFilterController } from './presentation/saved-filter.controller';
 import { CATALOG_AUDIT_ACTIONS } from './domain/audit';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
+import { SEARCH_FILTER_READER } from './application/ports/search-filter.reader';
+import { SearchFiltersQuery } from './application/use-cases/search-filters.use-case';
+import { CATALOG_FILTERS_FACADE } from './contracts/catalog-filters.facade';
+import { CatalogFiltersFacadeImplementation } from './presentation/catalog-filters.facade';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
 import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
@@ -298,6 +302,7 @@ import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
 import { CatalogFacadeImplementation } from './presentation/catalog.facade';
+import { SearchIndexStampQuery } from './application/use-cases/search-index-stamp.use-case';
 import { CatalogIndexFacadeImplementation } from './presentation/catalog-index.facade';
 import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job';
 
@@ -332,6 +337,7 @@ const PORT = {
   submit: SubmitProduct,
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
+  filterReader: SEARCH_FILTER_READER,
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
   taxCategoriesReader: OFFER_TAX_CATEGORIES_READER,
@@ -1471,11 +1477,26 @@ const productTypeProvider: FactoryProvider<string> = {
     },
     useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),
     useCaseProvider(PublishedOfferIdsQuery, { unitOfWork: true, searchReader: true }),
+    useCaseProvider(SearchIndexStampQuery, { unitOfWork: true, searchReader: true }),
     {
       provide: CATALOG_INDEX_FACADE,
-      inject: [OfferSearchFactsQuery, PublishedOfferIdsQuery],
-      useFactory: (facts: OfferSearchFactsQuery, published: PublishedOfferIdsQuery) =>
-        new CatalogIndexFacadeImplementation(facts, published),
+      inject: [OfferSearchFactsQuery, PublishedOfferIdsQuery, SearchIndexStampQuery],
+      useFactory: (
+        facts: OfferSearchFactsQuery,
+        published: PublishedOfferIdsQuery,
+        stamp: SearchIndexStampQuery,
+      ) => new CatalogIndexFacadeImplementation(facts, published, stamp),
+    },
+    useCaseProvider(SearchFiltersQuery, {
+      unitOfWork: true,
+      treeReader: true,
+      linkStore: true,
+      filterReader: true,
+    }),
+    {
+      provide: CATALOG_FILTERS_FACADE,
+      inject: [SearchFiltersQuery],
+      useFactory: (query: SearchFiltersQuery) => new CatalogFiltersFacadeImplementation(query),
     },
     {
       provide: CATALOG_ASSISTANT_FACADE,
@@ -1487,6 +1508,7 @@ const productTypeProvider: FactoryProvider<string> = {
     CATALOG_FACADE,
     CATALOG_INDEX_FACADE,
     CATALOG_ASSISTANT_FACADE,
+    CATALOG_FILTERS_FACADE,
     CATALOG_ACTIVITIES_FACADE,
   ],
 })

@@ -343,6 +343,42 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
   },
+  OfferSearchAttributes: {
+    noCustomerText:
+      'index words and facet codes read from a published revision: brand name and aliases (an approved brand entity), a country name from the ISO list, option labels and searchable text values (admin text claim-checked when written; seller text claim-checked when the revision was frozen); matching only, never shown and never a certification claim',
+  },
+  SearchOption: {
+    noCustomerText:
+      'read copy of a published definition option label (admin text, claim-checked when written) and a merge target code',
+  },
+  SearchDefinition: {
+    noCustomerText:
+      'read copy of a published definition: type, flags and options (admin text, claim-checked when written)',
+  },
+  LoadedSearchDefinition: {
+    noCustomerText:
+      'read copy of a published definition with its names and options (admin text, claim-checked when written)',
+  },
+  SearchBrand: {
+    noCustomerText: 'an approved brand entity: address, name and aliases (not product content)',
+  },
+  SearchAttributeFacts: {
+    noCustomerText:
+      'the same words and facet codes as OfferSearchAttributes, before they leave catalog',
+  },
+  SearchFilterOption: {
+    noCustomerText:
+      'an option code with its label: admin text claim-checked when written, a brand name or an ISO country name',
+  },
+  SearchFilterDefinition: {
+    noCustomerText:
+      'a filter of a listing: attribute code, name and options (admin text, claim-checked when written)',
+  },
+  SearchFiltersRequest: {
+    noCustomerText: 'a category id, a locale tag, brand addresses and country codes',
+  },
+  SearchFilterUnavailable: { noCustomerText: 'one error code' },
+  CatalogFiltersFacade: { noCustomerText: 'a facade interface: no text of its own' },
   OfferSearchText: {
     noCustomerText:
       'read copy of the published revision text, already claim-checked when the revision was frozen',
