@@ -66,7 +66,7 @@ describe('category redirects', () => {
     });
 
     expect(await categoryRedirect('/c/meat/lamb', '?sort=x', read)).toEqual({
-      location: '/c/lamb',
+      location: '/c/lamb?sort=x',
       status: 301,
     });
     expect(await categoryRedirect('/c/meat/old-sub', '', read)).toEqual({

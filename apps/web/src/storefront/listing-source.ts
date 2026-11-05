@@ -6,6 +6,7 @@ import {
   readOnce,
   slugsOf,
   trailOf,
+  countsOf,
   treeOf,
   type TreeRow,
 } from './category-tree.ts';
@@ -62,6 +63,7 @@ export async function liveCategory(
   if (found === undefined) return null;
   const trail = trailOf(rows, found.node);
   const { shortDescription, seo, hasLiveProducts } = found.node;
+  const counts = countsOf(rows, found.node);
   return {
     category: {
       ...categoryOf(rows, found.node),
@@ -71,6 +73,9 @@ export async function liveCategory(
         ...(shortDescription === undefined ? {} : { shortDescription }),
         ...(seo === undefined ? {} : { seo }),
         ...(hasLiveProducts === undefined ? {} : { hasLiveProducts }),
+        ...(counts === undefined
+          ? {}
+          : { childCounts: counts.children, directCount: counts.direct }),
       },
     },
     ...(found.child === undefined

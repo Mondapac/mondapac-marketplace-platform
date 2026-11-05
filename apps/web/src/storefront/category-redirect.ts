@@ -57,6 +57,7 @@ async function answerOf(slug: string, read: ResolveRead): Promise<Answer> {
  * `/c/<slug>`: a retired, merged or archived slug answers 301 to where it leads, a hidden one 302.
  * `/c/<category>/<sub>` (the address before C6): the subcategory first, then the category; the
  * first one that names something answers 301 to it (302 if that leads through a hidden category).
+ * Either way the request's query goes with the redirect.
  * Anything deeper, or a segment that is not a slug, is left to the page (a 404).
  */
 export async function categoryRedirect(
@@ -80,9 +81,11 @@ export async function categoryRedirect(
   for (const candidate of [second, first]) {
     if (!CATEGORY_SLUG.test(candidate)) continue;
     const answer = await answerOf(candidate, read);
-    if (answer.kind === 'category') return { location: categoryHref(answer.slug), status: 301 };
+    if (answer.kind === 'category') {
+      return { location: categoryHref(answer.slug) + query, status: 301 };
+    }
     if (answer.kind === 'redirect') {
-      return { location: categoryHref(answer.slug), status: answer.permanent ? 301 : 302 };
+      return { location: categoryHref(answer.slug) + query, status: answer.permanent ? 301 : 302 };
     }
     // Unknown: the API did not answer; the page decides rather than guessing a target.
     if (answer.kind === 'unknown') return null;

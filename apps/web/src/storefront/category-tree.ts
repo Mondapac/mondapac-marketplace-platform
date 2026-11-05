@@ -23,6 +23,8 @@ export interface TreeRow {
   readonly inMenu: boolean;
   /** A listed product is on it or below it; undefined when the answer does not say. */
   readonly hasLiveProducts?: boolean;
+  /** Products with a listed Offer on it or below it (a guide, not a search total). */
+  readonly liveProductCount?: number;
   readonly shortDescription?: string;
   /** English only; absent fields are not set by the admin. */
   readonly seo?: {
@@ -75,6 +77,9 @@ function detailsOf(
   return {
     inMenu: row.inMenu !== false,
     ...(typeof row.hasLiveProducts === 'boolean' ? { hasLiveProducts: row.hasLiveProducts } : {}),
+    ...(Number.isSafeInteger(row.liveProductCount) && (row.liveProductCount as number) >= 0
+      ? { liveProductCount: row.liveProductCount as number }
+      : {}),
     ...(shortDescription === undefined ? {} : { shortDescription }),
     ...(seo === undefined
       ? {}
@@ -108,6 +113,28 @@ export function trailOf(rows: readonly TreeRow[], node: TreeRow): TreeRow[] {
 /** How deep a node is: 0 at the top level. */
 export const depthOf = (rows: readonly TreeRow[], node: TreeRow): number =>
   trailOf(rows, node).length;
+
+/**
+ * The product counts the filter chips show (categories C6): each menu child's count, and the
+ * products on the node itself (its count less every child's, the "Other {name}" chip). Undefined
+ * when the answer does not count the node or one of its children.
+ */
+export function countsOf(
+  rows: readonly TreeRow[],
+  node: TreeRow,
+): { readonly children: Readonly<Record<string, number>>; readonly direct: number } | undefined {
+  const all = rows.filter((r) => r.parentId === node.id);
+  if (node.liveProductCount === undefined || all.some((r) => r.liveProductCount === undefined)) {
+    return undefined;
+  }
+  const below = all.reduce((sum, r) => sum + (r.liveProductCount ?? 0), 0);
+  return {
+    children: Object.fromEntries(
+      all.filter((r) => r.inMenu).map((r) => [r.slug, r.liveProductCount ?? 0]),
+    ),
+    direct: Math.max(0, node.liveProductCount - below),
+  };
+}
 
 /** The slug of each category id, for the card's illustration. */
 export const slugsOf = (rows: readonly TreeRow[]): ReadonlyMap<string, string> =>

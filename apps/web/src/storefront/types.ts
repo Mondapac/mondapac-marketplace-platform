@@ -92,6 +92,10 @@ export interface CategoryPageFacts {
   };
   /** False when no listed product is on it or below it: the page stays, out of the index. */
   readonly hasLiveProducts?: boolean;
+  /** The live product count of each child shown, by slug; absent when the tree does not count. */
+  readonly childCounts?: Readonly<Record<string, number>>;
+  /** The live products on the category itself, not below it ("Other {name}"). */
+  readonly directCount?: number;
 }
 
 export interface PromoBanner {

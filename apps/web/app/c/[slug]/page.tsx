@@ -130,10 +130,18 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     listingBanner(baseScope.category),
     requestOrigin(),
   ]);
-  const counts = childCounts(
-    current.code,
-    children.map((c) => c.code),
-  );
+  // Live counts come with the tree; the sample counts its own products.
+  const counts: ReadonlyMap<string, number> | undefined = facts?.childCounts
+    ? new Map(Object.entries(facts.childCounts))
+    : childCounts(
+        current.code,
+        children.map((c) => c.code),
+      );
+  const counted = (count: number | undefined) =>
+    count === undefined ? {} : { count, countLabel: t('products-total', { count }) };
+  // A chip that would lead to an empty list is left out ("Other" too when nothing is direct).
+  const shown = children.filter((child) => counts?.get(child.code) !== 0);
+  const other = facts?.depth === OTHER_DEPTH && facts.directCount !== 0;
   const total = result.total ?? 0;
   const pages = Math.ceil(total / LISTING_PAGE_SIZE);
   const filtered = activeFilterCount(state.filters) > 0;
@@ -143,22 +151,23 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     ...trail.map((step) => ({ label: step.name, href: categoryHref(step.code) })),
   ];
   const chips: Chip[] =
-    children.length === 0
+    shown.length === 0
       ? []
       : [
           { label: t('all'), href: path, current: !direct },
-          ...children.map((child) => ({
+          ...shown.map((child) => ({
             label: child.name,
             href: categoryHref(child.code),
             current: false,
-            ...(counts?.get(child.code) === undefined ? {} : { count: counts.get(child.code)! }),
+            ...counted(counts?.get(child.code)),
           })),
-          ...(facts?.depth === OTHER_DEPTH
+          ...(other
             ? [
                 {
                   label: t('other-of', { name: current.name }),
                   href: `${path}?direct=1`,
                   current: direct,
+                  ...counted(facts.directCount),
                 },
               ]
             : []),
@@ -206,7 +215,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         ) : null}
         <FilterChips label={t('filter-subcategory', { name: current.name })} chips={chips} />
       </ResultsHead>
-      {live ? null : (
+      {live || (empty && !filtered) ? null : (
         <>
           <ListingFilters path={listPath} state={state} facets={facets} total={total} />
           <ActiveFilters path={listPath} state={state} facets={facets} />
@@ -239,14 +248,22 @@ export default async function CategoryPage({ params, searchParams }: Props) {
               </Link>
             </EmptyResults>
           ) : (
-            <EmptyResults message={t('category-empty', { name: current.name })}>
+            <EmptyResults
+              message={t('category-empty', {
+                name: direct ? t('other-of', { name: current.name }) : current.name,
+              })}
+            >
               <div className="actions">
-                {parent ? (
+                {direct ? (
+                  <Link className="btn" href={path}>
+                    {t('all-of', { name: current.name })}
+                  </Link>
+                ) : parent ? (
                   <Link className="btn" href={categoryHref(parent.code)}>
                     {t('all-of', { name: parent.name })}
                   </Link>
                 ) : null}
-                <Link className={parent ? 'btn alt' : 'btn'} href="/">
+                <Link className={direct || parent ? 'btn alt' : 'btn'} href="/">
                   {t('home-page')}
                 </Link>
               </div>

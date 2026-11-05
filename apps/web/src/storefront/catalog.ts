@@ -345,8 +345,8 @@ export async function categoryIsEmpty(
 
 /**
  * The number of products under each direct child of a category, for its filter chips (categories
- * C6). The sample counts them; the API's route gives no total, so with the API on there are none
- * and the chips show names only.
+ * C6). The sample counts them here; with the API on, the counts come with the live tree
+ * (`Category.page.childCounts`), so this answers undefined.
  */
 export function childCounts(
   category: string,

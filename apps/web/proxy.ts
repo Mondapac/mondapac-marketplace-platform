@@ -50,11 +50,12 @@ export async function proxy(request?: NextRequest): Promise<NextResponse> {
       resolverFor(request),
     );
     if (moved !== null) {
-      const target = request.nextUrl.clone();
-      const [pathname = '', search = ''] = moved.location.split('?', 2);
-      target.pathname = pathname;
-      target.search = search;
-      const response = NextResponse.redirect(target, moved.status);
+      // A site-relative Location (built from a checked slug and the request's already-encoded
+      // query), so the answer never depends on the host the server sees.
+      const response = new NextResponse(null, {
+        status: moved.status,
+        headers: { location: moved.location },
+      });
       if (!indexingOn()) response.headers.set(NOINDEX_HEADER.name, NOINDEX_HEADER.value);
       return response;
     }
