@@ -17,17 +17,13 @@ export const SUGGESTING_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The select fields of a product that take a suggestion: select or multi-select and not a variant
- * option (attributes A5). A Material field is not marked in the form; the API refuses it with
+ * The select fields of a product that take a suggestion: select or multi-select, variant options
+ * (colour, size) included. A Material field is not marked in the form; the API refuses it with
  * `attribute.not-suggestable`, which the form says in words.
  */
 export function suggestableFields(product: ProductView, locale: string): SuggestableField[] {
   return product.form.fields
-    .filter(
-      (field) =>
-        (field.dataType === 'select' || field.dataType === 'multi-select') &&
-        !field.isVariantOption,
-    )
+    .filter((field) => field.dataType === 'select' || field.dataType === 'multi-select')
     .map((field) => ({
       code: field.code,
       label: pickLabel(field.names, locale, field.code),
