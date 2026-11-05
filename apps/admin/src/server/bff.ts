@@ -445,7 +445,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
-  'catalog/admin/categories/:id/impact': { action: /^(move|merge|archive)$/ },
+  // `targetId` is the picked new parent or merge target, or `top` for a department (C4b).
+  'catalog/admin/categories/:id/impact': {
+    action: /^(move|merge|archive)$/,
+    targetId: new RegExp(`^(top|${UUID.source.slice(1, -1)})$`, 'i'),
+  },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,
     limit: /^[0-9]{1,3}$/,
@@ -474,7 +478,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
   'catalog/admin/platform-imports/:id/report': ['kind'],
-  'catalog/admin/categories/:id/impact': ['action'],
+  'catalog/admin/categories/:id/impact': ['action', 'targetId'],
 };
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
