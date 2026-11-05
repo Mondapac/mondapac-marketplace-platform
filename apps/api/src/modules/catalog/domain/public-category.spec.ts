@@ -53,7 +53,11 @@ describe('public category tree', () => {
   const live = liveCategoryTree(nodes, 'en-AU');
 
   it('folds live products up to every ancestor and keeps empty branches out of the menu', () => {
-    const tree = publicCategoryTree(live, new Map(), new Set([id(3), id(6)]), 'en-AU', 'en-AU');
+    const counts = new Map([
+      [id(3), 1],
+      [id(6), 1],
+    ]);
+    const tree = publicCategoryTree(live, new Map(), counts, 'en-AU', 'en-AU');
     const flags = new Map(tree.map((c) => [c.slug, [c.hasLiveProducts, c.inMenu]]));
 
     expect(flags.get('c-1')).toEqual([true, true]);
@@ -65,11 +69,42 @@ describe('public category tree', () => {
     expect(flags.get('c-8')).toEqual([false, false]);
   });
 
+  it('counts live products per category, summed up the tree from the direct counts', () => {
+    const tree = publicCategoryTree(
+      live,
+      new Map(),
+      new Map([
+        [id(1), 1],
+        [id(3), 4],
+        [id(4), 2],
+        [id(6), 5],
+        [id(99), 7],
+      ]),
+      'en-AU',
+      'en-AU',
+    );
+    const counts = new Map(tree.map((c) => [c.slug, c.liveProductCount]));
+
+    expect(Object.fromEntries(counts)).toEqual({
+      'c-1': 7,
+      'c-2': 6,
+      'c-3': 4,
+      'c-4': 2,
+      'c-5': 5,
+      'c-6': 5,
+      'c-7': 0,
+      'c-8': 0,
+    });
+  });
+
   it('flags a category switched out of the menu, and its children with it, without dropping them', () => {
     const tree = publicCategoryTree(
       live,
       new Map([[id(2), details({ showInMenu: false })]]),
-      new Set([id(3), id(4)]),
+      new Map([
+        [id(3), 1],
+        [id(4), 1],
+      ]),
       'en-AU',
       'en-AU',
     );
@@ -99,7 +134,7 @@ describe('public category tree', () => {
         ],
         [id(5), details({ shortDescriptions: new Map([['en-AU', 'Pantry staples']]) })],
       ]),
-      new Set(),
+      new Map(),
       'fa-IR',
       'en-AU',
     );

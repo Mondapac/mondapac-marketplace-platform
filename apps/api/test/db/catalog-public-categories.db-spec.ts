@@ -337,6 +337,7 @@ describe.each(TEST_MARKETS)('catalog public categories in market %s (database)',
       keywords: [],
     });
     await product(market, deep.id);
+    await product(market, deep.id);
     await product(market, beta.id);
     await product(market, alpha.id, { listed: false });
     await product(market, alpha.id, { paused: true });
@@ -374,6 +375,14 @@ describe.each(TEST_MARKETS)('catalog public categories in market %s (database)',
     expect(bySlug.get(gamma.slug)).toMatchObject({ hasLiveProducts: true, inMenu: true });
     // An unlisted Offer and a paused product are not live.
     expect(bySlug.get(alpha.slug)).toMatchObject({ hasLiveProducts: false, inMenu: false });
+    // Counted per product, summed up the tree; the unlisted and paused products count nothing.
+    expect(mine.map((c) => [c.slug, c.liveProductCount])).toEqual([
+      [root.slug, 3],
+      [beta.slug, 1],
+      [gamma.slug, 2],
+      [deep.slug, 2],
+      [alpha.slug, 0],
+    ]);
   });
 
   it('answers names and short descriptions per locale with the default-locale fallback', async () => {
@@ -429,8 +438,8 @@ describe.each(TEST_MARKETS)('catalog public categories in market %s (database)',
     const bySlug = new Map((await publicTree()).categories.map((c) => [c.slug, c]));
 
     expect(bySlug.get(drafted.slug)).toMatchObject({ name: 'Drafted', shortDescription: null });
-    expect(bySlug.get(earlier.slug)?.hasLiveProducts).toBe(false);
-    expect(bySlug.get(now.slug)?.hasLiveProducts).toBe(true);
+    expect(bySlug.get(earlier.slug)).toMatchObject({ hasLiveProducts: false, liveProductCount: 0 });
+    expect(bySlug.get(now.slug)).toMatchObject({ hasLiveProducts: true, liveProductCount: 1 });
   });
 
   it.each(['//evil.com', '\\evil.com', '%2F%2Fevil.com', 'https://evil.com'])(

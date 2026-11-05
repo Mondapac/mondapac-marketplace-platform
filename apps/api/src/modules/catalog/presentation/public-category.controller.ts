@@ -72,6 +72,13 @@ export class LiveCategoryBody {
   hasLiveProducts!: boolean;
   @ApiProperty({
     description:
+      'Products with a listed Offer on this category or below it, summed from each category, so a ' +
+      'product on two categories of one branch counts twice there. A guide for the filter, not a ' +
+      'search total.',
+  })
+  liveProductCount!: number;
+  @ApiProperty({
+    description:
       'Shown in menus and the sitemap: showInMenu, hasLiveProducts and its parent is in the menu. ' +
       'A row with false is kept so its page still resolves.',
   })

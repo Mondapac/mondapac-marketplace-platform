@@ -36,6 +36,12 @@ export interface PublicCategory extends LiveCategory {
    */
   readonly hasLiveProducts: boolean;
   /**
+   * Products with a listed Offer on this category or below it: the sum of each category's direct
+   * count, so a product on two categories of one branch counts twice there (a product has at most
+   * three categories). A guide for the buyer's filter, not an exact search total.
+   */
+  readonly liveProductCount: number;
+  /**
    * Shown in menus and the sitemap: its own switch is on, it has live products, and its live
    * parent is in the menu too (a menu cannot show a child without its parent).
    */
@@ -50,31 +56,33 @@ const NO_DETAILS: PublicCategoryDetails = {
 
 /**
  * The public tree from the live tree (depth first, as `liveCategoryTree` answers), the details of
- * each category, and the ids of the categories that carry a product with a listed Offer directly.
+ * each category, and the number of products with a listed Offer directly on each category.
  * A category without details keeps the defaults (in the menu, no SEO, no description).
  */
 export function publicCategoryTree(
   live: readonly LiveCategory[],
   details: ReadonlyMap<Id<'Category'>, PublicCategoryDetails>,
-  withLiveProducts: ReadonlySet<Id<'Category'>>,
+  directLiveCounts: ReadonlyMap<Id<'Category'>, number>,
   locale: string,
   defaultLocale: string,
 ): readonly PublicCategory[] {
   // Depth first puts every child after its parent: walking backwards reaches all of a node's
-  // children before the node, so "has live products" folds up in one pass.
-  const hasLive = new Set<Id<'Category'>>();
+  // children before the node, so the live count folds up in one pass.
+  const counts = new Map<Id<'Category'>, number>();
   for (let index = live.length - 1; index >= 0; index -= 1) {
     const node = live[index]!;
-    if (withLiveProducts.has(node.id) || hasLive.has(node.id)) {
-      hasLive.add(node.id);
-      if (node.parentId !== null) hasLive.add(node.parentId);
+    const own = (counts.get(node.id) ?? 0) + Math.max(0, directLiveCounts.get(node.id) ?? 0);
+    counts.set(node.id, own);
+    if (node.parentId !== null) {
+      counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + own);
     }
   }
+  const hasLive = (id: Id<'Category'>) => (counts.get(id) ?? 0) > 0;
   const inMenu = new Set<Id<'Category'>>();
   return live.map((node) => {
     const own = details.get(node.id) ?? NO_DETAILS;
     const parentInMenu = node.parentId === null || inMenu.has(node.parentId);
-    const shown = own.showInMenu && hasLive.has(node.id) && parentInMenu;
+    const shown = own.showInMenu && hasLive(node.id) && parentInMenu;
     if (shown) inMenu.add(node.id);
     return {
       ...node,
@@ -83,7 +91,8 @@ export function publicCategoryTree(
       imageUrl: null,
       seo: own.seo,
       showInMenu: own.showInMenu,
-      hasLiveProducts: hasLive.has(node.id),
+      hasLiveProducts: hasLive(node.id),
+      liveProductCount: counts.get(node.id) ?? 0,
       inMenu: shown,
     };
   });

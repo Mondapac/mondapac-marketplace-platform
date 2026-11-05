@@ -53,15 +53,18 @@ export class PrismaPublicCategoryReader implements PublicCategoryReader {
     return result;
   }
 
-  async withLiveProducts(
+  async liveProductCounts(
     market: MarketContext,
     limit: number,
-  ): Promise<ReadonlySet<Id<'Category'>>> {
+  ): Promise<ReadonlyMap<Id<'Category'>, number>> {
     const tx = this.prisma.tx(market);
-    // From the category side, one row per category (DISTINCT on the indexed category column):
-    // the revision must be the published one of a published, not paused product that has a
-    // listed Offer (listed is exactly "published, no off-sale cause": CHECK offers_listed_check).
-    const rows = await tx.catalogProductRevisionCategory.findMany({
+    // From the category side, one group per category (on the indexed category column): the
+    // revision must be the published one of a published, not paused product that has a listed
+    // Offer (listed is exactly "published, no off-sale cause": CHECK offers_listed_check). A
+    // product has one published revision and a revision one row per category, so a group's row
+    // count is its number of products.
+    const groups = await tx.catalogProductRevisionCategory.groupBy({
+      by: ['categoryId'],
       where: {
         marketId: market.marketId,
         revision: {
@@ -78,12 +81,11 @@ export class PrismaPublicCategoryReader implements PublicCategoryReader {
           },
         },
       },
-      distinct: ['categoryId'],
-      select: { categoryId: true },
+      _count: { _all: true },
       orderBy: { categoryId: 'asc' },
       take: limit,
     });
-    return new Set(rows.map((row) => row.categoryId as Id<'Category'>));
+    return new Map(groups.map((group) => [group.categoryId as Id<'Category'>, group._count._all]));
   }
 
   async slugHistory(market: MarketContext, slug: string): Promise<Id<'Category'> | null> {

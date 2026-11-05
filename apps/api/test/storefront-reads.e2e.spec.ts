@@ -60,6 +60,7 @@ const MEAT = {
   seo: { title: 'Halal meat', description: null, noindex: false },
   showInMenu: true,
   hasLiveProducts: true,
+  liveProductCount: 4,
   inMenu: true,
 };
 const PRODUCT = ITEM.productId;

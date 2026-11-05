@@ -77,9 +77,9 @@ describe.each(FIXTURES)('public category use cases in market $code', ({ code, lo
       };
       return Promise.resolve(new Map([[id(1), details]]));
     },
-    withLiveProducts: () => {
+    liveProductCounts: () => {
       reads.push('live');
-      return Promise.resolve(new Set([id(2)]));
+      return Promise.resolve(new Map([[id(2), 3]]));
     },
     slugHistory: () => {
       reads.push('history');

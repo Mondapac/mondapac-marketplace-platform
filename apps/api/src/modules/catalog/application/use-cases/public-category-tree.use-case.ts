@@ -74,11 +74,11 @@ export class PublicCategoryTreeQuery extends UseCase<
       async () => {
         const nodes = await this.deps.treeReader.nodes(market, MAX_TREE_NODES + 1);
         const details = await this.deps.publicCategories.details(market, MAX_TREE_NODES + 1);
-        const withLive = await this.deps.publicCategories.withLiveProducts(
+        const liveCounts = await this.deps.publicCategories.liveProductCounts(
           market,
           MAX_TREE_NODES + 1,
         );
-        return ok({ nodes, details, withLive });
+        return ok({ nodes, details, liveCounts });
       },
       { readOnly: true },
     );
@@ -91,7 +91,7 @@ export class PublicCategoryTreeQuery extends UseCase<
         categories: publicCategoryTree(
           live,
           read.value.details,
-          read.value.withLive,
+          read.value.liveCounts,
           locale,
           locales.default,
         ),

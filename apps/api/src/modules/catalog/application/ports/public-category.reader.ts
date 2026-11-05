@@ -13,10 +13,14 @@ export interface PublicCategoryReader {
     limit: number,
   ): Promise<ReadonlyMap<Id<'Category'>, PublicCategoryDetails>>;
   /**
-   * The categories a published, not paused product with at least one listed Offer is on, in its
-   * published revision (directly; the caller folds the subtree). At most `limit` ids.
+   * Per category, the number of published, not paused products with at least one listed Offer
+   * that are on it in their published revision (directly; the caller folds the subtree). Only
+   * categories with one or more; at most `limit` categories.
    */
-  withLiveProducts(market: MarketContext, limit: number): Promise<ReadonlySet<Id<'Category'>>>;
+  liveProductCounts(
+    market: MarketContext,
+    limit: number,
+  ): Promise<ReadonlyMap<Id<'Category'>, number>>;
   /** The category that most recently retired `slug`, or null. */
   slugHistory(market: MarketContext, slug: string): Promise<Id<'Category'> | null>;
 }
