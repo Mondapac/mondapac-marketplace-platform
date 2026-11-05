@@ -671,6 +671,7 @@
   { "name": "sellers.purge-seller-health", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.run-seller-health", "rule": "system" },
+  { "name": "sellers.run-seller-health-requests", "rule": "system" },
   {
     "name": "sellers.seller-business-activities",
     "rule": "own-resources",

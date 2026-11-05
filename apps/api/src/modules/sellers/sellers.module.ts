@@ -23,6 +23,7 @@ import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-
 import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
 import { SELLER_HEALTH_POLICY } from './application/ports/seller-health-policy';
+import { SELLER_HEALTH_REQUEST_STORE } from './application/ports/seller-health-request.store';
 import { SELLER_HEALTH_ROSTER } from './application/ports/seller-health-roster';
 import { SELLER_HEALTH_SIGNALS } from './application/ports/seller-health-signals';
 import { SELLER_HEALTH_STORE } from './application/ports/seller-health.store';
@@ -30,8 +31,11 @@ import { SellerHealthQueueRead } from './application/use-cases/seller-health-que
 import { SellerHealthRead } from './application/use-cases/seller-health-read.use-case';
 import { SellerHealthController } from './presentation/seller-health.controller';
 import { PurgeSellerHealth } from './application/use-cases/purge-seller-health.use-case';
+import { RequestSellerHealthRecalculation } from './application/use-cases/request-seller-health-recalculation.use-case';
+import { RunSellerHealthRequests } from './application/use-cases/run-seller-health-requests.use-case';
 import { RunSellerHealth } from './application/use-cases/run-seller-health.use-case';
 import { purgeSellerHealthJob } from './presentation/jobs/purge-seller-health.job';
+import { sellerHealthRequestsJob } from './presentation/jobs/seller-health-requests.job';
 import { sellerHealthJob } from './presentation/jobs/seller-health.job';
 import { SELLER_ACCESS_READER } from './application/ports/seller-access-reader';
 import { SELLER_ACCOUNT_DIRECTORY } from './application/ports/seller-account-directory';
@@ -233,6 +237,7 @@ const PORT = {
   decider: SELLER_ACCESS_DECIDER,
   healthStore: SELLER_HEALTH_STORE,
   healthRoster: SELLER_HEALTH_ROSTER,
+  healthRequests: SELLER_HEALTH_REQUEST_STORE,
   healthPolicy: SELLER_HEALTH_POLICY,
   healthSignals: SELLER_HEALTH_SIGNALS,
   ids: ID_GENERATOR,
@@ -843,6 +848,22 @@ const REVIEW_DECISION_PORTS = {
       healthPolicy: true,
       clock: true,
     }),
+    useCaseProvider(RequestSellerHealthRecalculation, {
+      unitOfWork: true,
+      healthRoster: true,
+      healthRequests: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(RunSellerHealthRequests, {
+      unitOfWork: true,
+      healthRoster: true,
+      healthRequests: true,
+      healthStore: true,
+      healthSignals: true,
+      healthPolicy: true,
+      clock: true,
+    }),
     useCaseProvider(PurgeSellerHealth, { unitOfWork: true, healthStore: true, clock: true }),
     registerJobsFrom(
       'sellers',
@@ -852,6 +873,7 @@ const REVIEW_DECISION_PORTS = {
         ReconcileDecisions,
         SweepOrphanStoreImageFiles,
         RunSellerHealth,
+        RunSellerHealthRequests,
         PurgeSellerHealth,
       ],
       (
@@ -860,6 +882,7 @@ const REVIEW_DECISION_PORTS = {
         reconcile: ReconcileDecisions,
         sweepFiles: SweepOrphanStoreImageFiles,
         health: RunSellerHealth,
+        healthRequests: RunSellerHealthRequests,
         purgeHealth: PurgeSellerHealth,
       ) => [
         backfillSellerFilesJob(backfill),
@@ -867,6 +890,7 @@ const REVIEW_DECISION_PORTS = {
         reconcileDecisionsJob(reconcile),
         sweepOrphanStoreImageFilesJob(sweepFiles),
         sellerHealthJob(health),
+        sellerHealthRequestsJob(healthRequests),
         purgeSellerHealthJob(purgeHealth),
       ],
     ),

@@ -1189,5 +1189,23 @@
       "shipping.delivery-settings.view",
       "shipping.fleet-selection.view"
     ]
+  },
+  {
+    "entry": "platform:onboarding-compliance@8",
+    "kind": "default",
+    "permissionKeys": [
+      "certification.issuer.view",
+      "certification.seller-certificate.review",
+      "certification.seller-certificate.view",
+      "certification.type.view",
+      "identity.seller-access.approve",
+      "identity.seller-access.suspend",
+      "identity.seller-access.view",
+      "identity.seller-account.create",
+      "sellers.business-details.view",
+      "sellers.seller-file.review",
+      "sellers.seller-health.recalculate",
+      "sellers.seller.view"
+    ]
   }
 ]

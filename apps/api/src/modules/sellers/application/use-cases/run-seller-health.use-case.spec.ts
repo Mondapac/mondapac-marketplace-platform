@@ -92,6 +92,8 @@ function setUp(entries: readonly SellerHealthRosterEntry[], options: { unitFails
       Promise.resolve(
         entries.filter((entry) => after === null || entry.sellerId > after).slice(0, limit),
       ),
+    one: (_m, seller) =>
+      Promise.resolve(entries.find((entry) => entry.sellerId === seller) ?? null),
   };
   const asked: { seller: Id<'Seller'>; days: string[]; zone: string }[] = [];
   const failing = new Set<Id<'Seller'>>();

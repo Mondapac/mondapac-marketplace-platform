@@ -126,6 +126,19 @@ export const SELLERS_BUSINESS_ACTIVITY_VIEW = definePermission('sellers', {
 });
 
 /**
+ * Ask for a seller's health to be measured again now (seller health; owner decision 5 Nov 2026).
+ * The request only queues a recount of numbers the nightly run also computes; nothing happens to
+ * the seller (R2). Platform scope; unprotected: it moves no money, certification or access. The
+ * default role mapping is `identity`'s seed (Onboarding and Compliance since its version 8) and
+ * the Platform Administrator holds every key. Reading the card needs `sellers.seller.view`.
+ */
+export const SELLERS_SELLER_HEALTH_RECALCULATE = definePermission('sellers', {
+  key: 'sellers.seller-health.recalculate',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Replace the business activities a seller carries, with a reason (ADR-0040 decision 4). Platform
  * scope and protected: the assignment decides what a seller may sell once the offer rule reads it,
  * so only the Platform Administrator system role holds it and no custom role can. The PUT route also
@@ -144,6 +157,7 @@ export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
+  SELLERS_SELLER_HEALTH_RECALCULATE,
   SELLERS_SELLER_VIEW,
   SELLERS_SERVICE_AREA_EDIT,
   SELLERS_STORE_PROFILE_EDIT,

@@ -634,6 +634,20 @@ own read. The column is not a gate: if the health read fails, the failure is log
 `healthUnavailable` false) from "could not load" (`healthUnavailable` true). The list itself still
 answers.
 
+### 7.9 Recalculate now: the request row (seller health)
+The health counts come from feeds whose rule is `system`, so an admin's click cannot read them.
+The click therefore only enqueues: `sellers.request-seller-health-recalculation` (permission
+`sellers.seller-health.recalculate`, platform scope; `POST /sellers/:sellerId/health/recalculate`,
+202, CSRF header) writes one row to `sellers.seller_health_requests` (id, Market, seller, source
+`admin` or `seller`, requesting account, `requested_at`, status `pending`, `done` or `failed`,
+`finished_at`). A partial unique index allows one pending row per seller, so a second click answers
+`already-queued`; a finished row lets the next click through. The job `sellers.seller-health-requests`
+(every minute) runs `sellers.run-seller-health-requests` as the system actor: for each pending row,
+oldest first, it counts the seller's recent days (the seller's own zone) and replaces the day rows,
+then marks the row `done` (or `failed`, logged). Recounting replaces rows, so overlapping runs are
+safe. The seller's "Refresh now" with a cooldown (HLT-03) will reuse this table with source `seller`.
+The key is given to the onboarding-compliance role (seed version 8).
+
 ## 8. Personal data
 
 ### 8.1 Fields and keys
