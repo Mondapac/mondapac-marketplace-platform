@@ -422,6 +422,21 @@ describe.each(TEST_MARKETS)('catalog attribute relaxation in market %s (database
         ),
       ),
     ).toBe('23001');
+    // Archiving a material definition needs a confirmed archive request at its version (attributes
+    // A8); this one is the setup for "nothing comes back from archived".
+    const archiveRequest = AttributeRelaxationRequest.open({
+      id: uuid7() as Id<'AttributeRelaxationRequest'>,
+      marketId: market.marketId,
+      definitionId: id,
+      definitionVersion: renamed.value.state.version,
+      kind: 'archive',
+      requestedByAccountId: first,
+      now: now(),
+    });
+    await write(market, () => relaxations.add(market, archiveRequest));
+    const archiveConfirmed = archiveRequest.confirm(second, now());
+    if (!archiveConfirmed.ok) throw new Error(archiveConfirmed.error.code);
+    await write(market, () => relaxations.saveMove(market, archiveConfirmed.value));
     await owner.query(
       "UPDATE catalog.attribute_definitions SET status = 'archived' WHERE market_id = $1 AND id = $2",
       [market.marketId, id],

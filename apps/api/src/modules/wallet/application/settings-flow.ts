@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result, Temporal } from '@mondapac/shared-kernel';
+import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import type { StepUpRefusal } from '../../../platform/authz';
 import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import { WALLET_SETTINGS_CHANGE_STEP_UP } from '../contracts/step-up';
@@ -35,8 +36,11 @@ export type SettingsFailure =
   | { readonly code: 'wallet.cannot-turn-off-with-history' }
   /** Journals in flight held the switch for too long (lock timeout); try again. */
   | { readonly code: 'wallet.busy' }
-  /** The switch changed since the admin loaded it (`expectedVersion` is not the current one). */
-  | { readonly code: 'wallet.settings-conflict' }
+  /**
+   * The switch changed since the admin loaded it (`expectedVersion` is not the current one).
+   * `lastChanged` is the winning change, null when it cannot be read.
+   */
+  | { readonly code: 'wallet.settings-conflict'; readonly lastChanged?: LastChanged | null }
   /** The admin has no fresh two-step proof for the switch: verify one, then repeat (issue #491). */
   | { readonly code: 'second-factor.required'; readonly actionKey: string }
   /** The admin has no active two-step: set it up first. */
@@ -52,6 +56,22 @@ export interface SettingsView {
   /** 0 while the Market has never been switched; the value to send back as `expectedVersion`. */
   readonly version: number;
 }
+
+/** The wallet page's read model: the switch and the latest change. */
+export interface SettingsPage extends SettingsView {
+  /** Null while the Market has never been switched. */
+  readonly lastChanged: LastChanged | null;
+}
+
+/**
+ * The audit rows of the wallet switch: the state and the reason are the fields; the step-up proof
+ * the change spent is not a setting.
+ */
+export const WALLET_SETTINGS_CHANGES: ChangeScope = {
+  actions: [WalletStatusChanged.action],
+  targetId: 'wallet-settings',
+  ignoreKeys: ['stepUpSessionId', 'stepUpVerifiedAt'],
+};
 
 /** Whether the actor is an acting-as session (Login as Seller): the reserved marker on the actor. */
 export function isActingAs(context: CallContext): boolean {

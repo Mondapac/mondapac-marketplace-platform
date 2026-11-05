@@ -5,6 +5,7 @@ import type {
 } from './attribute-definition';
 import type { AttributeFamilyState, FamilyAttribute, FamilyGroup } from './attribute-family';
 import type { OfferState } from './offer';
+import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
 
@@ -24,7 +25,11 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'feature-set.group-name',
   'feature-set.name',
   'offer.description',
+  'platform-category.keyword',
   'platform-category.name',
+  'platform-category.seo-description',
+  'platform-category.seo-title',
+  'platform-category.short-description',
   'platform-category.slug',
   'product.attribute-text-value',
   'product.description',
@@ -137,6 +142,19 @@ export const CATEGORY_NAME_FIELDS: Record<keyof CategoryName, FieldDisposition> 
   name: checked('platform-category.name'),
 };
 
+export const CATEGORY_TEXT_FIELDS: Record<keyof CategoryText, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  name: checked('platform-category.name'),
+  shortDescription: checked('platform-category.short-description'),
+  keywords: checked('platform-category.keyword'),
+};
+
+export const CATEGORY_SEO_FIELDS: Record<keyof CategorySeo, FieldDisposition> = {
+  title: checked('platform-category.seo-title'),
+  description: checked('platform-category.seo-description'),
+  noindex: exempt('internal-code'),
+};
+
 export const PLATFORM_CATEGORY_FIELDS: Record<keyof PlatformCategoryState, FieldDisposition> = {
   id: exempt('identifier'),
   marketId: exempt('identifier'),
@@ -217,6 +235,8 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   FAMILY_GROUP_FIELDS,
   FEATURE_SET_FIELDS,
   CATEGORY_NAME_FIELDS,
+  CATEGORY_TEXT_FIELDS,
+  CATEGORY_SEO_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
 };
@@ -272,6 +292,14 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
   OfferMovedPayloadRefused: { noCustomerText: 'refusal code with fixed paths' },
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
+  CategoryText: { table: 'CATEGORY_TEXT_FIELDS' },
+  CategorySeo: { table: 'CATEGORY_SEO_FIELDS' },
+  EditableCategory: {
+    noCustomerText:
+      'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
+  },
+  FieldIssue: { noCustomerText: 'field path and a problem code' },
+  HiddenChange: { noCustomerText: 'ids and a state code' },
   PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },
   Brand: { noCustomerText: 'aggregate class around BrandState' },
@@ -343,6 +371,42 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
   },
+  OfferSearchAttributes: {
+    noCustomerText:
+      'index words and facet codes read from a published revision: brand name and aliases (an approved brand entity), a country name from the ISO list, option labels and searchable text values (admin text claim-checked when written; seller text claim-checked when the revision was frozen); matching only, never shown and never a certification claim',
+  },
+  SearchOption: {
+    noCustomerText:
+      'read copy of a published definition option label (admin text, claim-checked when written) and a merge target code',
+  },
+  SearchDefinition: {
+    noCustomerText:
+      'read copy of a published definition: type, flags and options (admin text, claim-checked when written)',
+  },
+  LoadedSearchDefinition: {
+    noCustomerText:
+      'read copy of a published definition with its names and options (admin text, claim-checked when written)',
+  },
+  SearchBrand: {
+    noCustomerText: 'an approved brand entity: address, name and aliases (not product content)',
+  },
+  SearchAttributeFacts: {
+    noCustomerText:
+      'the same words and facet codes as OfferSearchAttributes, before they leave catalog',
+  },
+  SearchFilterOption: {
+    noCustomerText:
+      'an option code with its label: admin text claim-checked when written, a brand name or an ISO country name',
+  },
+  SearchFilterDefinition: {
+    noCustomerText:
+      'a filter of a listing: attribute code, name and options (admin text, claim-checked when written)',
+  },
+  SearchFiltersRequest: {
+    noCustomerText: 'a category id, a locale tag, brand addresses and country codes',
+  },
+  SearchFilterUnavailable: { noCustomerText: 'one error code' },
+  CatalogFiltersFacade: { noCustomerText: 'a facade interface: no text of its own' },
   OfferSearchText: {
     noCustomerText:
       'read copy of the published revision text, already claim-checked when the revision was frozen',
@@ -412,6 +476,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
+  CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
   CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },

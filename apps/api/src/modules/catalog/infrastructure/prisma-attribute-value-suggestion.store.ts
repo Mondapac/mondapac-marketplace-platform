@@ -179,6 +179,28 @@ export class PrismaAttributeValueSuggestionStore implements AttributeValueSugges
     return rows.map(suggestionOf);
   }
 
+  async listOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      readonly status: SuggestionStatus | null;
+      readonly afterId: Id<'AttributeValueSuggestion'> | null;
+      readonly limit: number;
+    },
+  ): Promise<readonly AttributeValueSuggestion[]> {
+    const rows = await this.prisma.tx(market).catalogAttributeValueSuggestion.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        ...(page.status === null ? {} : { status: page.status }),
+        ...(page.afterId === null ? {} : { id: { lt: page.afterId } }),
+      },
+      orderBy: [{ id: 'desc' }],
+      take: page.limit,
+    });
+    return rows.map(suggestionOf);
+  }
+
   async openAttributeCodesOfProduct(
     market: MarketContext,
     productId: Id<'Product'>,

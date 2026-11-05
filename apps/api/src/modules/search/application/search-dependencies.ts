@@ -4,7 +4,9 @@ import type { BrandProducts } from './ports/brand-products';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { OfferFeed } from './ports/offer-feed';
+import type { OfferFacetReader } from './ports/offer-facet.reader';
 import type { OfferSearchReader } from './ports/offer-search.reader';
+import type { SearchFilterSource } from './ports/search-filters';
 import type { ProductImages } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SearchPolicy } from './ports/search-policy';
@@ -17,6 +19,10 @@ export interface SearchDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly documents: OfferDocumentRepository;
   readonly reader: OfferSearchReader;
+  /** The attribute filters of a listing: narrowed hits, facet rows and number rows (A7). */
+  readonly facets: OfferFacetReader;
+  /** The filter lists catalog defines (A7). */
+  readonly filterSource: SearchFilterSource;
   readonly policy: SearchPolicy;
   readonly feed: OfferFeed;
   readonly visibility: PublicVisibility;

@@ -28,6 +28,7 @@
     "hint-move": "to move",
     "hint-open": "to open",
     "hint-close": "to close",
+    "hint-shortcuts": "for shortcuts",
     "group": {
       "account": "Account"
     },
@@ -49,7 +50,8 @@
     },
     "action": {
       "add-product": "Add product",
-      "invite-member": "Invite team member"
+      "invite-member": "Invite member",
+      "add-stock-location": "Add stock location"
     },
     "setting": {
       "store-name": "Store name",
@@ -1034,7 +1036,8 @@
         "csrf": "Your session expired. Reload the page and try again.",
         "unavailable": "Products are unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again.",
-        "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page."
+        "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page.",
+        "suggestion-pending": "A value you suggested is still waiting for a reviewer, so a required field is empty. You can submit once it is decided."
       },
       "attributes": "Details",
       "classification": "Categories and tax",
@@ -1100,6 +1103,34 @@
           "decimal": "Enter a number, like 12.5.",
           "range": "Enter a value within the allowed range.",
           "length": "Use at most {length} characters."
+        },
+        "suggest": {
+          "start": "Suggest a value",
+          "label": "Value you need",
+          "help": "Say it in a few words. A reviewer adds it for everyone, matches it to an existing value, or tells you why not. We email you the answer.",
+          "send": "Send suggestion",
+          "cancel": "Cancel",
+          "open": "You asked for “{label}”. A reviewer will decide; leave this field empty until then. A required field holds back submitting for review.",
+          "rejected": "A reviewer did not add “{label}”.",
+          "rejected-reason": "A reviewer did not add “{label}”: {reason}",
+          "error": {
+            "invalid": "Use 1 to 120 characters of plain text.",
+            "already-open": "You already have a suggestion waiting for this field.",
+            "limit": "You have too many suggestions waiting. Wait for some to be decided.",
+            "not-found": "This product was not found.",
+            "denied": "You don't have permission to edit products.",
+            "throttled": "Too many requests. Try again in a moment.",
+            "csrf": "Your session needs a refresh. Reload the page.",
+            "unreachable": "The service is not reachable. Try again.",
+            "unknown": "The suggestion could not be sent.",
+            "not-suggestable": "This field does not take suggestions.",
+            "value-exists": "That value is already on the list. Pick it above.",
+            "not-editable": "This product can't be changed now.",
+            "not-approved": "Your store has to be approved before you can make suggestions.",
+            "not-eligible": "Your store cannot make suggestions yet."
+          },
+          "approved": "A reviewer added “{label}” to the list. Pick it above.",
+          "mapped": "A reviewer matched “{label}” to a value already on the list. Pick that value above."
         }
       }
     },
@@ -1921,20 +1952,17 @@
   },
   "store-profile": {
     "title": "Store profile",
-    "intro": "What buyers see on your store page: a few words about your store, a logo and a banner. Changes are public as soon as you save them.",
+    "intro": "What buyers see on your store page. Changes are public as soon as you save them.",
     "loading": "Loading the store profile",
     "view-only": "You can see the store profile but not change it. Ask the store owner for access.",
     "error": {
       "unavailable": "The store profile could not be loaded"
     },
     "about": {
-      "title": "About your store",
-      "help": "Plain text, up to {max} characters. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
+      "title": "About",
+      "help": "Plain text. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
       "field": "About your store ({language})",
       "counter": "{count} of {max} characters",
-      "save": "Save",
-      "saving": "Saving…",
-      "saved": "Saved. Buyers can see it now.",
       "error": {
         "stale": "Someone else saved a newer version first. Your changes are still in the box. Reload the page to see the latest version, then save again.",
         "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
@@ -1948,43 +1976,27 @@
         "length": "Use at most {max} characters.",
         "characters": "This text has characters that are not allowed.",
         "url": "Remove web addresses and links, or add a space after a full stop. Buyers contact you through the platform.",
-        "claim-term": "This text claims a certification. Remove that wording. Certificates are shown as verified badges after our team checks them.",
+        "claim-term": "This text claims a certification. Remove that wording.",
         "invalid": "This text is not valid."
-      }
+      },
+      "description": "A few words about your store, in each language you sell in."
     },
     "logo": {
       "title": "Logo",
-      "help": "Shown next to your store name. A square picture works best. At least 128 × 128 px.",
-      "none": "No logo yet.",
-      "alt": "Your store logo",
-      "confirm": "Remove the logo?",
-      "saved": "Logo saved. Buyers can see it now.",
-      "removed": "Logo removed."
+      "help": "Shown next to your store name. A square picture, at least 128 × 128 px.",
+      "none": "No logo",
+      "alt": "Your store logo"
     },
     "banner": {
       "title": "Banner",
-      "help": "A wide picture at the top of your store page. Keep the important part in the middle: the edges are cropped on phones and wide screens. The Share button covers the top right, and your logo the lower left from tablet width up. Use 1200 × 300 px or larger.",
-      "none": "No banner yet.",
-      "alt": "Your store banner",
-      "preview": {
-        "label": "Preview",
-        "phone": "Phone",
-        "desktop": "Desktop",
-        "logo-note": "The dashed square is where your logo sits on a computer."
-      },
-      "confirm": "Remove the banner?",
-      "saved": "Banner saved. Buyers can see it now.",
-      "removed": "Banner removed."
+      "help": "A wide picture at the top of your store page, 1200 × 300 px or larger. The edges are cropped on phones.",
+      "none": "No banner",
+      "alt": "Your store banner"
     },
     "image": {
       "choose": "Choose a picture",
       "replace": "Replace",
-      "uploading": "Uploading…",
       "remove": "Remove",
-      "removing": "Removing…",
-      "remove-yes": "Yes, remove",
-      "cancel": "Cancel",
-      "formats": "JPEG, PNG or WebP.",
       "error": {
         "too-large": "That picture is too large. Choose one under 25 MB.",
         "unsupported": "That file is not a JPEG, PNG or WebP picture.",
@@ -2000,11 +2012,20 @@
         "not-ready": "Your store is not ready yet. Try again in a moment.",
         "unavailable": "The store profile is unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again."
-      }
+      },
+      "preparing": "Preparing the picture…"
     },
     "no-access": {
       "title": "You don't have access to this page",
       "body": "Store profile needs the permission \"View store profile\". The store owner can add it."
+    },
+    "saved": "Saved. Buyers can see it now.",
+    "pictures": {
+      "title": "Pictures",
+      "help": "JPEG, PNG or WebP, under 25 MB.",
+      "current": "Current picture",
+      "new": "New picture",
+      "removed": "Removed"
     }
   },
   "disputes": {
@@ -2138,15 +2159,19 @@
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
       "hide": "Hide comparison",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
       "yours-label": "Yours:",
       "same": "Your draft now matches what is saved.",
-      "unset": "empty"
+      "unset": "empty",
+      "saved-by-named": "{name} saved {subject} {when}",
+      "saved-by-platform": "Mondapac saved {subject} {when}",
+      "subject-settings": "these settings",
+      "subject-store-profile": "the store profile"
     },
     "hub": {
       "description": "Set up how your store works. Changes here apply to your whole store.",
@@ -2172,6 +2197,27 @@
     "sub": {
       "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "last-changed": {
+      "named": "Last changed by {name} · {when}",
+      "platform": "Last changed by Mondapac · {when}",
+      "unnamed": "Last changed {when}",
+      "view-history": "View history"
+    },
+    "history": {
+      "title": "History",
+      "close": "Close history",
+      "loading": "Loading history",
+      "empty-title": "No changes yet",
+      "empty-body": "When someone saves this page, the change shows up here.",
+      "error": "The history could not be loaded.",
+      "retry": "Try again",
+      "load-more": "Show older changes",
+      "more-failed": "Older changes could not be loaded.",
+      "who-platform": "Mondapac",
+      "who-unnamed": "Someone",
+      "changed": "Changed: {fields}",
+      "saved": "Saved"
     }
   }
 }

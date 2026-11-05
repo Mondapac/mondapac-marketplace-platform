@@ -1,7 +1,14 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import { ok } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { WALLET_SETTINGS_VIEW } from '../../contracts/permissions';
-import { viewSettings, type SettingsFailure, type SettingsView } from '../settings-flow';
+import {
+  viewSettings,
+  WALLET_SETTINGS_CHANGES,
+  type SettingsFailure,
+  type SettingsPage,
+  type SettingsView,
+} from '../settings-flow';
 import type { WalletDependencies } from '../wallet-dependencies';
 
 export type { SettingsView };
@@ -9,7 +16,7 @@ export type { SettingsView };
 /** `wallet.view-wallet-settings`: an admin reads the wallet state of the Market (default off). */
 export class ViewWalletSettings extends UseCase<
   Record<string, never>,
-  SettingsView,
+  SettingsPage,
   SettingsFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -24,7 +31,12 @@ export class ViewWalletSettings extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext) {
-    return viewSettings(this.deps, context);
+  protected async handle(context: CallContext): Promise<Result<SettingsPage, SettingsFailure>> {
+    const view = await viewSettings(this.deps, context);
+    if (!view.ok) return view;
+    const lastChanged = await this.deps.trail.lastChanged(context, WALLET_SETTINGS_CHANGES);
+    return ok({ ...view.value, lastChanged });
   }
 }
+
+export type { SettingsPage };

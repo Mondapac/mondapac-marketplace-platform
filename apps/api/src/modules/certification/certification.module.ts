@@ -30,6 +30,7 @@ import { CertificationTypesSystem } from './application/use-cases/certification-
 import { CertificationTypes } from './application/use-cases/certification-types.use-case';
 import { EvaluateClaimsSystem } from './application/use-cases/evaluate-claims-system.use-case';
 import { EvaluateClaims } from './application/use-cases/evaluate-claims.use-case';
+import { ClaimTermList } from './application/use-cases/claim-term-list.use-case';
 import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
 import { ClaimTermLocales } from './application/use-cases/claim-term-locales.use-case';
@@ -86,6 +87,7 @@ import { derecognitionMailSubscriptions } from './presentation/subscribers/derec
 const readerUseCases = [
   CertificationTypes,
   CertificationTypesSystem,
+  ClaimTermList,
   MatchClaimTerms,
   MatchClaimTermsSystem,
   ClaimTermLocales,
@@ -236,6 +238,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
       inject: [
         EvaluateClaims,
         EvaluateClaimsSystem,
+        ClaimTermList,
         MatchClaimTerms,
         MatchClaimTermsSystem,
         ClaimTermLocales,
@@ -247,6 +250,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
       useFactory: (
         evaluateClaims: EvaluateClaims,
         evaluateClaimsSystem: EvaluateClaimsSystem,
+        claimTermList: ClaimTermList,
         matchClaimTerms: MatchClaimTerms,
         matchClaimTermsSystem: MatchClaimTermsSystem,
         claimTermLocales: ClaimTermLocales,
@@ -258,6 +262,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         new CertificationFacadeImplementation({
           evaluateClaims,
           evaluateClaimsSystem,
+          claimTermList,
           matchClaimTerms,
           matchClaimTermsSystem,
           claimTermLocales,

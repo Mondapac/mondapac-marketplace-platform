@@ -15,6 +15,7 @@ import type { CategoryStatus } from './types.ts';
 
 const STATUS_TONE: Record<CategoryStatus, 'success' | 'neutral' | 'attention'> = {
   active: 'success',
+  hidden: 'neutral',
   merged: 'attention',
   archived: 'neutral',
 };
@@ -67,8 +68,25 @@ export function CategoryTree({
     list[0]?.row.id ??
     null;
 
+  // A filter or a search can remove the row that has focus; the browser then drops focus to the
+  // page. Keep it in the tree: the row that took its place in the list, else the last one.
+  const lastList = useRef<readonly VisibleRow[]>(list);
+  const inside = useRef(false);
+  useEffect(() => {
+    const before = lastList.current;
+    lastList.current = list;
+    if (focusId === null || list.some((entry) => entry.row.id === focusId)) return;
+    const index = before.findIndex((entry) => entry.row.id === focusId);
+    const next = list[Math.min(Math.max(index, 0), list.length - 1)];
+    if (next === undefined) return;
+    if (inside.current && document.activeElement === document.body) moveDom.current = true;
+    setFocusId(next.row.id);
+  }, [list, focusId]);
+
   useEffect(() => {
     if (!moveDom.current || focusId === null) return;
+    // The row to focus is not in the list yet (or any more): keep the wish for the next pass.
+    if (!list.some((entry) => entry.row.id === focusId)) return;
     moveDom.current = false;
     root.current?.querySelector<HTMLElement>(`[data-row-id="${focusId}"]`)?.focus();
   }, [focusId, list]);
@@ -123,7 +141,14 @@ export function CategoryTree({
             tabIndex={row.id === tabStop ? 0 : -1}
             onKeyDown={(event) => onKeyDown(event, row.id)}
             onFocus={(event) => {
+              inside.current = true;
               if (event.target === event.currentTarget) setFocusId(row.id);
+            }}
+            onBlur={(event) => {
+              // Focus going to something outside the tree ends "focus is in the tree".
+              if (!root.current?.contains(event.relatedTarget)) {
+                inside.current = event.relatedTarget === null;
+              }
             }}
             onClick={() => onSelect(row.id)}
             style={{ paddingInlineStart: `${row.depth * 1.25 + 0.5}rem` }}
@@ -137,7 +162,8 @@ export function CategoryTree({
                 type="button"
                 tabIndex={-1}
                 aria-hidden="true"
-                className="flex size-6 shrink-0 items-center justify-center rounded text-icon"
+                // 44 px to hit, 24 px of layout (the row is the keyboard target; this is for the pointer).
+                className="-mx-2.5 flex size-11 shrink-0 items-center justify-center rounded text-icon"
                 onClick={(event) => {
                   event.stopPropagation();
                   onExpand(row.id, !expanded);
@@ -148,7 +174,10 @@ export function CategoryTree({
             ) : (
               <span aria-hidden="true" className="size-6 shrink-0" />
             )}
-            <span dir={direction} className="min-w-0 flex-1 truncate">
+            <span
+              dir={row.names.some((entry) => entry.locale === locale) ? direction : 'auto'}
+              className="min-w-0 flex-1 truncate"
+            >
               {name}
             </span>
             {row.status === 'active' ? null : (

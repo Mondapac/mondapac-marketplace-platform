@@ -1,4 +1,4 @@
-import { BackLink, Badge, Banner, Icon, LinkButton } from '@mondapac/ui';
+import { BackLink, Badge, Banner, Icon, LinkButton, SettingsTitle } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { groupByResource, humanise, roleName } from './role-name.ts';
 import type { RoleCatalogue, RoleRecord } from './types.ts';
@@ -25,7 +25,7 @@ export async function RoleView({
         <BackLink href="/settings/roles" label={t('identity.roles.back')} />
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <h1 className="min-w-0 break-words text-2xl font-semibold">{roleName(t, role)}</h1>
+            <SettingsTitle>{roleName(t, role)}</SettingsTitle>
             <Badge tone="neutral">
               {role.kind === 'system' ? <Icon name="lock" className="size-[1em]" /> : null}
               {t(`identity.roles.type.${role.kind}`)}

@@ -1,3 +1,4 @@
+import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
 import { createHmac } from 'node:crypto';
 import { encodePayload, err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
@@ -194,6 +195,7 @@ describe.each([
       webhookSignature: undefined as never,
       uberWebhookSignature: undefined as never,
       securityEvents,
+      trail: unusedChangeTrail,
     };
     withSecrets(true);
   });
