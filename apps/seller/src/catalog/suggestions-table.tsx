@@ -21,10 +21,13 @@ const TONE: Record<string, BadgeTone> = {
 export async function SuggestionsTable({
   items,
   defaultLocale,
+  filtered = false,
   emptyAction,
 }: {
   readonly items: readonly OwnSuggestion[];
   readonly defaultLocale: string;
+  /** A status tab is chosen: an empty list means none in that status, not none at all. */
+  readonly filtered?: boolean;
   /** The next step on an empty list ("Suggest a value"), for a seller who may make one. */
   readonly emptyAction?: ReactNode;
 }) {
@@ -52,8 +55,8 @@ export async function SuggestionsTable({
                 <EmptyState
                   size="compact"
                   icon="inbox"
-                  title={t('empty.title')}
-                  body={t('empty.body')}
+                  title={t(filtered ? 'empty-filtered.title' : 'empty.title')}
+                  body={t(filtered ? 'empty-filtered.body' : 'empty.body')}
                   action={emptyAction}
                 />
               </td>

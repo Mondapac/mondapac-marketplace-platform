@@ -46,6 +46,8 @@ export default async function ValueSuggestionsPage({
   const { body } = page;
   const canSuggest = page.session.permissionKeys.includes(EDIT_PERMISSION);
   const full = body.openCount >= body.maxOpen;
+  // Nothing sent yet: the empty state says it all, without a 0 counter and tabs over nothing.
+  const none = status === undefined && after === undefined && body.items.length === 0;
   const newButton = canSuggest ? (
     <LinkButton href="/value-suggestions/new">{t('catalog.suggestions.new.start')}</LinkButton>
   ) : null;
@@ -72,12 +74,14 @@ export default async function ValueSuggestionsPage({
         {query.sent === '1' ? (
           <Banner tone="success">{t('catalog.suggestions.sent')}</Banner>
         ) : null}
-        <p className="text-sm font-medium" data-testid="open-count">
-          {t('catalog.suggestions.waiting', { count: body.openCount, max: body.maxOpen })}
-        </p>
+        {none ? null : (
+          <p className="text-sm font-medium" data-testid="open-count">
+            {t('catalog.suggestions.waiting', { count: body.openCount, max: body.maxOpen })}
+          </p>
+        )}
         {full ? <Banner tone="info">{t('catalog.suggestions.full')}</Banner> : null}
       </div>
-      <div className="mb-4">
+      <div className={none ? 'hidden' : 'mb-4'}>
         <Tabs
           label={t('catalog.suggestions.filter')}
           activeId={status ?? 'all'}
@@ -91,6 +95,7 @@ export default async function ValueSuggestionsPage({
       <SuggestionsTable
         items={body.items}
         defaultLocale={body.locales.default}
+        filtered={status !== undefined}
         emptyAction={status === undefined ? newButton : null}
       />
       {next === null ? null : (

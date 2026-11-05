@@ -1183,9 +1183,9 @@
       "title": "Value suggestions",
       "intro": "When a field of your product does not have the value you need, suggest it here. A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer.",
       "back": "Back to value suggestions",
-      "sent": "Suggestion sent. A reviewer will decide; leave that field empty until then.",
+      "sent": "Suggestion sent. A reviewer will decide; leave the field empty in the product form until then.",
       "waiting": "{count} of {max} waiting for a decision",
-      "full": "You have the most suggestions that can wait at once. You can send another when a reviewer decides one.",
+      "full": "You have reached the limit of {max} waiting suggestions. You can send another when a reviewer decides one.",
       "filter": "Filter by status",
       "filters": {
         "all": "All",
@@ -1222,13 +1222,17 @@
         "title": "No suggestions yet",
         "body": "When a field does not have the value you need, suggest it and follow the answer here."
       },
+      "empty-filtered": {
+        "title": "No suggestions in this status",
+        "body": "Choose All to see every suggestion you sent."
+      },
       "new": {
         "start": "Suggest a value",
         "title": "Suggest a value",
         "product": "Product",
         "product-placeholder": "Choose a product",
-        "product-help": "Values belong to a field of a product type. Choose the product that needs the value.",
-        "no-products": "You have no product that can be changed now. Add a product first.",
+        "product-help": "Choose the product that needs the value. Your {count, plural, one {# most recent product is} other {# most recent products are}} listed; for an older one, open the product and choose Suggest a value.",
+        "no-products": "None of your recent products can be changed now. Open a draft or published product and choose Suggest a value.",
         "continue": "Continue",
         "for": "For {product}.",
         "change-product": "Change product",
@@ -1238,9 +1242,10 @@
         "values": "Values on the list now: {values}",
         "values-none": "This field has no values yet.",
         "label": "Value you need",
-        "help": "English, 1 to 120 characters. Say it in a few words.",
+        "help": "1 to 120 characters. Say it in a few words.",
         "send": "Send suggestion",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "value-exists": "That value is already on the list. Pick it in the product form."
       }
     }
   },

@@ -120,6 +120,12 @@ describe('value suggestions table', () => {
     expect(screen.getByText('No suggestions yet')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Suggest a value' })).toBeTruthy();
   });
+
+  it('says a status tab is empty without saying the seller has none at all', async () => {
+    render(await SuggestionsTable({ defaultLocale: 'en-AU', items: [], filtered: true }));
+    expect(screen.queryByText('No suggestions yet')).toBeNull();
+    expect(screen.getByText(messages.catalog.suggestions['empty-filtered'].title)).toBeTruthy();
+  });
 });
 
 describe('suggest a value form', () => {
@@ -141,9 +147,7 @@ describe('suggest a value form', () => {
 
   it('starts on the linked field, shows its values and sends the trimmed words once', async () => {
     mount('pack-size');
-    expect(screen.getByTestId('current-values').textContent).toBe(
-      'Values on the list now: Small, Large',
-    );
+    expect(screen.getByText('Values on the list now: Small, Large')).toBeTruthy();
     const send = screen.getByRole<HTMLButtonElement>('button', { name: 'Send suggestion' });
     expect(send.disabled).toBe(true);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '  Jumbo  ' } });
@@ -166,13 +170,15 @@ describe('suggest a value form', () => {
     const send = screen.getByRole<HTMLButtonElement>('button', { name: 'Send suggestion' });
     expect(send.disabled).toBe(true);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'flavour' } });
-    expect(screen.getByTestId('current-values').textContent).toBe('This field has no values yet.');
+    expect(screen.getByText('This field has no values yet.')).toBeTruthy();
     call.mockResolvedValue({
       ok: false,
       failure: { status: 409, code: 'suggestion.value-exists' },
     });
     fireEvent.click(send);
-    expect(await screen.findByText(/already on the list/)).toBeTruthy();
+    expect(
+      await screen.findByText('That value is already on the list. Pick it in the product form.'),
+    ).toBeTruthy();
     expect(assign).not.toHaveBeenCalled();
   });
 
