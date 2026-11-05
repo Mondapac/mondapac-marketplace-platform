@@ -12,6 +12,8 @@ export {
 export type { ApprovedSellerZone, SellerSummary } from '../domain/seller-summary';
 export {
   SELLERS_BLOG_ACCESS_EDIT,
+  SELLERS_BUSINESS_ACTIVITY_MANAGE,
+  SELLERS_BUSINESS_ACTIVITY_VIEW,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_PERMISSIONS,
@@ -26,6 +28,8 @@ export {
   type AllowedProductTypesOf,
   type CarrierPickup,
   type ReviewerBusinessDetails,
+  type SellerBusinessActivitiesMap,
+  type SellerBusinessActivitiesOf,
   type SellerDetailsNotFound,
   type SellersFacade,
   type SellersUnavailable,

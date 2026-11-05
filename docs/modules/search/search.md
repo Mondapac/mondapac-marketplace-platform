@@ -141,3 +141,34 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   source that fails keeps the old copy.
 - **Not built:** a rating shown in the result cards (storefront follow-up); no personalization.
 
+
+## Attribute filters (attributes A7, 4 Nov 2026)
+
+What a buyer can narrow a list by, and how the index keeps it.
+
+- **Index.** Each `search.offer_documents` row also holds `search_text` (the searchable attribute
+  values: brand with its aliases, country of origin, English option labels; weight C in the
+  vector, below name and short text) and `facet_codes` (`attribute=value`: option codes with
+  merges followed, `true` for a yes switch, `brand=<slug>`, `country-of-origin=<iso, lower case>`).
+  Measure values sit in `search.offer_document_numbers`. Catalog supplies them through the index
+  facade (`attributes` in the facts); search never reads catalog tables.
+- **Filters of a list.** Catalog's anonymous `CatalogFiltersFacade` returns the category's filters
+  (its own after its ancestors', each kept while active, allowed as a filter and of a filterable
+  type) or the global Brand and Country of origin filters. Search counts the values in its own index.
+- **URL.** `filter=<attribute>:<code>[,<code>]` (repeatable; `true` for a switch) and
+  `range=<attribute>:<min>..<max>`. Values of one attribute are OR-ed, attributes are AND-ed. At most 8
+  choice filters, 3 ranges, 50 values each. A filter with a store or brand list is refused. An
+  attribute that is not a filter is ignored; a merged option code is read as its target.
+  A filtered URL is `noindex` with the canonical of the category (storefront follow-up).
+- **Counts.** Per product, ignoring the attribute's own filter; values with no product are hidden
+  except a picked one. Counting reads at most 20,000 rows; above that the page says
+  `countsComplete: false` and shows no counts. Range bounds come from the whole scope; if the number read is cut at the same cap, the page is also `countsComplete: false` and shows no bounds. Counts come from the index and do not run the query-time visibility check, so they can briefly include an Offer that just became unsellable.
+- **Raw SQL.** Three new statements (ADR-0030 amendment of 4 Nov 2026: `&&` with a `text[]` parameter).
+- **Reindex.** `search.reindex-attributes` (every 5 minutes and at start) asks catalog for a stamp
+  (definitions' published revisions, brands, aliases). When it differs from the last full run it
+  re-reads every published Offer page by page and writes progress to `search.reindex_state`
+  (`status`, `offers_done`, `cursor_offer_id`); a failed run resumes after its cursor. The six-hourly
+  rebuild still deletes stale documents. There is no admin screen for the progress yet.
+- **Not in this package.** The storefront web screens, the measure type (waits for A3), and the
+  conversion of the Country of origin attribute to an ISO choice (the indexer already maps a
+  select code or free text to an ISO code; the seed and Convert tool wait for A3).

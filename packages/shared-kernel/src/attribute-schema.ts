@@ -22,9 +22,14 @@ export const ATTRIBUTE_DATA_TYPES = [
 ] as const;
 export type AttributeDataType = (typeof ATTRIBUTE_DATA_TYPES)[number];
 
-/** One option of a select field. The label per locale lives with the definition, not here. */
+/**
+ * One option of a select field. The label per locale lives with the definition; the schema
+ * carries a copy so a variant label can be built from it at revision build time (variants V2).
+ */
 export interface OptionRef {
   readonly code: string;
+  /** Locale to the option's label; a locale without a label is absent. */
+  readonly labels?: { readonly [locale: string]: string };
 }
 
 /**

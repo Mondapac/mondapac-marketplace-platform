@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, SettingsTitle } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
@@ -45,6 +45,7 @@ export default async function TeamPageRoute({
           permissionKeys={session.permissionKeys}
           title={t('identity.team.no-access.title')}
           body={t('identity.team.no-access.body')}
+          pageTitle={title}
           labels={{ settings: t('settings.sub.back'), home: t('settings.back-home') }}
         />
       </SettingsShell>
@@ -70,7 +71,9 @@ export default async function TeamPageRoute({
   const roles = rolesResult?.kind === 'ok' ? rolesResult.body.items : undefined;
   return (
     <SettingsShell session={session} linkId="team" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <div className="mb-4">
+        <SettingsTitle>{title}</SettingsTitle>
+      </div>
       {result.kind === 'ok' ? (
         <>
           {canInvite && roles !== undefined ? (
@@ -97,7 +100,12 @@ export default async function TeamPageRoute({
           )}
         </>
       ) : (
-        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
+        <LoadError
+          title={t('settings.load-error.title', { page: title })}
+          message={t('settings.load-error.body')}
+          retryLabel={t('load.retry')}
+          className="w-full"
+        />
       )}
     </SettingsShell>
   );

@@ -22,6 +22,8 @@ export interface CatalogMarketPolicy {
   };
   /** The most non-retired variants one product may hold (2.1). */
   maxVariantsPerProduct(market: MarketContext): number;
+  /** The deepest level of the platform category tree (categories C2; AU 4, ZZ 3). */
+  maxCategoryDepth(market: MarketContext): number;
   /** The most option attributes one product may vary on (attributes A2; AU 2). */
   maxVariantAttributes(market: MarketContext): number;
   /** The units a number-with-unit attribute may offer in this Market, with labels (attributes A3). */

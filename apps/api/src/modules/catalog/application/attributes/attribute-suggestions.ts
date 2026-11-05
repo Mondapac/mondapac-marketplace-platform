@@ -39,14 +39,17 @@ export function suggestionVersionOf(raw: unknown): Result<number, ValidationFail
 /** The admin who decides: an authenticated admin, never in an acting-as session. */
 export const deciderOf = editorAccountOf;
 
-/** Whether a published definition takes values from sellers: not `material`, not a variant option. */
+/**
+ * Whether a published definition takes values from sellers: a select or multi-select that is not
+ * `material`. A variant option (colour, size) takes them too (john, 5 Nov 2026), so a seller can
+ * ask for the option a variant needs; an approved value is a new option like any other.
+ */
 export function takesSellerValues(definition: AttributeDefinition): boolean {
   const state = definition.state;
   return (
     state.status === 'active' &&
     (state.dataType === 'select' || state.dataType === 'multi-select') &&
-    !state.material &&
-    !state.isVariantOption
+    !state.material
   );
 }
 

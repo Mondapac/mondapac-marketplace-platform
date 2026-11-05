@@ -10,7 +10,8 @@ import {
   type AttributeInput,
   type AttributeInputs,
 } from './draft-content.ts';
-import type { DraftSaved, FormField, FormUnit } from './types.ts';
+import { SuggestValue } from './suggest-value.tsx';
+import type { DraftSaved, FormField, FormUnit, ValueSuggestion } from './types.ts';
 
 const INPUT_TYPE: Readonly<Record<string, string>> = {
   integer: 'text',
@@ -27,6 +28,10 @@ export function AttributesSection({
   defaultLocale,
   refused,
   onChange,
+  productId,
+  csrfToken,
+  suggestions,
+  onSuggested,
 }: {
   readonly fields: readonly FormField[];
   /** The Market's units with their labels; a measure field names the ones it offers by code. */
@@ -36,6 +41,10 @@ export function AttributesSection({
   readonly defaultLocale: string;
   readonly refused: DraftSaved['refusedFields'];
   readonly onChange: (code: string, value: AttributeInput | undefined) => void;
+  readonly productId: string;
+  readonly csrfToken: string;
+  readonly suggestions: readonly ValueSuggestion[];
+  readonly onSuggested: () => void;
 }) {
   const t = useTranslations();
   if (fields.length === 0) return null;
@@ -134,6 +143,16 @@ export function AttributesSection({
     );
   }
 
+  const suggest = (code: string) => (
+    <SuggestValue
+      productId={productId}
+      attributeCode={code}
+      suggestions={suggestions}
+      csrfToken={csrfToken}
+      onSuggested={onSuggested}
+    />
+  );
+
   function one(field: FormField) {
     const label = pickLabel(field.names, defaultLocale, field.code);
     const current = inputs[field.code];
@@ -166,17 +185,19 @@ export function AttributesSection({
         );
       case 'select':
         return (
-          <Select
-            key={field.code}
-            name={`attribute.${field.code}`}
-            label={label}
-            placeholder={t('catalog.edit.attribute.unset')}
-            options={options}
-            value={typeof current === 'string' ? current : ''}
-            onChange={(event) =>
-              onChange(field.code, event.target.value === '' ? undefined : event.target.value)
-            }
-          />
+          <div key={field.code} className="flex flex-col gap-2">
+            <Select
+              name={`attribute.${field.code}`}
+              label={label}
+              placeholder={t('catalog.edit.attribute.unset')}
+              options={options}
+              value={typeof current === 'string' ? current : ''}
+              onChange={(event) =>
+                onChange(field.code, event.target.value === '' ? undefined : event.target.value)
+              }
+            />
+            {suggest(field.code)}
+          </div>
         );
       case 'multi-select': {
         const chosen = Array.isArray(current) ? (current as readonly string[]) : [];
@@ -199,6 +220,7 @@ export function AttributesSection({
                 }
               />
             ))}
+            {suggest(field.code)}
           </fieldset>
         );
       }

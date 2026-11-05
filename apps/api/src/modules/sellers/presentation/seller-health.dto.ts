@@ -101,3 +101,13 @@ export class SellerHealthQueueBody {
   @ApiProperty({ description: 'True when more sellers were unhealthy than the queue holds.' })
   truncated!: boolean;
 }
+
+export class SellerHealthRecalculationBody {
+  @ApiProperty({
+    enum: ['queued', 'already-queued'],
+    description:
+      'queued: the request was written and the job measures the seller within about two minutes. ' +
+      'already-queued: one was already waiting; nothing was added.',
+  })
+  status!: 'queued' | 'already-queued';
+}

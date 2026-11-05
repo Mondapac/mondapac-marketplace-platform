@@ -67,6 +67,7 @@ describe.each(TEST_MARKETS)(
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,
       units: () => [],
+      maxCategoryDepth: () => 4,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

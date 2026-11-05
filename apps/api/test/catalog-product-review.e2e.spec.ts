@@ -291,7 +291,14 @@ describe('admin product revision review over HTTP (integration)', () => {
       version: 4,
       createdAt: START,
       variants: [
-        { id: variantId, state: 'proposed', createdAt: START, publishedAt: null, retiredAt: null },
+        {
+          id: variantId,
+          variantNo: 1,
+          state: 'proposed',
+          createdAt: START,
+          publishedAt: null,
+          retiredAt: null,
+        },
       ],
       publishedRevisionId: null,
       pendingRevisionId: revisionId,

@@ -154,6 +154,11 @@ export class OwnProductView {
   @ApiProperty({ description: 'single (one fixed variant) or configurable.' })
   variantModel!: string;
   @ApiProperty() status!: string;
+  @ApiProperty({
+    description:
+      'The seller marked the product as carrying their own brand (it lets them propose a brand).',
+  })
+  ownBrand!: boolean;
   @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
   @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
   @ApiProperty({

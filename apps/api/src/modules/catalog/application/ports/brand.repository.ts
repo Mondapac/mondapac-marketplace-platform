@@ -79,7 +79,7 @@ export interface BrandRepository {
     },
   ): Promise<void>;
 
-  /** Resolves every open row of a group as `kept-separate`; the number resolved. */
+  /** Resolves every open row of a group as `kept-separate`; the brands of the rows resolved. */
   dismissGroup(
     market: MarketContext,
     input: {
@@ -87,7 +87,7 @@ export interface BrandRepository {
       readonly accountId: Id<'Account'>;
       readonly now: Temporal.Instant;
     },
-  ): Promise<number>;
+  ): Promise<readonly Id<'Brand'>[]>;
 }
 
 export const BRAND_REPOSITORY = Symbol('BRAND_REPOSITORY');

@@ -206,6 +206,7 @@ describe.each(TEST_MARKETS)(
         ...base,
         product_id: productId,
         variant_model: 'single',
+        variant_no: 1,
         state: published ? 'published' : 'proposed',
         created_at: T0,
         published_at: published ? T0 : null,

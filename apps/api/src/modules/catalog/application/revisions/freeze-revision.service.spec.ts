@@ -18,6 +18,8 @@ const MARKETS = [
   { code: 'ZZ', locale: 'zz-ZZ', locales: ['yy-ZZ', 'zz-ZZ'], tax: ['STD', 'ZERO'], max: 3 },
 ] as const;
 
+const ALL_LOCALES = ['en-AU', 'yy-ZZ', 'zz-ZZ'] as const;
+
 const schemaOf = (): AttributeSchema => ({
   schemaRef: {
     familyCode: 'default',
@@ -53,7 +55,13 @@ const schemaOf = (): AttributeSchema => ({
       isVariantOption: true,
       material: false,
       claimChecked: true,
-      bounds: { options: [{ code: 'l' }, { code: 's' }] },
+      bounds: {
+        options: [
+          { code: 'l', labels: Object.fromEntries(ALL_LOCALES.map((l) => [l, `Large ${l}`])) },
+          // Small has a label in the first locale only (V2: that locale alone gets a label).
+          { code: 's', labels: { [ALL_LOCALES[0]]: `Small ${ALL_LOCALES[0]}` } },
+        ],
+      },
     },
   ],
 });
@@ -77,6 +85,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       maxVariantsPerProduct: () => max,
       maxVariantAttributes: () => 2,
       units: () => [],
+      maxCategoryDepth: () => 4,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],
@@ -248,6 +257,29 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     expect(bad).toMatchObject({ ok: false, error: { code: 'revision.not-ready' } });
     if (bad.ok || bad.error.code !== 'revision.not-ready') return;
     expect(bad.error.issues.map((issue) => issue.code)).toContain('variants.option-unknown');
+  });
+
+  it('builds the variant labels from the option labels and drops a locale with a missing one (V2)', async () => {
+    const frozen = await service.freeze(
+      market,
+      product('configurable'),
+      copyOf(
+        ready({
+          variants: [
+            { variantId: v(1), optionValues: { size: 'l' }, labels: { [locale]: 'Seller typed' } },
+            { variantId: v(2), optionValues: { size: 's' } },
+          ],
+        }),
+      ),
+    );
+    expect(frozen.ok).toBe(true);
+    if (!frozen.ok) return;
+    const [large, small] = frozen.value.content.variants;
+    expect(large?.labels).toEqual(Object.fromEntries(locales.map((l) => [l, `Large ${l}`])));
+    // 'Small' exists in en-AU only: AU gets it, ZZ (yy-ZZ, zz-ZZ) has no label for that variant.
+    expect(small?.labels).toEqual(
+      locales.includes('en-AU' as never) ? { 'en-AU': 'Small en-AU' } : {},
+    );
   });
 
   it('applies the Market variant limit', async () => {

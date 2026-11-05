@@ -68,7 +68,7 @@ describe('buildAttributeSchema', () => {
     expect(field('brand').required).toBe(true);
     expect(field('grade').material).toBe(true);
     expect(field('colour').isVariantOption).toBe(true);
-    expect(field('colour').bounds.options).toEqual([{ code: 'red' }, { code: 'green' }]);
+    expect(field('colour').bounds.options?.map((option) => option.code)).toEqual(['red', 'green']);
     expect(field('weight-grams').bounds).toMatchObject({ min: 1, max: 100000 });
   });
 

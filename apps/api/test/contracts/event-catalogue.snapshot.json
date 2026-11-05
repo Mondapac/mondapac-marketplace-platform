@@ -1007,5 +1007,12 @@
       "sellerOrderId": "id",
       "sellerId": "id"
     }
+  },
+  {
+    "type": "catalog.platform-category-changed.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id"
+    }
   }
 ]

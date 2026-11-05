@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Logger, Param, Put, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Logger,
+  Param,
+  Put,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -9,12 +20,15 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { changeHistoryBody, changeHistoryInputOf } from '../../../platform/audit/change-trail';
+import { ChangeHistoryDto } from '../../../platform/audit/change-trail.dto';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -24,6 +38,7 @@ import {
 import { SetDeliverySettings } from '../application/use-cases/set-delivery-settings.use-case';
 import { SetSellerDeliveryMethods } from '../application/use-cases/set-seller-delivery-methods.use-case';
 import { ViewDeliverySettings } from '../application/use-cases/view-delivery-settings.use-case';
+import { ViewDeliverySettingsHistory } from '../application/use-cases/view-delivery-settings-history.use-case';
 import { ViewSellerDeliveryMethods } from '../application/use-cases/view-seller-delivery-methods.use-case';
 import {
   DeliverySettingsBody,
@@ -56,6 +71,7 @@ export class DeliverySettingsController {
     private readonly set: SetDeliverySettings,
     private readonly viewSeller: ViewSellerDeliveryMethods,
     private readonly setSeller: SetSellerDeliveryMethods,
+    private readonly history: ViewDeliverySettingsHistory,
   ) {}
 
   @Get('delivery-settings')
@@ -63,7 +79,8 @@ export class DeliverySettingsController {
     summary: 'The delivery settings of the Market',
     description:
       'Needs shipping.delivery-settings.view. Until the first save the defaults apply: every ' +
-      'method on, a 12:00 same-day cut-off, 7 days ahead, 120-minute windows, no margin (version 0).',
+      'method on, a 12:00 same-day cut-off, 7 days ahead, 120-minute windows, no margin (version 0). ' +
+      'lastChanged says who changed the delivery rules last and when (null until the first change).',
   })
   @ApiOkResponse({ type: DeliverySettingsBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -78,6 +95,37 @@ export class DeliverySettingsController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return settingsBody(result.value);
+  }
+
+  @Get('delivery-settings/history')
+  @ApiOperation({
+    summary: 'The changes of the delivery rules',
+    description:
+      'Needs shipping.delivery-settings.view. Newest first: when, who (a display name, never an ' +
+      'email) and the names of the fields that changed, never their values, from the audit log. ' +
+      'Includes the methods set for a seller (field sellerMethods). Paged with after (the next ' +
+      'of the previous page) and limit (1 to 50, default 20).',
+  })
+  @ApiQuery({ name: 'after', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: ChangeHistoryDto })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async changes(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.history.execute(context, changeHistoryInputOf(query));
+    this.log(
+      'shipping.view-delivery-settings-history-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return changeHistoryBody(result.value);
   }
 
   @Put('delivery-settings')
@@ -96,7 +144,11 @@ export class DeliverySettingsController {
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
-  @ApiConflictResponse({ ...ERROR, description: 'shipping.delivery-settings-conflict' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'shipping.delivery-settings-conflict (details.lastChanged says who saved first and when)',
+  })
   async save(
     @Call() context: CallContext,
     @Req() request: Request,

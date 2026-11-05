@@ -28,6 +28,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
+import { MALWARE_SCANNER } from '../src/platform/malware/malware-scanner';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import {
@@ -100,6 +101,8 @@ describe('issuer request routes over HTTP (integration)', () => {
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(clock)
+          .overrideProvider(MALWARE_SCANNER)
+          .useValue({ configured: true, scan: () => Promise.resolve({ status: 'clean' }) })
           .overrideProvider(OUTBOX_WRITER)
           .useValue(outbox)
           .overrideProvider(SELLER_CERTIFICATE_REPOSITORY)
@@ -344,7 +347,7 @@ describe('issuer request routes over HTTP (integration)', () => {
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     it('walks a request from the seller to the queue, the read, the file and the answer', async () => {
-      await boot({ CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' });
+      await boot({ CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true', CLAMD_HOST: 'clamav.test' });
       await seeded(code);
       const seller = headers(code, sessionOf(code, OWNER, 1, 'seller'), 'seller');
       const reviewer = headers(code, sessionOf(code, REVIEWER, 2, 'admin'), 'admin');

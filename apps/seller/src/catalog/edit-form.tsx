@@ -284,6 +284,10 @@ export function EditForm({
         locales={locales}
         defaultLocale={defaultLocale}
         refused={refused}
+        productId={product.productId}
+        csrfToken={csrfToken}
+        suggestions={product.suggestions ?? []}
+        onSuggested={() => router.refresh()}
         onChange={(code: string, value: AttributeInput | undefined) => {
           setInputs({ ...inputs, [code]: value });
           edited();

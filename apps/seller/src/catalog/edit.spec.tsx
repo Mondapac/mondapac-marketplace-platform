@@ -157,6 +157,23 @@ describe('EditForm', () => {
     expect(screen.queryByRole('button', { name: 'Reload the product' })).toBeNull();
   });
 
+  it('explains a held-back submit when a suggested value is still waiting', () => {
+    const problem = editProblemOf({
+      status: 422,
+      code: 'revision.not-ready',
+      details: { issues: [{ path: 'attributes.flavour', code: 'attribute.suggestion-pending' }] },
+    });
+    expect(problem.key).toBe('catalog.edit.error.suggestion-pending');
+    expect(problem.details).toEqual(['attributes.flavour: attribute.suggestion-pending']);
+    expect(
+      editProblemOf({
+        status: 422,
+        code: 'revision.not-ready',
+        details: { issues: [{ path: 'attributes.size', code: 'attribute.required' }] },
+      }).key,
+    ).toBe('catalog.edit.error.not-ready');
+  });
+
   it('offers the replace option only when a revision is waiting', () => {
     mount();
     expect(screen.queryByLabelText(/Replace the revision/)).toBeNull();

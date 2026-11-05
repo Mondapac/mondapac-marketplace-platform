@@ -1,5 +1,6 @@
 import { err, ok, parseId, parseMoney, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import { auditCode, DeliverySettingsChanged, SellerDeliveryMethodsSet } from '../domain/audit';
 import { applyDeliveryMargin, type PricedDelivery } from '../domain/delivery-margin';
 import {
@@ -33,9 +34,31 @@ export type DeliverySettingsFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'validation.failed'; readonly fields: readonly Field[] }
   | { readonly code: 'shipping.seller-not-found' }
-  /** The settings changed since the admin read them: read again and retry. */
-  | { readonly code: 'shipping.delivery-settings-conflict' }
+  /**
+   * The settings changed since the admin read them: read again and retry. `lastChanged` is the
+   * winning save, null when it cannot be read.
+   */
+  | {
+      readonly code: 'shipping.delivery-settings-conflict';
+      readonly lastChanged?: LastChanged | null;
+    }
   | { readonly code: 'shipping.unavailable' };
+
+/** The delivery rules page's read model: the view and the latest change. */
+export interface DeliverySettingsPage extends DeliverySettingsView {
+  /** Null while the defaults are in force and no seller's methods were set. */
+  readonly lastChanged: LastChanged | null;
+}
+
+/**
+ * The audit rows of the delivery rules page: the Market's settings and the methods set for a
+ * seller (the page's last card). Both are Market-wide admin settings, so every target is read.
+ */
+export const DELIVERY_SETTINGS_CHANGES: ChangeScope = {
+  actions: [DeliverySettingsChanged.action, SellerDeliveryMethodsSet.action],
+  targetId: null,
+  fixedFields: { [SellerDeliveryMethodsSet.action]: ['sellerMethods'] },
+};
 
 export interface DeliverySettingsView {
   readonly settings: DeliverySettings;

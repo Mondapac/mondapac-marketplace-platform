@@ -469,6 +469,8 @@ export function domainFailureOf(refusal: AttributeDefinitionRefusal): DomainFail
       return at(`helpText.${refusal.locale}`, 'invalid');
     case 'attribute-definition.option-removed':
       return at(`options.${refusal.option}`, 'removed');
+    case 'attribute-definition.merge-unmapped':
+      return at(`options.${refusal.option}`, 'unmapped');
     default:
       return { code: refusal.code };
   }

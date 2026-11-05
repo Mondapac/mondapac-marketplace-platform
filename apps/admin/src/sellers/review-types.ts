@@ -27,6 +27,8 @@ export interface ReviewRevision {
   readonly status: string;
   readonly createdAt: string;
   readonly serviceAreaCode: string;
+  /** The English display name of the area; null when the code names no area. */
+  readonly serviceAreaName: string | null;
   readonly operatingTimezone: string;
   readonly registerAtSubmission: {
     readonly outcome: string;

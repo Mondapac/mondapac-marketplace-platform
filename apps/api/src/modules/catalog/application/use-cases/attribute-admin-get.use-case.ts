@@ -35,6 +35,8 @@ export interface AttributeOptionView {
   readonly labels: LocalizedText;
   readonly active: boolean;
   readonly position: number;
+  /** The value this one was merged into (attributes A8), or null. */
+  readonly mergedInto: string | null;
   /** Products of the Market whose published revision holds this option. */
   readonly productCount: number;
 }
@@ -177,6 +179,7 @@ export class AttributeAdminGet extends UseCase<
           labels: { ...option.labels },
           active: option.active,
           position: option.position,
+          mergedInto: option.mergedInto ?? null,
           productCount: optionCounts.get(option.code) ?? 0,
         })),
       productCount: counts.get(definition.code) ?? 0,
