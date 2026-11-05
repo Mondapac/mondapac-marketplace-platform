@@ -122,7 +122,7 @@ export function buildSearchAttributes(input: {
   for (const [code, stored] of Object.entries(input.values)) {
     if (code === BRAND_FACET || stored === undefined || stored === null) continue;
     const definition = input.definitions.get(code);
-    if (definition === undefined || definition.status === 'draft') continue;
+    if (definition === undefined || definition.status !== 'active') continue;
     const raw = plain(stored, definition, input.locale);
     if (raw === null || raw === undefined) continue;
     if (code === ORIGIN_ATTRIBUTE) {

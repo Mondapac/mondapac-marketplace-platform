@@ -281,6 +281,19 @@ describe('SearchProducts with attribute filters', () => {
     expect(page.filters[1]).toBeUndefined();
   });
 
+  it('says counts are incomplete and gives no slider bounds when the number read was cut', async () => {
+    rows = [row(1, 'diet=halal')];
+    numbers = Array.from({ length: MAX_FACET_ROWS + 1 }, (_, i) => ({
+      attr: 'weight',
+      value: String(i),
+    }));
+
+    const page = await value({ category: CATEGORY });
+
+    expect(page.countsComplete).toBe(false);
+    expect(page.filters.find((f) => f.code === 'weight')).toBeUndefined();
+  });
+
   it('says counts are incomplete when the scope is larger than the counting limit', async () => {
     rows = Array.from({ length: MAX_FACET_ROWS + 1 }, (_, i) => row(i, 'diet=halal'));
 

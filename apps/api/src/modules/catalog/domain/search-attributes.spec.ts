@@ -65,6 +65,17 @@ describe('buildSearchAttributes', () => {
     expect(facts.searchText).toBe('');
   });
 
+  it('leaves out an archived attribute, like a draft one', () => {
+    const facts = buildSearchAttributes({
+      values: { a: 'kg1' },
+      definitions: new Map([['a', definition({ status: 'archived', searchable: true })]]),
+      brand: null,
+      locale: 'en-AU',
+    });
+    expect(facts.facets).toEqual([]);
+    expect(facts.searchText).toBe('');
+  });
+
   it('indexes multi-select values, yes only for booleans and numbers for range filters', () => {
     const facts = buildSearchAttributes({
       values: { diet: ['kg1', 'kg2'], organic: true, vegan: false, weight: '12.5', count: 3 },

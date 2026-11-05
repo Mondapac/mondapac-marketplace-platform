@@ -273,8 +273,9 @@ export class SearchProducts extends UseCase<
     allRows: readonly FacetRow[],
     numbers: readonly NumberRow[],
   ): Promise<{ filters: FacetFilterView[]; complete: boolean }> {
-    const complete = allRows.length <= MAX_FACET_ROWS;
-    const rows = complete ? allRows : allRows.slice(0, MAX_FACET_ROWS);
+    // A read cut at the cap (facets or numbers) cannot give true counts or true slider bounds.
+    const complete = allRows.length <= MAX_FACET_ROWS && numbers.length <= MAX_FACET_ROWS;
+    const rows = allRows.length <= MAX_FACET_ROWS ? allRows : allRows.slice(0, MAX_FACET_ROWS);
     const counts = countFacets(
       rows,
       selection.choices,
@@ -308,7 +309,7 @@ export class SearchProducts extends UseCase<
         selection,
         counts,
         counted: complete,
-        bounds: numberBounds(numbers),
+        bounds: complete ? numberBounds(numbers) : new Map(),
       }),
       complete,
     };

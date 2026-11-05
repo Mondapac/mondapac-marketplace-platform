@@ -162,7 +162,7 @@ What a buyer can narrow a list by, and how the index keeps it.
   A filtered URL is `noindex` with the canonical of the category (storefront follow-up).
 - **Counts.** Per product, ignoring the attribute's own filter; values with no product are hidden
   except a picked one. Counting reads at most 20,000 rows; above that the page says
-  `countsComplete: false` and shows no counts. Range bounds come from the whole scope.
+  `countsComplete: false` and shows no counts. Range bounds come from the whole scope; if the number read is cut at the same cap, the page is also `countsComplete: false` and shows no bounds. Counts come from the index and do not run the query-time visibility check, so they can briefly include an Offer that just became unsellable.
 - **Raw SQL.** Three new statements (ADR-0030 amendment of 4 Nov 2026: `&&` with a `text[]` parameter).
 - **Reindex.** `search.reindex-attributes` (every 5 minutes and at start) asks catalog for a stamp
   (definitions' published revisions, brands, aliases). When it differs from the last full run it

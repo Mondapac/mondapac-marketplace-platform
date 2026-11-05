@@ -177,6 +177,27 @@ describe.each(TEST_MARKETS)('search filters in market %s', (code) => {
     expect(answer).toEqual({ ok: true, value: [] });
   });
 
+  it('points a code merged twice at the option that stands now', async () => {
+    definitions.set(
+      'diet',
+      definition('diet', {
+        ...options([
+          ['halal', 'Halal'],
+          ['old-halal', 'Old halal', { mergedInto: 'halal' }],
+          ['older-halal', 'Older halal', { mergedInto: 'old-halal' }],
+          ['loop-a', 'Loop A', { mergedInto: 'loop-b' }],
+          ['loop-b', 'Loop B', { mergedInto: 'loop-a' }],
+        ]),
+      }),
+    );
+
+    const answer = await ask();
+
+    const diet = answer.ok ? answer.value.find((f) => f.code === 'diet') : undefined;
+    expect(diet?.redirects).toMatchObject({ 'old-halal': 'halal', 'older-halal': 'halal' });
+    expect(Object.keys(diet?.redirects ?? {})).toContain('loop-a');
+  });
+
   it('names a filter in English when the asked locale has no name', async () => {
     const answer = await ask({ locale: 'fa-IR' });
 

@@ -84,7 +84,25 @@ export function buildCategoryFilters(input: {
         options.push({ code: optionCode, label });
       }
     }
-    out.push({ code, name, kind, options, redirects });
+    out.push({ code, name, kind, options, redirects: followChains(redirects) });
+  }
+  return out;
+}
+
+/**
+ * A merge into an option that was itself merged leaves a chain: every old code points at the
+ * option that stands now (at most 10 hops; a cycle stops where it closes).
+ */
+function followChains(redirects: Readonly<Record<string, string>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [from, first] of Object.entries(redirects)) {
+    let target = first;
+    for (let hop = 0; hop < 10; hop += 1) {
+      const next = redirects[target];
+      if (next === undefined || next === from) break;
+      target = next;
+    }
+    out[from] = target;
   }
   return out;
 }
