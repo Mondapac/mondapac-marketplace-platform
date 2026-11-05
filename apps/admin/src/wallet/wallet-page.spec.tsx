@@ -86,7 +86,11 @@ describe('WalletPage', () => {
     ).toBeTruthy();
     // The test's translator does not fill placeholders; the key resolving at all is the check.
     expect(screen.getByText(/needs the/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Back to dashboard' }).getAttribute('href')).toBe('/');
+    // A card under the page's own h1, leading back to the Settings hub.
+    expect(screen.getByRole('heading', { level: 1, name: 'Customer wallet' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to Settings' }).getAttribute('href')).toBe(
+      '/settings',
+    );
     expect(screen.queryByText('settings body')).toBeNull();
   });
 

@@ -123,7 +123,7 @@ function ToastCard({
         if (!event.currentTarget.contains(event.relatedTarget)) toastStore.release(id, 'focus');
       }}
       onKeyDown={onKeyDown}
-      className="pointer-events-auto relative grid animate-[mp-toast-in_var(--mp-motion-duration-slow)_var(--mp-motion-easing)] grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-(--mp-space-2-5) overflow-hidden rounded-lg border border-line-control bg-surface p-3 pb-3.5 text-sm text-fg shadow-(--mp-shadow-elevation-floating) [--mp-toast-from:24px] data-exiting:animate-[mp-toast-out_var(--mp-motion-duration-base)_ease-in_forwards] motion-reduce:animate-none motion-reduce:data-exiting:animate-none rtl:[--mp-toast-from:-24px]"
+      className={`pointer-events-auto relative grid animate-[mp-toast-in_var(--mp-motion-duration-slow)_var(--mp-motion-easing)] ${type === 'loading' ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-[auto_minmax(0,1fr)_auto]'} items-start gap-(--mp-space-2-5) overflow-hidden rounded-lg border border-line-control bg-surface p-3 pb-3.5 text-sm text-fg shadow-(--mp-shadow-elevation-floating) [--mp-toast-from:24px] data-exiting:animate-[mp-toast-out_var(--mp-motion-duration-base)_ease-in_forwards] motion-reduce:animate-none motion-reduce:data-exiting:animate-none rtl:[--mp-toast-from:-24px]`}
     >
       {tone === null ? (
         <>
@@ -169,15 +169,18 @@ function ToastCard({
           </div>
         )}
       </div>
-      {/* Centred on the badge line; the negative margins give back the height the target adds. */}
-      <button
-        type="button"
-        aria-label={closeLabel}
-        onClick={() => toastStore.dismiss(id)}
-        className="-my-[calc((var(--mp-size-control-sm)-var(--mp-size-badge))/2)] -me-1 flex size-(--mp-size-control-sm) items-center justify-center rounded-md text-fg-muted hover:bg-muted hover:text-fg"
-      >
-        <Icon name="x" />
-      </button>
+      {/* Centred on the badge line; the negative margins give back the height the target adds.
+       * A loading card has no close button: it ends with the result of the work it names. */}
+      {type === 'loading' ? null : (
+        <button
+          type="button"
+          aria-label={closeLabel}
+          onClick={() => toastStore.dismiss(id)}
+          className="-my-[calc((var(--mp-size-control-sm)-var(--mp-size-badge))/2)] -me-1 flex size-(--mp-size-control-sm) items-center justify-center rounded-md text-fg-muted hover:bg-muted hover:text-fg"
+        >
+          <Icon name="x" />
+        </button>
+      )}
       {tone === null || !Number.isFinite(item.duration) ? null : (
         <span
           key={item.revision}

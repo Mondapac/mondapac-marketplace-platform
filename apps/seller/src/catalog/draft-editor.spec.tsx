@@ -285,6 +285,41 @@ describe('EditForm product details', () => {
     expect(box('Large', 1).checked).toBe(false);
   });
 
+  it('also confirms removing a saved but never published variant', () => {
+    mount(
+      product({
+        variants: [{ variantId: 'v1', state: 'proposed' }],
+        workingCopy: {
+          content: {
+            variantAxes: ['size'],
+            variants: [{ variantId: 'v1', optionValues: { size: 'large' } }],
+          },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: null,
+        },
+      }),
+    );
+    fireEvent.click(box('Large', 1));
+    expect(box('Large', 1).checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(box('Large', 1).checked).toBe(false);
+  });
+
+  it('explains a published product whose variants have no axes instead of an empty card', () => {
+    mount(
+      product({
+        published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'],
+        variants: [{ variantId: 'v1', state: 'published' }],
+        workingCopy: {
+          content: { variants: [{ variantId: 'v1', optionValues: {} }] },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: 'r',
+        },
+      }),
+    );
+    expect(screen.getByText(/set up before axes existed/)).toBeTruthy();
+  });
+
   it('draws two axes as a matrix and ticks one cell', async () => {
     call.mockResolvedValueOnce(saved(['v9'])).mockResolvedValueOnce(saved(['v9']));
     mount(

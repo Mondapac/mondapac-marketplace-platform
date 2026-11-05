@@ -84,7 +84,9 @@ export function writesOf(
     if (price !== undefined && price.trim() !== savedPriceText(row, currency)) {
       const amount = minorOf(price, currency);
       if (amount === null) invalid.push({ key: row.variantId, kind: 'price' });
-      else writes.push({ kind: 'price', variantId: row.variantId, amount });
+      // "10" for a saved "10.00" is the same price: nothing to send.
+      else if (String(amount) !== String(row.price?.inForce?.amount ?? ''))
+        writes.push({ kind: 'price', variantId: row.variantId, amount });
     }
     for (const source of sources) {
       const key = stockKey(row.variantId, source.id);
@@ -92,7 +94,8 @@ export function writesOf(
       if (draft === undefined || draft.trim() === savedStockText(row, source.id)) continue;
       const onHand = WHOLE.test(draft.trim()) ? Number(draft) : null;
       if (onHand === null || onHand > 1_000_000) invalid.push({ key, kind: 'stock' });
-      else writes.push({ kind: 'stock', variantId: row.variantId, sourceId: source.id, onHand });
+      else if (onHand !== row.stock[source.id]?.onHand)
+        writes.push({ kind: 'stock', variantId: row.variantId, sourceId: source.id, onHand });
     }
   }
   return { writes, invalid };

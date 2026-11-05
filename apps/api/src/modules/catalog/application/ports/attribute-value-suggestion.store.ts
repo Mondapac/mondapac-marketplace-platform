@@ -1,5 +1,8 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { AttributeValueSuggestion } from '../../domain/attribute-value-suggestion';
+import type {
+  AttributeValueSuggestion,
+  SuggestionStatus,
+} from '../../domain/attribute-value-suggestion';
 
 /**
  * The store of sellers' value suggestions (attributes plan, package A5; catalog data design 3.30).
@@ -45,6 +48,20 @@ export interface AttributeValueSuggestionStore {
     market: MarketContext,
     productId: Id<'Product'>,
     limit: number,
+  ): Promise<readonly AttributeValueSuggestion[]>;
+
+  /**
+   * One seller's suggestions, newest first (by id, a UUID v7), keyset-paged: rows after
+   * `afterId` only, at most `limit`, optionally of one status.
+   */
+  listOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      readonly status: SuggestionStatus | null;
+      readonly afterId: Id<'AttributeValueSuggestion'> | null;
+      readonly limit: number;
+    },
   ): Promise<readonly AttributeValueSuggestion[]>;
 
   /** The codes of the attributes for which this product has an open suggestion. */

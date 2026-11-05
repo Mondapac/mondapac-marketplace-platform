@@ -8,6 +8,9 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SELLER_FILE_REPOSITORY } from '../src/modules/sellers/application/ports/seller-file.repository';
+import { SELLER_HEALTH_REQUEST_STORE } from '../src/modules/sellers/application/ports/seller-health-request.store';
+import { SELLER_HEALTH_ROSTER } from '../src/modules/sellers/application/ports/seller-health-roster';
+import { SELLER_LIST_REPOSITORY } from '../src/modules/sellers/application/ports/seller-list.repository';
 import {
   SELLER_HEALTH_STORE,
   type SellerHealthSnapshot,
@@ -18,16 +21,17 @@ import {
 } from '../src/modules/sellers/domain/seller-health';
 import { DefaultSellerHealthPolicy } from '../src/modules/sellers/infrastructure/default-seller-health-policy';
 import { CLOCK } from '../src/platform/clock/clock.module';
+import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
-// The admin seller list over HTTP (sellers design 6.2, 7.8; slice 6): `POST /sellers/admin/list`
-// with the real guards, controller, gate and use case on both Market fixtures. Identity's
-// database ports are in-memory fakes; the list's own store and the access reader are recording
-// stubs (their SQL is test/db/seller-list.db-spec.ts). Admin sessions are seeded into the fake
-// store as in the admin team list spec.
+// The admin seller health routes over HTTP (seller health packages 5a and 5c):
+// `GET /sellers/admin/:sellerId/health` and `GET /sellers/admin/health-queue` with the real
+// guards, controllers, gates and use cases on both Market fixtures. Identity's database ports
+// are in-memory fakes; the seller file, list and health stores are stubs (their SQL is covered
+// by the db-specs). Admin sessions are seeded into the fake store as in the admin team list spec.
 
 const START = Temporal.Instant.from('2026-10-09T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
@@ -65,6 +69,8 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
   let app: NestExpressApplication;
   let snapshots: SellerHealthSnapshot[];
   let known: Set<string>;
+  let queued: { market: string; sellerId: string; source: string; by: string }[];
+  let waiting: Set<string>;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -85,6 +91,58 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
           .useValue({
             snapshots: (m: MarketContext, one: Id<'Seller'>) =>
               Promise.resolve(known.has(`${m.marketId}|${one}`) ? snapshots : []),
+            // The queue of a Market is the sellers `known` in it.
+            unhealthy: (m: MarketContext) =>
+              Promise.resolve({
+                sellers: [...known]
+                  .filter((key) => key.startsWith(`${m.marketId}|`))
+                  .map((key) => ({
+                    sellerId: key.split('|')[1] as Id<'Seller'>,
+                    day: Temporal.PlainDate.from('2026-11-10'),
+                    kind: 'scored' as const,
+                    band: 'unhealthy' as const,
+                    score: 12,
+                    lowestMetric: 'late-ready' as const,
+                  })),
+                truncated: false,
+              }),
+          })
+          .overrideProvider(SELLER_HEALTH_ROSTER)
+          .useValue({
+            one: (m: MarketContext, one: Id<'Seller'>) =>
+              Promise.resolve(
+                known.has(`${m.marketId}|${one}`) ? { sellerId: one, zone: 'UTC' } : null,
+              ),
+          })
+          .overrideProvider(SELLER_HEALTH_REQUEST_STORE)
+          .useValue({
+            enqueue: (
+              m: MarketContext,
+              request: { sellerId: Id<'Seller'>; source: string; byAccountId: Id<'Account'> },
+            ) => {
+              const key = `${m.marketId}|${request.sellerId}`;
+              if (waiting.has(key)) return Promise.resolve({ queued: false });
+              waiting.add(key);
+              queued.push({
+                market: m.marketId,
+                sellerId: request.sellerId,
+                source: request.source,
+                by: request.byAccountId,
+              });
+              return Promise.resolve({ queued: true });
+            },
+          })
+          .overrideProvider(SELLER_LIST_REPOSITORY)
+          .useValue({
+            all: (m: MarketContext, query: { onlyIds: readonly Id<'Seller'>[] | null }) =>
+              Promise.resolve(
+                (query.onlyIds ?? []).map((one) => ({
+                  sellerId: one,
+                  storeName: `Shop of ${m.marketId}`,
+                  heldSlug: null,
+                  draftSlug: 'shop',
+                })),
+              ),
           }),
     }));
   }
@@ -175,10 +233,33 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
     return headers === null ? call : call.set('cookie', headers.cookie);
   };
 
+  const recalculate = (
+    code: string,
+    headers: { cookie: string } | null,
+    seller: string = SELLER,
+    csrf = true,
+  ) => {
+    const call = http()
+      .post(`/sellers/admin/${seller}/health/recalculate`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
+    if (headers === null) return call;
+    const token = headers.cookie.slice(headers.cookie.indexOf('=') + 1);
+    return call.set('cookie', headers.cookie).set('x-csrf-token', csrf ? csrfTokenFor(token) : '');
+  };
+
+  const getQueue = (code: string, headers: { cookie: string } | null) => {
+    const call = http()
+      .get('/sellers/admin/health-queue')
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
+    return headers === null ? call : call.set('cookie', headers.cookie);
+  };
+
   beforeEach(async () => {
     fakes.reset();
     clock = new FixedClock(Temporal.Instant.from('2026-11-10T12:00:00Z'));
     known = new Set();
+    queued = [];
+    waiting = new Set();
     const { thresholds } = await new DefaultSellerHealthPolicy().settings();
     snapshots = [
       {
@@ -240,6 +321,84 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
       expect(noKey.headers['cache-control']).toBe('no-store');
       expect([401, 403]).toContain(customer.status);
       expect(anonymous.status).toBe(401);
+    });
+
+    it('lists the queue for an administrator, no-store, and refuses the others', async () => {
+      await boot();
+      await seeded(code);
+      const other = TEST_MARKETS.find((m) => m !== code)!;
+      known.add(`${other}|${UNKNOWN}`);
+
+      const res = await getQueue(code, sessionHeaders(code, ROOT, 6));
+      const noKey = await getQueue(code, sessionHeaders(code, NO_KEY, 7));
+      const anonymous = await getQueue(code, null);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toEqual({
+        truncated: false,
+        items: [
+          {
+            sellerId: SELLER,
+            storeName: `Shop of ${code}`,
+            slug: 'shop',
+            day: '2026-11-10',
+            score: 12,
+            lowestMetric: 'late-ready',
+          },
+        ],
+      });
+      expect(noKey.status).toBe(403);
+      expect(noKey.body).toMatchObject({ code: 'access.denied' });
+      expect(anonymous.status).toBe(401);
+    });
+
+    it('queues a recalculation for an administrator, once, and measures nothing in the request', async () => {
+      await boot();
+      await seeded(code);
+
+      const first = await recalculate(code, sessionHeaders(code, ROOT, 8));
+      const second = await recalculate(code, sessionHeaders(code, ROOT, 9));
+
+      expect(first.status).toBe(202);
+      expect(first.headers['cache-control']).toBe('no-store');
+      expect(first.body).toEqual({ status: 'queued' });
+      expect(second.status).toBe(202);
+      expect(second.body).toEqual({ status: 'already-queued' });
+      expect(queued).toEqual([{ market: code, sellerId: SELLER, source: 'admin', by: ROOT }]);
+    });
+
+    it('answers 404 for an unknown or foreign seller and queues nothing', async () => {
+      await boot();
+      await seeded(code);
+      const other = TEST_MARKETS.find((m) => m !== code)!;
+      known.add(`${other}|${UNKNOWN}`);
+
+      const unknown = await recalculate(code, sessionHeaders(code, ROOT, 10), UNKNOWN);
+      const malformed = await recalculate(code, sessionHeaders(code, ROOT, 11), 'not-an-id');
+
+      expect(unknown.status).toBe(404);
+      expect(malformed.status).toBe(404);
+      expect(unknown.body).toEqual(malformed.body);
+      expect(queued).toEqual([]);
+    });
+
+    it('refuses an admin without the key, a missing CSRF token, a customer and no session', async () => {
+      await boot();
+      await seeded(code);
+
+      const noKey = await recalculate(code, sessionHeaders(code, NO_KEY, 12));
+      const noCsrf = await recalculate(code, sessionHeaders(code, ROOT, 13), SELLER, false);
+      const customer = await recalculate(code, sessionHeaders(code, CUSTOMER, 14, 'customer'));
+      const anonymous = await recalculate(code, null);
+
+      expect(noKey.status).toBe(403);
+      expect(noKey.body).toMatchObject({ code: 'access.denied' });
+      expect(noCsrf.status).toBe(403);
+      expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
+      expect([401, 403]).toContain(customer.status);
+      expect(anonymous.status).toBe(401);
+      expect(queued).toEqual([]);
     });
   });
 });

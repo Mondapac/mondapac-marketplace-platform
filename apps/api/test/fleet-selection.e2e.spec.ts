@@ -10,6 +10,7 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { CreateFleetSelectionModel } from '../src/modules/shipping/application/use-cases/create-fleet-selection-model.use-case';
 import { SetFleetSelection } from '../src/modules/shipping/application/use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from '../src/modules/shipping/application/use-cases/update-fleet-selection-model.use-case';
+import { ViewFleetSelectionHistory } from '../src/modules/shipping/application/use-cases/view-fleet-selection-history.use-case';
 import { ViewFleetSelection } from '../src/modules/shipping/application/use-cases/view-fleet-selection.use-case';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
@@ -32,6 +33,16 @@ const id = <T extends string>(n: number): Id<T> => {
 const OWNER = id<'Account'>(0xa101);
 const ADMIN = id<'Account'>(0xa001);
 const SELLER = id<'Seller'>(0xb020);
+const LAST_CHANGED = {
+  at: Temporal.Instant.from('2026-10-13T09:30:00Z'),
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
+} as const;
+const LAST_CHANGED_BODY = {
+  at: '2026-10-13T09:30:00Z',
+  byDisplayName: 'Sara K.',
+  byKind: 'member',
+};
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
@@ -60,6 +71,8 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
           .useValue(clock)
           .overrideProvider(ViewFleetSelection)
           .useValue(stub('view'))
+          .overrideProvider(ViewFleetSelectionHistory)
+          .useValue(stub('history'))
           .overrideProvider(CreateFleetSelectionModel)
           .useValue(stub('create'))
           .overrideProvider(UpdateFleetSelectionModel)
@@ -188,7 +201,7 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     fakes.reset();
     clock = new FixedClock(START);
     calls = [];
-    next = ok(selection);
+    next = ok({ ...selection, lastChanged: LAST_CHANGED });
   });
   afterEach(async () => {
     await app?.close();
@@ -203,6 +216,7 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
     expect((res.body as { version: number }).version).toBe(4);
+    expect((res.body as { lastChanged: unknown }).lastChanged).toEqual(LAST_CHANGED_BODY);
     expect(body.active).toEqual({ instant: MODEL, same_day: null, scheduled: null });
     expect(body.models[0]).toMatchObject({ id: MODEL, version: 1, rule: { kind: 'cheapest' } });
     expect(body.fleets[0]).toMatchObject({ fleet: 'mondapac_drive', reliability: 90 });
@@ -228,7 +242,7 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
       expectedVersion: 1,
     });
     expect(updated.status).toBe(200);
-    next = ok(selection);
+    next = ok({ ...selection, lastChanged: LAST_CHANGED });
     const saved = await call('put', 'admin', BASE, session, page);
     expect(saved.status).toBe(200);
     expect((saved.body as { version: number }).version).toBe(4);
@@ -239,6 +253,30 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
       { name: 'update', input: { modelId: MODEL, name: 'B', rule, expectedVersion: 1 } },
       { name: 'save', input: page },
     ]);
+  });
+
+  it('lists the history for an admin and passes the paging', async () => {
+    await boot();
+    const row = { id: 'row-1', ...LAST_CHANGED, fields: ['reliability'] };
+    next = ok({ items: [row], next: null });
+    const session = admin();
+    const read = await call('get', 'admin', `${BASE}/history?limit=5&after=abc`, session);
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      items: [{ id: 'row-1', ...LAST_CHANGED_BODY, fields: ['reliability'] }],
+      next: null,
+    });
+    expect(calls).toEqual([{ name: 'history', input: { after: 'abc', limit: 5 } }]);
+
+    next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+    const bad = await call('get', 'admin', `${BASE}/history?limit=x`, session);
+    expect(bad.status).toBe(400);
+    expect(calls.at(-1)).toEqual({ name: 'history', input: { after: null, limit: 'invalid' } });
+
+    // The controller only authenticates; the use case decides (application-layer authorisation).
+    next = err({ code: 'access.denied' });
+    expect((await call('get', 'admin', `${BASE}/history`, session)).status).toBe(403);
   });
 
   it('no longer serves the per-method and per-fleet writes', async () => {
@@ -285,6 +323,13 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     const stale = await save();
     expect(stale.status).toBe(409);
     expect(stale.body).toEqual({ statusCode: 409, code: 'shipping.fleet-selection-conflict' });
+    // The winning save: who and when.
+    next = err({ code: 'shipping.fleet-selection-conflict', lastChanged: LAST_CHANGED });
+    expect((await save()).body).toEqual({
+      statusCode: 409,
+      code: 'shipping.fleet-selection-conflict',
+      details: { lastChanged: LAST_CHANGED_BODY },
+    });
     next = err({ code: 'shipping.fleet-model-not-found' });
     expect((await save()).status).toBe(404);
     next = err({ code: 'validation.failed', fields: [{ path: 'active', code: 'format' }] });
@@ -311,8 +356,14 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     expect(missing.body).toEqual({ statusCode: 404, code: 'shipping.fleet-model-not-found' });
     next = err({ code: 'shipping.fleet-model-name-taken' });
     expect((await put()).status).toBe(409);
-    next = err({ code: 'shipping.fleet-model-conflict' });
-    expect((await put()).status).toBe(409);
+    next = err({ code: 'shipping.fleet-model-conflict', lastChanged: LAST_CHANGED });
+    const stale = await put();
+    expect(stale.status).toBe(409);
+    expect(stale.body).toEqual({
+      statusCode: 409,
+      code: 'shipping.fleet-model-conflict',
+      details: { lastChanged: LAST_CHANGED_BODY },
+    });
     next = err({ code: 'access.denied' });
     expect((await put()).status).toBe(403);
     next = err({ code: 'shipping.unavailable' });

@@ -56,4 +56,9 @@ describe('chooseAxes', () => {
     expect(chooseAxes(schema, ['colour', 'size'], 2, ['size', 'colour']).ok).toBe(true);
     expect(chooseAxes(schema, undefined, 2, ['size', 'colour']).ok).toBe(true);
   });
+
+  it('keeps the published axes when the draft names none (a product on part of its candidates)', () => {
+    const result = chooseAxes(schema, undefined, 2, ['size']);
+    expect(result.ok && result.codes).toEqual(['size']);
+  });
 });

@@ -243,6 +243,47 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
     });
   });
 
+  describe('Product.setOwnBrand', () => {
+    it('sets the flag on a stored seller product: one version, no event', () => {
+      const product = reloaded(simple());
+
+      expect(product.setOwnBrand({ ownBrand: true, now: T1 })).toEqual({ ok: true, value: true });
+
+      expect(product.state).toMatchObject({ ownBrand: true, version: 2, lastChangedAt: T1 });
+      expect(product.pendingEvents).toHaveLength(0);
+    });
+
+    it('changes nothing, and says so, when the value is the one it has', () => {
+      const product = reloaded(simple());
+
+      expect(product.setOwnBrand({ ownBrand: false, now: T1 })).toEqual({
+        ok: true,
+        value: false,
+      });
+
+      expect(product.state).toMatchObject({ ownBrand: false, version: 1, lastChangedAt: T0 });
+    });
+
+    it('refuses a PLATFORM product', () => {
+      const product = reloaded(simple('PLATFORM'));
+
+      expect(product.setOwnBrand({ ownBrand: true, now: T1 })).toEqual({
+        ok: false,
+        error: { code: 'product.seller-only' },
+      });
+    });
+
+    it('refuses a product that has ended', () => {
+      const product = reloaded(simple());
+      product.discard(T1);
+
+      expect(product.setOwnBrand({ ownBrand: true, now: T1 })).toEqual({
+        ok: false,
+        error: { code: 'product.not-editable' },
+      });
+    });
+  });
+
   describe('Product.discard', () => {
     it('discards a Simple draft: the single variant is retired and announced', () => {
       const product = reloaded(simple());

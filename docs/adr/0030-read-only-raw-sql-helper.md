@@ -179,6 +179,17 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
   `search.offer-browse-top-rated`; each joins `search.product_ratings` with `market_id = $1` and a
   bound Market, and numbers still travel as text with `::text::int4` casts. The three run only while
   the Market's separate rating-boost switch is on (off by default).
+- Amended 2026-11-04 (search, attribute filters A7; reviews by the agents Ali, Hassan and Mojtaba to
+  be recorded on the PR): the parse check allows array overlap with a `text[]` cast of a bound
+  parameter, `<column> && $n::text[]`, beside the `uuid[]` shape (`@>` stays `uuid[]` only). The
+  filter values are facet strings (`attribute=value`: an option code, a brand address, a country
+  code) that the visitor picks from lists catalog gave; they travel as bound array parameters
+  and never as text of the statement. The statements are `search.offer-filtered` (a text search
+  or a category browse narrowed by up to eight facet groups and three number ranges),
+  `search.offer-facet-rows` and `search.offer-number-rows` (the documents or numbers of a scope,
+  counted by the caller, so no aggregate or other function is needed). They read
+  `search.offer_documents` and `search.offer_document_numbers` with `market_id = $1`, and use no
+  function beyond `unnest`, `websearch_to_tsquery` and `ts_rank`.
 
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is

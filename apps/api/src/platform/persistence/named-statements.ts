@@ -52,6 +52,15 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
         UUID.test(values[2])
       );
     }
+    if (sql === LOCK_CATEGORY_SLUG_TEXT) {
+      return (
+        values.length === 3 &&
+        values[0] === market.marketId &&
+        values[1] === market.tenantId &&
+        typeof values[2] === 'string' &&
+        CATEGORY_SLUG.test(values[2])
+      );
+    }
     if (
       sql === LOCK_DISPUTE_CASE_TEXT ||
       sql === LOCK_SELLER_ORDER_TEXT ||
@@ -95,6 +104,7 @@ export function lockTimeoutStatement(milliseconds: number): Prisma.Sql {
 /** The most stock items one `inventory.lock-stock-items` call locks (inventory data design 4.3). */
 export const MAX_LOCKED_STOCK_ITEMS = 1000;
 
+const CATEGORY_SLUG = /^(?=.{2,80}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** One locked stock item: the columns a stock writer decides from (inventory data design 4.3). */
@@ -132,6 +142,11 @@ export interface LockedEngagementAccount {
 
 /** The answer of `reviews.lock-account`: the lock is held until the unit ends. */
 export interface LockedReviewsAccount {
+  readonly locked: true;
+}
+
+/** The answer of `catalog.lock-category-slug`: the lock is held until the unit ends. */
+export interface LockedCategorySlug {
   readonly locked: true;
 }
 
@@ -235,6 +250,20 @@ export interface NamedStatements {
   readonly 'reviews.lock-account': {
     readonly params: { readonly accountId: string };
     readonly row: LockedReviewsAccount;
+  };
+  /**
+   * Takes the exclusive transaction advisory lock of one platform-category slug in the unit's
+   * Market and tenant (catalog, categories package C3a), so a create and a change of the URL name,
+   * or two changes, that name the same slug (as the new name or as the one being retired) run one
+   * after the other and the second sees the first's slug and history rows. The key is `hashtext`
+   * of Market, tenant and slug under class 1704, which is this statement's alone; a collision
+   * only makes two slugs wait for each other. The caller takes several slugs in sorted order.
+   * Always one row; released at COMMIT or ROLLBACK; a wait past `lock_timeout` (55P03) ends the
+   * unit as a conflict.
+   */
+  readonly 'catalog.lock-category-slug': {
+    readonly params: { readonly slug: string };
+    readonly row: LockedCategorySlug;
   };
 }
 
@@ -556,6 +585,40 @@ const LOCK_REVIEWS_ACCOUNT_TEXT = lockReviewsAccountStatement(
   '',
 ).sql;
 
+/** The advisory-lock class of `catalog.lock-category-slug`. */
+export const CATALOG_CATEGORY_SLUG_LOCK_CLASS = 1704;
+
+/** The statement of `catalog.lock-category-slug`: Market, tenant, then the slug. */
+export function lockCategorySlugStatement(market: MarketContext, slug: string): Prisma.Sql {
+  const key = Prisma.sql`hashtext(${market.marketId}::text || ':' || ${market.tenantId}::text || ':' || ${slug}::text)`;
+  return Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock(${Prisma.raw(String(CATALOG_CATEGORY_SLUG_LOCK_CLASS))}::int4, ${key})`;
+}
+
+async function lockCategorySlug(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'catalog.lock-category-slug'>,
+): Promise<LockedCategorySlug[]> {
+  const name = 'catalog.lock-category-slug';
+  if (typeof params.slug !== 'string' || !CATEGORY_SLUG.test(params.slug)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(lockCategorySlugStatement(market, params.slug))) as {
+    locked: boolean;
+  }[];
+  if (rows.length !== 1 || rows[0]!.locked !== true) {
+    throw new NamedStatementRefusedError(name, 'rows-missing');
+  }
+  return [{ locked: true }];
+}
+
+const LOCK_CATEGORY_SLUG_TEXT = lockCategorySlugStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
 /** Runs one named statement on the open read-write unit's transaction. */
 export async function runNamedStatement<K extends NamedStatementName>(
   runner: RawRunner,
@@ -611,6 +674,12 @@ export async function runNamedStatement<K extends NamedStatementName>(
         runner,
         market,
         params as NamedStatementParams<'reviews.lock-account'>,
+      );
+    case 'catalog.lock-category-slug':
+      return await lockCategorySlug(
+        runner,
+        market,
+        params as NamedStatementParams<'catalog.lock-category-slug'>,
       );
     default:
       throw new Error('Unknown named statement');

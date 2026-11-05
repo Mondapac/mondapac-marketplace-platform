@@ -87,3 +87,39 @@ describe('writesOf', () => {
     expect(savedPriceText(row('a', null), 'AUD')).toBe('');
   });
 });
+
+describe('writesOf: equivalent values are not writes', () => {
+  const sources = [{ id: 's1' }];
+  it('skips "10" for a saved 10.00 and "05" for a saved 5', () => {
+    const result = writesOf(
+      [row('v1', '1000', 5)],
+      sources,
+      'AUD',
+      { v1: '10' },
+      { 'v1:s1': '05' },
+    );
+    expect(result).toEqual({ writes: [], invalid: [] });
+  });
+  it('still writes a real change', () => {
+    const result = writesOf(
+      [row('v1', '1000', 5)],
+      sources,
+      'AUD',
+      { v1: '10.5' },
+      { 'v1:s1': '6' },
+    );
+    expect(result.writes).toHaveLength(2);
+  });
+  it('works for a currency without minor units (second market fixture, JPY)', () => {
+    const jpy = { ...row('v1', '1500', 5), price: { ...price('1500'), currency: 'JPY' } };
+    expect(savedPriceText(jpy, 'JPY')).toBe('1500');
+    expect(writesOf([jpy], sources, 'JPY', { v1: '1500' }, {}).writes).toEqual([]);
+    expect(writesOf([jpy], sources, 'JPY', { v1: '1600' }, {}).writes).toEqual([
+      { kind: 'price', variantId: 'v1', amount: '1600' },
+    ]);
+    expect(writesOf([jpy], sources, 'JPY', { v1: '15.5' }, {}).invalid).toHaveLength(1);
+    expect(increasedBy('1500', '10')).toBe('1650');
+    expect(increasedBy('1', '1000')).toBe('11');
+    expect(increasedBy('1', '0.01')).toBe('1');
+  });
+});

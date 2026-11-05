@@ -29,11 +29,14 @@ export default async function OrderPage({
   const page = await loadOrderDetailPage(sellerOrderId);
   if (page.kind === 'unavailable') {
     return (
-      <LoadError
-        title={title}
-        message={t('orders.error.unavailable')}
-        retryLabel={t('load.retry')}
-      />
+      <div className="p-6">
+        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <LoadError
+          message={t('orders.error.unavailable')}
+          retryLabel={t('load.retry')}
+          className="w-full"
+        />
+      </div>
     );
   }
   if (page.kind === 'no-access') {

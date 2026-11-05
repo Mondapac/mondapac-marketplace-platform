@@ -1,3 +1,8 @@
+import {
+  changeTrailOf,
+  FakeChangeActors,
+  InMemoryAuditTrail,
+} from '../../../../test/support/change-trail-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -32,6 +37,7 @@ import { ReleaseHold } from './use-cases/release-hold.use-case';
 import { SetWalletStatus } from './use-cases/set-wallet-status.use-case';
 import { ViewMyHistory } from './use-cases/view-my-history.use-case';
 import { ViewMyWallet } from './use-cases/view-my-wallet.use-case';
+import { ViewWalletSettingsHistory } from './use-cases/view-wallet-settings-history.use-case';
 import { ViewWalletSettings } from './use-cases/view-wallet-settings.use-case';
 import type { WalletDependencies } from './wallet-dependencies';
 
@@ -56,12 +62,10 @@ const ORDER_2 = id<'Order'>(0x102);
 
 const ACTIONS = new Set<string>(WALLET_AUDIT_ACTIONS.map((a) => a.action));
 
-class RecordingAudit implements AuditWriter {
-  readonly entries: AuditEntry[] = [];
-  record(_context: CallContext, entry: AuditEntry): Promise<void> {
+class RecordingAudit extends InMemoryAuditTrail implements AuditWriter {
+  override record(context: CallContext, entry: AuditEntry): Promise<void> {
     if (!ACTIONS.has(entry.action)) throw new Error(`audit: unknown action ${entry.action}`);
-    this.entries.push(entry);
-    return Promise.resolve();
+    return super.record(context, entry);
   }
 }
 
@@ -79,6 +83,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   let wallet: MemoryWallet;
   let setting: MemoryMarketSetting;
   let audit: RecordingAudit;
+  let actors: FakeChangeActors;
   let deps: WalletDependencies;
   let seq = 0;
   // identity's spend of the admin step-up proof (issue #491): a proof unless a test says otherwise.
@@ -121,9 +126,11 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
     });
     wallet = new MemoryWallet();
     setting = new MemoryMarketSetting();
-    audit = new RecordingAudit();
+    audit = new RecordingAudit(clock);
+    actors = new FakeChangeActors();
+    const unitOfWork = new FakeUnitOfWork();
     deps = {
-      unitOfWork: new FakeUnitOfWork(),
+      unitOfWork,
       wallet,
       settings: setting,
       policy: new ConfigWalletPolicy(markets),
@@ -136,6 +143,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
           return Promise.resolve(stepUpAnswer);
         },
       },
+      trail: changeTrailOf(unitOfWork, audit, actors),
     };
     stepUpAnswer = ok({ sessionId: ADMIN_SESSION, verifiedAt: T0 });
     stepUpAsked = [];
@@ -205,7 +213,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   describe('the Market switch', () => {
     it('is off by default: every write answers wallet.disabled and the customer sees nothing', async () => {
       expect(await new ViewWalletSettings(gate, deps).execute(adminCtx(), {})).toEqual(
-        ok({ status: 'off', reason: null, updatedAt: null, version: 0 }),
+        ok({ status: 'off', reason: null, updatedAt: null, version: 0, lastChanged: null }),
       );
       expect(await grant(100n)).toEqual(err({ code: 'wallet.disabled' }));
       expect(await hold(100n)).toEqual(err({ code: 'wallet.disabled' }));
@@ -350,8 +358,12 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       stepUpAsked = [];
       audit.entries.length = 0;
       const saves = setting.saves;
+      // The refusal names the winning change: who and when.
       expect(await turn('frozen', 'security-incident', adminCtx(), 1)).toEqual(
-        err({ code: 'wallet.settings-conflict' }),
+        err({
+          code: 'wallet.settings-conflict',
+          lastChanged: { at: T0, byDisplayName: null, byKind: 'member' },
+        }),
       );
       // The stale save is refused before the unit reaches the step-up consumer.
       expect(stepUpAsked).toEqual([]);
@@ -363,13 +375,41 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       expect(stepUpAsked).toEqual(['wallet.settings.change']);
     });
 
+    it('says who switched the wallet last and when, on the read and the save', async () => {
+      actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+      const saved = await turn('active');
+      const lastChanged = { at: T0, byDisplayName: 'Sara K.', byKind: 'member' };
+      expect(saved.ok && saved.value.lastChanged).toEqual(lastChanged);
+      const read = await new ViewWalletSettings(gate, deps).execute(adminCtx(), {});
+      expect(read.ok && read.value.lastChanged).toEqual(lastChanged);
+    });
+
+    it('lists the switch history with the field names only, never the step-up proof', async () => {
+      actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+      await turn('active');
+      await turn('paused', 'maintenance');
+      const history = (input: object, context = adminCtx()) =>
+        new ViewWalletSettingsHistory(gate, deps).execute(context, input);
+      const page = await history({});
+      expect(page.ok && page.value.items.map((i) => [i.byDisplayName, i.fields])).toEqual([
+        ['Sara K.', ['reason', 'status']],
+        ['Sara K.', ['status']],
+      ]);
+      expect(JSON.stringify(page)).not.toMatch(/stepUp|maintenance/);
+      expect((await history({ limit: 0 })).ok).toBe(false);
+      expect((await history({}, customerCtx())).ok).toBe(false);
+    });
+
     it('a stale version is a conflict even for the state already set, and a first save needs 0', async () => {
       expect(await turn('active', undefined, adminCtx(), 3)).toEqual(
-        err({ code: 'wallet.settings-conflict' }),
+        err({ code: 'wallet.settings-conflict', lastChanged: null }),
       );
       expect((await turn('active', undefined, adminCtx(), 0)).ok).toBe(true);
       expect(await turn('active', undefined, adminCtx(), 0)).toEqual(
-        err({ code: 'wallet.settings-conflict' }),
+        err({
+          code: 'wallet.settings-conflict',
+          lastChanged: { at: T0, byDisplayName: null, byKind: 'member' },
+        }),
       );
       expect(stepUpAsked).toEqual(['wallet.settings.change']);
     });
@@ -379,7 +419,10 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       expect((await grant(100n)).ok).toBe(true);
       expect(await turn('off')).toEqual(err({ code: 'wallet.cannot-turn-off-with-history' }));
       expect(await turn('off', undefined, adminCtx(), 0)).toEqual(
-        err({ code: 'wallet.settings-conflict' }),
+        err({
+          code: 'wallet.settings-conflict',
+          lastChanged: { at: T0, byDisplayName: null, byKind: 'member' },
+        }),
       );
     });
 

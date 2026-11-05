@@ -174,7 +174,8 @@ export function VariantsTable({
       }
     }
     setSaving(false);
-    setVersions(seen);
+    // After a refresh the server's versions are the truth; keep ours only when nothing refreshes.
+    setVersions(done > 0 ? {} : seen);
     setPriceDrafts(priceLeft);
     setStockDrafts(stockLeft);
     setErrors(found);
@@ -256,7 +257,12 @@ export function VariantsTable({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto">
+      <div
+        className="overflow-x-auto"
+        role="region"
+        aria-label={t('catalog.variants-table.title')}
+        tabIndex={0}
+      >
         <table className="w-full min-w-max text-start text-sm">
           <thead>
             <tr>

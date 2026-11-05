@@ -50,6 +50,10 @@ const EDITOR_ROLE = id<'Role'>(0xc801);
 const DEFINITION = id<'AttributeDefinition'>(0xc901);
 const PRODUCT = id<'Product'>(0xca01);
 const SELLER = id<'Seller'>(0xcb01);
+const OTHER_SELLER = id<'Seller'>(0xcb02);
+const OWNER = id<'Account'>(0xc703);
+const VIEWERLESS = id<'Account'>(0xc704);
+const NO_VIEW_ROLE = id<'Role'>(0xc802);
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
@@ -186,7 +190,136 @@ describe('value suggestions over HTTP (integration)', () => {
     };
   }
 
+  /** An approved seller with an owner (all seller keys) and a member whose role has no catalog key. */
+  async function sellerSeeded(code: string) {
+    await app.get(SeedRoles).execute(testCallContext(marketOf(code), 'system', 'sugg-0003'), {});
+    const marketId = code as AccountState['marketId'];
+    const ownerRole = [...fakes.roles.values()].find(
+      (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === 'seller-owner',
+    )!.id;
+    fakes.seedRole({
+      id: NO_VIEW_ROLE,
+      marketId,
+      scope: 'seller',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: SELLER,
+      name: 'Team only',
+      permissionKeys: ['identity.team-member.view'],
+      version: 1,
+      createdAt: START,
+    });
+    fakes.seedSellerAccess({
+      sellerId: SELLER,
+      marketId,
+      origin: 'self',
+      state: 'approved',
+      stateChangedAt: START,
+      reapplyCount: 0,
+      registeredAt: START,
+      version: 3,
+      createdAt: START,
+    });
+    let n = 0;
+    for (const [accountId, label, roleId] of [
+      [OWNER, 'owner', ownerRole],
+      [VIEWERLESS, 'member', NO_VIEW_ROLE],
+    ] as const) {
+      n += 1;
+      fakes.seedAccount({
+        id: accountId,
+        marketId,
+        population: 'seller',
+        email: { typed: `${label}@Example.com`, normalized: `${label}@example.com` },
+        displayName: label,
+        status: 'active',
+        emailVerifiedAt: START,
+        existingAccountNoticeAt: null,
+        signedUpAt: START,
+        createdAt: START,
+        version: 1,
+        credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+      });
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xea00 + n),
+        marketId,
+        accountId,
+        roleId,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      fakes.seedMembership({
+        id: id<'SellerMembership'>(0xeb00 + n),
+        marketId,
+        accountId,
+        sellerId: SELLER,
+        state: 'active',
+        removedAt: null,
+        version: 1,
+        createdAt: START,
+      });
+    }
+  }
+
+  function sellerSession(code: string, account: Id<'Account'>, n: number) {
+    const issued = tokens.issue();
+    void fakes.sessionRepository.add(
+      marketOf(code),
+      openSession({
+        id: id<'Session'>(0xfa00 + n),
+        marketId: code as AccountState['marketId'],
+        accountId: account,
+        population: 'seller',
+        sellerId: SELLER,
+        transport: 'cookie',
+        lifetime: LIFETIME,
+        now: START,
+      }),
+      issued.tokenHash,
+    );
+    return {
+      'x-market-id': code,
+      ...panelHeaders(code, 'seller'),
+      cookie: `__Host-session-seller-${code}=${issued.token}`,
+      'x-csrf-token': csrfTokenFor(issued.token),
+    };
+  }
+
+  /** A suggestion of `sellerId` stored directly, with its status. */
+  function stored(
+    n: number,
+    sellerId: Id<'Seller'>,
+    decide?: 'reject',
+  ): Id<'AttributeValueSuggestion'> {
+    const built = AttributeValueSuggestion.open({
+      id: id<'AttributeValueSuggestion'>(0xcd00 + n),
+      marketId: suggestionMarket,
+      definitionId: DEFINITION,
+      sellerId,
+      productId: PRODUCT,
+      label: `Value ${n}`,
+      now: START.add({ seconds: n }),
+    });
+    if (!built.ok) throw new Error(built.error.code);
+    let row = built.value;
+    if (decide === 'reject') {
+      const rejected = row.reject({
+        accountId: MODERATOR,
+        reason: 'Not a size we sell.',
+        now: START,
+      });
+      if (!rejected.ok) throw new Error(rejected.error.code);
+      row = rejected.value;
+    }
+    suggestions.rows.set(row.state.id, row);
+    return row.state.id;
+  }
+  let suggestionMarket: AccountState['marketId'];
+
   const QUEUE = '/catalog/admin/attribute-suggestions';
+  const OWN = '/catalog/seller/attribute-suggestions';
 
   beforeEach(() => {
     fakes.reset();
@@ -197,7 +330,7 @@ describe('value suggestions over HTTP (integration)', () => {
     await app?.close();
   });
 
-  it('documents the four admin routes and the seller route in OpenAPI', async () => {
+  it('documents the four admin routes and the two seller routes in OpenAPI', async () => {
     await boot({ API_DOCS_ENABLED: 'true' });
     const document = (await http().get('/docs-json').expect(200)).body as {
       paths: Record<string, Record<string, unknown>>;
@@ -209,6 +342,7 @@ describe('value suggestions over HTTP (integration)', () => {
     expect(
       document.paths['/catalog/seller/products/{productId}/attribute-suggestions'],
     ).toHaveProperty('post');
+    expect(document.paths['/catalog/seller/attribute-suggestions']).toHaveProperty('get');
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -392,12 +526,73 @@ describe('value suggestions over HTTP (integration)', () => {
       expect(suggestions.rows.get(suggestionId)!.state.status).toBe('open');
     });
 
-    it('answers 401 to an anonymous seller request', async () => {
+    it('lists only the seller’s own suggestions with no-store, filtered and paged', async () => {
+      await boot();
+      await sellerSeeded(code);
+      suggestionMarket = code as AccountState['marketId'];
+      const first = stored(1, SELLER);
+      const second = stored(2, SELLER, 'reject');
+      const third = stored(3, SELLER);
+      stored(4, OTHER_SELLER);
+      const owner = sellerSession(code, OWNER, 1);
+
+      const all = await http().get(OWN).set(owner).expect(200);
+      expect(all.headers['cache-control']).toBe('no-store');
+      const body = all.body as {
+        items: { id: string; status: string; rejectReason: string | null }[];
+        nextAfterId: string | null;
+        openCount: number;
+        maxOpen: number;
+      };
+      expect(body.items.map((item) => item.id)).toEqual([third, second, first]);
+      expect(body).toMatchObject({ nextAfterId: null, openCount: 2, maxOpen: 10 });
+      expect(body.items[1]).toMatchObject({
+        status: 'rejected',
+        rejectReason: 'Not a size we sell.',
+      });
+      expect(JSON.stringify(body)).not.toContain(MODERATOR);
+
+      const page = await http().get(`${OWN}?limit=1`).set(owner).expect(200);
+      expect(page.body).toMatchObject({ items: [{ id: third }], nextAfterId: third });
+      const next = await http().get(`${OWN}?limit=1&afterId=${third}`).set(owner).expect(200);
+      expect(next.body).toMatchObject({ items: [{ id: second }] });
+      const rejected = await http().get(`${OWN}?status=rejected`).set(owner).expect(200);
+      expect((rejected.body as typeof body).items.map((item) => item.id)).toEqual([second]);
+      expect((rejected.body as typeof body).openCount).toBe(2);
+    });
+
+    it('refuses a bad query with 400 and a member without the view key with 403', async () => {
+      await boot();
+      await sellerSeeded(code);
+      const owner = sellerSession(code, OWNER, 1);
+      for (const [query, path] of [
+        ['limit=abc', 'limit'],
+        ['limit=51', 'limit'],
+        ['afterId=nope', 'afterId'],
+        ['status=decided', 'status'],
+        ['sellerId=x', 'sellerId'],
+      ] as const) {
+        const answer = await http().get(`${OWN}?${query}`).set(owner).expect(400);
+        expect(answer.body).toMatchObject({
+          code: 'validation.failed',
+          details: { fields: [{ path }] },
+        });
+      }
+      const member = sellerSession(code, VIEWERLESS, 2);
+      const denied = await http().get(OWN).set(member).expect(403);
+      expect((denied.body as { code: string }).code).toBe('access.denied');
+    });
+
+    it('answers 401 to anonymous seller requests', async () => {
       await boot();
       await http()
         .post(`/catalog/seller/products/${PRODUCT}/attribute-suggestions`)
         .set({ 'x-market-id': code, ...panelHeaders(code, 'seller') })
         .send({ attributeCode: 'pack-size', label: 'XL' })
+        .expect(401);
+      await http()
+        .get('/catalog/seller/attribute-suggestions')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller') })
         .expect(401);
     });
   });

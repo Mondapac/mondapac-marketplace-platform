@@ -61,8 +61,9 @@ export function VariantsSection({
     combinationTitle(fields, axes, options, defaultLocale);
 
   function ask(dropped: readonly VariantRow[], then: () => void) {
-    // A removal that ends live prices and stock is confirmed; a variant never published just goes.
-    if (dropped.some((row) => row.state === 'published')) {
+    // A removal of a variant the server already knows (it may hold prices and stock) is confirmed;
+    // a row only ticked in this form just goes.
+    if (dropped.some((row) => row.state !== 'new')) {
       setPending({ kind: 'drop', rows: dropped, then });
     } else then();
   }
@@ -171,6 +172,12 @@ export function VariantsSection({
         )}
       </section>
 
+      {locked && axes.length === 0 && rows.length > 0 ? (
+        <Banner tone="attention">
+          {t('catalog.edit.grid.locked-no-axes', { count: rows.length })}
+        </Banner>
+      ) : null}
+
       {axes.length === 0 ? null : (
         <section className="flex flex-col gap-3 border-t border-line pt-3">
           <h3 className="font-medium">{t('catalog.edit.grid.step-options')}</h3>
@@ -205,6 +212,7 @@ export function VariantsSection({
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-start text-sm">
+                <caption className="sr-only">{t('catalog.edit.grid.caption')}</caption>
                 <thead>
                   <tr>
                     <th scope="col" className="p-2 text-start font-medium">

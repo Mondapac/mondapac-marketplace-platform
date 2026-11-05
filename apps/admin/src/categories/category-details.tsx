@@ -5,7 +5,8 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
-import { directionOf } from './tree-model.ts';
+import { CategoryToolbar } from './category-toolbar.tsx';
+import { directionOf, indexOf } from './tree-model.ts';
 import {
   API_CATEGORIES,
   DETAIL_TABS,
@@ -13,12 +14,14 @@ import {
   type DetailBody,
   type DetailTab,
   type ImpactBody,
+  type TreeBody,
 } from './types.ts';
 
 type Load = 'loading' | 'ready' | 'failed' | 'missing';
 
 const STATUS_TONE: Record<CategoryStatus, 'success' | 'neutral' | 'attention'> = {
   active: 'success',
+  hidden: 'neutral',
   merged: 'attention',
   archived: 'neutral',
 };
@@ -26,7 +29,8 @@ const STATUS_TONE: Record<CategoryStatus, 'success' | 'neutral' | 'attention'> =
 /** A count, "at least" when the API stopped counting at its time bound. */
 function useCount(complete: boolean) {
   const t = useTranslations('categories');
-  return (n: number) => (complete ? String(n) : t('at-least', { n }));
+  // "at least 0" says nothing a plain 0 does not.
+  return (n: number) => (complete || n === 0 ? String(n) : t('at-least', { n }));
 }
 
 /**
@@ -34,7 +38,23 @@ function useCount(complete: boolean) {
  * would reach (Products) and its revisions (History). Read only. A category that is gone, or that
  * belongs to another Market, reads as "not found" and nothing more.
  */
-export function CategoryDetails({ id }: { readonly id: string }) {
+export function CategoryDetails({
+  id,
+  tree,
+  canEdit = false,
+  csrfToken = '',
+  onChanged,
+  onCreated,
+}: {
+  readonly id: string;
+  /** The tree the page shows: with it (and the permission) the category can be changed here. */
+  readonly tree?: TreeBody | null;
+  readonly canEdit?: boolean;
+  readonly csrfToken?: string;
+  /** A change was saved: the owner reads the tree again and remounts this view. */
+  readonly onChanged?: (note?: string, focusId?: string) => void;
+  readonly onCreated?: (id: string, parentId: string) => void;
+}) {
   const t = useTranslations('categories');
   const tl = useTranslations('load');
   const [tab, setTab] = useState<DetailTab>('details');
@@ -92,6 +112,17 @@ export function CategoryDetails({ id }: { readonly id: string }) {
           {body.path.map((entry) => entry.name ?? entry.slug).join(' › ')}
         </p>
       </div>
+      {tree !== undefined && tree !== null ? (
+        <ToolbarFor
+          body={body}
+          tree={tree}
+          canEdit={canEdit && onChanged !== undefined && onCreated !== undefined}
+          csrfToken={csrfToken}
+          title={title}
+          onChanged={onChanged ?? noop}
+          onCreated={onCreated ?? noop}
+        />
+      ) : null}
       <Tabs
         label={t('details.tabs')}
         items={DETAIL_TABS.map((value) => ({ id: value, label: t(`details.tab.${value}`) }))}
@@ -104,6 +135,56 @@ export function CategoryDetails({ id }: { readonly id: string }) {
     </div>
   );
 }
+
+function ToolbarFor({
+  body,
+  tree,
+  canEdit,
+  csrfToken,
+  title,
+  onChanged,
+  onCreated,
+}: {
+  readonly body: DetailBody;
+  readonly tree: TreeBody;
+  readonly canEdit: boolean;
+  readonly csrfToken: string;
+  readonly title: string;
+  readonly onChanged: (note?: string, focusId?: string) => void;
+  readonly onCreated: (id: string, parentId: string) => void;
+}) {
+  const { category } = body;
+  const { children } = indexOf(tree.categories);
+  const siblings = children.get(category.parentId) ?? [];
+  // Hide reaches only the descendants that are active (the API's rule); a child of any status
+  // still stops a Discard.
+  let descendants = 0;
+  const walk = (parent: string): void => {
+    for (const child of children.get(parent) ?? []) {
+      if (child.status === 'active') descendants += 1;
+      walk(child.id);
+    }
+  };
+  walk(category.id);
+  const hasChildren = (children.get(category.id) ?? []).length > 0;
+  return (
+    <CategoryToolbar
+      body={body}
+      canEdit={canEdit}
+      csrfToken={csrfToken}
+      supportedLocales={tree.supportedLocales}
+      firstSibling={siblings[0]?.id === category.id}
+      lastSibling={siblings[siblings.length - 1]?.id === category.id}
+      hasChildren={hasChildren}
+      descendants={descendants}
+      title={title}
+      onChanged={onChanged}
+      onCreated={onCreated}
+    />
+  );
+}
+
+const noop = (): void => undefined;
 
 function Row({ term, children }: { readonly term: string; readonly children: React.ReactNode }) {
   return (
@@ -146,6 +227,12 @@ function DetailsTab({ body }: { readonly body: DetailBody }) {
             )}
           </Row>
         ))}
+        <Row term={t('details.in-menu')}>
+          {body.details.showInMenu ? t('details.yes') : t('details.no')}
+        </Row>
+        <Row term={t('details.seo-title')}>
+          {body.details.seo.title ?? <span className="text-fg-muted">{t('details.not-set')}</span>}
+        </Row>
         <Row term={t('details.live-products')}>{count(category.counts.liveProducts)}</Row>
         <Row term={t('details.live-products-direct')}>
           {count(category.counts.liveProductsDirect)}
@@ -214,15 +301,31 @@ function ProductsTab({ body }: { readonly body: DetailBody }) {
   );
 }
 
+const KNOWN_KINDS = new Set([
+  'created',
+  'renamed',
+  'moved',
+  'merged',
+  'archived',
+  'details-changed',
+  'reordered',
+  'hidden',
+  'shown',
+  'slug-changed',
+  'discarded',
+]);
+
 function HistoryTab({ body }: { readonly body: DetailBody }) {
   const t = useTranslations('categories');
+  const kindLabel = (kind: string): string =>
+    KNOWN_KINDS.has(kind) ? t(`history.kind.${kind}`) : t('history.kind-unknown');
   if (body.revisions.length === 0) return <EmptyState icon="clock" title={t('history.empty')} />;
   return (
     <ol className="m-0 list-none p-0">
       {body.revisions.map((revision) => (
         <li key={revision.revisionNo} className="flex flex-col gap-0.5 border-b border-line py-3">
           <span className="font-medium">
-            {t('history.revision', { no: revision.revisionNo })} · {revision.changeKind}
+            {t('history.revision', { no: revision.revisionNo })} · {kindLabel(revision.changeKind)}
           </span>
           <span className="text-sm text-fg-muted">
             {t(`history.by-${revision.authorKind}`)} · <When iso={revision.createdAt} missing="" />

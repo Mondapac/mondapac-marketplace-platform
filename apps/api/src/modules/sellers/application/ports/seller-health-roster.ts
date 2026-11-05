@@ -18,6 +18,12 @@ export interface SellerHealthRoster {
     after: Id<'Seller'> | null,
     limit: number,
   ): Promise<readonly SellerHealthRosterEntry[]>;
+
+  /**
+   * One seller, or `null` when it is not in this Market or has no approved business file (so no
+   * zone to cut its days in). Runs in a read-only unit.
+   */
+  one(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerHealthRosterEntry | null>;
 }
 
 export const SELLER_HEALTH_ROSTER = Symbol('SELLER_HEALTH_ROSTER');
