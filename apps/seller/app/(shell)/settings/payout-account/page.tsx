@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, SettingsPage } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { PayoutAccountView } from '../../../../src/payout/payout-account.tsx';
 import { PAYOUT_MANAGE_PERMISSION } from '../../../../src/payout/types.ts';
@@ -19,7 +19,22 @@ export default async function PayoutAccountPage({
   const t = await getTranslations();
   const page = await loadPayoutPage();
   if (page.kind === 'unavailable') {
-    return <LoadError message={t('payout.error.load')} retryLabel={t('load.retry')} />;
+    // Without a session the shell cannot be drawn: the plain error is all there is.
+    if (page.session === undefined)
+      return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
+    // Only the data failed: keep the settings layout (sub-navigation, breadcrumb, page title).
+    return (
+      <SettingsShell session={page.session} linkId="payout-account" title={t('payout.title')}>
+        <SettingsPage title={t('payout.title')}>
+          <LoadError
+            title={t('settings.load-error.title', { page: t('payout.title') })}
+            message={t('settings.load-error.body')}
+            retryLabel={t('load.retry')}
+            className="w-full"
+          />
+        </SettingsPage>
+      </SettingsShell>
+    );
   }
   if (page.kind === 'no-access') {
     return (
