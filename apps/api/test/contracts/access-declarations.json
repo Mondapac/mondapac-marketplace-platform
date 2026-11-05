@@ -38,6 +38,11 @@
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
   { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
+  {
+    "name": "catalog.own-attribute-suggestions-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.own-offer-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {

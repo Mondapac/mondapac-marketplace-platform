@@ -248,6 +248,7 @@ import { PublicBrandsAzQuery } from './application/use-cases/public-brands-az.us
 import { BrandAdminController } from './presentation/brand-admin.controller';
 import { AttributeAdminController } from './presentation/attribute-admin.controller';
 import { AttributeRelaxationController } from './presentation/attribute-relaxation.controller';
+import { OwnAttributeSuggestionsList } from './application/use-cases/own-attribute-suggestions-list.use-case';
 import { OwnAttributeValueSuggest } from './application/use-cases/own-attribute-value-suggest.use-case';
 import { AttributeSuggestionList } from './application/use-cases/attribute-suggestion-list.use-case';
 import { AttributeSuggestionApprove } from './application/use-cases/attribute-suggestion-approve.use-case';
@@ -256,7 +257,10 @@ import { AttributeSuggestionReject } from './application/use-cases/attribute-sug
 import { SendAttributeSuggestionNotices } from './application/use-cases/send-attribute-suggestion-notices.use-case';
 import { sendAttributeSuggestionNoticesJob } from './presentation/jobs/send-attribute-suggestion-notices.job';
 import { AttributeSuggestionController } from './presentation/attribute-suggestion.controller';
-import { OwnAttributeSuggestionController } from './presentation/own-attribute-suggestion.controller';
+import {
+  OwnAttributeSuggestionController,
+  OwnAttributeSuggestionsController,
+} from './presentation/own-attribute-suggestion.controller';
 import {
   ATTRIBUTE_VALUE_SUGGESTION_STORE,
   type AttributeValueSuggestionStore,
@@ -487,6 +491,7 @@ const productTypeProvider: FactoryProvider<string> = {
     AttributeRelaxationController,
     AttributeSuggestionController,
     OwnAttributeSuggestionController,
+    OwnAttributeSuggestionsController,
     CategoryAdminController,
     BusinessActivityAdminController,
     OwnBrandController,
@@ -684,6 +689,14 @@ const productTypeProvider: FactoryProvider<string> = {
       audit: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(OwnAttributeSuggestionsList, {
+      unitOfWork: true,
+      suggestions: true,
+      attributeStore: true,
+      products: true,
+      ownReader: true,
+      policy: true,
     }),
     useCaseProvider(AttributeSuggestionList, {
       unitOfWork: true,
