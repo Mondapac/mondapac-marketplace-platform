@@ -299,6 +299,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
+  AttributeMergeOption: { noCustomerText: 'two option codes of a merge; no text' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
   AttributeDisplaySettings: { table: 'ATTRIBUTE_DISPLAY_FIELDS' },
   AttributeFamilyState: { table: 'FEATURE_SET_FIELDS' },

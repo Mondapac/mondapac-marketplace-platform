@@ -355,4 +355,132 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       'csrf-1',
     ]);
   });
+  describe('merge into another attribute', () => {
+    const targetRow = (over: Partial<AttributePage['items'][number]> = {}) => ({
+      id: id(2),
+      code: 'container',
+      dataType: 'select' as const,
+      localizable: false,
+      status: 'active' as const,
+      names: { [locales.default]: 'Container' },
+      material: false,
+      isVariantOption: false,
+      revisionNo: 1,
+      missingLocales: [],
+      productCount: 4,
+      featureSetCount: 1,
+      ...over,
+    });
+    const targetDetail = () =>
+      detail(locales, {
+        id: id(2),
+        code: 'container',
+        version: 7,
+        names: { [locales.default]: 'Container' },
+        options: ['tin', 'bottle'].map((code, position) => ({
+          code,
+          labels: { [locales.default]: code === 'tin' ? 'Tin' : 'Bottle' },
+          active: true,
+          position,
+          productCount: 1,
+          mergedInto: null,
+        })),
+      });
+    const merging = (extra: Record<string, Handler> = {}) =>
+      base({
+        'GET catalog/admin/attributes?': ok({ ...pageOf(locales), items: [targetRow()] }),
+        [`GET catalog/admin/attributes/${id(2)}`]: ok(targetDetail()),
+        ...extra,
+      });
+
+    it('is offered with the restructure key, and not for a material attribute', async () => {
+      base();
+      mount(false);
+      await screen.findByRole('heading', { name: 'Pack type' });
+      expect(screen.queryByRole('button', { name: 'Merge into attribute' })).toBeNull();
+      cleanup();
+      mount(true);
+      expect(await screen.findByRole('button', { name: 'Merge into attribute' })).toBeTruthy();
+      cleanup();
+      base({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, { material: true })) });
+      mount(true);
+      await screen.findByRole('button', { name: 'Archive' });
+      expect(screen.queryByRole('button', { name: 'Merge into attribute' })).toBeNull();
+    });
+
+    it('maps every value, then merges with both versions it read', async () => {
+      merging({
+        [`POST catalog/admin/attributes/${id(1)}/merge`]: ok({
+          attribute: {
+            id: id(1),
+            code: 'pack-type',
+            status: 'archived',
+            version: 5,
+            revisionNo: 1,
+          },
+        }),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      const dialog = await screen.findByRole('dialog');
+      const confirm = within(dialog).getByRole('button', { name: 'Merge attributes' });
+      await within(dialog).findByText('Published products');
+      expect((confirm as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(await within(dialog).findByLabelText('Merge into'), {
+        target: { value: id(2) },
+      });
+      // The value with the same code is mapped already; the others are asked for.
+      await within(dialog).findByLabelText('TIN goes to');
+      expect((within(dialog).getByLabelText('TIN goes to') as HTMLSelectElement).value).toBe('tin');
+      expect((confirm as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(within(dialog).getByLabelText('CAN goes to'), { target: { value: 'tin' } });
+      fireEvent.change(within(dialog).getByLabelText('JAR goes to'), {
+        target: { value: 'bottle' },
+      });
+      expect((confirm as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(confirm);
+      await expectToast('Attribute merged.');
+      expect(writes()[0]).toEqual([
+        'POST',
+        `catalog/admin/attributes/${id(1)}/merge`,
+        {
+          version: 4,
+          target: id(2),
+          targetVersion: 7,
+          options: { tin: 'tin', can: 'tin', jar: 'bottle' },
+        },
+        'csrf-1',
+      ]);
+    });
+
+    it('says when there is no other attribute of the type', async () => {
+      base();
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('No other active attribute of this type to merge into.');
+    });
+
+    it('names why an attribute still in a feature set cannot be merged', async () => {
+      merging({
+        [`POST catalog/admin/attributes/${id(1)}/merge`]: refuse(409, 'attribute.merge-blocked', [
+          { path: 'attribute', code: 'in-feature-set' },
+        ]),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.change(await within(dialog).findByLabelText('Merge into'), {
+        target: { value: id(2) },
+      });
+      await within(dialog).findByLabelText('TIN goes to');
+      fireEvent.change(within(dialog).getByLabelText('CAN goes to'), { target: { value: 'tin' } });
+      fireEvent.change(within(dialog).getByLabelText('JAR goes to'), { target: { value: 'tin' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Merge attributes' }));
+      await within(dialog).findByText(
+        'It is still in an active feature set. Remove it from those feature sets first.',
+      );
+    });
+  });
 });

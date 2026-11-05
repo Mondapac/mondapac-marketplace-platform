@@ -652,7 +652,8 @@ export function planAttributeMerge(
   const archivable = source.archivable();
   if (archivable !== null) return err(archivable);
   if (to.status !== 'active') return err({ code: 'attribute-definition.merge-invalid' });
-  if (from.dataType !== to.dataType) return err({ code: 'attribute-definition.merge-type-mismatch' });
+  if (from.dataType !== to.dataType)
+    return err({ code: 'attribute-definition.merge-type-mismatch' });
   if (from.material) return err({ code: 'attribute-definition.merge-material' });
   const choice = from.dataType === 'select' || from.dataType === 'multi-select';
   if (!choice) {
@@ -660,7 +661,9 @@ export function planAttributeMerge(
       ? ok([])
       : err({ code: 'attribute-definition.not-select' });
   }
-  const targets = new Set(to.options.filter((option) => option.active).map((option) => option.code));
+  const targets = new Set(
+    to.options.filter((option) => option.active).map((option) => option.code),
+  );
   const known = new Set(from.options.map((option) => option.code));
   for (const key of Object.keys(mapping)) {
     if (!known.has(key)) return err({ code: 'attribute-definition.merge-unmapped', option: key });
