@@ -96,3 +96,62 @@ export class SuggestionDecidedBody {
 export class SuggestionDecisionWrapBody {
   @ApiProperty({ type: SuggestionDecidedBody }) suggestion!: SuggestionDecidedBody;
 }
+
+export class OwnSuggestionAttributeBody {
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALIZED) names!: Record<string, string>;
+}
+
+export class OwnSuggestionProductBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Null when the product can no longer be read.',
+  })
+  productCode!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: "The draft name in the Market's default locale.",
+  })
+  name!: string | null;
+}
+
+export class OwnSuggestionItemBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['open', 'approved', 'mapped', 'rejected'] }) status!: string;
+  @ApiProperty({ description: "The seller's own words. Plain text; never render as markup." })
+  label!: string;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) decidedAt!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: "The reviewer's words, for a rejected suggestion. Plain text.",
+  })
+  rejectReason!: string | null;
+  @ApiProperty({
+    type: OwnSuggestionAttributeBody,
+    nullable: true,
+    description: 'Null when the attribute can no longer be read.',
+  })
+  attribute!: OwnSuggestionAttributeBody | null;
+  @ApiProperty({
+    type: SuggestionOptionBody,
+    nullable: true,
+    description: 'The value added (approved) or matched (mapped).',
+  })
+  value!: SuggestionOptionBody | null;
+  @ApiProperty({ type: OwnSuggestionProductBody }) product!: OwnSuggestionProductBody;
+}
+
+export class OwnSuggestionListBody {
+  @ApiProperty({ type: [OwnSuggestionItemBody] }) items!: OwnSuggestionItemBody[];
+  @ApiProperty({ nullable: true, type: String, description: 'The afterId of the next page.' })
+  nextAfterId!: string | null;
+  @ApiProperty({ description: "How many of the seller's suggestions wait for a decision." })
+  openCount!: number;
+  @ApiProperty({ description: 'How many may wait at once.' }) maxOpen!: number;
+  @ApiProperty({ type: SuggestionLocalesBody }) locales!: SuggestionLocalesBody;
+}

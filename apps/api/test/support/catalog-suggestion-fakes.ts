@@ -1,6 +1,9 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { AttributeValueSuggestionStore } from '../../src/modules/catalog/application/ports/attribute-value-suggestion.store';
-import type { AttributeValueSuggestion } from '../../src/modules/catalog/domain/attribute-value-suggestion';
+import type {
+  AttributeValueSuggestion,
+  SuggestionStatus,
+} from '../../src/modules/catalog/domain/attribute-value-suggestion';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 
 /**
@@ -100,6 +103,29 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
         )
         .sort((a, b) => b.state.createdAt.epochMilliseconds - a.state.createdAt.epochMilliseconds)
         .slice(0, limit),
+    );
+  }
+
+  listOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      readonly status: SuggestionStatus | null;
+      readonly afterId: Id<'AttributeValueSuggestion'> | null;
+      readonly limit: number;
+    },
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (row) =>
+            row.state.marketId === market.marketId &&
+            row.state.sellerId === sellerId &&
+            (page.status === null || row.state.status === page.status) &&
+            (page.afterId === null || row.state.id < page.afterId),
+        )
+        .sort((a, b) => (a.state.id < b.state.id ? 1 : a.state.id > b.state.id ? -1 : 0))
+        .slice(0, page.limit),
     );
   }
 

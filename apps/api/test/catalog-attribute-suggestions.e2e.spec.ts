@@ -197,7 +197,7 @@ describe('value suggestions over HTTP (integration)', () => {
     await app?.close();
   });
 
-  it('documents the four admin routes and the seller route in OpenAPI', async () => {
+  it('documents the four admin routes and the two seller routes in OpenAPI', async () => {
     await boot({ API_DOCS_ENABLED: 'true' });
     const document = (await http().get('/docs-json').expect(200)).body as {
       paths: Record<string, Record<string, unknown>>;
@@ -209,6 +209,7 @@ describe('value suggestions over HTTP (integration)', () => {
     expect(
       document.paths['/catalog/seller/products/{productId}/attribute-suggestions'],
     ).toHaveProperty('post');
+    expect(document.paths['/catalog/seller/attribute-suggestions']).toHaveProperty('get');
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -392,12 +393,16 @@ describe('value suggestions over HTTP (integration)', () => {
       expect(suggestions.rows.get(suggestionId)!.state.status).toBe('open');
     });
 
-    it('answers 401 to an anonymous seller request', async () => {
+    it('answers 401 to anonymous seller requests', async () => {
       await boot();
       await http()
         .post(`/catalog/seller/products/${PRODUCT}/attribute-suggestions`)
         .set({ 'x-market-id': code, ...panelHeaders(code, 'seller') })
         .send({ attributeCode: 'pack-size', label: 'XL' })
+        .expect(401);
+      await http()
+        .get('/catalog/seller/attribute-suggestions')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller') })
         .expect(401);
     });
   });
