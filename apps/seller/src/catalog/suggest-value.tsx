@@ -9,7 +9,7 @@ import type { ValueSuggestion } from './types.ts';
 const LABEL_MAX = 120;
 
 /** A message key under `catalog.edit.attribute.suggest.error` for a refused suggestion. */
-const BY_CODE: Readonly<Record<string, string>> = {
+export const SUGGESTION_ERRORS: Readonly<Record<string, string>> = {
   'validation.failed': 'invalid',
   'suggestion.label-invalid': 'invalid',
   'suggestion.already-open': 'already-open',
@@ -92,7 +92,7 @@ export function SuggestValue({
       return;
     }
     setError(
-      BY_CODE[result.failure.code] ??
+      SUGGESTION_ERRORS[result.failure.code] ??
         (result.failure.status === 0 || result.failure.status >= 500 ? 'unreachable' : 'unknown'),
     );
   }
