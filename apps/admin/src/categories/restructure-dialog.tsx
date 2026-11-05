@@ -97,7 +97,15 @@ function TargetPicker({
   const t = useTranslations('categories.restructure');
   const group = useId();
   const [typed, setTyped] = useState('');
-  const shown = useMemo(() => filterTargets(rows, typed, locale), [rows, typed, locale]);
+  // The chosen target stays in the list while a search hides it, so the choice is never invisible.
+  const shown = useMemo(() => {
+    const found = filterTargets(rows, typed, locale);
+    if (value === null || value === TOP || found.some((row) => row.id === value)) return found;
+    const chosen = rows.find((row) => row.id === value);
+    return chosen === undefined
+      ? found
+      : rows.filter((row) => row === chosen || found.includes(row));
+  }, [rows, typed, locale, value]);
   const choices: {
     id: string;
     label: string;
@@ -261,7 +269,7 @@ export function RestructureDialog({
             <Button
               variant={kind === 'archive' ? 'destructive-solid' : 'primary'}
               loading={call.pending}
-              disabled={!ready || call.pending}
+              disabled={!ready}
               aria-describedby={note === undefined ? undefined : noteId}
               onClick={() => void submit()}
             >
@@ -283,7 +291,11 @@ export function RestructureDialog({
             value={target}
             withTop={kind === 'move'}
             disabled={call.pending}
-            onChange={setTarget}
+            onChange={(value) => {
+              // A refusal belongs to the earlier choice.
+              call.clear();
+              setTarget(value);
+            }}
           />
         ) : null}
         <section aria-labelledby={`${noteId}-impact`} className="flex flex-col gap-2">

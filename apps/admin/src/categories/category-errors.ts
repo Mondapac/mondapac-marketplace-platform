@@ -71,7 +71,6 @@ export function categoryProblemOf(
 
 /** Codes of Move, Merge and Archive (categories C4a) that have their own words under `categories.restructure.error`. */
 const RESTRUCTURE_CODES = new Set([
-  'conflict.stale',
   'category.cycle',
   'category.depth-exceeded',
   'category.referenced-by-policy',

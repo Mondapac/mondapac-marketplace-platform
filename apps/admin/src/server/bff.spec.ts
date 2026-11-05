@@ -1351,6 +1351,19 @@ describe('relay of the wallet and step-up routes', () => {
     expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
   });
 
+  it('drops a target that is not exactly top or an id: TOP, Top and an empty one (categories C4b)', async () => {
+    for (const bad of ['TOP', 'Top', '']) {
+      const { upstream } = await run(
+        'GET',
+        `catalog/admin/categories/${id}/impact?action=move&targetId=${bad}`,
+        readHeaders,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/catalog/admin/categories/${id}/impact?action=move`,
+      );
+    }
+  });
+
   it('passes the target of the category impact read only as an id or top (categories C4b)', async () => {
     const withId = await run(
       'GET',

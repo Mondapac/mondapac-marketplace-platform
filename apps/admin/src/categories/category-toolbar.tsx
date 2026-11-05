@@ -101,6 +101,21 @@ export function CategoryToolbar({
         : lastSibling
           ? 'reason-last'
           : null;
+  // Why Move…, Merge… or Archive… is off, from the details read's denial code. A missing permission
+  // is not explained here (the buttons are hidden without it); an unknown code gets no line.
+  const REASON_ID = 'category-restructure-reason';
+  const denialCopy: Record<string, string> = {
+    'access.acting-as-refused': t('restructure-reason-acting-as'),
+    'category.not-active': t('restructure-reason-not-active'),
+  };
+  const reasons = new Set<string>();
+  for (const kind of ['move', 'merge', 'archive'] as const) {
+    const answer = body.actions[`platform-category.${kind}`];
+    if (answer === undefined || answer.allowed) continue;
+    const text = answer.denial === undefined ? undefined : denialCopy[answer.denial];
+    if (text !== undefined) reasons.add(text);
+  }
+  const restructureReason = reasons.size === 0 ? null : [...reasons].join(' ');
   const showReason = rename && moveReason !== null;
 
   return (
@@ -149,16 +164,20 @@ export function CategoryToolbar({
           {t('change-slug')}
         </Button>
         {canRestructure
-          ? (['move', 'merge', 'archive'] as const).map((kind) => (
-              <Button
-                key={kind}
-                variant="secondary"
-                disabled={body.actions[`platform-category.${kind}`]?.allowed !== true}
-                onClick={() => setOpen(kind)}
-              >
-                {t(kind)}
-              </Button>
-            ))
+          ? (['move', 'merge', 'archive'] as const).map((kind) => {
+              const off = body.actions[`platform-category.${kind}`]?.allowed !== true;
+              return (
+                <Button
+                  key={kind}
+                  variant="secondary"
+                  disabled={off}
+                  aria-describedby={off && restructureReason !== null ? REASON_ID : undefined}
+                  onClick={() => setOpen(kind)}
+                >
+                  {t(kind)}
+                </Button>
+              );
+            })
           : null}
         {canDiscard ? (
           <Button variant="destructive" onClick={() => setOpen('discard')}>
@@ -166,6 +185,11 @@ export function CategoryToolbar({
           </Button>
         ) : null}
       </div>
+      {canRestructure && restructureReason !== null ? (
+        <p id={REASON_ID} className="m-0 text-sm text-fg-muted">
+          {restructureReason}
+        </p>
+      ) : null}
       {!showReason || moveReason === null ? null : (
         <p id="category-move-reason" className="m-0 text-sm text-fg-muted">
           {t(moveReason)}

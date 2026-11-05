@@ -35,6 +35,8 @@ const row = (
   counts: { liveProducts: 0, liveProductsDirect: 0, offers: 0 },
   ...over,
 });
+// A test may add rows (a hidden category) after the default ones.
+let extraRows: CategoryRow[] = [];
 // Pantry > Rice > Basmati; Pantry > Oils; Drinks; Old (merged); Gone (archived)
 const rows = (): CategoryRow[] => [
   row(1, null, 0, 'Pantry'),
@@ -44,6 +46,7 @@ const rows = (): CategoryRow[] => [
   row(4, null, 0, 'Drinks'),
   row(6, null, 0, 'Old', { status: 'merged' }),
   row(7, null, 0, 'Gone', { status: 'archived' }),
+  ...extraRows,
 ];
 const tree = (): TreeBody => ({
   treeVersion: 7,
@@ -149,6 +152,7 @@ const REASON = 'Reorganised after the supplier review.';
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
+  extraRows = [];
   call.mockReset();
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
@@ -161,7 +165,10 @@ beforeEach(() => {
     value: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }),
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('restructure model', () => {
   it('counts the reason without the spaces around it: 9 short, 10 and 500 fine, 501 long', () => {
@@ -204,6 +211,61 @@ describe('Move, Merge and Archive actions', () => {
     open();
     await pick('Pantry');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Move…' }).disabled).toBe(true);
+  });
+});
+
+describe('why an action is off, and hidden categories', () => {
+  it.each([
+    ['access.acting-as-refused', 'Not available while acting as a seller.'],
+    ['category.not-active', 'Only live categories can be moved, merged or archived.'],
+  ])('%s: gives the reason as a description of the off buttons', async (denial, copy) => {
+    serve({
+      actions: {
+        'platform-category.move': { allowed: false, denial },
+        'platform-category.merge': { allowed: false, denial },
+        'platform-category.archive': { allowed: false, denial },
+      },
+    });
+    open();
+    await pick('Pantry');
+    const reason = await screen.findByText(copy);
+    for (const name of ['Move…', 'Merge…', 'Archive…']) {
+      const button = screen.getByRole<HTMLButtonElement>('button', { name });
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+    }
+  });
+
+  it('gives no reason line for a missing permission or when the actions are on', async () => {
+    serve({
+      actions: {
+        'platform-category.move': { allowed: false, denial: 'access.permission-missing' },
+      },
+    });
+    open();
+    await pick('Pantry');
+    expect(screen.queryByText(/Not available while acting|Only live categories/)).toBeNull();
+    expect(
+      screen
+        .getByRole<HTMLButtonElement>('button', { name: 'Move…' })
+        .getAttribute('aria-describedby'),
+    ).toBeNull();
+  });
+
+  it('turns the buttons on for a hidden category from the action map alone', async () => {
+    extraRows = [row(8, null, 0, 'Seasonal', { status: 'hidden' })];
+    serve();
+    open();
+    await pick('Seasonal');
+    for (const name of ['Move…', 'Merge…', 'Archive…']) {
+      await waitFor(() =>
+        expect(screen.getByRole<HTMLButtonElement>('button', { name }).disabled).toBe(false),
+      );
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Archive…' }));
+    expect(
+      within(screen.getByRole('dialog')).getByRole('heading', { name: 'Archive Seasonal' }),
+    ).toBeTruthy();
   });
 });
 
@@ -277,6 +339,32 @@ describe('Move dialog', () => {
     expect(treeReads.length).toBeGreaterThan(1);
   });
 
+  it('marks a hidden category as Hidden in the picker', async () => {
+    extraRows = [row(8, null, 0, 'Seasonal', { status: 'hidden' })];
+    serve();
+    open();
+    const dialog = await startDialog('Rice', 'Move…');
+    const label = within(dialog)
+      .getByRole('radio', { name: /Seasonal/ })
+      .closest('label')!;
+    expect(label.textContent).toBe('SeasonalHidden');
+    const plain = within(dialog).getByRole('radio', { name: 'Drinks' }).closest('label')!;
+    expect(within(plain).queryByText('Hidden')).toBeNull();
+  });
+
+  it('keeps the chosen target in the list while a search would hide it', async () => {
+    serve();
+    open();
+    const dialog = await startDialog('Rice', 'Move…');
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Drinks' }));
+    fireEvent.change(within(dialog).getByLabelText('Find a category'), {
+      target: { value: 'oil' },
+    });
+    const radios = within(dialog).getAllByRole<HTMLInputElement>('radio');
+    expect(radios.map((r) => r.closest('label')?.textContent)).toEqual(['Oils', 'Drinks']);
+    expect(radios[1]!.checked).toBe(true);
+  });
+
   it('finds a target by typing', async () => {
     serve();
     open();
@@ -346,6 +434,52 @@ describe('What will change', () => {
     expect(await within(dialog).findByText(/We couldn't count what this reaches/)).toBeTruthy();
     typeReason(dialog, REASON);
     expect(submitButton(dialog, 'Archive').disabled).toBe(false);
+  });
+});
+
+describe('What will change: races and a rejected session', () => {
+  it('shows the answer of the latest target when an earlier one arrives after it', async () => {
+    let releaseDrinks: (value: ApiResult<unknown>) => void = () => {};
+    const slow = new Promise<ApiResult<unknown>>((resolve) => {
+      releaseDrinks = resolve;
+    });
+    call.mockImplementation((method: string, path: string) => {
+      if (method !== 'GET') return Promise.resolve(ok(written));
+      if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree()));
+      if (path.includes('/impact')) {
+        if (path.endsWith(`targetId=${id(4)}`)) return slow;
+        return Promise.resolve(
+          ok(path.endsWith(`targetId=${id(3)}`) ? impactBody({ products: 99 }) : impactBody()),
+        );
+      }
+      const found = rows().find((c) => path === `catalog/admin/categories/${c.id}`);
+      return Promise.resolve(ok(found === undefined ? null : detail(found)));
+    });
+    open();
+    const dialog = await startDialog('Rice', 'Move…');
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Drinks' }));
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Oils' }));
+    expect(await within(dialog).findByText(/^99 products/)).toBeTruthy();
+    releaseDrinks(ok(impactBody({ products: 5, featureSetChanges: 7 })));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(within(dialog).getByText(/^99 products/)).toBeTruthy();
+    expect(within(dialog).queryByText(/^5 products/)).toBeNull();
+    expect(within(dialog).queryByText(/Feature set changes/)).toBeNull();
+  });
+
+  it('sends a rejected session on the impact read to sign-in', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    call.mockImplementation((method: string, path: string) => {
+      if (method !== 'GET') return Promise.resolve(ok(written));
+      if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree()));
+      if (path.includes('/impact')) return Promise.resolve(refused(401, 'auth.required'));
+      const found = rows().find((c) => path === `catalog/admin/categories/${c.id}`);
+      return Promise.resolve(ok(found === undefined ? null : detail(found)));
+    });
+    open();
+    await startDialog('Rice', 'Archive…');
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
   });
 });
 
@@ -510,9 +644,8 @@ describe('refusals', () => {
       typeReason(dialog, REASON);
       fireEvent.click(submitButton(dialog, 'Move'));
       // The reason hint also reads like this copy: look in the banner only.
-      await waitFor(() =>
-        expect(within(dialog).getAllByText(copy).length).toBeGreaterThanOrEqual(1),
-      );
+      const banner = await within(dialog).findByRole('alert');
+      expect(within(banner).getByText(copy)).toBeTruthy();
       expect(screen.getByRole('dialog')).toBeTruthy();
       expect(submitButton(dialog, 'Move')).toBeTruthy();
     },
@@ -537,19 +670,26 @@ describe('refusals', () => {
   });
 
   it.each([
-    ['conflict.stale', 409],
-    ['category.target-not-found', 404],
-    ['category.parent-not-found', 404],
-  ])('%s: says someone changed it and offers a reload', async (code, status) => {
+    ['conflict.stale', 409, 'The tree changed since you opened it. Reload.'],
+    [
+      'category.target-not-found',
+      404,
+      'The category you chose is no longer available. Reload to choose another.',
+    ],
+    [
+      'category.parent-not-found',
+      404,
+      'The category you chose is no longer available. Reload to choose another.',
+    ],
+  ])('%s: says what changed and offers a reload', async (code, status, copy) => {
     serve({ write: refused(status, code) });
     open();
     const dialog = await startDialog('Rice', 'Move…');
     fireEvent.click(within(dialog).getByRole('radio', { name: 'Drinks' }));
     typeReason(dialog, REASON);
     fireEvent.click(submitButton(dialog, 'Move'));
-    expect(
-      await within(dialog).findByText('Someone changed this category. Reload to see the latest.'),
-    ).toBeTruthy();
+    const banner = await within(dialog).findByRole('alert');
+    expect(within(banner).getByText(copy)).toBeTruthy();
     expect(within(dialog).queryByRole('button', { name: 'Move' })).toBeNull();
     const treeReads = () =>
       call.mock.calls.filter(([m, p]) => m === 'GET' && p === 'catalog/admin/categories').length;
@@ -557,6 +697,83 @@ describe('refusals', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(treeReads()).toBeGreaterThan(before));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it.each([
+    [
+      'Merge…',
+      'Merge',
+      'Oils',
+      'category.depth-exceeded',
+      { max: 4 },
+      'Categories can be at most 4 levels deep.',
+    ],
+    [
+      'Merge…',
+      'Merge',
+      'Oils',
+      'category.only-platform-category',
+      { total: 1 },
+      '1 live product would be left without a category. Choose a replacement.',
+    ],
+    [
+      'Archive…',
+      'Archive',
+      null,
+      'category.has-subcategories',
+      undefined,
+      'Move or archive its subcategories first.',
+    ],
+  ] as const)(
+    '%s refusal %s: shows its copy in the alert',
+    async (button, action, target, code, details, copy) => {
+      serve({ write: refused(409, code, details) });
+      open();
+      const dialog = await startDialog('Rice', button);
+      if (target !== null) fireEvent.click(within(dialog).getByRole('radio', { name: target }));
+      typeReason(dialog, REASON);
+      fireEvent.click(submitButton(dialog, action));
+      const banner = await within(dialog).findByRole('alert');
+      expect(within(banner).getByText(copy)).toBeTruthy();
+    },
+  );
+
+  it('clears a shown refusal when another target is picked', async () => {
+    serve({ write: refused(422, 'category.cycle') });
+    open();
+    const dialog = await startDialog('Rice', 'Move…');
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Drinks' }));
+    typeReason(dialog, REASON);
+    fireEvent.click(submitButton(dialog, 'Move'));
+    await within(dialog).findByRole('alert');
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Oils' }));
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+  });
+
+  it('keeps focus on the button while saving, and ignores a second click', async () => {
+    let finish: (value: ApiResult<unknown>) => void = () => {};
+    const pendingWrite = new Promise<ApiResult<unknown>>((resolve) => {
+      finish = resolve;
+    });
+    serve();
+    const base = call.getMockImplementation()!;
+    call.mockImplementation((method: string, path: string, ...rest: unknown[]) =>
+      method === 'GET' ? base(method, path, ...(rest as [])) : pendingWrite,
+    );
+    open();
+    const dialog = await startDialog('Rice', 'Move…');
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Drinks' }));
+    typeReason(dialog, REASON);
+    const go = submitButton(dialog, 'Move');
+    go.focus();
+    fireEvent.click(go);
+    await waitFor(() => expect(go.getAttribute('aria-busy')).toBe('true'));
+    expect(go.disabled).toBe(false);
+    expect(document.activeElement).toBe(go);
+    fireEvent.click(go);
+    expect(writes()).toHaveLength(1);
+    finish(ok(written));
+    expect(await screen.findByText('Category moved.')).toBeTruthy();
   });
 
   it('words an unlisted refusal like the other category writes', async () => {

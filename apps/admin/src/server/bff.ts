@@ -448,7 +448,9 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   // `targetId` is the picked new parent or merge target, or `top` for a department (C4b).
   'catalog/admin/categories/:id/impact': {
     action: /^(move|merge|archive)$/,
-    targetId: new RegExp(`^(top|${UUID.source.slice(1, -1)})$`, 'i'),
+    // `top` is exact (the API maps only `top` to a department); an id may be in either case.
+    targetId:
+      /^(?:top|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/,
   },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,

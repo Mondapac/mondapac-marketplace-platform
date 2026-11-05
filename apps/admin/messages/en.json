@@ -4262,6 +4262,8 @@
       "move": "Move…",
       "merge": "Merge…",
       "archive": "Archive…",
+      "restructure-reason-acting-as": "Not available while acting as a seller.",
+      "restructure-reason-not-active": "Only live categories can be moved, merged or archived.",
       "note-move": "Category moved.",
       "note-merge": "Category merged.",
       "note-archive": "Category archived."
@@ -4408,7 +4410,6 @@
       "need-target": "Choose a category to continue.",
       "need-reason": "Add a reason to continue.",
       "error": {
-        "conflict_stale": "Someone changed this category. Reload to see the latest.",
         "category_cycle": "A category can't go inside itself.",
         "category_depth-exceeded": "Categories can be at most {max} levels deep.",
         "category_referenced-by-policy": "Certificate rules for {types} use this category, so it can't be moved yet. Move or remove those rules first.",
@@ -4418,8 +4419,8 @@
         "category_products-on-upper-level": "Choose a category or subcategory. Products can't go on a department or group.",
         "category_has-subcategories": "Move or archive its subcategories first.",
         "category_move-unchanged": "It's already there. Choose another place.",
-        "category_target-not-found": "Someone changed this category. Reload to see the latest.",
-        "category_parent-not-found": "Someone changed this category. Reload to see the latest.",
+        "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
+        "category_parent-not-found": "The category you chose is no longer available. Reload to choose another.",
         "reason": "Add a reason of 10 to 500 characters."
       }
     }
