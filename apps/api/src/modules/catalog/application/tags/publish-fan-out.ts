@@ -1,5 +1,5 @@
 import type { Id, IdGenerator, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { TagActor } from '../../domain/offer-tag';
+import type { TagActor, TagEntryPath } from '../../domain/offer-tag';
 import type { OfferActor, OfferRepository } from '../ports/offer.repository';
 import type { TagReevaluationRequestRepository } from '../ports/tag-reevaluation-requests';
 
@@ -29,6 +29,8 @@ export async function markProductForReevaluation(
     readonly revisionId: Id<'ProductRevision'>;
     readonly actor: TagActor & OfferActor;
     readonly now: Temporal.Instant;
+    /** The tag history's entry path: a publish by default; `category-change` for a tree change. */
+    readonly entryPath?: TagEntryPath;
   },
 ): Promise<number> {
   let marked = 0;
@@ -40,7 +42,7 @@ export async function markProductForReevaluation(
     });
     for (const offer of page) {
       const count = offer.markRechecking({
-        entryPath: 'revision-publish',
+        entryPath: publish.entryPath ?? 'revision-publish',
         actor: publish.actor,
         now: publish.now,
       });

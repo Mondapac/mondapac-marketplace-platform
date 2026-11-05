@@ -85,6 +85,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       maxVariantsPerProduct: () => max,
       maxVariantAttributes: () => 2,
       maxCategoryDepth: () => 4,
+      maxCategoryChangeTags: () => 50_000,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

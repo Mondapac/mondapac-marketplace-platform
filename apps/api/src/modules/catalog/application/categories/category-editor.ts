@@ -205,24 +205,26 @@ export interface TreeGuarded<T> {
  * is raised first (the row lock serialises two admins; the loser is `conflict.stale`), then
  * `work` reads the whole tree and writes. Any `StaleAggregateError` is `conflict.stale`.
  */
-export async function runStructural<T>(
-  deps: CategoryWriteDependencies,
+export async function runStructural<T, F = CategoryWriteFailure>(
+  deps: Pick<CategoryWriteDependencies, 'unitOfWork' | 'categories' | 'store'>,
   market: MarketContext,
   expectedTreeVersion: number,
-  work: (
-    nodes: readonly EditableCategory[],
-    treeVersion: number,
-  ) => Promise<Result<T, CategoryWriteFailure>>,
-): Promise<Result<T, CategoryWriteFailure>> {
+  work: (nodes: readonly EditableCategory[], treeVersion: number) => Promise<Result<T, NoInfer<F>>>,
+  options?: { readonly timeoutMs?: number },
+): Promise<Result<T, F | CategoryWriteFailure>> {
   try {
-    return await deps.unitOfWork.run<T, CategoryWriteFailure>(market, async () => {
-      const tree = await deps.categories.treeVersion(market);
-      if (tree.version !== expectedTreeVersion) return err({ code: 'conflict.stale' } as const);
-      await deps.categories.bumpTreeVersion(market, tree.version);
-      const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
-      if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
-      return work(nodes, tree.version + 1);
-    });
+    return await deps.unitOfWork.run<T, F | CategoryWriteFailure>(
+      market,
+      async () => {
+        const tree = await deps.categories.treeVersion(market);
+        if (tree.version !== expectedTreeVersion) return err({ code: 'conflict.stale' } as const);
+        await deps.categories.bumpTreeVersion(market, tree.version);
+        const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
+        if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
+        return work(nodes, tree.version + 1);
+      },
+      options,
+    );
   } catch (error) {
     if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });
     throw error;

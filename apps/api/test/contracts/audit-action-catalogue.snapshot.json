@@ -2823,6 +2823,21 @@
     }
   },
   {
+    "action": "catalog.platform-category.archived",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesUnlinked": "integer",
+      "reasonGiven": "boolean",
+      "status": "enumOf(active|hidden|archived)",
+      "tagsMarked": "integer"
+    }
+  },
+  {
     "action": "catalog.platform-category.created",
     "targetType": "catalog.platform-category",
     "targetId": "id",
@@ -2879,6 +2894,39 @@
     "after": {
       "cascaded": "integer",
       "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.merged",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesRelinked": "integer",
+      "childrenMoved": "integer",
+      "mergedIntoId": "id",
+      "reasonGiven": "boolean",
+      "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.moved",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "level": "integer",
+      "parentId": "optional(id)"
+    },
+    "after": {
+      "level": "integer",
+      "parentId": "optional(id)",
+      "reasonGiven": "boolean",
+      "subtreeSize": "integer",
+      "tagsMarked": "integer"
     }
   },
   {

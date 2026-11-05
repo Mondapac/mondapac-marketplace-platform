@@ -4,6 +4,7 @@ import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
   CategoryChange,
   CategoryEditStore,
+  CategoryRestructureStore,
   NewCategory,
 } from '../application/ports/category-edit.store';
 import type { CategoryText, EditableCategory } from '../domain/category-edit';
@@ -22,7 +23,7 @@ const RETIRED_SLUG_HOLD_MONTHS = 12;
  * at the top level of `where`; the texts row is written before the name row so the C2 trigger
  * (`ON CONFLICT DO NOTHING`) never keeps a bare name over a full text.
  */
-export class PrismaCategoryEditStore implements CategoryEditStore {
+export class PrismaCategoryEditStore implements CategoryEditStore, CategoryRestructureStore {
   constructor(private readonly prisma: PrismaService) {}
 
   async loadAll(market: MarketContext, limit: number): Promise<readonly EditableCategory[]> {
@@ -196,6 +197,8 @@ export class PrismaCategoryEditStore implements CategoryEditStore {
         ...(patch.showInMenu === undefined ? {} : { showInMenu: patch.showInMenu }),
         ...(patch.imageId === undefined ? {} : { imageId: patch.imageId }),
         ...(patch.slug === undefined ? {} : { slug: patch.slug }),
+        ...(patch.parentId === undefined ? {} : { parentId: patch.parentId }),
+        ...(patch.mergedIntoId === undefined ? {} : { mergedIntoId: patch.mergedIntoId }),
         ...(patch.seo === undefined
           ? {}
           : {
@@ -213,10 +216,11 @@ export class PrismaCategoryEditStore implements CategoryEditStore {
         tenantId: market.tenantId,
         categoryId: category.id,
         revisionNo,
-        parentId: category.parentId,
+        parentId: patch.parentId === undefined ? category.parentId : patch.parentId,
         changeKind: change.kind,
         authorKind: 'admin',
         authorAccountId: change.authorAccountId,
+        reason: change.reason ?? null,
         createdAt: toDate(change.now),
       },
       select: { id: true },
@@ -264,6 +268,124 @@ export class PrismaCategoryEditStore implements CategoryEditStore {
     await move(a.id, a.position, PARKING_POSITION);
     await move(b.id, b.position, a.position);
     await move(a.id, PARKING_POSITION, b.position);
+  }
+
+  async directProducts(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+  ): Promise<ReadonlyMap<string, number>> {
+    const counts = new Map<string, number>();
+    if (categoryIds.length === 0) return counts;
+    // One counted row per category (index (market_id, category_id, revision_id)), never the rows.
+    const groups = await this.prisma.tx(market).catalogProductRevisionCategory.groupBy({
+      by: ['categoryId'],
+      where: {
+        marketId: market.marketId,
+        categoryId: { in: [...categoryIds] },
+        revision: { publishedOf: { some: { marketId: market.marketId, status: 'published' } } },
+      },
+      _count: { _all: true },
+    });
+    for (const group of groups) counts.set(group.categoryId, group._count._all);
+    return counts;
+  }
+
+  async onlyCategoryProducts(market: MarketContext, id: Id<'Category'>): Promise<number> {
+    return this.prisma.tx(market).catalogProductRevisionCategory.count({
+      where: {
+        marketId: market.marketId,
+        categoryId: id,
+        revision: {
+          publishedOf: { some: { marketId: market.marketId, status: 'published' } },
+          categories: {
+            none: {
+              marketId: market.marketId,
+              categoryId: { not: id },
+              category: { status: { in: ['active', 'hidden'] } },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async productsUnder(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+    limit: number,
+  ): Promise<{
+    readonly products: readonly {
+      readonly productId: Id<'Product'>;
+      readonly revisionId: Id<'ProductRevision'>;
+    }[];
+    readonly activeTags: number;
+  }> {
+    if (categoryIds.length === 0) return { products: [], activeTags: 0 };
+    const tx = this.prisma.tx(market);
+    const under = {
+      marketId: market.marketId,
+      status: 'published',
+      publishedRevision: {
+        categories: { some: { marketId: market.marketId, categoryId: { in: [...categoryIds] } } },
+      },
+    };
+    const products = await tx.catalogProduct.findMany({
+      where: under,
+      select: { id: true, publishedRevisionId: true },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    const found = products.flatMap((row) =>
+      row.publishedRevisionId === null
+        ? []
+        : [
+            {
+              productId: row.id as Id<'Product'>,
+              revisionId: row.publishedRevisionId as Id<'ProductRevision'>,
+            },
+          ],
+    );
+    if (found.length === 0) return { products: found, activeTags: 0 };
+    // The same products by a join, not an id list (up to `limit` bound parameters).
+    const activeTags = await tx.catalogOfferTag.count({
+      where: {
+        marketId: market.marketId,
+        status: 'active',
+        offer: { marketId: market.marketId, status: { not: 'deleted' }, product: under },
+      },
+    });
+    return { products: found, activeTags };
+  }
+
+  async relinkActivities(
+    market: MarketContext,
+    from: Id<'Category'>,
+    to: Id<'Category'> | null,
+    now: Temporal.Instant,
+  ): Promise<number> {
+    const tx = this.prisma.tx(market);
+    const links = await tx.catalogBusinessActivityCategory.findMany({
+      where: { marketId: market.marketId, categoryId: from },
+      select: { activityId: true },
+      orderBy: { activityId: 'asc' },
+    });
+    if (links.length === 0) return 0;
+    await tx.catalogBusinessActivityCategory.deleteMany({
+      where: { marketId: market.marketId, categoryId: from },
+    });
+    if (to !== null) {
+      await tx.catalogBusinessActivityCategory.createMany({
+        data: links.map((link) => ({
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          activityId: link.activityId,
+          categoryId: to,
+          createdAt: toDate(now),
+        })),
+        skipDuplicates: true,
+      });
+    }
+    return links.length;
   }
 
   async #writeTexts(

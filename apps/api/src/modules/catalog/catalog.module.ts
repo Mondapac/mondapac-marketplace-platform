@@ -309,6 +309,13 @@ import { CategoryCreate } from './application/use-cases/category-create.use-case
 import { CategoryEditDetails } from './application/use-cases/category-edit-details.use-case';
 import { CategoryReorder } from './application/use-cases/category-reorder.use-case';
 import { CategoryHide } from './application/use-cases/category-hide.use-case';
+import { CategoryMove } from './application/use-cases/category-move.use-case';
+import { CategoryMerge } from './application/use-cases/category-merge.use-case';
+import { CategoryArchive } from './application/use-cases/category-archive.use-case';
+import { ReportRetiredCategories } from './application/use-cases/report-retired-categories.use-case';
+import { categoryRetirementSubscriptions } from './presentation/subscribers/category-retirement.subscriptions';
+import { CATEGORY_RESTRUCTURE_STORE } from './application/ports/category-edit.store';
+import { CATEGORY_RETIREMENT_CHECK } from './application/ports/category-retirement-check';
 import { CategoryShow } from './application/use-cases/category-show.use-case';
 import { CategoryChangeSlug } from './application/use-cases/category-change-slug.use-case';
 import { CategoryDiscard } from './application/use-cases/category-discard.use-case';
@@ -412,6 +419,8 @@ const PORT = {
   brandReader: BRAND_READER,
   adminCategoryReader: ADMIN_CATEGORY_READER,
   store: CATEGORY_EDIT_STORE,
+  restructure: CATEGORY_RESTRUCTURE_STORE,
+  retirement: CATEGORY_RETIREMENT_CHECK,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
@@ -485,6 +494,21 @@ const productTypeProvider: FactoryProvider<string> = {
  * types; slice 2 adds the category store and the seed job; its other use cases arrive with
  * slices 6 and 7.
  */
+const RESTRUCTURE_DEPS = {
+  unitOfWork: true,
+  store: true,
+  restructure: true,
+  categories: true,
+  policy: true,
+  retirement: true,
+  offers: true,
+  requests: true,
+  audit: true,
+  outbox: true,
+  clock: true,
+  ids: true,
+} as const;
+
 @Module({
   controllers: [
     PlatformProductController,
@@ -907,7 +931,11 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       categoryProbes: true,
     }),
-    useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
+    useCaseProvider(CategoryImpact, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      linkStore: true,
+    }),
     useCaseProvider(CategoryCreate, {
       unitOfWork: true,
       store: true,
@@ -992,6 +1020,10 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       ids: true,
     }),
+    useCaseProvider(CategoryMove, RESTRUCTURE_DEPS),
+    useCaseProvider(CategoryMerge, RESTRUCTURE_DEPS),
+    useCaseProvider(CategoryArchive, RESTRUCTURE_DEPS),
+    useCaseProvider(ReportRetiredCategories, { unitOfWork: true, retirement: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, {
       unitOfWork: true,
@@ -1519,10 +1551,15 @@ const productTypeProvider: FactoryProvider<string> = {
     // Certification events consumed (design 5.5, 9.5; slice 12).
     registerSubscriptionsFrom(
       'catalog',
-      [ReevaluateFromCertification, WarnOfferOwnersOfExpiry],
-      (reevaluate: ReevaluateFromCertification, warn: WarnOfferOwnersOfExpiry) => [
+      [ReevaluateFromCertification, WarnOfferOwnersOfExpiry, ReportRetiredCategories],
+      (
+        reevaluate: ReevaluateFromCertification,
+        warn: WarnOfferOwnersOfExpiry,
+        report: ReportRetiredCategories,
+      ) => [
         ...certificationSubscriptions(reevaluate),
         ...certificateExpiryNoticeSubscriptions(warn),
+        ...categoryRetirementSubscriptions(report),
       ],
     ),
     // Certification request C-6 (slice 15): the Owners of Offers whose badge rests on an
