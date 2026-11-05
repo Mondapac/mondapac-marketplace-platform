@@ -7,6 +7,7 @@ import type { CertificationTypes } from '../application/use-cases/certification-
 import type { CertificationTypesSystem } from '../application/use-cases/certification-types-system.use-case';
 import type { CertifiedCategories } from '../application/use-cases/certified-categories.use-case';
 import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
+import type { ClaimTermList } from '../application/use-cases/claim-term-list.use-case';
 import type { ClaimTermLocales } from '../application/use-cases/claim-term-locales.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
 import type { MatchClaimTermsSystem } from '../application/use-cases/match-claim-terms-system.use-case';
@@ -25,6 +26,7 @@ import type { ClaimDecision, ClaimQuery } from '../domain/claim-types';
 export interface CertificationFacadeUseCases {
   readonly evaluateClaims: EvaluateClaims;
   readonly evaluateClaimsSystem: EvaluateClaimsSystem;
+  readonly claimTermList: ClaimTermList;
   readonly matchClaimTerms: MatchClaimTerms;
   readonly matchClaimTermsSystem: MatchClaimTermsSystem;
   readonly claimTermLocales: ClaimTermLocales;
@@ -64,6 +66,16 @@ export class CertificationFacadeImplementation implements CertificationFacade {
         ? this.useCases.matchClaimTermsSystem
         : this.useCases.matchClaimTerms;
     return useCase.execute(context, { texts });
+  }
+
+  async claimTermList(
+    context: CallContext,
+  ): Promise<Result<readonly string[], AccessDenied | CertificationUnavailable>> {
+    const result = await this.useCases.claimTermList.execute(context, {});
+    if (result.ok) return result;
+    return result.error.code === 'access.denied'
+      ? err(result.error)
+      : err({ code: 'certification.unavailable' });
   }
 
   claimTermLocales(context: CallContext): Promise<Result<readonly string[], Failure>> {

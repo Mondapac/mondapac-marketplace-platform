@@ -9,6 +9,11 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import {
+  changeTrailOf,
+  FakeChangeActors,
+  InMemoryAuditTrail,
+} from '../../../../../test/support/change-trail-fakes';
 import { noRunOnce } from '../../../../../test/support/fake-run-once';
 import { InMemoryCounters } from '../../../../../test/support/sellers-submit-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
@@ -37,6 +42,8 @@ import { PublishedStoreContentReader } from '../store-profile/published-store-co
 import { StoreImageReadOwn } from './store-image-read-own.use-case';
 import { StoreImageRemove } from './store-image-remove.use-case';
 import { StoreImageSave } from './store-image-save.use-case';
+import { StoreProfileClaimTerms } from './store-profile-claim-terms.use-case';
+import { StoreProfileHistory } from './store-profile-history.use-case';
 import { StoreProfileRead } from './store-profile-read.use-case';
 import { StoreProfileSaveAbout } from './store-profile-save-about.use-case';
 
@@ -64,14 +71,11 @@ function setUp() {
   const claimCheck = new FakeClaimCheck();
   const objectStore = new MapObjectStore();
   const counters = new InMemoryCounters();
-  const audits: AuditEntry[] = [];
+  const auditTrail = new InMemoryAuditTrail(clock);
+  const audits: AuditEntry[] = auditTrail.entries;
+  const actors = new FakeChangeActors();
   const events: { type: string; payload: unknown; aggregateVersion: number }[] = [];
-  const audit: AuditWriter = {
-    record: (_context, entry) => {
-      audits.push(entry);
-      return Promise.resolve();
-    },
-  };
+  const audit: AuditWriter = auditTrail;
   const outbox: OutboxWriter = {
     append: (_context, pending) => {
       for (const event of pending) {
@@ -113,12 +117,14 @@ function setUp() {
     storeImages,
     contentSealer,
     localesPolicy,
+    trail: changeTrailOf(unitOfWork, auditTrail, actors),
   };
   const counterKeys = new HmacRateCounterKeys(new Uint8Array(32).fill(7));
   const aboutCache = new PublishedAboutCache(clock);
   return {
     clock,
     ids,
+    actors,
     profiles,
     storeContent,
     storeImages,
@@ -133,6 +139,8 @@ function setUp() {
     deny: () => void (allowed = false),
     holdOnly: (...keys: string[]) => void (held = new Set(keys)),
     read: new StoreProfileRead(gate, reading),
+    claimTerms: new StoreProfileClaimTerms(gate, { claimCheck }),
+    history: new StoreProfileHistory(gate, { trail: reading.trail }),
     saveAbout: new StoreProfileSaveAbout(gate, {
       ...reading,
       audit,
@@ -232,6 +240,7 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
           locales,
           logo: null,
           banner: null,
+          lastChanged: null,
         },
       });
     });
@@ -364,8 +373,75 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
         about: { [locale]: 'Another text' },
       });
 
-      expect(stale).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(stale).toEqual({
+        ok: false,
+        error: {
+          code: 'conflict.stale',
+          lastChanged: { at: START, byDisplayName: null, byKind: 'member' },
+        },
+      });
       expect(t.storeContent.revisions.size).toBe(1);
+    });
+
+    it('names the winning save in the conflict, and in the page, by display name only', async () => {
+      const t = setUp();
+      const { context, sellerId } = ownerOf(t, code);
+      const actor = context.actor;
+      if (actor.kind !== 'authenticated') throw new Error('expected a signed-in actor');
+      t.actors.labels.set(actor.accountId, { kind: 'member', displayName: 'Mia T.' });
+      await t.saveAbout.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } });
+      t.clock.advance(Temporal.Duration.from({ minutes: 5 }));
+
+      const stale = await t.saveAbout.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: 'Another text' },
+      });
+      const page = await t.read.execute(context, {});
+
+      const named = { at: START, byDisplayName: 'Mia T.', byKind: 'member' };
+      expect(stale).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale', lastChanged: named },
+      });
+      expect(page.ok && page.value.lastChanged).toEqual(named);
+      expect(JSON.stringify([stale, page])).not.toContain(actor.accountId);
+      expect(JSON.stringify([stale, page])).not.toContain(sellerId + 'x');
+    });
+
+    it('lists the changes of the page, newest first: which field, when, by whom, never the text', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      const actor = context.actor;
+      if (actor.kind !== 'authenticated') throw new Error('expected a signed-in actor');
+      t.actors.labels.set(actor.accountId, { kind: 'member', displayName: 'Mia T.' });
+      await t.saveAbout.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } });
+
+      const history = await t.history.execute(context, {});
+
+      expect(history.ok).toBe(true);
+      if (!history.ok) return;
+      expect(history.value.items).toHaveLength(1);
+      expect(history.value.items[0]).toMatchObject({
+        at: START,
+        byDisplayName: 'Mia T.',
+        byKind: 'member',
+        fields: ['about'],
+      });
+      expect(JSON.stringify(history)).not.toContain(TEXT);
+    });
+
+    it('keeps one seller from reading the history of another, and refuses a seller without the permission', async () => {
+      const t = setUp();
+      const first = ownerOf(t, code);
+      const second = ownerOf(t, code);
+      await t.saveAbout.execute(first.context, { expectedVersion: 0, about: { [locale]: TEXT } });
+
+      const other = await t.history.execute(second.context, {});
+      t.deny();
+      const denied = await t.history.execute(first.context, {});
+
+      expect(other.ok && other.value.items).toEqual([]);
+      expect(denied).toEqual({ ok: false, error: { code: 'access.denied' } });
     });
 
     it.each([
@@ -457,6 +533,19 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
       });
       expect(JSON.stringify(result)).not.toMatch(/claim word/i);
       expect(t.storeContent.revisions.size).toBe(0);
+    });
+
+    it('lists the claim terms for an approved seller, and refuses what the check cannot answer', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+
+      expect(await t.claimTerms.execute(context, {})).toEqual({ ok: true, value: ['claim word'] });
+
+      t.claimCheck.unavailable = true;
+      expect(await t.claimTerms.execute(context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
     });
 
     it('fails closed when the claim check is unavailable: sellers.unavailable, nothing saved', async () => {

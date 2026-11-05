@@ -1,17 +1,19 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import { ok } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { NOTIFICATIONS_SUPPORT_CONTACT_VIEW } from '../../contracts/permissions';
 import type { NotificationsDependencies } from '../notifications-dependencies';
 import {
+  SUPPORT_CONTACT_CHANGES,
   viewSupportContact,
   type SupportContactFailure,
-  type SupportContactView,
+  type SupportContactPage,
 } from '../support-contact-flow';
 
 /** `notifications.view-support-contact`: an admin reads the Market's support email. */
 export class ViewSupportContact extends UseCase<
   Record<string, never>,
-  SupportContactView,
+  SupportContactPage,
   SupportContactFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -26,7 +28,12 @@ export class ViewSupportContact extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext) {
-    return viewSupportContact(this.deps, context);
+  protected async handle(
+    context: CallContext,
+  ): Promise<Result<SupportContactPage, SupportContactFailure>> {
+    const view = await viewSupportContact(this.deps, context);
+    if (!view.ok) return view;
+    const lastChanged = await this.deps.trail.lastChanged(context, SUPPORT_CONTACT_CHANGES);
+    return ok({ ...view.value, lastChanged });
   }
 }

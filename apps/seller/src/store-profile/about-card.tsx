@@ -7,6 +7,7 @@ import {
   SettingsSection,
   SettingTextArea,
   toast,
+  useLiveErrors,
   useSettingsForm,
   type FieldChange,
   type SaveResult,
@@ -16,6 +17,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from '../settings/conflict-view.tsx';
+import { claimsCertification } from './claim-terms.ts';
 import { aboutProblemOf, type AboutProblem } from './errors.ts';
 import type { StoreProfileView } from './types.ts';
 
@@ -32,10 +34,14 @@ function languageName(code: string, uiLocale: string): string {
 }
 
 /** What the form holds as saved: the About texts and the version they were saved at. */
-type Saved = Pick<StoreProfileView, 'version' | 'about'>;
+type Saved = Pick<StoreProfileView, 'version' | 'about' | 'lastChanged'>;
 
 const STORE_PROFILE_PATH = 'sellers/store-profile';
-const savedOf = (view: StoreProfileView): Saved => ({ version: view.version, about: view.about });
+const savedOf = (view: StoreProfileView): Saved => ({
+  version: view.version,
+  about: view.about,
+  lastChanged: view.lastChanged ?? null,
+});
 const toDraft = (saved: Saved): Record<string, string> => ({ ...saved.about });
 const versionOf = (saved: Saved) => saved.version;
 async function reload(): Promise<Saved | null> {
@@ -52,15 +58,17 @@ const rowId = (locale: string) => `setting-about-${locale}`;
 export function useAbout({
   initial,
   csrfToken,
+  claimTerms = [],
 }: {
   readonly initial: StoreProfileView;
   readonly csrfToken: string;
+  readonly claimTerms?: readonly string[];
 }) {
   const t = useTranslations();
   const uiLocale = useLocale();
   const { locales, aboutMaxLength } = initial;
   const [problem, setProblem] = useState<AboutProblem | null>(null);
-  const [failedSaves, setFailedSaves] = useState(0);
+  const [refusals, setRefusals] = useState(0);
   const label = (locale: string) =>
     t('store-profile.about.field', { language: languageName(locale, uiLocale) });
   const empty = t('settings.conflict.unset');
@@ -86,17 +94,30 @@ export function useAbout({
 
   const changed = (locale: string) => (draft[locale] ?? '') !== (base.about[locale] ?? '');
   const count = form.count;
+  // The rule a text breaks right now, worked out here as it is typed: too long, or wording that
+  // claims a certification (the terms come from the API; the save check stays the authority).
+  const ruleNow = (locale: string): 'length' | 'claim-term' | undefined => {
+    const text = draft[locale] ?? '';
+    if (lengthOf(text) > aboutMaxLength) return 'length';
+    return claimsCertification(text, claimTerms) ? 'claim-term' : undefined;
+  };
+  const live = useLiveErrors<string>(locales.filter((locale) => ruleNow(locale) !== undefined));
   const errorOf = (locale: string): string | undefined => {
-    const rule = problem?.fields[locale];
-    if (rule !== undefined) return t(`store-profile.about.rule.${rule}`, { max: aboutMaxLength });
-    return lengthOf(draft[locale] ?? '') > aboutMaxLength
-      ? t('store-profile.about.rule.length', { max: aboutMaxLength })
-      : undefined;
+    // What the server refused outranks the live reading until the text is edited again.
+    const rule = problem?.fields[locale] ?? (live.has(locale) ? ruleNow(locale) : undefined);
+    return rule === undefined
+      ? undefined
+      : t(`store-profile.about.rule.${rule}`, { max: aboutMaxLength });
   };
   const invalid = locales.filter((locale) => errorOf(locale) !== undefined);
 
   async function save() {
-    if (form.saving || count === 0 || invalid.length > 0) return;
+    if (form.saving || count === 0) return;
+    if (locales.some((locale) => ruleNow(locale) !== undefined)) {
+      live.attempt();
+      return;
+    }
+    if (invalid.length > 0) return;
     setProblem(null);
     const about = Object.fromEntries(locales.map((locale) => [locale, draft[locale] ?? '']));
     const result = await form.run(async (expectedVersion): Promise<SaveResult<Saved>> => {
@@ -114,10 +135,13 @@ export function useAbout({
       const next = aboutProblemOf(reply.failure);
       if (next.banner === 'stale') return { status: 'conflict' };
       setProblem(next);
-      if (Object.keys(next.fields).length > 0) setFailedSaves((n) => n + 1);
+      if (Object.keys(next.fields).length > 0) setRefusals((n) => n + 1);
       return { status: 'failed' };
     });
-    if (result.status === 'saved') toast.success(t('store-profile.about.saved'));
+    if (result.status === 'saved') {
+      live.reset();
+      toast.success(t('store-profile.about.saved'));
+    }
     // The re-read failed too: the plain "reload the page" message is all that is left.
     else if (result.status === 'conflict' && result.reloaded === false) {
       setProblem({ banner: 'stale', fields: {} });
@@ -126,6 +150,7 @@ export function useAbout({
 
   function discard() {
     form.discard();
+    live.reset();
     setProblem(null);
   }
 
@@ -133,6 +158,7 @@ export function useAbout({
   const errorItems: SettingsErrorItem[] = invalid.map((locale) => ({
     id: rowId(locale),
     label: label(locale),
+    reason: errorOf(locale),
   }));
 
   /** The conflict, the error summary and the other problems, for the page's banner slot. */
@@ -142,11 +168,17 @@ export function useAbout({
         key="invalid"
         title={t('settings.errors.title', { count: invalid.length })}
         items={errorItems}
-        focusSignal={failedSaves}
+        focusSignal={live.attempts + refusals}
       />
     ),
     form.theirs === null ? null : (
-      <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
+      <SettingsConflictView
+        key="conflict"
+        conflictId={form.conflictId}
+        changes={form.changes}
+        winner={form.theirs.lastChanged}
+        subject="store-profile"
+      />
     ),
     banner === null ? null : (
       <Banner key="problem" tone="critical">
@@ -160,6 +192,8 @@ export function useAbout({
   ].filter((node) => node !== null);
 
   return {
+    /** The newest change this form knows of (its load, or its last save). */
+    lastChanged: base.lastChanged ?? null,
     dirty: count > 0,
     count,
     errorCount: invalid.length,
@@ -178,8 +212,10 @@ export function useAbout({
         errorOf={errorOf}
         onChange={(locale, text) => {
           form.setDraft((current) => ({ ...current, [locale]: text }));
+          live.touch(locale);
           if (problem !== null) setProblem(null);
         }}
+        onLeave={live.touch}
       />
     ),
   };
@@ -194,6 +230,7 @@ function AboutSection({
   changed,
   errorOf,
   onChange,
+  onLeave,
 }: {
   readonly locales: readonly string[];
   readonly draft: Readonly<Record<string, string>>;
@@ -203,6 +240,7 @@ function AboutSection({
   readonly changed: (locale: string) => boolean;
   readonly errorOf: (locale: string) => string | undefined;
   readonly onChange: (locale: string, text: string) => void;
+  readonly onLeave: (locale: string) => void;
 }) {
   const t = useTranslations();
   return (
@@ -228,6 +266,7 @@ function AboutSection({
               value={text}
               rows={8}
               onChange={(event) => onChange(locale, event.target.value)}
+              onBlur={() => onLeave(locale)}
               counter={
                 <span className={count > max ? 'text-critical-fg' : undefined}>
                   {t('store-profile.about.counter', { count, max })}

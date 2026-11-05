@@ -615,6 +615,17 @@ describe.each(TEST_MARKETS)('store profile over HTTP on PostgreSQL in market %s'
       expect(other.body).toMatchObject({ version: 1 });
     });
 
+    it('lists the Market claim terms for the live warning: this Market only, no-store', async () => {
+      const { headers } = await approvedSeller();
+
+      const answer = await http().get('/sellers/store-profile/claim-terms').set(headers);
+
+      expect(answer.status).toBe(200);
+      expect(answer.headers['cache-control']).toBe('no-store');
+      expect(answer.body).toEqual({ terms: [CLAIM_TERM[code]] });
+      expect(JSON.stringify(answer.body)).not.toContain(CLAIM_TERM[otherCode]);
+    });
+
     it('names only the locale that holds the term, whatever the other locales say', async () => {
       const { headers } = await approvedSeller();
       const view = (await http().get('/sellers/store-profile').set(headers)).body as {
@@ -651,6 +662,15 @@ describe.each(TEST_MARKETS)('store profile over HTTP on PostgreSQL in market %s'
     afterAll(async () => {
       await shutdown();
       bind.mockRestore();
+    });
+
+    it('answers the claim terms as 503, never an empty list', async () => {
+      const { headers } = await approvedSeller();
+
+      const answer = await http().get('/sellers/store-profile/claim-terms').set(headers);
+
+      expect(answer.status).toBe(503);
+      expect(answer.body).toMatchObject({ code: 'sellers.unavailable' });
     });
 
     it('fails closed: the save answers 503 sellers.unavailable and nothing is stored', async () => {

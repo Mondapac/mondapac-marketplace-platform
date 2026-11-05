@@ -81,6 +81,7 @@
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.certified-categories", "rule": "anonymous" },
+  { "name": "certification.claim-term-list", "rule": "anonymous" },
   { "name": "certification.claim-term-locales", "rule": "anonymous" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
@@ -248,6 +249,11 @@
   },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
+  {
+    "name": "identity.change-actor-labels",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "identity.change-customer-language",
     "rule": "own-resources",

@@ -10,6 +10,7 @@ vi.mock('../catalog/photo-prepare.ts', () => ({ preparePhoto: vi.fn() }));
 
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { preparePhoto } from '../catalog/photo-prepare.ts';
+import { claimsCertification } from './claim-terms.ts';
 import { aboutProblemOf, imageProblemOf } from './errors.ts';
 import { StoreProfile } from './store-profile.tsx';
 import type { StoreProfileView } from './types.ts';
@@ -41,8 +42,12 @@ const failure = (over: Partial<ApiFailure>): { ok: false; failure: ApiFailure } 
 });
 const done = (body: StoreProfileView) => ({ ok: true as const, status: 200, body });
 
-const mount = (initial = view(), canEdit = true) =>
-  render(wrap(<StoreProfile initial={initial} csrfToken="csrf" canEdit={canEdit} />));
+const mount = (initial = view(), canEdit = true, claimTerms: readonly string[] = []) =>
+  render(
+    wrap(
+      <StoreProfile initial={initial} csrfToken="csrf" canEdit={canEdit} claimTerms={claimTerms} />,
+    ),
+  );
 const box = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: /About your store/ });
 const save = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' });
 
@@ -56,6 +61,80 @@ const compared = (label: string | RegExp) => {
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
+
+describe('claim wording, read live from the API terms', () => {
+  it('finds a term as whole tokens in a row, in any case, width or spacing', () => {
+    const terms = ['halal', 'halal certified'];
+    expect(claimsCertification('We are HALAL', terms)).toBe(true);
+    expect(claimsCertification('Ｈａｌａｌ meat', terms)).toBe(true);
+    expect(claimsCertification('100% halal-certified!', ['halal certified'])).toBe(true);
+    expect(claimsCertification('halalish', terms)).toBe(false);
+    expect(claimsCertification('certified and then halal', ['halal certified'])).toBe(false);
+    expect(claimsCertification('anything', [])).toBe(false);
+    expect(claimsCertification('', terms)).toBe(false);
+  });
+});
+
+describe('StoreProfile live About checks', () => {
+  const terms = ['halal certified'];
+
+  it('shows the certification error while typing, counts it and keeps Save off', () => {
+    mount(view(), true, terms);
+    fireEvent.change(box(), { target: { value: 'Family bakery, Halal Certified.' } });
+
+    // Under the field and in the summary banner.
+    expect(
+      screen.getAllByText(/This text claims a certification\. Remove that wording\./),
+    ).toHaveLength(2);
+    expect(box().getAttribute('aria-invalid')).toBe('true');
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('1 unsaved change');
+    expect(bar.textContent).toContain('1 needs fixing');
+    // Before a Save press the summary is a quiet named group, not an alert.
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('group', { name: /needs? fixing/ }).textContent).toContain(
+      '1 setting needs fixing',
+    );
+    expect(save().disabled).toBe(true);
+    expect(call).not.toHaveBeenCalled();
+
+    fireEvent.change(box(), { target: { value: 'Family bakery, open daily.' } });
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
+    expect(screen.queryByRole('group', { name: /needs? fixing/ })).toBeNull();
+    expect(save().disabled).toBe(false);
+  });
+
+  it('shows the length error while typing and clears it when the text is short enough again', () => {
+    mount(view({ aboutMaxLength: 10 }), true, terms);
+    fireEvent.change(box(), { target: { value: 'x'.repeat(11) } });
+    expect(save().disabled).toBe(true);
+    expect(screen.getByRole('group', { name: /needs? fixing/ })).toBeTruthy();
+    fireEvent.change(box(), { target: { value: 'x'.repeat(10) } });
+    expect(save().disabled).toBe(false);
+  });
+
+  it('does not warn on a saved text that is fine, and warns nothing without terms', () => {
+    mount(view(), true, []);
+    fireEvent.change(box(), { target: { value: 'Halal Certified bakery' } });
+    expect(screen.queryAllByText(/This text claims a certification/)).toHaveLength(0);
+    expect(save().disabled).toBe(false);
+  });
+
+  it('still shows the server refusal of a claim the live check could not see', async () => {
+    mount(view(), true, terms);
+    fireEvent.change(box(), { target: { value: 'Pure h a l a l bakery' } });
+    call.mockResolvedValueOnce(
+      failure({
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'about.en-AU', code: 'claim-term' }] },
+      }),
+    );
+    fireEvent.click(save());
+    await screen.findAllByText(/This text claims a certification/);
+    expect(save().disabled).toBe(true);
+  });
+});
 
 describe('StoreProfile About card', () => {
   it('shows the saved text and a counter, and the save bar only once something changed', () => {
@@ -122,8 +201,9 @@ describe('StoreProfile About card', () => {
       '1 needs fixing',
     );
     // The error summary at the top links to the box.
-    const summary = screen.getByRole('alert');
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
     expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain(': Use at most 10 characters.');
     fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));
     expect(document.activeElement).toBe(box());
     expect(box().getAttribute('aria-invalid')).toBe('true');
@@ -142,7 +222,7 @@ describe('StoreProfile About card', () => {
     fireEvent.change(box(), { target: { value: 'We are certified bakers' } });
     fireEvent.click(save());
 
-    await screen.findByText(/This text claims a certification/);
+    await screen.findAllByText(/This text claims a certification/);
     // One announcement of the failure: the field's own alert, with no second banner above it.
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(box().getAttribute('aria-invalid')).toBe('true');
@@ -186,7 +266,7 @@ describe('StoreProfile About card', () => {
     expect(boxFor(/English/).value).toBe('My edit');
     fireEvent.change(boxFor(/Japanese/), { target: { value: 'Mine' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     const english = compared(/^About your store \(.*English.*\)$/);
     expect(english).toMatchObject({ saved: '<b>Their</b> text', yours: 'My edit' });
     expect(english.item.querySelector('b')).toBeNull();
@@ -522,5 +602,99 @@ describe('problem mapping', () => {
       ),
     ).toEqual({ key: 'throttled', retryAfterSeconds: 4 });
     expect(imageProblemOf({ status: 0, code: 'network' }, 'logo').key).toBe('unavailable');
+  });
+});
+
+describe('StoreProfile last changed and history (panel settings T3a, ST4)', () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const change = (over: Partial<NonNullable<StoreProfileView['lastChanged']>> = {}) => ({
+    at: ago(3 * 86_400_000),
+    byDisplayName: 'Amir R.',
+    byKind: 'member' as const,
+    ...over,
+  });
+  const line = () => screen.getByTestId('last-changed');
+
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+
+  it('shows who and when under the title, and nothing while never changed', () => {
+    mount(view({ lastChanged: change() }));
+    expect(line().textContent).toBe('Last changed by Amir R. · 3 days ago · View history');
+    cleanup();
+    mount(view({ lastChanged: null }));
+    expect(screen.queryByTestId('last-changed')).toBeNull();
+  });
+
+  it('opens the history of the store profile, with Mondapac staff named as Mondapac only', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        items: [
+          { id: 'a', ...change({ at: ago(60_000) }), fields: ['about'] },
+          {
+            id: 'b',
+            ...change({ at: ago(120_000), byDisplayName: null, byKind: 'platform' }),
+            fields: ['logo'],
+          },
+        ],
+        next: null,
+      },
+    });
+    mount(view({ lastChanged: change() }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'History' });
+    expect(call).toHaveBeenCalledWith('GET', 'sellers/store-profile/history?limit=20');
+    expect(await within(dialog).findByText('Changed: About')).toBeTruthy();
+    expect(within(dialog).getByText('Changed: Logo')).toBeTruthy();
+    expect(within(dialog).getByText('Amir R.')).toBeTruthy();
+    expect(within(dialog).getByText('Mondapac')).toBeTruthy();
+  });
+
+  it('names who saved the store profile first in the conflict banner', async () => {
+    call
+      .mockResolvedValueOnce(failure({ status: 409, code: 'conflict.stale' }))
+      .mockResolvedValueOnce(
+        done(
+          view({
+            version: 3,
+            about: { 'en-AU': 'Their text.' },
+            lastChanged: change({ at: ago(60_000) }),
+          }),
+        ),
+      );
+    mount(view({ lastChanged: change() }));
+    fireEvent.change(box(), { target: { value: 'Mine.' } });
+    fireEvent.click(save());
+
+    expect(await screen.findByText('Amir R. saved the store profile 1 minute ago')).toBeTruthy();
+  });
+
+  it('moves the line when a picture is saved: that answer carries the newest change', async () => {
+    mount(view({ lastChanged: change() }));
+    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
+    call.mockResolvedValueOnce(
+      done(
+        view({
+          banner: { id: IMAGE, width: 1536, height: 384 },
+          lastChanged: change({ at: ago(1000), byDisplayName: 'Lena W.' }),
+        }),
+      ),
+    );
+    const banner = screen.getByRole('heading', { name: 'Banner' }).closest('section')!;
+    fireEvent.change(banner.querySelector('input[type=file]')!, {
+      target: { files: [new File([new Uint8Array([1])], 'b.png', { type: 'image/png' })] },
+    });
+
+    await waitFor(() => expect(line().textContent).toContain('Lena W.'));
   });
 });

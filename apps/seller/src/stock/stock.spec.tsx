@@ -238,7 +238,7 @@ describe('StockLocations', () => {
     // The draft is kept in the open editor.
     expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('Warehouse');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     const name = compared('Name');
     expect(name).toMatchObject({ saved: '<i>Shed</i>', yours: 'Warehouse' });
     expect(name.item.querySelector('i')).toBeNull();
