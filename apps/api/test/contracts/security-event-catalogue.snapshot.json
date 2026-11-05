@@ -176,6 +176,10 @@
       "severity": "s3"
     },
     {
+      "action": "certification.retired-category.flagged-relaxing",
+      "severity": "s2"
+    },
+    {
       "action": "commission-payouts.commission-rate.clear",
       "severity": "s3"
     },

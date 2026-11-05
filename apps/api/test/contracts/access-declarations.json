@@ -86,6 +86,8 @@
   { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
+  { "name": "certification.assert-categories-retirable", "rule": "anonymous" },
+  { "name": "certification.assert-categories-retirable-system", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.certified-categories", "rule": "anonymous" },
@@ -157,6 +159,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "certification.platform-categories-retired", "rule": "system" },
   { "name": "certification.seed-certification-types", "rule": "system" },
   { "name": "certification.send-decision-mail", "rule": "system" },
   { "name": "certification.send-derecognition-mail", "rule": "system" },

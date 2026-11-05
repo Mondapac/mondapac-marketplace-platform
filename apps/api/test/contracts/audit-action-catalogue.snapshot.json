@@ -963,6 +963,22 @@
     }
   },
   {
+    "action": "certification.retired-category.flagged",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
+    "action": "certification.retired-category.flagged-relaxing",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
     "action": "certification.review-check.recorded",
     "targetType": "certification.seller-certification",
     "targetId": "id",

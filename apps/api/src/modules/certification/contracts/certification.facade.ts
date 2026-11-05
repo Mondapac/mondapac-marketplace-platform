@@ -16,6 +16,22 @@ export interface CertificationUnavailable {
   readonly code: 'certification.unavailable';
 }
 
+/**
+ * `assertCategoriesRetirable` refused (design 3.7, 8.1; B2): a `NOT_APPLICABLE` or
+ * `SELLER_REQUIRED` row of a published or pending policy revision names one of the categories.
+ * The codes of those types, sorted; an admin moves or removes the rows first.
+ */
+export interface CategoryReferencedByPolicy {
+  readonly code: 'category.referenced-by-policy';
+  readonly typeCodes: readonly string[];
+}
+
+/** What `platformCategoriesRetired` did: new flags, and how many of them name a relaxing row. */
+export interface RetiredCategoriesFlagged {
+  readonly flagged: number;
+  readonly relaxing: number;
+}
+
 /** What `sellerCertificateOverview` answers per seller: type codes only, no certificate fields. */
 export interface SellerCertificateOverviewRow {
   readonly sellerId: Id<'Seller'>;
@@ -122,6 +138,34 @@ export interface CertificationFacade {
   certifiedCategoryIds(
     context: CallContext,
   ): Promise<Result<readonly Id<'Category'>[], AccessDenied | CertificationUnavailable>>;
+
+  /**
+   * Before `catalog` moves, merges or archives platform categories (design 3.7, 8.1; C-4; B2;
+   * ADR-0028 d5): `ok`, or `category.referenced-by-policy` with the type codes while a
+   * `NOT_APPLICABLE` or `SELLER_REQUIRED` row of a policy's published revision, or of the revision
+   * a pending relaxation would publish, names one of the ids (such a row stops matching once the
+   * category is gone, and its lapse could relax a claim). `SELLER_OR_MANUFACTURER` rows do not
+   * block. 0 to 5000 distinct ids; a larger or malformed call is refused whole. A failed read is
+   * `certification.unavailable`: the caller refuses its change (fail closed). The answer is the
+   * same for every caller. Two use cases: `anonymous` for request actors, `system` for handlers
+   * and jobs. Not exposed over HTTP.
+   */
+  assertCategoriesRetirable(
+    context: CallContext,
+    categoryIds: readonly string[],
+  ): Promise<Result<void, Failure | CategoryReferencedByPolicy>>;
+
+  /**
+   * The backstop after `catalog`'s commit of a merge or archive (design 3.7, 8.1; C-4): flags every
+   * id a published or pending policy row names, once, and alerts the admins (a security event)
+   * when a flagged category has a `NOT_APPLICABLE` or `SELLER_REQUIRED` row. Never rewrites a row.
+   * Idempotent. Rule `system` (`catalog`'s own handler of its events, outside its unit). A fault is
+   * `certification.unavailable`; the handler retries.
+   */
+  platformCategoriesRetired(
+    context: CallContext,
+    categoryIds: readonly string[],
+  ): Promise<Result<RetiredCategoriesFlagged, Failure>>;
 
   /**
    * For the sellers admin list (SEL-10, CERT-30): per requested seller (at most 100 distinct ids),

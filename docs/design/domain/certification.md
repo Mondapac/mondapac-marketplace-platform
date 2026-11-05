@@ -1265,6 +1265,14 @@ A type that requires a document (AU halal) can now take a manufacturer submissio
   - The certificate type move before the retirement of slice 13 part 2 is unchanged.
   - Follow-ups from the PR #420 review: a per-account upload limit, so remove-and-upload cannot keep the intake queue full for sellers (Hassan L1); a database trigger refusing a check by the root's author or a revision editor (Hassan L2).
 
+### 14.14 Slice 13 as built, part 2 (retired platform categories; 2026-11-05)
+
+Request C-4 of `catalog` (categories package C4: move, merge, archive), per 3.7, 8.1 and data design A12. No migration: `retired_category_flags` and the partial index of A12 are in `20261018150000_certification_claim_policies`.
+
+- **`assertCategoriesRetirable(ctx, categoryIds)`** (pair: `certification.assert-categories-retirable`, rule `anonymous`; `-system`, rule `system`). 0 to 5000 distinct ids; a malformed or larger call is `validation.failed` whole. Refused with `category.referenced-by-policy` and the sorted type codes while a `NOT_APPLICABLE` or `SELLER_REQUIRED` category row of a policy's published revision, or of the proposed revision of a `pending` `claim-policy-revision` relaxation, names an id. `SELLER_OR_MANUFACTURER` rows, older revisions, withdrawn or decided proposals, handling rows and other Markets never block. Its own read-only unit; a fault is `certification.unavailable`, and `catalog` refuses its change (fail closed). Not exposed over HTTP.
+- **`platformCategoriesRetired(ctx, categoryIds)`** (`certification.platform-categories-retired`, rule `system`): the backstop for `catalog`'s own handler of its merge and archive events, called outside that handler's unit. One read-write unit: every id that a published or pending row names (any basis) gets a flag (`INSERT … ON CONFLICT DO NOTHING`), and each new flag one system audit row: `certification.retired-category.flagged-relaxing` when a relaxing row names it (projected as a security event, `s2`, so the admins are alerted), `certification.retired-category.flagged` otherwise. Never rewrites a row. Answers `{ flagged, relaxing }`; a repeat flags and writes nothing. A fault is `certification.unavailable`; the handler retries.
+- **Open.** The policy page does not show flags yet (data design 3.14: join published rows to the flags; clearing a flag is an admin action with its own key). Hassan reviews (CERT-* path).
+
 ### 14.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|
