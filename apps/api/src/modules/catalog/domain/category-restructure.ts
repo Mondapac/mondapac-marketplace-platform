@@ -380,8 +380,7 @@ export function planArchive(
   const onlyHere = remaining.filter((live) => live.length === 0).length;
   if (onlyHere > 0) return err({ code: 'category.only-platform-category', total: onlyHere });
   const paths = remaining.map(
-    (live) =>
-      new Set<string>(live.flatMap((id) => [id, ...ancestorsOf(byId, id)])),
+    (live) => new Set<string>(live.flatMap((id) => [id, ...ancestorsOf(byId, id)])),
   );
   const leaving = ancestorsOf(byId, target.id).filter((id) => paths.some((path) => !path.has(id)));
   const level = levelOf(byId, target.id);

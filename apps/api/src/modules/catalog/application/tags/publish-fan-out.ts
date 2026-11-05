@@ -44,8 +44,8 @@ export async function markProductForReevaluation(
 /**
  * The same half for a category move, merge or archive (categories C4a; rule M1): in the change's
  * unit, after the tree rows are written, every `active` tag of every Offer of a published product
- * under the affected categories becomes `rechecking` (entry path `category-change`), and the
- * request of the product's published revision is made pending again from its first Offer
+ * under the affected categories becomes `rechecking` (entry path `category-change`), after the
+ * request of the revision the product publishes now is made pending again from its first Offer
  * (`requestForCategoryChange`; the publish already wrote that revision's one request), so the job
  * `catalog.reevaluate-tags` asks every kept tag against the new tree. Asks nothing. Answers the
  * number of tags marked.
@@ -60,14 +60,15 @@ export async function markProductForCategoryChange(
     readonly now: Temporal.Instant;
   },
 ): Promise<number> {
-  const marked = await markOffers(deps, market, change, 'category-change');
+  // The request first: it locks the product row, so the lock order is a publish's (product, then
+  // Offers) and no publish commits between the request and the marking.
   await deps.requests.requestForCategoryChange(market, {
     id: deps.ids.next<'TagReevaluationRequest'>(),
     productId: change.productId,
     productRevisionId: change.revisionId,
     now: change.now,
   });
-  return marked;
+  return markOffers(deps, market, change, 'category-change');
 }
 
 async function markOffers(

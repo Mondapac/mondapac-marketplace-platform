@@ -134,43 +134,76 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
     },
   ): Promise<void> {
     const tx = this.prisma.tx(market);
-    // One pending request per product (the partial unique): another revision's is moot.
-    await tx.catalogTagReevaluationRequest.updateMany({
+    // The product row first, locked to the end of the unit (version set to itself, as a publish
+    // locks it), so no publish commits between this read and the request writes; the lock order
+    // is the publish's: product, then Offers (Hassan L-A, Mojtaba 2, #712). The revision is the
+    // one published now: a publish that committed after the change read its products wrote the
+    // request of a newer revision, which is reopened, never superseded. Not published: nothing.
+    const product = await tx.catalogProduct.findFirst({
+      where: { marketId: market.marketId, id: request.productId, status: 'published' },
+      select: { publishedRevisionId: true, version: true },
+    });
+    const revisionId = product?.publishedRevisionId ?? null;
+    if (product === null || revisionId === null) return;
+    const locked = await tx.catalogProduct.updateMany({
       where: {
         marketId: market.marketId,
-        productId: request.productId,
-        kind: 'revision-published',
-        state: 'pending',
-        productRevisionId: { not: request.productRevisionId },
+        id: request.productId,
+        version: product.version,
+        status: 'published',
+        publishedRevisionId: revisionId,
       },
-      data: { state: 'superseded', settledAt: toDate(request.now) },
+      data: { version: product.version },
     });
-    const stored = await tx.catalogTagReevaluationRequest.findFirst({
-      where: {
-        marketId: market.marketId,
-        kind: 'revision-published',
-        productRevisionId: request.productRevisionId,
-      },
-      select: { id: true, createdAt: true },
-    });
-    if (stored === null) {
-      await this.requestForPublish(market, request);
-      return;
+    if (locked.count !== 1) throw new StaleAggregateError('product', request.productId);
+    try {
+      // One pending request per product (the partial unique): another revision's is moot.
+      await tx.catalogTagReevaluationRequest.updateMany({
+        where: {
+          marketId: market.marketId,
+          productId: request.productId,
+          kind: 'revision-published',
+          state: 'pending',
+          productRevisionId: { not: revisionId },
+        },
+        data: { state: 'superseded', settledAt: toDate(request.now) },
+      });
+      const stored = await tx.catalogTagReevaluationRequest.findFirst({
+        where: {
+          marketId: market.marketId,
+          kind: 'revision-published',
+          productRevisionId: revisionId,
+        },
+        select: { id: true, createdAt: true },
+      });
+      if (stored === null) {
+        await this.requestForPublish(market, {
+          ...request,
+          productRevisionId: revisionId as Id<'ProductRevision'>,
+        });
+        return;
+      }
+      // Strictly after the stored one, so a run that read the request before can tell it changed.
+      const now = request.now.epochMilliseconds;
+      const createdAt = new Date(Math.max(now, stored.createdAt.getTime() + 1));
+      const { count } = await tx.catalogTagReevaluationRequest.updateMany({
+        where: { marketId: market.marketId, id: stored.id, createdAt: stored.createdAt },
+        data: {
+          state: 'pending',
+          cursorOfferId: null,
+          counts: jsonOf(NO_COUNTS),
+          createdAt,
+          settledAt: null,
+        },
+      });
+      if (count !== 1) throw new StaleAggregateError('tag-reevaluation-request', stored.id);
+    } catch (error) {
+      // A publish of the product committing meanwhile holds the one pending request: stale.
+      if ((error as { code?: unknown }).code === 'P2002') {
+        throw new StaleAggregateError('tag-reevaluation-request', request.productId);
+      }
+      throw error;
     }
-    // Strictly after the stored one, so a run that read the request before can tell it changed.
-    const now = request.now.epochMilliseconds;
-    const createdAt = new Date(Math.max(now, stored.createdAt.getTime() + 1));
-    const { count } = await tx.catalogTagReevaluationRequest.updateMany({
-      where: { marketId: market.marketId, id: stored.id, createdAt: stored.createdAt },
-      data: {
-        state: 'pending',
-        cursorOfferId: null,
-        counts: jsonOf(NO_COUNTS),
-        createdAt,
-        settledAt: null,
-      },
-    });
-    if (count !== 1) throw new StaleAggregateError('tag-reevaluation-request', stored.id);
   }
 
   async requestForEvent(

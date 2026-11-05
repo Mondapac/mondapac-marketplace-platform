@@ -119,14 +119,17 @@ export interface TagReevaluationRequestRepository {
 
   /**
    * In a category move, merge or archive unit (categories C4a; rule M1): the request of the
-   * product's published revision is made pending again from its first Offer, so the job asks
+   * revision the product publishes now (the product row is read and locked in the unit, before its
+   * Offers, so a publish that committed meanwhile is kept and none commits after; `productRevisionId`
+   * is the one the change read; nothing when no longer published) is
+   * made pending again from its first Offer, so the job asks
    * every kept tag against the new tree. The publish already wrote that revision's one request
    * (the database refuses a second), so it is reopened: state `pending`, no cursor, no counts and a
    * new `createdAt` strictly after the stored one; a run already under way on it then neither
    * moves its cursor nor closes it ({@link progress} and {@link close} match `requestedAt`). With
    * no request for the revision yet, one is written; the product's pending request of another
    * revision is superseded, as by a publish. Throws `StaleAggregateError` when the row changed
-   * between its read and its update.
+   * between its read and its update, or a concurrent publish holds the pending request.
    */
   requestForCategoryChange(
     market: MarketContext,

@@ -714,6 +714,68 @@ describe.each(TEST_MARKETS)(
         expect(await rows()).toMatchObject([{ state: 'pending', cursor_offer_id: null }]);
       });
 
+      it('a category change reopens the request of the revision published now, never a newer one (L-A)', async () => {
+        const { productId, variantId, first } = await publishedProduct();
+        const repo = new PrismaTagReevaluationRequests(persistence.service);
+        const at = Temporal.Instant.from(T0);
+        const write = (work: () => Promise<unknown>) =>
+          persistence.unitOfWork.run(market, async () => ok(await work()));
+        const firstId = uuid7() as Id<'TagReevaluationRequest'>;
+        await write(async () => {
+          await repo.requestForPublish(market, {
+            id: firstId,
+            productId: productId as Id<'Product'>,
+            productRevisionId: first as Id<'ProductRevision'>,
+            now: at,
+          });
+          await repo.close(market, firstId, {
+            requestedAt: at,
+            state: 'settled',
+            counts: NO_COUNTS,
+            now: at,
+          });
+        });
+        // A publish of revision 2 commits after the change read revision 1.
+        const second = await revision(productId, variantId, 2);
+        await owner.query(
+          `UPDATE catalog.products SET published_revision_id = $2, version = 3 WHERE id = $1`,
+          [productId, second],
+        );
+        const secondId = uuid7() as Id<'TagReevaluationRequest'>;
+        await write(() =>
+          repo.requestForPublish(market, {
+            id: secondId,
+            productId: productId as Id<'Product'>,
+            productRevisionId: second as Id<'ProductRevision'>,
+            now: at,
+          }),
+        );
+        expect(
+          await write(() =>
+            repo.requestForCategoryChange(market, {
+              id: uuid7() as Id<'TagReevaluationRequest'>,
+              productId: productId as Id<'Product'>,
+              productRevisionId: first as Id<'ProductRevision'>,
+              now: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: undefined });
+        const rows = await owner.query<{ id: string; state: string }>(
+          `SELECT id, state FROM catalog.tag_reevaluation_requests
+            WHERE product_id = $1 ORDER BY state, id`,
+          [productId],
+        );
+        expect(rows.rows).toEqual([
+          { id: secondId, state: 'pending' },
+          { id: firstId, state: 'settled' },
+        ]);
+        const product = await owner.query<{ version: number }>(
+          `SELECT version FROM catalog.products WHERE id = $1`,
+          [productId],
+        );
+        expect(product.rows).toEqual([{ version: 3 }]);
+      });
+
       it('grants no DELETE and no update of the identity columns', async () => {
         const { productId, first } = await publishedProduct();
         const stored = row(productId, first);
