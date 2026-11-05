@@ -56,28 +56,8 @@ describe.each(TEST_MARKETS)('product family guard in market %s (database)', (cod
     return created.value.state.id;
   }
 
-  /** One statement as the API role, in a Market-scoped transaction (market scope set as the unit does). */
-  const asApp = async (productId: string, sql: 'family' | 'type'): Promise<void> => {
-    const column = sql === 'family' ? 'family_code' : 'type_code';
-    await app.query(
-      `UPDATE catalog.products SET ${column} = 'other' WHERE market_id = $1 AND id = $2`,
-      [market.marketId, productId],
-    );
-  };
-
-  it('refuses a family change on its own (23514) and a type change (42501)', async () => {
-    const id = await newProduct();
-    await expect(asApp(id, 'family')).rejects.toMatchObject({ code: '23514' });
-    await expect(asApp(id, 'type')).rejects.toMatchObject({ code: '42501' });
-    const row = await owner.query(
-      'SELECT family_code FROM catalog.products WHERE market_id = $1 AND id = $2',
-      [market.marketId, id],
-    );
-    expect(row.rows[0]).toEqual({ family_code: 'default' });
-  });
-
-  it('allows the family together with a revision pointer', async () => {
-    const id = await newProduct();
+  /** A first revision of the product, with its own feature set and family revision. */
+  async function revisionOf(id: string): Promise<string> {
     const revisionId = uuid7();
     const familyId = uuid7();
     const familyRevisionId = uuid7();
@@ -105,8 +85,68 @@ describe.each(TEST_MARKETS)('product family guard in market %s (database)', (cod
          FROM catalog.products WHERE market_id = $2::text AND id = $3::uuid`,
       [revisionId, market.marketId, id, familyRevisionId, `sha256:${'1'.repeat(64)}`, uuid7()],
     );
+    return revisionId;
+  }
+
+  /** One UPDATE of one column to 'other', as the API role (a plain connection, no transaction). */
+  const asApp = async (productId: string, which: 'family' | 'type'): Promise<void> => {
+    const column = which === 'family' ? 'family_code' : 'type_code';
+    await app.query(
+      `UPDATE catalog.products SET ${column} = 'other' WHERE market_id = $1 AND id = $2`,
+      [market.marketId, productId],
+    );
+  };
+
+  it('refuses a family change on its own (23514) and a type change (42501)', async () => {
+    const id = await newProduct();
+    await expect(asApp(id, 'family')).rejects.toMatchObject({ code: '23514' });
+    await expect(asApp(id, 'type')).rejects.toMatchObject({ code: '42501' });
+    const row = await owner.query(
+      'SELECT family_code FROM catalog.products WHERE market_id = $1 AND id = $2',
+      [market.marketId, id],
+    );
+    expect(row.rows[0]).toEqual({ family_code: 'default' });
+  });
+
+  it('allows the family together with a revision pointer', async () => {
+    const id = await newProduct();
+    const revisionId = await revisionOf(id);
     await app.query(
       `UPDATE catalog.products SET family_code = 'other', pending_revision_id = $3, pending_submitted_at = now()
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, id, revisionId],
+    );
+    const row = await owner.query(
+      'SELECT family_code FROM catalog.products WHERE market_id = $1 AND id = $2',
+      [market.marketId, id],
+    );
+    expect(row.rows[0]).toEqual({ family_code: 'other' });
+  });
+
+  it('lets a same-value family write and a pointer-only update through', async () => {
+    const id = await newProduct();
+    await app.query(
+      'UPDATE catalog.products SET family_code = family_code WHERE market_id = $1 AND id = $2',
+      [market.marketId, id],
+    );
+    const revisionId = await revisionOf(id);
+    await app.query(
+      `UPDATE catalog.products SET published_revision_id = $3, status = 'published'
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, id, revisionId],
+    );
+    const row = await owner.query(
+      'SELECT family_code FROM catalog.products WHERE market_id = $1 AND id = $2',
+      [market.marketId, id],
+    );
+    expect(row.rows[0]).toEqual({ family_code: 'default' });
+  });
+
+  it('lets the family change together with the published pointer', async () => {
+    const id = await newProduct();
+    const revisionId = await revisionOf(id);
+    await app.query(
+      `UPDATE catalog.products SET family_code = 'other', published_revision_id = $3, status = 'published'
         WHERE market_id = $1 AND id = $2`,
       [market.marketId, id, revisionId],
     );
