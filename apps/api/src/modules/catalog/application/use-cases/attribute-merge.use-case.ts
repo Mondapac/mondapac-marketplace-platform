@@ -21,7 +21,7 @@ import {
 } from '../attributes/attribute-editor';
 import { cancelOpenRelaxation } from '../attributes/attribute-relaxation';
 import {
-  archiveBlockOf,
+  archiveBlockWithMergesOf,
   type AttributeRestructureDependencies,
 } from '../attributes/attribute-restructure';
 
@@ -139,7 +139,7 @@ export class AttributeMerge extends UseCase<
           code: source.state.code,
           isVariantOption: source.state.isVariantOption,
         });
-        const block = archiveBlockOf(source, impact);
+        const block = await archiveBlockWithMergesOf(deps, market, source, impact);
         if (block !== null) {
           return err({
             code: 'attribute.merge-blocked',

@@ -169,6 +169,13 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
     if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
   }
 
+  async hasMergedSources(market: MarketContext, id: Id<'AttributeDefinition'>): Promise<boolean> {
+    const count = await this.prisma.tx(market).catalogAttributeDefinition.count({
+      where: { marketId: market.marketId, mergedIntoId: id },
+    });
+    return count > 0;
+  }
+
   async saveMerge(
     market: MarketContext,
     source: AttributeDefinition,

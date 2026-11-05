@@ -636,7 +636,7 @@ export interface AttributeMergeOption {
 
 /**
  * Plans the merge of an attribute into another (attributes A8, plan decision ت۶): both are
- * published and of one type, the source is not `material`, and every value of a choice
+ * published and of one type and one set of rules (localizable, bounds), neither is `material`, and every value of a choice
  * attribute, active or not, goes to an active value of the target. A type without values has no
  * mapping. Nothing here reads products: the use case reads the impact, and products keep their
  * values and are mapped when they are read.
@@ -652,9 +652,18 @@ export function planAttributeMerge(
   const archivable = source.archivable();
   if (archivable !== null) return err(archivable);
   if (to.status !== 'active') return err({ code: 'attribute-definition.merge-invalid' });
-  if (from.dataType !== to.dataType)
+  // One type and one set of rules: a value of the source must be valid for the target as it is.
+  if (
+    from.dataType !== to.dataType ||
+    from.localizable !== to.localizable ||
+    from.bounds.maxLength !== to.bounds.maxLength ||
+    from.bounds.min !== to.bounds.min ||
+    from.bounds.max !== to.bounds.max
+  ) {
     return err({ code: 'attribute-definition.merge-type-mismatch' });
-  if (from.material) return err({ code: 'attribute-definition.merge-material' });
+  }
+  // A `material` attribute on either side needs a second administrator, which a merge has not.
+  if (from.material || to.material) return err({ code: 'attribute-definition.merge-material' });
   const choice = from.dataType === 'select' || from.dataType === 'multi-select';
   if (!choice) {
     return Object.keys(mapping).length === 0

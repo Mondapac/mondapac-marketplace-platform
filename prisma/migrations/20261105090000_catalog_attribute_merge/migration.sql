@@ -45,6 +45,12 @@ BEGIN
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW.status = 'archived' AND OLD.status = 'active' THEN
+    -- Attributes merged into this one point at it: archiving it would hide their values.
+    IF EXISTS (SELECT 1 FROM "catalog"."attribute_definitions" s
+                WHERE s.market_id = OLD.market_id AND s.merged_into_id = OLD.id) THEN
+      RAISE EXCEPTION 'catalog.attribute_definitions: an attribute that others were merged into cannot be archived'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
     SELECT r.material INTO current_material FROM "catalog"."attribute_definition_revisions" r
      WHERE r.market_id = OLD.market_id AND r.id = OLD.published_revision_id;
     IF current_material AND NOT EXISTS (
@@ -63,7 +69,8 @@ BEGIN
     END IF;
     SELECT t.data_type, t.merged_into_id, t.status INTO target_type, target_merged, target_status
       FROM "catalog"."attribute_definitions" t
-     WHERE t.market_id = NEW.market_id AND t.id = NEW.merged_into_id;
+     WHERE t.market_id = NEW.market_id AND t.id = NEW.merged_into_id
+       FOR SHARE;
     IF target_type IS DISTINCT FROM NEW.data_type OR target_merged IS NOT NULL OR target_status <> 'active' THEN
       RAISE EXCEPTION 'catalog.attribute_definitions: a merge target is an active attribute of the same type that was not merged itself'
         USING ERRCODE = 'check_violation';

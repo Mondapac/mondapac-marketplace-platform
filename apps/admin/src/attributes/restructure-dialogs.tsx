@@ -356,6 +356,7 @@ export function MergeAttributesDialog({
     | { readonly state: 'ready'; readonly items: AttributePage['items'] }
   >({ state: 'loading' });
   const [targetId, setTargetId] = useState('');
+  const targetTicket = useRef(0);
   const [target, setTarget] = useState<TargetLoad>({ state: 'idle' });
   const [mapping, setMapping] = useState<Readonly<Record<string, string>>>({});
   const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
@@ -384,6 +385,8 @@ export function MergeAttributesDialog({
   }, [fetchCandidates]);
 
   async function choose(id: string) {
+    // Only the answer of the latest choice counts, so a quick change never mixes two targets.
+    const ticket = ++targetTicket.current;
     setTargetId(id);
     setMapping({});
     if (id === '') {
@@ -395,6 +398,7 @@ export function MergeAttributesDialog({
       'GET',
       `${API_ATTRIBUTES}/${encodeURIComponent(id)}`,
     );
+    if (ticket !== targetTicket.current) return;
     if (!result.ok) {
       if (result.failure.status === 401) window.location.assign('/session-ended');
       else setTarget({ state: 'failed' });

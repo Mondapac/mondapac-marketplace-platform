@@ -19,7 +19,7 @@ import {
 } from '../attributes/attribute-editor';
 import { cancelOpenRelaxation } from '../attributes/attribute-relaxation';
 import {
-  archiveBlockOf,
+  archiveBlockWithMergesOf,
   type AttributeRestructureDependencies,
 } from '../attributes/attribute-restructure';
 
@@ -111,7 +111,7 @@ export class AttributeArchive extends UseCase<
           code: found.state.code,
           isVariantOption: found.state.isVariantOption,
         });
-        const block = archiveBlockOf(found, impact);
+        const block = await archiveBlockWithMergesOf(deps, market, found, impact);
         if (block !== null)
           return err({
             code: 'attribute.archive-blocked',

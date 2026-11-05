@@ -96,6 +96,10 @@ export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore 
     options: readonly AttributeMergeOption[];
   }[] = [];
 
+  hasMergedSources(_m: MarketContext, id: Id<'AttributeDefinition'>) {
+    return Promise.resolve(this.merges.some((merge) => merge.target === id));
+  }
+
   saveMerge(
     _m: MarketContext,
     source: AttributeDefinition,

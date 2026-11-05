@@ -53,6 +53,9 @@ export interface AttributeDefinitionStore {
     version: number,
   ): Promise<boolean>;
 
+  /** `true` when another attribute was merged into this one (attributes A8). */
+  hasMergedSources(market: MarketContext, id: Id<'AttributeDefinition'>): Promise<boolean>;
+
   /** Writes the status of `publish` or `discard`, if the stored version is the one before. */
   saveStatus(market: MarketContext, definition: AttributeDefinition): Promise<void>;
 

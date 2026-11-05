@@ -21,7 +21,7 @@ import {
 } from '../attributes/attribute-editor';
 import { relaxationViewOf, type RelaxationWriteView } from '../attributes/attribute-relaxation';
 import {
-  archiveBlockOf,
+  archiveBlockWithMergesOf,
   type AttributeRestructureDependencies,
 } from '../attributes/attribute-restructure';
 import { RelaxationAlreadyOpenError } from '../ports/attribute-relaxation.store';
@@ -117,7 +117,7 @@ export class AttributeArchiveRequestCreate extends UseCase<
           code: definition.state.code,
           isVariantOption: definition.state.isVariantOption,
         });
-        const block = archiveBlockOf(definition, impact);
+        const block = await archiveBlockWithMergesOf(deps, market, definition, impact);
         if (block !== null)
           return err({
             code: 'attribute.archive-blocked',

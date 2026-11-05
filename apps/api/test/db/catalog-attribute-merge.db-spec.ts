@@ -196,6 +196,28 @@ describe.each(TEST_MARKETS)('catalog attribute merge in market %s (database)', (
     expect((await pointer(source.state.id))?.status).toBe('active');
   });
 
+  it('refuses to archive or merge an attribute that others were merged into', async () => {
+    const source = await published(false);
+    const middle = await published(false);
+    const end = await published(false);
+    await write(market, () => definitions.saveMerge(market, merged(source), middle.state.id, []));
+    expect(await read(market, () => definitions.hasMergedSources(market, middle.state.id))).toBe(
+      true,
+    );
+    expect(await read(market, () => definitions.hasMergedSources(market, end.state.id))).toBe(
+      false,
+    );
+    expect(
+      await driverCode(
+        write(market, () => definitions.saveMerge(market, merged(middle), end.state.id, [])),
+      ),
+    ).not.toBe('none');
+    expect(
+      await driverCode(write(market, () => definitions.saveStatus(market, merged(middle)))),
+    ).not.toBe('none');
+    expect((await pointer(middle.state.id))?.status).toBe('active');
+  });
+
   it('refuses a target of another type', async () => {
     const source = await published(false);
     const text = AttributeDefinition.createDraft({

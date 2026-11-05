@@ -716,6 +716,45 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-invalid' } });
     });
 
+    it('refuses a material target, which a merge cannot protect with a second administrator', async () => {
+      const source = await published(false, 'Pack type');
+      const target = await published(true, 'Container');
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(source, target, all)),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-material' } });
+      expect(store.merges).toEqual([]);
+    });
+
+    it('keeps a chain one step long: an attribute others were merged into is neither merged nor archived', async () => {
+      const first = await published(false, 'Pack type');
+      const middle = await published(false, 'Container');
+      const end = await published(false, 'Vessel');
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(first, middle, all)),
+      ).toMatchObject({ ok: true });
+      const again = store.rows.get(middle.id)!.state;
+      expect(
+        await build().mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput({ id: middle.id, version: again.version }, end, all),
+        ),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'attribute.merge-blocked', fields: [{ code: 'merge-target' }] },
+      });
+      expect(
+        await build().archive.execute(admin(FIRST), {
+          attributeId: middle.id,
+          version: again.version,
+        }),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'attribute.archive-blocked', fields: [{ code: 'merge-target' }] },
+      });
+      expect(store.rows.get(middle.id)!.state.status).toBe('active');
+      expect(store.merges).toHaveLength(1);
+    });
+
     it('is refused while an active feature set lists the source', async () => {
       const { source, target } = await pair();
       impact = { ...EMPTY, featureSetCount: 1 };

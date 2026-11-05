@@ -370,13 +370,17 @@ export function problemOf(failure: ApiFailure, codes: readonly string[] = []): E
     key =
       failure.details?.fields?.[0]?.code === 'live-variants'
         ? 'archive-blocked-live-variants'
-        : 'archive-blocked-in-feature-set';
+        : failure.details?.fields?.[0]?.code === 'merge-target'
+          ? 'blocked-merge-target'
+          : 'archive-blocked-in-feature-set';
   }
   if (failure.code === 'attribute.merge-blocked') {
     key =
       failure.details?.fields?.[0]?.code === 'live-variants'
         ? 'merge-blocked-live-variants'
-        : 'merge-blocked-in-feature-set';
+        : failure.details?.fields?.[0]?.code === 'merge-target'
+          ? 'blocked-merge-target'
+          : 'merge-blocked-in-feature-set';
   }
   if (key === undefined) {
     if (failure.status === 0 || failure.status >= 500) key = 'unavailable';
