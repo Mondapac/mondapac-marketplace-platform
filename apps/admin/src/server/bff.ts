@@ -226,6 +226,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Merge two values, archive an attribute, ask to archive a material one, and confirm such a
     // request (catalog, attributes A8: key `catalog.attribute.restructure`).
     'catalog/admin/attributes/:id/merge-values',
+    'catalog/admin/attributes/:id/merge',
     'catalog/admin/attributes/:id/archive',
     'catalog/admin/attributes/:id/archive-requests',
     'catalog/admin/attribute-archive-requests/:id/confirm',

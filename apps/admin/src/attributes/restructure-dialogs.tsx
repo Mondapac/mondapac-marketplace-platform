@@ -9,6 +9,7 @@ import {
   API_ATTRIBUTES,
   textIn,
   type AttributeDetail,
+  type AttributePage,
   type AttributeWrite,
   type ImpactAnswer,
   type ImpactCount,
@@ -313,6 +314,237 @@ export function ArchiveDialog({
               ) : null}
             </>
           )}
+        </ImpactBody>
+      </div>
+    </Dialog>
+  );
+}
+
+type TargetLoad =
+  | { readonly state: 'idle' }
+  | { readonly state: 'loading' }
+  | { readonly state: 'ready'; readonly detail: AttributeDetail }
+  | { readonly state: 'failed' };
+
+/**
+ * Merge an attribute into another of the same type (attributes A8). The admin picks the target
+ * from the active attributes of the type, maps every value of a choice attribute to a value of the
+ * target, reads what the change reaches and confirms. The merged attribute is archived and points
+ * at the target: products keep what they have, the storefront, filters and search read the target,
+ * and a product's next save stores the target's code. Both versions are the ones the dialog read.
+ */
+export function MergeAttributesDialog({
+  detail,
+  csrfToken,
+  onClose,
+  onDone,
+  onReload,
+}: {
+  readonly detail: AttributeDetail;
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly onReload: () => void;
+}) {
+  const t = useTranslations('attributes.restructure');
+  const te = useTranslations('attributes.editor');
+  const tl = useTranslations('load');
+  const call = useAttributeCall(csrfToken);
+  const { load, retry } = useImpact(detail.id);
+  const [candidates, setCandidates] = useState<
+    | { readonly state: 'loading' | 'failed' }
+    | { readonly state: 'ready'; readonly items: AttributePage['items'] }
+  >({ state: 'loading' });
+  const [targetId, setTargetId] = useState('');
+  const targetTicket = useRef(0);
+  const [target, setTarget] = useState<TargetLoad>({ state: 'idle' });
+  const [mapping, setMapping] = useState<Readonly<Record<string, string>>>({});
+  const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
+  const choice = detail.dataType === 'select' || detail.dataType === 'multi-select';
+
+  const fetchCandidates = useCallback(async () => {
+    setCandidates({ state: 'loading' });
+    const query = new URLSearchParams({
+      limit: '100',
+      type: detail.dataType,
+      status: 'active',
+    });
+    const result = await callApi<AttributePage>('GET', `${API_ATTRIBUTES}?${query.toString()}`);
+    if (!result.ok) {
+      if (result.failure.status === 401) window.location.assign('/session-ended');
+      else setCandidates({ state: 'failed' });
+      return;
+    }
+    setCandidates({
+      state: 'ready',
+      items: result.body.items.filter((item) => item.id !== detail.id),
+    });
+  }, [detail.dataType, detail.id]);
+  useEffect(() => {
+    void fetchCandidates();
+  }, [fetchCandidates]);
+
+  async function choose(id: string) {
+    // Only the answer of the latest choice counts, so a quick change never mixes two targets.
+    const ticket = ++targetTicket.current;
+    setTargetId(id);
+    setMapping({});
+    if (id === '') {
+      setTarget({ state: 'idle' });
+      return;
+    }
+    setTarget({ state: 'loading' });
+    const result = await callApi<AttributeDetail>(
+      'GET',
+      `${API_ATTRIBUTES}/${encodeURIComponent(id)}`,
+    );
+    if (ticket !== targetTicket.current) return;
+    if (!result.ok) {
+      if (result.failure.status === 401) window.location.assign('/session-ended');
+      else setTarget({ state: 'failed' });
+      return;
+    }
+    setTarget({ state: 'ready', detail: result.body });
+    // A value goes to the target value with the same code when there is one.
+    const same = new Set(
+      result.body.options
+        .filter((option) => option.active && (option.mergedInto ?? null) === null)
+        .map((option) => option.code),
+    );
+    setMapping(
+      Object.fromEntries(
+        detail.options.filter((option) => same.has(option.code)).map((o) => [o.code, o.code]),
+      ),
+    );
+  }
+
+  const targetOptions =
+    target.state === 'ready'
+      ? target.detail.options
+          .filter((option) => option.active && (option.mergedInto ?? null) === null)
+          .map((option) => ({
+            value: option.code,
+            label: textIn(
+              option.labels,
+              target.detail.locales.default,
+              target.detail.locales.default,
+              option.code,
+            ),
+          }))
+      : [];
+  const mapped = !choice || detail.options.every((option) => mapping[option.code] !== undefined);
+  const ready = load.state === 'ready' && target.state === 'ready' && mapped;
+
+  async function merge(version: number, targetVersion: number) {
+    const answer = await call.run<AttributeWrite>(
+      'POST',
+      `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/merge`,
+      { version, target: targetId, targetVersion, ...(choice ? { options: mapping } : {}) },
+    );
+    if (answer.ok) onDone();
+  }
+
+  const problem = call.problem;
+  return (
+    <Dialog
+      open
+      title={t('merge-attributes-title', { name })}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+            {te('cancel')}
+          </Button>
+          {problem?.reload === true ? (
+            <Button onClick={onReload}>{te('reload')}</Button>
+          ) : (
+            <Button
+              loading={call.pending}
+              disabled={call.pending || !ready}
+              onClick={() => {
+                if (load.state === 'ready' && target.state === 'ready') {
+                  void merge(load.answer.attribute.version, target.detail.version);
+                }
+              }}
+            >
+              {t('merge-attributes-confirm')}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
+        <p>{t('merge-attributes-body', { name })}</p>
+        {candidates.state === 'loading' ? (
+          <SkeletonRows rows={1} label={t('merge-attributes-loading')} />
+        ) : null}
+        {candidates.state === 'failed' ? (
+          <LoadError
+            className="flex flex-col items-start gap-3"
+            message={t('merge-attributes-load-failed')}
+            retryLabel={tl('retry')}
+            onRetry={() => void fetchCandidates()}
+          />
+        ) : null}
+        {candidates.state === 'ready' && candidates.items.length === 0 ? (
+          <Banner tone="info">{t('merge-attributes-none')}</Banner>
+        ) : null}
+        {candidates.state === 'ready' && candidates.items.length > 0 ? (
+          <Select
+            label={t('merge-attributes-target')}
+            placeholder={t('choose')}
+            value={targetId}
+            onChange={(event) => void choose(event.target.value)}
+            options={candidates.items.map((item) => ({
+              value: item.id,
+              label: `${textIn(item.names, detail.locales.default, detail.locales.default, item.code)} (${item.code})`,
+            }))}
+          />
+        ) : null}
+        {target.state === 'loading' ? (
+          <SkeletonRows rows={1} label={t('merge-attributes-loading')} />
+        ) : null}
+        {target.state === 'failed' ? (
+          <LoadError
+            className="flex flex-col items-start gap-3"
+            message={t('merge-attributes-load-failed')}
+            retryLabel={tl('retry')}
+            onRetry={() => void choose(targetId)}
+          />
+        ) : null}
+        {choice && target.state === 'ready' ? (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium">{t('merge-attributes-map')}</legend>
+            {detail.options.map((option) => {
+              const value = textIn(
+                option.labels,
+                detail.locales.default,
+                detail.locales.default,
+                option.code,
+              );
+              return (
+                <Select
+                  key={option.code}
+                  label={t('merge-attributes-map-for', { value })}
+                  placeholder={t('choose')}
+                  value={mapping[option.code] ?? ''}
+                  onChange={(event) =>
+                    setMapping((current) => {
+                      const next = { ...current };
+                      if (event.target.value === '') delete next[option.code];
+                      else next[option.code] = event.target.value;
+                      return next;
+                    })
+                  }
+                  options={targetOptions}
+                />
+              );
+            })}
+          </fieldset>
+        ) : null}
+        <ImpactBody load={load} retry={retry}>
+          {(answer) => <ImpactList answer={answer} />}
         </ImpactBody>
       </div>
     </Dialog>

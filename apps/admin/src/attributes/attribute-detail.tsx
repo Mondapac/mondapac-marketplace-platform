@@ -21,7 +21,7 @@ import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
-import { ArchiveDialog, MergeValuesDialog } from './restructure-dialogs.tsx';
+import { ArchiveDialog, MergeAttributesDialog, MergeValuesDialog } from './restructure-dialogs.tsx';
 import type { FieldErrors } from './editor.ts';
 import { changeLineOf } from './history.ts';
 import { useRevealWhenStacked } from './reveal.ts';
@@ -46,7 +46,7 @@ type Load =
   | { readonly state: 'missing' }
   | { readonly state: 'failed' };
 
-type Confirm = 'publish' | 'discard' | 'relax' | 'merge' | 'archive' | null;
+type Confirm = 'publish' | 'discard' | 'relax' | 'merge' | 'merge-attribute' | 'archive' | null;
 
 /** Refusals of publish that only an edit of the text clears. */
 const TEXT_FIX: ReadonlySet<string> = new Set(['claim-word', 'locale-uncheckable']);
@@ -182,6 +182,11 @@ export function AttributeDetailPanel({
                           {t('merge-values')}
                         </Button>
                       ) : null}
+                      {load.detail.material ? null : (
+                        <Button variant="secondary" onClick={() => setConfirm('merge-attribute')}>
+                          {t('merge-attribute')}
+                        </Button>
+                      )}
                       <Button variant="secondary" onClick={() => setConfirm('archive')}>
                         {t('archive')}
                       </Button>
@@ -233,6 +238,18 @@ export function AttributeDetailPanel({
               }}
             />
           ) : null}
+          {confirm === 'merge-attribute' ? (
+            <MergeAttributesDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('attribute-merged'))}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+            />
+          ) : null}
           {confirm === 'archive' ? (
             <ArchiveDialog
               detail={load.detail}
@@ -253,6 +270,7 @@ export function AttributeDetailPanel({
           {confirm === null ||
           confirm === 'relax' ||
           confirm === 'merge' ||
+          confirm === 'merge-attribute' ||
           confirm === 'archive' ? null : (
             <StatusDialog
               kind={confirm}

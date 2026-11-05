@@ -291,6 +291,7 @@ import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-l
 import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
 import { ATTRIBUTE_IMPACT_READER } from './application/ports/attribute-impact.reader';
 import { AttributeImpactGet } from './application/use-cases/attribute-impact-get.use-case';
+import { AttributeMerge } from './application/use-cases/attribute-merge.use-case';
 import { AttributeValuesMerge } from './application/use-cases/attribute-values-merge.use-case';
 import { AttributeArchive } from './application/use-cases/attribute-archive.use-case';
 import { AttributeArchiveRequestCreate } from './application/use-cases/attribute-archive-request.use-case';
@@ -691,6 +692,15 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeMerge, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      impact: true,
       audit: true,
       clock: true,
       ids: true,
