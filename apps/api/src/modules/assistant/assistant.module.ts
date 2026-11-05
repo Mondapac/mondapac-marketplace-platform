@@ -1,6 +1,8 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
+import { changeTrailProvider, IdentityModule } from '../identity';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
@@ -23,6 +25,7 @@ import { PurgeConversations } from './application/use-cases/purge-conversations.
 import { SendGuestMessage } from './application/use-cases/send-guest-message.use-case';
 import { SendMessage } from './application/use-cases/send-message.use-case';
 import { SetAssistantSettings } from './application/use-cases/set-assistant-settings.use-case';
+import { ViewAssistantSettingsHistory } from './application/use-cases/view-assistant-settings-history.use-case';
 import { ViewAssistantSettings } from './application/use-cases/view-assistant-settings.use-case';
 import { ViewStorefrontAssistant } from './application/use-cases/view-storefront-assistant.use-case';
 import { ASSISTANT_PERMISSIONS } from './contracts';
@@ -47,6 +50,7 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['limits', MESSAGE_LIMITS],
   ['guestTokens', GUEST_TOKENS],
   ['calendar', MARKET_CALENDAR],
+  ['trail', CHANGE_TRAIL],
 ];
 
 /** Every assistant use case shares one dependency object, built from the same ports. */
@@ -75,7 +79,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * settings.
  */
 @Module({
-  imports: [SearchModule, CatalogModule, NotificationsModule],
+  imports: [SearchModule, CatalogModule, NotificationsModule, IdentityModule],
   controllers: [
     AdminAssistantSettingsController,
     StorefrontAssistantController,
@@ -83,12 +87,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   ],
   providers: [
     PersistenceModule.auditWriterFor('assistant'),
+    PersistenceModule.auditTrailReaderFor('assistant'),
+    changeTrailProvider(),
     registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS),
     registerPermissions('assistant', ASSISTANT_PERMISSIONS),
     SubjectRateLimits,
     ...assistantProviders,
     ...[
       ViewAssistantSettings,
+      ViewAssistantSettingsHistory,
       SetAssistantSettings,
       ViewStorefrontAssistant,
       SendMessage,

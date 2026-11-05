@@ -6,7 +6,13 @@ import { serverGet } from './server-fetch.ts';
 import { requireSession, type SellerSession } from './session.ts';
 
 export type StoreProfilePage =
-  | { readonly kind: 'ok'; readonly session: SellerSession; readonly view: StoreProfileView }
+  | {
+      readonly kind: 'ok';
+      readonly session: SellerSession;
+      readonly view: StoreProfileView;
+      /** The Market's claim terms for the live warning; empty when they could not be read. */
+      readonly claimTerms: readonly string[];
+    }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
   | { readonly kind: 'unavailable' };
 
@@ -22,5 +28,15 @@ export async function loadStoreProfilePage(): Promise<StoreProfilePage> {
   const profile = await serverGet<StoreProfileView>('sellers/store-profile');
   if (profile.kind === 'signed-out') redirect('/session-ended');
   if (profile.kind !== 'ok') return { kind: 'unavailable' };
-  return { kind: 'ok', session, view: profile.body };
+  // Only for the live warning: when the terms cannot be read the field simply does not warn
+  // early, and the save check (the authority) still refuses a claim.
+  const terms = await serverGet<{ readonly terms: readonly string[] }>(
+    'sellers/store-profile/claim-terms',
+  );
+  return {
+    kind: 'ok',
+    session,
+    view: profile.body,
+    claimTerms: terms.kind === 'ok' && Array.isArray(terms.body.terms) ? terms.body.terms : [],
+  };
 }

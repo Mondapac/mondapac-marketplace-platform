@@ -19,6 +19,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useChangeHistory, useWinnerTitle } from '../settings/last-changed.tsx';
 import { formatInstant } from '../shared/format.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { walletProblemOf } from './errors.ts';
@@ -63,6 +64,9 @@ export function SettingsForm({
   const [reasonError, setReasonError] = useState(false);
   const [conflict, setConflict] = useState(false);
   const busy = useRef(false);
+  // Before the loading and error returns below: a hook is called on every render.
+  const changeHistory = useChangeHistory(settings?.lastChanged, 'wallet/admin/settings/history');
+  const winnerTitle = useWinnerTitle();
 
   const load = useCallback(async () => {
     setLoadFailed(false);
@@ -177,7 +181,7 @@ export function SettingsForm({
     conflict ? (
       <SettingsConflictBanner
         key="conflict"
-        title={t('settings.conflict-title')}
+        title={winnerTitle(settings.lastChanged) ?? t('settings.conflict-title')}
         body={t('settings.conflict-body')}
       />
     ) : null,
@@ -197,6 +201,8 @@ export function SettingsForm({
     <SettingsPage
       title={title}
       description={intro}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }

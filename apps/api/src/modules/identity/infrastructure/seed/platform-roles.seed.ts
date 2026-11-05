@@ -186,10 +186,16 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 25 adds `catalog.attribute.view`, likewise unprotected (attributes package A1); the
     // protected `catalog.attribute.edit` is not a viewer key. Version 26 adds
     // `catalog.category-tree.view`, likewise unprotected (categories package C1); the edit,
-    // restructure and import keys are not viewer keys.
-    // Version 27 adds `sellers.business-activity.view`, likewise unprotected (seller business
+    // restructure and import keys are not viewer keys. Version 27 adds
+    // `settings.list-paging.view`, likewise unprotected (settings module: List paging); the
+    // manage key is not a viewer key.
+    // Version 28 drops `commission-payouts.payout-terms.view` (design 5.3, the owner's decision of
+    // 2026-11-04): a seller's payout terms are financial data, not a viewer read. Unlike version 22
+    // the key is live, so the seed upgrade removes it from the stored Viewer role, with an
+    // audited `removedKeys` entry; a custom role that lists it is never touched (R10).
+    // Version 29 adds `sellers.business-activity.view`, likewise unprotected (seller business
     // activities, ADR-0040); the `.manage` key is not a viewer key.
-    seedVersion: 27,
+    seedVersion: 29,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -210,7 +216,6 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'assistant.settings.view',
       'customers.account-deletion-settings.view',
       'shipping.fleet-selection.view',
-      'commission-payouts.payout-terms.view',
       'commission-payouts.dispute.view',
       'shipping.delivery-settings.view',
       'blog.post.read',
@@ -219,6 +224,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.brand.read',
       'catalog.attribute.view',
       'catalog.category-tree.view',
+      'settings.list-paging.view',
       'sellers.business-activity.view',
     ],
   },
