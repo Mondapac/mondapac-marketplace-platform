@@ -83,7 +83,11 @@ describe('settings account deletion page', () => {
   it('shows no-access without the view key and reads nothing', async () => {
     as();
     render(await AccountDeletionPage());
-    expect(screen.getByText(/needs the "Account deletion: view" permission/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /needs the permission "View account deletion"\. An admin who manages roles can add it\./,
+      ),
+    ).toBeTruthy();
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
@@ -123,7 +127,10 @@ describe('settings account deletion page', () => {
     as(SETTINGS_VIEW);
     mocks.get.mockResolvedValue({ kind: 'unavailable' });
     render(await AccountDeletionPage());
-    expect(screen.getByText("Couldn't load this setting.")).toBeTruthy();
+    expect(screen.getByText(/could not be loaded$/)).toBeTruthy();
+    expect(
+      screen.getByText('Try again. If it keeps happening, check the status page.'),
+    ).toBeTruthy();
   });
 
   it('sends a signed-out read to session-ended', async () => {
@@ -137,7 +144,9 @@ describe('deletion requests page', () => {
   it('shows no-access without the requests view key', async () => {
     as(SETTINGS_VIEW);
     render(await RequestsPage());
-    expect(screen.getByText(/needs the "Account deletion requests: view" permission/)).toBeTruthy();
+    expect(
+      screen.getByText(/needs the permission "View account deletion requests"\./),
+    ).toBeTruthy();
     expect(screen.queryByText(/^list-/)).toBeNull();
   });
 
