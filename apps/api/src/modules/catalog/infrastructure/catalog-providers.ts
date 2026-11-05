@@ -1,4 +1,16 @@
 import type { Provider } from '@nestjs/common';
+import {
+  CATEGORY_PROPOSAL_CAPABILITY,
+  CATEGORY_PROPOSAL_POLICY,
+  type CategoryProposalCapability,
+  type CategoryProposalPolicy,
+} from '../application/ports/category-proposal-capability';
+import {
+  SELLER_CATEGORY_STORE,
+  type SellerCategoryStore,
+} from '../application/ports/seller-category.store';
+import { PrismaSellerCategoryStore } from './prisma-seller-category.store';
+import { SellersCategoryProposalCapability } from './sellers-category-proposal-capability';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -610,5 +622,25 @@ export const catalogProviders: readonly Provider[] = [
     provide: RATE_COUNTER_KEYS,
     inject: [CATALOG_SECRET],
     useFactory: (secret: Uint8Array): RateCounterKeys => new HmacRateCounterKeys(secret),
+  },
+  {
+    provide: SELLER_CATEGORY_STORE,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): SellerCategoryStore =>
+      new PrismaSellerCategoryStore(prisma, ids),
+  },
+  {
+    provide: CATEGORY_PROPOSAL_CAPABILITY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): CategoryProposalCapability =>
+      new SellersCategoryProposalCapability(sellers),
+  },
+  {
+    provide: CATEGORY_PROPOSAL_POLICY,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): CategoryProposalPolicy => {
+      const policy = new ConfigCatalogMarketPolicy(markets);
+      return { maxPending: (market) => policy.maxPendingCategoryProposals(market) };
+    },
   },
 ];

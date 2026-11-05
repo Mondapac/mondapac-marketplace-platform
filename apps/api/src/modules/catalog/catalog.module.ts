@@ -288,6 +288,25 @@ import { CategoryAttributeLinksSet } from './application/use-cases/category-attr
 import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
 import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
+import { SELLER_CATEGORY_STORE } from './application/ports/seller-category.store';
+import {
+  CATEGORY_PROPOSAL_CAPABILITY,
+  CATEGORY_PROPOSAL_POLICY,
+} from './application/ports/category-proposal-capability';
+import { OwnCategoryPropose } from './application/use-cases/own-category-propose.use-case';
+import { OwnCategoryProposalCancel } from './application/use-cases/own-category-proposal-cancel.use-case';
+import { OwnCategoryProposalsList } from './application/use-cases/own-category-proposals-list.use-case';
+import { CategoryProposalList } from './application/use-cases/category-proposal-list.use-case';
+import { CategoryProposalApprove } from './application/use-cases/category-proposal-approve.use-case';
+import { CategoryProposalReject } from './application/use-cases/category-proposal-reject.use-case';
+import { SellerCategoryAdminList } from './application/use-cases/seller-category-admin-list.use-case';
+import { SellerCategoryPromote } from './application/use-cases/seller-category-promote.use-case';
+import { SellerCategoryMerge } from './application/use-cases/seller-category-merge.use-case';
+import { OwnOfferSetShelf } from './application/use-cases/own-offer-set-shelf.use-case';
+import { CancelPendingProposals } from './application/use-cases/cancel-pending-proposals.use-case';
+import { sellerCategoryProposalSubscriptions } from './presentation/subscribers/seller-category-proposals.subscriptions';
+import { OwnCategoryProposalController } from './presentation/own-category-proposal.controller';
+import { CategoryProposalAdminController } from './presentation/category-proposal-admin.controller';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
@@ -425,6 +444,9 @@ const PORT = {
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
+  shelves: SELLER_CATEGORY_STORE,
+  capability: CATEGORY_PROPOSAL_CAPABILITY,
+  proposalPolicy: CATEGORY_PROPOSAL_POLICY,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -512,6 +534,8 @@ const productTypeProvider: FactoryProvider<string> = {
     BusinessActivityAdminController,
     OwnBrandController,
     PublicBrandController,
+    OwnCategoryProposalController,
+    CategoryProposalAdminController,
   ],
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
@@ -1020,6 +1044,86 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
       audit: true,
     }),
+    useCaseProvider(OwnCategoryPropose, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      capability: true,
+      proposalPolicy: true,
+      eligibility: true,
+      counters: true,
+      counterKeys: true,
+    }),
+    useCaseProvider(OwnCategoryProposalCancel, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnCategoryProposalsList, {
+      unitOfWork: true,
+      shelves: true,
+      capability: true,
+      proposalPolicy: true,
+    }),
+    useCaseProvider(CategoryProposalList, { unitOfWork: true, shelves: true, sellerNames: true }),
+    useCaseProvider(CategoryProposalApprove, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      capability: true,
+      policy: true,
+    }),
+    useCaseProvider(CategoryProposalReject, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SellerCategoryAdminList, { unitOfWork: true, shelves: true }),
+    useCaseProvider(SellerCategoryPromote, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      shelves: true,
+    }),
+    useCaseProvider(SellerCategoryMerge, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnOfferSetShelf, { unitOfWork: true, shelves: true, clock: true }),
+    useCaseProvider(CancelPendingProposals, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandsAzQuery, { unitOfWork: true, brandReader: true }),
@@ -1515,6 +1619,12 @@ const productTypeProvider: FactoryProvider<string> = {
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
       ],
+    ),
+    // Seller category proposals: SEL-26 switched off cancels the pending ones (categories C9a).
+    registerSubscriptionsFrom(
+      'catalog',
+      [CancelPendingProposals],
+      (cancel: CancelPendingProposals) => sellerCategoryProposalSubscriptions(cancel),
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).
     registerSubscriptionsFrom(

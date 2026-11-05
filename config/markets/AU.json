@@ -441,6 +441,7 @@
     },
     "maxVariantsPerProduct": 100,
     "maxCategoryDepth": 4,
+    "maxPendingCategoryProposals": 5,
     "maxVariantAttributes": 2,
     "approvalRequired": true,
     "productTypes": ["simple", "configurable"],

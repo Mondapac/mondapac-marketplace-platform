@@ -205,17 +205,17 @@ export interface TreeGuarded<T> {
  * is raised first (the row lock serialises two admins; the loser is `conflict.stale`), then
  * `work` reads the whole tree and writes. Any `StaleAggregateError` is `conflict.stale`.
  */
-export async function runStructural<T>(
+export async function runStructural<T, F = never>(
   deps: CategoryWriteDependencies,
   market: MarketContext,
   expectedTreeVersion: number,
   work: (
     nodes: readonly EditableCategory[],
     treeVersion: number,
-  ) => Promise<Result<T, CategoryWriteFailure>>,
-): Promise<Result<T, CategoryWriteFailure>> {
+  ) => Promise<Result<T, CategoryWriteFailure | F>>,
+): Promise<Result<T, CategoryWriteFailure | F>> {
   try {
-    return await deps.unitOfWork.run<T, CategoryWriteFailure>(market, async () => {
+    return await deps.unitOfWork.run<T, CategoryWriteFailure | F>(market, async () => {
       const tree = await deps.categories.treeVersion(market);
       if (tree.version !== expectedTreeVersion) return err({ code: 'conflict.stale' } as const);
       await deps.categories.bumpTreeVersion(market, tree.version);

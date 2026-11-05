@@ -222,6 +222,9 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   tree (department, group, category, subcategory). Products sit on levels 3 and 4, so fewer than
   3 is refused; the start-up stops on a value outside the range. The category editor reads it and
   never a literal.
+- `maxPendingCategoryProposals` (optional, 1 to 50; AU 5, ZZ 3; default 5): the most category
+  proposals one seller may have waiting (CAT-54). A soft cap: two proposals sent at the same moment
+  may pass it by one (catalog design 4.7).
 - `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check

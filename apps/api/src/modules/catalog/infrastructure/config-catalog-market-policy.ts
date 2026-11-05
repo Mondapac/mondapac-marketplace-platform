@@ -6,6 +6,7 @@ import {
   type CatalogMarketPolicy,
 } from '../application/ports/catalog-market-policy';
 import type { SensitiveChangesPolicy } from '../domain/product-revision-policy';
+import { DEFAULT_MAX_PENDING_PROPOSALS } from '../domain/seller-category';
 
 type CatalogSection = NonNullable<MarketConfig['catalog']>;
 
@@ -39,6 +40,11 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
   /** The deepest level of the platform category tree (AU 4, ZZ 3). */
   maxCategoryDepth(market: MarketContext): number {
     return this.section(market).maxCategoryDepth;
+  }
+
+  /** The pending cap of category proposals per seller (CAT-54; AU 5, default 5). */
+  maxPendingCategoryProposals(market: MarketContext): number {
+    return this.section(market).maxPendingCategoryProposals ?? DEFAULT_MAX_PENDING_PROPOSALS;
   }
 
   maxVariantAttributes(market: MarketContext): number {

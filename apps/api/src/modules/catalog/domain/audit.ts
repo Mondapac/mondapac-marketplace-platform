@@ -537,6 +537,14 @@ export const CategoryAttributesChangedAudit = defineAuditAction({
 export const CATALOG_CATEGORY_PROPOSAL_TARGET = 'catalog.category-proposal';
 export const CATALOG_SELLER_CATEGORY_TARGET = 'catalog.seller-category';
 
+/** A seller proposed a shelf under a platform category. Ids and a count, never the names. */
+export const CategoryProposedAudit = defineAuditAction({
+  action: 'catalog.category-proposal.proposed',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: { parentId: auditField.id(), localeCount: auditField.integer() },
+});
+
 /** An admin approved a proposal: the shelf it created. Ids only, never the names. */
 export const CategoryProposalApprovedAudit = defineAuditAction({
   action: 'catalog.category-proposal.approved',
@@ -637,6 +645,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
+  CategoryProposedAudit,
   CategoryProposalApprovedAudit,
   CategoryProposalRejectedAudit,
   CategoryProposalCancelledAudit,

@@ -20,7 +20,7 @@ export type ReserveFailure =
 const logger = new Logger('PlatformImportLimits');
 
 /**
- * Counts one attempt against per-account limits (catalog data design 3.26), in a reservation unit
+ * Counts one attempt against per-account (or, for a seller kind, per-seller) limits (catalog data design 3.26), in a reservation unit
  * of its own before any work: a throttled admin costs the parser nothing. A store that cannot
  * answer is `access.unavailable`, never a pass.
  */
@@ -28,13 +28,13 @@ export async function reserveForAccount(
   deps: ReserveDependencies,
   context: CallContext,
   limits: readonly RateLimit[],
-  accountId: Id<'Account'>,
+  subject: Id<'Account'> | Id<'Seller'>,
 ): Promise<ReserveFailure | null> {
   const { market } = context;
   try {
     const counters = limits.map((limit) => ({
       limit,
-      keyHash: deps.counterKeys.keyOf(market, limit.kind, accountId),
+      keyHash: deps.counterKeys.keyOf(market, limit.kind, subject),
     }));
     const now = deps.clock.now();
     const reserved = await deps.unitOfWork.run(market, async () =>
