@@ -13,6 +13,7 @@ import {
   SettingsPage,
   SettingsSection,
   toast,
+  useLiveErrors,
   useSettingsForm,
   type FieldChange,
   type SaveResult,
@@ -155,9 +156,7 @@ export function DeliverySettingsPanel({
   const t = useTranslations();
   const locale = useLocale();
   const chrome = useSettingsChrome();
-  const [invalid, setInvalid] = useState<readonly FormField[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
-  const [failedSaves, setFailedSaves] = useState(0);
   const [confirm, setConfirm] = useState<Body | null>(null);
   const state = useSettingsForm<DeliverySettings, SettingsForm>({
     initial,
@@ -169,6 +168,11 @@ export function DeliverySettingsPanel({
   const settings = state.saved;
   const form = state.draft;
   const { currency } = settings;
+  // Which fields fail is worked out from the draft on every render; a field shows its error once
+  // it was edited or left, and the save bar counts what shows, so Save stays off until it is fixed.
+  const checkedNow = checkForm(form, currency);
+  const live = useLiveErrors<FormField>(checkedNow.ok ? [] : checkedNow.invalid);
+  const invalid = live.shown;
   const money = (minor: number) => moneyOf(minor, currency, locale);
   const readOnly = !canManage;
 
@@ -185,17 +189,21 @@ export function DeliverySettingsPanel({
   const count = state.count;
   const dirty = canManage && count > 0;
 
-  const edit = (patch: Partial<SettingsForm>, field?: FormField) => {
+  // A typed field shows its error once it is left (or on Save); after that it re-checks as the
+  // user types, because `live.shown` is worked out again from the draft on every render.
+  const edit = (patch: Partial<SettingsForm>) => {
     state.setDraft((current) => ({ ...current, ...patch }));
-    // Editing a field takes its error away; the next save checks it again.
-    if (field !== undefined) setInvalid((current) => current.filter((name) => name !== field));
   };
   const errorOf = (field: FormField) =>
-    invalid.includes(field) ? t(`${P}.invalid.${field}`) : undefined;
+    !invalid.includes(field)
+      ? undefined
+      : field === 'marginValue'
+        ? t(`${P}.invalid.margin-${form.marginKind}`, { max: money(1_000_000) })
+        : t(`${P}.invalid.${field}`);
 
   function discard() {
     state.discard();
-    setInvalid([]);
+    live.reset();
     setProblem(null);
   }
 
@@ -204,11 +212,9 @@ export function DeliverySettingsPanel({
     setProblem(null);
     const checked = checkForm(form, currency);
     if (!checked.ok) {
-      setInvalid(checked.invalid);
-      setFailedSaves((n) => n + 1);
+      live.attempt();
       return;
     }
-    setInvalid([]);
     // A save that changes nothing needs no confirmation; any change is listed first.
     if (impactOf(settings, checked.body, show).length === 0) void save(checked.body);
     else setConfirm(checked.body);
@@ -234,7 +240,10 @@ export function DeliverySettingsPanel({
         return { status: 'failed' };
       },
     );
-    if (result.status === 'saved') toast.success(t(`${P}.notice.saved`));
+    if (result.status === 'saved') {
+      live.reset();
+      toast.success(t(`${P}.notice.saved`));
+    }
     // The re-read failed too: the plain "reload the page" message is all that is left.
     else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
@@ -263,8 +272,12 @@ export function DeliverySettingsPanel({
       <SettingsErrorSummary
         key="invalid"
         title={t('settings.errors.title', { count: invalid.length })}
-        items={invalid.map((field) => ({ id: ROW[field], label: summaryLabel(field) }))}
-        focusSignal={failedSaves}
+        items={invalid.map((field) => ({
+          id: ROW[field],
+          label: summaryLabel(field),
+          reason: errorOf(field),
+        }))}
+        focusSignal={live.attempts}
       />
     ),
     state.theirs === null ? null : (
@@ -343,7 +356,8 @@ export function DeliverySettingsPanel({
             type="time"
             className="md:max-w-48"
             value={form.cutoff}
-            onChange={(event) => edit({ cutoff: event.target.value }, 'cutoff')}
+            onChange={(event) => edit({ cutoff: event.target.value })}
+            onBlur={() => live.touch('cutoff')}
           />
         </SettingRow>
       </SettingsSection>
@@ -363,7 +377,8 @@ export function DeliverySettingsPanel({
             autoComplete="off"
             className="md:max-w-40"
             value={form.daysAhead}
-            onChange={(event) => edit({ daysAhead: event.target.value }, 'daysAhead')}
+            onChange={(event) => edit({ daysAhead: event.target.value })}
+            onBlur={() => live.touch('daysAhead')}
           />
         </SettingRow>
         <SettingRow
@@ -390,10 +405,9 @@ export function DeliverySettingsPanel({
             options={KINDS.map((kind) => ({ value: kind, label: t(`${P}.margin.kinds.${kind}`) }))}
             value={form.marginKind}
             onChange={(event) => {
-              edit(
-                { marginKind: event.target.value as MarginKind, marginValue: '' },
-                'marginValue',
-              );
+              // The amount is reset, not typed: its error waits until it is edited or Save is tried.
+              edit({ marginKind: event.target.value as MarginKind, marginValue: '' });
+              live.untouch('marginValue');
             }}
           />
         </SettingRow>
@@ -408,11 +422,7 @@ export function DeliverySettingsPanel({
             }
             changed={changed.marginValue}
             disabled={readOnly}
-            error={
-              invalid.includes('marginValue')
-                ? t(`${P}.invalid.margin-${form.marginKind}`, { max: money(1_000_000) })
-                : undefined
-            }
+            error={errorOf('marginValue')}
           >
             <SettingInput
               name="margin-value"
@@ -420,7 +430,8 @@ export function DeliverySettingsPanel({
               autoComplete="off"
               className="md:max-w-40"
               value={form.marginValue}
-              onChange={(event) => edit({ marginValue: event.target.value }, 'marginValue')}
+              onChange={(event) => edit({ marginValue: event.target.value })}
+              onBlur={() => live.touch('marginValue')}
             />
           </SettingRow>
         )}

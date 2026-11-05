@@ -88,6 +88,10 @@ describe('SupportEmailCard', () => {
 
   it('refuses a bad address before calling the API', () => {
     mount(contact('help@example.com'));
+    // While the address is first typed nothing is flagged; leaving the field shows the error.
+    type('plain');
+    expect(screen.queryByText('Enter one valid email address.')).toBeNull();
+    fireEvent.blur(screen.getByLabelText('Support email address'));
     for (const bad of [
       '',
       'plain',
@@ -99,20 +103,28 @@ describe('SupportEmailCard', () => {
       'a?b=1@x.com',
     ]) {
       type(bad);
-      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      // Once the field was left, the error follows each keystroke, with no Save click.
       expect(screen.getByText('Enter one valid email address.')).toBeTruthy();
-      // The error is counted, and Save waits until the field is edited.
+      // The error is counted, and Save is off until the field is right.
       expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
-      // The summary at the top names the field, takes focus, and its link goes to the field.
-      const summary = screen.getByRole('alert');
-      expect(summary.textContent).toContain('1 setting needs fixing before you can save');
-      expect(document.activeElement).toBe(summary);
-      fireEvent.click(screen.getByRole('link', { name: 'Support email address' }));
-      expect(document.activeElement).toBe(screen.getByLabelText('Support email address'));
       expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
         true,
       );
+      // The summary at the top names the field, and its link goes to the field.
+      // Before a Save press the summary is a quiet named group, not an alert.
+      expect(screen.queryByRole('alert')).toBeNull();
+      const summary = screen.getByRole('group', { name: /needs? fixing/ });
+      expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+      fireEvent.click(screen.getByRole('link', { name: 'Support email address' }));
+      expect(document.activeElement).toBe(screen.getByLabelText('Support email address'));
     }
+    // Fixing the address takes the error and the count away at once.
+    type('care@example.com');
+    expect(screen.queryByText('Enter one valid email address.')).toBeNull();
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      false,
+    );
     expect(call).not.toHaveBeenCalled();
   });
 

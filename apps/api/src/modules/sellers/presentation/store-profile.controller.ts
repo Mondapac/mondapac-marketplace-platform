@@ -46,6 +46,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { StoreProfileClaimTerms } from '../application/use-cases/store-profile-claim-terms.use-case';
 import { StoreImageReadOwn } from '../application/use-cases/store-image-read-own.use-case';
 import { StoreImageRemove } from '../application/use-cases/store-image-remove.use-case';
 import { StoreImageSave } from '../application/use-cases/store-image-save.use-case';
@@ -116,6 +117,16 @@ export class StoreProfileBody {
   lastChanged!: LastChangedDto | null;
 }
 
+export class ClaimTermsBody {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The Market claim terms as plain phrases (NFKC, lower case, tokens joined by one space). ' +
+      'For a live warning in the About field only: the save check is the authority.',
+  })
+  terms!: string[];
+}
+
 export class SaveAboutRequest {
   @ApiProperty({ description: 'The version the page read (stale: conflict.stale).' })
   expectedVersion!: number;
@@ -174,6 +185,7 @@ export class StoreProfileController {
     private readonly saveImage: StoreImageSave,
     private readonly removeImage: StoreImageRemove,
     private readonly readImage: StoreImageReadOwn,
+    private readonly claimTerms: StoreProfileClaimTerms,
     private readonly history: StoreProfileHistory,
   ) {}
 
@@ -199,6 +211,32 @@ export class StoreProfileController {
   ): Promise<StoreProfileBody> {
     const result = await this.read.execute(context, {});
     return this.settle('sellers.store-profile-read', context, response, result, 'read');
+  }
+
+  @Get('claim-terms')
+  @Header('Cache-Control', NO_STORE)
+  @ApiOperation({
+    summary: 'The certification claim terms of the Market',
+    description:
+      'Needs sellers.store-profile.view and an approved seller. A read of certification for the ' +
+      'About field to warn while the seller types; the About save runs the real check and stays ' +
+      'authoritative. Unavailable is sellers.unavailable, never an empty list.',
+  })
+  @ApiOkResponse({ type: ClaimTermsBody })
+  @ApiUnauthorizedResponse({ type: SellersErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async getClaimTerms(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ClaimTermsBody> {
+    const result = await this.claimTerms.execute(context, {});
+    this.#log('sellers.store-profile-claim-terms', context, result.ok ? 'read' : result.error.code);
+    if (!result.ok) throw this.#errorOf(result.error, response);
+    return { terms: [...result.value] };
   }
 
   @Get('history')

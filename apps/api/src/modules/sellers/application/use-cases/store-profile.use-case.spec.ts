@@ -42,6 +42,7 @@ import { PublishedStoreContentReader } from '../store-profile/published-store-co
 import { StoreImageReadOwn } from './store-image-read-own.use-case';
 import { StoreImageRemove } from './store-image-remove.use-case';
 import { StoreImageSave } from './store-image-save.use-case';
+import { StoreProfileClaimTerms } from './store-profile-claim-terms.use-case';
 import { StoreProfileHistory } from './store-profile-history.use-case';
 import { StoreProfileRead } from './store-profile-read.use-case';
 import { StoreProfileSaveAbout } from './store-profile-save-about.use-case';
@@ -138,6 +139,7 @@ function setUp() {
     deny: () => void (allowed = false),
     holdOnly: (...keys: string[]) => void (held = new Set(keys)),
     read: new StoreProfileRead(gate, reading),
+    claimTerms: new StoreProfileClaimTerms(gate, { claimCheck }),
     history: new StoreProfileHistory(gate, { trail: reading.trail }),
     saveAbout: new StoreProfileSaveAbout(gate, {
       ...reading,
@@ -531,6 +533,19 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
       });
       expect(JSON.stringify(result)).not.toMatch(/claim word/i);
       expect(t.storeContent.revisions.size).toBe(0);
+    });
+
+    it('lists the claim terms for an approved seller, and refuses what the check cannot answer', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+
+      expect(await t.claimTerms.execute(context, {})).toEqual({ ok: true, value: ['claim word'] });
+
+      t.claimCheck.unavailable = true;
+      expect(await t.claimTerms.execute(context, {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
     });
 
     it('fails closed when the claim check is unavailable: sellers.unavailable, nothing saved', async () => {

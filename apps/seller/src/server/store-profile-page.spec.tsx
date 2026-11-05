@@ -55,6 +55,34 @@ describe('loadStoreProfilePage', () => {
     expect(mocks.serverGet).toHaveBeenCalledWith('sellers/store-profile');
   });
 
+  it('also reads the Market claim terms for the live warning', async () => {
+    signedIn();
+    mocks.serverGet.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith('claim-terms')
+          ? { kind: 'ok', body: { terms: ['halal certified'] } }
+          : { kind: 'ok', body: VIEW },
+      ),
+    );
+
+    const page = await loadStoreProfilePage();
+
+    expect(page).toMatchObject({ kind: 'ok', claimTerms: ['halal certified'] });
+    expect(mocks.serverGet).toHaveBeenCalledWith('sellers/store-profile/claim-terms');
+  });
+
+  it.each(['unavailable', 'forbidden', 'not-found'])(
+    'still shows the page, with no live claim warning, when the terms read answers %s',
+    async (kind) => {
+      signedIn();
+      mocks.serverGet.mockImplementation((path: string) =>
+        Promise.resolve(path.endsWith('claim-terms') ? { kind } : { kind: 'ok', body: VIEW }),
+      );
+
+      expect(await loadStoreProfilePage()).toMatchObject({ kind: 'ok', claimTerms: [] });
+    },
+  );
+
   it('sends a seller who is not approved to the setup, before any read', async () => {
     signedIn({ sellerAccessState: 'pending' });
 

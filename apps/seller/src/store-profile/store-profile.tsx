@@ -19,14 +19,17 @@ export function StoreProfile({
   initial,
   csrfToken,
   canEdit,
+  claimTerms = [],
 }: {
   readonly initial: StoreProfileView;
   readonly csrfToken: string;
   readonly canEdit: boolean;
+  /** The Market's certification claim terms, from the API, for the live About warning. */
+  readonly claimTerms?: readonly string[];
 }) {
   const t = useTranslations();
   const chrome = useSettingsChrome();
-  const about = useAbout({ initial, csrfToken });
+  const about = useAbout({ initial, csrfToken, claimTerms });
   const [logo, setLogo] = useState<StoreImageRef | null>(initial.logo);
   const [banner, setBanner] = useState<StoreImageRef | null>(initial.banner);
 
