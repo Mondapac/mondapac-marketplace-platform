@@ -893,6 +893,15 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       'CLAMD_HOST: required when CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED is true (reviewers may open certificate files only after they are scanned)',
     );
   }
+  if (
+    parsed.success &&
+    parsed.data.NODE_ENV === 'production' &&
+    parsed.data.CLAMD_HOST === undefined
+  ) {
+    issues.push(
+      'CLAMD_HOST: required when NODE_ENV is production (every uploaded certificate file must be scanned, so none is ever stored unscanned)',
+    );
+  }
   if (!parsed.success || issues.length > 0 || assistant.config === null) {
     throw new InvalidConfigError(issues);
   }
