@@ -504,6 +504,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   VariantDraft: { noCustomerText: 'ids and option codes; labels are RevisionVariantContent' },
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
+  AxisIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },
   WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
 };
