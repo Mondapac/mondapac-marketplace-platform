@@ -138,7 +138,9 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         children.map((c) => c.code),
       );
   const counted = (count: number | undefined) =>
-    count === undefined ? {} : { count, countLabel: t('products-total', { count }) };
+    count === undefined
+      ? {}
+      : { count: t('chip-count', { count }), countLabel: t('products-total', { count }) };
   // A chip that would lead to an empty list is left out ("Other" too when nothing is direct).
   const shown = children.filter((child) => counts?.get(child.code) !== 0);
   const other = facts?.depth === OTHER_DEPTH && facts.directCount !== 0;

@@ -7,8 +7,8 @@ export interface Chip {
   readonly label: string;
   readonly href: string;
   readonly current: boolean;
-  /** Products under it, when the source counts them. */
-  readonly count?: number;
+  /** Products under it, formatted for the locale, when the source counts them. */
+  readonly count?: string;
   /** The count in words for screen readers ("2 products"); the number itself is not read. */
   readonly countLabel?: string;
 }
