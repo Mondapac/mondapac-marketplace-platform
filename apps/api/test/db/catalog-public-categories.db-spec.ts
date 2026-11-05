@@ -115,11 +115,70 @@ describe.each(TEST_MARKETS)('catalog public categories in market %s (database)',
     return { id: created.value.state.id, slug, revisionId };
   }
 
+  /**
+   * A new revision of a category with the given names and short descriptions, made the published
+   * one when `publish` is true (else it stays a revision nobody published).
+   */
+  async function revise(
+    target: MarketContext,
+    made: Made,
+    texts: { locale: string; name: string; shortDescription: string | null }[],
+    publish: boolean,
+  ): Promise<void> {
+    const revisionId = uuid7();
+    const { rows } = await sql(
+      `SELECT coalesce(max(revision_no), 0) + 1 AS next, max(parent_id::text) AS parent
+         FROM catalog.platform_category_revisions WHERE market_id = $1 AND category_id = $2`,
+      [target.marketId, made.id],
+    );
+    const next = (rows[0] as { next: number; parent: string | null }).next;
+    const parent = (rows[0] as { next: number; parent: string | null }).parent;
+    await insert('platform_category_revisions', {
+      id: revisionId,
+      ...base(target),
+      category_id: made.id,
+      revision_no: next,
+      parent_id: parent,
+      change_kind: 'renamed',
+      author_kind: 'seed',
+      author_account_id: null,
+      created_at: T0.toString(),
+      reason: null,
+    });
+    for (const text of texts) {
+      await insert('platform_category_revision_texts', {
+        ...base(target),
+        revision_id: revisionId,
+        locale: text.locale,
+        name: text.name,
+        short_description: text.shortDescription,
+        keywords: [],
+      });
+      await insert('platform_category_revision_names', {
+        ...base(target),
+        revision_id: revisionId,
+        locale: text.locale,
+        name: text.name,
+      });
+    }
+    if (publish) {
+      await sql(
+        `UPDATE catalog.platform_categories SET published_revision_id = $3
+           WHERE market_id = $1 AND id = $2`,
+        [target.marketId, made.id, revisionId],
+      );
+    }
+  }
+
   /** A published product on `categoryId` with one Offer, listed or not; paused when asked. */
   async function product(
     target: MarketContext,
     categoryId: string,
-    { listed = true, paused = false } = {},
+    {
+      listed = true,
+      paused = false,
+      earlierOn,
+    }: { listed?: boolean; paused?: boolean; earlierOn?: string } = {},
   ): Promise<void> {
     const familyId = uuid7();
     const familyRevisionId = uuid7();
@@ -143,6 +202,29 @@ describe.each(TEST_MARKETS)('catalog public categories in market %s (database)',
     });
     const productId = uuid7();
     const revisionId = uuid7();
+    const revision = (id: string, revisionNo: number) =>
+      insert('product_revisions', {
+        id,
+        ...base(target),
+        product_id: productId,
+        revision_no: revisionNo,
+        revision_kind: 'submission',
+        base_revision_id: null,
+        reverted_from_revision_id: null,
+        family_revision_id: familyRevisionId,
+        definition_revision_ids: [],
+        tax_category_code: 'standard',
+        attribute_values: '{}',
+        field_provenance: null,
+        sensitive: false,
+        sensitive_reasons: [],
+        content_schema_version: 1,
+        content_hash: HASH,
+        author_kind: 'admin',
+        author_account_id: uuid7(),
+        acting_admin_account_id: null,
+        submitted_at: T0.toString(),
+      });
     await insert('products', {
       id: productId,
       ...base(target),
@@ -159,28 +241,18 @@ describe.each(TEST_MARKETS)('catalog public categories in market %s (database)',
       version: 1,
       created_at: T0.toString(),
     });
-    await insert('product_revisions', {
-      id: revisionId,
-      ...base(target),
-      product_id: productId,
-      revision_no: 1,
-      revision_kind: 'submission',
-      base_revision_id: null,
-      reverted_from_revision_id: null,
-      family_revision_id: familyRevisionId,
-      definition_revision_ids: [],
-      tax_category_code: 'standard',
-      attribute_values: '{}',
-      field_provenance: null,
-      sensitive: false,
-      sensitive_reasons: [],
-      content_schema_version: 1,
-      content_hash: HASH,
-      author_kind: 'admin',
-      author_account_id: uuid7(),
-      acting_admin_account_id: null,
-      submitted_at: T0.toString(),
-    });
+    if (earlierOn !== undefined) {
+      // An earlier revision on another category: it was never the published one.
+      const earlierId = uuid7();
+      await revision(earlierId, 1);
+      await insert('product_revision_categories', {
+        ...base(target),
+        revision_id: earlierId,
+        category_id: earlierOn,
+        position: 0,
+      });
+    }
+    await revision(revisionId, earlierOn === undefined ? 1 : 2);
     await insert('product_revision_categories', {
       ...base(target),
       revision_id: revisionId,
@@ -303,6 +375,74 @@ describe.each(TEST_MARKETS)('catalog public categories in market %s (database)',
     // An unlisted Offer and a paused product are not live.
     expect(bySlug.get(alpha.slug)).toMatchObject({ hasLiveProducts: false, inMenu: false });
   });
+
+  it('answers names and short descriptions per locale with the default-locale fallback', async () => {
+    const second = policy.locales(market).supported.find((l) => l !== locale);
+    const root = await category(market, null, 'Root');
+    const both = await category(market, root.id, 'Both');
+    const defaultOnly = await category(market, root.id, 'Default only');
+    await revise(
+      market,
+      both,
+      [
+        { locale, name: 'Both', shortDescription: 'Default text' },
+        ...(second === undefined
+          ? []
+          : [{ locale: second, name: 'Both second', shortDescription: 'Second text' }]),
+      ],
+      true,
+    );
+    await revise(
+      market,
+      defaultOnly,
+      [{ locale, name: 'Default only', shortDescription: 'Only default' }],
+      true,
+    );
+
+    const answer = await publicTree(second);
+    const bySlug = new Map(answer.categories.map((c) => [c.slug, c]));
+
+    expect(bySlug.get(both.slug)).toMatchObject(
+      second === undefined
+        ? { name: 'Both', shortDescription: 'Default text' }
+        : { name: 'Both second', shortDescription: 'Second text' },
+    );
+    expect(bySlug.get(defaultOnly.slug)).toMatchObject({
+      name: 'Default only',
+      shortDescription: 'Only default',
+    });
+  });
+
+  it('reads published content only: a draft revision and an earlier product revision do not count', async () => {
+    const root = await category(market, null, 'Root');
+    const drafted = await category(market, root.id, 'Drafted');
+    const earlier = await category(market, root.id, 'Earlier');
+    const now = await category(market, root.id, 'Now');
+    await revise(
+      market,
+      drafted,
+      [{ locale, name: 'Draft name', shortDescription: 'Draft text' }],
+      false,
+    );
+    await product(market, now.id, { earlierOn: earlier.id });
+
+    const bySlug = new Map((await publicTree()).categories.map((c) => [c.slug, c]));
+
+    expect(bySlug.get(drafted.slug)).toMatchObject({ name: 'Drafted', shortDescription: null });
+    expect(bySlug.get(earlier.slug)?.hasLiveProducts).toBe(false);
+    expect(bySlug.get(now.slug)?.hasLiveProducts).toBe(true);
+  });
+
+  it.each(['//evil.com', '\\evil.com', '%2F%2Fevil.com', 'https://evil.com'])(
+    'answers not found for %j through the real reads',
+    async (slug) => {
+      const result = await resolver.execute(anonymous, { slug });
+
+      expect(result.ok ? result.value : result.error).toEqual({
+        code: 'catalog.category-not-found',
+      });
+    },
+  );
 
   it('falls back to the default locale for a locale the Market does not support', async () => {
     const answer = await publicTree('xx-XX');

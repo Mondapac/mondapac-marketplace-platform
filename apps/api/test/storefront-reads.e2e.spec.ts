@@ -216,10 +216,18 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     ]);
   });
 
-  it('answers 404 for an over-long slug without calling the use case', async () => {
-    const response = await get(`/catalog/categories/resolve?slug=${'a'.repeat(121)}`);
+  it.each([
+    'a'.repeat(121),
+    '%2F%2Fevil.com',
+    '%5C%5Cevil.com',
+    'https%3A%2F%2Fevil.com',
+    'Meat',
+    'meat%2Flamb',
+  ])('answers 404 for slug=%s without calling the use case or redirecting', async (slug) => {
+    const response = await get(`/catalog/categories/resolve?slug=${slug}`);
 
     expect(response.status).toBe(404);
+    expect(response.headers.location).toBeUndefined();
     expect(response.body).toEqual({ statusCode: 404, code: 'catalog.category-not-found' });
     expect(calls).toEqual([]);
   });

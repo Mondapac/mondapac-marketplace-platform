@@ -178,6 +178,16 @@ describe('category slug resolver', () => {
     expect(resolve('c-4', nodes)).toEqual({ kind: 'not-found' });
   });
 
+  it('keeps a redirect temporary when an archived category sits under a hidden one', () => {
+    const nodes = [
+      node(1, null),
+      node(2, 1, { status: 'hidden' }),
+      node(3, 2, { status: 'archived', names: [] }),
+    ];
+
+    expect(resolve('c-3', nodes)).toEqual({ kind: 'redirect', slug: 'c-1', permanent: false });
+  });
+
   it('keeps a redirect temporary when a merge leads into a hidden category', () => {
     const nodes = [
       node(1, null),

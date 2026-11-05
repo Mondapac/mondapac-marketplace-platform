@@ -14,6 +14,7 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import { CATEGORY_SLUG } from '../domain/category-edit';
 import { CategorySlugResolveQuery } from '../application/use-cases/category-slug-resolve.use-case';
 import { PublicCategoryTreeQuery } from '../application/use-cases/public-category-tree.use-case';
 import { fail } from './http-answers';
@@ -191,7 +192,10 @@ export class PublicCategoryController {
     if (typeof slug !== 'string' || slug.length === 0) {
       throw fail(400, 'validation.failed', { fields: [{ path: 'slug', code: 'required' }] });
     }
-    if (slug.length > SLUG_MAX) throw fail(404, 'catalog.category-not-found');
+    // Not a slug (or longer than any): not found before any read, so junk costs nothing.
+    if (slug.length > SLUG_MAX || !CATEGORY_SLUG.test(slug)) {
+      throw fail(404, 'catalog.category-not-found');
+    }
     const result = await this.resolver.execute(context, { slug });
     if (result.ok) {
       const answer = result.value;

@@ -7,6 +7,7 @@ import {
   liveCategoryTree,
   MAX_TREE_NODES,
 } from '../../domain/category-tree';
+import { CATEGORY_SLUG } from '../../domain/category-edit';
 import { resolveCategorySlug, type CategorySlugResolution } from '../../domain/public-category';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { CategoryTreeReader } from '../ports/category-tree.reader';
@@ -59,6 +60,8 @@ export class CategorySlugResolveQuery extends UseCase<
     input: CategorySlugResolveInput,
   ): Promise<Result<CategorySlugResolveAnswer, CategorySlugResolveFailure>> {
     const { market } = context;
+    // A value that is not a slug names nothing: answered before any read.
+    if (!CATEGORY_SLUG.test(input.slug)) return err({ code: 'catalog.category-not-found' });
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
