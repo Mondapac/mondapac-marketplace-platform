@@ -74,6 +74,24 @@ export interface Category {
   readonly name: string;
   readonly shortName: string;
   readonly children: readonly { readonly code: string; readonly name: string }[];
+  /** The category page's extras from the live tree (categories C6); absent on sample data. */
+  readonly page?: CategoryPageFacts;
+}
+
+/** What the category page shows and tells search engines beyond the name (categories C6). */
+export interface CategoryPageFacts {
+  /** The ancestors, top level first: the breadcrumb between Browse and the category. */
+  readonly trail: readonly { readonly code: string; readonly name: string }[];
+  /** 0 at the top level (department); 2 is a category (level 3) that may hold products. */
+  readonly depth: number;
+  readonly shortDescription?: string;
+  readonly seo?: {
+    readonly title?: string;
+    readonly description?: string;
+    readonly noindex: boolean;
+  };
+  /** False when no listed product is on it or below it: the page stays, out of the index. */
+  readonly hasLiveProducts?: boolean;
 }
 
 export interface PromoBanner {

@@ -5,6 +5,7 @@ import {
   categoryOf,
   readOnce,
   slugsOf,
+  trailOf,
   treeOf,
   type TreeRow,
 } from './category-tree.ts';
@@ -59,8 +60,19 @@ export async function liveCategory(
   if (rows === undefined) return undefined;
   const found = findInTree(rows, code, sub);
   if (found === undefined) return null;
+  const trail = trailOf(rows, found.node);
+  const { shortDescription, seo, hasLiveProducts } = found.node;
   return {
-    category: categoryOf(rows, found.node),
+    category: {
+      ...categoryOf(rows, found.node),
+      page: {
+        trail: trail.map((r) => ({ code: r.slug, name: r.name })),
+        depth: trail.length,
+        ...(shortDescription === undefined ? {} : { shortDescription }),
+        ...(seo === undefined ? {} : { seo }),
+        ...(hasLiveProducts === undefined ? {} : { hasLiveProducts }),
+      },
+    },
     ...(found.child === undefined
       ? {}
       : { child: { code: found.child.slug, name: found.child.name } }),
@@ -71,6 +83,8 @@ export interface LiveQuery {
   readonly q?: string;
   readonly category?: string;
   readonly subcategory?: string;
+  /** Only the products on the category itself ("Other {name}", categories C6). */
+  readonly direct?: boolean;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -97,6 +111,7 @@ export async function liveProducts(
     const found = findInTree(rows, query.category, query.subcategory);
     if (found === undefined) return { items: [], hasMore: false };
     params.set('category', (found.child ?? found.node).id);
+    if (query.direct === true) params.set('direct', 'true');
   }
   params.set('page', String(query.page));
   params.set('pageSize', String(query.pageSize));

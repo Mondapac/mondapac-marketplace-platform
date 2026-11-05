@@ -603,6 +603,7 @@
     "all": "All",
     "all-of": "See all {name}",
     "filter-subcategory": "Filter {name}",
+    "other-of": "Other {name}",
     "results": "Products",
     "pages": "Pages",
     "previous": "Previous",

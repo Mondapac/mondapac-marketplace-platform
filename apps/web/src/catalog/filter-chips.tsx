@@ -7,6 +7,8 @@ export interface Chip {
   readonly label: string;
   readonly href: string;
   readonly current: boolean;
+  /** Products under it, when the source counts them. */
+  readonly count?: number;
 }
 
 /** The filter chips of a results page; on phones the row scrolls and starts at the chosen chip. */
@@ -38,6 +40,7 @@ export function FilterChips({
           scroll={false}
         >
           {chip.label}
+          {chip.count === undefined ? null : <span className="cnt">{chip.count}</span>}
         </Link>
       ))}
     </nav>
