@@ -273,8 +273,10 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       showOnProductPage?: boolean;
       names: Record<string, string>;
       options?: Record<string, { labels: Record<string, string>; mergedInto?: string }>;
+      /** Archives the definition at the end, merged into another (attributes A8). */
+      mergedInto?: { id: string; options: Record<string, string> };
     },
-  ): Promise<void> {
+  ): Promise<string> {
     const base = { market_id: target.marketId, tenant_id: target.tenantId };
     const definitionId = uuid7();
     const revisionId = uuid7();
@@ -318,6 +320,22 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
          WHERE market_id = $1 AND id = $2`,
       [target.marketId, definitionId, revisionId],
     );
+    if (kind.mergedInto !== undefined) {
+      await owner.query(
+        `UPDATE catalog.attribute_definitions SET status = 'archived', merged_into_id = $3, version = 2
+           WHERE market_id = $1 AND id = $2`,
+        [target.marketId, definitionId, kind.mergedInto.id],
+      );
+      for (const [sourceCode, targetCode] of Object.entries(kind.mergedInto.options)) {
+        await insert('attribute_merge_options', {
+          ...base,
+          source_id: definitionId,
+          source_code: sourceCode,
+          target_code: targetCode,
+        });
+      }
+    }
+    return definitionId;
   }
 
   it('lists the published revision attribute values by family group, with names and labels in the asked locale', async () => {
@@ -413,6 +431,57 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       name: 'کشور سازنده',
       value: { kind: 'text', text: 'Iran' },
     });
+  });
+
+  it('reads a merged attribute as its target: name, label, code, and the target value wins', async () => {
+    const tag = uuid7().slice(-8);
+    const [container, pack] = [`container-${tag}`, `pack-${tag}`];
+    const targetId = await definition(market, container, {
+      dataType: 'select',
+      names: { 'en-AU': 'Container' },
+      options: { tin: { labels: { 'en-AU': 'Tin' } }, jar: { labels: { 'en-AU': 'Jar' } } },
+    });
+    await definition(market, pack, {
+      dataType: 'select',
+      names: { 'en-AU': 'Pack type' },
+      options: { can: { labels: { 'en-AU': 'Can' } } },
+      mergedInto: { id: targetId, options: { can: 'tin' } },
+    });
+    const entry = (code: string) => ({ code, required: false, isVariantOption: false });
+    // The family lists only the merged attribute: the target is read for it.
+    const alone = await product(market, {
+      texts: { 'en-AU': { name: 'Tins' } },
+      variants: [],
+      attributes: {
+        groups: [{ groupCode: 'details', attributes: [entry(pack)] }],
+        values: { [pack]: 'can' },
+      },
+    });
+    expect((await read(alone.productId))?.specifications).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          { code: container, name: 'Container', value: { kind: 'text', text: 'Tin' } },
+        ],
+      },
+    ]);
+    // A product that has a value of the target too shows that one, once.
+    const both = await product(market, {
+      texts: { 'en-AU': { name: 'Jars' } },
+      variants: [],
+      attributes: {
+        groups: [{ groupCode: 'details', attributes: [entry(pack), entry(container)] }],
+        values: { [pack]: 'can', [container]: 'jar' },
+      },
+    });
+    expect((await read(both.productId))?.specifications).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          { code: container, name: 'Container', value: { kind: 'text', text: 'Jar' } },
+        ],
+      },
+    ]);
   });
 
   it('has no specifications for a product whose family lists none', async () => {

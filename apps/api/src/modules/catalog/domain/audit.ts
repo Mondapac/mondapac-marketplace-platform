@@ -218,6 +218,22 @@ export const AttributeDefinitionArchivedAudit = defineAuditAction({
   },
 });
 
+/**
+ * An admin merged an attribute into another (A8): the source is archived and points at the target.
+ * `mappedValueCount` is how many of its values were mapped to a value of the target.
+ */
+export const AttributeDefinitionsMergedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.merged',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['active'] as const), material: auditField.boolean() },
+  after: {
+    status: auditField.enumOf(['archived'] as const),
+    mergedIntoId: auditField.id(),
+    mappedValueCount: auditField.integer(),
+  },
+});
+
 const relaxationKind = auditField.enumOf([
   'clear-material',
   'archive',
@@ -532,6 +548,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeDefinitionDiscardedAudit,
   AttributeValuesMergedAudit,
   AttributeDefinitionArchivedAudit,
+  AttributeDefinitionsMergedAudit,
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,

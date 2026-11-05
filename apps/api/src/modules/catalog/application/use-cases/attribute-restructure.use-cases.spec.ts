@@ -1,5 +1,5 @@
 import type { AuditEntry, CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -24,12 +24,15 @@ import { CATALOG_ATTRIBUTE_EDIT, CATALOG_ATTRIBUTE_RESTRUCTURE } from '../../con
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { AttributeImpact, AttributeImpactReader } from '../ports/attribute-impact.reader';
 import { AttributeArchive } from './attribute-archive.use-case';
+import { AttributeArchiveRequestListOpen } from './attribute-archive-request-list-open.use-case';
+import { AttributeRelaxationListOpen } from './attribute-relaxation-list-open.use-case';
 import { AttributeArchiveConfirm } from './attribute-archive-confirm.use-case';
 import { AttributeArchiveRequestCreate } from './attribute-archive-request.use-case';
 import { AttributeDefinitionCreate } from './attribute-definition-create.use-case';
 import { AttributeDefinitionEdit } from './attribute-definition-edit.use-case';
 import { AttributeDefinitionPublish } from './attribute-definition-publish.use-case';
 import { AttributeImpactGet } from './attribute-impact-get.use-case';
+import { AttributeMerge } from './attribute-merge.use-case';
 import { AttributeValuesMerge } from './attribute-values-merge.use-case';
 
 // Merging values, archiving and the archive of a material attribute by two administrators
@@ -66,6 +69,11 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
         sellerId: null,
       }),
     );
+
+  const actingAs = (): CallContext => {
+    const base = admin(SECOND);
+    return { ...base, actor: { ...base.actor, actingAs: { adminAccountId: SECOND } } as never };
+  };
 
   let store: MemoryAttributeDefinitionStore;
   let relaxations: MemoryAttributeRelaxationStore;
@@ -115,9 +123,12 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       publish: new AttributeDefinitionPublish(gate, deps),
       get: new AttributeImpactGet(gate, deps),
       merge: new AttributeValuesMerge(gate, deps),
+      mergeAttribute: new AttributeMerge(gate, deps),
       archive: new AttributeArchive(gate, deps),
       requestArchive: new AttributeArchiveRequestCreate(gate, deps),
       confirmArchive: new AttributeArchiveConfirm(gate, deps),
+      listArchive: new AttributeArchiveRequestListOpen(gate, deps),
+      listClear: new AttributeRelaxationListOpen(gate, deps),
     };
   };
 
@@ -132,17 +143,25 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
   });
 
   /** A published select attribute with three values, at version 2. */
-  async function published(material = false) {
+  async function published(
+    material = false,
+    name = 'Pack type',
+    dataType: 'select' | 'text' = 'select',
+  ) {
     const uc = build();
     const created = await uc.create.execute(admin(FIRST), {
-      dataType: 'select',
-      names: { [english]: 'Pack type' },
+      dataType,
+      names: { [english]: name },
       material,
-      options: [
-        { code: 'tin', labels: { [english]: 'Tin' } },
-        { code: 'can', labels: { [english]: 'Can' } },
-        { code: 'jar', labels: { [english]: 'Jar' } },
-      ],
+      ...(dataType === 'select'
+        ? {
+            options: [
+              { code: 'tin', labels: { [english]: 'Tin' } },
+              { code: 'can', labels: { [english]: 'Can' } },
+              { code: 'jar', labels: { [english]: 'Jar' } },
+            ],
+          }
+        : {}),
     });
     if (!created.ok) throw new Error(`create failed: ${created.error.code}`);
     const done = await uc.publish.execute(admin(FIRST), {
@@ -516,6 +535,37 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       ).toMatchObject({ ok: false, error: { code: 'relaxation.already-open' } });
     });
 
+    it('lists archive requests under the restructure key, apart from the clear-material list', async () => {
+      const { request } = await requested();
+      const listed = await build().listArchive.execute(admin(SECOND), {});
+      expect(listed).toMatchObject({
+        ok: true,
+        value: { requests: [{ id: request.id, kind: 'archive', mine: false }] },
+      });
+      expect(await build().listClear.execute(admin(SECOND), {})).toEqual(ok({ requests: [] }));
+      const own = await build().listArchive.execute(admin(FIRST), {});
+      expect(own).toMatchObject({
+        ok: true,
+        value: {
+          requests: [{ mine: true, allowedActions: { confirm: { allowed: false } } }],
+        },
+      });
+    });
+
+    it('does not list archive requests without the restructure key or in an acting-as session', async () => {
+      await requested();
+      granted = [CATALOG_ATTRIBUTE_EDIT.key];
+      expect(await build().listArchive.execute(admin(SECOND), {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      granted = [CATALOG_ATTRIBUTE_RESTRUCTURE.key];
+      expect(await build().listArchive.execute(actingAs(), {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
     it('is archived by a second administrator, with both account ids audited', async () => {
       const { attribute, request } = await requested();
       const answer = await build().confirmArchive.execute(admin(SECOND), {
@@ -581,6 +631,273 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
         status: 'cancelled',
         cancelReason: 'definition-changed',
       });
+    });
+  });
+  describe('acting as a seller', () => {
+    it('refuses every restructure use case in an acting-as session', async () => {
+      const source = await published(false, 'Pack type');
+      const target = await published(false, 'Container');
+      const uc = build();
+      const refused = { ok: false, error: { code: 'access.denied' } };
+      expect(await uc.get.execute(actingAs(), { attributeId: source.id })).toMatchObject(refused);
+      expect(
+        await uc.archive.execute(actingAs(), { attributeId: source.id, version: source.version }),
+      ).toMatchObject(refused);
+      expect(
+        await uc.mergeAttribute.execute(actingAs(), {
+          attributeId: source.id,
+          version: source.version,
+          target: target.id,
+          targetVersion: target.version,
+          options: { tin: 'tin', can: 'can', jar: 'jar' },
+        }),
+      ).toMatchObject(refused);
+      expect(
+        await uc.requestArchive.execute(actingAs(), {
+          attributeId: source.id,
+          version: source.version,
+        }),
+      ).toMatchObject(refused);
+      expect(store.rows.get(source.id)!.state.status).toBe('active');
+      expect(store.merges).toEqual([]);
+    });
+  });
+
+  describe('merge attributes', () => {
+    async function pair() {
+      const source = await published(false, 'Pack type');
+      const target = await published(false, 'Container');
+      return { source, target };
+    }
+    const mergeInput = (
+      source: { id: string; version: number },
+      target: { id: string; version: number },
+      options?: Record<string, string>,
+    ) => ({
+      attributeId: source.id,
+      version: source.version,
+      target: target.id,
+      targetVersion: target.version,
+      ...(options === undefined ? {} : { options }),
+    });
+    const all = { tin: 'tin', can: 'can', jar: 'jar' };
+
+    it('archives the source, points it at the target and maps every value, with one audit row', async () => {
+      const { source, target } = await pair();
+      const answer = await build().mergeAttribute.execute(
+        admin(FIRST),
+        mergeInput(source, target, all),
+      );
+      expect(answer).toMatchObject({ ok: true, value: { attribute: { status: 'archived' } } });
+      expect(store.rows.get(source.id)!.state.status).toBe('archived');
+      expect(store.merges).toEqual([
+        {
+          source: source.id,
+          target: target.id,
+          options: [
+            { sourceCode: 'tin', targetCode: 'tin' },
+            { sourceCode: 'can', targetCode: 'can' },
+            { sourceCode: 'jar', targetCode: 'jar' },
+          ],
+        },
+      ]);
+      expect(store.rows.get(target.id)!.state.status).toBe('active');
+      expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.merged']);
+    });
+
+    it('needs the restructure key, not only the edit key', async () => {
+      const { source, target } = await pair();
+      granted = [CATALOG_ATTRIBUTE_EDIT.key];
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(source, target, all)),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(store.merges).toEqual([]);
+    });
+
+    it('names the value that has no target value', async () => {
+      const { source, target } = await pair();
+      expect(
+        await build().mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput(source, target, { tin: 'tin', can: 'can' }),
+        ),
+      ).toMatchObject({
+        ok: false,
+        error: {
+          code: 'attribute-definition.merge-unmapped',
+          fields: [{ path: 'options.jar', code: 'unmapped' }],
+        },
+      });
+      expect(store.rows.get(source.id)!.state.status).toBe('active');
+    });
+
+    it('refuses a target value that does not exist or is not active', async () => {
+      const { source, target } = await pair();
+      expect(
+        await build().mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput(source, target, { ...all, jar: 'tub' }),
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-unmapped' } });
+    });
+
+    it('refuses attributes of different types', async () => {
+      const source = await published(false, 'Pack type');
+      const target = await published(false, 'Note', 'text');
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(source, target, all)),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-type-mismatch' } });
+    });
+
+    it('merges a type without values with no map', async () => {
+      const source = await published(false, 'Remark', 'text');
+      const target = await published(false, 'Note', 'text');
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(source, target)),
+      ).toMatchObject({ ok: true });
+      expect(store.merges[0]?.options).toEqual([]);
+    });
+
+    it('refuses an attribute merged into itself', async () => {
+      const { source } = await pair();
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(source, source, all)),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-invalid' } });
+    });
+
+    it('refuses a material source and a target that is archived', async () => {
+      const material = await published(true, 'Origin');
+      const target = await published(false, 'Container');
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(material, target, all)),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-material' } });
+      const source = await published(false, 'Pack type');
+      const archived = await build().archive.execute(admin(FIRST), {
+        attributeId: target.id,
+        version: target.version,
+      });
+      expect(archived.ok).toBe(true);
+      const gone = store.rows.get(target.id)!.state;
+      expect(
+        await build().mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput(source, { id: target.id, version: gone.version }, all),
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-invalid' } });
+    });
+
+    it('refuses a material target, which a merge cannot protect with a second administrator', async () => {
+      const source = await published(false, 'Pack type');
+      const target = await published(true, 'Container');
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(source, target, all)),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.merge-material' } });
+      expect(store.merges).toEqual([]);
+    });
+
+    it('keeps a chain one step long: an attribute others were merged into is neither merged nor archived', async () => {
+      const first = await published(false, 'Pack type');
+      const middle = await published(false, 'Container');
+      const end = await published(false, 'Vessel');
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(first, middle, all)),
+      ).toMatchObject({ ok: true });
+      const again = store.rows.get(middle.id)!.state;
+      expect(
+        await build().mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput({ id: middle.id, version: again.version }, end, all),
+        ),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'attribute.merge-blocked', fields: [{ code: 'merge-target' }] },
+      });
+      expect(
+        await build().archive.execute(admin(FIRST), {
+          attributeId: middle.id,
+          version: again.version,
+        }),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'attribute.archive-blocked', fields: [{ code: 'merge-target' }] },
+      });
+      expect(store.rows.get(middle.id)!.state.status).toBe('active');
+      expect(store.merges).toHaveLength(1);
+    });
+
+    it('is refused while an active feature set lists the source', async () => {
+      const { source, target } = await pair();
+      impact = { ...EMPTY, featureSetCount: 1 };
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), mergeInput(source, target, all)),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'attribute.merge-blocked', fields: [{ code: 'in-feature-set' }] },
+      });
+      expect(store.rows.get(source.id)!.state.status).toBe('active');
+    });
+
+    it('is refused for a variant attribute with live variants', async () => {
+      const { target } = await pair();
+      const uc = build();
+      const created = await uc.create.execute(admin(FIRST), {
+        dataType: 'select',
+        names: { [english]: 'Size' },
+        isVariantOption: true,
+        options: [
+          { code: 'tin', labels: { [english]: 'Small' } },
+          { code: 'can', labels: { [english]: 'Medium' } },
+          { code: 'jar', labels: { [english]: 'Large' } },
+        ],
+      });
+      if (!created.ok) throw new Error(created.error.code);
+      const live = await uc.publish.execute(admin(FIRST), {
+        attributeId: created.value.attribute.id,
+        version: created.value.attribute.version,
+      });
+      if (!live.ok) throw new Error(live.error.code);
+      impact = { ...EMPTY, liveVariantProducts: { count: 3, atLeast: false } };
+      expect(
+        await uc.mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput(live.value.attribute, target, all),
+        ),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'attribute.merge-blocked', fields: [{ code: 'live-variants' }] },
+      });
+    });
+
+    it('answers stale when either attribute changed since the dialog', async () => {
+      const { source, target } = await pair();
+      expect(
+        await build().mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput(source, { id: target.id, version: target.version + 1 }, all),
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'attribute.stale' } });
+      expect(
+        await build().mergeAttribute.execute(
+          admin(FIRST),
+          mergeInput({ id: source.id, version: source.version - 1 }, target, all),
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'attribute.stale' } });
+    });
+
+    it('refuses an unknown field and a target that is not an id', async () => {
+      const { source, target } = await pair();
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), {
+          ...mergeInput(source, target, all),
+          extra: 1,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(
+        await build().mergeAttribute.execute(admin(FIRST), {
+          ...mergeInput(source, target, all),
+          target: 'x',
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
     });
   });
 });

@@ -317,6 +317,7 @@ export function DeliverySettingsPanel({
       }
       onSubmit={canManage ? submit : undefined}
       dirty={dirty}
+      dirtyCount={count}
       leave={chrome.leave}
       saveBar={
         canManage ? (

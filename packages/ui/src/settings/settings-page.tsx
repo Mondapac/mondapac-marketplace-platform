@@ -32,6 +32,8 @@ export interface SettingsPageProps {
   readonly saveBar?: ReactNode;
   /** True while a field differs from the saved value: leaving the page asks first. */
   readonly dirty?: boolean;
+  /** How many changes are unsaved: the leave message says it ("You have 2 unsaved changes on ..."). */
+  readonly dirtyCount?: number;
   readonly leave?: LeaveLabels;
   /** Dialogs and drawers of the page (the history drawer), outside the form. */
   readonly overlay?: ReactNode;
@@ -53,6 +55,7 @@ export function SettingsPage({
   onSubmit,
   saveBar,
   dirty = false,
+  dirtyCount = 0,
   leave,
   overlay,
   children,
@@ -60,6 +63,7 @@ export function SettingsPage({
   const guard = useUnsavedChangesGuard(
     dirty && leave !== undefined,
     leave ?? { title: '', message: '', stay: '', leave: '' },
+    { count: dirtyCount, page: title },
   );
   const body = (
     <>

@@ -93,6 +93,7 @@
     "setup": "Seller account",
     "products": "Products",
     "offers": "Offers",
+    "suggestions": "Value suggestions",
     "orders": "Orders",
     "reviews": "Reviews",
     "earnings": "Earnings",
@@ -513,7 +514,7 @@
       "next-page": "Next page",
       "no-access": {
         "title": "You don't have access to this page",
-        "body": "Your role doesn't include the team. Ask the shop owner.",
+        "body": "Members needs the permission \"View members\". The store owner can add it.",
         "action": "Go to Dashboard"
       },
       "actions": "Actions",
@@ -1179,7 +1180,76 @@
         "unknown": "Something went wrong. Try again."
       }
     },
-    "not-given": "Not given"
+    "not-given": "Not given",
+    "suggestions": {
+      "title": "Value suggestions",
+      "intro": "When a field of your product does not have the value you need, suggest it here. A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer.",
+      "back": "Back to value suggestions",
+      "sent": "Suggestion sent. A reviewer will decide; leave the field empty in the product form until then.",
+      "waiting": "{count} of {max} waiting for a decision",
+      "full": "You have reached the limit of {max} waiting suggestions. You can send another when a reviewer decides one.",
+      "filter": "Filter by status",
+      "filters": {
+        "all": "All",
+        "open": "Waiting",
+        "approved": "Added",
+        "mapped": "Matched",
+        "rejected": "Not added"
+      },
+      "col": {
+        "value": "Your value",
+        "field": "Field",
+        "product": "Product",
+        "status": "Status",
+        "outcome": "Outcome",
+        "sent": "Sent"
+      },
+      "status": {
+        "open": "Waiting",
+        "approved": "Added",
+        "mapped": "Matched",
+        "rejected": "Not added",
+        "unknown": "Unknown"
+      },
+      "outcome": {
+        "open": "A reviewer will decide. Leave the field empty until then.",
+        "approved": "Added as “{value}”. Pick it in the product form.",
+        "mapped": "Matched to “{value}”. Pick that value in the product form.",
+        "rejected": "Not added.",
+        "rejected-reason": "Not added: {reason}"
+      },
+      "field-gone": "Field no longer available",
+      "product-gone": "Product no longer available",
+      "empty": {
+        "title": "No suggestions yet",
+        "body": "When a field does not have the value you need, suggest it and follow the answer here."
+      },
+      "empty-filtered": {
+        "title": "No suggestions in this status",
+        "body": "Choose All to see every suggestion you sent."
+      },
+      "new": {
+        "start": "Suggest a value",
+        "title": "Suggest a value",
+        "product": "Product",
+        "product-placeholder": "Choose a product",
+        "product-help": "Choose the product that needs the value. Your {count, plural, one {# most recent product is} other {# most recent products are}} listed; for an older one, open the product and choose Suggest a value.",
+        "no-products": "None of your recent products can be changed now. Open a draft or published product and choose Suggest a value.",
+        "continue": "Continue",
+        "for": "For {product}.",
+        "change-product": "Change product",
+        "no-fields": "This product has no list field that takes suggestions.",
+        "field": "Field",
+        "field-placeholder": "Choose a field",
+        "values": "Values on the list now: {values}",
+        "values-none": "This field has no values yet.",
+        "label": "Value you need",
+        "help": "1 to 120 characters. Say it in a few words.",
+        "send": "Send suggestion",
+        "cancel": "Cancel",
+        "value-exists": "That value is already on the list. Pick it in the product form."
+      }
+    }
   },
   "stock": {
     "title": "Stock locations",
@@ -1256,7 +1326,7 @@
     },
     "no-access": {
       "title": "You don't have access to this page",
-      "body": "Ask the account owner to give you permission to view stock locations."
+      "body": "Stock locations needs the permission \"View stock locations\". The store owner can add it."
     }
   },
   "orders": {
@@ -1541,7 +1611,7 @@
     "intro": "Your payouts go to the bank account you add on Stripe. MondaPac never sees your bank details.",
     "no-access": {
       "title": "You don't have access to this page",
-      "body": "Only the account owner can manage the payout account."
+      "body": "Payout account needs the permission \"View payouts\". The store owner can add it."
     },
     "back": {
       "return": {
@@ -1956,7 +2026,7 @@
     "loading": "Loading the store profile",
     "view-only": "You can see the store profile but not change it. The store owner can give you access.",
     "error": {
-      "unavailable": "The store profile is unavailable right now. Try again later."
+      "unavailable": "The store profile could not be loaded"
     },
     "about": {
       "title": "About",
@@ -2017,7 +2087,7 @@
     },
     "no-access": {
       "title": "You don't have access to this page",
-      "body": "Ask the account owner to give you permission to view the store profile."
+      "body": "Store profile needs the permission \"View store profile\". The store owner can add it."
     },
     "saved": "Store profile saved. Buyers can see it now.",
     "pictures": {
@@ -2153,9 +2223,9 @@
     },
     "leave": {
       "title": "Leave without saving?",
-      "message": "You have changes that are not saved. If you leave this page, they are lost.",
-      "stay": "Stay on page",
-      "leave": "Leave page"
+      "message": "You have {count, plural, one {# unsaved change on {page}. If you leave now, it is lost.} other {# unsaved changes on {page}. If you leave now, they are lost.}}",
+      "stay": "Stay",
+      "leave": "Leave"
     },
     "conflict": {
       "title": "Someone else saved these settings first",
@@ -2189,6 +2259,10 @@
         "payout-account": "Payout account",
         "team": "Members"
       }
+    },
+    "load-error": {
+      "title": "{page} could not be loaded",
+      "body": "Try again. If it keeps happening, check the status page."
     },
     "sub": {
       "label": "Settings pages",

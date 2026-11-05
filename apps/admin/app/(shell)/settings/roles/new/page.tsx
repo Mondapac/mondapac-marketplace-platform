@@ -41,7 +41,12 @@ export default async function NewRolePageRoute({
         <div className="mb-4">
           <SettingsTitle>{title}</SettingsTitle>
         </div>
-        <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
+        <LoadError
+          title={t('settings.load-error.title', { page: title })}
+          message={t('settings.load-error.body')}
+          retryLabel={t('load.retry')}
+          className="w-full"
+        />
       </SettingsShell>
     );
   }

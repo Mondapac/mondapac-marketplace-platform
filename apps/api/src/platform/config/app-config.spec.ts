@@ -608,6 +608,20 @@ describe('loadAppConfig', () => {
     );
   });
 
+  it('requires the virus scanner in production, so no certificate file is stored unscanned', () => {
+    expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'production' })).toThrow(
+      'CLAMD_HOST',
+    );
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'production', CLAMD_HOST: 'clamav' })
+        .malwareScanner,
+    ).not.toBeNull();
+    // Development and test stay free to run without one.
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'development' }).malwareScanner,
+    ).toBeNull();
+  });
+
   it('lets a reviewer download certificate files only when explicitly enabled', () => {
     const base = { HOSTED_MARKETS: 'AU' };
     expect(loadAppConfig(base).certificationReviewerDocumentsEnabled).toBe(false);
@@ -734,7 +748,12 @@ describe('loadAppConfig', () => {
     (nodeEnv, value) => {
       expect.assertions(3);
       try {
-        loadAppConfig({ NODE_ENV: nodeEnv, HOSTED_MARKETS: 'AU', MIGRATION_DATABASE_URL: value });
+        loadAppConfig({
+          NODE_ENV: nodeEnv,
+          HOSTED_MARKETS: 'AU',
+          CLAMD_HOST: 'clamav',
+          MIGRATION_DATABASE_URL: value,
+        });
       } catch (error) {
         expect(error).toBeInstanceOf(InvalidConfigError);
         expect((error as InvalidConfigError).issues).toEqual([

@@ -23,7 +23,7 @@ import {
   type RelaxationWriteView,
 } from '../attributes/attribute-relaxation';
 import {
-  archiveBlockOf,
+  archiveBlockWithMergesOf,
   type AttributeRestructureDependencies,
 } from '../attributes/attribute-restructure';
 
@@ -132,7 +132,7 @@ export class AttributeArchiveConfirm extends UseCase<
           code: definition.state.code,
           isVariantOption: definition.state.isVariantOption,
         });
-        const block = archiveBlockOf(definition, impact);
+        const block = await archiveBlockWithMergesOf(deps, market, definition, impact);
         if (block !== null)
           return err({
             code: 'attribute.archive-blocked',

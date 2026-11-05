@@ -33,13 +33,14 @@ export default async function AssistantSettingsPage() {
   if (!permissionKeys.includes(ASSISTANT_VIEW_PERMISSION)) {
     return shell(
       <NoAccess
+        pageTitle={t('settings.assistant.title')}
         title={t('settings.no-access-title')}
         body={t('settings.no-access-needs', {
           page: t('settings.assistant.title'),
           permission: t('settings.assistant.permission-view'),
         })}
-        backHref="/"
-        backLabel={t('settings.back-home')}
+        backHref="/settings"
+        backLabel={t('settings.sub.back')}
       />,
     );
   }
@@ -49,9 +50,10 @@ export default async function AssistantSettingsPage() {
     return shell(
       <SettingsPage title={t('settings.assistant.title')}>
         <LoadError
-          message={t('settings.assistant.unavailable')}
+          title={t('settings.load-error.title', { page: title })}
+          message={t('settings.load-error.body')}
           retryLabel={t('load.retry')}
-          className="flex flex-col items-start gap-3"
+          className="w-full"
         />
       </SettingsPage>,
     );

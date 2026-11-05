@@ -93,6 +93,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/attribute-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
+    // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
+    'catalog/admin/attribute-archive-requests',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -226,6 +228,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Merge two values, archive an attribute, ask to archive a material one, and confirm such a
     // request (catalog, attributes A8: key `catalog.attribute.restructure`).
     'catalog/admin/attributes/:id/merge-values',
+    'catalog/admin/attributes/:id/merge',
     'catalog/admin/attributes/:id/archive',
     'catalog/admin/attributes/:id/archive-requests',
     'catalog/admin/attribute-archive-requests/:id/confirm',

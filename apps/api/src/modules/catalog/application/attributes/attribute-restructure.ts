@@ -1,4 +1,4 @@
-import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AttributeDefinition } from '../../domain/attribute-definition';
@@ -43,7 +43,7 @@ export function impactViewOf(
 }
 
 /** Why an archive is refused, in the order the dialog tells it (attributes A8). */
-export type ArchiveBlock = 'in-feature-set' | 'live-variants';
+export type ArchiveBlock = 'in-feature-set' | 'live-variants' | 'merge-target';
 
 /**
  * What stops an archive today: the attribute is still in an active feature set, or it is a
@@ -60,4 +60,21 @@ export function archiveBlockOf(
     return 'live-variants';
   }
   return null;
+}
+
+/**
+ * `archiveBlockOf`, and also: another attribute was merged into this one (`merge-target`). Its
+ * sources point at it, so archiving or merging it would hide their values (attributes A8).
+ */
+export async function archiveBlockWithMergesOf(
+  deps: AttributeRestructureDependencies,
+  market: MarketContext,
+  definition: AttributeDefinition,
+  impact: AttributeImpact,
+): Promise<ArchiveBlock | null> {
+  const block = archiveBlockOf(definition, impact);
+  if (block !== null) return block;
+  return (await deps.attributeStore.hasMergedSources(market, definition.state.id))
+    ? 'merge-target'
+    : null;
 }

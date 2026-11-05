@@ -37,15 +37,19 @@ import {
 import { AttributeArchive } from '../application/use-cases/attribute-archive.use-case';
 import { AttributeArchiveConfirm } from '../application/use-cases/attribute-archive-confirm.use-case';
 import { AttributeArchiveRequestCreate } from '../application/use-cases/attribute-archive-request.use-case';
+import { AttributeArchiveRequestListOpen } from '../application/use-cases/attribute-archive-request-list-open.use-case';
+import { AttributeMerge } from '../application/use-cases/attribute-merge.use-case';
 import { AttributeImpactGet } from '../application/use-cases/attribute-impact-get.use-case';
 import { AttributeValuesMerge } from '../application/use-cases/attribute-values-merge.use-case';
 import {
   AttributeImpactBody,
   AttributeVersionRequest,
   AttributeWriteWrapBody,
+  OpenRelaxationListBody,
   RelaxationConfirmBody,
   RelaxationVersionRequest,
   RelaxationWriteWrapBody,
+  AttributeMergeRequest,
   ValuesMergeRequest,
 } from './attribute-admin.dto';
 import { RELAXATION_STATUS } from './attribute-relaxation.controller';
@@ -63,6 +67,10 @@ export const RESTRUCTURE_STATUS: Readonly<Record<string, number>> = Object.freez
   'attribute-definition.not-published': 409,
   'attribute-definition.not-select': 422,
   'attribute-definition.merge-invalid': 422,
+  'attribute-definition.merge-type-mismatch': 422,
+  'attribute-definition.merge-unmapped': 422,
+  'attribute-definition.merge-material': 409,
+  'attribute.merge-blocked': 409,
   'attribute.archive-blocked': 409,
   'attribute.archive-needs-second-admin': 409,
   'attribute.archive-not-material': 409,
@@ -101,9 +109,11 @@ export class AttributeRestructureController {
   constructor(
     private readonly impact: AttributeImpactGet,
     private readonly mergeValues: AttributeValuesMerge,
+    private readonly mergeAttribute: AttributeMerge,
     private readonly archive: AttributeArchive,
     private readonly requestArchive: AttributeArchiveRequestCreate,
     private readonly confirmArchive: AttributeArchiveConfirm,
+    private readonly listArchiveRequests: AttributeArchiveRequestListOpen,
   ) {}
 
   @Get('attributes/:attributeId/impact')
@@ -172,6 +182,52 @@ export class AttributeRestructureController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-values-merge', context, outcome);
+  }
+
+  @Post('attributes/:attributeId/merge')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Merge an attribute into another of the same type',
+    description:
+      `${RESTRUCTURES} The source is archived and points at the target; its values are mapped to ` +
+      'target values. Products are not changed; the storefront reads the target for the source. ' +
+      'Refused for a material source, for a source still in an active feature set and for ' +
+      'live variants.',
+  })
+  @ApiParam(ATTRIBUTE_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: AttributeMergeRequest })
+  @ApiOkResponse({ type: AttributeWriteWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'attribute.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'attribute.stale, attribute.merge-blocked (details.fields[0].code in-feature-set or ' +
+      'live-variants), attribute-definition.merge-invalid, .merge-type-mismatch, ' +
+      '.merge-unmapped, .merge-material, .not-published or .archived',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  async mergeInto(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('attributeId') attributeId: string,
+    @Body() body: unknown,
+  ): Promise<AttributeWriteWrapBody> {
+    const input = closedBody(request, body, ['version', 'target', 'targetVersion', 'options']);
+    let outcome: AttributeWriteWrapBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.mergeAttribute.execute(context, { ...input, attributeId });
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.attribute-merge', context, outcome);
   }
 
   @Post('attributes/:attributeId/archive')
@@ -259,6 +315,29 @@ export class AttributeRestructureController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-archive-request', context, outcome);
+  }
+
+  @Get('attribute-archive-requests')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Archive requests waiting for a second administrator',
+    description:
+      `${RESTRUCTURES} Open archive requests still in time, oldest first, each with what the ` +
+      "reader may do: confirm another administrator's request, withdraw their own.",
+  })
+  @ApiOkResponse({ type: OpenRelaxationListBody })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  async listArchive(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OpenRelaxationListBody> {
+    const result = await this.listArchiveRequests.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as OpenRelaxationListBody)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.attribute-archive-request-list-open', context, outcome);
   }
 
   @Post('attribute-archive-requests/:requestId/confirm')

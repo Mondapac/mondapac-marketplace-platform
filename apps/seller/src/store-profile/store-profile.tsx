@@ -52,6 +52,7 @@ export function StoreProfile({
       }
       onSubmit={canEdit ? () => void profile.save() : undefined}
       dirty={canEdit && profile.dirty}
+      dirtyCount={profile.count}
       leave={chrome.leave}
       saveBar={
         canEdit ? (

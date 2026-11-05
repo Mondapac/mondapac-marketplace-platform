@@ -42,6 +42,21 @@
     }
   },
   {
+    "action": "catalog.attribute-definition.merged",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "material": "boolean",
+      "status": "enumOf(active)"
+    },
+    "after": {
+      "mappedValueCount": "integer",
+      "mergedIntoId": "id",
+      "status": "enumOf(archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-definition.published",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",

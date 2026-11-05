@@ -340,6 +340,11 @@ model CatalogAttributeDefinition {
   createdByKind       String                               @map("created_by_kind")
   version             Int
   createdAt           DateTime                             @map("created_at") @db.Timestamptz(6)
+  /// The attribute this one was merged into (attributes A8): set once, together with `archived`.
+  mergedIntoId        String?                              @map("merged_into_id") @db.Uuid
+  mergedInto          CatalogAttributeDefinition?          @relation("DefinitionMerge", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedSources       CatalogAttributeDefinition[]         @relation("DefinitionMerge")
+  mergeOptions        CatalogAttributeMergeOption[]        @relation("MergeOptionSource")
   revisions           CatalogAttributeDefinitionRevision[] @relation("DefinitionRevisions")
   publishedRevision   CatalogAttributeDefinitionRevision?  @relation("DefinitionPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
   relaxationRequests  CatalogAttributeRelaxationRequest[]  @relation("DefinitionRelaxationRequests")
@@ -348,6 +353,21 @@ model CatalogAttributeDefinition {
   @@unique([marketId, id])
   @@unique([marketId, code])
   @@map("attribute_definitions")
+  @@schema("catalog")
+}
+
+/// Where a value of a merged attribute goes (attributes A8, insert-only): the source's option code
+/// and the target's option code. A source of a type without options has no rows.
+model CatalogAttributeMergeOption {
+  marketId     String                     @map("market_id") @db.VarChar(8)
+  tenantId     String                     @map("tenant_id")
+  sourceId     String                     @map("source_id") @db.Uuid
+  sourceCode   String                     @map("source_code")
+  targetCode   String                     @map("target_code")
+  source       CatalogAttributeDefinition @relation("MergeOptionSource", fields: [marketId, sourceId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sourceId, sourceCode])
+  @@map("attribute_merge_options")
   @@schema("catalog")
 }
 

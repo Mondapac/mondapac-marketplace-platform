@@ -357,6 +357,25 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
   });
 
+  it('keeps the rows it has read when the search pause ends with the same text', async () => {
+    // The search box acts after 300 ms. With nothing typed that must not reload the list from
+    // page 1 (a slow runner reached it between "Show more" and its answer, and lost page 2).
+    serve({
+      [`GET catalog/admin/attributes?limit=50&afterId=${id(1)}`]: ok(
+        page(locales, [row(locales, 2)], { totalAll: 2 }),
+      ),
+      'GET catalog/admin/attributes?': ok(
+        page(locales, [row(locales, 1)], { nextAfterId: id(1), totalAll: 2 }),
+      ),
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByRole('button', { name: /Attribute 2/ })).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(screen.getByRole('button', { name: /Attribute 2/ })).toBeTruthy();
+    expect(calls('catalog/admin/attributes?limit=50')).toHaveLength(2);
+  });
+
   it('shows a retry on a failed list', async () => {
     let fail = true;
     serve({

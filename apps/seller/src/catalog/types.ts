@@ -168,3 +168,42 @@ export interface ProductPhoto {
 export interface PhotoList {
   readonly images: readonly ProductPhoto[];
 }
+
+/** One of the seller's value suggestions (`GET catalog/seller/attribute-suggestions` -> `items`). */
+export interface OwnSuggestion {
+  readonly id: string;
+  readonly status: 'open' | 'approved' | 'mapped' | 'rejected';
+  /** The seller's own text: shown as plain text only. */
+  readonly label: string;
+  readonly createdAt: string;
+  readonly decidedAt: string | null;
+  /** The reviewer's words, when the suggestion was rejected. Plain text. */
+  readonly rejectReason: string | null;
+  /** Null when the field can no longer be read. */
+  readonly attribute: {
+    readonly code: string;
+    readonly names: Readonly<Record<string, string>>;
+  } | null;
+  /** The value added (approved) or matched (mapped). */
+  readonly value: {
+    readonly code: string;
+    readonly labels: Readonly<Record<string, string>>;
+  } | null;
+  readonly product: {
+    readonly id: string;
+    /** Null when the product can no longer be read. */
+    readonly productCode: string | null;
+    readonly name: string | null;
+  };
+}
+
+export interface OwnSuggestionList {
+  readonly items: readonly OwnSuggestion[];
+  readonly nextAfterId: string | null;
+  /** How many wait for a decision, whatever the filter. */
+  readonly openCount: number;
+  readonly maxOpen: number;
+  readonly locales: { readonly default: string; readonly supported: readonly string[] };
+}
+
+export const SUGGESTION_STATUSES = ['open', 'approved', 'mapped', 'rejected'] as const;
