@@ -49,6 +49,21 @@ describe.each(['en-AU', 'ja-JP'])('live category tree (locale %s)', (locale) => 
     ]);
   });
 
+  it('leaves out a hidden category and everything below it', () => {
+    const tree = liveCategoryTree(
+      [
+        named(1, null, 'Pantry'),
+        node(2, 1, 'Secret', { status: 'hidden', names: [{ locale, name: 'Secret' }] }),
+        named(3, 2, 'Spices'),
+        named(4, 3, 'Chilli'),
+        named(5, 1, 'Rice'),
+      ],
+      locale,
+    );
+
+    expect(tree.map((c) => c.slug)).toEqual(['c-1', 'c-5']);
+  });
+
   it('skips an archived ancestor and follows a merged one to its target', () => {
     const tree = liveCategoryTree(
       [

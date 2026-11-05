@@ -1382,7 +1382,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -1394,7 +1394,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -1687,11 +1687,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -2221,6 +2221,20 @@
     }
   },
   {
+    "action": "sellers.business-activities.change",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "extraActivityIds": "listOf(id, max 9)",
+      "mainActivityId": "optional(id)"
+    },
+    "after": {
+      "extraActivityIds": "listOf(id, max 9)",
+      "mainActivityId": "id"
+    }
+  },
+  {
     "action": "sellers.business-details.viewed",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -2737,6 +2751,102 @@
     "after": {
       "namesRestored": "integer",
       "namesSet": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.created",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "level": "integer",
+      "localeCount": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.details-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    },
+    "after": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    }
+  },
+  {
+    "action": "catalog.platform-category.discarded",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.hidden",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "cascaded": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.reordered",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "position": "integer"
+    },
+    "after": {
+      "position": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.shown",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "restored": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.slug-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "revisionNo": "integer"
+    },
+    "after": {
+      "revisionNo": "integer"
     }
   }
 ]

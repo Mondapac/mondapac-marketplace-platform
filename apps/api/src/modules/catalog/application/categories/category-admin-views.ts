@@ -139,6 +139,7 @@ export interface CategoryRowView {
   readonly names: readonly CategoryName[];
   readonly depth: number;
   readonly position: number;
+  readonly showInMenu: boolean;
   readonly version: number;
   readonly counts: CategoryCounts;
 }
@@ -152,6 +153,7 @@ export const rowViewOf = (row: AdminCategoryRow): CategoryRowView => ({
   names: row.names,
   depth: row.depth,
   position: row.position,
+  showInMenu: row.showInMenu,
   version: row.version,
   counts: row.counts,
 });

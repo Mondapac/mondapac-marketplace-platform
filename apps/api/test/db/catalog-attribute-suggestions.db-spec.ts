@@ -209,7 +209,7 @@ describe.each(TEST_MARKETS)('catalog attribute suggestions in market %s (databas
     expect(history.map((row) => row.state.id)).toEqual([suggestion.state.id]);
   });
 
-  it('lists one seller’s suggestions newest first, by page and status, in its own Market only', async () => {
+  it('lists one seller’s suggestions newest first, by page and status, never another seller’s or Market’s', async () => {
     const definition = await publishedSelect();
     const lister = uuid7() as Id<'Seller'>;
     const made: AttributeValueSuggestion[] = [];
@@ -219,6 +219,14 @@ describe.each(TEST_MARKETS)('catalog attribute suggestions in market %s (databas
       expect(await write(market, () => store.add(market, suggestion))).toBeNull();
       made.push(suggestion);
     }
+    // Another seller of the same Market: never in this seller's list.
+    const stranger = suggestionFor(
+      definition,
+      await draftProduct(),
+      'Fourth',
+      uuid7() as Id<'Seller'>,
+    );
+    expect(await write(market, () => store.add(market, stranger))).toBeNull();
     const [first, second, third] = made.map((row) => row.state.id);
     const rejected = made[1]!.reject({ accountId: admin, reason: 'No.', now: now() });
     if (!rejected.ok) throw new Error(rejected.error.code);

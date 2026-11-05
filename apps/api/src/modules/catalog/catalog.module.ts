@@ -137,6 +137,9 @@ import { OfferSellUnitsQuery } from './application/use-cases/offer-sell-units.us
 import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use-case';
 import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
+import { CATALOG_ACTIVITIES_FACADE } from './contracts/catalog-activities.facade';
+import { CatalogActivitiesFacadeImplementation } from './presentation/catalog-activities.facade';
+import { BusinessActivitiesActiveQuery } from './application/use-cases/business-activities-active.use-case';
 import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
 import { CATALOG_INDEX_FACADE } from './contracts/catalog-index.facade';
 import { CATALOG_EVENTS } from './domain/events';
@@ -289,6 +292,14 @@ import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.read
 import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-gap.reader';
 import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
+import { CATEGORY_EDIT_STORE } from './application/ports/category-edit.store';
+import { CategoryCreate } from './application/use-cases/category-create.use-case';
+import { CategoryEditDetails } from './application/use-cases/category-edit-details.use-case';
+import { CategoryReorder } from './application/use-cases/category-reorder.use-case';
+import { CategoryHide } from './application/use-cases/category-hide.use-case';
+import { CategoryShow } from './application/use-cases/category-show.use-case';
+import { CategoryChangeSlug } from './application/use-cases/category-change-slug.use-case';
+import { CategoryDiscard } from './application/use-cases/category-discard.use-case';
 import type { CategoryActionProbes } from './application/categories/category-admin-views';
 import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
 import { CategoryImportProbe } from './application/use-cases/category-import-probe.use-case';
@@ -387,6 +398,7 @@ const PORT = {
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
   adminCategoryReader: ADMIN_CATEGORY_READER,
+  store: CATEGORY_EDIT_STORE,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
@@ -578,6 +590,14 @@ const productTypeProvider: FactoryProvider<string> = {
       activityReader: true,
       policy: true,
     }),
+    // The activity ids that are active, for sellers' assignment check (ADR-0040 decision 4).
+    useCaseProvider(BusinessActivitiesActiveQuery, { unitOfWork: true, activityReader: true }),
+    {
+      provide: CATALOG_ACTIVITIES_FACADE,
+      inject: [BusinessActivitiesActiveQuery],
+      useFactory: (active: BusinessActivitiesActiveQuery) =>
+        new CatalogActivitiesFacadeImplementation(active),
+    },
     useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
     useCaseProvider(BusinessActivityCreate, {
       unitOfWork: true,
@@ -817,6 +837,90 @@ const productTypeProvider: FactoryProvider<string> = {
       categoryProbes: true,
     }),
     useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
+    useCaseProvider(CategoryCreate, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryEditDetails, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryReorder, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryHide, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryShow, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryChangeSlug, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryDiscard, {
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, {
       unitOfWork: true,
@@ -1506,6 +1610,12 @@ const productTypeProvider: FactoryProvider<string> = {
       useFactory: (tree: CategoryTreeQuery) => new CatalogAssistantFacadeImplementation(tree),
     },
   ],
-  exports: [CATALOG_FACADE, CATALOG_INDEX_FACADE, CATALOG_ASSISTANT_FACADE, CATALOG_FILTERS_FACADE],
+  exports: [
+    CATALOG_FACADE,
+    CATALOG_INDEX_FACADE,
+    CATALOG_ASSISTANT_FACADE,
+    CATALOG_FILTERS_FACADE,
+    CATALOG_ACTIVITIES_FACADE,
+  ],
 })
 export class CatalogModule {}
