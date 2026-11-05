@@ -310,6 +310,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // ADR-0040 decision 4 (package 4a): a seller's activity set is replaced as a whole (delete, then
+    // insert); the change log is insert-only.
+    'sellers.seller_business_activities': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'sellers.seller_business_activity_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -1273,11 +1280,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'catalog.product_code_counters': { table: ['INSERT', 'SELECT'], columnUpdate: ['next_value'] },
     // docs/design/data/catalog.md section 7 (slice 2): the tree is never deleted from; a category's
-    // slug and creator kind never change; revisions and their names are insert-only.
+    // creator kind never changes (C3a: the slug may change, its old value goes to the history); revisions and their names are insert-only.
     'catalog.category_trees': { table: ['INSERT', 'SELECT'], columnUpdate: ['version'] },
     'catalog.platform_categories': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
+        'hidden_by_id',
         'image_id',
         'merged_into_id',
         'parent_id',
@@ -1287,6 +1295,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'seo_noindex',
         'seo_title',
         'show_in_menu',
+        'slug',
         'status',
         'version',
       ],

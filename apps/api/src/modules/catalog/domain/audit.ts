@@ -234,6 +234,93 @@ export const AttributeRelaxationExpiredAudit = defineAuditAction({
   after: { requestId: auditField.id(), requestedByAccountId: auditField.id() },
 });
 
+/** The audit target type of a platform category (categories package C3a). */
+export const CATALOG_PLATFORM_CATEGORY_TARGET = 'catalog.platform-category';
+
+const categoryEditStatus = auditField.enumOf(['active', 'hidden', 'archived'] as const);
+
+/** An admin added a category; it starts hidden (plan decision 5). Counts and flags only: no name, no slug. */
+export const PlatformCategoryCreatedAudit = defineAuditAction({
+  action: 'catalog.platform-category.created',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    status: categoryEditStatus,
+    level: auditField.integer(),
+    localeCount: auditField.integer(),
+  },
+});
+
+/** An admin saved the details of a category (names, descriptions, keywords, search-result fields, menu flag). */
+export const PlatformCategoryDetailsChangedAudit = defineAuditAction({
+  action: 'catalog.platform-category.details-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  // Flags and counts only (review amendment): whether a search-result title or description is
+  // set, never its text.
+  before: {
+    revisionNo: auditField.integer(),
+    localeCount: auditField.integer(),
+    showInMenu: auditField.boolean(),
+    noindex: auditField.boolean(),
+    seoTitleSet: auditField.boolean(),
+    seoDescriptionSet: auditField.boolean(),
+  },
+  after: {
+    revisionNo: auditField.integer(),
+    localeCount: auditField.integer(),
+    showInMenu: auditField.boolean(),
+    noindex: auditField.boolean(),
+    seoTitleSet: auditField.boolean(),
+    seoDescriptionSet: auditField.boolean(),
+  },
+});
+
+/** An admin moved a category up or down among its siblings. */
+export const PlatformCategoryReorderedAudit = defineAuditAction({
+  action: 'catalog.platform-category.reordered',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { position: auditField.integer() },
+  after: { position: auditField.integer() },
+});
+
+/** An admin hid a category; `cascaded` counts the descendants hidden with it. */
+export const PlatformCategoryHiddenAudit = defineAuditAction({
+  action: 'catalog.platform-category.hidden',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { status: categoryEditStatus },
+  after: { status: categoryEditStatus, cascaded: auditField.integer() },
+});
+
+/** An admin showed a category; `restored` counts the descendants shown again with it. */
+export const PlatformCategoryShownAudit = defineAuditAction({
+  action: 'catalog.platform-category.shown',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { status: categoryEditStatus },
+  after: { status: categoryEditStatus, restored: auditField.integer() },
+});
+
+/** An admin changed the URL name of a category; the old one redirects (the slug itself is not audited). */
+export const PlatformCategorySlugChangedAudit = defineAuditAction({
+  action: 'catalog.platform-category.slug-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { revisionNo: auditField.integer() },
+  after: { revisionNo: auditField.integer() },
+});
+
+/** An admin discarded a category that was never shown (archived, never deleted). */
+export const PlatformCategoryDiscardedAudit = defineAuditAction({
+  action: 'catalog.platform-category.discarded',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { status: categoryEditStatus },
+  after: { status: categoryEditStatus },
+});
+
 /** The audit target type of a brand (catalog brand package; attributes package A5). */
 export const CATALOG_BRAND_TARGET = 'catalog.brand';
 
@@ -414,6 +501,13 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,
+  PlatformCategoryCreatedAudit,
+  PlatformCategoryDetailsChangedAudit,
+  PlatformCategoryReorderedAudit,
+  PlatformCategoryHiddenAudit,
+  PlatformCategoryShownAudit,
+  PlatformCategorySlugChangedAudit,
+  PlatformCategoryDiscardedAudit,
   BrandCreatedAudit,
   BrandProposedAudit,
   BrandEditedAudit,

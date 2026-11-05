@@ -1155,5 +1155,39 @@
       "shipping.delivery-settings.view",
       "shipping.fleet-selection.view"
     ]
+  },
+  {
+    "entry": "platform:viewer@29",
+    "kind": "default",
+    "permissionKeys": [
+      "assistant.settings.view",
+      "blog.post.read",
+      "catalog.attribute.view",
+      "catalog.brand.read",
+      "catalog.category-tree.view",
+      "catalog.product.view",
+      "certification.claim-policy.view",
+      "certification.product-certificate.view",
+      "certification.seller-certificate.view",
+      "certification.type.view",
+      "commission-payouts.dispute.view",
+      "commission-payouts.settlement.view",
+      "customers.account-deletion-requests.view",
+      "customers.account-deletion-settings.view",
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "notifications.support-contact.view",
+      "ordering.order.view",
+      "payments.connected-account.view",
+      "pricing.price-hold.view",
+      "promotions.promotion.view",
+      "sellers.business-activity.view",
+      "sellers.seller.view",
+      "settings.list-paging.view",
+      "shipping.delivery-settings.view",
+      "shipping.fleet-selection.view"
+    ]
   }
 ]

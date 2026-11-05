@@ -73,6 +73,13 @@ import {
 } from '../application/ports/blog-access.repository';
 import { PrismaBlogAccessRepository } from './prisma-blog-access.repository';
 import {
+  SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+  type SellerBusinessActivityRepository,
+} from '../application/ports/seller-business-activity.repository';
+import { BUSINESS_ACTIVITY_DIRECTORY } from '../application/ports/business-activity-directory';
+import { LateBoundBusinessActivityDirectory } from './late-bound-business-activity-directory';
+import { PrismaSellerBusinessActivityRepository } from './prisma-seller-business-activity.repository';
+import {
   AREA_NAME_SOURCE,
   SERVICE_AREA_NAMES_REPOSITORY,
   type AreaNameSource,
@@ -399,6 +406,16 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminFlagRepository =>
       new PrismaAdminFlagRepository(prisma),
+  },
+  {
+    provide: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerBusinessActivityRepository =>
+      new PrismaSellerBusinessActivityRepository(prisma),
+  },
+  {
+    provide: BUSINESS_ACTIVITY_DIRECTORY,
+    useFactory: (): LateBoundBusinessActivityDirectory => new LateBoundBusinessActivityDirectory(),
   },
   {
     provide: SERVICE_AREA_NAMES_REPOSITORY,
