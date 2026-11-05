@@ -12,6 +12,12 @@ export interface OfferDocument {
   readonly categoryIds: readonly Id<'Category'>[];
   /** The text search configuration of the Market the vector is built with. */
   readonly textSearchConfig: string;
+  /** Searchable attribute values as words (brand and aliases, country, option labels); or null. */
+  readonly searchText: string | null;
+  /** Facet values as `attribute=value` (option codes, `true`, `brand=<slug>`, `country-of-origin=<iso>`). */
+  readonly facetCodes: readonly string[];
+  /** The numbers a range filter reads, by attribute code. */
+  readonly numbers: Readonly<Record<string, number>>;
 }
 
 /** A hit of a query: a document without the index fields, plus its rank. */
@@ -29,6 +35,7 @@ export interface OfferHit {
 export const MAX_NAME = 500;
 export const MAX_SHORT_TEXT = 2000;
 export const MAX_DOCUMENT_CATEGORIES = 20;
+export const MAX_FACET_CODES = 100;
 
 /** Clips a text to a limit by characters (code points), never in the middle of one. */
 export function clip(value: string, limit: number): string {

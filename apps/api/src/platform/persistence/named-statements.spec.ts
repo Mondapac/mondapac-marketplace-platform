@@ -412,3 +412,37 @@ describe.each(['AU', 'ZZ'] as const)('reviews.lock-account in market %s', (code)
     ).rejects.toBeInstanceOf(NamedStatementRefusedError);
   });
 });
+
+describe.each(['AU', 'ZZ'] as const)('catalog.lock-category-slug in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+
+  it('takes the exclusive slug lock keyed on the unit Market and tenant', async () => {
+    const { runner, seen } = runnerAnswering([{ locked: true }]);
+    const rows = await runNamedStatement(runner, market, 'catalog.lock-category-slug', {
+      slug: 'fresh-meat',
+    });
+    expect(rows).toEqual([{ locked: true }]);
+    expect(seen[0]!.sql).toContain('pg_advisory_xact_lock(');
+    expect(seen[0]!.sql).toContain('1704::int4');
+    expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, 'fresh-meat']);
+    const request = { operation: '$queryRaw', args: seen[0] };
+    expect(isApprovedStatement(request, market)).toBe(true);
+    expect(isApprovedStatement(request, other)).toBe(false);
+    expect(isApprovedStatement({ operation: '$executeRaw', args: seen[0] }, market)).toBe(false);
+    const forged = { sql: seen[0]!.sql, values: [market.marketId, market.tenantId, "x' OR '1"] };
+    expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
+  });
+
+  it('refuses a malformed slug and a missing row', async () => {
+    const { runner } = runnerAnswering([]);
+    for (const slug of ["x' OR '1", 'Upper', '-a', 'a--b', '', 'a', 'a'.repeat(81)]) {
+      await expect(
+        runNamedStatement(runner, market, 'catalog.lock-category-slug', { slug }),
+      ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    }
+    await expect(
+      runNamedStatement(runner, market, 'catalog.lock-category-slug', { slug: 'fresh-meat' }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+  });
+});

@@ -168,4 +168,68 @@ describe('buildPublishedSpecifications', () => {
     expect(out[0]?.specifications[0]?.value).toEqual({ kind: 'list', items: ['New'] });
     expect(build({ a: 'gone' }, { a: def({ dataType: 'select', options }) })).toEqual([]);
   });
+  describe('a merged attribute (attributes A8)', () => {
+    const label = (text: string): SpecificationOption => ({
+      labels: { 'en-AU': text },
+      mergedInto: null,
+    });
+    const target = def({
+      dataType: 'select',
+      names: { 'en-AU': 'Container' },
+      options: new Map([
+        ['tin', label('Tin')],
+        ['jar', label('Jar')],
+      ]),
+    });
+    const source = def({
+      dataType: 'select',
+      status: 'archived',
+      names: { 'en-AU': 'Pack type' },
+      options: new Map([['can', label('Can')]]),
+      mergedInto: { code: 'container', options: new Map([['can', 'tin']]) },
+    });
+
+    it('shows the value under the target: its name, its label, its code', () => {
+      const out = build({ pack: 'can' }, { pack: source, container: target });
+      expect(out).toEqual([
+        {
+          groupCode: 'details',
+          specifications: [
+            { code: 'container', name: 'Container', value: { kind: 'text', text: 'Tin' } },
+          ],
+        },
+      ]);
+    });
+
+    it("lets the target's own value win when the product has both", () => {
+      const out = build({ pack: 'can', container: 'jar' }, { pack: source, container: target });
+      expect(out[0]?.specifications).toEqual([
+        { code: 'container', name: 'Container', value: { kind: 'text', text: 'Jar' } },
+      ]);
+    });
+
+    it('leaves out a value the map does not know and a target that is not active', () => {
+      expect(build({ pack: 'bottle' }, { pack: source, container: target })).toEqual([]);
+      const gone = def({ ...target, status: 'archived' });
+      expect(build({ pack: 'can' }, { pack: source, container: gone })).toEqual([]);
+    });
+
+    it('maps each value of a list and keeps a type without values as it is', () => {
+      const many = def({
+        dataType: 'multi-select',
+        status: 'archived',
+        options: new Map([['can', label('Can')]]),
+        mergedInto: { code: 'container', options: new Map([['can', 'tin']]) },
+      });
+      const list = def({ dataType: 'multi-select', options: target.options });
+      expect(
+        build({ pack: ['can', 'x'] }, { pack: many, container: list })[0]?.specifications[0]?.value,
+      ).toEqual({ kind: 'list', items: ['Tin'] });
+      const note = def({ status: 'archived', mergedInto: { code: 'remark', options: new Map() } });
+      expect(
+        build({ note: 'Fresh' }, { note, remark: def({ names: { 'en-AU': 'Remark' } }) })[0]
+          ?.specifications[0],
+      ).toEqual({ code: 'remark', name: 'Remark', value: { kind: 'text', text: 'Fresh' } });
+    });
+  });
 });

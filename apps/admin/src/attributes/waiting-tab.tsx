@@ -15,7 +15,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
 import { useAttributeCall } from './use-attribute-call.ts';
-import { API_RELAXATIONS, type OpenRelaxation, type OpenRelaxationList } from './types.ts';
+import {
+  API_ARCHIVE_REQUESTS,
+  API_RELAXATIONS,
+  type OpenRelaxation,
+  type OpenRelaxationList,
+} from './types.ts';
 
 type Load =
   | { readonly state: 'loading' }
@@ -39,14 +44,17 @@ function nameOf(request: OpenRelaxation, locale: string): string {
  * The Waiting for you tab (attributes A2 part 3): requests to turn off Material that wait for a
  * second administrator, oldest first. Another administrator's request can be
  * confirmed; the reader's own can be withdrawn. Both ask first. Only an admin with
- * `catalog.attribute.edit` reads the list; any other admin sees the empty state.
+ * `catalog.attribute.edit` reads the clear-material requests and `catalog.attribute.restructure` the archive requests; any other admin sees the empty state.
  */
 export function WaitingTab({
   canEdit,
+  canRestructure = false,
   csrfToken,
   onOpenAttribute,
 }: {
   readonly canEdit: boolean;
+  /** `catalog.attribute.restructure`: an archive request is confirmed with it (attributes A8). */
+  readonly canRestructure?: boolean;
   readonly csrfToken: string;
   readonly onOpenAttribute: (attributeId: string) => void;
 }) {
@@ -62,36 +70,49 @@ export function WaitingTab({
    * Reads the list. After a decision the rows already shown stay while it reads (`quiet`), and
    * focus moves to the list, since the row whose button opened the dialog may be gone.
    */
-  const fetchRequests = useCallback(async (quiet = false) => {
-    if (quiet) setRefreshing(true);
-    else setLoad({ state: 'loading' });
-    const result = await callApi<OpenRelaxationList>('GET', API_RELAXATIONS);
-    setRefreshing(false);
-    if (result.ok) {
-      setLoad({ state: 'ready', requests: result.body.requests });
-      if (quiet) section.current?.focus();
-      return;
-    }
-    if (result.failure.status === 401) {
-      window.location.assign('/session-ended');
-      return;
-    }
-    setLoad({ state: 'failed' });
-  }, []);
+  const fetchRequests = useCallback(
+    async (quiet = false) => {
+      if (quiet) setRefreshing(true);
+      else setLoad({ state: 'loading' });
+      // Each list needs its own key: the clear-material list `catalog.attribute.edit`, the archive
+      // list `catalog.attribute.restructure` (attributes A8). An admin with one reads only that one.
+      const answers = await Promise.all([
+        canEdit ? callApi<OpenRelaxationList>('GET', API_RELAXATIONS) : null,
+        canRestructure ? callApi<OpenRelaxationList>('GET', API_ARCHIVE_REQUESTS) : null,
+      ]);
+      setRefreshing(false);
+      const used = answers.filter((answer) => answer !== null);
+      if (used.some((answer) => !answer.ok && answer.failure.status === 401)) {
+        window.location.assign('/session-ended');
+        return;
+      }
+      if (used.every((answer) => answer.ok)) {
+        const requests = used
+          .flatMap((answer) => (answer.ok ? answer.body.requests : []))
+          .sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+        setLoad({ state: 'ready', requests });
+        if (quiet) section.current?.focus();
+        return;
+      }
+      setLoad({ state: 'failed' });
+    },
+    [canEdit, canRestructure],
+  );
 
+  const canRead = canEdit || canRestructure;
   useEffect(() => {
-    if (canEdit) void fetchRequests();
-  }, [canEdit, fetchRequests]);
+    if (canRead) void fetchRequests();
+  }, [canRead, fetchRequests]);
 
   const empty = (
     <EmptyState
       size="card"
       icon="inbox"
       title={t('empty')}
-      body={t(canEdit ? 'body' : 'view-only-body')}
+      body={t(canRead ? 'body' : 'view-only-body')}
     />
   );
-  if (!canEdit) return empty;
+  if (!canRead) return empty;
 
   return (
     <section
@@ -152,7 +173,8 @@ export function WaitingTab({
                   >
                     {t('open-attribute')}
                   </Button>
-                  {request.allowedActions.confirm.allowed ? (
+                  {request.allowedActions.confirm.allowed &&
+                  (request.kind === 'archive' ? canRestructure : canEdit) ? (
                     <Button
                       aria-label={t('confirm-named', { name })}
                       onClick={() => setPending({ kind: 'confirm', request })}
@@ -160,7 +182,7 @@ export function WaitingTab({
                       {t('confirm')}
                     </Button>
                   ) : null}
-                  {request.allowedActions.cancel.allowed ? (
+                  {request.allowedActions.cancel.allowed && canEdit ? (
                     <Button
                       variant="destructive"
                       aria-label={t('withdraw-named', { name })}
@@ -183,7 +205,15 @@ export function WaitingTab({
           csrfToken={csrfToken}
           onClose={() => setPending(null)}
           onDone={() => {
-            toast.success(t(pending.kind === 'confirm' ? 'confirmed' : 'withdrawn'));
+            toast.success(
+              t(
+                pending.kind === 'confirm'
+                  ? pending.request.kind === 'archive'
+                    ? 'confirmed-archive'
+                    : 'confirmed'
+                  : 'withdrawn',
+              ),
+            );
             setPending(null);
             void fetchRequests(true);
           }}
@@ -219,13 +249,16 @@ function DecisionDialog({
   const te = useTranslations('attributes.editor');
   const call = useAttributeCall(csrfToken);
   const action = kind === 'confirm' ? 'confirm' : 'cancel';
+  // The words of an archive request differ from those of turning Material off.
+  const words = request.kind === 'archive' ? `${kind}-archive` : kind;
 
   async function decide() {
-    const answer = await call.run(
-      'POST',
-      `${API_RELAXATIONS}/${encodeURIComponent(request.id)}/${action}`,
-      { version: request.version },
-    );
+    // An archive request is confirmed on its own route, under its own key (attributes A8).
+    const base =
+      request.kind === 'archive' && action === 'confirm' ? API_ARCHIVE_REQUESTS : API_RELAXATIONS;
+    const answer = await call.run('POST', `${base}/${encodeURIComponent(request.id)}/${action}`, {
+      version: request.version,
+    });
     if (answer.ok) onDone();
   }
 
@@ -233,7 +266,7 @@ function DecisionDialog({
   return (
     <Dialog
       open
-      title={t(`${kind}-title`, { name })}
+      title={t(`${words}-title`, { name })}
       onClose={onClose}
       actions={
         <>
@@ -257,7 +290,7 @@ function DecisionDialog({
     >
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
-        <p>{t(`${kind}-body`)}</p>
+        <p>{t(`${words}-body`)}</p>
       </div>
     </Dialog>
   );

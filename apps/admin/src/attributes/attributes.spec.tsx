@@ -214,6 +214,7 @@ function mount(
   options: {
     canEdit?: boolean;
     canSeeBrands?: boolean;
+    canDecide?: boolean;
     initialTab?: Tab;
     initialId?: string | null;
   } = {},
@@ -224,6 +225,7 @@ function mount(
         canEdit={options.canEdit ?? false}
         csrfToken="csrf-1"
         canSeeBrands={options.canSeeBrands ?? true}
+        canDecide={options.canDecide ?? false}
         initialTab={options.initialTab ?? 'attributes'}
         initialId={options.initialId ?? null}
       />
@@ -353,6 +355,25 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(await screen.findByRole('button', { name: /Attribute 2/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Attribute 1/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
+  it('keeps the rows it has read when the search pause ends with the same text', async () => {
+    // The search box acts after 300 ms. With nothing typed that must not reload the list from
+    // page 1 (a slow runner reached it between "Show more" and its answer, and lost page 2).
+    serve({
+      [`GET catalog/admin/attributes?limit=50&afterId=${id(1)}`]: ok(
+        page(locales, [row(locales, 2)], { totalAll: 2 }),
+      ),
+      'GET catalog/admin/attributes?': ok(
+        page(locales, [row(locales, 1)], { nextAfterId: id(1), totalAll: 2 }),
+      ),
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByRole('button', { name: /Attribute 2/ })).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(screen.getByRole('button', { name: /Attribute 2/ })).toBeTruthy();
+    expect(calls('catalog/admin/attributes?limit=50')).toHaveLength(2);
   });
 
   it('shows a retry on a failed list', async () => {
@@ -548,10 +569,11 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(document.activeElement).toBe(heading);
   });
 
-  it('shows the Brands tab as a link, and the empty Waiting for you tab', () => {
+  it('shows the Brands tab as a link, and keeps the value suggestions out of Waiting for you without the decide key', () => {
     serve({ 'GET catalog/admin/attributes?': ok(page(locales, [])) });
     mount({ canSeeBrands: true, initialTab: 'waiting' });
-    expect(screen.getByText('Nothing is waiting for you.')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Value suggestions from sellers' })).toBeNull();
+    expect(calls('catalog/admin/attribute-suggestions')).toEqual([]);
     expect(screen.getByRole('link', { name: 'Brands' }).getAttribute('href')).toBe(
       '/catalog/brands',
     );

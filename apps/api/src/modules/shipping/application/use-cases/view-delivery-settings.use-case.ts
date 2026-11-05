@@ -1,8 +1,11 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import { ok } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../contracts/permissions';
 import {
+  DELIVERY_SETTINGS_CHANGES,
   viewDeliverySettings,
+  type DeliverySettingsPage,
   type DeliverySettingsView,
   type DeliverySettingsFailure,
 } from '../delivery-settings-flow';
@@ -11,7 +14,7 @@ import type { ShippingDependencies } from '../shipping-dependencies';
 /** `shipping.view-delivery-settings`: an admin reads the delivery settings of the Market (the defaults until the first save). */
 export class ViewDeliverySettings extends UseCase<
   Record<string, never>,
-  DeliverySettingsView,
+  DeliverySettingsPage,
   DeliverySettingsFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -26,9 +29,16 @@ export class ViewDeliverySettings extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext) {
-    return viewDeliverySettings(this.deps, context);
+  protected async handle(
+    context: CallContext,
+  ): Promise<Result<DeliverySettingsPage, DeliverySettingsFailure>> {
+    const view = await viewDeliverySettings(this.deps, context);
+    if (!view.ok) return view;
+    const lastChanged = await this.deps.trail.lastChanged(context, DELIVERY_SETTINGS_CHANGES);
+    return ok({ ...view.value, lastChanged });
   }
 }
 
 export type { DeliverySettingsView };
+
+export type { DeliverySettingsPage };

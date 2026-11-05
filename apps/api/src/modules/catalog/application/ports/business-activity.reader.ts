@@ -19,6 +19,12 @@ export interface BusinessActivityListPage {
 export interface BusinessActivityReader {
   /** By code, then id; keyset-paged. */
   list(market: MarketContext, query: BusinessActivityListQuery): Promise<BusinessActivityListPage>;
+
+  /** Which of these ids are activities of the Market with status `active`. */
+  activeIds(
+    market: MarketContext,
+    ids: readonly Id<'BusinessActivity'>[],
+  ): Promise<ReadonlySet<Id<'BusinessActivity'>>>;
 }
 
 export const BUSINESS_ACTIVITY_READER = Symbol('BUSINESS_ACTIVITY_READER');

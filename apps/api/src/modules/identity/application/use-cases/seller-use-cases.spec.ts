@@ -287,11 +287,11 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 11],
+      ['platform', 'default', 'onboarding-compliance', 12],
       ['platform', 'default', 'catalogue-moderator', 17],
       ['platform', 'default', 'operations-support', 8],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 27],
+      ['platform', 'default', 'viewer', 28],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
@@ -316,10 +316,13 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // `blog.post.read` and the Viewer holds it too (blog package 1).
     // `commission-payouts.payout.view` is also left out: the payouts of the sellers are finance
     // data and the Viewer sees none (commission-payouts design 5.3; the brief of package 6d).
+    // `commission-payouts.payout-terms.view` is left out for the same reason (design 5.3; the
+    // owner's decision of 2026-11-04, viewer seed version 28).
     const DECRYPTING_VIEW_KEYS = [
       'sellers.business-details.view',
       'certification.issuer.view',
       'commission-payouts.payout.view',
+      'commission-payouts.payout-terms.view',
     ];
     // The brand read key is named `.read` too (catalog brand package).
     const READ_KEYS_OF_THE_VIEWER = ['blog.post.read', 'catalog.brand.read'];
@@ -345,6 +348,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'identity.seller-account.create',
       'sellers.business-details.view',
       'sellers.seller-file.review',
+      'sellers.seller-health.recalculate',
       'sellers.seller.view',
     ]);
     expect(keysOf('catalogue-moderator')).toEqual([
