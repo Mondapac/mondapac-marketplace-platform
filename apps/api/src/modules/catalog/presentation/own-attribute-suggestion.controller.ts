@@ -1,11 +1,14 @@
 import {
   Body,
   Controller,
+  Get,
+  Header,
   HttpCode,
   HttpException,
   Logger,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -17,8 +20,11 @@ import {
   ApiForbiddenResponse,
   ApiHeader,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
+  ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
@@ -33,8 +39,13 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { OwnAttributeValueSuggest } from '../application/use-cases/own-attribute-value-suggest.use-case';
-import { SuggestionOpenedBody, SuggestValueRequest } from './attribute-suggestion.dto';
-import { closedBody, refusalWith } from './http-answers';
+import { OwnAttributeSuggestionsList } from '../application/use-cases/own-attribute-suggestions-list.use-case';
+import {
+  OwnSuggestionListBody,
+  SuggestionOpenedBody,
+  SuggestValueRequest,
+} from './attribute-suggestion.dto';
+import { closedBody, pageQuery, refusalWith } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /** The HTTP status of each refusal of the seller suggestion route (attributes A5). */
@@ -130,6 +141,67 @@ export class OwnAttributeSuggestionController {
     const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
     this.#logger[failed ? 'warn' : 'log']({
       msg: 'catalog.own-attribute-value-suggest',
+      outcome:
+        outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (outcome instanceof HttpException) throw outcome;
+    return outcome;
+  }
+}
+
+/**
+ * The seller's own value suggestions over HTTP (the seller panel's "Value suggestions" page): one
+ * read of every suggestion the seller made, with its outcome. The seller session of the request's
+ * Market is read, so the route needs the seller panel's origin. A thin adapter over one use case
+ * (key `catalog.own-product.view`).
+ */
+@ApiTags('catalog')
+@RoutePopulation('seller')
+@Controller('catalog/seller/attribute-suggestions')
+export class OwnAttributeSuggestionsController {
+  readonly #logger = new Logger('OwnAttributeSuggestionsController');
+
+  constructor(private readonly listSuggestions: OwnAttributeSuggestionsList) {}
+
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: "List the seller's value suggestions",
+    description:
+      'Needs catalog.own-product.view. Newest first, keyset-paged: send `nextAfterId` of the ' +
+      'previous page as `afterId`. `limit` is 1 to 50 (default 25); `status` narrows to open, ' +
+      'approved, mapped or rejected. `openCount` and `maxOpen` count the waiting ones whatever ' +
+      'the filter. Only the seller’s own suggestions are read.',
+  })
+  @ApiQuery({ name: 'status', required: false, enum: ['open', 'approved', 'mapped', 'rejected'] })
+  @ApiQuery({ name: 'afterId', required: false, description: 'The last id of the previous page.' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiOkResponse({ type: OwnSuggestionListBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async list(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<OwnSuggestionListBody> {
+    const result = await this.listSuggestions.execute(context, pageQuery(query));
+    const outcome: OwnSuggestionListBody | HttpException = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as OwnSuggestionListBody)
+      : refusalWith(
+          OWN_SUGGESTION_STATUS,
+          result.error,
+          response,
+          context,
+          'catalog.own-attribute-suggestions-unmapped-refusal',
+        );
+    const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
+    this.#logger[failed ? 'warn' : 'log']({
+      msg: 'catalog.own-attribute-suggestions-list',
       outcome:
         outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
       marketId: context.market.marketId,

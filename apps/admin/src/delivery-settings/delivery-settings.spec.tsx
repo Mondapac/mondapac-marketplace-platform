@@ -310,29 +310,80 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('puts the error on the field, lists it in the summary and moves focus to the summary', () => {
+  it('puts the error on the field once it is left, lists it in the summary and keeps Save off', () => {
     mount(settings());
 
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    // The amount is empty but was not typed in: no error yet, and Save can still be tried.
+    expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '250' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    // Still nothing while the amount is being typed.
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    fireEvent.blur(screen.getByLabelText('Percentage'));
 
     const field = screen.getByLabelText<HTMLInputElement>('Percentage');
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
-    const summary = screen.getByRole('alert');
+    expect(screen.queryByRole('alert')).toBeNull();
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
     expect(summary.textContent).toContain('1 setting needs fixing');
-    expect(summary.textContent).toContain(
-      'Percentage: Enter a percentage from 0 to 100, with up to two decimals.',
+    // The summary names the field and the reason, the same text as under the field.
+    expect(summary.textContent).toContain('Percentage: Enter a percentage from 0 to 100');
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
     );
-    expect(document.activeElement).toBe(summary);
     fireEvent.click(within(summary).getByRole('link', { name: 'Percentage' }));
     expect(document.activeElement).toBe(field);
-    // Typing in the field takes its error away.
+    // Typing a right value takes the error and the count away at once.
     fireEvent.change(field, { target: { value: '12' } });
     expect(field.getAttribute('aria-invalid')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      false,
+    );
     expect(call).not.toHaveBeenCalled();
+  });
+
+  it('flags a field the user never touched when Save is tried, and moves focus to the summary', () => {
+    mount(settings());
+
+    fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const field = screen.getByLabelText<HTMLInputElement>('Percentage');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    const summary = screen.getByRole('alert');
+    expect(document.activeElement).toBe(summary);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('checks a field when it is left, even with no keystroke', () => {
+    mount(settings());
+
+    fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    fireEvent.blur(screen.getByLabelText('Percentage'));
+
+    expect(screen.getByLabelText('Percentage').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+  });
+
+  it('flags the cut-off time once it is cleared and left', () => {
+    mount(settings());
+
+    fireEvent.change(screen.getByLabelText('Cut-off time'), { target: { value: '' } });
+    fireEvent.blur(screen.getByLabelText('Cut-off time'));
+
+    const summary = screen.getByRole('group', { name: /needs? fixing/ });
+    expect(summary.textContent).toContain('1 setting needs fixing');
+    // Spec copy: the 12-hour wording, in the field's error and in the summary body.
+    const reason = 'Enter a time between 12:00 am and 11:59 pm, such as 1:00 pm.';
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(summary.textContent).toContain(`Cut-off time: ${reason}`);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
   });
 
   it('marks each changed field, counts them in the save bar and discards them', () => {
@@ -362,7 +413,6 @@ describe('the delivery settings page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(screen.getByText('Enter a whole number of days from 1 to 30.')).toBeTruthy();
-    // Under the field, and again in the error summary.
     expect(screen.getAllByText(/Enter an amount up to/)).toHaveLength(2);
     expect(call).not.toHaveBeenCalled();
   });
@@ -539,5 +589,43 @@ describe('right-to-left readiness', () => {
         /\b(?:m|p)[lr]-\d|\btext-(?:left|right)\b|\b(?:left|right)-\d/,
       );
     }
+  });
+});
+
+describe('last changed and history (panel settings T3a)', () => {
+  it('shows who changed the page last and opens its own history route', async () => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    vi.mocked(callApi).mockReset();
+    vi.mocked(callApi).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { items: [], next: null },
+    });
+    mount(
+      settings({
+        lastChanged: {
+          at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+          byDisplayName: 'Sara K.',
+          byKind: 'member' as const,
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('last-changed').textContent).toBe(
+      'Last changed by Sara K. · 2 days ago · View history',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }));
+    await waitFor(() =>
+      expect(vi.mocked(callApi)).toHaveBeenCalledWith(
+        'GET',
+        'shipping/admin/delivery-settings/history?limit=20',
+      ),
+    );
+    expect(await screen.findByText('No changes yet')).toBeTruthy();
   });
 });

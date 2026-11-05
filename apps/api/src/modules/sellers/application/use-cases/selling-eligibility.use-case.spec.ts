@@ -179,6 +179,8 @@ describe.each([
         unitOfWork,
         sellingFacts: store,
       }),
+      sellerBusinessActivities: undefined as never,
+      sellerBusinessActivitiesSystem: undefined as never,
       blogAccess: undefined as never,
       blogAccessSystem: undefined as never,
       activeSince: undefined as never,

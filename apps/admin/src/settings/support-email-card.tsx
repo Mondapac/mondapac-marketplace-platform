@@ -7,6 +7,7 @@ import {
   SettingRow,
   SettingsErrorSummary,
   SettingsViewOnlyBanner,
+  useLiveErrors,
   SettingsPage,
   SettingsSection,
   toast,
@@ -18,6 +19,7 @@ import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from './conflict-view.tsx';
 import { supportProblemOf } from './errors.ts';
+import { useChangeHistory } from './last-changed.tsx';
 import type { SupportContact } from './types.ts';
 
 /** The same rule the API checks: lower-case printable ASCII, one "@", a dotted domain. */
@@ -44,8 +46,6 @@ export function SupportEmailCard({
 }) {
   const t = useTranslations();
   const [problem, setProblem] = useState<string | null>(null);
-  const [invalid, setInvalid] = useState(false);
-  const [failedSaves, setFailedSaves] = useState(0);
   const unset = t('settings.conflict.unset');
   const form = useSettingsForm<SupportContact, string>({
     initial,
@@ -65,7 +65,15 @@ export function SupportEmailCard({
           ],
   });
   const contact = form.saved;
+  const changeHistory = useChangeHistory(
+    contact.lastChanged,
+    'notifications/admin/support-contact/history',
+  );
   const text = form.draft;
+  const emailNow = text.trim().toLowerCase();
+  const failing = emailNow.length > MAX_LENGTH || !SHAPE.test(emailNow);
+  const live = useLiveErrors<'email'>(failing ? ['email'] : []);
+  const invalid = live.has('email');
 
   const dirty = canManage && form.dirty;
   const count = canManage ? form.count : 0;
@@ -73,19 +81,17 @@ export function SupportEmailCard({
 
   function discard() {
     form.discard();
-    setInvalid(false);
+    live.reset();
     setProblem(null);
   }
 
   async function submit() {
     const email = text.trim().toLowerCase();
     setProblem(null);
-    if (email.length > MAX_LENGTH || !SHAPE.test(email)) {
-      setInvalid(true);
-      setFailedSaves((n) => n + 1);
+    if (failing) {
+      live.attempt();
       return;
     }
-    setInvalid(false);
     const result = await form.run(async (expectedVersion): Promise<SaveResult<SupportContact>> => {
       const answer = await callApi<SupportContact>(
         'PUT',
@@ -99,7 +105,10 @@ export function SupportEmailCard({
       else setProblem(supportProblemOf(answer.failure));
       return { status: 'failed' };
     });
-    if (result.status === 'saved') toast.success(t('settings.support.saved'));
+    if (result.status === 'saved') {
+      live.reset();
+      toast.success(t('settings.support.saved'));
+    }
     // The re-read failed too: the plain "reload the page" message is all that is left.
     else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
@@ -118,14 +127,19 @@ export function SupportEmailCard({
           {
             id: EMAIL_ROW,
             label: t('settings.support.field'),
-            message: t('settings.support.invalid'),
+            reason: t('settings.support.invalid'),
           },
         ]}
-        focusSignal={failedSaves}
+        focusSignal={live.attempts}
       />
     ) : null,
     form.theirs !== null ? (
-      <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
+      <SettingsConflictView
+        key="conflict"
+        conflictId={form.conflictId}
+        changes={form.changes}
+        winner={form.theirs.lastChanged}
+      />
     ) : null,
     contact.email === null ? (
       <Banner key="not-set" tone="attention">
@@ -145,6 +159,8 @@ export function SupportEmailCard({
     <SettingsPage
       title={t('settings.support.title')}
       description={t('settings.support.intro')}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={banner}
       onSubmit={canManage ? () => void submit() : undefined}
       dirty={dirty}
@@ -201,8 +217,8 @@ export function SupportEmailCard({
               value={text}
               onChange={(event) => {
                 form.setDraft(event.target.value);
-                setInvalid(false);
               }}
+              onBlur={() => live.touch('email')}
             />
           </SettingRow>
         ) : null}

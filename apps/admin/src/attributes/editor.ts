@@ -333,6 +333,12 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'relaxation.attribute-changed': 'relaxation-attribute-changed',
   'relaxation.same-admin': 'relaxation-same-admin',
   'relaxation.not-requester': 'relaxation-not-requester',
+  // Merging values and archiving (attributes A8).
+  'attribute-definition.merge-invalid': 'merge-invalid',
+  'attribute-definition.not-select': 'not-select',
+  'attribute-definition.not-published': 'not-published',
+  'attribute.archive-needs-second-admin': 'archive-needs-second-admin',
+  'attribute.archive-not-material': 'archive-not-material',
 };
 
 const RELOAD: ReadonlySet<string> = new Set([
@@ -345,6 +351,9 @@ const RELOAD: ReadonlySet<string> = new Set([
   'relaxation-moved',
   'relaxation-expired',
   'relaxation-attribute-changed',
+  'not-published',
+  'archive-needs-second-admin',
+  'archive-not-material',
 ]);
 
 /**
@@ -353,6 +362,13 @@ const RELOAD: ReadonlySet<string> = new Set([
  */
 export function problemOf(failure: ApiFailure, codes: readonly string[] = []): EditorProblem {
   let key = BY_CODE[failure.code];
+  if (failure.code === 'attribute.archive-blocked') {
+    // The API names why in `details.fields[0].code`: an active feature set, or live variants.
+    key =
+      failure.details?.fields?.[0]?.code === 'live-variants'
+        ? 'archive-blocked-live-variants'
+        : 'archive-blocked-in-feature-set';
+  }
   if (key === undefined) {
     if (failure.status === 0 || failure.status >= 500) key = 'unavailable';
     else if (failure.code.startsWith('attribute-definition.')) key = 'content';

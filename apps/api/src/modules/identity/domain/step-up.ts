@@ -14,6 +14,7 @@ export const STEP_UP_ACTION_KEYS = [
   'identity.team.invite-remove',
   'payments.payout-account.change',
   'pricing.price.change',
+  'sellers.business-activity.change',
   'sellers.store-terms.change',
   'wallet.credit.approve',
   'wallet.credit.issue',

@@ -18,6 +18,7 @@ import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
  */
 export function AttributesView({
   canEdit,
+  canRestructure = false,
   csrfToken,
   canSeeBrands,
   canDecide,
@@ -25,6 +26,8 @@ export function AttributesView({
   initialId,
 }: {
   readonly canEdit: boolean;
+  /** `catalog.attribute.restructure`: merge values, archive and confirm an archive request. */
+  readonly canRestructure?: boolean;
   readonly csrfToken: string;
   readonly canSeeBrands: boolean;
   readonly canDecide: boolean;
@@ -75,6 +78,7 @@ export function AttributesView({
           selectedId={selected}
           onSelect={setSelected}
           canEdit={canEdit}
+          canRestructure={canRestructure}
           csrfToken={csrfToken}
           onOpenWaiting={() => {
             setTab('waiting');
@@ -95,6 +99,7 @@ export function AttributesView({
       {tab === 'waiting' ? (
         <WaitingTab
           canEdit={canEdit}
+          canRestructure={canRestructure}
           csrfToken={csrfToken}
           onOpenAttribute={(id) => {
             setTab('attributes');

@@ -14,10 +14,12 @@ import {
   SettingsPage,
   SettingsSection,
   toast,
+  useLiveErrors,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
+import { useChangeHistory, useWinnerTitle } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { fleetProblemOf } from './errors.ts';
 import { FleetsCard } from './fleets-card.tsx';
@@ -63,7 +65,6 @@ export function FleetSelectionPanel({
   const [formProblem, setFormProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<'reloaded' | null>(null);
   const [scores, setScores] = useState<Record<FleetCode, string>>(() => scoresOf(initial));
-  const [invalidScores, setInvalidScores] = useState<readonly FleetCode[]>([]);
   const [conflict, setConflict] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [pending, setPending] = useState<'page' | 'model' | null>(null);
@@ -88,6 +89,11 @@ export function FleetSelectionPanel({
     if (notice !== null) noticeRef.current?.focus();
   }, [notice]);
 
+  const changeHistory = useChangeHistory(
+    selection.lastChanged,
+    'shipping/admin/fleet-selection/history',
+  );
+  const winnerTitle = useWinnerTitle();
   const nameOf = (fleet: FleetCode) =>
     selection.fleets.find((row) => row.fleet === fleet)?.displayName ?? fleet;
 
@@ -96,7 +102,7 @@ export function FleetSelectionPanel({
     setSelection(next);
     setChoice(choiceOf(next));
     setScores(scoresOf(next));
-    setInvalidScores([]);
+    live.reset();
     setConflict(false);
     setComparing(false);
   }
@@ -127,6 +133,17 @@ export function FleetSelectionPanel({
   );
   const count = changes.length + changedFleets.length;
 
+  // A blank score is only fine for a fleet that has none; a score cannot be taken back. Which
+  // fleets fail is worked out from the draft; a score shows its error once typed in or left.
+  const failingScores = selection.fleets
+    .filter((row) => {
+      const text = scores[row.fleet].trim();
+      return text === '' ? row.reliability !== null : scoreOf(text) === null;
+    })
+    .map((row) => row.fleet);
+  const live = useLiveErrors<FleetCode>(failingScores);
+  const invalidScores = live.shown;
+
   /** What differs between the page as stored now and the admin's draft, as plain text. */
   const differences = [
     ...changes.map((change) => ({
@@ -146,15 +163,10 @@ export function FleetSelectionPanel({
   function askSave(event: FormEvent) {
     event.preventDefault();
     if (busy.current || count === 0) return;
-    // A blank score is only fine for a fleet that has none; a score cannot be taken back.
-    const bad = selection.fleets
-      .filter((row) => {
-        const text = scores[row.fleet].trim();
-        return text === '' ? row.reliability !== null : scoreOf(text) === null;
-      })
-      .map((row) => row.fleet);
-    setInvalidScores(bad);
-    if (bad.length > 0) return;
+    if (failingScores.length > 0) {
+      live.attempt();
+      return;
+    }
     if (changes.length > 0) setConfirm({ kind: 'page' });
     else void savePage();
   }
@@ -162,7 +174,7 @@ export function FleetSelectionPanel({
   function discard() {
     setChoice(choiceOf(selection));
     setScores(scoresOf(selection));
-    setInvalidScores([]);
+    live.reset();
     setProblem(null);
     setConflict(false);
     setComparing(false);
@@ -270,7 +282,7 @@ export function FleetSelectionPanel({
     conflict ? (
       <div key="conflict" className="flex flex-col gap-3">
         <SettingsConflictBanner
-          title={t(`${P}.conflict.title`)}
+          title={winnerTitle(selection.lastChanged) ?? t(`${P}.conflict.title`)}
           body={t(`${P}.conflict.body`, { count })}
           compareLabel={t(`${P}.conflict.${comparing ? 'hide' : 'compare'}`)}
           onCompare={() => setComparing((open) => !open)}
@@ -312,6 +324,8 @@ export function FleetSelectionPanel({
     <SettingsPage
       title={t(`${P}.title`)}
       description={t(`${P}.intro`)}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
@@ -351,8 +365,8 @@ export function FleetSelectionPanel({
           invalid={invalidScores}
           onText={(fleet, value) => {
             setScores((current) => ({ ...current, [fleet]: value }));
-            setInvalidScores((current) => current.filter((name) => name !== fleet));
           }}
+          onLeave={(fleet) => live.touch(fleet)}
         />
         {canManage ? (
           <SaveBar

@@ -115,8 +115,32 @@ export const SELLERS_SERVICE_AREA_EDIT = definePermission('sellers', {
   protected: false,
 });
 
+/**
+ * Read the business activities a seller carries and who last changed them and why (ADR-0040
+ * decision 4). Platform scope, not protected. The Viewer role lists it (seed version 27).
+ */
+export const SELLERS_BUSINESS_ACTIVITY_VIEW = definePermission('sellers', {
+  key: 'sellers.business-activity.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Replace the business activities a seller carries, with a reason (ADR-0040 decision 4). Platform
+ * scope and protected: the assignment decides what a seller may sell once the offer rule reads it,
+ * so only the Platform Administrator system role holds it and no custom role can. The PUT route also
+ * asks for a fresh two-step code (`sellers.business-activity.change`).
+ */
+export const SELLERS_BUSINESS_ACTIVITY_MANAGE = definePermission('sellers', {
+  key: 'sellers.business-activity.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
+  SELLERS_BUSINESS_ACTIVITY_MANAGE,
+  SELLERS_BUSINESS_ACTIVITY_VIEW,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
