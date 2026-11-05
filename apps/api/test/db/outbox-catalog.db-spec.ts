@@ -273,6 +273,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX special_price_records_market_id_series_id_pending_key ON pricing.special_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
   // approved revision per file, and the reviewer queue by kind and age.
+  // Seller health requests: one pending request per seller, and the pick-up order of the job.
+  'sellers.seller_health_requests_market_id_requested_at_pending_idx':
+    "CREATE INDEX seller_health_requests_market_id_requested_at_pending_idx ON sellers.seller_health_requests USING btree (market_id, requested_at) WHERE (status = 'pending'::text)",
+  'sellers.seller_health_requests_market_id_seller_id_pending_key':
+    "CREATE UNIQUE INDEX seller_health_requests_market_id_seller_id_pending_key ON sellers.seller_health_requests USING btree (market_id, seller_id) WHERE (status = 'pending'::text)",
   'sellers.business_file_revisions_market_id_seller_id_approved_key':
     "CREATE UNIQUE INDEX business_file_revisions_market_id_seller_id_approved_key ON sellers.business_file_revisions USING btree (market_id, seller_id) WHERE (status = 'approved'::text)",
   'sellers.business_file_revisions_market_id_seller_id_pending_key':

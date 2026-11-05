@@ -350,6 +350,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // Seller health requests: inserted, then finished once (status and finished_at); never
+    // deleted by the app.
+    'sellers.seller_health_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['finished_at', 'status'],
+    },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
     // value is written and rewritten; DELETE arrives with the purge of slice 18.
