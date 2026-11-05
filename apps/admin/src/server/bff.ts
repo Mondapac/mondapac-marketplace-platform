@@ -93,6 +93,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/attribute-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
+    // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
+    'catalog/admin/attribute-archive-requests',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([

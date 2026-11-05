@@ -1,5 +1,5 @@
 import type { AuditEntry, CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -24,6 +24,8 @@ import { CATALOG_ATTRIBUTE_EDIT, CATALOG_ATTRIBUTE_RESTRUCTURE } from '../../con
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { AttributeImpact, AttributeImpactReader } from '../ports/attribute-impact.reader';
 import { AttributeArchive } from './attribute-archive.use-case';
+import { AttributeArchiveRequestListOpen } from './attribute-archive-request-list-open.use-case';
+import { AttributeRelaxationListOpen } from './attribute-relaxation-list-open.use-case';
 import { AttributeArchiveConfirm } from './attribute-archive-confirm.use-case';
 import { AttributeArchiveRequestCreate } from './attribute-archive-request.use-case';
 import { AttributeDefinitionCreate } from './attribute-definition-create.use-case';
@@ -67,6 +69,11 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
         sellerId: null,
       }),
     );
+
+  const actingAs = (): CallContext => {
+    const base = admin(SECOND);
+    return { ...base, actor: { ...base.actor, actingAs: { adminAccountId: SECOND } } as never };
+  };
 
   let store: MemoryAttributeDefinitionStore;
   let relaxations: MemoryAttributeRelaxationStore;
@@ -120,6 +127,8 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       archive: new AttributeArchive(gate, deps),
       requestArchive: new AttributeArchiveRequestCreate(gate, deps),
       confirmArchive: new AttributeArchiveConfirm(gate, deps),
+      listArchive: new AttributeArchiveRequestListOpen(gate, deps),
+      listClear: new AttributeRelaxationListOpen(gate, deps),
     };
   };
 
@@ -526,6 +535,37 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       ).toMatchObject({ ok: false, error: { code: 'relaxation.already-open' } });
     });
 
+    it('lists archive requests under the restructure key, apart from the clear-material list', async () => {
+      const { request } = await requested();
+      const listed = await build().listArchive.execute(admin(SECOND), {});
+      expect(listed).toMatchObject({
+        ok: true,
+        value: { requests: [{ id: request.id, kind: 'archive', mine: false }] },
+      });
+      expect(await build().listClear.execute(admin(SECOND), {})).toEqual(ok({ requests: [] }));
+      const own = await build().listArchive.execute(admin(FIRST), {});
+      expect(own).toMatchObject({
+        ok: true,
+        value: {
+          requests: [{ mine: true, allowedActions: { confirm: { allowed: false } } }],
+        },
+      });
+    });
+
+    it('does not list archive requests without the restructure key or in an acting-as session', async () => {
+      await requested();
+      granted = [CATALOG_ATTRIBUTE_EDIT.key];
+      expect(await build().listArchive.execute(admin(SECOND), {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      granted = [CATALOG_ATTRIBUTE_RESTRUCTURE.key];
+      expect(await build().listArchive.execute(actingAs(), {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
     it('is archived by a second administrator, with both account ids audited', async () => {
       const { attribute, request } = await requested();
       const answer = await build().confirmArchive.execute(admin(SECOND), {
@@ -593,6 +633,36 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       });
     });
   });
+  describe('acting as a seller', () => {
+    it('refuses every restructure use case in an acting-as session', async () => {
+      const source = await published(false, 'Pack type');
+      const target = await published(false, 'Container');
+      const uc = build();
+      const refused = { ok: false, error: { code: 'access.denied' } };
+      expect(await uc.get.execute(actingAs(), { attributeId: source.id })).toMatchObject(refused);
+      expect(
+        await uc.archive.execute(actingAs(), { attributeId: source.id, version: source.version }),
+      ).toMatchObject(refused);
+      expect(
+        await uc.mergeAttribute.execute(actingAs(), {
+          attributeId: source.id,
+          version: source.version,
+          target: target.id,
+          targetVersion: target.version,
+          options: { tin: 'tin', can: 'can', jar: 'jar' },
+        }),
+      ).toMatchObject(refused);
+      expect(
+        await uc.requestArchive.execute(actingAs(), {
+          attributeId: source.id,
+          version: source.version,
+        }),
+      ).toMatchObject(refused);
+      expect(store.rows.get(source.id)!.state.status).toBe('active');
+      expect(store.merges).toEqual([]);
+    });
+  });
+
   describe('merge attributes', () => {
     async function pair() {
       const source = await published(false, 'Pack type');

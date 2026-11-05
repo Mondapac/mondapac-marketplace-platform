@@ -37,6 +37,7 @@ import {
 import { AttributeArchive } from '../application/use-cases/attribute-archive.use-case';
 import { AttributeArchiveConfirm } from '../application/use-cases/attribute-archive-confirm.use-case';
 import { AttributeArchiveRequestCreate } from '../application/use-cases/attribute-archive-request.use-case';
+import { AttributeArchiveRequestListOpen } from '../application/use-cases/attribute-archive-request-list-open.use-case';
 import { AttributeMerge } from '../application/use-cases/attribute-merge.use-case';
 import { AttributeImpactGet } from '../application/use-cases/attribute-impact-get.use-case';
 import { AttributeValuesMerge } from '../application/use-cases/attribute-values-merge.use-case';
@@ -44,6 +45,7 @@ import {
   AttributeImpactBody,
   AttributeVersionRequest,
   AttributeWriteWrapBody,
+  OpenRelaxationListBody,
   RelaxationConfirmBody,
   RelaxationVersionRequest,
   RelaxationWriteWrapBody,
@@ -111,6 +113,7 @@ export class AttributeRestructureController {
     private readonly archive: AttributeArchive,
     private readonly requestArchive: AttributeArchiveRequestCreate,
     private readonly confirmArchive: AttributeArchiveConfirm,
+    private readonly listArchiveRequests: AttributeArchiveRequestListOpen,
   ) {}
 
   @Get('attributes/:attributeId/impact')
@@ -312,6 +315,29 @@ export class AttributeRestructureController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-archive-request', context, outcome);
+  }
+
+  @Get('attribute-archive-requests')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Archive requests waiting for a second administrator',
+    description:
+      `${RESTRUCTURES} Open archive requests still in time, oldest first, each with what the ` +
+      "reader may do: confirm another administrator's request, withdraw their own.",
+  })
+  @ApiOkResponse({ type: OpenRelaxationListBody })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  async listArchive(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OpenRelaxationListBody> {
+    const result = await this.listArchiveRequests.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as OpenRelaxationListBody)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.attribute-archive-request-list-open', context, outcome);
   }
 
   @Post('attribute-archive-requests/:requestId/confirm')

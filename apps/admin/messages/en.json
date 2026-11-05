@@ -5155,7 +5155,7 @@
         "merge-type-mismatch": "These attributes differ in type, language setting or limits, so they cannot be merged.",
         "blocked-merge-target": "Other attributes were merged into this one, so it cannot be archived or merged. Their values would disappear from product pages.",
         "merge-unmapped": "Every value of this attribute needs a value to go to. Check the list.",
-        "merge-material": "This attribute is Material. Archive it with a second administrator instead.",
+        "merge-material": "A Material attribute cannot be merged, or merged into. Archive a Material attribute with a second administrator instead.",
         "merge-blocked-in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
         "merge-blocked-live-variants": "Live products use it as a variant option, so it cannot be merged.",
         "not-published": "This attribute is not published. Reload to see the latest version.",
