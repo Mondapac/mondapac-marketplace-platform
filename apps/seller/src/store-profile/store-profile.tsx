@@ -2,6 +2,7 @@
 
 import { Banner, SaveBar, SettingsPage } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { useChangeHistory } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import type { StoreProfileView } from './types.ts';
 import { useStoreProfile } from './use-store-profile.tsx';
@@ -28,6 +29,8 @@ export function StoreProfile({
   const t = useTranslations();
   const chrome = useSettingsChrome();
   const profile = useStoreProfile({ initial, csrfToken, claimTerms });
+  // One save carries the text and the pictures, so the form's last change is the page's.
+  const changeHistory = useChangeHistory(profile.lastChanged, 'sellers/store-profile/history');
 
   const banners = [
     canEdit ? null : (
@@ -42,6 +45,8 @@ export function StoreProfile({
     <SettingsPage
       title={t('store-profile.title')}
       description={t('store-profile.intro')}
+      lastChanged={changeHistory.line}
+      overlay={changeHistory.drawer}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }

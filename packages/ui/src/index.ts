@@ -93,6 +93,21 @@ export {
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
 export {
+  relativeTime,
+  whoKind,
+  type ChangeByKind,
+  type LastChangedValue,
+  type WhoKind,
+} from './settings/change-time.ts';
+export {
+  SettingsHistoryDrawer,
+  useSettingsHistory,
+  type HistoryPageData,
+  type SettingsHistoryDrawerProps,
+  type SettingsHistoryItem,
+  type SettingsHistoryState,
+} from './settings/settings-history.tsx';
+export {
   SettingsHub,
   type SettingsHubGroup,
   type SettingsHubLabels,

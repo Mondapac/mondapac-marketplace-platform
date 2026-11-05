@@ -41,7 +41,7 @@ function languageName(code: string, uiLocale: string): string {
 }
 
 /** What the form holds as saved: the About texts, the pictures and the version they were saved at. */
-type Saved = Pick<StoreProfileView, 'version' | 'about' | 'logo' | 'banner'>;
+type Saved = Pick<StoreProfileView, 'version' | 'about' | 'logo' | 'banner' | 'lastChanged'>;
 
 /**
  * What the draft does with a picture: keeps the saved one, removes it, or replaces it with a
@@ -66,6 +66,7 @@ const savedOf = (view: StoreProfileView): Saved => ({
   about: view.about,
   logo: view.logo,
   banner: view.banner,
+  lastChanged: view.lastChanged ?? null,
 });
 const toDraft = (saved: Saved): Draft => ({ about: { ...saved.about }, logo: KEEP, banner: KEEP });
 const versionOf = (saved: Saved) => saved.version;
@@ -302,7 +303,13 @@ export function useStoreProfile({
       />
     ),
     form.theirs === null ? null : (
-      <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
+      <SettingsConflictView
+        key="conflict"
+        conflictId={form.conflictId}
+        changes={form.changes}
+        winner={form.theirs.lastChanged}
+        subject="store-profile"
+      />
     ),
     banner === null ? null : (
       <Banner key="problem" tone="critical">
@@ -316,6 +323,8 @@ export function useStoreProfile({
   ].filter((node) => node !== null);
 
   return {
+    /** The newest change this form knows of (its load, or its last save of text and pictures). */
+    lastChanged: base.lastChanged ?? null,
     dirty: count > 0,
     count,
     errorCount,
