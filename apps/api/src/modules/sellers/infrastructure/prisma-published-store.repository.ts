@@ -89,7 +89,13 @@ export class PrismaPublishedStoreRepository implements PublishedStoreRepository 
         id: { in: files.flatMap((row) => row.approvedRevisionId ?? []) },
         status: 'approved',
       },
-      select: { id: true, sellerId: true, serviceAreaCode: true, operatingTimezone: true },
+      select: {
+        id: true,
+        sellerId: true,
+        serviceAreaCode: true,
+        operatingPostcode: true,
+        operatingTimezone: true,
+      },
     });
     const firsts = await tx.sellersBusinessFileRevision.groupBy({
       by: ['sellerId'],
@@ -119,6 +125,7 @@ export class PrismaPublishedStoreRepository implements PublishedStoreRepository 
         slug,
         name: file.publicStoreName,
         serviceAreaCode: revision.serviceAreaCode,
+        operatingPostcode: revision.operatingPostcode,
         operatingTimezone: revision.operatingTimezone,
         firstApprovedAt: Temporal.Instant.fromEpochMilliseconds(first.getTime()),
       });

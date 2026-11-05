@@ -6,7 +6,7 @@ import {
   type ApprovedStoreFacts,
   type PublishedStore,
 } from '../../domain/published-store';
-import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { OnboardingAreas, ServiceAreas } from '../ports/seller-market-formats';
 import type { AreaNameSource } from '../ports/service-area-names.repository';
 import type { MinimumOrderPolicy } from '../ports/minimum-order-policy';
 import type { PublishedStoreRepository } from '../ports/published-store.repository';
@@ -35,6 +35,8 @@ export interface PublishedStoresDependencies extends SellingEligibilityDependenc
   /** The area names: configured, and the admin's English overlay. */
   readonly onboardingAreas: OnboardingAreas;
   readonly areaNames: AreaNameSource;
+  /** The ServiceArea directory: the area is read from the postcode, not only from the stored code. */
+  readonly areas: ServiceAreas;
 }
 
 export type PublishedStoresUnavailable = { readonly code: 'sellers.unavailable' };
@@ -117,13 +119,18 @@ export async function publishedStoresOf(
   const edited = await deps.areaNames.edited(market);
   const rule = deps.minimumOrderPolicy.rule(market);
   return stores.map((store): PublishedStore => {
+    // The area the postcode falls in now; a revision without a postcode, or a postcode that falls
+    // in no area, keeps the code stored at submission (never a guess).
+    const areaCode =
+      (store.operatingPostcode === null
+        ? null
+        : deps.areas.areaFor(market, store.operatingPostcode)?.code) ?? store.serviceAreaCode;
     const base: PublishedStore = {
       slug: store.slug,
       name: store.name,
-      serviceAreaCode: store.serviceAreaCode,
+      serviceAreaCode: areaCode,
       serviceAreaName:
-        edited.get(store.serviceAreaCode)?.['en'] ??
-        deps.onboardingAreas.nameOf(market, store.serviceAreaCode),
+        edited.get(areaCode)?.['en'] ?? deps.onboardingAreas.nameOf(market, areaCode),
       sellingSince: sellingSinceOf(store),
     };
     const minimum = minimums.get(store.sellerId);

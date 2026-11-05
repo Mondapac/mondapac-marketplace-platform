@@ -83,7 +83,7 @@ describe.each([
     slug: string,
     name: string,
     firstApprovedAt: string,
-    options: { state?: AccessState; minimum?: Money | null } = {},
+    options: { state?: AccessState; minimum?: Money | null; postcode?: string } = {},
   ): Id<'Seller'> => {
     const sellerId = ids.next<'Seller'>();
     stores.push({
@@ -91,6 +91,7 @@ describe.each([
       slug,
       name,
       serviceAreaCode: 'area-1',
+      operatingPostcode: options.postcode ?? null,
       operatingTimezone: zone,
       firstApprovedAt: Temporal.Instant.from(firstApprovedAt),
     });
@@ -182,6 +183,10 @@ describe.each([
       clock,
       onboardingAreas: {
         nameOf: (_m: unknown, code: string) => (code === 'area-1' ? 'Area One' : null),
+      } as never,
+      areas: {
+        areaFor: (_m: unknown, postcode: string) =>
+          postcode === '4000' ? { code: 'area-2', sellerOnboardingEnabled: true } : null,
       } as never,
       areaNames: {
         edited: () => Promise.resolve(editedNames),
@@ -338,6 +343,20 @@ describe.each([
     editedNames.set('area-1', { en: 'Greater Area One' });
     const edited = await read.execute(anonymous(), { slug: 'alpha-market' });
     expect(edited.ok && edited.value.serviceAreaName).toBe('Greater Area One');
+  });
+
+  it('reads the area from the postcode now, and keeps the stored code when none applies', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null, postcode: '4000' });
+    addStore('beta-market', 'Beta', '2026-01-11T00:00:00Z', { minimum: null, postcode: '9999' });
+    addStore('gamma-market', 'Gamma', '2026-01-12T00:00:00Z', { minimum: null });
+
+    const code = async (slug: string) => {
+      const answer = await read.execute(anonymous(), { slug });
+      return answer.ok ? answer.value.serviceAreaCode : null;
+    };
+    expect(await code('alpha-market')).toBe('area-2');
+    expect(await code('beta-market')).toBe('area-1');
+    expect(await code('gamma-market')).toBe('area-1');
   });
 
   it('reads one store by its exact slug', async () => {
