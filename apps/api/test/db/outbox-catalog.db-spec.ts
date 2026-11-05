@@ -278,6 +278,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX business_file_revisions_market_id_kind_created_at_pending_idx ON sellers.business_file_revisions USING btree (market_id, kind, created_at, id) WHERE (status = 'pending'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'sellers.seller_business_activities_one_main_key':
+    'CREATE UNIQUE INDEX seller_business_activities_one_main_key ON sellers.seller_business_activities USING btree (market_id, seller_id) WHERE is_main',
   // Customers (package 5a): the relay's claim index of customers.outbox.
   'customers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
