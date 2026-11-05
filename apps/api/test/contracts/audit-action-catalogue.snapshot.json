@@ -1,5 +1,20 @@
 [
   {
+    "action": "catalog.attribute-definition.archived",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "material": "boolean",
+      "status": "enumOf(active)"
+    },
+    "after": {
+      "relaxationRequestId": "optional(id)",
+      "requestedByAccountId": "optional(id)",
+      "status": "enumOf(archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-definition.created",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -63,6 +78,29 @@
       "optionCount": "integer",
       "relaxationRequestId": "optional(id)",
       "requestedByAccountId": "optional(id)",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.values-merged",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "mergedValueCount": "integer",
+      "optionCount": "integer",
       "revisionNo": "integer",
       "status": "enumOf(draft|active|archived)"
     }

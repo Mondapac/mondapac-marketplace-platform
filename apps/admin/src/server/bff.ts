@@ -223,6 +223,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attributes/:id/relaxation-requests',
     'catalog/admin/attribute-relaxations/:id/confirm',
     'catalog/admin/attribute-relaxations/:id/cancel',
+    // Merge two values, archive an attribute, ask to archive a material one, and confirm such a
+    // request (catalog, attributes A8: key `catalog.attribute.restructure`).
+    'catalog/admin/attributes/:id/merge-values',
+    'catalog/admin/attributes/:id/archive',
+    'catalog/admin/attributes/:id/archive-requests',
+    'catalog/admin/attribute-archive-requests/:id/confirm',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
@@ -302,6 +308,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/business-activities/:id',
     // One attribute with its values, uses and history, and one feature set (catalog, package A1).
     'catalog/admin/attributes/:id',
+    // What merging values or archiving an attribute reaches (catalog, attributes A8).
+    'catalog/admin/attributes/:id/impact',
     'catalog/admin/feature-sets/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',

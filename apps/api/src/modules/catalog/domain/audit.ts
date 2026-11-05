@@ -186,6 +186,38 @@ export const AttributeDefinitionDiscardedAudit = defineAuditAction({
   after: { status: auditField.enumOf(['archived'] as const) },
 });
 
+/**
+ * An admin merged one value of a select attribute into another (A8; plan ت۶). Counts only: no
+ * label and no value code (the audit vocabulary has no free-text field). `mergedValueCount` is how
+ * many values of the new revision point at another value.
+ */
+export const AttributeValuesMergedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.values-merged',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: definitionShape,
+  after: {
+    ...definitionShape,
+    mergedValueCount: auditField.integer(),
+  },
+});
+
+/**
+ * An admin archived a published attribute (A8). For a `material` one the actor is the confirming
+ * admin and the row names the request and its requester, as the revision that clears `material`.
+ */
+export const AttributeDefinitionArchivedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.archived',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['active'] as const), material: auditField.boolean() },
+  after: {
+    status: auditField.enumOf(['archived'] as const),
+    relaxationRequestId: auditField.optional(auditField.id()),
+    requestedByAccountId: auditField.optional(auditField.id()),
+  },
+});
+
 const relaxationKind = auditField.enumOf([
   'clear-material',
   'archive',
@@ -498,6 +530,8 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeDefinitionRevisedAudit,
   AttributeDefinitionPublishedAudit,
   AttributeDefinitionDiscardedAudit,
+  AttributeValuesMergedAudit,
+  AttributeDefinitionArchivedAudit,
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,

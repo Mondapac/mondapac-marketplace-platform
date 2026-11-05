@@ -37,6 +37,7 @@ interface RevisionRow {
     readonly labels: Prisma.JsonValue;
     readonly active: boolean;
     readonly position: number;
+    readonly mergedInto: string | null;
   }[];
 }
 
@@ -52,6 +53,7 @@ const revisionOf = (row: RevisionRow): AttributeRevisionRecord => ({
     labels: (option.labels ?? {}) as LocalizedText,
     active: option.active,
     position: option.position,
+    mergedInto: option.mergedInto,
   })),
   display: {
     helpText: (row.helpText ?? {}) as LocalizedText,

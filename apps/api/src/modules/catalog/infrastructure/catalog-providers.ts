@@ -219,6 +219,11 @@ import {
 } from '../application/ports/attribute-admin.reader';
 import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
 import {
+  ATTRIBUTE_IMPACT_READER,
+  type AttributeImpactReader,
+} from '../application/ports/attribute-impact.reader';
+import { PrismaAttributeImpactReader } from './prisma-attribute-impact.reader';
+import {
   PRODUCT_DETAILS_GAP_READER,
   type ProductDetailsGapReader,
 } from '../application/ports/product-details-gap.reader';
@@ -335,6 +340,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeAdminReader =>
       new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: ATTRIBUTE_IMPACT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeImpactReader =>
+      new PrismaAttributeImpactReader(prisma),
   },
   {
     provide: PRODUCT_DETAILS_GAP_READER,
