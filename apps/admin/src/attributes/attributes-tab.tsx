@@ -76,7 +76,11 @@ export function AttributesTab({
   // The search acts after a short pause.
   useEffect(() => {
     const timer = setTimeout(
-      () => setFilters((current) => ({ ...current, search: typed.trim() })),
+      () =>
+        setFilters((current) =>
+          // Same text: keep the same object, or the list reloads from page 1 for nothing.
+          current.search === typed.trim() ? current : { ...current, search: typed.trim() },
+        ),
       300,
     );
     return () => clearTimeout(timer);
