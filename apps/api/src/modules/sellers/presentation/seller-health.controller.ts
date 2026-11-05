@@ -15,10 +15,11 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { SellerHealthQueueRead } from '../application/use-cases/seller-health-queue.use-case';
 import { SellerHealthRead } from '../application/use-cases/seller-health-read.use-case';
 import { errorOf } from './my-file.answer';
 import { SellersErrorBody } from './my-file.dto';
-import { SellerHealthBody } from './seller-health.dto';
+import { SellerHealthBody, SellerHealthQueueBody } from './seller-health.dto';
 
 /**
  * The admin's seller health card over HTTP (seller health package 5). A thin adapter: the
@@ -33,7 +34,45 @@ import { SellerHealthBody } from './seller-health.dto';
 export class SellerHealthController {
   readonly #logger = new Logger('SellerHealthController');
 
-  constructor(private readonly read: SellerHealthRead) {}
+  constructor(
+    private readonly read: SellerHealthRead,
+    private readonly queue: SellerHealthQueueRead,
+  ) {}
+
+  @Get('health-queue')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Sellers that need a look (admin)',
+    description:
+      'The sellers whose latest stored health is unhealthy, worst score first, with the metric ' +
+      'that set it. Health only informs: nothing happens to the seller. Needs sellers.seller.view.',
+  })
+  @ApiOkResponse({ type: SellerHealthQueueBody })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: SellersErrorBody, description: 'sellers.unavailable' })
+  async healthQueue(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<SellerHealthQueueBody> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.queue.execute(context, {});
+    this.#logger.log({
+      msg: 'sellers.seller-health-queue-route',
+      outcome: result.ok ? 'read' : result.error.code,
+      ...(result.ok ? { rows: result.value.items.length } : {}),
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) throw errorOf(result.error, response);
+    return {
+      items: result.value.items.map((item) => ({ ...item })),
+      truncated: result.value.truncated,
+    };
+  }
 
   @Get(':sellerId/health')
   @ReadsSession()

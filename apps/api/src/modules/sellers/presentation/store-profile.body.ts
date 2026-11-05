@@ -11,6 +11,17 @@ export interface SaveImageBody {
   readonly data: string;
 }
 
+/**
+ * The body of `PUT store-profile`: the About text and the pictures as one save. A picture is left
+ * out to keep it, `null` to remove it, or `{ data }` (base64 text) to set or replace it.
+ */
+export interface SaveProfileBody {
+  readonly expectedVersion: number;
+  readonly about: Readonly<Record<string, string>>;
+  readonly logo?: null | SaveImageBody;
+  readonly banner?: null | SaveImageBody;
+}
+
 /** What a JSON body read as raw bytes is; anything that is not JSON stays `undefined`. */
 export function jsonOf(body: unknown): unknown {
   if (!Buffer.isBuffer(body)) return body;
@@ -59,4 +70,43 @@ export function parseSaveImageBody(body: unknown): SaveImageBody | readonly Fiel
   if (data === undefined) problems.push({ path: 'data', code: 'required' });
   else if (typeof data !== 'string') problems.push({ path: 'data', code: 'type' });
   return problems.length > 0 ? problems : { data: data as string };
+}
+
+/**
+ * Shape only: the About save's shape plus `logo` and `banner`, each left out, `null`, or a closed
+ * `{ data }` with a string (paths `logo.data`, `banner.data`). Which locales the Market offers,
+ * what a text may contain and whether a picture decodes is the use case's. A value is never echoed.
+ */
+export function parseSaveProfileBody(body: unknown): SaveProfileBody | readonly FieldProblem[] {
+  if (!isRecord(body)) return [{ path: '', code: 'type' }];
+  const { logo, banner, ...rest } = body;
+  // Unknown fields, a missing version or text and a wrong type are the About body's own checks.
+  const about = parseSaveAboutBody(rest);
+  const problems: FieldProblem[] = Array.isArray(about)
+    ? [...(about as readonly FieldProblem[])]
+    : [];
+  const images: { logo?: null | SaveImageBody; banner?: null | SaveImageBody } = {};
+  for (const [kind, value] of [
+    ['logo', logo],
+    ['banner', banner],
+  ] as const) {
+    if (value === undefined) continue;
+    if (value === null) {
+      images[kind] = null;
+      continue;
+    }
+    if (!isRecord(value)) {
+      problems.push({ path: kind, code: 'type' });
+      continue;
+    }
+    const parsed = parseSaveImageBody(value);
+    if (Array.isArray(parsed)) {
+      for (const problem of parsed as readonly FieldProblem[]) {
+        problems.push({ path: `${kind}.${problem.path}`, code: problem.code });
+      }
+    } else images[kind] = parsed as SaveImageBody;
+  }
+  if (problems.length > 0) return problems;
+  const { expectedVersion, about: texts } = about as SaveAboutBody;
+  return { expectedVersion, about: texts, ...images };
 }

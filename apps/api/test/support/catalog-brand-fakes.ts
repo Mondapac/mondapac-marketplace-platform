@@ -182,15 +182,18 @@ export class MemoryBrands implements BrandRepository, BrandReader {
     return Promise.resolve();
   }
 
-  dismissGroup(_market: MarketContext, input: { readonly groupKey: string }): Promise<number> {
-    let count = 0;
+  dismissGroup(
+    _market: MarketContext,
+    input: { readonly groupKey: string },
+  ): Promise<readonly Id<'Brand'>[]> {
+    const resolved: Id<'Brand'>[] = [];
     for (const row of this.candidates) {
       if (row.groupKey === input.groupKey && row.status === 'open') {
         row.status = 'resolved';
-        count += 1;
+        resolved.push(row.brandId as Id<'Brand'>);
       }
     }
-    return Promise.resolve(count);
+    return Promise.resolve(resolved);
   }
 
   // --- BrandReader

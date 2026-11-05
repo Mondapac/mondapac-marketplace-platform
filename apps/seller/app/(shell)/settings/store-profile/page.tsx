@@ -35,6 +35,7 @@ export default async function StoreProfilePage() {
     <SettingsShell session={page.session} linkId="store-profile" title={t('store-profile.title')}>
       <StoreProfile
         initial={page.view}
+        claimTerms={page.claimTerms}
         csrfToken={page.session.csrfToken}
         canEdit={page.session.permissionKeys.includes(STORE_PROFILE_EDIT_PERMISSION)}
       />

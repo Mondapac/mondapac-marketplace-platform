@@ -123,6 +123,11 @@ import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
 import {
+  SEARCH_FILTER_READER,
+  type SearchFilterReader,
+} from '../application/ports/search-filter.reader';
+import { PrismaSearchFilterReader } from './prisma-search-filter.reader';
+import {
   SELL_UNIT_LABELS_READER,
   type SellUnitLabelsReader,
 } from '../application/ports/sell-unit-labels.reader';
@@ -499,6 +504,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferSearchFactsReader =>
       new PrismaOfferSearchFactsReader(prisma),
+  },
+  {
+    provide: SEARCH_FILTER_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SearchFilterReader => new PrismaSearchFilterReader(prisma),
   },
   {
     provide: PLATFORM_CATEGORY_REPOSITORY,

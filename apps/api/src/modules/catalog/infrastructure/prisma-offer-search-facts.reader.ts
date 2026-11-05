@@ -1,17 +1,30 @@
+import { createHash } from 'node:crypto';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import type {
+  MarketTransaction,
+  PrismaService,
+} from '../../../platform/persistence/prisma.service';
 import type { OfferSearchFactsReader } from '../application/ports/offer-search-facts.reader';
 import type {
+  OfferSearchAttributes,
   OfferSearchFacts,
   OfferSearchFactsMap,
   PublishedOfferIdsInput,
 } from '../contracts/catalog-index.facade';
+import {
+  buildSearchAttributes,
+  NO_SEARCH_ATTRIBUTES,
+  type SearchBrand,
+} from '../domain/search-attributes';
+import { loadSearchDefinitions } from './search-definitions.loader';
 
 /**
  * {@link OfferSearchFactsReader}: the Offers by `(market_id, id)`, then the published revisions
  * of their products, then the texts and categories of those revisions. Four statements, no join.
  * An Offer whose product has no published revision, or no text in the asked locale, has
- * `text: null`.
+ * `text: null`. The attributes (A7) come from the revisions' attribute values, the product's
+ * ACTIVE brand with its aliases (brands are shared by every Market) and the PUBLISHED revisions
+ * of the definitions the values name.
  */
 export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -34,7 +47,7 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
         ? []
         : await tx.catalogProduct.findMany({
             where: { marketId: market.marketId, id: { in: productIds } },
-            select: { id: true, publishedRevisionId: true },
+            select: { id: true, publishedRevisionId: true, brandId: true },
           });
     const revisionByProduct = new Map<string, string>();
     for (const product of products) {
@@ -57,6 +70,16 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
               orderBy: [{ revisionId: 'asc' }, { position: 'asc' }],
             }),
           ]);
+    const attributesByRevision = await this.attributesOf(
+      tx,
+      market.marketId,
+      products.flatMap((product) =>
+        product.publishedRevisionId === null
+          ? []
+          : [{ revisionId: product.publishedRevisionId, brandId: product.brandId }],
+      ),
+      locale,
+    );
     const textByRevision = new Map(texts.map((row) => [row.revisionId, row]));
     const categoriesByRevision = new Map<string, Id<'Category'>[]>();
     for (const row of categories) {
@@ -76,7 +99,72 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
             ? null
             : { locale, name: text.name, shortDescription: text.shortDescription },
         categoryIds: revisionId === undefined ? [] : (categoriesByRevision.get(revisionId) ?? []),
+        attributes:
+          revisionId === undefined
+            ? NO_SEARCH_ATTRIBUTES
+            : (attributesByRevision.get(revisionId) ?? NO_SEARCH_ATTRIBUTES),
       });
+    }
+    return result;
+  }
+
+  /** The index facts of each published revision (attributes A7); one revision once. */
+  private async attributesOf(
+    tx: MarketTransaction,
+    marketId: string,
+    revisions: readonly { readonly revisionId: string; readonly brandId: string | null }[],
+    locale: string,
+  ): Promise<ReadonlyMap<string, OfferSearchAttributes>> {
+    const result = new Map<string, OfferSearchAttributes>();
+    if (revisions.length === 0) return result;
+    const rows = await tx.catalogProductRevision.findMany({
+      where: { marketId, id: { in: revisions.map((row) => row.revisionId) } },
+      select: { id: true, attributeValues: true },
+    });
+    const valuesOf = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      const values = row.attributeValues;
+      if (values !== null && typeof values === 'object' && !Array.isArray(values)) {
+        valuesOf.set(row.id, values);
+      }
+    }
+    const definitions = await loadSearchDefinitions(
+      tx,
+      marketId,
+      [...valuesOf.values()].flatMap((values) => Object.keys(values)),
+    );
+    const brandIds = [
+      ...new Set(revisions.flatMap((row) => (row.brandId === null ? [] : [row.brandId]))),
+    ];
+    const brands = new Map<string, SearchBrand>();
+    if (brandIds.length > 0) {
+      const brandRows = await tx.catalogBrand.findMany({
+        where: { id: { in: brandIds }, status: 'active' },
+        select: { id: true, slug: true, name: true },
+      });
+      const aliasRows = await tx.catalogBrandAlias.findMany({
+        where: { brandId: { in: brandRows.map((row) => row.id) } },
+        select: { brandId: true, alias: true },
+        orderBy: { alias: 'asc' },
+      });
+      for (const brand of brandRows) {
+        brands.set(brand.id, {
+          slug: brand.slug,
+          name: brand.name,
+          aliases: aliasRows.filter((row) => row.brandId === brand.id).map((row) => row.alias),
+        });
+      }
+    }
+    for (const { revisionId, brandId } of revisions) {
+      result.set(
+        revisionId,
+        buildSearchAttributes({
+          values: valuesOf.get(revisionId) ?? {},
+          definitions,
+          brand: brandId === null ? null : (brands.get(brandId) ?? null),
+          locale,
+        }),
+      );
     }
     return result;
   }
@@ -98,5 +186,25 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       take: input.limit,
     });
     return rows.map((row) => row.id as Id<'Offer'>);
+  }
+
+  async searchIndexStamp(market: MarketContext): Promise<string> {
+    const tx = this.prisma.tx(market);
+    const definitions = await tx.catalogAttributeDefinition.findMany({
+      where: { marketId: market.marketId },
+      select: { code: true, status: true, publishedRevisionId: true },
+      orderBy: { code: 'asc' },
+    });
+    const brands = await tx.catalogBrand.aggregate({
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    });
+    const aliases = await tx.catalogBrandAlias.count();
+    const text = [
+      ...definitions.map((d) => `${d.code}:${d.status}:${d.publishedRevisionId ?? '-'}`),
+      `brands:${brands._count._all}:${brands._max.updatedAt?.toISOString() ?? '-'}`,
+      `aliases:${aliases}`,
+    ].join('|');
+    return createHash('sha256').update(text).digest('hex').slice(0, 32);
   }
 }

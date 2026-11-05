@@ -72,6 +72,7 @@ class MemoryStore {
           .map(([, snap]) => snap),
       ),
     latest: () => Promise.resolve(new Map()),
+    unhealthy: () => Promise.resolve({ sellers: [], truncated: false }),
   };
 }
 

@@ -1,5 +1,6 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { ChangeTrail } from '../../../platform/audit/change-trail';
 import type { SecurityEvents } from '../../../platform/security-events/security-events';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
@@ -39,4 +40,6 @@ export interface ShippingDependencies {
   /** Uber Direct's status webhook signature (one header, no timestamp). */
   readonly uberWebhookSignature: FleetWebhookSignature;
   readonly securityEvents: SecurityEvents;
+  /** "Last changed by" and the history of the admin settings pages, from this module's audit rows. */
+  readonly trail: ChangeTrail;
 }

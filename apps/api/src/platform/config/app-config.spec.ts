@@ -28,6 +28,7 @@ describe('loadAppConfig', () => {
       databasePoolMax: 10,
       mailCatcherUrl: null,
       objectStore: null,
+      malwareScanner: null,
       stripeSecretKey: null,
       stripePaymentMethodConfiguration: null,
       stripeWebhookSecrets: {},
@@ -611,8 +612,11 @@ describe('loadAppConfig', () => {
     const base = { HOSTED_MARKETS: 'AU' };
     expect(loadAppConfig(base).certificationReviewerDocumentsEnabled).toBe(false);
     expect(
-      loadAppConfig({ ...base, CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' })
-        .certificationReviewerDocumentsEnabled,
+      loadAppConfig({
+        ...base,
+        CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true',
+        CLAMD_HOST: 'clamav',
+      }).certificationReviewerDocumentsEnabled,
     ).toBe(true);
     expect(() =>
       loadAppConfig({ ...base, CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'yes' }),
@@ -812,6 +816,42 @@ describe('loadAppConfig', () => {
       } catch (error) {
         expect(String(error)).not.toContain('topsecretvalue');
       }
+    });
+  });
+
+  describe('malware scanner settings', () => {
+    it('has no scanner by default', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).malwareScanner).toBeNull();
+    });
+
+    it('reads the clamd host with the default port and timeout', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', CLAMD_HOST: 'clamav' }).malwareScanner).toEqual({
+        host: 'clamav',
+        port: 3310,
+        timeoutMs: 30_000,
+      });
+    });
+
+    it('refuses reviewer document downloads without a scanner', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' }),
+      ).toThrow('CLAMD_HOST');
+      expect(
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true',
+          CLAMD_HOST: 'clamav',
+        }).certificationReviewerDocumentsEnabled,
+      ).toBe(true);
+    });
+
+    it('refuses a bad port or timeout', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', CLAMD_HOST: 'c', CLAMD_PORT: '0' }),
+      ).toThrow();
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', CLAMD_HOST: 'c', CLAMD_TIMEOUT_MS: '10' }),
+      ).toThrow();
     });
   });
 });
