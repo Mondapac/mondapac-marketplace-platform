@@ -27,6 +27,7 @@
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "catalog.brand-product-ids", "rule": "anonymous" },
+  { "name": "catalog.business-activities-active", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.expire-relaxation-requests", "rule": "system" },
   { "name": "catalog.offer-badges", "rule": "anonymous" },
@@ -37,6 +38,11 @@
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
   { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
+  {
+    "name": "catalog.own-attribute-suggestions-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.own-offer-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
@@ -666,6 +672,12 @@
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.run-seller-health", "rule": "system" },
   { "name": "sellers.run-seller-health-requests", "rule": "system" },
+  {
+    "name": "sellers.seller-business-activities",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  { "name": "sellers.seller-business-activities-system", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },

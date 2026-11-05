@@ -33,6 +33,7 @@ const revision = (over: Partial<ReviewRevision> = {}): ReviewRevision => ({
   status: 'pending',
   createdAt: '2026-10-08T01:00:00.000Z',
   serviceAreaCode: 'AU-QLD-BNE',
+  serviceAreaName: 'Greater Brisbane',
   operatingTimezone: 'Australia/Brisbane',
   registerAtSubmission: {
     outcome: 'active',
@@ -73,6 +74,20 @@ describe('admin seller review page', () => {
     expect(screen.getByText(/1 Cedar Lane\s+4000/)).toBeTruthy();
     expect(screen.getByText(/Each view is recorded in the audit log/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('shows the display name of the service area, else the readable code', async () => {
+    const { unmount } = render(await ReviewView({ review: review() }));
+    expect(screen.getByText('Greater Brisbane')).toBeTruthy();
+    unmount();
+    render(
+      await ReviewView({
+        review: review({
+          current: revision({ serviceAreaName: null, serviceAreaCode: 'old-area' }),
+        }),
+      }),
+    );
+    expect(screen.getByText('Old Area')).toBeTruthy();
   });
 
   it('marks the fields a change request alters against the approved revision', async () => {

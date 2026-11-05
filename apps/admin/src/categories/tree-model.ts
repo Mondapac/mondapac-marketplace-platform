@@ -42,9 +42,25 @@ export interface Filter {
   /** The search text, trimmed. */
   readonly q: string;
   readonly status: StatusFilter;
+  /** A locale code: only categories with no name in it ("Missing: {language}"). */
+  readonly missing?: string | null;
 }
 
-export const isFiltering = (filter: Filter): boolean => filter.q !== '' || filter.status !== 'all';
+export const isFiltering = (filter: Filter): boolean =>
+  filter.q !== '' || filter.status !== 'all' || (filter.missing ?? null) !== null;
+
+/** How many categories lack a name in each locale (the tree's "Missing" counts). */
+export function missingCounts(
+  rows: readonly CategoryRow[],
+  locales: readonly string[],
+): Readonly<Record<string, number>> {
+  return Object.fromEntries(
+    locales.map((locale) => [
+      locale,
+      rows.filter((row) => !row.names.some((entry) => entry.locale === locale)).length,
+    ]),
+  );
+}
 
 /** The ids of every category that has a child. */
 export function branchIds(rows: readonly CategoryRow[]): ReadonlySet<string> {
@@ -53,6 +69,12 @@ export function branchIds(rows: readonly CategoryRow[]): ReadonlySet<string> {
 
 export function matches(row: CategoryRow, filter: Filter): boolean {
   if (filter.status !== 'all' && row.status !== filter.status) return false;
+  if (
+    filter.missing !== undefined &&
+    filter.missing !== null &&
+    row.names.some((entry) => entry.locale === filter.missing)
+  )
+    return false;
   if (filter.q === '') return true;
   const needle = filter.q.toLocaleLowerCase();
   return (

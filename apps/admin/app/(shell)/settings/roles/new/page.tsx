@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, SettingsTitle } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { RoleEditor } from '../../../../../src/roles/role-editor.tsx';
@@ -38,7 +38,9 @@ export default async function NewRolePageRoute({
   if (result.kind !== 'ok') {
     return (
       <SettingsShell session={gate.session} linkId="roles" title={title} nested>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <div className="mb-4">
+          <SettingsTitle>{title}</SettingsTitle>
+        </div>
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </SettingsShell>
     );

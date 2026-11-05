@@ -22,7 +22,10 @@ export default async function CategoriesPage() {
     <AdminShell session={gate.session} activeId="categories" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {permissionKeys.includes(READ_PERMISSION) ? (
-        <CategoriesView canEdit={permissionKeys.includes(EDIT_PERMISSION)} />
+        <CategoriesView
+          canEdit={permissionKeys.includes(EDIT_PERMISSION)}
+          csrfToken={gate.session.csrfToken}
+        />
       ) : (
         <>
           <p className="text-fg-muted">{t('categories.no-access')}</p>
