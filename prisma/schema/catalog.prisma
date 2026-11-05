@@ -1506,6 +1506,8 @@ model CatalogCategoryProposal {
   createdSellerCategory   CatalogSellerCategory?  @relation(fields: [marketId, createdSellerCategoryId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, id])
+  /// The seller's own list, newest first.
+  @@index([marketId, sellerId, createdAt])
   @@map("category_proposals")
   @@schema("catalog")
 }
