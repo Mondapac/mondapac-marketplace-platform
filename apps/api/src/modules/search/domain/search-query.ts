@@ -1,5 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
+import { parseFilters, type ParsedFilters } from './search-filter';
 
 export const MIN_QUERY_LENGTH = 2;
 export const MAX_QUERY_LENGTH = 100;
@@ -41,6 +42,10 @@ export interface SearchProductsRequest {
   /** A brand address: lists the Offers of that brand's products (no `q`, no `store`). */
   readonly brand?: string | undefined;
   readonly sort?: string | undefined;
+  /** Attribute filters (A7): `<attribute>:<code>[,<code>...]`, one parameter per attribute. */
+  readonly filter?: string | readonly string[] | undefined;
+  /** Number ranges (A7): `<attribute>:<min>..<max>`, either end may be left out. */
+  readonly range?: string | readonly string[] | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
 }
@@ -58,6 +63,8 @@ export interface SearchQuery {
   /** The brand address to list, or null. Never with a text or a store. */
   readonly brandSlug: string | null;
   readonly sort: SearchSort;
+  /** Attribute filters, checked for shape; which are filters of the category is catalog's answer. */
+  readonly filters: ParsedFilters;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -155,11 +162,28 @@ export function parseSearchQuery(
     }
   }
 
+  const filters = parseFilters(request);
+  if (!filters.ok) return invalid(filters.error.path, filters.error.code);
+  // A store's or a brand's list is a browse by name: no attribute filters (A7).
+  if (filters.value.choices.length > 0 || filters.value.ranges.length > 0) {
+    if (storeSlug !== null) return invalid('filter', 'with-store');
+    if (brandSlug !== null) return invalid('filter', 'with-brand');
+  }
+
   const page = request.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return invalid('page', 'range');
   const pageSize = request.pageSize ?? DEFAULT_PAGE_SIZE;
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
     return invalid('pageSize', 'range');
   }
-  return ok({ text, categoryId, storeSlug, brandSlug, sort, page, pageSize });
+  return ok({
+    text,
+    categoryId,
+    storeSlug,
+    brandSlug,
+    sort,
+    filters: filters.value,
+    page,
+    pageSize,
+  });
 }

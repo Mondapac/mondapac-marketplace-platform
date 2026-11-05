@@ -437,6 +437,9 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
       shortText: null,
       categoryIds: [],
       textSearchConfig: new ConfigSearchPolicy(markets).settings(target).textSearchConfig,
+      searchText: null,
+      facetCodes: [],
+      numbers: {},
     });
 
     it('reads documents by Offer id and in browse order, in this Market only', async () => {

@@ -1081,13 +1081,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'category_ids',
+        'facet_codes',
         'indexed_at',
         'locale',
         'name',
         'product_id',
+        'search_text',
         'seller_id',
         'short_text',
         'text_search_config',
+      ],
+    },
+    // Search attribute filters (A7): the measure values of a document, replaced with it; the
+    // reindex progress row of a Market, written by the reindex job and never deleted.
+    'search.offer_document_numbers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'search.reindex_state': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'cursor_offer_id',
+        'done_stamp',
+        'failure',
+        'finished_at',
+        'offers_done',
+        'started_at',
+        'status',
+        'target_stamp',
+        'updated_at',
       ],
     },
     // Search rating boost (buyer reviews and ratings package 5): the star totals of a product,
