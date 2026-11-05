@@ -386,6 +386,31 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     };
     expect(await only(true, false)).toEqual(['catalog/admin/attribute-relaxations']);
     expect(await only(false, true)).toEqual(['catalog/admin/attribute-archive-requests']);
+    expect((await only(true, true)).sort()).toEqual([
+      'catalog/admin/attribute-archive-requests',
+      'catalog/admin/attribute-relaxations',
+    ]);
+  });
+
+  it('shows the load error when one of the two waiting lists fails', async () => {
+    serve({
+      'GET catalog/admin/attribute-relaxations': ok({ requests: [] }),
+      'GET catalog/admin/attribute-archive-requests': refuse(500, 'internal'),
+    });
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <AttributesView
+          canEdit
+          canRestructure
+          csrfToken="csrf-1"
+          canSeeBrands={false}
+          canDecide={false}
+          initialTab="waiting"
+          initialId={null}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   describe('merge into another attribute', () => {

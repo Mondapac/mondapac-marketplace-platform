@@ -1168,6 +1168,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attribute-suggestions/${id}/map`],
     ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
     ['GET', 'catalog/admin/attribute-relaxations'],
+    ['GET', 'catalog/admin/attribute-archive-requests'],
     ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/cancel`],
