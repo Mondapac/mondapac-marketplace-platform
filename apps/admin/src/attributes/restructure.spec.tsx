@@ -129,6 +129,7 @@ function mount(canRestructure: boolean) {
         canRestructure={canRestructure}
         csrfToken="csrf-1"
         canSeeBrands={false}
+        canDecide={false}
         initialTab="attributes"
         initialId={id(1)}
       />
@@ -336,6 +337,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
           canRestructure
           csrfToken="csrf-1"
           canSeeBrands={false}
+          canDecide={false}
           initialTab="waiting"
           initialId={null}
         />
