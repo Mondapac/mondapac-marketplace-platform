@@ -32,7 +32,6 @@ describe.each(TEST_MARKETS)('catalog attribute merge in market %s (database)', (
   const other = marketOf(otherMarketOf(code));
   const locale = code === 'AU' ? 'en-AU' : 'ja-JP';
   const first = uuid7() as Id<'Account'>;
-  const second = uuid7() as Id<'Account'>;
   let db: Persistence;
   let owner: Client;
   let definitions: PrismaAttributeDefinitionStore;

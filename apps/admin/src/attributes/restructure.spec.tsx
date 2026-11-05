@@ -431,7 +431,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       });
       // The value with the same code is mapped already; the others are asked for.
       await within(dialog).findByLabelText('TIN goes to');
-      expect((within(dialog).getByLabelText('TIN goes to') as HTMLSelectElement).value).toBe('tin');
+      expect(within(dialog).getByLabelText<HTMLSelectElement>('TIN goes to').value).toBe('tin');
       expect((confirm as HTMLButtonElement).disabled).toBe(true);
       fireEvent.change(within(dialog).getByLabelText('CAN goes to'), { target: { value: 'tin' } });
       fireEvent.change(within(dialog).getByLabelText('JAR goes to'), {
