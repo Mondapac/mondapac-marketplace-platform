@@ -28,6 +28,7 @@ const node = (id: Id<'Category'>, parentId: Id<'Category'> | null): StoredCatego
   parentId,
   status: 'active',
   mergedIntoId: null,
+  position: 0,
   slug: `c-${id.slice(-4)}`,
   names: [],
 });
