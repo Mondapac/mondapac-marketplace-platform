@@ -23,6 +23,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/own-zone',
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
+    // "View history" of the store profile (query: `after`, `limit`): when, who by display name and
+    // which part changed, from the audit log.
+    'sellers/store-profile/history',
     'sellers/my-file/form-descriptors',
     // The stock locations, read again after a stale write (the list and its version).
     'inventory/seller/sources',

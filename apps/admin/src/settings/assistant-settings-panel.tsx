@@ -23,6 +23,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from './conflict-view.tsx';
+import { useChangeHistory } from './last-changed.tsx';
 import {
   BOUNDS,
   assistantProblemOf,
@@ -187,6 +188,7 @@ export function AssistantSettingsPanel({
     changes: (saved, draft) => changesOf(saved, draft, t),
   });
   const answer = settings.saved;
+  const changeHistory = useChangeHistory(answer.lastChanged, 'assistant/admin/settings/history');
   const form = settings.draft;
   const changedKeys = settings.changes.map((change) => change.key);
   const changed = (key: keyof AssistantForm) => changedKeys.includes(key);
@@ -278,7 +280,7 @@ export function AssistantSettingsPanel({
   const status = <StatusCard answer={answer} />;
   // The error summary names the fields, so the generic "fix" line is left out.
   const shownProblem = problem === 'fix' ? null : problem;
-  const lastChanged = {
+  const lastChanged = changeHistory.line ?? {
     text:
       answer.version === 0
         ? t(`${P}.version-defaults`)
@@ -307,6 +309,7 @@ export function AssistantSettingsPanel({
         key="conflict"
         conflictId={settings.conflictId}
         changes={settings.changes}
+        winner={settings.theirs.lastChanged}
       />
     ),
     shownProblem === null ? null : (
@@ -321,6 +324,7 @@ export function AssistantSettingsPanel({
     title: t(`${P}.title`),
     description: t(`${P}.intro`),
     lastChanged,
+    overlay: changeHistory.drawer,
     banner,
   };
 
