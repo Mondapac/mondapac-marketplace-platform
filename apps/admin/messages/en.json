@@ -28,6 +28,7 @@
     "hint-move": "to move",
     "hint-open": "to open",
     "hint-close": "to close",
+    "hint-shortcuts": "for shortcuts",
     "group": {
       "account": "Account"
     },
