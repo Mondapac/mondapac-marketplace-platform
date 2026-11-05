@@ -214,10 +214,11 @@ describe('suggestable fields', () => {
     },
   } as unknown as ProductView;
 
-  it('offers select fields that are not variant options, with their values', () => {
+  it('offers select fields, variant options included, with their values', () => {
     expect(suggestableFields(product, 'en-AU')).toEqual([
       { code: 'pack-size', label: 'PACK-SIZE', values: ['A'] },
       { code: 'cuts', label: 'CUTS', values: ['A'] },
+      { code: 'colour', label: 'COLOUR', values: ['A'] },
     ]);
     expect(productDraftName(product, 'en-AU')).toBe('Olive oil');
     expect(productDraftName(product, 'ja-JP')).toBeNull();
