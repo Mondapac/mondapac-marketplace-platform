@@ -63,7 +63,10 @@ export async function assertRetirable(
 ): Promise<Result<void, AssertCategoriesRetirableFailure>> {
   const ids = parseCategoryIds(input);
   if (!ids.ok) return ids;
-  if (ids.value.length === 0) return ok(undefined);
+  // An empty call is a caller's bug, never "nothing to check" (fail closed).
+  if (ids.value.length === 0) {
+    return err({ code: 'validation.failed', fields: [{ path: 'categoryIds', code: 'required' }] });
+  }
   let typeCodes: readonly string[];
   try {
     typeCodes = await repository.blockingTypeCodes(context.market, ids.value);

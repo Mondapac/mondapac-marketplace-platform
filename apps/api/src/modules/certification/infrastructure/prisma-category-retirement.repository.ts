@@ -2,6 +2,7 @@ import { ok } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import { MAX_RETIRED_CATEGORY_IDS } from '../application/use-cases/assert-categories-retirable.use-case';
 import type {
   CategoryRetirementRepository,
   PolicyNamedCategory,
@@ -26,6 +27,7 @@ export class PrismaCategoryRetirementRepository implements CategoryRetirementRep
     market: MarketContext,
     categoryIds: readonly Id<'Category'>[],
   ): Promise<readonly string[]> {
+    assertBounded(categoryIds);
     const result = await this.unitOfWork.run(
       market,
       async () => {
@@ -43,6 +45,7 @@ export class PrismaCategoryRetirementRepository implements CategoryRetirementRep
     market: MarketContext,
     categoryIds: readonly Id<'Category'>[],
   ): Promise<readonly PolicyNamedCategory[]> {
+    assertBounded(categoryIds);
     const rows = await this.namedRows(market, categoryIds, null);
     const byCategory = new Map<string, boolean>();
     for (const row of rows) {
@@ -63,6 +66,7 @@ export class PrismaCategoryRetirementRepository implements CategoryRetirementRep
     categoryIds: readonly Id<'Category'>[],
     reportedAt: Temporal.Instant,
   ): Promise<readonly Id<'Category'>[]> {
+    assertBounded(categoryIds);
     if (categoryIds.length === 0) return [];
     const at = new Date(reportedAt.epochMilliseconds);
     const inserted = await this.prisma
@@ -117,5 +121,12 @@ export class PrismaCategoryRetirementRepository implements CategoryRetirementRep
         revision: { select: { policy: { select: { type: { select: { code: true } } } } } },
       },
     });
+  }
+}
+
+/** The use cases cap a call at 5000 ids; the repository refuses more too (bounded `IN` lists). */
+function assertBounded(categoryIds: readonly unknown[]): void {
+  if (categoryIds.length > MAX_RETIRED_CATEGORY_IDS) {
+    throw new RangeError('category retirement: too many ids');
   }
 }

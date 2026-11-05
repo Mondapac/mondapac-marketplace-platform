@@ -1,4 +1,4 @@
-import { ok, parseId } from '@mondapac/shared-kernel';
+import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { AuditEntry, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -140,12 +140,14 @@ describe.each(['AU', 'ZZ'] as const)('category retirement, Market %s', (code) =>
       expect(asked).toHaveLength(1);
     });
 
-    it('asks each id once and answers ok for an empty call without reading', async () => {
+    it('asks each id once and refuses an empty call without reading (fail closed)', async () => {
       await facade().assertCategoriesRetirable(admin(), [category(1), category(1), category(2)]);
       expect(asked[0]!.ids).toEqual([category(1), category(2)]);
 
       asked.length = 0;
-      expect(await facade().assertCategoriesRetirable(admin(), [])).toEqual(ok(undefined));
+      expect(await facade().assertCategoriesRetirable(admin(), [])).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'categoryIds', code: 'required' }] }),
+      );
       expect(asked).toEqual([]);
     });
 

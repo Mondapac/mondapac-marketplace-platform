@@ -145,7 +145,10 @@ export interface CertificationFacade {
    * `NOT_APPLICABLE` or `SELLER_REQUIRED` row of a policy's published revision, or of the revision
    * a pending relaxation would publish, names one of the ids (such a row stops matching once the
    * category is gone, and its lapse could relax a claim). `SELLER_OR_MANUFACTURER` rows do not
-   * block. 0 to 5000 distinct ids; a larger or malformed call is refused whole. A failed read is
+   * block. A move passes the moved subtree and its old ancestors that are not ancestors after the
+   * move (a row on such an ancestor stops matching the moved products' paths); a merge passes the
+   * source and its ancestors that are not the target's; an archive passes the category. 1 to 5000
+   * distinct ids; an empty, larger or malformed call is refused whole. A failed read is
    * `certification.unavailable`: the caller refuses its change (fail closed). The answer is the
    * same for every caller. Two use cases: `anonymous` for request actors, `system` for handlers
    * and jobs. Not exposed over HTTP.
@@ -156,7 +159,8 @@ export interface CertificationFacade {
   ): Promise<Result<void, Failure | CategoryReferencedByPolicy>>;
 
   /**
-   * The backstop after `catalog`'s commit of a merge or archive (design 3.7, 8.1; C-4): flags every
+   * The backstop after `catalog`'s commit of a move, merge or archive (design 3.7, 8.1; C-4), with
+   * the same ids the check cleared (for a move: the ids that left the products' paths): flags every
    * id a published or pending policy row names, once, and alerts the admins (a security event)
    * when a flagged category has a `NOT_APPLICABLE` or `SELLER_REQUIRED` row. Never rewrites a row.
    * Idempotent. Rule `system` (`catalog`'s own handler of its events, outside its unit). A fault is
