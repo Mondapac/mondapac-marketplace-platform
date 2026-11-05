@@ -77,3 +77,21 @@ export function imageProblemOf(failure: ApiFailure, kind: ImageKind): ImageProbl
       return { key: failure.status === 503 || failure.status === 0 ? 'unavailable' : 'unknown' };
   }
 }
+
+/** What went wrong with the one store-profile save: the About problem and the refused pictures. */
+export interface SaveProblem extends AboutProblem {
+  /** The picture the server refused, by kind. */
+  readonly pictures: Readonly<Partial<Record<ImageKind, ImageProblem>>>;
+}
+
+/**
+ * The failure of `PUT sellers/store-profile`. A picture the server refuses is a `file.*` answer
+ * with `details.kind`; everything else reads as an About failure.
+ */
+export function saveProblemOf(failure: ApiFailure): SaveProblem {
+  const kind = failure.details?.kind;
+  if (failure.code.startsWith('file.') && kind !== undefined) {
+    return { banner: null, fields: {}, pictures: { [kind]: imageProblemOf(failure, kind) } };
+  }
+  return { ...aboutProblemOf(failure), pictures: {} };
+}

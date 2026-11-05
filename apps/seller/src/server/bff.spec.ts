@@ -341,6 +341,16 @@ describe('relay', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 
+  it('always sets nosniff, because the proxy does not run on the relay', async () => {
+    const response = await relay(
+      config,
+      post('identity/seller/sign-in'),
+      ['identity', 'seller', 'sign-in'],
+      () => Promise.resolve(new Response('{}', { status: 200 })),
+    );
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
   it('answers 503 when the API is unreachable', async () => {
     const response = await relay(
       config,
@@ -964,6 +974,7 @@ describe('relay of the store profile', () => {
   it('relays the read, the About save, the two image saves and the two removes', async () => {
     expect((await send('GET', 'sellers/store-profile')).status).toBe(200);
     expect((await send('PUT', 'sellers/store-profile/about', '{}')).status).toBe(200);
+    expect((await send('PUT', 'sellers/store-profile', '{}')).status).toBe(200);
     for (const kind of ['logo', 'banner']) {
       expect((await send('PUT', `sellers/store-profile/${kind}`, '{}')).status).toBe(200);
       expect((await send('DELETE', `sellers/store-profile/${kind}`)).status).toBe(200);
@@ -973,7 +984,7 @@ describe('relay of the store profile', () => {
   it('refuses other shapes under it: the wrong method, an unknown image kind, a seller id', async () => {
     const refused: [string, string][] = [
       ['POST', 'sellers/store-profile'],
-      ['PUT', 'sellers/store-profile'],
+      ['DELETE', 'sellers/store-profile'],
       ['POST', 'sellers/store-profile/about'],
       ['DELETE', 'sellers/store-profile/about'],
       ['PUT', 'sellers/store-profile/avatar'],
@@ -998,6 +1009,16 @@ describe('relay of the store profile', () => {
     expect(
       (await send('PUT', 'sellers/store-profile/logo', 'A'.repeat(5800 * 1024 + 1))).status,
     ).toBe(413);
+  });
+
+  it('takes the whole-profile save up to two photo bodies, and no more', async () => {
+    const two = JSON.stringify({ about: {}, logo: { data: 'A'.repeat(5000 * 1024) } });
+    expect((await send('PUT', 'sellers/store-profile', two)).status).toBe(200);
+    expect(
+      (await send('PUT', 'sellers/store-profile', 'A'.repeat(2 * 5800 * 1024 + 1))).status,
+    ).toBe(413);
+    // Only the whole-profile route gets that room: the About save stays at 16 KB.
+    expect((await send('PUT', 'sellers/store-profile/about', two)).status).toBe(413);
   });
 
   it('relays an image read for small and large by UUID, and refuses other sizes and ids', async () => {

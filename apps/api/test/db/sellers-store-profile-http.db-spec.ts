@@ -583,6 +583,112 @@ describe.each(TEST_MARKETS)('store profile over HTTP on PostgreSQL in market %s'
       expect(JSON.stringify(events)).not.toContain('bake bread');
     });
 
+    it('saves the text and both pictures as one versioned unit, and a refused picture saves nothing (one save bar)', async () => {
+      const { headers } = await approvedSeller();
+      const view = (await http().get('/sellers/store-profile').set(headers)).body as {
+        defaultLocale: string;
+      };
+      const locale = view.defaultLocale;
+      const objectsBefore = store.objects.size;
+
+      // One request: the text, a logo and a banner; one new version; every part is current.
+      const saved = await http()
+        .put('/sellers/store-profile')
+        .set(headers)
+        .send({
+          expectedVersion: 0,
+          about: { [locale]: 'We bake bread daily.' },
+          logo: await imageBody(600, 400),
+          banner: await imageBody(1600, 500),
+        });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({
+        version: 1,
+        about: { [locale]: 'We bake bread daily.' },
+        logo: { width: 512, height: 512 },
+        banner: { width: 1536, height: 384 },
+      });
+      expect(store.objects.size).toBe(objectsBefore + 4);
+
+      // A stale version refuses the whole save: the new picture is not current, no object is kept.
+      const stale = await http()
+        .put('/sellers/store-profile')
+        .set(headers)
+        .send({
+          expectedVersion: 0,
+          about: { [locale]: 'Stale text' },
+          logo: await imageBody(700, 500),
+        });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toMatchObject({ code: 'conflict.stale' });
+      expect(store.objects.size).toBe(objectsBefore + 4);
+      const afterStale = (await http().get('/sellers/store-profile').set(headers)).body as {
+        version: number;
+        about: Record<string, string>;
+        logo: { id: string };
+      };
+      expect(afterStale).toMatchObject({ version: 1, about: { [locale]: 'We bake bread daily.' } });
+      expect(afterStale.logo.id).toBe((saved.body as { logo: { id: string } }).logo.id);
+
+      // A refused picture names its kind, and the text and the other picture are not saved either.
+      const refused = await http()
+        .put('/sellers/store-profile')
+        .set(headers)
+        .send({
+          expectedVersion: 1,
+          about: { [locale]: 'Changed text' },
+          logo: await imageBody(800, 600),
+          banner: await imageBody(400, 100),
+        });
+      expect(refused.status).toBe(422);
+      expect(refused.body).toMatchObject({ code: 'file.too-small', details: { kind: 'banner' } });
+      expect(store.objects.size).toBe(objectsBefore + 4);
+      const afterRefused = (await http().get('/sellers/store-profile').set(headers)).body as {
+        version: number;
+        about: Record<string, string>;
+        logo: { id: string };
+      };
+      expect(afterRefused.version).toBe(1);
+      expect(afterRefused.about[locale]).toBe('We bake bread daily.');
+      expect(afterRefused.logo.id).toBe(afterStale.logo.id);
+
+      // A picture-only change is a new revision with the text as it is; a removal frees its objects.
+      const removed = await http()
+        .put('/sellers/store-profile')
+        .set(headers)
+        .send({ expectedVersion: 1, about: { [locale]: 'We bake bread daily.' }, banner: null });
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({
+        version: 2,
+        about: { [locale]: 'We bake bread daily.' },
+        banner: null,
+      });
+      expect(store.objects.size).toBe(objectsBefore + 2);
+
+      // Nothing changed: the version stays.
+      const same = await http()
+        .put('/sellers/store-profile')
+        .set(headers)
+        .send({ expectedVersion: 2, about: { [locale]: 'We bake bread daily.' }, banner: null });
+      expect(same.status).toBe(200);
+      expect(same.body).toMatchObject({ version: 2 });
+
+      // The claim guard still holds in the whole save: the text is refused and no picture is kept.
+      const claimed = await http()
+        .put('/sellers/store-profile')
+        .set(headers)
+        .send({
+          expectedVersion: 2,
+          about: { [locale]: `Our meat is ${CLAIM_TERM[code]} daily.` },
+          logo: await imageBody(900, 700),
+        });
+      expect(claimed.status).toBe(400);
+      expect(claimed.body).toMatchObject({
+        details: { fields: [{ path: `about.${locale}`, code: 'claim-term' }] },
+      });
+      expect(store.objects.size).toBe(objectsBefore + 2);
+    });
+
     it('refuses a text holding a seeded claim term as about.<locale> claim-term, and saves nothing (H3, S9)', async () => {
       const { headers } = await approvedSeller();
       const locale = (
