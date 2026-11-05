@@ -1,10 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_BRAND_EDIT } from '../../contracts/permissions';
+import { BrandEditedAudit } from '../../domain/audit';
 import {
   brandNameKey,
   isBrandSlug,
@@ -53,6 +55,7 @@ export interface BrandEditDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly clock: Clock;
+  readonly audit: AuditWriter;
 }
 
 const EDIT_KEYS = [
@@ -156,6 +159,25 @@ export class BrandEdit extends UseCase<
           if (!next.ok) return err(next.error);
           const saved = await brands.save(market, next.value);
           if (saved !== null) return err({ code: saved } as const);
+          const before = found.state;
+          const after = next.value.state;
+          await this.deps.audit.record(
+            context,
+            BrandEditedAudit.entry(after.id, {
+              before: { status: before.status },
+              after: {
+                status: after.status,
+                nameChanged: before.name !== after.name,
+                slugChanged: before.slug !== after.slug,
+                summaryChanged: before.summary !== after.summary,
+                originCountryChanged: before.originCountry !== after.originCountry,
+                imagesChanged:
+                  before.logoImageId !== after.logoImageId ||
+                  before.logoAlt !== after.logoAlt ||
+                  before.headerImageId !== after.headerImageId,
+              },
+            }),
+          );
           return ok({ brand: viewOf(next.value.state) });
         },
       );

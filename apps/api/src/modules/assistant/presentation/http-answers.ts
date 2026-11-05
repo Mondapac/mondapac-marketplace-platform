@@ -1,6 +1,7 @@
 import { HttpException, type Logger } from '@nestjs/common';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request } from 'express';
+import { conflictDetails } from '../../../platform/audit/change-trail';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 // The parts of an assistant route that every route shares: the error format
@@ -76,5 +77,7 @@ export function refusal(
   if (error.retryAfterSeconds !== undefined) {
     return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
   }
+  const conflict = conflictDetails(error);
+  if (conflict !== undefined) return fail(status, error.code, conflict);
   return fail(status, error.code);
 }

@@ -214,6 +214,8 @@ export interface ProductVariant {
 }
 
 export interface ProductSpecification {
+  /** The attribute's code, unique on a product (the row's key); absent on sample rows. */
+  readonly code?: string;
   readonly label: string;
   readonly value: string;
   /** The family group's code; rows of one group are next to each other. */

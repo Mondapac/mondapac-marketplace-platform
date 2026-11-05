@@ -415,6 +415,14 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
     expect(await checkSearch(base('d.category_ids && $2::uuid[]'), [{}])).toEqual([]);
   });
 
+  // Attribute filters (search A7): the same overlap with a text[] parameter, for facet strings.
+  it('passes the array overlap of a column with a text[] parameter', async () => {
+    expect(await checkSearch(base('d.facet_codes && $2::text[]'), [{}])).toEqual([]);
+    expect(
+      await checkSearch(base("($2::text[] = '{}'::text[] OR d.facet_codes && $2::text[])"), [{}]),
+    ).toEqual([]);
+  });
+
   // Package 5 (reviews): the one multiplication, `ts_rank(...) * COALESCE(<column>, <integer>)`.
   describe('the rating factor multiplication', () => {
     const ratedOwner: StatementOwner = {
@@ -475,7 +483,13 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
     ],
     ['@> against a bare parameter', 'd.category_ids @> $2', [{}], ['operator-shape:@>']],
     ['&& against a bare parameter', 'd.category_ids && $2', [{}], ['operator-shape:&&']],
-    ['&& against a text[] parameter', 'd.category_ids && $2::text[]', [{}], ['operator-shape:&&']],
+    ['@> against a text[] parameter', 'd.category_ids @> $2::text[]', [{}], ['operator-shape:@>']],
+    [
+      '&& against a text[] cast of a cast',
+      'd.category_ids && $2::uuid[]::text[]',
+      [{}],
+      ['operator-shape:&&'],
+    ],
     [
       '&& as a qualified operator',
       'd.category_ids OPERATOR(pg_catalog.&&) $2::uuid[]',
