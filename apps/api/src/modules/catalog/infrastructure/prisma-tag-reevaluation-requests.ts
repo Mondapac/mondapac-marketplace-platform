@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { CatalogTagReevaluationRequest, Prisma } from '../../../generated/prisma/client';
+import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   CERTIFICATION_CAUSES,
@@ -123,6 +124,55 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
     });
   }
 
+  async requestForCategoryChange(
+    market: MarketContext,
+    request: {
+      readonly id: Id<'TagReevaluationRequest'>;
+      readonly productId: Id<'Product'>;
+      readonly productRevisionId: Id<'ProductRevision'>;
+      readonly now: Temporal.Instant;
+    },
+  ): Promise<void> {
+    const tx = this.prisma.tx(market);
+    // One pending request per product (the partial unique): another revision's is moot.
+    await tx.catalogTagReevaluationRequest.updateMany({
+      where: {
+        marketId: market.marketId,
+        productId: request.productId,
+        kind: 'revision-published',
+        state: 'pending',
+        productRevisionId: { not: request.productRevisionId },
+      },
+      data: { state: 'superseded', settledAt: toDate(request.now) },
+    });
+    const stored = await tx.catalogTagReevaluationRequest.findFirst({
+      where: {
+        marketId: market.marketId,
+        kind: 'revision-published',
+        productRevisionId: request.productRevisionId,
+      },
+      select: { id: true, createdAt: true },
+    });
+    if (stored === null) {
+      await this.requestForPublish(market, request);
+      return;
+    }
+    // Strictly after the stored one, so a run that read the request before can tell it changed.
+    const now = request.now.epochMilliseconds;
+    const createdAt = new Date(Math.max(now, stored.createdAt.getTime() + 1));
+    const { count } = await tx.catalogTagReevaluationRequest.updateMany({
+      where: { marketId: market.marketId, id: stored.id, createdAt: stored.createdAt },
+      data: {
+        state: 'pending',
+        cursorOfferId: null,
+        counts: jsonOf(NO_COUNTS),
+        createdAt,
+        settledAt: null,
+      },
+    });
+    if (count !== 1) throw new StaleAggregateError('tag-reevaluation-request', stored.id);
+  }
+
   async requestForEvent(
     market: MarketContext,
     request: {
@@ -240,7 +290,11 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
   async progress(
     market: MarketContext,
     id: Id<'TagReevaluationRequest'>,
-    update: { readonly cursorOfferId: Id<'Offer'> | null; readonly counts: ReevaluationCounts },
+    update: {
+      readonly cursorOfferId: Id<'Offer'> | null;
+      readonly counts: ReevaluationCounts;
+      readonly requestedAt: Temporal.Instant;
+    },
   ): Promise<boolean> {
     const cursor = update.cursorOfferId;
     const { count } = await this.prisma.tx(market).catalogTagReevaluationRequest.updateMany({
@@ -248,6 +302,8 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
         marketId: market.marketId,
         id,
         state: 'pending',
+        // Still the request the run read (a category change reopens it with a new one).
+        createdAt: toDate(update.requestedAt),
         // Never back: forward, or equal (counts only); no cursor only while none is stored.
         ...(cursor === null
           ? { cursorOfferId: null }
@@ -265,13 +321,19 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
     market: MarketContext,
     id: Id<'TagReevaluationRequest'>,
     end: {
+      readonly requestedAt: Temporal.Instant;
       readonly state: 'settled' | 'superseded';
       readonly counts: ReevaluationCounts;
       readonly now: Temporal.Instant;
     },
   ): Promise<boolean> {
     const { count } = await this.prisma.tx(market).catalogTagReevaluationRequest.updateMany({
-      where: { marketId: market.marketId, id, state: 'pending' },
+      where: {
+        marketId: market.marketId,
+        id,
+        state: 'pending',
+        createdAt: toDate(end.requestedAt),
+      },
       data: { state: end.state, counts: jsonOf(end.counts), settledAt: toDate(end.now) },
     });
     return count === 1;

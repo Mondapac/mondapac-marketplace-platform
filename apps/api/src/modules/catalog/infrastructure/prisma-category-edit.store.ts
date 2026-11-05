@@ -35,6 +35,7 @@ export class PrismaCategoryEditStore implements CategoryEditStore, CategoryRestr
         slug: true,
         status: true,
         hiddenById: true,
+        mergedIntoId: true,
         position: true,
         version: true,
         createdByKind: true,
@@ -61,6 +62,7 @@ export class PrismaCategoryEditStore implements CategoryEditStore, CategoryRestr
       slug: row.slug,
       status: row.status as CategoryStatus,
       hiddenById: row.hiddenById as Id<'Category'> | null,
+      mergedIntoId: row.mergedIntoId as Id<'Category'> | null,
       position: row.position,
       version: row.version,
       revisionNo: row.publishedRevision?.revisionNo ?? 0,
@@ -290,23 +292,37 @@ export class PrismaCategoryEditStore implements CategoryEditStore, CategoryRestr
     return counts;
   }
 
-  async onlyCategoryProducts(market: MarketContext, id: Id<'Category'>): Promise<number> {
-    return this.prisma.tx(market).catalogProductRevisionCategory.count({
+  async otherCategoriesOf(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+    limit: number,
+  ): Promise<readonly (readonly Id<'Category'>[])[]> {
+    if (categoryIds.length === 0) return [];
+    const ids = [...categoryIds];
+    const rows = await this.prisma.tx(market).catalogProduct.findMany({
       where: {
         marketId: market.marketId,
-        categoryId: id,
-        revision: {
-          publishedOf: { some: { marketId: market.marketId, status: 'published' } },
-          categories: {
-            none: {
-              marketId: market.marketId,
-              categoryId: { not: id },
-              category: { status: { in: ['active', 'hidden'] } },
+        status: 'published',
+        publishedRevision: {
+          categories: { some: { marketId: market.marketId, categoryId: { in: ids } } },
+        },
+      },
+      select: {
+        publishedRevision: {
+          select: {
+            categories: {
+              where: { marketId: market.marketId, categoryId: { notIn: ids } },
+              select: { categoryId: true },
             },
           },
         },
       },
+      orderBy: { id: 'asc' },
+      take: limit,
     });
+    return rows.map((row) =>
+      (row.publishedRevision?.categories ?? []).map((link) => link.categoryId as Id<'Category'>),
+    );
   }
 
   async productsUnder(

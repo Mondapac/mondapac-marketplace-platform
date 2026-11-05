@@ -1,11 +1,28 @@
 import { ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
-import type { Id } from '@mondapac/shared-kernel';
+import type { AuditEntry, CallContext, Id, PendingEvent, Result } from '@mondapac/shared-kernel';
+import {
+  FixedClock,
+  testAuthenticatedActor,
+  testCallContext,
+} from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import type { AuthorisationCheck } from '../../src/platform/authz';
+import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
+import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
+import { MarketRegistry } from '../../src/platform/market-config/market-registry';
+import type { CategoryRestructureDependencies } from '../../src/modules/catalog/application/categories/category-restructure';
+import { CategoryArchive } from '../../src/modules/catalog/application/use-cases/category-archive.use-case';
+import { CategoryMerge } from '../../src/modules/catalog/application/use-cases/category-merge.use-case';
+import { CategoryMove } from '../../src/modules/catalog/application/use-cases/category-move.use-case';
+import { ConfigCatalogMarketPolicy } from '../../src/modules/catalog/infrastructure/config-catalog-market-policy';
+import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
+import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
+import { NO_COUNTS } from '../../src/modules/catalog/application/ports/tag-reevaluation-requests';
 import type { EditableCategory } from '../../src/modules/catalog/domain/category-edit';
 import { runStructural } from '../../src/modules/catalog/application/categories/category-editor';
 import { PrismaCategoryEditStore } from '../../src/modules/catalog/infrastructure/prisma-category-edit.store';
 import { PrismaPlatformCategoryRepository } from '../../src/modules/catalog/infrastructure/prisma-platform-category.repository';
-import { TEST_MARKETS } from '../support/test-config';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import {
   createPersistence,
   marketOf,
@@ -407,7 +424,9 @@ describe.each(TEST_MARKETS)(
     it('refuses a cycle in the database too, whatever the caller planned', async () => {
       const a = await category(market, null, 'Alpha');
       const b = await category(market, a, 'Beta');
-      await expect(apply(market, a, 'moved', { parentId: b, position: 0 })).rejects.toThrow();
+      await expect(apply(market, a, 'moved', { parentId: b, position: 0 })).rejects.toThrow(
+        /cycle/,
+      );
       expect((await load(market, a)).parentId).toBeNull();
     });
 
@@ -473,7 +492,7 @@ describe.each(TEST_MARKETS)(
       expect(Object.fromEntries(counts)).toEqual({ [c]: 2, [d]: 1 });
     });
 
-    it('counts the products an archive would leave with no live platform category (AC 4)', async () => {
+    it('lists, per published product on the categories, the other categories it names (AC 4, M1)', async () => {
       const a = await category(market, null, 'Alpha');
       const c = await category(market, a, 'Gamma');
       const d = await category(market, a, 'Delta');
@@ -483,8 +502,15 @@ describe.each(TEST_MARKETS)(
       await product(market, [c, d]); // also in a live category
       await product(market, [c, x]); // its other category is archived
       await product(market, [c], [], 'draft'); // not published
-      expect(await read(market, () => store.onlyCategoryProducts(market, c))).toBe(2);
-      expect(await read(market, () => store.onlyCategoryProducts(market, d))).toBe(0);
+      const others = async (ids: Id<'Category'>[], limit = 10) =>
+        (await read(market, () => store.otherCategoriesOf(market, ids, limit)))
+          .map((list) => [...list].sort().join(','))
+          .sort();
+      expect(await others([c])).toEqual(['', d, x].sort());
+      // An id in the list is never "other"; the limit bounds the products.
+      expect(await others([c, d])).toEqual(['', '', x].sort());
+      expect(await others([c], 2)).toHaveLength(2);
+      expect(await others([d])).toEqual([c]);
     });
 
     it('lists the products under the categories in id order, with the active tags of live Offers', async () => {
@@ -508,6 +534,246 @@ describe.each(TEST_MARKETS)(
       expect(await read(other, () => store.productsUnder(other, [c, d], 10))).toEqual({
         products: [],
         activeTags: 0,
+      });
+    });
+
+    describe('whole actions on PostgreSQL (Sajad 2, #712)', () => {
+      const clock = new FixedClock(T0);
+      let audits: AuditEntry[];
+      let events: PendingEvent[];
+      let asked: string[][];
+      let deps: CategoryRestructureDependencies;
+      let requests: PrismaTagReevaluationRequests;
+      const admin = (): CallContext =>
+        testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population: 'admin',
+            accountId: ADMIN,
+            sessionId: uuid7() as Id<'Session'>,
+            sellerId: null,
+          }),
+        );
+
+      beforeAll(() => {
+        const markets = new MarketRegistry(
+          loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS),
+        );
+        const admitAll: AuthorisationCheck = { check: () => Promise.resolve({ allowed: true }) };
+        const ids = { next: <K extends string>() => uuid7() as Id<K> };
+        requests = new PrismaTagReevaluationRequests(db.service);
+        deps = {
+          unitOfWork: db.unitOfWork,
+          store,
+          restructure: store,
+          categories,
+          policy: new ConfigCatalogMarketPolicy(markets),
+          retirement: {
+            assertRetirable: (_c, categoryIds) => {
+              asked.push([...categoryIds]);
+              return Promise.resolve(ok(undefined));
+            },
+            retired: () => Promise.resolve(ok(undefined)),
+          },
+          offers: new PrismaOfferRepository(db.service, ids),
+          requests,
+          audit: {
+            record: (_c, entry) => {
+              audits.push(entry);
+              return Promise.resolve();
+            },
+          },
+          outbox: {
+            append: (_c, batch) => {
+              events.push(...batch);
+              return Promise.resolve();
+            },
+          },
+          clock,
+          ids,
+        };
+        gateOf = () => createUseCaseGate(markets, admitAll);
+      });
+      let gateOf: () => ReturnType<typeof createUseCaseGate>;
+      beforeEach(() => {
+        audits = [];
+        events = [];
+        asked = [];
+      });
+
+      /**
+       * Runs an action at the stored tree version. Other spec files may raise the Market's tree
+       * version between the read and the unit: a stale answer is read again, as an admin reloads.
+       */
+      const atTreeVersion = async <T, E>(
+        run: (treeVersion: number) => Promise<Result<T, E>>,
+      ): Promise<Result<T, E>> => {
+        for (let attempt = 1; ; attempt += 1) {
+          const { version } = await write(market, () => categories.treeVersion(market));
+          const answer = await run(version);
+          const stale = !answer.ok && (answer.error as { code?: string }).code === 'conflict.stale';
+          if (!stale || attempt >= 5) return answer;
+        }
+      };
+      const tagStatuses = async (productId: string) =>
+        (
+          await owner.query<{ status: string }>(
+            `SELECT t.status FROM catalog.offer_tags t
+               JOIN catalog.offers o ON o.market_id = t.market_id AND o.id = t.offer_id
+              WHERE t.market_id = $1 AND o.product_id = $2 ORDER BY t.status`,
+            [market.marketId, productId],
+          )
+        ).rows.map((row) => row.status);
+      const historyPaths = async (productId: string) =>
+        (
+          await owner.query<{ entry_path: string; to_status: string }>(
+            `SELECT h.entry_path, h.to_status FROM catalog.offer_tag_history h
+               JOIN catalog.offers o ON o.market_id = h.market_id AND o.id = h.offer_id
+              WHERE h.market_id = $1 AND o.product_id = $2 AND h.entry_path <> 'tag-add'`,
+            [market.marketId, productId],
+          )
+        ).rows;
+      const requestRows = async (revisionId: string) =>
+        (
+          await owner.query<{ state: string; cursor_offer_id: string | null }>(
+            `SELECT state, cursor_offer_id FROM catalog.tag_reevaluation_requests
+              WHERE market_id = $1 AND product_revision_id = $2`,
+            [market.marketId, revisionId],
+          )
+        ).rows;
+      /** What the product's own publish wrote: one settled request for the revision. */
+      const settledPublishRequest = async (published: {
+        productId: string;
+        revisionId: string;
+      }) => {
+        const id = uuid7() as Id<'TagReevaluationRequest'>;
+        await write(market, async () => {
+          await requests.requestForPublish(market, {
+            id,
+            productId: published.productId as Id<'Product'>,
+            productRevisionId: published.revisionId as Id<'ProductRevision'>,
+            now: T0,
+          });
+          await requests.close(market, id, {
+            requestedAt: T0,
+            state: 'settled',
+            counts: NO_COUNTS,
+            now: T0,
+          });
+        });
+      };
+
+      it('moves a subtree: the rows, the tags `rechecking` and the request pending again, in one unit', async () => {
+        const a = await category(market, null, 'Alpha');
+        const b = await category(market, a, 'Beta');
+        const c = await category(market, b, 'Gamma');
+        const d = await category(market, null, 'Delta');
+        const e = await category(market, d, 'Epsilon');
+        const published = await product(market, [c], [{ tags: 2 }]);
+        await settledPublishRequest(published);
+        const move = new CategoryMove(gateOf(), deps);
+        const answer = await atTreeVersion((treeVersion) =>
+          move.execute(admin(), { categoryId: c, treeVersion, parentId: e, reason: REASON }),
+        );
+        expect(answer.ok).toBe(true);
+        expect(await load(market, c)).toMatchObject({ parentId: e, position: 0 });
+        expect(asked).toEqual([[c, b, a]]);
+        expect(await tagStatuses(published.productId)).toEqual(['rechecking', 'rechecking']);
+        expect(await historyPaths(published.productId)).toEqual([
+          { entry_path: 'category-change', to_status: 'rechecking' },
+          { entry_path: 'category-change', to_status: 'rechecking' },
+        ]);
+        // The publish's request is pending again from the first Offer; still one per revision.
+        expect(await requestRows(published.revisionId)).toEqual([
+          { state: 'pending', cursor_offer_id: null },
+        ]);
+        expect(audits.map((entry) => entry.action)).toEqual(['catalog.platform-category.moved']);
+        expect(events.map((event) => event.type)).toEqual([
+          'catalog.platform-category-changed.v1',
+          'catalog.platform-category-moved.v1',
+        ]);
+        // A second move of the same product writes no second request either.
+        const back = await atTreeVersion((treeVersion) =>
+          move.execute(admin(), { categoryId: c, treeVersion, parentId: b, reason: REASON }),
+        );
+        expect(back.ok).toBe(true);
+        expect(await requestRows(published.revisionId)).toHaveLength(1);
+      });
+
+      it('merges: the children last under the target in their order, activities relinked, products marked', async () => {
+        const a = await category(market, null, 'Alpha');
+        const b = await category(market, a, 'Beta');
+        const c1 = await category(market, b, 'Gamma one');
+        const c2 = await category(market, b, 'Gamma two');
+        const d = await category(market, a, 'Delta');
+        const existing = await category(market, d, 'Delta child');
+        const shop = await activity(market, [b]);
+        const published = await product(market, [c2], [{ tags: 1 }]);
+        await settledPublishRequest(published);
+        const merge = new CategoryMerge(gateOf(), deps);
+        const answer = await atTreeVersion((treeVersion) =>
+          merge.execute(admin(), { categoryId: b, treeVersion, targetId: d, reason: REASON }),
+        );
+        expect(answer.ok).toBe(true);
+        const nodes = await read(market, () => store.loadAll(market, 10_000));
+        const under = nodes
+          .filter((node) => node.parentId === d)
+          .sort((x, y) => x.position - y.position)
+          .map((node) => node.id);
+        expect(under).toEqual([existing, c1, c2]);
+        expect(nodes.find((node) => node.id === b)).toMatchObject({
+          status: 'merged',
+          mergedIntoId: d,
+        });
+        expect(await activityLinks(market, shop)).toEqual([d]);
+        expect(await tagStatuses(published.productId)).toEqual(['rechecking']);
+        expect(await requestRows(published.revisionId)).toEqual([
+          { state: 'pending', cursor_offer_id: null },
+        ]);
+      });
+
+      it('archives a leaf whose products stay elsewhere, checking the ancestors they leave (M1)', async () => {
+        const a = await category(market, null, 'Alpha');
+        const b = await category(market, a, 'Beta');
+        const c = await category(market, b, 'Gamma');
+        const x = await category(market, null, 'Xi');
+        const y = await category(market, x, 'Upsilon');
+        const z = await category(market, y, 'Zeta');
+        const shop = await activity(market, [c]);
+        const published = await product(market, [c, z], [{ tags: 1 }]);
+        await settledPublishRequest(published);
+        const archive = new CategoryArchive(gateOf(), deps);
+        const answer = await atTreeVersion((treeVersion) =>
+          archive.execute(admin(), { categoryId: c, treeVersion, reason: REASON }),
+        );
+        expect(answer.ok).toBe(true);
+        expect((await load(market, c)).status).toBe('archived');
+        // The product keeps Zeta, under Xi: Beta and Alpha leave its path.
+        expect(asked).toEqual([[c, b, a]]);
+        expect(await activityLinks(market, shop)).toEqual([]);
+        expect(await tagStatuses(published.productId)).toEqual(['rechecking']);
+        expect(await requestRows(published.revisionId)).toEqual([
+          { state: 'pending', cursor_offer_id: null },
+        ]);
+      });
+
+      it('refuses an archive that would leave a product with no live category, writing nothing', async () => {
+        const a = await category(market, null, 'Alpha');
+        const b = await category(market, a, 'Beta');
+        const c = await category(market, b, 'Gamma');
+        const published = await product(market, [c], [{ tags: 1 }]);
+        const archive = new CategoryArchive(gateOf(), deps);
+        const answer = await atTreeVersion((treeVersion) =>
+          archive.execute(admin(), { categoryId: c, treeVersion, reason: REASON }),
+        );
+        expect(answer).toEqual({
+          ok: false,
+          error: { code: 'category.only-platform-category', total: 1 },
+        });
+        // New categories are created hidden (plan decision); the refusal leaves it so.
+        expect((await load(market, c)).status).toBe('hidden');
+        expect(await tagStatuses(published.productId)).toEqual(['active']);
+        expect(asked).toEqual([]);
       });
     });
 

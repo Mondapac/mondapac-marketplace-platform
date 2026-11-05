@@ -362,6 +362,13 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
         targetId: cat(1),
       });
       expect(answer).toMatchObject({ ok: true, value: { featureSetChanges: 0, complete: false } });
+      // A count above zero is "at least" too when the read ran out of time.
+      const some = await impact.execute(admin, {
+        categoryId: cat(2),
+        action: 'move',
+        targetId: cat(5),
+      });
+      expect(some).toMatchObject({ ok: true, value: { featureSetChanges: 2, complete: false } });
     });
 
     it('leaves the count out without a target, and refuses one for an archive or an unknown one', async () => {

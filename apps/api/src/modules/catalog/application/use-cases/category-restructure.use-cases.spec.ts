@@ -30,7 +30,10 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_CATEGORY_TREE_RESTRUCTURE } from '../../contracts/permissions';
 import type { EditableCategory } from '../../domain/category-edit';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
-import type { CategoryRestructureDependencies } from '../categories/category-restructure';
+import {
+  RESTRUCTURE_MAX_PRODUCTS,
+  type CategoryRestructureDependencies,
+} from '../categories/category-restructure';
 import type {
   CategoryRetirementCheck,
   CategoryRetirementRefusal,
@@ -167,7 +170,7 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
     },
   } as unknown as OfferRepository;
   const requestRepository = {
-    requestForPublish: (
+    requestForCategoryChange: (
       _m: MarketContext,
       request: { productId: string; productRevisionId: string },
     ) => {
@@ -434,6 +437,34 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
         err({ code: 'category.check-unavailable' }),
       );
       expect(store.revisions).toEqual([]);
+      expect(tree.version).toBe(1);
+      expect(audits).toEqual([]);
+      expect(events).toEqual([]);
+      expect(requests).toEqual([]);
+    });
+
+    it("refuses a subtree deeper than the Market's maxCategoryDepth", async () => {
+      // Group 2 (with 3 below) under group 8: 2 lands on level 3 and 3 on level 4.
+      const body = moveBody({ categoryId: cat(2), parentId: cat(8) });
+      const max = policy.maxCategoryDepth(market);
+      const answer = await build().move.execute(context(), body);
+      if (max >= 4) {
+        expect(answer.ok).toBe(true);
+      } else {
+        expect(answer).toEqual(err({ code: 'category.depth-exceeded', max }));
+        expect(asked).toEqual([]);
+        expect(tree.version).toBe(1);
+      }
+    });
+
+    it('marks and checks the products of a row merged into the moved category (H1)', async () => {
+      store.put(stored(9, 2, { status: 'merged', position: 9 }));
+      store.mergedInto.set(cat(9), cat(3));
+      productUnder(9, 5, 1);
+      expect((await build().move.execute(context(), moveBody())).ok).toBe(true);
+      expect(asked).toEqual([[cat(3), cat(9), cat(2), cat(1)]]);
+      expect(requests).toEqual([{ productId: product(5), productRevisionId: revision(5) }]);
+      expect(events[1]!.payload).toMatchObject({ checkedIds: [cat(3), cat(9), cat(2), cat(1)] });
     });
 
     it('is stale when the locked tree names an id the check did not clear', async () => {
@@ -568,8 +599,27 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
       );
     });
 
+    it('checks the ancestors a product leaves (M1)', async () => {
+      // A product on 3 and 6: 6 is under 1, so only 2 leaves its path.
+      restructure.archiveOthers.set(cat(3), [[cat(6)]]);
+      expect((await build().archive.execute(context(), body())).ok).toBe(true);
+      expect(asked).toEqual([[cat(3), cat(2)]]);
+    });
+
+    it('refuses more products than it marks in one unit, before asking certification', async () => {
+      restructure.archiveOthers.set(
+        cat(3),
+        Array.from({ length: RESTRUCTURE_MAX_PRODUCTS + 1 }, () => [cat(6)]),
+      );
+      expect(await build().archive.execute(context(), body())).toEqual(
+        err({ code: 'category.impact-too-large', max: maxTags }),
+      );
+      expect(asked).toEqual([]);
+      expect(tree.version).toBe(1);
+    });
+
     it('refuses while a published product has no other live platform category (AC 4)', async () => {
-      restructure.onlyHere.set(cat(3), 4);
+      restructure.archiveOthers.set(cat(3), [[], [], [], []]);
       expect(await build().archive.execute(context(), body())).toEqual(
         err({ code: 'category.only-platform-category', total: 4 }),
       );

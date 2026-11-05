@@ -1,6 +1,13 @@
 import type { Id } from '@mondapac/shared-kernel';
 import type { EditableCategory } from './category-edit';
-import { featureSetChanges, planArchive, planMerge, planMove } from './category-restructure';
+import {
+  directProductScope,
+  featureSetChanges,
+  mergedInto,
+  planArchive,
+  planMerge,
+  planMove,
+} from './category-restructure';
 
 const cat = (n: number): Id<'Category'> =>
   `01990000-0000-7000-8000-${(0xf00 + n).toString(16).padStart(12, '0')}` as Id<'Category'>;
@@ -330,10 +337,62 @@ describe.each(MARKETS)('category restructure plans ($market)', ({ maxDepth }) =>
     });
   });
 
+  describe('rows merged into the changed categories (Hassan H1)', () => {
+    // 9 merged into 5 (level 3), 11 merged into 9; 12 merged into 8 (outside).
+    const withMerged = () => [
+      ...tree(),
+      node(9, 7, { status: 'merged', mergedIntoId: cat(5) }),
+      node(11, 7, { status: 'merged', mergedIntoId: cat(9) }),
+      node(12, 1, { status: 'merged', mergedIntoId: cat(8) }),
+    ];
+
+    it('finds the rows whose merge chain ends in the ids', () => {
+      const nodes = withMerged();
+      expect(mergedInto(nodes, [cat(5)])).toEqual([cat(9), cat(11)]);
+      expect(mergedInto(nodes, [cat(3)])).toEqual([]);
+      expect(directProductScope(nodes, at(nodes, 5))).toEqual([cat(5), cat(9), cat(11)]);
+      expect(directProductScope(nodes, at(nodes, 3))).toEqual([cat(3), cat(4)]);
+    });
+
+    it('a move marks and checks them with the moved category', () => {
+      const nodes = withMerged();
+      expect(planMove(nodes, at(nodes, 5), cat(6), maxDepth, NONE)).toMatchObject({
+        ok: true,
+        value: {
+          affectedIds: [cat(5), cat(9), cat(11)],
+          retirementCheckIds: [cat(5), cat(9), cat(11), cat(2)],
+        },
+      });
+    });
+
+    it('a move counts their products at the level they resolve to', () => {
+      // 5 under 7 lands on level 2: products of 11 resolve to 5; those of 12 stay on 8.
+      const nodes = withMerged();
+      expect(planMove(nodes, at(nodes, 5), cat(7), maxDepth, new Map([[cat(11), 2]]))).toEqual({
+        ok: false,
+        error: { code: 'category.products-on-upper-level', total: 2 },
+      });
+      expect(planMove(nodes, at(nodes, 5), cat(7), maxDepth, new Map([[cat(12), 2]])).ok).toBe(
+        true,
+      );
+    });
+
+    it('a merge marks and checks the rows merged into the source', () => {
+      const nodes = withMerged();
+      expect(planMerge(nodes, at(nodes, 5), cat(3), maxDepth, NONE)).toMatchObject({
+        ok: true,
+        value: {
+          affectedIds: [cat(5), cat(9), cat(11)],
+          retirementCheckIds: [cat(5), cat(9), cat(11)],
+        },
+      });
+    });
+  });
+
   describe('planArchive', () => {
     it('archives a leaf and checks only that category', () => {
       const nodes = tree();
-      expect(planArchive(nodes, at(nodes, 4), 0)).toEqual({
+      expect(planArchive(nodes, at(nodes, 4), [])).toEqual({
         ok: true,
         value: {
           changes: [{ id: cat(4), kind: 'archived', status: 'archived', hiddenById: null }],
@@ -347,7 +406,7 @@ describe.each(MARKETS)('category restructure plans ($market)', ({ maxDepth }) =>
 
     it('refuses a category with a live subcategory', () => {
       const nodes = tree();
-      expect(planArchive(nodes, at(nodes, 3), 0)).toEqual({
+      expect(planArchive(nodes, at(nodes, 3), [])).toEqual({
         ok: false,
         error: { code: 'category.has-subcategories' },
       });
@@ -355,20 +414,65 @@ describe.each(MARKETS)('category restructure plans ($market)', ({ maxDepth }) =>
 
     it('allows a category whose only subcategories are archived or merged', () => {
       const nodes = tree({ 4: { status: 'archived' } });
-      expect(planArchive(nodes, at(nodes, 3), 0).ok).toBe(true);
+      expect(planArchive(nodes, at(nodes, 3), []).ok).toBe(true);
     });
 
     it('refuses while a published product has no other live platform category', () => {
-      const nodes = tree();
-      expect(planArchive(nodes, at(nodes, 5), 2)).toEqual({
+      // One product names only 5; another names 5 and 9, which is archived.
+      const nodes = [...tree(), node(9, 8, { status: 'archived' })];
+      expect(planArchive(nodes, at(nodes, 5), [[], [cat(9)]])).toEqual({
         ok: false,
         error: { code: 'category.only-platform-category', total: 2 },
       });
     });
 
+    it('checks the ancestors a product leaves, and not the ones its other category keeps (M1)', () => {
+      // 1 ─┬─ 2 ─┬─ 3 ── 4 / 5;  10 under 2 (a sibling of 5);  8 under 7.
+      const nodes = [...tree(), node(10, 2)];
+      // On 5 and 10: 2 and 1 stay on its path, nothing leaves.
+      expect(planArchive(nodes, at(nodes, 5), [[cat(10)]])).toMatchObject({
+        ok: true,
+        value: { retirementCheckIds: [cat(5)] },
+      });
+      // On 5 and 8: 2 and 1 leave its path.
+      expect(planArchive(nodes, at(nodes, 5), [[cat(10)], [cat(8)]])).toMatchObject({
+        ok: true,
+        value: { retirementCheckIds: [cat(5), cat(2), cat(1)] },
+      });
+      // On 5 and 6 (under 1): only 2 leaves.
+      expect(planArchive(nodes, at(nodes, 5), [[cat(6)]])).toMatchObject({
+        ok: true,
+        value: { retirementCheckIds: [cat(5), cat(2)] },
+      });
+    });
+
+    it('retires the rows merged into it, and counts their products (H1)', () => {
+      // 9 was merged into 5, and 11 into 9: both resolve to 5.
+      const nodes = [
+        ...tree(),
+        node(9, 2, { status: 'merged', mergedIntoId: cat(5) }),
+        node(11, 8, { status: 'merged', mergedIntoId: cat(9) }),
+      ];
+      expect(planArchive(nodes, at(nodes, 5), [[cat(6)]])).toMatchObject({
+        ok: true,
+        value: {
+          retirementCheckIds: [cat(5), cat(9), cat(11), cat(2)],
+          affectedIds: [cat(5), cat(9), cat(11)],
+        },
+      });
+      // A product whose other category is a row merged into 5 has no live category left.
+      expect(planArchive(nodes, at(nodes, 5), [[cat(11)]])).toEqual({
+        ok: false,
+        error: { code: 'category.only-platform-category', total: 1 },
+      });
+      // A row merged into a live category elsewhere keeps the product live.
+      const elsewhere = [...nodes, node(12, 7, { status: 'merged', mergedIntoId: cat(8) })];
+      expect(planArchive(elsewhere, at(elsewhere, 5), [[cat(12)]]).ok).toBe(true);
+    });
+
     it('refuses a category that is already archived', () => {
       const nodes = tree({ 5: { status: 'archived' } });
-      expect(planArchive(nodes, at(nodes, 5), 0)).toEqual({
+      expect(planArchive(nodes, at(nodes, 5), [])).toEqual({
         ok: false,
         error: { code: 'category.not-editable' },
       });

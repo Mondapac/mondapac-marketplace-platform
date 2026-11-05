@@ -90,7 +90,8 @@ export class CategoryArchive extends UseCase<
       targetId: id.value,
       treeVersion: treeVersion.value,
       reason: reason.value,
-      plan: (nodes, target, read) => planArchive(nodes, target, read.onlyHere),
+      kind: 'archive',
+      plan: (nodes, target, read) => planArchive(nodes, target, read.archiveProducts),
       finish: async ({ target, plan, tagsMarked, targetVersion }) => {
         const unlinked = await this.deps.restructure.relinkActivities(
           market,

@@ -591,6 +591,7 @@ describe.each(TEST_MARKETS)(
               await repo.progress(market, id, {
                 cursorOfferId: cursor as Id<'Offer'> | null,
                 counts: { ...NO_COUNTS, unavailable },
+                requestedAt: Temporal.Instant.from(T0),
               }),
             ),
           );
@@ -620,6 +621,97 @@ describe.each(TEST_MARKETS)(
         expect(await progress(low, 7)).toEqual({ ok: true, value: false });
         expect(await progress(null, 7)).toEqual({ ok: true, value: false });
         expect(await stored()).toMatchObject({ cursor_offer_id: high, counts: { unavailable: 5 } });
+      });
+
+      it('reopens the request of the published revision for a category change, with a later createdAt (C4a)', async () => {
+        const { productId, first } = await publishedProduct();
+        const repo = new PrismaTagReevaluationRequests(persistence.service);
+        const id = uuid7() as Id<'TagReevaluationRequest'>;
+        const at = Temporal.Instant.from(T0);
+        const write = (work: () => Promise<unknown>) =>
+          persistence.unitOfWork.run(market, async () => ok(await work()));
+        const request = {
+          productId: productId as Id<'Product'>,
+          productRevisionId: first as Id<'ProductRevision'>,
+          now: at,
+        };
+        // No request yet for the revision: one is written.
+        await write(() => repo.requestForCategoryChange(market, { ...request, id }));
+        const rows = async () =>
+          (
+            await owner.query<{
+              id: string;
+              state: string;
+              cursor_offer_id: string | null;
+              created_at: Date;
+              settled_at: Date | null;
+            }>(
+              `SELECT id, state, cursor_offer_id, created_at, settled_at
+                 FROM catalog.tag_reevaluation_requests WHERE product_revision_id = $1`,
+              [first],
+            )
+          ).rows;
+        expect(await rows()).toMatchObject([{ id, state: 'pending' }]);
+        const cursor = uuid7() as Id<'Offer'>;
+        expect(
+          await write(() =>
+            repo.progress(market, id, {
+              cursorOfferId: cursor,
+              counts: NO_COUNTS,
+              requestedAt: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: true });
+        expect(
+          await write(() =>
+            repo.close(market, id, {
+              requestedAt: at,
+              state: 'settled',
+              counts: NO_COUNTS,
+              now: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: true });
+
+        // The settled request is pending again from its first Offer, with a later createdAt, at the
+        // same clock instant: the one request per revision is kept (the unique is not hit).
+        await write(() =>
+          repo.requestForCategoryChange(market, {
+            ...request,
+            id: uuid7() as Id<'TagReevaluationRequest'>,
+          }),
+        );
+        const [reopened] = await rows();
+        expect(await rows()).toHaveLength(1);
+        expect(reopened).toMatchObject({
+          id,
+          state: 'pending',
+          cursor_offer_id: null,
+          settled_at: null,
+        });
+        expect(reopened!.created_at.getTime()).toBe(at.epochMilliseconds + 1);
+
+        // A run that read it before: neither its cursor nor its close lands.
+        expect(
+          await write(() =>
+            repo.progress(market, id, {
+              cursorOfferId: cursor,
+              counts: NO_COUNTS,
+              requestedAt: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: false });
+        expect(
+          await write(() =>
+            repo.close(market, id, {
+              requestedAt: at,
+              state: 'settled',
+              counts: NO_COUNTS,
+              now: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: false });
+        expect(await rows()).toMatchObject([{ state: 'pending', cursor_offer_id: null }]);
       });
 
       it('grants no DELETE and no update of the identity columns', async () => {

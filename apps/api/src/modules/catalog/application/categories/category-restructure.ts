@@ -14,8 +14,11 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { MAX_TREE_NODES } from '../../domain/category-tree';
 import type { EditableCategory } from '../../domain/category-edit';
 import {
+  directProductScope,
+  mergedInto,
   RESTRUCTURE_REASON_MAX,
   RESTRUCTURE_REASON_MIN,
+  type ArchiveProducts,
   type RestructureChange,
   type RestructurePlan,
   type RestructureRefusal,
@@ -29,7 +32,7 @@ import type {
 import type { OfferRepository } from '../ports/offer.repository';
 import type { PlatformCategoryRepository } from '../ports/platform-category.repository';
 import type { TagReevaluationRequestRepository } from '../ports/tag-reevaluation-requests';
-import { markProductForReevaluation } from '../tags/publish-fan-out';
+import { markProductForCategoryChange } from '../tags/publish-fan-out';
 import {
   announceChanged,
   invalid,
@@ -53,8 +56,9 @@ import type { ValidationFailure } from './category-admin-views';
  *    `category.impact-too-large`. Then every change gets a revision (the reason note on the acted-on
  *    category's), every changed category its `platform-category-changed` event, every published
  *    product under the affected categories has its Offers' `active` tags marked `rechecking` with
- *    the entry path `category-change` and a `revision-published` request, so the fan-out job asks
- *    `evaluateClaims` again against the new tree (M1). The caller adds the audit row and its event.
+ *    the entry path `category-change`, and the request of its published revision is made pending
+ *    again (`requestForCategoryChange`), so the fan-out job asks `evaluateClaims` again against the
+ *    new tree (M1). The caller adds the audit row and its event.
  */
 
 export type CategoryRestructureFailure =
@@ -78,8 +82,12 @@ export interface CategoryRestructureDependencies {
   readonly ids: IdGenerator;
 }
 
-/** The products one change may mark at most, read in one query; more is `impact-too-large`. */
-export const RESTRUCTURE_MAX_PRODUCTS = 50_000;
+/**
+ * The products one change may mark at most, read in one query; more is `impact-too-large`. Every
+ * one is marked in the change's unit (one Offer save each), under its 30 s timeout (Hassan L1,
+ * Mojtaba 1, #712): to be measured on a seeded tree before it is raised.
+ */
+export const RESTRUCTURE_MAX_PRODUCTS = 5_000;
 
 const CONTROL = /[\p{Cc}؜‎‏‪-‮⁦-⁩]/u;
 
@@ -108,26 +116,53 @@ export interface RestructureSpec {
   readonly targetId: Id<'Category'>;
   readonly treeVersion: number;
   readonly reason: string;
-  /** The plan, from the nodes and the direct product counts of their ids. */
+  /** What the plan reads: direct product counts (move, merge) or the archive's products. */
+  readonly kind: 'move' | 'merge' | 'archive';
+  /** The plan, from the nodes and the facts {@link kind} reads. */
   readonly plan: (
     nodes: readonly EditableCategory[],
     target: EditableCategory,
-    read: { readonly directProducts: ReadonlyMap<string, number>; readonly onlyHere: number },
+    read: RestructureFacts,
   ) => Result<RestructurePlan, RestructureRefusal>;
   /** Extra writes in the unit (business activities), then the audit row and the event. */
   readonly finish: (finish: RestructureFinish) => Promise<void>;
 }
 
+export interface RestructureFacts {
+  /** Move and merge: direct products of the acted-on category, its subtree and rows merged in. */
+  readonly directProducts: ReadonlyMap<string, number>;
+  /** Archive: per product on the category (or a row merged into it), its other categories. */
+  readonly archiveProducts: ArchiveProducts;
+  /** More products than {@link RESTRUCTURE_MAX_PRODUCTS}: the change is refused as too large. */
+  readonly tooMany: boolean;
+}
+
+/** One read per kind (Mojtaba 2 and 3, #712): only the ids whose facts the plan uses. */
 async function readFacts(
   deps: CategoryRestructureDependencies,
   market: MarketContext,
+  kind: RestructureSpec['kind'],
   nodes: readonly EditableCategory[],
   target: EditableCategory,
-): Promise<{ readonly directProducts: ReadonlyMap<string, number>; readonly onlyHere: number }> {
-  const ids = nodes.map((node) => node.id);
-  const directProducts = await deps.restructure.directProducts(market, ids);
-  const onlyHere = await deps.restructure.onlyCategoryProducts(market, target.id);
-  return { directProducts, onlyHere };
+): Promise<RestructureFacts> {
+  if (kind === 'archive') {
+    const ids = [target.id, ...mergedInto(nodes, [target.id])];
+    const products = await deps.restructure.otherCategoriesOf(
+      market,
+      ids,
+      RESTRUCTURE_MAX_PRODUCTS + 1,
+    );
+    return {
+      directProducts: new Map(),
+      archiveProducts: products,
+      tooMany: products.length > RESTRUCTURE_MAX_PRODUCTS,
+    };
+  }
+  const directProducts = await deps.restructure.directProducts(
+    market,
+    directProductScope(nodes, target),
+  );
+  return { directProducts, archiveProducts: [], tooMany: false };
 }
 
 export async function runRestructure(
@@ -150,13 +185,19 @@ export async function runRestructure(
       if (nodes.length > MAX_TREE_NODES) return ok(null);
       const target = nodes.find((node) => node.id === spec.targetId);
       if (target === undefined) return ok({ nodes, target: null, facts: null });
-      return ok({ nodes, target, facts: await readFacts(deps, market, nodes, target) });
+      return ok({
+        nodes,
+        target,
+        facts: await readFacts(deps, market, spec.kind, nodes, target),
+      });
     },
     { readOnly: true },
   );
   if (!snapshot.ok || snapshot.value === null) return err({ code: 'access.unavailable' });
   const { nodes, target, facts } = snapshot.value;
   if (target === null || facts === null) return err({ code: 'category.not-found' });
+  const maxTags = deps.policy.maxCategoryChangeTags(market);
+  if (facts.tooMany) return err({ code: 'category.impact-too-large', max: maxTags });
   const draft = spec.plan(nodes, target, facts);
   if (!draft.ok) return draft;
 
@@ -166,7 +207,6 @@ export async function runRestructure(
   if (!cleared.ok) return cleared;
 
   // 3. The unit.
-  const maxTags = deps.policy.maxCategoryChangeTags(market);
   const at = deps.clock.now();
   const result = await runStructural<
     { readonly category: CategoryWriteView },
@@ -178,7 +218,9 @@ export async function runRestructure(
     async (locked, nextTreeVersion) => {
       const current = locked.find((node) => node.id === spec.targetId);
       if (current === undefined) return err({ code: 'category.not-found' });
-      const plan = spec.plan(locked, current, await readFacts(deps, market, locked, current));
+      const lockedFacts = await readFacts(deps, market, spec.kind, locked, current);
+      if (lockedFacts.tooMany) return err({ code: 'category.impact-too-large', max: maxTags });
+      const plan = spec.plan(locked, current, lockedFacts);
       if (!plan.ok) return plan;
       if (plan.value.retirementCheckIds.some((id) => !checked.has(id))) {
         return err({ code: 'conflict.stale' });
@@ -211,12 +253,11 @@ export async function runRestructure(
 
       let tagsMarked = 0;
       for (const product of under.products) {
-        tagsMarked += await markProductForReevaluation(deps, market, {
+        tagsMarked += await markProductForCategoryChange(deps, market, {
           productId: product.productId,
           revisionId: product.revisionId,
           actor: { kind: 'admin', accountId: spec.accountId },
           now: at,
-          entryPath: 'category-change',
         });
       }
       await spec.finish({ target: current, plan: plan.value, tagsMarked, targetVersion });
