@@ -1,14 +1,22 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { AttributeValues, ContentHash, MarketContext, Result } from '@mondapac/shared-kernel';
+import type {
+  AttributeSchema,
+  AttributeValues,
+  ContentHash,
+  MarketContext,
+  Result,
+} from '@mondapac/shared-kernel';
 import type { Product } from '../../domain/product';
 import type { ProductTypeHandler, VariantDraft } from '../../domain/product-type-handler';
 import type { RevisionContent } from '../../domain/revision-content';
 import { freezeWorkingCopy, type FreezeIssue } from '../../domain/revision-freeze';
+import { axesOfOptionValues, selectedAxesOf, optionFieldsOf } from '../../domain/variant-axes';
 import { buildVariantLabels } from '../../domain/variant-labels';
 import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import type { ProductImageRepository } from '../ports/product-image.repository';
 import { revisionContentHash } from './revision-content-hash';
 
@@ -40,6 +48,11 @@ export interface FreezeRevisionDependencies {
    * suggestion is still open is reported as `attribute.suggestion-pending`, not `attribute.required`.
    */
   readonly suggestions?: AttributeValueSuggestionStore;
+  /**
+   * The revision store, to read the axes of the published revision (variants V3, decision t3:
+   * axes are locked after the first publish). Without it the lock is not checked.
+   */
+  readonly revisions?: Pick<ProductRevisionRepository, 'find'>;
 }
 
 /**
@@ -85,6 +98,8 @@ export class FreezeRevision {
     const locales = this.deps.policy.locales(market);
     const maxVariants = this.deps.policy.maxVariantsPerProduct(market);
     const maxOptionAttributes = this.deps.policy.maxVariantAttributes(market);
+    // The axes the draft chose (V3); a draft that names none varies on every option field.
+    const axes = selectedAxesOf(copy.content);
     const frozen = freezeWorkingCopy({
       content: copy.content,
       defaultLocale: locales.default,
@@ -93,7 +108,8 @@ export class FreezeRevision {
       variantModel: state.variantModel,
       liveVariantIds: product.liveVariants.map((variant) => variant.id),
       maxVariants,
-      labelsFor: (optionValues) => buildVariantLabels(schema, optionValues, locales.supported),
+      labelsFor: (optionValues) =>
+        buildVariantLabels(schema, optionValues, locales.supported, axes),
       schemaRef: {
         familyRevisionId: schema.schemaRef.familyRevisionId,
         definitionRevisionIds: schema.schemaRef.definitionRevisionIds,
@@ -130,10 +146,22 @@ export class FreezeRevision {
       const drafts: VariantDraft[] = frozen.value.variants.map((variant) => ({
         optionValues: variant.optionValues,
       }));
-      const variants = handler.validateVariants(schema, drafts, maxVariants, maxOptionAttributes);
+      const variants = handler.validateVariants(
+        schema,
+        drafts,
+        maxVariants,
+        maxOptionAttributes,
+        axes,
+      );
       if (!variants.ok) {
         issues.push(...variants.issues.map((issue) => ({ path: issue.path, code: issue.code })));
       }
+    }
+    if (frozen.ok && state.variantModel === 'options') {
+      // Axes are locked after the first publish (decision t3): a change is refused here; adding a
+      // second axis once is a later package (V9).
+      const locked = await this.axesLockIssue(market, product, schema, axes);
+      if (locked !== null) issues.push(locked);
     }
     if (frozen.ok && frozen.value.imageIds.length > 0) {
       // Only clean photos of this product join a revision (the database repeats the rule).
@@ -147,6 +175,25 @@ export class FreezeRevision {
     }
     if (issues.length > 0 || !frozen.ok) return err({ code: 'revision.not-ready', issues });
     return ok({ content: frozen.value, contentHash: revisionContentHash(frozen.value) });
+  }
+
+  private async axesLockIssue(
+    market: MarketContext,
+    product: Product,
+    schema: AttributeSchema,
+    selected: readonly string[] | undefined,
+  ): Promise<RevisionIssue | null> {
+    const publishedId = product.state.publishedRevisionId;
+    if (publishedId === null || this.deps.revisions === undefined) return null;
+    const published = await this.deps.revisions.find(market, product.state.id, publishedId);
+    if (published === null) return null;
+    const before = axesOfOptionValues(published.content.variants);
+    if (before.length === 0) return null;
+    const now = (selected ?? optionFieldsOf(schema.fields).map((field) => field.code))
+      .slice()
+      .sort();
+    const same = before.length === now.length && before.every((code, index) => code === now[index]);
+    return same ? null : { path: 'variantAxes', code: 'variants.axes-locked' };
   }
 }
 

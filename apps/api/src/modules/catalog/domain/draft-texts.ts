@@ -29,12 +29,14 @@ const KEY = /^[A-Za-z0-9_-]{1,64}$/;
 const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const isKey = (value: string): boolean => KEY.test(value) && !RESERVED_KEYS.has(value);
 const MAX_LIST = 500;
+const MAX_AXES = 10;
 const TOP_KEYS = [
   'texts',
   'categoryIds',
   'taxCategoryCode',
   'attributeValues',
   'variants',
+  'variantAxes',
   'imageIds',
 ];
 const TEXT_KEYS = ['name', 'shortDescription', 'description'] as const;
@@ -152,6 +154,18 @@ export function draftTextsOf(
           found.push(place(locale, text));
         }
       } else return invalid;
+    }
+  }
+
+  // The axes the draft varies on (variants V3): a short list of attribute codes, nothing else.
+  const axes = content['variantAxes'];
+  if (axes !== undefined) {
+    if (
+      !Array.isArray(axes) ||
+      axes.length > MAX_AXES ||
+      !(axes as unknown[]).every((code) => typeof code === 'string' && isKey(code))
+    ) {
+      return invalid;
     }
   }
 

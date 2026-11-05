@@ -1,4 +1,5 @@
 import type { AttributeSchema } from '@mondapac/shared-kernel';
+import { axisFieldsOf } from './variant-axes';
 
 /** Separates the option labels of a variant's axes: `Large · Red`. */
 export const VARIANT_LABEL_SEPARATOR = ' · ';
@@ -14,10 +15,10 @@ export function buildVariantLabels(
   schema: AttributeSchema,
   optionValues: Readonly<Record<string, string>>,
   locales: readonly string[],
+  /** The axes the product varies on (V3); undefined: every option field of the family. */
+  selectedAxes?: readonly string[],
 ): Record<string, string> {
-  const axes = schema.fields.filter(
-    (field) => field.isVariantOption && field.dataType === 'select',
-  );
+  const axes = axisFieldsOf(schema.fields, selectedAxes);
   const labels: Record<string, string> = {};
   if (axes.length === 0) return labels;
   for (const locale of locales) {

@@ -19,6 +19,23 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
   const read = (content: Record<string, unknown>) =>
     draftTextsOf(content, supported, defaultLocale, 'revision');
 
+  it('accepts the variant axes of a draft and refuses a malformed list (V3)', () => {
+    const base = { texts: { [first]: { name: 'N' } } };
+    const check = (variantAxes: unknown) =>
+      draftTextsOf({ ...base, variantAxes }, supported, defaultLocale);
+    expect(check(['size', 'colour']).ok).toBe(true);
+    expect(draftTextsOf(base, supported, defaultLocale).ok).toBe(true);
+    for (const bad of [
+      'size',
+      [1],
+      ['a b'],
+      ['__proto__'],
+      Array.from({ length: 11 }, (_, i) => `a${i}`),
+    ]) {
+      expect(check(bad)).toEqual({ ok: false, error: { code: 'working-copy.invalid-content' } });
+    }
+  });
+
   it('drops a variant label a client still sends, keeping everything else (V2 transition)', () => {
     const content = {
       texts: { [first]: { name: 'N' } },

@@ -27,7 +27,9 @@ export interface VariantIssue {
     | 'variants.option-unknown'
     | 'variants.option-attribute-missing'
     | 'variants.too-many-option-attributes'
-    | 'variants.duplicate-combination';
+    | 'variants.duplicate-combination'
+    | 'variants.axes-invalid'
+    | 'variants.axis-unknown';
 }
 
 export type VariantValidationResult =
@@ -54,6 +56,11 @@ export interface ProductTypeHandler {
     maxVariants: number,
     /** The most option attributes a product may vary on (`maxVariantAttributes`, attributes A2). */
     maxOptionAttributes: number,
+    /**
+     * The option attributes the draft selected as its axes (variants V3), one to
+     * `maxOptionAttributes`; undefined: every option attribute of the family.
+     */
+    axes?: readonly string[],
   ): VariantValidationResult;
 }
 

@@ -257,6 +257,75 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     expect(bad.error.issues.map((issue) => issue.code)).toContain('variants.option-unknown');
   });
 
+  it('refuses a draft whose selected axes the family does not offer (V3)', async () => {
+    const result = await service.freeze(
+      market,
+      product('configurable'),
+      copyOf(
+        ready({
+          variantAxes: ['weight'],
+          variants: [
+            { variantId: v(1), optionValues: { size: 'l' } },
+            { variantId: v(2), optionValues: { size: 's' } },
+          ],
+        }),
+      ),
+    );
+    if (result.ok || result.error.code !== 'revision.not-ready') throw new Error('expected issues');
+    expect(result.error.issues).toContainEqual({
+      path: 'variantAxes',
+      code: 'variants.axis-unknown',
+    });
+  });
+
+  describe('axes are locked after the first publish (V3, decision t3)', () => {
+    const published = (axes: string[]) =>
+      ({
+        content: {
+          variants: [
+            { variantId: v(1), optionValues: Object.fromEntries(axes.map((a) => [a, 'x'])) },
+          ],
+        },
+      }) as never;
+    const lockedService = (axes: string[]) =>
+      new FreezeRevision({
+        attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
+        policy: (service as unknown as { deps: { policy: CatalogMarketPolicy } }).deps.policy,
+        handlerFor: () => configurableProductType,
+        revisions: { find: () => Promise.resolve(published(axes)) },
+      });
+    const publishedProduct = (): Product => {
+      const base = product('configurable');
+      return {
+        state: { ...base.state, publishedRevisionId: 'r1' as Id<'ProductRevision'> },
+        liveVariants: base.liveVariants,
+      } as unknown as Product;
+    };
+    const draft = copyOf(
+      ready({
+        variants: [
+          { variantId: v(1), optionValues: { size: 'l' } },
+          { variantId: v(2), optionValues: { size: 's' } },
+        ],
+      }),
+    );
+
+    it('accepts a draft on the published axes', async () => {
+      const result = await lockedService(['size']).freeze(market, publishedProduct(), draft);
+      expect(result.ok).toBe(true);
+    });
+
+    it('refuses a draft on other axes', async () => {
+      const result = await lockedService(['colour']).freeze(market, publishedProduct(), draft);
+      if (result.ok || result.error.code !== 'revision.not-ready')
+        throw new Error('expected issues');
+      expect(result.error.issues).toContainEqual({
+        path: 'variantAxes',
+        code: 'variants.axes-locked',
+      });
+    });
+  });
+
   it('builds the variant labels from the option labels and drops a locale with a missing one (V2)', async () => {
     const frozen = await service.freeze(
       market,

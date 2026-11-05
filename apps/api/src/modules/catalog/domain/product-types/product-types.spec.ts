@@ -68,6 +68,60 @@ describe('Simple: validateVariants', () => {
   });
 });
 
+describe('Configurable: selected axes (variants V3)', () => {
+  const one = [{ optionValues: { size: 's' } }, { optionValues: { size: 'm' } }];
+
+  it('varies on the selected axis only, so a draft may use one of two family axes', () => {
+    expect(configurableProductType.validateVariants(SIZE_COLOUR, one, 100, 2, ['size'])).toEqual({
+      ok: true,
+    });
+    // Without a selection every family option attribute is an axis, as before V3.
+    expect(configurableProductType.validateVariants(SIZE_COLOUR, one, 100, 2)).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it('refuses a value for an axis the draft did not select', () => {
+    const result = configurableProductType.validateVariants(
+      SIZE_COLOUR,
+      [{ optionValues: { size: 's', colour: 'red' } }],
+      100,
+      2,
+      ['size'],
+    );
+    expect(result).toEqual({
+      ok: false,
+      issues: [{ path: 'variants[0]', code: 'variants.option-unknown' }],
+    });
+  });
+
+  it('refuses no axes, a repeated axis, more axes than the Market allows, and an unknown axis', () => {
+    const refuse = (axes: string[], max = 2) =>
+      configurableProductType.validateVariants(SIZE_COLOUR, one, 100, max, axes);
+    expect(refuse([])).toEqual({
+      ok: false,
+      issues: [{ path: 'variantAxes', code: 'variants.axes-invalid' }],
+    });
+    expect(refuse(['size', 'size'])).toMatchObject({
+      issues: [{ code: 'variants.axes-invalid' }],
+    });
+    expect(refuse(['size', 'colour'], 1)).toMatchObject({
+      issues: [{ code: 'variants.too-many-option-attributes' }],
+    });
+    expect(refuse(['weight'])).toEqual({
+      ok: false,
+      issues: [{ path: 'variantAxes', code: 'variants.axis-unknown' }],
+    });
+  });
+
+  it('orders no axis by the request: the family order decides', () => {
+    const both = [{ optionValues: { size: 's', colour: 'red' } }];
+    expect(
+      configurableProductType.validateVariants(SIZE_COLOUR, both, 100, 2, ['colour', 'size']),
+    ).toEqual({ ok: true });
+  });
+});
+
 describe('Configurable: validateVariants', () => {
   it('accepts distinct combinations of every option attribute', () => {
     expect(

@@ -60,6 +60,20 @@ describe.each([
     expect(buildVariantLabels(schema([size, colour]), { size: 'l' }, locales)).toEqual({});
   });
 
+  it('builds the label from the selected axes only, in family order (V3)', () => {
+    const both = schema([size, colour]);
+    expect(buildVariantLabels(both, { size: 'l' }, locales, ['size'])).toEqual({
+      [first]: 'Large',
+      [second]: 'L2',
+    });
+    expect(
+      buildVariantLabels(both, { colour: 'red', size: 'l' }, locales, ['colour', 'size']),
+    ).toEqual({
+      [first]: 'Large · Red',
+      [second]: 'L2 · R2',
+    });
+  });
+
   it('ignores a field that is not a variant axis and never reads the draft', () => {
     const note = field('note', [{ code: 'a', labels: { [first]: 'A' } }], {
       isVariantOption: false,

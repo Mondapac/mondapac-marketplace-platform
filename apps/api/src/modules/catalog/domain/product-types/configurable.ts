@@ -1,5 +1,6 @@
 import { validateAttributeValues } from '@mondapac/shared-kernel';
-import type { AttributeField, AttributeSchema } from '@mondapac/shared-kernel';
+import type { AttributeSchema } from '@mondapac/shared-kernel';
+import { axisFieldsOf, optionFieldsOf } from '../variant-axes';
 import type {
   ProductTypeHandler,
   VariantDraft,
@@ -24,23 +25,38 @@ export const configurableProductType: ProductTypeHandler = Object.freeze({
     variants: readonly VariantDraft[],
     maxVariants: number,
     maxOptionAttributes: number,
+    axes?: readonly string[],
   ): VariantValidationResult {
     const issues: VariantIssue[] = [];
-    const optionFields = schema.fields.filter(
-      (field: AttributeField) => field.isVariantOption && field.dataType === 'select',
-    );
-    if (optionFields.length === 0) {
+    const familyFields = optionFieldsOf(schema.fields);
+    if (familyFields.length === 0) {
       return {
         ok: false,
         issues: [{ path: 'variants', code: 'variants.option-attribute-missing' }],
       };
     }
-    if (optionFields.length > maxOptionAttributes) {
+    if (familyFields.length > maxOptionAttributes) {
       return {
         ok: false,
         issues: [{ path: 'variants', code: 'variants.too-many-option-attributes' }],
       };
     }
+    // The draft's selected axes (V3): one to `maxOptionAttributes` distinct option attributes of
+    // the family. Without a selection the product varies on all of them.
+    if (axes !== undefined) {
+      if (
+        axes.length === 0 ||
+        axes.length > maxOptionAttributes ||
+        new Set(axes).size !== axes.length
+      ) {
+        return { ok: false, issues: [{ path: 'variantAxes', code: 'variants.axes-invalid' }] };
+      }
+      const known = new Set(familyFields.map((field) => field.code));
+      if (axes.some((code) => !known.has(code))) {
+        return { ok: false, issues: [{ path: 'variantAxes', code: 'variants.axis-unknown' }] };
+      }
+    }
+    const optionFields = axisFieldsOf(schema.fields, axes);
     if (variants.length === 0) issues.push({ path: 'variants', code: 'variants.none' });
     if (variants.length > maxVariants) issues.push({ path: 'variants', code: 'variants.too-many' });
 
