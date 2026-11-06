@@ -10,6 +10,8 @@ export interface CategoryProblem {
   readonly reload: boolean;
   /** `category.depth-exceeded` and `category.cascade-too-large`: the limit. */
   readonly max?: number;
+  /** Values of a restructure message (`max`, `n`, `types`); see `restructureProblemOf`. */
+  readonly values?: Readonly<Record<string, string | number>>;
 }
 
 const KNOWN = new Set([
@@ -64,5 +66,55 @@ export function categoryProblemOf(
     fields,
     reload: RELOAD.has(code),
     ...(failure.details?.max === undefined ? {} : { max: failure.details.max }),
+  };
+}
+
+/** Codes of Move, Merge and Archive (categories C4a) that have their own words under `categories.restructure.error`. */
+const RESTRUCTURE_CODES = new Set([
+  'category.cycle',
+  'category.depth-exceeded',
+  'category.referenced-by-policy',
+  'category.check-unavailable',
+  'category.impact-too-large',
+  'category.only-platform-category',
+  'category.products-on-upper-level',
+  'category.has-subcategories',
+  'category.move-unchanged',
+  'category.target-not-found',
+  'category.parent-not-found',
+]);
+/** The codes after which the page read old data. */
+const RESTRUCTURE_RELOAD = new Set([
+  'conflict.stale',
+  'category.target-not-found',
+  'category.parent-not-found',
+  'category.not-found',
+]);
+
+/**
+ * What a refused Move, Merge or Archive shows. A code of the table of categories C4a has its own
+ * words; a reason problem is worded for the reason field; any other code is worded as in C3.
+ */
+export function restructureProblemOf(failure: ApiFailure): CategoryProblem {
+  const reasonProblem =
+    failure.code === 'validation.failed' &&
+    (failure.details?.fields ?? []).some((field) => field.path === 'reason');
+  if (reasonProblem) {
+    return { key: 'categories.restructure.error.reason', fields: {}, reload: false };
+  }
+  if (!RESTRUCTURE_CODES.has(failure.code)) {
+    const base = categoryProblemOf(failure);
+    return RESTRUCTURE_RELOAD.has(failure.code) ? { ...base, reload: true } : base;
+  }
+  const values: Record<string, string | number> = {};
+  if (failure.details?.max !== undefined) values['max'] = failure.details.max;
+  if (failure.details?.total !== undefined) values['n'] = failure.details.total;
+  if (failure.details?.typeCodes !== undefined)
+    values['types'] = failure.details.typeCodes.join(', ');
+  return {
+    key: `categories.restructure.error.${failure.code.replace(/\./g, '_')}`,
+    fields: {},
+    reload: RESTRUCTURE_RELOAD.has(failure.code),
+    values,
   };
 }

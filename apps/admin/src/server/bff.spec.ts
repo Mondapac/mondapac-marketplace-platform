@@ -1351,6 +1351,46 @@ describe('relay of the wallet and step-up routes', () => {
     expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
   });
 
+  it('drops a target that is not exactly top or an id: TOP, Top and an empty one (categories C4b)', async () => {
+    for (const bad of ['TOP', 'Top', '']) {
+      const { upstream } = await run(
+        'GET',
+        `catalog/admin/categories/${id}/impact?action=move&targetId=${bad}`,
+        readHeaders,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/catalog/admin/categories/${id}/impact?action=move`,
+      );
+    }
+  });
+
+  it('passes the target of the category impact read only as an id or top (categories C4b)', async () => {
+    const withId = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=move&targetId=${id}&x=1`,
+      readHeaders,
+    );
+    expect(withId.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=move&targetId=${id}`,
+    );
+    const top = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=move&targetId=top`,
+      readHeaders,
+    );
+    expect(top.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=move&targetId=top`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=merge&targetId=../x`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=merge`,
+    );
+  });
+
   it('passes only the known, well-formed filters of the attribute list', async () => {
     const { upstream } = await run(
       'GET',
