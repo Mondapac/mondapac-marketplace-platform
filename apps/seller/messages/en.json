@@ -1140,6 +1140,7 @@
         "primary-image": "main image",
         "variant-removed": "removed variants",
         "gtin-changed": "variant barcodes (GTIN)",
+        "axis-added": "the new variant option and variant names",
         "images": "images"
       },
       "attribute": {

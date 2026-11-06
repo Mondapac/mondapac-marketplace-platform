@@ -65,6 +65,7 @@ describe.each(TEST_MARKETS)(
         anyImage: false,
         variantRemoved: true,
         gtinChanged: true,
+        axisAdded: true,
       }),
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,

@@ -28,7 +28,9 @@ export function axisCandidates(schema: AttributeSchema): readonly string[] {
  * without `variantAxes` varies on all of them, as before. At most `maxAxes` (Market configuration
  * `maxVariantAttributes`), each once, each a candidate of the feature set. `lockedTo` is the axes of
  * the published revision: once a product is published its axes stay as they were (decision t3), so
- * a different set is refused. The returned schema holds the chosen axes as the only option
+ * a different set is refused, with one exception (Add a second axis, V9b): when the published
+ * revision has exactly one axis and `maxAxes` is at least 2, that axis plus exactly one more is
+ * accepted, once (with at most two axes nothing is stored for it). The returned schema holds the chosen axes as the only option
  * attributes; an unchosen candidate is not an axis of this product.
  */
 export function chooseAxes(
@@ -52,10 +54,18 @@ export function chooseAxes(
   }
   if (asked.length > maxAxes) issues.push({ path: 'variantAxes', code: 'variants.axes-too-many' });
   const codes = candidates.filter((code) => asked.includes(code));
-  if (
+  const sameAxes =
     lockedTo !== null &&
-    (codes.length !== lockedTo.length || codes.some((code) => !lockedTo.includes(code)))
-  ) {
+    codes.length === lockedTo.length &&
+    codes.every((code) => lockedTo.includes(code));
+  // One locked axis plus exactly one more: the single 1 -> 2 step.
+  const secondAxis =
+    lockedTo !== null &&
+    lockedTo.length === 1 &&
+    maxAxes >= 2 &&
+    codes.length === 2 &&
+    lockedTo.every((code) => codes.includes(code));
+  if (lockedTo !== null && !sameAxes && !secondAxis) {
     issues.push({ path: 'variantAxes', code: 'variants.axes-locked' });
   }
   if (issues.length > 0) return { ok: false, issues };
