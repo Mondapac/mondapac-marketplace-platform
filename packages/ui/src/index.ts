@@ -178,6 +178,20 @@ export {
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
 export { Popover, type PopoverProps } from './overlay/popover.tsx';
+export {
+  ColumnPickerPanel,
+  type ColumnPickerLabels,
+  type ColumnPickerPanelProps,
+} from './list-views/column-picker-panel.tsx';
+export {
+  ManageViewsDialog,
+  SAVED_VIEW_NAME_MAX,
+  SaveViewDialog,
+  type SavedViewItem,
+  type SavedViewLabels,
+  type SavedViewProblem,
+  type SavedViewVisibility,
+} from './list-views/saved-view-dialogs.tsx';
 export { FilterChip, type FilterChipProps } from './form/filter-chip.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
 export { ThemeMenu, applyThemeChoice, type ThemeMenuProps } from './theme/theme-menu.tsx';

@@ -464,6 +464,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
+    // the application deletes it; only the name and who can use it change.
+    'ordering.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
     // Saved for later: saved again moves the item to the top; removed, moved to the cart or
     // purged a year after it was last saved.
     'cart.saved_items': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: ['saved_at'] },

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { windowRange } from '../catalog/format.ts';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,16 +8,28 @@ import messages from '../../messages/en.json';
 import { sellerNav } from '../nav.ts';
 import { visibleNavItems } from '@mondapac/ui';
 
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+// The saved-filter routes have a mock of their own, so the order-list tests below count only the
+// calls the list itself makes.
+const { ordersMock, savedMock } = vi.hoisted(() => ({
+  ordersMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  savedMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+}));
+vi.mock('../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('ordering/seller/saved-filters')
+      ? savedMock(method, path, ...rest)
+      : ordersMock(method, path, ...rest),
+}));
 
-import { callApi } from '../api/client.ts';
+import type { callApi } from '../api/client.ts';
 import { orderProblemOf } from './errors.ts';
 import { OrderDetail } from './order-detail.tsx';
 import { SellerOrders } from './seller-orders.tsx';
 import type { OrderLineView, SellerOrderPage, SellerOrderView } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
-const call = vi.mocked(callApi);
+const call = ordersMock as unknown as ReturnType<typeof vi.mocked<typeof callApi>>;
+const savedCall = savedMock;
 const wrap = (node: ReactNode) => (
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     {node}
@@ -79,7 +91,12 @@ const mountDetail = (
     ),
   );
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.localStorage.clear();
+  // The saved filters cannot load unless a test says so: the list then has the fulfilment tabs only.
+  savedCall.mockResolvedValue({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+});
 afterEach(cleanup);
 
 const shippedOrder = (over: Partial<SellerOrderView> = {}) =>
@@ -664,5 +681,169 @@ describe('Pickup handover', () => {
     cleanup();
     mountDetail(order({ readyAt: '2026-10-14T11:00:00.000Z' }));
     expect(screen.queryByRole('button', { name: 'Confirm pickup' })).toBeNull();
+  });
+});
+
+const LIST = { accountId: '0190a000-0000-7000-8000-0000000000f1', marketId: 'AU' } as const;
+const COLUMNS_KEY = 'mp:seller:AU:0190a000-0000-7000-8000-0000000000f1:orders-columns';
+
+describe('order list columns', () => {
+  it('shows every column until the seller chooses, then keeps the choice in this browser', () => {
+    render(wrap(<SellerOrders initial={page([order()])} {...LIST} />));
+    const table = screen.getByRole('table');
+    for (const name of ['Order', 'Status', 'Paid', 'Items', 'Total']) {
+      expect(within(table).getByRole('columnheader', { name })).toBeTruthy();
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = screen.getByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Items' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(within(table).queryByRole('columnheader', { name: 'Items' })).toBeNull();
+    expect(within(table).getByRole('columnheader', { name: 'Total' })).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem(COLUMNS_KEY) ?? 'null')).toEqual([
+      'status',
+      'paid',
+      'total',
+    ]);
+  });
+
+  it('reads the stored choice, and ignores unknown ids', () => {
+    window.localStorage.setItem(COLUMNS_KEY, JSON.stringify(['total', 'nope', 'status']));
+    render(wrap(<SellerOrders initial={page([order()])} {...LIST} />));
+    const heads = within(screen.getByRole('table'))
+      .getAllByRole('columnheader')
+      .map((head) => head.textContent);
+    expect(heads).toEqual(['Order', 'Total', 'Status']);
+  });
+});
+
+describe('order list saved filters', () => {
+  const view = (over: Record<string, unknown> = {}) => ({
+    id: '0190a000-0000-7000-8000-0000000000aa',
+    listKey: 'seller.ordering.orders',
+    name: 'Old shipped',
+    visibility: 'me',
+    payload: { v: 1, tab: 'shipped', filters: { from: '2026-10-01' }, sort: 'oldest' },
+    ownedByMe: true,
+    canManage: true,
+    createdAt: '2026-10-20T00:00:00.000Z',
+    updatedAt: '2026-10-20T00:00:00.000Z',
+    ...over,
+  });
+  const answer = (items: unknown[]) => ({
+    ok: true as const,
+    status: 200,
+    body: { items, canShare: false, limits: { perOwner: 50, shared: 0 } },
+  });
+
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+    call.mockResolvedValue({ ok: true, status: 200, body: page([order()]) });
+  });
+
+  it('adds a tab for each saved filter and opens its tab, days and sort', async () => {
+    savedCall.mockResolvedValue(answer([view()]));
+    render(wrap(<SellerOrders initial={page([order()])} paging="pages" {...LIST} />));
+    const tab = await screen.findByRole('button', { name: 'Old shipped' });
+    fireEvent.click(tab);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith('GET', expect.stringContaining('status=shipped')),
+    );
+    const url = String(call.mock.calls.at(-1)?.[1]);
+    expect(url).toContain('sort=paid&direction=asc');
+    expect(url).toContain('from=2026-10-01T00%3A00%3A00.000Z');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Old shipped' }).getAttribute('aria-pressed')).toBe(
+        'true',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delivered' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Old shipped' }).getAttribute('aria-pressed')).toBe(
+        'false',
+      ),
+    );
+  });
+
+  it('saves the current tab, days and sort as a personal filter', async () => {
+    let items: unknown[] = [];
+    savedCall.mockImplementation(((method: string, _path: string, body?: unknown) => {
+      if (method === 'POST') {
+        const sent = body as { name: string; payload: unknown };
+        items = [view({ name: sent.name, payload: sent.payload })];
+        return Promise.resolve({ ok: true, status: 201, body: items[0] });
+      }
+      return Promise.resolve(answer(items));
+    }) as never);
+    render(
+      wrap(<SellerOrders initial={page([order()])} paging="pages" csrfToken="csrf-1" {...LIST} />),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Shipped' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    expect(within(dialog).queryByRole('radio', { name: /Everyone/ })).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: ' Mine ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await screen.findByRole('button', { name: 'Mine' });
+    expect(savedCall).toHaveBeenCalledWith(
+      'POST',
+      'ordering/seller/saved-filters',
+      {
+        listKey: 'seller.ordering.orders',
+        name: 'Mine',
+        visibility: 'me',
+        payload: { v: 1, tab: 'shipped' },
+      },
+      'csrf-1',
+    );
+  });
+
+  it('renames and deletes from Manage filters', async () => {
+    let items = [view()];
+    savedCall.mockImplementation(((method: string, _path: string, body?: unknown) => {
+      if (method === 'PUT') {
+        items = [view({ name: (body as { name: string }).name })];
+        return Promise.resolve({ ok: true, status: 200, body: items[0] });
+      }
+      if (method === 'DELETE') {
+        items = [];
+        return Promise.resolve({ ok: true, status: 200, body: { id: 'x' } });
+      }
+      return Promise.resolve(answer(items));
+    }) as never);
+    render(wrap(<SellerOrders initial={page([order()])} csrfToken="csrf-2" {...LIST} />));
+    await screen.findByRole('button', { name: 'Old shipped' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Edit Old shipped' }));
+    fireEvent.change(within(dialog).getByLabelText('Name'), {
+      target: { value: 'Shipped long ago' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('button', { name: 'Shipped long ago' });
+    expect(savedCall).toHaveBeenCalledWith(
+      'PUT',
+      'ordering/seller/saved-filters/0190a000-0000-7000-8000-0000000000aa',
+      { name: 'Shipped long ago', visibility: 'me' },
+      'csrf-2',
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Shipped long ago' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete filter' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Shipped long ago' })).toBeNull(),
+    );
+  });
+
+  it('offers neither Save filter nor Manage filters when the filters cannot load', async () => {
+    render(wrap(<SellerOrders initial={page([order()])} {...LIST} />));
+    fireEvent.click(screen.getByRole('button', { name: 'Shipped' }));
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
   });
 });

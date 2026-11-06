@@ -3,18 +3,33 @@
 import {
   Banner,
   Button,
+  ColumnPickerPanel,
   EmptyState,
+  Icon,
   LoadError,
   Pagination,
   PrevNext,
+  Popover,
   Select,
   SkeletonRows,
   Tabs,
   TextField,
+  browserStorage,
+  prefsKey,
+  readIds,
+  writeIds,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import {
+  DEFAULT_COLUMNS,
+  OPTIONAL_COLUMNS,
+  cleanColumns,
+  type OrderColumn,
+} from './orders-columns.ts';
+import { OrdersSavedViews } from './orders-saved-views.tsx';
+import { LIST_KEY, stateOf, type SavedFiltersAnswer } from './orders-saved.ts';
 import { OrdersTable } from './orders-table.tsx';
 import {
   FULFILMENT_FILTERS,
@@ -33,11 +48,24 @@ import {
 import { FILTERS, type AdminOrder, type AdminOrderPage } from './types.ts';
 
 /**
- * The Market's orders (read-only): a tab for each status, filters, a sort, and either page numbers
- * with the total or Previous and next, as the Market's List paging setting says. Previous and next
- * keeps to newest first and walks the API's cursors, so it works for any number of orders.
+ * The Market's orders (read-only): a tab for each status and for each saved filter, filters, a
+ * sort, the column picker, and either page numbers with the total or Previous and next, as the
+ * Market's List paging setting says. Previous and next keeps to newest first and walks the API's
+ * cursors, so it works for any number of orders. The column choice is the admin's own and lives in
+ * this browser's storage (the list works the same when storage is missing); a saved filter keeps
+ * the tab, filters and sort on the server, for the admin or, with the share key, for everyone.
  */
-export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPaging }) {
+export function OrdersList({
+  paging = 'prev-next',
+  accountId,
+  marketId,
+  csrfToken = '',
+}: {
+  readonly paging?: ListPaging;
+  readonly accountId: string;
+  readonly marketId: string;
+  readonly csrfToken?: string;
+}) {
   const t = useTranslations('orders');
   const tl = useTranslations('load');
   const locale = useLocale();
@@ -52,6 +80,13 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const latest = useRef(0);
+  const [columns, setColumns] = useState<readonly OrderColumn[]>(DEFAULT_COLUMNS);
+  // The saved filters: null until they load, and when they cannot (the page then has the status
+  // tabs only). `savedId` is the saved tab the page is showing.
+  const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
+  const storageKey = prefsKey('admin', marketId, accountId, 'orders-columns');
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
@@ -101,17 +136,57 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
   }, [load]);
 
   useEffect(() => {
+    setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
+  }, [storageKey]);
+
+  const loadSaved = useCallback(async () => {
+    const result = await callApi<SavedFiltersAnswer>(
+      'GET',
+      `ordering/admin/saved-filters?listKey=${LIST_KEY}`,
+    );
+    if (!result.ok || !Array.isArray(result.body?.items)) return;
+    setSaved(result.body);
+    // A saved filter that was deleted (here or by its owner) is no longer the one on show.
+    setSavedId((current) =>
+      current !== null && result.body.items.some((item) => item.id === current) ? current : null,
+    );
+  }, []);
+
+  useEffect(() => {
+    void loadSaved();
+  }, [loadSaved]);
+
+  const saveColumns = (next: readonly string[]) => {
+    const chosen = cleanColumns(next);
+    setColumns(chosen);
+    writeIds(browserStorage(), storageKey, chosen);
+  };
+
+  useEffect(() => {
     if (!loading && focusList.current) {
       focusList.current = false;
       listTop.current?.focus();
     }
   }, [loading, rows]);
 
-  // Any change of what is asked for starts again at the first page.
+  // Any change of what is asked for starts again at the first page, and leaves the saved filter
+  // on show (the page is no longer it).
   const change = (patch: Partial<OrderFilters>) => {
+    setSavedId(null);
     setFilters((current) => ({ ...current, ...patch }));
     setPage(1);
     setCursors([null]);
+  };
+  const openSaved = (id: string) => {
+    const filter = saved?.items.find((item) => item.id === id);
+    if (filter === undefined) return;
+    const opened = stateOf(filter.payload);
+    setFilters(opened.filters);
+    // Previous and next keeps to newest first: a saved sort needs page numbers.
+    setSort(paging === 'pages' ? opened.sort : 'newest');
+    setPage(1);
+    setCursors([null]);
+    setSavedId(id);
   };
   const number = (n: number) => n.toLocaleString(locale);
   const pageCount = total === null ? 1 : pageCountOf(total);
@@ -123,16 +198,56 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
     filters.from !== '' ||
     filters.to !== '';
   const status = filters.status;
+  const somethingToSave = filtered || status !== 'all' || (paging === 'pages' && sort !== 'newest');
+  const summary = [
+    t(status === 'all' ? 'tab.all' : `status.${status}`),
+    ...(filters.paymentState === ''
+      ? []
+      : [`${t('filters.payment')}: ${t(`payment.${filters.paymentState}`)}`]),
+    ...(filters.fulfilment === ''
+      ? []
+      : [`${t('filters.fulfilment')}: ${t(`fulfilment.${filters.fulfilment}`)}`]),
+    ...(filters.from === '' ? [] : [`${t('filters.from')}: ${filters.from}`]),
+    ...(filters.to === '' ? [] : [`${t('filters.to')}: ${filters.to}`]),
+    ...(paging === 'pages' && sort !== 'newest'
+      ? [`${t('sort.label')}: ${t(`sort.${sort}`)}`]
+      : []),
+  ].join(' · ');
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      <Tabs
-        label={t('tabs')}
-        activeId={status}
-        onSelect={(id) => change({ status: id })}
-        items={FILTERS.map((id) => ({ id, label: t(id === 'all' ? 'tab.all' : `status.${id}`) }))}
-      />
+      <div className="flex items-stretch">
+        <div className="min-w-0 flex-1">
+          <Tabs
+            label={t('tabs')}
+            activeId={savedId ?? status}
+            onSelect={(id) => {
+              if (saved?.items.some((item) => item.id === id)) openSaved(id);
+              else change({ status: id });
+            }}
+            items={[
+              ...FILTERS.map((id) => ({
+                id,
+                label: t(id === 'all' ? 'tab.all' : `status.${id}`),
+              })),
+              ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+            ]}
+          />
+        </div>
+        {saved === null ? null : (
+          <div className="flex shrink-0 items-center border-b border-line ps-3">
+            <Button
+              variant="link"
+              className="min-h-(--mp-size-control-sm)"
+              onClick={() => setDialog('manage')}
+            >
+              <Icon name="sliders" />
+              <span className="sr-only sm:not-sr-only">{t('saved.manage-link')}</span>
+            </Button>
+          </div>
+        )}
+      </div>
       <div
         role="group"
         aria-label={t('filters.group')}
@@ -177,16 +292,48 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
           />
         ) : null}
       </div>
-      {filtered ? (
-        <div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Popover label={t('columns.button')} icon="columns" width="md">
+          {(close) => (
+            <ColumnPickerPanel
+              all={OPTIONAL_COLUMNS}
+              fixed={[{ id: 'order', label: t('col.order') }]}
+              shown={columns}
+              defaults={DEFAULT_COLUMNS}
+              labelOf={(column) => t(`col.${column}`)}
+              labels={{
+                title: t('columns.title'),
+                help: t('columns.help'),
+                always: t('columns.always'),
+                up: (column) => t('columns.up', { column }),
+                down: (column) => t('columns.down', { column }),
+                reset: t('columns.reset'),
+                save: t('columns.save'),
+              }}
+              onSave={saveColumns}
+              close={close}
+            />
+          )}
+        </Popover>
+        {filtered ? (
           <Button
             variant="secondary"
             onClick={() => change({ paymentState: '', fulfilment: '', from: '', to: '' })}
           >
             {t('filters.clear')}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+        {saved === null || savedId !== null || !somethingToSave ? null : (
+          <Button
+            variant="link"
+            className="min-h-(--mp-size-control-sm)"
+            onClick={() => setDialog('save')}
+          >
+            <Icon name="star" />
+            {t('saved.save-link')}
+          </Button>
+        )}
+      </div>
       {failed ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
@@ -206,7 +353,7 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
       ) : null}
       {rows.length > 0 ? (
         <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} />
+          <OrdersTable rows={rows} columns={columns} />
         </div>
       ) : null}
       {!loading && !failed && rows.length === 0 ? (
@@ -253,6 +400,21 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
             previous: t('paging.previous'),
             next: t('paging.next'),
           }}
+        />
+      )}
+      {saved === null ? null : (
+        <OrdersSavedViews
+          dialog={dialog}
+          onClose={() => setDialog(null)}
+          filters={filters}
+          sort={sort}
+          summary={summary}
+          saved={saved}
+          csrfToken={csrfToken}
+          onSaved={(filter) => {
+            void loadSaved().then(() => setSavedId(filter.id));
+          }}
+          onChanged={() => void loadSaved()}
         />
       )}
     </div>

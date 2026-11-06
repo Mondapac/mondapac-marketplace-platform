@@ -1129,3 +1129,77 @@ describe('relay allowlist for the seller reviews', () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe('relay of the seller order list views', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it('forwards the tab, days, sort and page of the order list with the shape the API reads', async () => {
+    const upstream = upstreamOk();
+    const query =
+      'status=to-ship&page=2&pageSize=25&sort=total&direction=asc&from=2026-11-01T00:00:00.000Z' +
+      '&to=2026-11-06T00:00:00.000Z';
+    await relay(
+      config,
+      request('GET', `ordering/seller/orders?${query}&x=1`),
+      ['ordering', 'seller', 'orders'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/ordering/seller/orders?${query.replaceAll(':', '%3A')}`,
+    );
+  });
+
+  it('drops values of the wrong shape', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'ordering/seller/orders?status=confirmed&sort=name&page=0&limit=20'),
+      ['ordering', 'seller', 'orders'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/ordering/seller/orders?limit=20');
+  });
+
+  it('relays the saved views with the seller list key only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'ordering/seller/saved-filters?listKey=seller.ordering.orders&extra=1'),
+      ['ordering', 'seller', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/seller/saved-filters?listKey=seller.ordering.orders',
+    );
+    for (const [method, path] of [
+      ['POST', 'ordering/seller/saved-filters'],
+      ['PUT', `ordering/seller/saved-filters/${ID}`],
+      ['DELETE', `ordering/seller/saved-filters/${ID}`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path] of [
+      ['PUT', 'ordering/seller/saved-filters'],
+      ['DELETE', 'ordering/seller/saved-filters'],
+      ['PUT', 'ordering/seller/saved-filters/not-a-uuid'],
+      ['POST', `ordering/seller/saved-filters/${ID}`],
+      ['GET', `ordering/seller/saved-filters/${ID}`],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+});

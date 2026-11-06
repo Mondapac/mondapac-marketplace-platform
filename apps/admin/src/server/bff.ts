@@ -64,6 +64,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/platform-imports/current',
     // The saved views of the product list (catalog), read-only (query: `listKey`).
     'catalog/admin/saved-filters',
+    // The saved views of the order list (ordering; query: `listKey`).
+    'ordering/admin/saved-filters',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
@@ -172,6 +174,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/platform-imports',
     // Save the product list's current view as a tab (catalog): a closed body, for me or everyone.
     'catalog/admin/saved-filters',
+    // Save the order list's current view as a tab (ordering): a closed body, for me or everyone.
+    'ordering/admin/saved-filters',
   ]),
 };
 
@@ -269,6 +273,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   PUT: [
     'identity/admin/roles/:id',
+    // A saved view of the order list: its name and who can use it (ordering).
+    'ordering/admin/saved-filters/:id',
     'sellers/admin/:id/review/manual-register-check',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
@@ -300,6 +306,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/deletion-requests/:id',
     // A saved view of the product list (catalog).
     'catalog/admin/saved-filters/:id',
+    // A saved view of the order list (ordering).
+    'ordering/admin/saved-filters/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
@@ -358,6 +366,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
   ],
+  'ordering/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
@@ -442,6 +451,19 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sellerId: UUID,
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
+  'ordering/admin/orders': {
+    status: /^(pending-payment|confirmed|cancelled)$/,
+    paymentState: /^(none|authorised|captured|voided)$/,
+    fulfilment: /^(to-ship|shipped|delivered)$/,
+    // An ISO instant, as the panel sends the start of a day.
+    from: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/,
+    sort: /^(created|total)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
   'commission-payouts/admin/payouts': {
     status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
     limit: /^[0-9]{1,3}$/,
