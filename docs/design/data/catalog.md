@@ -123,8 +123,8 @@ migration in 8. "Privileges" lines are in 7.
 | `scope` | `text` | no | 1 | CHECK `PLATFORM`, `SELLER` (ADR-0010) |
 | `owner_seller_id` | `uuid` | yes | 1 | C4. CHECK `products_owner_check`: `(scope = 'SELLER') = (owner_seller_id IS NOT NULL)` (D 2.1). Promotion (CAT-44) sets `scope` and clears the owner in one statement |
 | `created_by_seller_id` | `uuid` | yes | 1 | The seller who created it; never updated (column grant). Keeps the origin after promotion without a history read |
-| `type_code` | `text` | no | 1 | CA4 pattern; never updated (column grant; CAT-10) |
-| `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Never updated. Target of the variant FK (3.2) |
+| `type_code` | `text` | no | 1 | CA4 pattern. Updatable by the application role only together with `variant_model`, and only from `simple`/`single` to `configurable`/`options` (trigger `products_type_change_guard`, variants V9, D 4.2a); every other change is refused (`23514`). Column grant `UPDATE (type_code, variant_model)` only. The partial unique of 3.2, the `variant_no = 1` CHECK and the discard rule are unaffected: after the change the row is `options` |
+| `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Changes only with `type_code` (above). Target of the variant FK (3.2), which cascades the change to the variant row |
 | `family_code` | `text` | no | 1 | CA4; changes only with a revision pointer (trigger `products_family_follows_revision`; A4, CAT-10 change): the family of the last accepted submit (the database guards the timing, not the value: the application resolves it from the primary category) |
 | `product_code` | `text COLLATE "C"` | no | 1 | From `product_code_counters` (3.3), never input. CHECK `^[A-Z0-9][A-Z0-9-]{3,31}$`. **Unique `(market_id, product_code)`** (D 17.1). Never updated |
 | `status` | `text` | no | 1 | CHECK `draft`, `discarded`, `unpublished`, `published`, `matched`, `withdrawn`, `retired` (D 4.1; `discarded` terminal, Q-K2) |
@@ -154,7 +154,7 @@ migration in 8. "Privileges" lines are in 7.
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | `uuid` | no | PK. CA7 (UUIDv7 only, server-minted) |
-| `product_id` | `uuid` | no | FK `(market_id, product_id, variant_model)` → `products (market_id, id, variant_model)` |
+| `product_id` | `uuid` | no | FK `(market_id, product_id, variant_model)` → `products (market_id, id, variant_model)`, `ON UPDATE CASCADE` (V9: the Add sizes change reaches the variant row; was RESTRICT; re-added `NOT VALID`, then validated) |
 | `variant_model` | `text` | no | Copy bound by that FK |
 | `variant_no` | `integer` | no | V2. 1, 2, 3 ... per product in creation order, minted by the aggregate (highest ever used + 1, so a retired number is never reused). CHECK `>= 1`; CHECK `variant_model <> 'single' OR variant_no = 1`; unique `(market_id, product_id, variant_no)`; immutable (guard trigger). The variant code `{product_code}-{nn}` is derived, not stored. Migration `20261104030000_catalog_variant_number` backfills in `(created_at, id)` order with the guard trigger off for that one statement |
 | `state` | `text` | no | CHECK `proposed`, `published`, `retired` |
@@ -168,7 +168,7 @@ migration in 8. "Privileges" lines are in 7.
 - Unique `(market_id, id)` and `(market_id, product_id, id)` (target of 3.10's same-product FK; also
   the count path of the variant limit, 6.3 A16).
 - **Guard trigger `product_variants_guard`** (5.1; measured): refuses a change of `id`,
-  `product_id`, `variant_model`, `variant_no`, `created_at`; allows only `proposed → published`, `proposed →
+  `product_id`, `variant_no`, `created_at`, and of `variant_model` except `single` → `options` (the cascade of Add sizes, V9: `variant_model` leaves the `IS DISTINCT FROM` tuple and gets its own rule); allows only `proposed → published`, `proposed →
   retired`, `published → retired`; refuses every `DELETE` (Q-K2). So a retired id is
   never revived and never re-enters `proposed` or `published` (D 17.1 item 2), for every role. A
   second trigger on `product_revision_variants` refuses a retired variant in any new revision (3.10).
@@ -404,13 +404,14 @@ through the PK.
 | `revision_kind` | `text` | no | CHECK `submission`, `revert`, `tax-override` (D 4.2 rows 1 and 6, D 4.3) |
 | `base_revision_id` | `uuid` | yes | The published revision it was built on; same-product FK. CHECK `revision_kind <> 'tax-override' OR base_revision_id IS NOT NULL`: a tax override is always the published revision with one field changed (D 4.3, Hassan 1a) |
 | `reverted_from_revision_id` | `uuid` | yes | Same-product FK. CHECK `(revision_kind = 'revert') = (reverted_from_revision_id IS NOT NULL)` |
+| `type_code` | `text` | no | V9. The type the revision was frozen with (D M-9); backfilled from `products.type_code` (every product is still of its creation type), then NOT NULL; CHECK the CA4 pattern `^[a-z][a-z0-9_-]{0,63}$`. Insert-only like every column here (`product_revisions_no_update_delete`). Readers of a revision's content take the handler from here |
 | `family_revision_id` | `uuid` | no | Schema ref (3.5) |
 | `definition_revision_ids` | `uuid[]` | no | Schema ref |
 | `tax_category_code` | `text` | no | CA4 (Market list; ADR-0007 d5, D 2.3 M-6) |
 | `attribute_values` | `jsonb` | no | Object; code → value or locale → value (CA6). Material-change detection compares two revisions in code (D 5.7); no index |
 | `field_provenance` | `jsonb` | yes | Per field `typed`, `ai-unchanged`, `ai-edited` (D 13.1), server-built; object; no text |
 | `sensitive` | `boolean` | no | Classification at submit (D 4.3) |
-| `sensitive_reasons` | `text[]` | no | CHECK `<@ ARRAY['platform-categories','tax-category','name','primary-image','image-added-or-replaced','variant-removed','never-published','approval-required']` (D 9.2a codes); CHECK `sensitive OR cardinality(sensitive_reasons) = 0` |
+| `sensitive_reasons` | `text[]` | no | CHECK `<@ ARRAY['platform-categories','tax-category','name','primary-image','image-added-or-replaced','variant-removed','never-published','approval-required','axis-added']` (D 9.2a codes); CHECK `sensitive OR cardinality(sensitive_reasons) = 0` |
 | `content_schema_version` | `smallint` | no | |
 | `content_hash` | `text` | no | `ContentHash` over the frozen content (ADR-0009). Plain SHA-256 is enough: the content is public business content, not personal (ADR-0009 d6 applies to personal fields). CHECK `content_hash ~ '^sha256:[0-9a-f]{64}$'` (`ContentHash`, `docs/design/domain/platform-audit.md` 6.3; replaces the length 1 to 128 placeholder; the plain kind only, as this row says; signed off by Mojtaba 2026-10-08) |
 | `author_kind` | `text` | no | CHECK `seller`, `admin` |
