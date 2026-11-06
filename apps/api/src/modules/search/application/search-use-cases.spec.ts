@@ -272,6 +272,7 @@ const sellable = (overrides: Partial<FeedFacts> = {}): FeedFacts => ({
   name: 'Halal beef sausages',
   shortText: 'Twelve sausages',
   categoryIds: [CATEGORY],
+  attributes: { searchText: '', facets: [], numbers: {} },
   ...overrides,
 });
 
@@ -290,6 +291,8 @@ describe.each([
   ['ZZ', 'ja-JP', 'simple', 'JPY'],
 ] as const)('product search in market %s', (code, locale, config, currency) => {
   const market = testMarketContext(code, 'default');
+  // The rating boost is off in AU (the default) and on in the synthetic Market.
+  const boostOf = code === 'ZZ' ? { weightBps: 500, priorCount: 5, priorMeanTimes100: 300 } : null;
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
   const system = testCallContext(market, 'system', 'search-system-abcd');
   const anonymous = testCallContext(market, 'anonymous', 'search-anon-abcdef');
@@ -321,6 +324,12 @@ describe.each([
       unitOfWork: new FakeUnitOfWork(),
       documents,
       reader,
+      facets: {
+        searchFiltered: () => Promise.resolve([]),
+        facetRows: () => Promise.resolve([]),
+        numberRows: () => Promise.resolve([]),
+      },
+      filterSource: { filters: () => Promise.resolve([]) },
       policy: new ConfigSearchPolicy(markets),
       feed,
       visibility,
@@ -336,7 +345,12 @@ describe.each([
 
   describe('the Market settings', () => {
     it('come from the Market file, never from a default Market', () => {
-      expect(deps.policy.settings(market)).toEqual({ textSearchConfig: config, locale, currency });
+      expect(deps.policy.settings(market)).toEqual({
+        textSearchConfig: config,
+        locale,
+        currency,
+        ratingBoost: boostOf,
+      });
     });
   });
 
@@ -359,6 +373,9 @@ describe.each([
           shortText: 'Twelve sausages',
           categoryIds: [CATEGORY],
           textSearchConfig: config,
+          searchText: null,
+          facetCodes: [],
+          numbers: {},
         },
       ]);
       expect(documents.markets).toEqual(new Set([code]));
@@ -567,6 +584,9 @@ describe.each([
           page: 1,
           pageSize: 10,
           hasMore: false,
+          filters: [],
+          filtered: false,
+          countsComplete: true,
         },
       });
       expect(reader.requests).toEqual([
@@ -578,9 +598,61 @@ describe.each([
             categoryIds: null,
             limit: 11,
             offset: 0,
+            ...(boostOf === null ? {} : { ratingBoost: boostOf }),
           },
         },
       ]);
+    });
+
+    describe('the rating boost and the Top rated sort', () => {
+      it('asks for the Top rated order only while the Market has the boost on', async () => {
+        reader.hits = [hit(1)];
+        const result = await search({ q: 'sausages', sort: 'top-rated' });
+        if (boostOf === null) {
+          expect(result).toEqual({
+            ok: false,
+            error: { code: 'validation.failed', fields: [{ path: 'sort', code: 'unavailable' }] },
+          });
+          expect(reader.requests).toEqual([]);
+        } else {
+          expect(result).toMatchObject({ ok: true });
+          expect(reader.requests[0]?.request).toMatchObject({
+            sort: 'top-rated',
+            ratingBoost: boostOf,
+          });
+        }
+      });
+
+      it('leaves the default order alone: relevance names no sort, and never a boost while off', async () => {
+        reader.hits = [hit(1)];
+        await search({ q: 'sausages', sort: 'relevance' });
+        const request = reader.requests[0]!.request;
+        expect(request.sort).toBeUndefined();
+        expect(request.ratingBoost).toEqual(boostOf ?? undefined);
+      });
+
+      it('takes Top rated for a category browse too', async () => {
+        reader.hits = [hit(1)];
+        const result = await search({ category: CATEGORY, sort: 'top-rated' });
+        if (boostOf === null) expect(result).toMatchObject({ ok: false });
+        else {
+          expect(result).toMatchObject({ ok: true });
+          expect(reader.requests[0]?.request).toMatchObject({ text: null, sort: 'top-rated' });
+        }
+      });
+
+      it.each([
+        [{ q: 'sausages', sort: 'popular' }, 'value'],
+        [{ sort: 'top-rated', store: 'halal-shop' }, 'with-store'],
+        [{ sort: 'top-rated', brand: 'acme' }, 'with-brand'],
+      ])('refuses %j before any read', async (input, code_) => {
+        const result = await search(input);
+        expect(result).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'sort', code: code_ }] },
+        });
+        expect(reader.requests).toEqual([]);
+      });
     });
 
     it('browses a category without text, and pages by offset', async () => {
@@ -757,7 +829,15 @@ describe.each([
 
         expect(result).toEqual({
           ok: true,
-          value: { items: [], page: 3, pageSize: 5, hasMore: false },
+          value: {
+            items: [],
+            page: 3,
+            pageSize: 5,
+            hasMore: false,
+            filters: [],
+            filtered: false,
+            countsComplete: true,
+          },
         });
         expect(shelves.browsed).toEqual([]);
         expect(reader.requests).toEqual([]);
@@ -869,7 +949,15 @@ describe.each([
 
         expect(result).toEqual({
           ok: true,
-          value: { items: [], page: 2, pageSize: 5, hasMore: false },
+          value: {
+            items: [],
+            page: 2,
+            pageSize: 5,
+            hasMore: false,
+            filters: [],
+            filtered: false,
+            countsComplete: true,
+          },
         });
         expect(shelves.browsedProducts).toEqual([]);
         expect(reader.requests).toEqual([]);
@@ -960,6 +1048,9 @@ describe.each([
       shortText: null,
       categoryIds: [],
       textSearchConfig: config,
+      searchText: null,
+      facetCodes: [],
+      numbers: {},
     };
   }
 });

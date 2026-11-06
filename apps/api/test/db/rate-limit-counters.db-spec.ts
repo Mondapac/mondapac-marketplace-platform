@@ -138,6 +138,14 @@ describe('rate-limit counters shared across API instances (database)', () => {
     expect(rows.map((row) => row.key).join()).not.toMatch(/127\.0\.0\.1|::1|ffff/);
   });
 
+  it('keeps the counters of the card payment attempts, keyed by a hash (checkout-payment)', async () => {
+    const key = `checkout-payment:${'c'.repeat(64)}`;
+
+    await expect(
+      sql.query('INSERT INTO platform.rate_limit_counters VALUES ($1, 1, 1)', [key]),
+    ).resolves.toBeDefined();
+  });
+
   it('refuses a key that is not a hashed origin of a known class (CHECK)', async () => {
     await expect(
       sql.query("INSERT INTO platform.rate_limit_counters VALUES ('default:127.0.0.1', 1, 1)"),

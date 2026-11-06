@@ -1,6 +1,7 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { OfferSearchFactsQuery } from '../application/use-cases/offer-search-facts.use-case';
+import type { SearchIndexStampQuery } from '../application/use-cases/search-index-stamp.use-case';
 import type { PublishedOfferIdsQuery } from '../application/use-cases/published-offer-ids.use-case';
 import type {
   CatalogBatchTooLarge,
@@ -15,6 +16,7 @@ export class CatalogIndexFacadeImplementation implements CatalogIndexFacade {
   constructor(
     private readonly facts: OfferSearchFactsQuery,
     private readonly published: PublishedOfferIdsQuery,
+    private readonly stamp: SearchIndexStampQuery,
   ) {}
 
   offerSearchFacts(
@@ -32,5 +34,9 @@ export class CatalogIndexFacadeImplementation implements CatalogIndexFacade {
     input: PublishedOfferIdsInput,
   ): Promise<Result<readonly Id<'Offer'>[], AccessDenied | CatalogValidationFailed>> {
     return this.published.execute(context, input);
+  }
+
+  searchIndexStamp(context: CallContext): Promise<Result<string, AccessDenied>> {
+    return this.stamp.execute(context, {});
   }
 }

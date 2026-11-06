@@ -255,8 +255,15 @@ describe('the fleet selection page', () => {
     fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
       target: { value: '120' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    // Nothing is flagged while typing; leaving the score shows the error, and Save is off until
+    // it is fixed.
+    expect(within(drive).queryByText('Enter a whole number from 0 to 100.')).toBeNull();
+    fireEvent.blur(within(drive).getByLabelText('Reliability (0 to 100)'));
     expect(within(drive).getByText('Enter a whole number from 0 to 100.')).toBeTruthy();
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
     expect(call).not.toHaveBeenCalled();
 
     fireEvent.change(within(drive).getByLabelText('Reliability (0 to 100)'), {
@@ -302,7 +309,7 @@ describe('the fleet selection page', () => {
     expect(screen.getByLabelText<HTMLSelectElement>('Instant').value).toBe(MODEL);
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
     expect(screen.getByText(/Your 1 change is kept/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(
       screen.getByText('Instant: saved now Own fleet first, yours Cheapest first'),
     ).toBeTruthy();
@@ -323,6 +330,23 @@ describe('the fleet selection page', () => {
 
     expect(screen.getByLabelText<HTMLSelectElement>('Instant').value).toBe('');
     expect(screen.queryByText('1 unsaved change')).toBeNull();
+  });
+
+  it('counts an open model editor as one unsaved change when the admin leaves', () => {
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    const link = document.createElement('a');
+    link.href = '/orders';
+    link.textContent = 'Orders';
+    document.body.append(link);
+
+    fireEvent.click(link);
+
+    const dialog = screen.getByRole('dialog', { name: 'Leave without saving?', hidden: true });
+    expect((dialog.textContent ?? '').replaceAll('\u00a0', ' ')).toContain(
+      'You have 1 unsaved change',
+    );
+    link.remove();
   });
 
   it('creates a weighted model, then reads the page again', async () => {
@@ -493,7 +517,8 @@ describe('the review changes', () => {
 
   it('says a viewer can look but not change', () => {
     mount(selection(), false);
-    expect(screen.getByText('You can view but not change delivery fleets.')).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(screen.getByText(/^Your role can see these settings but not change them/)).toBeTruthy();
   });
 
   it('ties a weights error to its inputs and focuses the first one', () => {
@@ -587,5 +612,43 @@ describe('right-to-left readiness', () => {
         /\b(?:m|p)[lr]-\d|\btext-(?:left|right)\b|\b(?:left|right)-\d/,
       );
     }
+  });
+});
+
+describe('last changed and history (panel settings T3a)', () => {
+  it('shows who changed the page last and opens its own history route', async () => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    vi.mocked(callApi).mockReset();
+    vi.mocked(callApi).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { items: [], next: null },
+    });
+    mount(
+      selection({
+        lastChanged: {
+          at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+          byDisplayName: 'Sara K.',
+          byKind: 'member' as const,
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('last-changed').textContent).toBe(
+      'Last changed by Sara K. · 2 days ago · View history',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'View history' }));
+    await waitFor(() =>
+      expect(vi.mocked(callApi)).toHaveBeenCalledWith(
+        'GET',
+        'shipping/admin/fleet-selection/history?limit=20',
+      ),
+    );
+    expect(await screen.findByText('No changes yet')).toBeTruthy();
   });
 });

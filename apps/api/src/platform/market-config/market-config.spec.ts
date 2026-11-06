@@ -2101,6 +2101,9 @@ describe('loadMarketConfigs', () => {
         variantRemoved: true,
       },
       maxVariantsPerProduct: 100,
+      maxCategoryDepth: 4,
+      maxCategoryChangeTags: 50_000,
+      maxVariantAttributes: 2,
       approvalRequired: true,
       productTypes: ['simple', 'configurable'],
       defaultFamily: 'default',
@@ -2128,6 +2131,12 @@ describe('loadMarketConfigs', () => {
 
       expect(au?.maxVariantsPerProduct).toBe(100);
       expect(zz?.maxVariantsPerProduct).toBe(3);
+      expect(au?.maxCategoryDepth).toBe(4);
+      expect(zz?.maxCategoryDepth).toBe(3);
+      expect(au?.maxCategoryChangeTags).toBe(50_000);
+      expect(zz?.maxCategoryChangeTags).toBe(20_000);
+      expect(au?.maxVariantAttributes).toBe(2);
+      expect(zz?.maxVariantAttributes).toBe(3);
       expect(au?.approvalRequired).toBe(true);
       expect(zz?.approvalRequired).toBe(false);
       expect(au?.taxCategories.map((c) => c.code)).not.toEqual(
@@ -2180,6 +2189,24 @@ describe('loadMarketConfigs', () => {
       ['a variant limit above the lock set', { ...VALID_CATALOG, maxVariantsPerProduct: 101 }],
       ['a fractional variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: 2.5 }],
       ['a string variant limit', { ...VALID_CATALOG, maxVariantsPerProduct: '100' }],
+      ['no category depth', without('maxCategoryDepth')],
+      [
+        'a category depth of 2 (products sit on levels 3 and 4)',
+        { ...VALID_CATALOG, maxCategoryDepth: 2 },
+      ],
+      ['a category depth of 5', { ...VALID_CATALOG, maxCategoryDepth: 5 }],
+      ['a fractional category depth', { ...VALID_CATALOG, maxCategoryDepth: 3.5 }],
+      ['a string category depth', { ...VALID_CATALOG, maxCategoryDepth: '4' }],
+      ['no category change tag cap', without('maxCategoryChangeTags')],
+      ['a zero category change tag cap', { ...VALID_CATALOG, maxCategoryChangeTags: 0 }],
+      [
+        'a category change tag cap above 200,000',
+        { ...VALID_CATALOG, maxCategoryChangeTags: 200_001 },
+      ],
+      ['a fractional category change tag cap', { ...VALID_CATALOG, maxCategoryChangeTags: 1.5 }],
+      ['no variant attribute limit', without('maxVariantAttributes')],
+      ['a zero variant attribute limit', { ...VALID_CATALOG, maxVariantAttributes: 0 }],
+      ['a variant attribute limit above 5', { ...VALID_CATALOG, maxVariantAttributes: 6 }],
       ['no approval setting', without('approvalRequired')],
       ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
       ['no product types', without('productTypes')],

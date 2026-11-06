@@ -8,23 +8,13 @@ import {
   type OfferListingTag,
   type OfferListingsMap,
   type SellUnitKey,
+  type VariantAxisValue,
 } from '../contracts/catalog.facade';
+import { variantCodeOf } from '../domain/product';
+import { readAxisValues } from './variant-axis-values';
 
-/** The text for the requested locale, else the fallback, else the first locale in code order. */
-export function pick(
-  texts: Readonly<Record<string, string>>,
-  locales: { readonly requested: string; readonly fallback: string },
-): string | null {
-  if (typeof texts[locales.requested] === 'string') return texts[locales.requested]!;
-  if (typeof texts[locales.fallback] === 'string') return texts[locales.fallback]!;
-  const first = Object.keys(texts).sort()[0];
-  return first === undefined ? null : texts[first]!;
-}
-
-export const asTexts = (value: unknown): Record<string, string> | null =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, string>)
-    : null;
+export { asTexts, pick } from './locale-pick';
+import { pick, asTexts } from './locale-pick';
 
 const isString = (value: unknown): value is string => typeof value === 'string';
 
@@ -99,11 +89,13 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         status: 'published',
         publishedRevisionId: { not: null },
       },
-      select: { id: true, publishedRevisionId: true },
+      select: { id: true, publishedRevisionId: true, productCode: true },
     });
     const revisionOf = new Map<string, string>();
+    const codeOf = new Map<string, string>();
     for (const row of products) {
       if (row.publishedRevisionId !== null) revisionOf.set(row.id, row.publishedRevisionId);
+      codeOf.set(row.id, row.productCode);
     }
     const listedOffers = offers.filter((offer) => revisionOf.has(offer.productId));
     if (listedOffers.length === 0) return result;
@@ -126,13 +118,23 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         revisionId: { in: revisionIds },
         variantId: { in: variantIds },
       },
-      select: { revisionId: true, variantId: true, labels: true },
+      select: { revisionId: true, variantId: true, labels: true, optionValues: true },
+    });
+    const axesOfRows = await readAxisValues(
+      tx,
+      market.marketId,
+      revisionVariants.map((row) => row.optionValues),
+      locales,
+    );
+    const axesOf = new Map<string, VariantAxisValue[]>();
+    revisionVariants.forEach((row, index) => {
+      axesOf.set(`${row.revisionId}:${row.variantId}`, axesOfRows[index]!);
     });
     const labelsOf = new Map<string, Record<string, string> | null>();
     for (const row of revisionVariants) {
       labelsOf.set(`${row.revisionId}:${row.variantId}`, asTexts(row.labels));
     }
-    const publishedVariants = new Set(
+    const publishedVariants = new Map(
       (
         await tx.catalogProductVariant.findMany({
           where: {
@@ -141,9 +143,9 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
             id: { in: variantIds },
             state: 'published',
           },
-          select: { id: true, productId: true },
+          select: { id: true, productId: true, variantNo: true },
         })
-      ).map((row) => `${row.productId}:${row.id}`),
+      ).map((row) => [`${row.productId}:${row.id}`, row.variantNo] as const),
     );
     const firstImages = await tx.catalogProductRevisionImage.findMany({
       where: { marketId: market.marketId, revisionId: { in: revisionIds }, position: 1 },
@@ -213,6 +215,7 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
       const revisionId = revisionOf.get(offer.productId)!;
       const inRevision = labelsOf.has(`${revisionId}:${key.variantId}`);
       const labels = labelsOf.get(`${revisionId}:${key.variantId}`) ?? null;
+      const variantNo = publishedVariants.get(`${offer.productId}:${key.variantId}`);
       const names = namesOf.get(revisionId);
       result.set(sellUnitKey(key), {
         sellerId: offer.sellerId as Id<'Seller'>,
@@ -222,6 +225,12 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         variantBelongs: inRevision && publishedVariants.has(`${offer.productId}:${key.variantId}`),
         productName: names === undefined ? null : pick(names, locales),
         variantLabel: labels === null ? null : pick(labels, locales),
+        variantNo: variantNo ?? null,
+        variantCode:
+          variantNo === undefined || !inRevision
+            ? null
+            : variantCodeOf(codeOf.get(offer.productId)!, variantNo),
+        axes: inRevision ? (axesOf.get(`${revisionId}:${key.variantId}`) ?? []) : [],
         primaryImageId: imageOf.get(revisionId) ?? null,
         tags: tagsOf.get(offer.id) ?? [],
       });

@@ -68,7 +68,7 @@ describe('buildAttributeSchema', () => {
     expect(field('brand').required).toBe(true);
     expect(field('grade').material).toBe(true);
     expect(field('colour').isVariantOption).toBe(true);
-    expect(field('colour').bounds.options).toEqual([{ code: 'red' }, { code: 'green' }]);
+    expect(field('colour').bounds.options?.map((option) => option.code)).toEqual(['red', 'green']);
     expect(field('weight-grams').bounds).toMatchObject({ min: 1, max: 100000 });
   });
 
@@ -97,5 +97,12 @@ describe('buildAttributeSchema', () => {
       d.code === 'brand' ? { ...d, status: 'archived' as const } : d,
     );
     expect(buildAttributeSchema(family, archived)).toEqual({ ok: false, missingCodes: ['brand'] });
+  });
+
+  it('treats a draft definition as missing: a seller never sees an unpublished attribute', () => {
+    const drafts = definitions.map((d) =>
+      d.code === 'brand' ? { ...d, status: 'draft' as const } : d,
+    );
+    expect(buildAttributeSchema(family, drafts)).toEqual({ ok: false, missingCodes: ['brand'] });
   });
 });

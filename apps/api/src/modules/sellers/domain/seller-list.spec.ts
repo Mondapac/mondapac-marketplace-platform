@@ -22,11 +22,24 @@ describe('parseListRequest', () => {
         tab: 'awaiting-review',
         kind: null,
         outsideArea: false,
+        areaCode: null,
         search: null,
         after: null,
         limit: 25,
       },
     });
+  });
+
+  it('takes an area code on the file tabs only and checks its shape', () => {
+    const ok = parseListRequest({ tab: 'all', areaCode: 'greater-brisbane' });
+    expect(ok.ok && ok.value.areaCode).toBe('greater-brisbane');
+    expect(problems({ tab: 'approved', areaCode: 'greater-brisbane' })).toEqual([
+      { path: 'areaCode', code: 'tab' },
+    ]);
+    expect(problems({ tab: 'all', areaCode: 'Not A Code' })).toEqual([
+      { path: 'areaCode', code: 'format' },
+    ]);
+    expect(problems({ tab: 'all', areaCode: 7 })).toEqual([{ path: 'areaCode', code: 'type' }]);
   });
 
   it('accepts a missing body as the empty request', () => {

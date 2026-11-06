@@ -19,6 +19,10 @@ export type DocumentRefusalCode =
   | 'file.active-content'
   | 'file.too-complex'
   | 'file.inspection-timeout'
+  /** The malware scanner found a signature in the file. */
+  | 'file.infected'
+  /** The scanner gave no clean verdict (down, timed out, refused): the file is not stored. */
+  | 'file.scan-unavailable'
   /** The intake is busy: try again later (maps to 429). */
   | 'request.throttled';
 

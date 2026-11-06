@@ -48,6 +48,7 @@ export function productFromRow(row: ProductRow): Product {
     pendingSubmittedAt: orNull(row.pendingSubmittedAt),
     variants: row.variants.map((variant): VariantRecord => ({
       id: variant.id as Id<'Variant'>,
+      variantNo: variant.variantNo,
       state: variant.state as VariantState,
       createdAt: toInstant(variant.createdAt),
       publishedAt: orNull(variant.publishedAt),
@@ -121,6 +122,7 @@ export class PrismaProductRepository implements ProductRepository {
         tenantId: market.tenantId,
         productId: state.id,
         variantModel: state.variantModel,
+        variantNo: variant.variantNo,
         state: variant.state,
         createdAt: toDate(variant.createdAt),
         publishedAt: variant.publishedAt === null ? null : toDate(variant.publishedAt),
@@ -195,6 +197,7 @@ export class PrismaProductRepository implements ProductRepository {
           tenantId: market.tenantId,
           productId: state.id,
           variantModel: state.variantModel,
+          variantNo: variant.variantNo,
           state: variant.state,
           createdAt: toDate(variant.createdAt),
           publishedAt: variant.publishedAt === null ? null : toDate(variant.publishedAt),

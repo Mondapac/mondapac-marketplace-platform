@@ -57,6 +57,28 @@ export class CertificationStoreTextClaimCheck implements StoreTextClaimCheck {
     return ok(flags);
   }
 
+  async terms(context: CallContext): Promise<Result<readonly string[], ClaimCheckUnavailable>> {
+    let answer: Awaited<ReturnType<CertificationFacade['claimTermList']>>;
+    try {
+      answer = await this.certification.claimTermList(context);
+    } catch (error) {
+      this.#log(context, 'sellers.store-text.certification-failed', {
+        reason: error instanceof Error ? error.name : 'unknown',
+      });
+      return UNAVAILABLE;
+    }
+    if (!answer.ok) {
+      this.#log(context, 'sellers.store-text.certification-refused', { code: answer.error.code });
+      return UNAVAILABLE;
+    }
+    const list: unknown = answer.value;
+    if (!Array.isArray(list) || list.length === 0 || list.some((t) => typeof t !== 'string')) {
+      this.#log(context, 'sellers.store-text.certification-malformed', {});
+      return UNAVAILABLE;
+    }
+    return ok([...(list as string[])]);
+  }
+
   #log(context: CallContext, msg: string, extra: object): void {
     this.#logger.warn({
       msg,

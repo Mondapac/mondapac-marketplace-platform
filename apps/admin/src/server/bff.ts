@@ -51,6 +51,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'commission-payouts/admin/payouts',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
+    // The service areas with their names (sellers, ADR-0041), read-only.
+    'sellers/admin/service-areas',
     // The marketplace product list (catalog), read-only (query: `view`, `q`, the filters, `sort`,
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
@@ -66,10 +68,33 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    // "View history" of a settings page (query: `after`, `limit`): when, who by display name and
+    // which fields changed, from the audit log.
+    'assistant/admin/settings/history',
+    'notifications/admin/support-contact/history',
+    'shipping/admin/delivery-settings/history',
+    'shipping/admin/fleet-selection/history',
+    'wallet/admin/settings/history',
+    // The editable Market settings (settings; List paging), read again after a conflict.
+    'settings/admin/market-settings',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue',
+    // The category tree and one category with its path and history (catalog), read-only.
+    'catalog/admin/categories',
+    // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
+    'catalog/admin/business-activities',
+    // The attributes (catalog; query: `search`, `type`, `status`, `usedIn`, `missing`, `afterId`,
+    // `limit`) and the feature sets (attribute families), read only (attributes package A1).
+    'catalog/admin/attributes',
+    'catalog/admin/feature-sets',
+    // The value suggestions waiting for a decision (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions',
+    // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
+    'catalog/admin/attribute-relaxations',
+    // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
+    'catalog/admin/attribute-archive-requests',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -92,6 +117,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/delivery-settings',
     // The buyer account deletion setting (customers), behind a fresh two-step code.
     'customers/admin/account-deletion-settings',
+    // One editable Market setting (settings): code, value and `expectedVersion`.
+    'settings/admin/market-settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -117,6 +144,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
+    // The names of one service area, set or restored (sellers, ADR-0041).
+    'sellers/admin/service-areas/names',
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
@@ -129,6 +158,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // A new brand (catalog), and keeping a group of the merge queue apart.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue/dismiss',
+    // A new business activity (catalog).
+    'catalog/admin/business-activities',
+    // A new platform category, as a hidden one (catalog, categories C3).
+    'catalog/admin/categories',
+    // Add an attribute as a draft (catalog, attributes package A2).
+    'catalog/admin/attributes',
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
     // the chosen products (at most 200 ids) or the whole filter; the body is capped at 16 KB.
     'catalog/admin/products/bulk',
@@ -171,6 +206,37 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/brands/:id/approve',
     'catalog/admin/brands/:id/archive',
     'catalog/admin/brands/:id/merge',
+    // Publish or discard a draft attribute, with the version seen (catalog, attributes A2).
+    'catalog/admin/attributes/:id/publish',
+    'catalog/admin/attributes/:id/discard',
+    // A platform category (catalog, categories C3): move up or down, hide, show, new URL name,
+    // and discard a category that never went live. Each names the tree version the page read.
+    'catalog/admin/categories/:id/reorder',
+    'catalog/admin/categories/:id/hide',
+    'catalog/admin/categories/:id/show',
+    'catalog/admin/categories/:id/change-slug',
+    'catalog/admin/categories/:id/discard',
+    // Move, merge and archive a platform category (catalog, categories C4a: protected key
+    // `catalog.category-tree.restructure`), each with the tree version and a reason note.
+    'catalog/admin/categories/:id/move',
+    'catalog/admin/categories/:id/merge',
+    'catalog/admin/categories/:id/archive',
+    // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
+    'catalog/admin/attribute-suggestions/:id/approve',
+    'catalog/admin/attribute-suggestions/:id/map',
+    'catalog/admin/attribute-suggestions/:id/reject',
+    // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
+    // (catalog, attributes A2 part 3: two administrators).
+    'catalog/admin/attributes/:id/relaxation-requests',
+    'catalog/admin/attribute-relaxations/:id/confirm',
+    'catalog/admin/attribute-relaxations/:id/cancel',
+    // Merge two values, archive an attribute, ask to archive a material one, and confirm such a
+    // request (catalog, attributes A8: key `catalog.attribute.restructure`).
+    'catalog/admin/attributes/:id/merge-values',
+    'catalog/admin/attributes/:id/merge',
+    'catalog/admin/attributes/:id/archive',
+    'catalog/admin/attributes/:id/archive-requests',
+    'catalog/admin/attribute-archive-requests/:id/confirm',
     'notifications/admin/notices/:id/read',
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
@@ -216,9 +282,15 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id',
     // The whole content of a brand, with the version seen (catalog).
     'catalog/admin/brands/:id',
+    // The whole content of a business activity, with the version seen (catalog).
+    'catalog/admin/business-activities/:id',
+    // The whole content of an attribute, a new revision, with the version seen (attributes A2).
+    'catalog/admin/attributes/:id',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
   ],
+  // The details of one platform category (catalog, categories C3), with the version seen.
+  PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
     'identity/admin/roles/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
@@ -231,11 +303,22 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // One category with its path and history, and the impact of a change on its subtree
+    // (catalog, read-only; the impact takes the `action`).
+    'catalog/admin/categories/:id',
+    'catalog/admin/categories/:id/impact',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // One import and its report CSV (catalog): the report takes the query `kind`.
     'catalog/admin/platform-imports/:id',
     'catalog/admin/platform-imports/:id/report',
+    // One business activity (catalog), read again after a conflict.
+    'catalog/admin/business-activities/:id',
+    // One attribute with its values, uses and history, and one feature set (catalog, package A1).
+    'catalog/admin/attributes/:id',
+    // What merging values or archiving an attribute reaches (catalog, attributes A8).
+    'catalog/admin/attributes/:id/impact',
+    'catalog/admin/feature-sets/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -297,6 +380,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -360,6 +445,20 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
+  'catalog/admin/categories/:id/impact': { action: /^(move|merge|archive)$/ },
+  'catalog/admin/business-activities': {
+    status: /^(active|inactive)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/attributes': {
+    type: /^(text|long-text|integer|decimal|boolean|date|select|multi-select|measure)$/,
+    status: /^(draft|active|archived)$/,
+    usedIn: UUID,
+    missing: /^[a-z]{2,3}(-[A-Z][a-z]{3})?(-[A-Z]{2}|-[0-9]{3})?$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
@@ -375,6 +474,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
   'catalog/admin/platform-imports/:id/report': ['kind'],
+  'catalog/admin/categories/:id/impact': ['action'],
 };
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -387,6 +487,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'catalog/admin/attributes:search': 120,
 };
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
@@ -406,7 +507,7 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
         : Object.keys(deleteKeys);
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
-  const shapes = deleteKeys ?? QUERY_SHAPES[target];
+  const shapes = deleteKeys ?? QUERY_SHAPES[target] ?? QUERY_SHAPES[template];
   const kept = new URLSearchParams();
   for (const key of keys) {
     const value = source.get(key);

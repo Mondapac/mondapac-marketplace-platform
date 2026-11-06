@@ -1,3 +1,4 @@
+import { conflictDetails } from '../../../platform/audit/change-trail';
 import { HttpException } from '@nestjs/common';
 import type { Result } from '@mondapac/shared-kernel';
 import type { Response } from 'express';
@@ -28,6 +29,7 @@ export const MY_FILE_STATUS = {
   'identifier.checksum': 400,
   'search.too-broad': 400,
   'file.not-found': 404,
+  'service-area.not-found': 404,
   'file.change-request-required': 409,
   'file.incomplete': 409,
   'file.already-submitted': 409,
@@ -99,6 +101,9 @@ export function errorOf(error: MyFileError, response: Response): HttpException {
     case 'access.unauthenticated':
     case 'access.denied':
       return fail(ACCESS_DENIED_STATUS[error.code], error.code);
+    case 'conflict.stale':
+      // A page that names the winning save adds who and when; the rest stay bare.
+      return fail(MY_FILE_STATUS[error.code], error.code, conflictDetails(error));
     default:
       return fail(MY_FILE_STATUS[error.code], error.code);
   }

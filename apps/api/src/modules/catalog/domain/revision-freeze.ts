@@ -31,6 +31,13 @@ export interface FreezeInput {
   /** The live variants of the product (ids), in creation order. */
   readonly liveVariantIds: readonly Id<'Variant'>[];
   readonly maxVariants: number;
+  /**
+   * The automatic labels of a variant by its option values (V2). The draft never carries a label;
+   * the caller builds them from the schema's option labels.
+   */
+  readonly labelsFor: (
+    optionValues: Readonly<Record<string, string>>,
+  ) => Readonly<Record<string, string>>;
   readonly schemaRef: RevisionContent['schemaRef'];
   readonly contentSchemaVersion: number;
 }
@@ -198,31 +205,12 @@ function parseVariants(
       return;
     }
     keys.add(optionKey);
-    const labels: Record<string, string> = {};
-    const rawLabels = entry['labels'];
-    if (rawLabels !== undefined) {
-      if (!isObject(rawLabels)) {
-        issues.push({ path: `${path}.labels`, code: 'invalid' });
-        return;
-      }
-      for (const [locale, label] of Object.entries(rawLabels)) {
-        if (!input.supportedLocales.includes(locale)) {
-          issues.push({ path: `${path}.labels`, code: 'unknown' });
-          return;
-        }
-        if (!isNonBlank(label)) {
-          issues.push({ path: `${path}.labels.${locale}`, code: 'invalid' });
-          return;
-        }
-        labels[locale] = label;
-      }
-    }
     variants.push({
       variantId,
       position: variants.length + 1,
       optionKey,
       optionValues,
-      labels,
+      labels: { ...input.labelsFor(optionValues) },
     });
   });
   return variants;

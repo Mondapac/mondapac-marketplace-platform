@@ -22,6 +22,7 @@ export const REASONS: Readonly<Record<Action, readonly string[]>> = {
     'abusive',
     'irrelevant',
     'not-a-purchase',
+    'extortion',
     'incentivised',
     'spam',
     'other',

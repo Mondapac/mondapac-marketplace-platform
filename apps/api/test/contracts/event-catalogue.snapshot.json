@@ -887,6 +887,58 @@
     }
   },
   {
+    "type": "reviews.delivery-problem-flagged.v1",
+    "aggregateType": "seller-rating",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "reviews.review-held.v1",
+    "aggregateType": "review-hold",
+    "fields": {
+      "reviewId": "id",
+      "productId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "reviews.review-hidden.v1",
+    "aggregateType": "review-moderation",
+    "fields": {
+      "reviewId": "id",
+      "productId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "reviews.review-published.v1",
+    "aggregateType": "review-publication",
+    "fields": {
+      "reviewId": "id",
+      "productId": "id",
+      "sellerId": "id",
+      "rating": "integer"
+    }
+  },
+  {
+    "type": "reviews.review-reported.v1",
+    "aggregateType": "review-report",
+    "fields": {
+      "reviewId": "id",
+      "reportId": "id"
+    }
+  },
+  {
+    "type": "reviews.review-restored.v1",
+    "aggregateType": "review-moderation",
+    "fields": {
+      "reviewId": "id",
+      "productId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "sellers.business-file-submitted.v1",
     "aggregateType": "seller-file",
     "fields": {
@@ -954,6 +1006,38 @@
       "orderId": "id",
       "sellerOrderId": "id",
       "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-changed.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-moved.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "catalog.platform-category-merged.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)",
+      "mergedIntoId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-archived.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
     }
   }
 ]

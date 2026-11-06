@@ -5,7 +5,9 @@ import { configurableProductType } from '../../domain/product-types/configurable
 import { simpleProductType } from '../../domain/product-types/simple';
 import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
+import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import { FreezeRevision } from './freeze-revision.service';
 
 const T0 = Temporal.Instant.from('2026-10-08T00:00:00Z');
@@ -16,6 +18,8 @@ const MARKETS = [
   { code: 'AU', locale: 'en-AU', locales: ['en-AU'], tax: ['GST', 'GST_FREE'], max: 100 },
   { code: 'ZZ', locale: 'zz-ZZ', locales: ['yy-ZZ', 'zz-ZZ'], tax: ['STD', 'ZERO'], max: 3 },
 ] as const;
+
+const ALL_LOCALES = ['en-AU', 'yy-ZZ', 'zz-ZZ'] as const;
 
 const schemaOf = (): AttributeSchema => ({
   schemaRef: {
@@ -52,7 +56,13 @@ const schemaOf = (): AttributeSchema => ({
       isVariantOption: true,
       material: false,
       claimChecked: true,
-      bounds: { options: [{ code: 'l' }, { code: 's' }] },
+      bounds: {
+        options: [
+          { code: 'l', labels: Object.fromEntries(ALL_LOCALES.map((l) => [l, `Large ${l}`])) },
+          // Small has a label in the first locale only (V2: that locale alone gets a label).
+          { code: 's', labels: { [ALL_LOCALES[0]]: `Small ${ALL_LOCALES[0]}` } },
+        ],
+      },
     },
   ],
 });
@@ -74,6 +84,9 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
         throw new Error('not used');
       },
       maxVariantsPerProduct: () => max,
+      maxVariantAttributes: () => 2,
+      maxCategoryDepth: () => 4,
+      maxCategoryChangeTags: () => 50_000,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],
@@ -247,6 +260,88 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     expect(bad.error.issues.map((issue) => issue.code)).toContain('variants.option-unknown');
   });
 
+  describe('variant axes (V3)', () => {
+    const variants = [
+      { variantId: v(1), optionValues: { size: 'l' } },
+      { variantId: v(2), optionValues: { size: 's' } },
+    ];
+    const codesOf = (result: Awaited<ReturnType<FreezeRevision['freeze']>>): string[] =>
+      !result.ok && result.error.code === 'revision.not-ready'
+        ? result.error.issues.map((issue) => issue.code)
+        : [];
+
+    it('freezes a draft that names the axis it varies on', async () => {
+      const result = await service.freeze(
+        market,
+        product('configurable'),
+        copyOf(ready({ variantAxes: ['size'], variants })),
+      );
+      expect(result.ok).toBe(true);
+    });
+
+    it.each([
+      [[], 'variants.axes-none'],
+      [['weight'], 'variants.axes-unknown'],
+      [['size', 'size'], 'variants.axes-duplicate'],
+    ])('refuses variantAxes %j with %s', async (variantAxes, issue) => {
+      const result = await service.freeze(
+        market,
+        product('configurable'),
+        copyOf(ready({ variantAxes, variants })),
+      );
+      expect(codesOf(result)).toContain(issue);
+    });
+
+    it('refuses axes that differ from the published revision', async () => {
+      const draft = product('configurable');
+      const published = new Proxy(draft, {
+        get: (target, prop) =>
+          prop === 'state'
+            ? { ...target.state, publishedRevisionId: 'rev-1' as Id<'ProductRevision'> }
+            : (Reflect.get(target, prop, target) as unknown),
+      });
+      const revisions = {
+        find: () =>
+          Promise.resolve({ content: { variants: [{ optionValues: { colour: 'red' } }] } }),
+      } as unknown as ProductRevisionRepository;
+      const locked = new FreezeRevision({
+        attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
+        policy: (service as unknown as { deps: { policy: CatalogMarketPolicy } }).deps.policy,
+        handlerFor: () => configurableProductType,
+        revisions,
+      });
+      const changed = await locked.freeze(
+        market,
+        published,
+        copyOf(ready({ variantAxes: ['size'], variants })),
+      );
+      expect(codesOf(changed)).toContain('variants.axes-locked');
+    });
+  });
+
+  it('builds the variant labels from the option labels and drops a locale with a missing one (V2)', async () => {
+    const frozen = await service.freeze(
+      market,
+      product('configurable'),
+      copyOf(
+        ready({
+          variants: [
+            { variantId: v(1), optionValues: { size: 'l' }, labels: { [locale]: 'Seller typed' } },
+            { variantId: v(2), optionValues: { size: 's' } },
+          ],
+        }),
+      ),
+    );
+    expect(frozen.ok).toBe(true);
+    if (!frozen.ok) return;
+    const [large, small] = frozen.value.content.variants;
+    expect(large?.labels).toEqual(Object.fromEntries(locales.map((l) => [l, `Large ${l}`])));
+    // 'Small' exists in en-AU only: AU gets it, ZZ (yy-ZZ, zz-ZZ) has no label for that variant.
+    expect(small?.labels).toEqual(
+      locales.includes('en-AU' as never) ? { 'en-AU': 'Small en-AU' } : {},
+    );
+  });
+
   it('applies the Market variant limit', async () => {
     const entries = [1, 2, 3, 4].map((n) => ({
       variantId: v(n),
@@ -311,5 +406,34 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       ok: false,
       error: { code: 'revision.type-unknown' },
     });
+  });
+  it('reports a required field whose value suggestion is open as pending, not as missing', async () => {
+    const withSuggestions = new FreezeRevision({
+      attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
+      policy: {
+        taxCategoryCodes: () => tax,
+        locales: () => ({ default: locale, supported: locales }),
+        maxVariantsPerProduct: () => max,
+        maxVariantAttributes: () => 2,
+      } as unknown as CatalogMarketPolicy,
+      handlerFor: (type) => (type === 'simple' ? simpleProductType : undefined),
+      suggestions: {
+        openAttributeCodesOfProduct: () => Promise.resolve(new Set(['origin'])),
+      } as unknown as AttributeValueSuggestionStore,
+    });
+    const content = ready({ attributeValues: { tagline: { [locale]: 'Sweet' } } });
+    const result = await withSuggestions.freeze(market, product('simple'), copyOf(content));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({ code: 'revision.not-ready' });
+    const issues = result.error.code === 'revision.not-ready' ? result.error.issues : [];
+    expect(issues.map((i) => `${i.path}:${i.code}`)).toEqual([
+      'origin:attribute.suggestion-pending',
+    ]);
+    // Without the suggestion the same draft says the field is missing.
+    const plain = await service.freeze(market, product('simple'), copyOf(content));
+    expect(
+      plain.ok === false && plain.error.code === 'revision.not-ready' && plain.error.issues,
+    ).toEqual([{ path: 'origin', code: 'attribute.required' }]);
   });
 });

@@ -30,8 +30,10 @@ import { CertificationTypesSystem } from './application/use-cases/certification-
 import { CertificationTypes } from './application/use-cases/certification-types.use-case';
 import { EvaluateClaimsSystem } from './application/use-cases/evaluate-claims-system.use-case';
 import { EvaluateClaims } from './application/use-cases/evaluate-claims.use-case';
+import { ClaimTermList } from './application/use-cases/claim-term-list.use-case';
 import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
+import { ClaimTermLocales } from './application/use-cases/claim-term-locales.use-case';
 import { CERTIFICATION_FACADE } from './contracts/certification.facade';
 import { isUsableZone } from './domain/validity';
 import { manufacturerBasisEnabledIn } from './infrastructure/market-config-expiry-policy';
@@ -74,6 +76,10 @@ import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.
 import { SendDerecognitionMail } from './application/use-cases/send-derecognition-mail.use-case';
 import { registryProviders } from './infrastructure/registry-providers';
 import { claimPolicyProviders } from './infrastructure/claim-policy-providers';
+import { categoryRetirementProviders } from './infrastructure/category-retirement-providers';
+import { AssertCategoriesRetirable } from './application/use-cases/assert-categories-retirable.use-case';
+import { AssertCategoriesRetirableSystem } from './application/use-cases/assert-categories-retirable-system.use-case';
+import { PlatformCategoriesRetired } from './application/use-cases/platform-categories-retired.use-case';
 import { productCertificationProviders } from './infrastructure/product-certification-providers';
 import { AdminClaimPolicyController } from './presentation/admin-claim-policy.controller';
 import { AdminProductCertificateController } from './presentation/admin-product-certificate.controller';
@@ -85,8 +91,10 @@ import { derecognitionMailSubscriptions } from './presentation/subscribers/derec
 const readerUseCases = [
   CertificationTypes,
   CertificationTypesSystem,
+  ClaimTermList,
   MatchClaimTerms,
   MatchClaimTermsSystem,
+  ClaimTermLocales,
 ].map((type): FactoryProvider => ({
   provide: type,
   inject: [USE_CASE_GATE, PUBLISHED_TYPES_READER],
@@ -167,6 +175,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     ...expiryProviders,
     ...registryProviders,
     ...claimPolicyProviders,
+    ...categoryRetirementProviders,
     ...productCertificationProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
@@ -234,32 +243,47 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
       inject: [
         EvaluateClaims,
         EvaluateClaimsSystem,
+        ClaimTermList,
         MatchClaimTerms,
         MatchClaimTermsSystem,
+        ClaimTermLocales,
         CertificationTypes,
         CertificationTypesSystem,
         SellerCertificateOverview,
         CertifiedCategories,
+        AssertCategoriesRetirable,
+        AssertCategoriesRetirableSystem,
+        PlatformCategoriesRetired,
       ],
       useFactory: (
         evaluateClaims: EvaluateClaims,
         evaluateClaimsSystem: EvaluateClaimsSystem,
+        claimTermList: ClaimTermList,
         matchClaimTerms: MatchClaimTerms,
         matchClaimTermsSystem: MatchClaimTermsSystem,
+        claimTermLocales: ClaimTermLocales,
         certificationTypes: CertificationTypes,
         certificationTypesSystem: CertificationTypesSystem,
         sellerCertificateOverview: SellerCertificateOverview,
         certifiedCategories: CertifiedCategories,
+        assertCategoriesRetirable: AssertCategoriesRetirable,
+        assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem,
+        platformCategoriesRetired: PlatformCategoriesRetired,
       ) =>
         new CertificationFacadeImplementation({
           evaluateClaims,
           evaluateClaimsSystem,
+          claimTermList,
           matchClaimTerms,
           matchClaimTermsSystem,
+          claimTermLocales,
           certificationTypes,
           certificationTypesSystem,
           sellerCertificateOverview,
           certifiedCategories,
+          assertCategoriesRetirable,
+          assertCategoriesRetirableSystem,
+          platformCategoriesRetired,
         }),
     },
   ],

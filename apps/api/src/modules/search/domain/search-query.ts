@@ -1,5 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
+import { parseFilters, type ParsedFilters } from './search-filter';
 
 export const MIN_QUERY_LENGTH = 2;
 export const MAX_QUERY_LENGTH = 100;
@@ -24,6 +25,14 @@ const STORE_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  */
 export const BRAND_SLUG_MAX_LENGTH = 80;
 
+/**
+ * The orders of a text search or a category browse. `relevance` (default): text rank, or by name for
+ * a browse. `top-rated`: the Bayesian average of the product stars first (package 5; offered only
+ * while the Market's rating boost is on).
+ */
+export const SEARCH_SORTS = ['relevance', 'top-rated'] as const;
+export type SearchSort = (typeof SEARCH_SORTS)[number];
+
 /** What a visitor asked, as the transport hands it over: text, not yet checked. */
 export interface SearchProductsRequest {
   readonly q?: string | undefined;
@@ -32,6 +41,11 @@ export interface SearchProductsRequest {
   readonly store?: string | undefined;
   /** A brand address: lists the Offers of that brand's products (no `q`, no `store`). */
   readonly brand?: string | undefined;
+  readonly sort?: string | undefined;
+  /** Attribute filters (A7): `<attribute>:<code>[,<code>...]`, one parameter per attribute. */
+  readonly filter?: string | readonly string[] | undefined;
+  /** Number ranges (A7): `<attribute>:<min>..<max>`, either end may be left out. */
+  readonly range?: string | readonly string[] | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
 }
@@ -48,6 +62,9 @@ export interface SearchQuery {
   readonly storeSlug: string | null;
   /** The brand address to list, or null. Never with a text or a store. */
   readonly brandSlug: string | null;
+  readonly sort: SearchSort;
+  /** Attribute filters, checked for shape; which are filters of the category is catalog's answer. */
+  readonly filters: ParsedFilters;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -130,11 +147,43 @@ export function parseSearchQuery(
   if (text === null && categoryId === null && storeSlug === null && brandSlug === null)
     return invalid('q', 'required');
 
+  let sort: SearchSort = 'relevance';
+  if (request.sort !== undefined && request.sort !== '') {
+    if (
+      typeof request.sort !== 'string' ||
+      !(SEARCH_SORTS as readonly string[]).includes(request.sort)
+    ) {
+      return invalid('sort', 'value');
+    }
+    sort = request.sort as SearchSort;
+    // A store's or a brand's list is a browse by name; it has no other order.
+    if (sort === 'top-rated' && (storeSlug !== null || brandSlug !== null)) {
+      return invalid('sort', storeSlug !== null ? 'with-store' : 'with-brand');
+    }
+  }
+
+  const filters = parseFilters(request);
+  if (!filters.ok) return invalid(filters.error.path, filters.error.code);
+  // A store's or a brand's list is a browse by name: no attribute filters (A7).
+  if (filters.value.choices.length > 0 || filters.value.ranges.length > 0) {
+    if (storeSlug !== null) return invalid('filter', 'with-store');
+    if (brandSlug !== null) return invalid('filter', 'with-brand');
+  }
+
   const page = request.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return invalid('page', 'range');
   const pageSize = request.pageSize ?? DEFAULT_PAGE_SIZE;
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
     return invalid('pageSize', 'range');
   }
-  return ok({ text, categoryId, storeSlug, brandSlug, page, pageSize });
+  return ok({
+    text,
+    categoryId,
+    storeSlug,
+    brandSlug,
+    sort,
+    filters: filters.value,
+    page,
+    pageSize,
+  });
 }

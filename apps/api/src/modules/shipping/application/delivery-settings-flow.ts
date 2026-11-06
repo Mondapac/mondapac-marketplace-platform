@@ -1,5 +1,6 @@
 import { err, ok, parseId, parseMoney, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import { auditCode, DeliverySettingsChanged, SellerDeliveryMethodsSet } from '../domain/audit';
 import { applyDeliveryMargin, type PricedDelivery } from '../domain/delivery-margin';
 import {
@@ -33,9 +34,31 @@ export type DeliverySettingsFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'validation.failed'; readonly fields: readonly Field[] }
   | { readonly code: 'shipping.seller-not-found' }
-  /** The settings changed since the admin read them: read again and retry. */
-  | { readonly code: 'shipping.delivery-settings-conflict' }
+  /**
+   * The settings changed since the admin read them: read again and retry. `lastChanged` is the
+   * winning save, null when it cannot be read.
+   */
+  | {
+      readonly code: 'shipping.delivery-settings-conflict';
+      readonly lastChanged?: LastChanged | null;
+    }
   | { readonly code: 'shipping.unavailable' };
+
+/** The delivery rules page's read model: the view and the latest change. */
+export interface DeliverySettingsPage extends DeliverySettingsView {
+  /** Null while the defaults are in force and no seller's methods were set. */
+  readonly lastChanged: LastChanged | null;
+}
+
+/**
+ * The audit rows of the delivery rules page: the Market's settings and the methods set for a
+ * seller (the page's last card). Both are Market-wide admin settings, so every target is read.
+ */
+export const DELIVERY_SETTINGS_CHANGES: ChangeScope = {
+  actions: [DeliverySettingsChanged.action, SellerDeliveryMethodsSet.action],
+  targetId: null,
+  fixedFields: { [SellerDeliveryMethodsSet.action]: ['sellerMethods'] },
+};
 
 export interface DeliverySettingsView {
   readonly settings: DeliverySettings;
@@ -75,6 +98,7 @@ function settingsShape(settings: DeliverySettings) {
     sameDayCutoffMinutes: settings.sameDayCutoffMinutes,
     scheduledDaysAhead: settings.scheduledDaysAhead,
     scheduledWindowMinutes: settings.scheduledWindowMinutes,
+    readyPrepMinutes: settings.readyPrepMinutes,
     marginKind: margin.kind,
     marginValue:
       margin.kind === 'percent'
@@ -143,7 +167,10 @@ export async function setDeliverySettings(
       if (before.version !== version) return err({ code: 'shipping.delivery-settings-conflict' });
       const saved = await deps.deliverySettings.saveSettings(
         context.market,
-        parsed.value,
+        {
+          ...parsed.value,
+          readyPrepMinutes: parsed.value.readyPrepMinutes ?? before.readyPrepMinutes,
+        },
         version,
         admin,
         now,
@@ -382,6 +409,8 @@ export interface DeliveryChoiceVerdict {
   readonly allowed: boolean;
   /** Why not: a method reason or a window reason; null when allowed. */
   readonly reason: ChoiceRefusal | null;
+  /** Minutes the Market gives a seller to get a paid order ready. */
+  readonly readyPrepMinutes: number;
 }
 
 const windowOf = (
@@ -422,7 +451,11 @@ export async function deliveryChoice(
   if (!offer.ok) return offer;
   const { facts } = factsOf(deps, context, offer.value, sellerId, deps.clock.now());
   const reason = checkChoice(facts, { method: input.method, window });
-  return ok({ allowed: reason === null, reason });
+  return ok({
+    allowed: reason === null,
+    reason,
+    readyPrepMinutes: offer.value.settings.readyPrepMinutes,
+  });
 }
 
 /**

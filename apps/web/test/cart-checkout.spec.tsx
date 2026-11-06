@@ -95,6 +95,19 @@ const quotedPrice = (id: string, total: number): MethodPrice => ({
   validUntil: '2099-01-01T00:00:00Z',
 });
 
+/**
+ * A seller's delivery-method group once its options have loaded. The group is
+ * on the page from the first render, aria-busy with one placeholder row, so a
+ * plain findByRole can return it before the answer arrives.
+ */
+async function loadedMethods(seller: string) {
+  const group = await screen.findByRole('radiogroup', {
+    name: `Delivery method for ${seller}`,
+  });
+  await waitFor(() => expect(group.getAttribute('aria-busy')).toBeNull());
+  return group;
+}
+
 /** Picks Instant (A$12.90 each in the sample) for every seller that offers it. */
 async function pickInstant() {
   for (const radio of await screen.findAllByRole('radio', { name: /^Instant/ }))
@@ -721,9 +734,7 @@ describe('checkout', () => {
 
   it('shows the four methods with their prices, and why a method is off', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    const kedron = await screen.findByRole('radiogroup', {
-      name: 'Delivery method for Kedron Halal Butchers',
-    });
+    const kedron = await loadedMethods('Kedron Halal Butchers');
     const names = within(kedron)
       .getAllByRole('radio')
       .map((r) => r.closest('label')!.textContent);
@@ -763,9 +774,7 @@ describe('checkout', () => {
       },
     });
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    const kedron = await screen.findByRole('radiogroup', {
-      name: 'Delivery method for Kedron Halal Butchers',
-    });
+    const kedron = await loadedMethods('Kedron Halal Butchers');
     expect(within(kedron).getByText("This store doesn't support instant delivery")).toBeTruthy();
     const paddington = screen.getByRole('radiogroup', {
       name: 'Delivery method for Paddington Bakehouse',
@@ -794,9 +803,7 @@ describe('checkout', () => {
       },
     });
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    const kedron = await screen.findByRole('radiogroup', {
-      name: 'Delivery method for Kedron Halal Butchers',
-    });
+    const kedron = await loadedMethods('Kedron Halal Butchers');
     expect(within(kedron).getByText('No courier can deliver this to your address')).toBeTruthy();
     expect(within(kedron).getByText('Price not available right now')).toBeTruthy();
     expect(

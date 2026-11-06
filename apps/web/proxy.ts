@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { ga4IdFor } from './src/analytics/ga4-config.ts';
 import { DEFAULT_LOCALE, publishedLocales } from './src/i18n/locale.ts';
 import { makeNonce, policyPath, storefrontCsp } from './src/security/storefront-csp.ts';
 import { NOINDEX_HEADER, indexingOn } from './src/seo/indexing.ts';
+import { PATH_HEADER } from './src/storefront/path-header.ts';
 import { parseImageOrigin } from './src/storefront/photos.ts';
 
 /**
@@ -31,9 +33,12 @@ export function proxy(request?: NextRequest): NextResponse {
       makeNonce(),
       process.env.NODE_ENV === 'development',
       imageOrigin(),
+      ga4IdFor(request.headers.get('host')) !== null,
     );
     const headers = new Headers(request.headers);
     headers.set('content-security-policy', policy);
+    // The path asked for, for a not-found page, which Next gives no params (product-route.ts).
+    headers.set(PATH_HEADER, request.nextUrl.pathname);
     response = NextResponse.next({ request: { headers } });
     response.headers.set('Content-Security-Policy', policy);
     if (publishedLocales().some((locale) => locale !== DEFAULT_LOCALE)) {

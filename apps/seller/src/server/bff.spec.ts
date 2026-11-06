@@ -341,6 +341,16 @@ describe('relay', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 
+  it('always sets nosniff, because the proxy does not run on the relay', async () => {
+    const response = await relay(
+      config,
+      post('identity/seller/sign-in'),
+      ['identity', 'seller', 'sign-in'],
+      () => Promise.resolve(new Response('{}', { status: 200 })),
+    );
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
   it('answers 503 when the API is unreachable', async () => {
     const response = await relay(
       config,
@@ -964,6 +974,7 @@ describe('relay of the store profile', () => {
   it('relays the read, the About save, the two image saves and the two removes', async () => {
     expect((await send('GET', 'sellers/store-profile')).status).toBe(200);
     expect((await send('PUT', 'sellers/store-profile/about', '{}')).status).toBe(200);
+    expect((await send('PUT', 'sellers/store-profile', '{}')).status).toBe(200);
     for (const kind of ['logo', 'banner']) {
       expect((await send('PUT', `sellers/store-profile/${kind}`, '{}')).status).toBe(200);
       expect((await send('DELETE', `sellers/store-profile/${kind}`)).status).toBe(200);
@@ -973,7 +984,7 @@ describe('relay of the store profile', () => {
   it('refuses other shapes under it: the wrong method, an unknown image kind, a seller id', async () => {
     const refused: [string, string][] = [
       ['POST', 'sellers/store-profile'],
-      ['PUT', 'sellers/store-profile'],
+      ['DELETE', 'sellers/store-profile'],
       ['POST', 'sellers/store-profile/about'],
       ['DELETE', 'sellers/store-profile/about'],
       ['PUT', 'sellers/store-profile/avatar'],
@@ -1000,6 +1011,16 @@ describe('relay of the store profile', () => {
     ).toBe(413);
   });
 
+  it('takes the whole-profile save up to two photo bodies, and no more', async () => {
+    const two = JSON.stringify({ about: {}, logo: { data: 'A'.repeat(5000 * 1024) } });
+    expect((await send('PUT', 'sellers/store-profile', two)).status).toBe(200);
+    expect(
+      (await send('PUT', 'sellers/store-profile', 'A'.repeat(2 * 5800 * 1024 + 1))).status,
+    ).toBe(413);
+    // Only the whole-profile route gets that room: the About save stays at 16 KB.
+    expect((await send('PUT', 'sellers/store-profile/about', two)).status).toBe(413);
+  });
+
   it('relays an image read for small and large by UUID, and refuses other sizes and ids', async () => {
     for (const size of ['small', 'large']) {
       const path = `sellers/store-profile/images/${IMAGE}/${size}`;
@@ -1024,5 +1045,79 @@ describe('relay of the store profile', () => {
     );
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay allowlist for the seller reviews', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const send = (method: string, path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+
+  it('relays the list read with its cursor and drops other query keys', async () => {
+    const upstream = upstreamOk();
+    const cursor = `1760000000000_${ID}`;
+    const response = await relay(
+      config,
+      send('GET', `reviews/seller?cursor=${cursor}&limit=500&x=1`),
+      ['reviews', 'seller'],
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/reviews/seller?cursor=${cursor}`);
+    const bad = upstreamOk();
+    await relay(config, send('GET', 'reviews/seller?cursor=nonsense'), ['reviews', 'seller'], bad);
+    expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/reviews/seller');
+  });
+
+  it('relays reply (POST and PATCH) and report (POST) by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const ok = [
+      ['POST', ['reviews', 'seller', ID, 'reply']],
+      ['PATCH', ['reviews', 'seller', ID, 'reply']],
+      ['POST', ['reviews', 'seller', ID, 'report']],
+    ] as const;
+    for (const [method, path] of ok) {
+      expect((await relay(config, send(method, 'x'), [...path], upstream)).status).toBe(200);
+    }
+    for (const [method, path] of [
+      ['PUT', ['reviews', 'seller', ID, 'reply']],
+      ['DELETE', ['reviews', 'seller', ID, 'reply']],
+      ['PATCH', ['reviews', 'seller', ID, 'report']],
+      ['POST', ['reviews', 'seller', 'not-a-uuid', 'reply']],
+      ['POST', ['reviews', 'seller', ID, 'hide']],
+      ['POST', ['reviews', 'admin', 'settings']],
+      ['POST', ['reviews', 'products']],
+    ] as const) {
+      expect((await relay(config, send(method, 'x'), [...path], upstream)).status).toBe(404);
+    }
+  });
+
+  it("relays only the seller's own value suggestion write", async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'seller', 'products', ID, 'attribute-suggestions'];
+    expect((await relay(config, send('POST', 'x'), path, upstream)).status).toBe(200);
+    for (const [method, bad] of [
+      ['GET', path],
+      ['PUT', path],
+      ['POST', ['catalog', 'seller', 'products', 'not-a-uuid', 'attribute-suggestions']],
+      ['POST', ['catalog', 'admin', 'attribute-suggestions']],
+      ['POST', [...path, 'approve']],
+    ] as const) {
+      expect((await relay(config, send(method, 'x'), [...bad], upstream)).status).toBe(404);
+    }
+  });
+
+  it('refuses a cross-site PATCH of a reply', async () => {
+    const request = new Request(`http://seller.localhost:3001/api/reviews/seller/${ID}/reply`, {
+      method: 'PATCH',
+      headers: { ...sameOrigin, 'sec-fetch-site': 'cross-site' },
+      body: '{}',
+    });
+    const response = await relay(config, request, ['reviews', 'seller', ID, 'reply'], upstreamOk());
+    expect(response.status).toBe(403);
   });
 });

@@ -96,6 +96,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'catalog.reevaluate-on-seller-certification-expired',
       'catalog.reevaluate-on-seller-certification-issuer-confirmed',
       'catalog.reevaluate-on-seller-certification-revoked',
+      // Categories C4a: catalog reports its moved, merged and archived categories to
+      // certification's backstop (C-4).
+      'catalog.report-archived-category',
+      'catalog.report-merged-category',
+      'catalog.report-moved-category',
       'catalog.warn-offer-owners-of-expiry',
       'certification.approved-mail',
       'certification.changes-requested-mail',
@@ -134,6 +139,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.admin-price-hold-notice',
       'notifications.admin-product-revision-notice',
       'notifications.admin-reinstated-hold-notice',
+      'notifications.admin-review-held-notice',
+      'notifications.admin-review-reported-notice',
       'notifications.admin-seller-file-notice',
       'notifications.order-confirmation-mail',
       'notifications.order-shipped-mail',
@@ -145,6 +152,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.seller-certificate-expired-notice',
       'notifications.seller-certificate-expiring-notice',
       'notifications.seller-certificate-revoked-notice',
+      'notifications.seller-delivery-problem-notice',
       'notifications.seller-image-notice',
       'notifications.seller-issuer-request-notice',
       'notifications.seller-low-stock-notice',
@@ -158,6 +166,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.seller-price-hold-notice',
       'notifications.seller-product-changes-notice',
       'notifications.seller-product-published-notice',
+      'notifications.seller-review-hidden-notice',
+      'notifications.seller-review-posted-notice',
+      'notifications.seller-review-restored-notice',
       'notifications.seller-tag-removed-notice',
       'notifications.seller-tag-restored-notice',
       'notifications.seller-tag-suspended-notice',
@@ -255,6 +266,15 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('catalog.offer-listing-changed.v1')).toEqual([
       'search.index-listing-changed-offer',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.platform-category-moved.v1')).toEqual([
+      'catalog.report-moved-category',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.platform-category-merged.v1')).toEqual([
+      'catalog.report-merged-category',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.platform-category-archived.v1')).toEqual([
+      'catalog.report-archived-category',
     ]);
     expect(subscriptions.subscribersOf('catalog.product-revision-published.v1')).toEqual([
       'notifications.seller-product-published-notice',

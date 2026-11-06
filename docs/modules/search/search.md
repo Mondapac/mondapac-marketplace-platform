@@ -120,3 +120,55 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   re-checked like any other result. Unknown query parameters stay 400.
 - **Known gaps:** the Market-wide fill reads `offer_documents` ordered by name without an index on
   `(market_id, name)`; add one if the read model grows large.
+
+## Rating boost and Top rated (reviews package 5, 1 Nov 2026)
+
+- **Switch:** `search.ratingBoost.enabled` in the Market file, off by default (AU); the reviews
+  switch must also be active. Off: nothing in search changes, `sort=top-rated` answers 400
+  `validation.failed` (`sort`/`unavailable`), and the sync clears the copy.
+- **What it does:** the relevance of a text search is multiplied by a stored factor of the product
+  (`boost_ppm`, 900000 to 1100000, so at most 10 %; the Market's `weightBps` is capped at
+  1000 by the config schema and by a table CHECK). The factor comes from the Bayesian average of the
+  stars (`priorCount` and `priorMeanTimes100` in the Market file), computed in TypeScript
+  (`domain/rating-boost.ts`). A product with no ratings has the prior mean and the neutral factor. The distance from the prior mean is scaled by the room to the nearest end of the scale on
+  that side, so the best possible product gets the full boost and the worst the full penalty in every
+  Market (john, 1 Nov 2026, PR #627 review M-3).
+- **Top rated:** `GET /search/products?sort=top-rated` orders by the stored Bayesian average (products without ratings sit at the prior mean), then by
+  Offer id; needs `q` or `category`, and is refused with `store` or `brand`.
+- **Copy of the totals:** `search.product_ratings` (written only by the job `search.sync-ratings`, hourly
+  and at worker start) holds the star totals read through reviews' public facade
+  `productRatingTotals` (rule system, paged by product id). Search never reads reviews' tables. A
+  source that fails keeps the old copy.
+- **Not built:** a rating shown in the result cards (storefront follow-up); no personalization.
+
+
+## Attribute filters (attributes A7, 4 Nov 2026)
+
+What a buyer can narrow a list by, and how the index keeps it.
+
+- **Index.** Each `search.offer_documents` row also holds `search_text` (the searchable attribute
+  values: brand with its aliases, country of origin, English option labels; weight C in the
+  vector, below name and short text) and `facet_codes` (`attribute=value`: option codes with
+  merges followed, `true` for a yes switch, `brand=<slug>`, `country-of-origin=<iso, lower case>`).
+  Measure values sit in `search.offer_document_numbers`. Catalog supplies them through the index
+  facade (`attributes` in the facts); search never reads catalog tables.
+- **Filters of a list.** Catalog's anonymous `CatalogFiltersFacade` returns the category's filters
+  (its own after its ancestors', each kept while active, allowed as a filter and of a filterable
+  type) or the global Brand and Country of origin filters. Search counts the values in its own index.
+- **URL.** `filter=<attribute>:<code>[,<code>]` (repeatable; `true` for a switch) and
+  `range=<attribute>:<min>..<max>`. Values of one attribute are OR-ed, attributes are AND-ed. At most 8
+  choice filters, 3 ranges, 50 values each. A filter with a store or brand list is refused. An
+  attribute that is not a filter is ignored; a merged option code is read as its target.
+  A filtered URL is `noindex` with the canonical of the category (storefront follow-up).
+- **Counts.** Per product, ignoring the attribute's own filter; values with no product are hidden
+  except a picked one. Counting reads at most 20,000 rows; above that the page says
+  `countsComplete: false` and shows no counts. Range bounds come from the whole scope; if the number read is cut at the same cap, the page is also `countsComplete: false` and shows no bounds. Counts come from the index and do not run the query-time visibility check, so they can briefly include an Offer that just became unsellable.
+- **Raw SQL.** Three new statements (ADR-0030 amendment of 4 Nov 2026: `&&` with a `text[]` parameter).
+- **Reindex.** `search.reindex-attributes` (every 5 minutes and at start) asks catalog for a stamp
+  (definitions' published revisions, brands, aliases). When it differs from the last full run it
+  re-reads every published Offer page by page and writes progress to `search.reindex_state`
+  (`status`, `offers_done`, `cursor_offer_id`); a failed run resumes after its cursor. The six-hourly
+  rebuild still deletes stale documents. There is no admin screen for the progress yet.
+- **Not in this package.** The storefront web screens, the measure type (waits for A3), and the
+  conversion of the Country of origin attribute to an ISO choice (the indexer already maps a
+  select code or free text to an ISO code; the seed and Convert tool wait for A3).

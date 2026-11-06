@@ -74,6 +74,9 @@ describe.each(TEST_MARKETS)(
             throw new Error('not used');
           },
           maxVariantsPerProduct: () => 3,
+          maxVariantAttributes: () => 2,
+          maxCategoryDepth: () => 4,
+          maxCategoryChangeTags: () => 50_000,
           productTypes: () => ['simple', 'configurable'],
           defaultFamily: () => 'default',
           conditions: () => ['new'],
@@ -389,6 +392,9 @@ describe.each(TEST_MARKETS)(
               throw new Error('not used');
             },
             maxVariantsPerProduct: () => 3,
+            maxVariantAttributes: () => 2,
+            maxCategoryDepth: () => 4,
+            maxCategoryChangeTags: () => 50_000,
             productTypes: () => ['simple', 'configurable'],
             defaultFamily: () => 'default',
             conditions: () => ['new'],
@@ -463,6 +469,9 @@ describe.each(TEST_MARKETS)(
               throw new Error('not used');
             },
             maxVariantsPerProduct: () => 3,
+            maxVariantAttributes: () => 2,
+            maxCategoryDepth: () => 4,
+            maxCategoryChangeTags: () => 50_000,
             productTypes: () => ['simple', 'configurable'],
             defaultFamily: () => 'default',
             conditions: () => ['new'],

@@ -238,6 +238,11 @@ export function saveAppearance(look: {
   return call('PUT', 'identity/customer/profile/appearance', look, () => true as const);
 }
 
+/** Keeps the buyer's language on the profile (`null`: no choice, which reads as English). */
+export function saveLanguage(locale: string | null): Promise<ApiResult<true>> {
+  return call('PUT', 'identity/customer/profile/language', { locale }, () => true as const);
+}
+
 /** Changes the password; the API answers with the session's new CSRF token, which is kept. */
 export function changePassword(
   currentPassword: string,

@@ -8,6 +8,7 @@ import type { OfferDocument } from '../../src/modules/search/domain/offer-docume
 import { ConfigSearchPolicy } from '../../src/modules/search/infrastructure/config-search-policy';
 import { PrismaOfferDocumentRepository } from '../../src/modules/search/infrastructure/prisma-offer-document.repository';
 import { PrismaShelfDocumentsReader } from '../../src/modules/search/infrastructure/prisma-shelf-documents.reader';
+import { RawOfferFacetReader } from '../../src/modules/search/infrastructure/raw-offer-facet.reader';
 import { RawOfferSearchReader } from '../../src/modules/search/infrastructure/raw-offer-search.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -49,6 +50,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
   let db: Persistence;
   let documents: PrismaOfferDocumentRepository;
   let reader: RawOfferSearchReader;
+  let facetReader: RawOfferFacetReader;
   let shelves: PrismaShelfDocumentsReader;
   let sql: Client;
 
@@ -60,6 +62,9 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     shortText: null,
     categoryIds: [],
     textSearchConfig: settings.textSearchConfig,
+    searchText: null,
+    facetCodes: [],
+    numbers: {},
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
@@ -100,6 +105,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     documents = new PrismaOfferDocumentRepository(db.service);
     shelves = new PrismaShelfDocumentsReader(db.service);
     reader = new RawOfferSearchReader(new PrismaRawReadPort(db.root).forModule('search'));
+    facetReader = new RawOfferFacetReader(new PrismaRawReadPort(db.root).forModule('search'));
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
   });
@@ -395,6 +401,8 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       unitOfWork: db.unitOfWork,
       documents,
       reader,
+      facets: facetReader,
+      filterSource: { filters: () => Promise.resolve([]) },
       policy,
       feed: { facts: () => Promise.resolve(null), publishedIds: () => Promise.resolve(null) },
       visibility: {

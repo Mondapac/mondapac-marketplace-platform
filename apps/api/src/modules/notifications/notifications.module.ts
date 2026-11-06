@@ -16,7 +16,8 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_REMINDER_FACADE, CartModule } from '../cart';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
-import { IDENTITY_FACADE, IdentityModule } from '../identity';
+import { changeTrailProvider, IDENTITY_FACADE, IdentityModule } from '../identity';
+import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { LEGAL_FACADE, LegalModule } from '../legal';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
 import type { MarketingDependencies } from './application/marketing-mail-flow';
@@ -49,6 +50,7 @@ import { UnsubscribeMarketingEmail } from './application/use-cases/unsubscribe-m
 import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
 import { SUPPORT_CONTACT_FACADE } from './contracts/support-contact.facade';
 import { SupportContactFacadeImplementation } from './presentation/support-contact.facade';
+import { ViewSupportContactHistory } from './application/use-cases/view-support-contact-history.use-case';
 import { ViewSupportContact } from './application/use-cases/view-support-contact.use-case';
 import { ViewUnsubscribeLink } from './application/use-cases/view-unsubscribe-link.use-case';
 import { NOTIFICATIONS_PERMISSIONS } from './contracts';
@@ -58,6 +60,7 @@ import { AdminNoticesController } from './presentation/admin-notices.controller'
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
 import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
+import { reviewNoticeSubscriptions } from './presentation/subscribers/review-notice.subscriptions';
 import { payoutNoticeSubscriptions } from './presentation/subscribers/payout-notice.subscriptions';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
 import { orderMailSubscriptions } from './presentation/subscribers/order-mail.subscriptions';
@@ -73,6 +76,7 @@ const PORTS: readonly [keyof NotificationsDependencies, InjectionToken][] = [
   ['policy', NOTIFICATIONS_POLICY],
   ['audit', AUDIT_WRITER],
   ['clock', CLOCK],
+  ['trail', CHANGE_TRAIL],
 ];
 
 /** Every notifications use case shares one dependency object, built from the same ports. */
@@ -213,12 +217,17 @@ function inAppNoticeProvider<U>(
   ],
   providers: [
     PersistenceModule.auditWriterFor('notifications'),
+    PersistenceModule.auditTrailReaderFor('notifications'),
+    changeTrailProvider(),
     registerAuditActions('notifications', NOTIFICATIONS_AUDIT_ACTIONS),
     registerPermissions('notifications', NOTIFICATIONS_PERMISSIONS),
     ...notificationsProviders,
-    ...[SetSupportContact, ViewSupportContact, ViewPublicSupportContact].map((type) =>
-      useCaseProvider(type as UseCaseClass<unknown>),
-    ),
+    ...[
+      SetSupportContact,
+      ViewSupportContact,
+      ViewSupportContactHistory,
+      ViewPublicSupportContact,
+    ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     orderMailProvider(SendOrderConfirmationMail),
     orderMailProvider(SendSellerNewOrderMail),
     orderMailProvider(SendOrderShippedMail),
@@ -270,6 +279,14 @@ function inAppNoticeProvider<U>(
       [RecordSellerNotice, RecordAdminReviewNotice],
       (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
         payoutNoticeSubscriptions(sellerNotice, adminNotice),
+    ),
+    // Buyer reviews, package 4b: a visible, hidden or restored review, a delivery problem, a held
+    // or reported review. Ids and the star count only.
+    registerSubscriptionsFrom(
+      'notifications',
+      [RecordSellerNotice, RecordAdminReviewNotice],
+      (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
+        reviewNoticeSubscriptions(sellerNotice, adminNotice),
     ),
     registerJobsFrom(
       'notifications',

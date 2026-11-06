@@ -29,6 +29,7 @@ import {
 } from '../../src/modules/sellers/domain/rate-limits';
 import { withdrawn } from '../../src/modules/sellers/domain/business-file-revision';
 import { PrismaRegisterCheckRepository } from '../../src/modules/sellers/infrastructure/prisma-register-check.repository';
+import { PrismaSellerHealthRoster } from '../../src/modules/sellers/infrastructure/prisma-seller-health-roster';
 import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
 import { SubjectKeyRevisionContentSealer } from '../../src/modules/sellers/infrastructure/subject-key-revision-content-sealer';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
@@ -1246,6 +1247,71 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
       );
       expect(zones.size).toBe(2);
       expect(await inUnit(code, () => revisions.approvedZones(market, []))).toEqual(new Map());
+    });
+
+    it('pages the seller health roster by seller id: approved sellers only, each with its zone', async () => {
+      const roster = new PrismaSellerHealthRoster(db.service);
+      const approvedA = await newFile();
+      const approvedB = await newFile();
+      const pending = await newFile();
+      const foreign = await newFile(other as typeof code);
+      for (const sellerId of [approvedA, approvedB]) {
+        const id = randomUUID();
+        await insertRaw(sellerId, { id, status: 'approved', decided_at: T0.toString() });
+        await sql.query(
+          "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
+          [code, sellerId, id],
+        );
+      }
+      expect((await add(pendingRevision(pending))).ok).toBe(true);
+      const foreignId = randomUUID();
+      await insertRaw(foreign, {
+        id: foreignId,
+        market_id: other,
+        status: 'approved',
+        decided_at: T0.toString(),
+      });
+      await sql.query(
+        "UPDATE sellers.seller_files SET approved_revision_id = $3, public_store_name = 'Al Noor Grocer' WHERE market_id = $1 AND seller_id = $2",
+        [other, foreign, foreignId],
+      );
+
+      const walk = async (limit: number) => {
+        const seen: Id<'Seller'>[] = [];
+        const zones = new Map<Id<'Seller'>, string>();
+        let after: Id<'Seller'> | null = null;
+        for (;;) {
+          const page = await inUnit(code, () => roster.page(market, after, limit));
+          if (page.length === 0) break;
+          for (const entry of page) {
+            zones.set(entry.sellerId, entry.zone);
+            seen.push(entry.sellerId);
+          }
+          after = page[page.length - 1]!.sellerId;
+        }
+        expect(zones.get(approvedA)).toBe(fixture.operatingZone);
+        expect(zones.get(approvedB)).toBe(fixture.operatingZone);
+        return seen;
+      };
+      // The Market may hold other approved sellers from earlier tests; ours are in it, in order,
+      // whatever the page size, and neither the pending seller nor the other Market's is.
+      for (const limit of [1, 2, 100]) {
+        const seen = await walk(limit);
+        expect(seen).toEqual([...seen].sort());
+        expect(seen).toEqual(expect.arrayContaining([approvedA, approvedB]));
+        expect(seen).not.toContain(pending);
+        expect(seen).not.toContain(foreign);
+      }
+      await expect(inUnit(code, () => roster.page(market, null, 0))).rejects.toThrow(RangeError);
+
+      // `one` answers the same entry for an approved seller, and null for a pending, foreign or unknown one.
+      expect(await inUnit(code, () => roster.one(market, approvedA))).toEqual({
+        sellerId: approvedA,
+        zone: fixture.operatingZone,
+      });
+      expect(await inUnit(code, () => roster.one(market, pending))).toBeNull();
+      expect(await inUnit(code, () => roster.one(market, foreign))).toBeNull();
+      expect(await inUnit(code, () => roster.one(market, randomUUID() as Id<'Seller'>))).toBeNull();
     });
 
     it('holds a slug once, reports who has it, and releases only a never-public held one', async () => {

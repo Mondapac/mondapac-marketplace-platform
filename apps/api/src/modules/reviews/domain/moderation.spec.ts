@@ -45,6 +45,11 @@ describe('moderator transitions', () => {
     expect(HIDE_REASON_CODES).not.toContain('negative');
   });
 
+  it('can hide a review for extortion, the reason a shop reports', () => {
+    expect(isReasonFor('hide', 'extortion')).toBe(true);
+    expect(isReasonFor('remove', 'extortion')).toBe(false);
+  });
+
   it('accepts only a reason of the same action', () => {
     expect(isReasonFor('hide', 'spam')).toBe(true);
     expect(isReasonFor('hide', 'illegal')).toBe(false);

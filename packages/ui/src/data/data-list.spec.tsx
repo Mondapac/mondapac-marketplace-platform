@@ -58,9 +58,26 @@ describe('Card', () => {
 });
 
 describe('LoadError', () => {
-  it('renders the page h1 only when a title is given', () => {
-    expect(html(<LoadError message="m" retryLabel="r" />)).not.toContain('<h1');
-    expect(html(<LoadError message="m" retryLabel="r" title="Orders" />)).toContain('<h1');
+  it('is a critical banner with the title, the body and a retry button', () => {
+    const out = html(
+      <LoadError
+        title="Orders could not be loaded"
+        message="Try again later."
+        retryLabel="Retry"
+      />,
+    );
+    expect(out).toContain('role="alert"');
+    expect(out).toContain('border-critical-border');
+    expect(out).toContain('<p class="font-semibold">Orders could not be loaded</p>');
+    expect(out).toContain('Try again later.');
+    expect(out).toContain('>Retry</button>');
+    expect(out).not.toContain('<h1');
+  });
+
+  it('shows the body alone when no title is given', () => {
+    const out = html(<LoadError message="Try again later." retryLabel="Retry" />);
+    expect(out).toContain('Try again later.');
+    expect(out).not.toContain('font-semibold');
   });
 });
 

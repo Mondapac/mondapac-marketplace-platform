@@ -26,6 +26,7 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
     variantModel: 'single',
     liveVariantIds: [v(1)],
     maxVariants: 3,
+    labelsFor: () => ({}),
     schemaRef: { familyRevisionId: 'f1', definitionRevisionIds: [] },
     contentSchemaVersion: 1,
     ...over,
@@ -99,7 +100,6 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
           {
             variantId: v(1),
             optionValues: { size: 'l', colour: 'red' },
-            labels: { [locale]: 'L' },
           },
           { variantId: v(2), optionValues: { size: 's', colour: 'red' } },
         ]),
@@ -148,7 +148,7 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
       ).toContainEqual({ path: 'variants', code: 'too-many' });
     });
 
-    it('refuses option separators and prototype keys in option sets and labels (L3, L4)', () => {
+    it('refuses option separators and prototype keys in option sets (L3, L4)', () => {
       const bad = (entry: Record<string, unknown>) =>
         issues(configurable([{ variantId: v(1), ...entry }]));
       expect(bad({ optionValues: { a: 'b;c=d' } })).toContainEqual({
@@ -163,12 +163,28 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
         path: 'variants.0.optionValues',
         code: 'invalid',
       });
-      expect(
-        bad({ optionValues: { a: 'b' }, labels: JSON.parse('{"constructor": "x"}') }),
-      ).toContainEqual({
-        path: 'variants.0.labels',
-        code: 'unknown',
+    });
+
+    it('writes the built labels, not anything the draft carries (V2)', () => {
+      const result = freezeWorkingCopy({
+        ...configurable([
+          {
+            variantId: v(1),
+            optionValues: { size: 'l' },
+            labels: { [locale]: 'Typed by a seller' },
+          },
+        ]),
+        labelsFor: (options) => ({ [locale]: `built:${options['size']}` }),
       });
+      expect(result.ok && result.value.variants[0]?.labels).toEqual({ [locale]: 'built:l' });
+    });
+
+    it('leaves a locale without a built label out of the variant', () => {
+      const result = freezeWorkingCopy({
+        ...configurable([{ variantId: v(1), optionValues: { size: 'l' } }]),
+        labelsFor: () => ({}),
+      });
+      expect(result.ok && result.value.variants[0]?.labels).toEqual({});
     });
 
     it('requires option values', () => {

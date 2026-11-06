@@ -75,6 +75,8 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
     },
   };
   const activityReader: BusinessActivityReader = {
+    activeIds: (_m, ids) =>
+      Promise.resolve(new Set(ids.filter((id) => rows.get(id)?.status === 'active'))),
     list: (_m, query: BusinessActivityListQuery) =>
       Promise.resolve({
         items: [...rows.values()].filter((r) => query.status === null || r.status === query.status),
@@ -133,7 +135,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       clock,
     }),
     get: new BusinessActivityGet(gate, { unitOfWork, activities }),
-    list: new BusinessActivityList(gate, { unitOfWork, activityReader }),
+    list: new BusinessActivityList(gate, { unitOfWork, activityReader, policy }),
   });
 
   const contextOf = (population: 'admin' | 'seller'): CallContext =>
@@ -383,7 +385,11 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
     expect(all.ok && all.value.items.map((i) => i.code)).toEqual(['grocery']);
     expect(await list.execute(admin, { status: 'inactive' })).toEqual({
       ok: true,
-      value: { items: [], nextAfterId: null },
+      value: {
+        items: [],
+        nextAfterId: null,
+        locales: { default: main, supported: [...locales.supported] },
+      },
     });
     expect(await list.execute(admin, { limit: 0 })).toEqual({
       ok: false,

@@ -23,11 +23,16 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/own-zone',
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
+    // "View history" of the store profile (query: `after`, `limit`): when, who by display name and
+    // which part changed, from the audit log.
+    'sellers/store-profile/history',
     'sellers/my-file/form-descriptors',
     // The stock locations, read again after a stale write (the list and its version).
     'inventory/seller/sources',
     // The store's settings (delivery terms; the minimum order is in the same answer).
     'sellers/store-settings',
+    // The seller's reviews (query: `cursor`), read again for "Show more".
+    'reviews/seller',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     'commission-payouts/seller/ledger',
@@ -51,6 +56,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/slug',
     'sellers/my-file/identifier',
     'inventory/seller/sources-order',
+    // The whole Store profile page in one save (text, logo and banner), and the single parts.
+    'sellers/store-profile',
     // The About text, the logo and the banner of the store (slice 12 part 2).
     'sellers/store-profile/about',
     'sellers/store-profile/logo',
@@ -111,13 +118,19 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/seller/team/accounts/:id/role',
     'identity/seller/team/accounts/:id/remove',
     'catalog/seller/products/:id/submit',
+    // Ask for a value a select field does not offer (catalog, attributes A5).
+    'catalog/seller/products/:id/attribute-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
     'ordering/seller/orders/:id/ship',
     'ordering/seller/orders/:id/deliver',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
     'notifications/seller/notices/:id/read',
+    // One public reply per review, and a report of a review (buyer reviews, package 4c).
+    'reviews/seller/:id/reply',
+    'reviews/seller/:id/report',
   ],
+  PATCH: ['reviews/seller/:id/reply'],
   DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
   GET: ['catalog/seller/products/:id/images/:id/:size', 'sellers/store-profile/images/:id/:size'],
@@ -136,6 +149,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'identity/seller/team': { after: UUID },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
+  // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
+  'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
 const QUERY_VALUE_MAX = 512;
 
@@ -180,12 +195,16 @@ function isAllowed(method: string, path: readonly string[]): boolean {
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_PHOTO_BODY_BYTES = 5800 * 1024;
 const PHOTO_UPLOAD = 'catalog/seller/products/:id/images';
+/** The whole-profile save carries the text and up to two such pictures: twice the photo body. */
+const MAX_PROFILE_SAVE_BODY_BYTES = 2 * MAX_PHOTO_BODY_BYTES;
+const STORE_PROFILE_SAVE = 'sellers/store-profile';
 const STORE_IMAGE_UPLOADS: ReadonlySet<string> = new Set([
   'sellers/store-profile/logo',
   'sellers/store-profile/banner',
 ]);
 
 function bodyLimitFor(method: string, path: readonly string[]): number {
+  if (method === 'PUT' && path.join('/') === STORE_PROFILE_SAVE) return MAX_PROFILE_SAVE_BODY_BYTES;
   if (method === 'PUT' && STORE_IMAGE_UPLOADS.has(path.join('/'))) return MAX_PHOTO_BODY_BYTES;
   return method === 'POST' && matches(PHOTO_UPLOAD, path) ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES;
 }
@@ -366,6 +385,8 @@ export async function relay(
     const value = upstream.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
+  // The proxy does not run on the relay (Next would buffer the upload body), so nosniff is set here.
+  headers.set('x-content-type-options', 'nosniff');
   // Session answers must never be cached; the API sets no-store itself, this is the default.
   headers.set('cache-control', upstream.headers.get('cache-control') ?? 'private, no-store');
   for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);

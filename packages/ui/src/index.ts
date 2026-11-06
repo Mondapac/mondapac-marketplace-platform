@@ -52,6 +52,15 @@ export { FieldAction, type FieldActionProps } from './form/field-action.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
 export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
+export {
+  SearchSelect,
+  SEARCH_THRESHOLD,
+  type SearchSelectLabels,
+  type SearchSelectMultiProps,
+  type SearchSelectOption,
+  type SearchSelectProps,
+  type SearchSelectSingleProps,
+} from './select/search-select.tsx';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
@@ -75,6 +84,7 @@ export {
   useUnsavedChangesGuard,
   leavesPage,
   type ClickInfo,
+  type LeaveInfo,
   type LeaveLabels,
 } from './settings/unsaved-changes-guard.tsx';
 export {
@@ -83,6 +93,27 @@ export {
   type SettingsErrorSummaryProps,
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
+export { SettingsSubNav, type SubNavGroup } from './settings/settings-sub-nav.tsx';
+export { SettingsTitle } from './settings/settings-title.tsx';
+export {
+  relativeTime,
+  whoKind,
+  type ChangeByKind,
+  type LastChangedValue,
+  type WhoKind,
+} from './settings/change-time.ts';
+export {
+  SettingsHistoryDrawer,
+  useSettingsHistory,
+  type HistoryPageData,
+  type SettingsHistoryDrawerProps,
+  type SettingsHistoryItem,
+  type SettingsHistoryState,
+} from './settings/settings-history.tsx';
+export {
+  SettingsViewOnlyBanner,
+  type SettingsViewOnlyBannerProps,
+} from './settings/view-only-banner.tsx';
 export {
   SettingsHub,
   type SettingsHubGroup,
@@ -106,6 +137,7 @@ export {
   type SettingsForm,
   type UseSettingsFormOptions,
 } from './settings/use-settings-form.ts';
+export { useLiveErrors, type LiveErrors } from './settings/use-live-errors.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';

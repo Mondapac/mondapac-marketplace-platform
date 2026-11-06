@@ -7,6 +7,12 @@ export interface FeedFacts {
   readonly name: string | null;
   readonly shortText: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
+  /** What the index keeps of the product's attributes (attributes A7). */
+  readonly attributes: {
+    readonly searchText: string;
+    readonly facets: readonly string[];
+    readonly numbers: Readonly<Record<string, number>>;
+  };
 }
 
 /**

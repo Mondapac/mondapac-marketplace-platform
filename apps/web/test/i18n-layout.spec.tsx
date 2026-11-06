@@ -16,6 +16,7 @@ vi.mock('next-intl/server', () => ({
 }));
 vi.mock('next/headers', () => ({
   cookies: () => Promise.resolve({ get: () => undefined }),
+  headers: () => Promise.resolve(new Headers()),
 }));
 vi.mock('../src/shell/store-shell.tsx', () => ({
   StoreShell: ({ children }: { children: unknown }) => children,

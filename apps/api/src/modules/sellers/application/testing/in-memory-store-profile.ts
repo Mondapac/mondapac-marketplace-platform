@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, ContentHash, Id, MarketContext, Result } from '@mondapac/shared-kernel';
-import type { ObjectStore } from '../../../../platform/storage/object-store';
+import type { ObjectListPage, ObjectStore } from '../../../../platform/storage/object-store';
 import type { StoreImageKind } from '../../domain/store-image';
 import {
   canonicalStoreContent,
@@ -88,6 +88,16 @@ export class InMemoryStoreImages implements StoreImageRepository {
 
   private at(market: MarketContext, sellerId: Id<'Seller'>, kind: StoreImageKind): string {
     return `${keyOf(market, sellerId)}|${kind}`;
+  }
+
+  unreferencedObjectKeys(
+    market: MarketContext,
+    keys: readonly string[],
+  ): Promise<readonly string[]> {
+    const named = new Set(
+      [...this.current.values()].flatMap((image) => image.renditions.map((r) => r.objectKey)),
+    );
+    return Promise.resolve(keys.filter((key) => !named.has(key)));
   }
 
   currentOf(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly StoredStoreImage[]> {
@@ -203,6 +213,11 @@ export class FakeClaimCheck implements StoreTextClaimCheck {
       ok(texts.map(({ text }) => this.words.some((word) => text.toLowerCase().includes(word)))),
     );
   }
+
+  terms(): Promise<Result<readonly string[], ClaimCheckUnavailable>> {
+    if (this.unavailable) return Promise.resolve(err({ code: 'claim-text.check-unavailable' }));
+    return Promise.resolve(ok([...this.words]));
+  }
 }
 
 /** An object store in a map. */
@@ -223,6 +238,10 @@ export class MapObjectStore implements ObjectStore {
 
   get(key: string): Promise<Buffer | null> {
     return Promise.resolve(this.objects.get(key) ?? null);
+  }
+
+  list(): Promise<ObjectListPage> {
+    return Promise.reject(new Error('MapObjectStore does not list'));
   }
 
   delete(key: string): Promise<void> {

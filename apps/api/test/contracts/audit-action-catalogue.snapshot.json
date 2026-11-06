@@ -1,5 +1,327 @@
 [
   {
+    "action": "catalog.attribute-definition.archived",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "material": "boolean",
+      "status": "enumOf(active)"
+    },
+    "after": {
+      "relaxationRequestId": "optional(id)",
+      "requestedByAccountId": "optional(id)",
+      "status": "enumOf(archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.created",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.discarded",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "status": "enumOf(archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.merged",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "material": "boolean",
+      "status": "enumOf(active)"
+    },
+    "after": {
+      "mappedValueCount": "integer",
+      "mergedIntoId": "id",
+      "status": "enumOf(archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.published",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.revised",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "relaxationRequestId": "optional(id)",
+      "requestedByAccountId": "optional(id)",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-definition.values-merged",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "mergedValueCount": "integer",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-family.created",
+    "targetType": "catalog.attribute-family",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "attributeCount": "integer",
+      "groupCount": "integer",
+      "optionalCount": "integer",
+      "recommendedCount": "integer",
+      "requiredCount": "integer",
+      "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.attribute-family.revised",
+    "targetType": "catalog.attribute-family",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "attributeCount": "integer",
+      "groupCount": "integer",
+      "optionalCount": "integer",
+      "recommendedCount": "integer",
+      "requiredCount": "integer",
+      "revisionNo": "integer"
+    },
+    "after": {
+      "attributeCount": "integer",
+      "groupCount": "integer",
+      "optionalCount": "integer",
+      "recommendedCount": "integer",
+      "requiredCount": "integer",
+      "revisionNo": "integer",
+      "requiredRelaxed": "integer"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.cancelled",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(requester|definition-changed)",
+      "requestId": "id",
+      "requestedByAccountId": "id"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.expired",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "requestId": "id",
+      "requestedByAccountId": "id"
+    }
+  },
+  {
+    "action": "catalog.brand.approved",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft)"
+    },
+    "after": {
+      "proposedBySeller": "boolean",
+      "status": "enumOf(active)"
+    }
+  },
+  {
+    "action": "catalog.brand.archived",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "status": "enumOf(archived)"
+    }
+  },
+  {
+    "action": "catalog.brand.created",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "origin": "enumOf(admin|seller)",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.brand.edited",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "imagesChanged": "boolean",
+      "nameChanged": "boolean",
+      "originCountryChanged": "boolean",
+      "slugChanged": "boolean",
+      "status": "enumOf(draft|active|archived)",
+      "summaryChanged": "boolean"
+    }
+  },
+  {
+    "action": "catalog.brand.merge-dismissed",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "groupSize": "integer"
+    }
+  },
+  {
+    "action": "catalog.brand.merged",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "aliasesAdded": "integer",
+      "productsMoved": "integer",
+      "sourceCount": "integer"
+    }
+  },
+  {
+    "action": "catalog.brand.proposed",
+    "targetType": "catalog.brand",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "origin": "enumOf(admin|seller)",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
+    "action": "catalog.attribute-relaxation.requested",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "definitionVersion": "integer",
+      "expiresAt": "instant",
+      "kind": "enumOf(clear-material|archive|remove-from-family)",
+      "requestId": "id"
+    }
+  },
+  {
+    "action": "catalog.attribute-value-suggestion.decided",
+    "targetType": "catalog.attribute-value-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "definitionId": "id",
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|rejected)"
+    }
+  },
+  {
+    "action": "catalog.attribute-value-suggestion.suggested",
+    "targetType": "catalog.attribute-value-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "definitionId": "id",
+      "productId": "id"
+    }
+  },
+  {
+    "action": "catalog.category-attributes.changed",
+    "targetType": "catalog.category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
+    },
+    "after": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
+    }
+  },
+  {
     "action": "catalog.product.paused",
     "targetType": "catalog.product",
     "targetId": "id",
@@ -641,6 +963,22 @@
     }
   },
   {
+    "action": "certification.retired-category.flagged",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
+    "action": "certification.retired-category.flagged-relaxing",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
     "action": "certification.review-check.recorded",
     "targetType": "certification.seller-certification",
     "targetId": "id",
@@ -1113,7 +1451,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -1125,7 +1463,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -1418,11 +1756,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -1932,7 +2270,7 @@
     },
     "after": {
       "action": "enumOf(publish|hide|restore|remove|dismiss-reports)",
-      "reasonCode": "enumOf(checked-ok|personal-information|abusive|irrelevant|not-a-purchase|incentivised|spam|other|reinstated|hidden-in-error|illegal|defamatory|not-against-policy|duplicate)",
+      "reasonCode": "enumOf(checked-ok|personal-information|abusive|irrelevant|not-a-purchase|extortion|incentivised|spam|other|reinstated|hidden-in-error|illegal|defamatory|not-against-policy|duplicate)",
       "status": "enumOf(published|held|hidden|removed|deleted-by-author)",
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)"
@@ -1949,6 +2287,20 @@
     "after": {
       "enabled": "boolean",
       "unpublishLive": "boolean"
+    }
+  },
+  {
+    "action": "sellers.business-activities.change",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "extraActivityIds": "listOf(id, max 9)",
+      "mainActivityId": "optional(id)"
+    },
+    "after": {
+      "extraActivityIds": "listOf(id, max 9)",
+      "mainActivityId": "id"
     }
   },
   {
@@ -2022,6 +2374,19 @@
     }
   },
   {
+    "action": "settings.market-setting.changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(list-paging)",
+    "actors": ["authenticated"],
+    "before": {
+      "value": "enumOf(pages|prev-next)"
+    },
+    "after": {
+      "value": "enumOf(pages|prev-next)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "shipping.delivery-settings.changed",
     "targetType": "shipping.delivery-settings",
     "targetId": "enumOf(market)",
@@ -2030,6 +2395,7 @@
       "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
       "marginKind": "enumOf(none|percent|fixed)",
       "marginValue": "integer",
+      "readyPrepMinutes": "integer",
       "roundingStepMinor": "integer",
       "sameDayCutoffMinutes": "integer",
       "scheduledDaysAhead": "integer",
@@ -2040,6 +2406,7 @@
       "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
       "marginKind": "enumOf(none|percent|fixed)",
       "marginValue": "integer",
+      "readyPrepMinutes": "integer",
       "roundingStepMinor": "integer",
       "sameDayCutoffMinutes": "integer",
       "scheduledDaysAhead": "integer",
@@ -2442,6 +2809,161 @@
       "startAs": "enumOf(inactive|active)",
       "state": "enumOf(queued)",
       "toImport": "integer"
+    }
+  },
+  {
+    "action": "sellers.service-area.change",
+    "targetType": "sellers.service-area",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "namesRestored": "integer",
+      "namesSet": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.archived",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesUnlinked": "integer",
+      "reasonGiven": "boolean",
+      "status": "enumOf(active|hidden|archived)",
+      "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.created",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "level": "integer",
+      "localeCount": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.details-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    },
+    "after": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    }
+  },
+  {
+    "action": "catalog.platform-category.discarded",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.hidden",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "cascaded": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.merged",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesRelinked": "integer",
+      "childrenMoved": "integer",
+      "mergedIntoId": "id",
+      "reasonGiven": "boolean",
+      "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.moved",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "level": "integer",
+      "parentId": "optional(id)"
+    },
+    "after": {
+      "level": "integer",
+      "parentId": "optional(id)",
+      "reasonGiven": "boolean",
+      "subtreeSize": "integer",
+      "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.reordered",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "position": "integer"
+    },
+    "after": {
+      "position": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.shown",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "restored": "integer",
+      "status": "enumOf(active|hidden|archived)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.slug-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "revisionNo": "integer"
+    },
+    "after": {
+      "revisionNo": "integer"
     }
   }
 ]

@@ -5,8 +5,20 @@ import {
   RAW_READ_PORT,
   type RawReadPort,
 } from '../../../platform/persistence/raw-reads/raw-read-port';
-import { CATALOG_ASSISTANT_FACADE, CATALOG_FACADE, CATALOG_INDEX_FACADE } from '../../catalog';
-import type { CatalogAssistantFacade, CatalogFacade, CatalogIndexFacade } from '../../catalog';
+import {
+  CATALOG_ASSISTANT_FACADE,
+  CATALOG_FACADE,
+  CATALOG_FILTERS_FACADE,
+  CATALOG_INDEX_FACADE,
+} from '../../catalog';
+import type {
+  CatalogAssistantFacade,
+  CatalogFacade,
+  CatalogFiltersFacade,
+  CatalogIndexFacade,
+} from '../../catalog';
+import { SEARCH_FILTER_SOURCE, type SearchFilterSource } from '../application/ports/search-filters';
+import { FacadeSearchFilters } from './facade-search-filters';
 import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
 import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
 import { INVENTORY_FACADE, type InventoryFacade } from '../../inventory';
@@ -17,6 +29,7 @@ import {
   type PricingFacade,
   type PricingSpecialsFacade,
 } from '../../pricing';
+import { REVIEWS_FACADE, type ReviewsFacade } from '../../reviews';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import {
   OFFER_DOCUMENT_REPOSITORY,
@@ -49,6 +62,14 @@ import {
   CATEGORY_SUBTREE_SOURCE,
   type CategorySubtreeSource,
 } from '../application/ports/category-subtree';
+import {
+  PRODUCT_RATING_REPOSITORY,
+  PRODUCT_RATING_SOURCE,
+  type ProductRatingRepository,
+  type ProductRatingSource,
+} from '../application/ports/product-rating';
+import { FacadeProductRatingSource } from './facade-product-rating-source';
+import { PrismaProductRatingRepository } from './prisma-product-rating.repository';
 import { FacadeCategorySubtree } from './facade-category-subtree';
 import { FacadeProductImages } from './facade-product-images';
 import { FacadeBrandProducts } from './facade-brand-products';
@@ -68,7 +89,17 @@ import { FacadeOfferFeed } from './facade-offer-feed';
 import { FacadePublicVisibility } from './facade-public-visibility';
 import { FacadeSellerEligibility } from './facade-seller-eligibility';
 import { PrismaOfferDocumentRepository } from './prisma-offer-document.repository';
+import { OFFER_FACET_READER, type OfferFacetReader } from '../application/ports/offer-facet.reader';
+import { RawOfferFacetReader } from './raw-offer-facet.reader';
 import { RawOfferSearchReader } from './raw-offer-search.reader';
+import {
+  INDEX_STAMP,
+  REINDEX_PROGRESS,
+  type IndexStamp,
+  type ReindexProgress,
+} from '../application/ports/reindex';
+import { FacadeIndexStamp } from './facade-index-stamp';
+import { PrismaReindexProgress } from './prisma-reindex-progress';
 
 /**
  * Binds the ports of search. Only this layer may reach `PrismaService`, the module's own raw read
@@ -86,6 +117,21 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: OFFER_SEARCH_READER,
     inject: [RAW_READ_PORT],
     useFactory: (rawReads: RawReadPort): OfferSearchReader => new RawOfferSearchReader(rawReads),
+  },
+  {
+    provide: REINDEX_PROGRESS,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ReindexProgress => new PrismaReindexProgress(prisma),
+  },
+  {
+    provide: INDEX_STAMP,
+    inject: [CATALOG_INDEX_FACADE],
+    useFactory: (catalog: CatalogIndexFacade): IndexStamp => new FacadeIndexStamp(catalog),
+  },
+  {
+    provide: OFFER_FACET_READER,
+    inject: [RAW_READ_PORT],
+    useFactory: (rawReads: RawReadPort): OfferFacetReader => new RawOfferFacetReader(rawReads),
   },
   {
     provide: SEARCH_POLICY,
@@ -147,6 +193,12 @@ export const searchProviders: readonly FactoryProvider[] = [
       new FacadeCategorySubtree(catalog),
   },
   {
+    provide: SEARCH_FILTER_SOURCE,
+    inject: [CATALOG_FILTERS_FACADE],
+    useFactory: (catalog: CatalogFiltersFacade): SearchFilterSource =>
+      new FacadeSearchFilters(catalog),
+  },
+  {
     provide: PERSONAL_SIGNALS,
     inject: [ENGAGEMENT_FACADE, CERTIFICATION_FACADE],
     useFactory: (
@@ -163,5 +215,17 @@ export const searchProviders: readonly FactoryProvider[] = [
       inventory: InventoryFacade,
       sellers: SellersFacade,
     ): ProductDetailSources => new FacadeProductDetailSources(catalog, pricing, inventory, sellers),
+  },
+  {
+    provide: PRODUCT_RATING_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductRatingRepository =>
+      new PrismaProductRatingRepository(prisma),
+  },
+  {
+    provide: PRODUCT_RATING_SOURCE,
+    inject: [REVIEWS_FACADE],
+    useFactory: (reviews: ReviewsFacade): ProductRatingSource =>
+      new FacadeProductRatingSource(reviews),
   },
 ];

@@ -126,6 +126,7 @@ import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
 import { ChangePanelPreferences } from './application/use-cases/change-panel-preferences.use-case';
+import { ChangeCustomerLanguage } from './application/use-cases/change-customer-language.use-case';
 import { ChangeStorefrontAppearance } from './application/use-cases/change-storefront-appearance.use-case';
 import { ListOwnSessions } from './application/use-cases/list-own-sessions.use-case';
 import { SignOutOtherSessions } from './application/use-cases/sign-out-other-sessions.use-case';
@@ -198,6 +199,7 @@ import { socialSignInProviders } from './infrastructure/social/social-sign-in-pr
 import { CustomerSocialSignInController } from './presentation/customer-social-sign-in.controller';
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
 import { SignOut } from './application/use-cases/sign-out.use-case';
+import { ChangeActorLabels } from './application/use-cases/change-actor-labels.use-case';
 import { TeamMemberLabels } from './application/use-cases/team-member-labels.use-case';
 import { TeamMembershipOf } from './application/use-cases/team-membership-of.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
@@ -903,6 +905,13 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
     }),
+    useCaseProvider(ChangeActorLabels, {
+      unitOfWork: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
     useCaseProvider(SellerAccessOf, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(SellerAccessOfSystem, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(ListRegisteredSellers, { unitOfWork: true, sellerAccess: true }),
@@ -994,6 +1003,11 @@ function useCaseProvider<D, U>(
     }),
     // Buyer account backend: a customer keeps the own storefront look on the account.
     useCaseProvider(ChangeStorefrontAppearance, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    // Buyer profile: a customer keeps the own language on the account.
+    useCaseProvider(ChangeCustomerLanguage, {
       unitOfWork: true,
       accounts: true,
     }),
@@ -1752,6 +1766,7 @@ function useCaseProvider<D, U>(
         CustomerAccountSummaries,
         CustomerShortNames,
         TeamMemberLabels,
+        ChangeActorLabels,
         EndOtherCustomerSessions,
         EndAllCustomerSessions,
         AdminEndCustomerSessions,
@@ -1771,6 +1786,7 @@ function useCaseProvider<D, U>(
         customerAccountSummaries: CustomerAccountSummaries,
         customerShortNames: CustomerShortNames,
         teamMemberLabels: TeamMemberLabels,
+        changeActorLabels: ChangeActorLabels,
         endOtherCustomerSessions: EndOtherCustomerSessions,
         endAllCustomerSessions: EndAllCustomerSessions,
         adminEndCustomerSessions: AdminEndCustomerSessions,
@@ -1790,6 +1806,7 @@ function useCaseProvider<D, U>(
           customerAccountSummaries,
           customerShortNames,
           teamMemberLabels,
+          changeActorLabels,
           endOtherCustomerSessions,
           endAllCustomerSessions,
           adminEndCustomerSessions,

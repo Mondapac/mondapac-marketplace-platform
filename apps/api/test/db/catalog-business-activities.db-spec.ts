@@ -252,6 +252,22 @@ describe.each(TEST_MARKETS)(
       expect(await insertName('fr', '')).toBe('23514');
     });
 
+    it('tells which activity ids exist and are active in the Market', async () => {
+      const active = activity(letters(tag()));
+      const inactive = activity(letters(tag()), { status: 'inactive' });
+      const foreign = activity(letters(tag()));
+      const unknown = uuid7() as Id<'BusinessActivity'>;
+      await inUnit(() => repository.add(market, active));
+      await inUnit(() => repository.add(market, inactive));
+      await inUnitOf(other)(() => repository.add(other, foreign));
+
+      const answer = await inUnit(() =>
+        reader.activeIds(market, [active.id, inactive.id, foreign.id, unknown]),
+      );
+      expect([...answer]).toEqual([active.id]);
+      expect([...(await inUnit(() => reader.activeIds(market, [])))]).toEqual([]);
+    });
+
     it('never lets the application change a code or a creator', async () => {
       const state = activity(letters(tag()));
       await inUnit(() => repository.add(market, state));

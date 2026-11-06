@@ -5,6 +5,19 @@ import type { SellerSummary } from '../domain/seller-summary';
 /** One answer per distinct requested seller (sellers design 7.2). */
 export type SellingEligibilityMap = ReadonlyMap<Id<'Seller'>, { readonly eligible: boolean }>;
 
+/**
+ * What one seller carries (ADR-0040 decision 4): the main business activity, or null when none is
+ * assigned, and every assigned activity with the main one first. An id of `catalog`'s activities,
+ * which sellers does not check again; the caller asks catalog for the scope.
+ */
+export interface SellerBusinessActivitiesOf {
+  readonly mainActivityId: Id<'BusinessActivity'> | null;
+  readonly activityIds: readonly Id<'BusinessActivity'>[];
+}
+
+/** One answer per distinct requested seller. */
+export type SellerBusinessActivitiesMap = ReadonlyMap<Id<'Seller'>, SellerBusinessActivitiesOf>;
+
 /** Every product type, or the listed type codes (SEL-12). */
 export type AllowedProductTypesOf = 'all' | ReadonlySet<string>;
 
@@ -110,6 +123,23 @@ export interface SellersFacade {
     sellerId: Id<'Seller'>,
   ): Promise<
     Result<AllowedProductTypesOf, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
+
+  /**
+   * `sellerBusinessActivities` (ADR-0040 decision 4): per distinct requested seller (at most 100,
+   * refused whole above), the main business activity and every assigned activity. Answered to the
+   * `system` actor, and to a request actor only when it is that seller's own account asking for
+   * its own seller id; any other request actor, or a list that names another seller, is
+   * `access.denied` before any read. A seller with no activity, an unknown id and another Market's
+   * seller are byte-identical (`mainActivityId: null`, no ids): a caller treats that as "may not
+   * sell" (fail closed). A read error is `sellers.unavailable`. Two use cases behind this method,
+   * as for `sellerSummaries`. Not exposed over HTTP.
+   */
+  sellerBusinessActivities(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<SellerBusinessActivitiesMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
   >;
 
   /**

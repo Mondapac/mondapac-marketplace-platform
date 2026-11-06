@@ -11,12 +11,19 @@ import { EngagementModule } from '../engagement';
 import { InventoryModule } from '../inventory';
 import { OrderingModule } from '../ordering';
 import { PricingModule } from '../pricing';
+import { ReviewsModule } from '../reviews';
 import { SellersModule } from '../sellers';
 import { CATEGORY_SUBTREE_SOURCE } from './application/ports/category-subtree';
 import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.repository';
 import { OFFER_FEED } from './application/ports/offer-feed';
+import { OFFER_FACET_READER } from './application/ports/offer-facet.reader';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
+import { SEARCH_FILTER_SOURCE } from './application/ports/search-filters';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
+import {
+  PRODUCT_RATING_REPOSITORY,
+  PRODUCT_RATING_SOURCE,
+} from './application/ports/product-rating';
 import { BRAND_PRODUCTS } from './application/ports/brand-products';
 import { STORE_RESOLVER } from './application/ports/store-resolver';
 import { PERSONAL_SIGNALS } from './application/ports/personal-signals';
@@ -41,9 +48,16 @@ import type { SearchDependencies } from './application/search-dependencies';
 import { RebuildOfferIndex } from './application/use-cases/rebuild-offer-index.use-case';
 import { ViewProductDetail } from './application/use-cases/view-product-detail.use-case';
 import { SearchProducts } from './application/use-cases/search-products.use-case';
+import { SyncProductRatings } from './application/use-cases/sync-product-ratings.use-case';
+import type { RatingSyncDependencies } from './application/rating-sync-dependencies';
 import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents.use-case';
 import { searchProviders } from './infrastructure/search-providers';
+import { ReindexOfferAttributes } from './application/use-cases/reindex-offer-attributes.use-case';
+import type { ReindexDependencies } from './application/reindex-dependencies';
+import { INDEX_STAMP, REINDEX_PROGRESS } from './application/ports/reindex';
+import { reindexAttributesJob } from './presentation/jobs/reindex-offer-attributes.job';
 import { rebuildIndexJob } from './presentation/jobs/rebuild-offer-index.job';
+import { syncRatingsJob } from './presentation/jobs/sync-product-ratings.job';
 import { ForYouController } from './presentation/for-you.controller';
 import { RecentlyViewedController } from './presentation/recently-viewed.controller';
 import { ProductDetailController } from './presentation/product-detail.controller';
@@ -61,6 +75,8 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['documents', OFFER_DOCUMENT_REPOSITORY],
   ['reader', OFFER_SEARCH_READER],
+  ['facets', OFFER_FACET_READER],
+  ['filterSource', SEARCH_FILTER_SOURCE],
   ['policy', SEARCH_POLICY],
   ['feed', OFFER_FEED],
   ['visibility', PUBLIC_VISIBILITY],
@@ -84,6 +100,27 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         Object.fromEntries(
           PORTS.map(([name], index) => [name, values[index]]),
         ) as unknown as SearchDependencies,
+      ),
+  };
+}
+
+const REINDEX_PORTS: readonly [keyof ReindexDependencies, InjectionToken][] = [
+  ...PORTS,
+  ['progress', REINDEX_PROGRESS],
+  ['stamp', INDEX_STAMP],
+];
+
+/** The attribute reindex has its own dependency object: the sync ports, progress and the stamp. */
+function reindexProvider(): FactoryProvider<ReindexOfferAttributes> {
+  return {
+    provide: ReindexOfferAttributes,
+    inject: [USE_CASE_GATE, ...REINDEX_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new ReindexOfferAttributes(
+        gate,
+        Object.fromEntries(
+          REINDEX_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as ReindexDependencies,
       ),
   };
 }
@@ -139,6 +176,29 @@ function recommendationProvider<U>(
   };
 }
 
+const RATING_SYNC_PORTS: readonly [keyof RatingSyncDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['ratings', PRODUCT_RATING_REPOSITORY],
+  ['source', PRODUCT_RATING_SOURCE],
+  ['policy', SEARCH_POLICY],
+  ['clock', CLOCK],
+];
+
+/** The rating sync has its own dependency object. */
+function ratingSyncProvider(): FactoryProvider<SyncProductRatings> {
+  return {
+    provide: SyncProductRatings,
+    inject: [USE_CASE_GATE, ...RATING_SYNC_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new SyncProductRatings(
+        gate,
+        Object.fromEntries(
+          RATING_SYNC_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as RatingSyncDependencies,
+      ),
+  };
+}
+
 const DETAIL_PORTS: readonly [keyof ProductDetailDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['shelves', SHELF_DOCUMENTS_READER],
@@ -187,6 +247,7 @@ function productDetailProvider<U>(
     InventoryModule,
     EngagementModule,
     CertificationModule,
+    ReviewsModule,
   ],
   controllers: [
     SearchController,
@@ -210,6 +271,8 @@ function productDetailProvider<U>(
     recommendationProvider(ListRecentlyViewed),
     recommendationProvider(ListRecentlyViewedGuest),
     productDetailProvider(ViewProductDetail),
+    ratingSyncProvider(),
+    reindexProvider(),
     {
       provide: SEARCH_ASSISTANT_FACADE,
       inject: [SearchProducts, ListBestsellers, ListSpecials],
@@ -220,9 +283,15 @@ function productDetailProvider<U>(
       ...catalogIndexSubscriptions(sync),
       ...sellerAccessIndexSubscriptions(sync),
     ]),
-    registerJobsFrom('search', [RebuildOfferIndex], (rebuild: RebuildOfferIndex) => [
-      rebuildIndexJob(rebuild),
-    ]),
+    registerJobsFrom(
+      'search',
+      [RebuildOfferIndex, SyncProductRatings, ReindexOfferAttributes],
+      (
+        rebuild: RebuildOfferIndex,
+        ratings: SyncProductRatings,
+        reindex: ReindexOfferAttributes,
+      ) => [rebuildIndexJob(rebuild), syncRatingsJob(ratings), reindexAttributesJob(reindex)],
+    ),
   ],
   exports: [SEARCH_ASSISTANT_FACADE],
 })

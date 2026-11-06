@@ -44,6 +44,15 @@ const SAMPLE_TEXT: Readonly<Record<string, string>> = {
   textSearchConfig: 'simple',
   limit: '1',
   offset: '0',
+  priorMeanTimes1000: '4000',
+  mode: 'relevance',
+  // The number bounds of a range filter (search A7) are cast to numeric.
+  range1Min: '1',
+  range1Max: '2',
+  range2Min: '1',
+  range2Max: '2',
+  range3Min: '1',
+  range3Max: '2',
 };
 
 const uuid7 = (): string => uuidV7(Date.now(), crypto.getRandomValues(new Uint8Array(10)));

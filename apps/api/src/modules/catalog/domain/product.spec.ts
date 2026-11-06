@@ -1,6 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
-import { Product, formatProductCode } from './product';
+import { Product, formatProductCode, variantCodeOf } from './product';
 import { configurableProductType } from './product-types/configurable';
 import { simpleProductType } from './product-types/simple';
 
@@ -71,7 +71,14 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
         discardedAt: null,
       });
       expect(product.state.variants).toEqual([
-        { id: variant(1), state: 'proposed', createdAt: T0, publishedAt: null, retiredAt: null },
+        {
+          id: variant(1),
+          variantNo: 1,
+          state: 'proposed',
+          createdAt: T0,
+          publishedAt: null,
+          retiredAt: null,
+        },
       ]);
       expect(product.persistedVersion).toBeNull();
       expect(product.pendingEvents).toHaveLength(1);
@@ -184,6 +191,23 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
       ]);
     });
 
+    it('numbers variants 1, 2, 3 in creation order and never reuses a retired number (V2)', () => {
+      const product = reloaded(configurable());
+      product.addVariant(variant(1), 5, T1, 'seller');
+      product.addVariant(variant(2), 5, T1, 'seller');
+      product.removeProposedVariant(variant(2), T1, 'seller');
+      product.addVariant(variant(3), 5, T1, 'seller');
+
+      expect(product.state.variants.map((v) => [v.id, v.variantNo])).toEqual([
+        [variant(1), 1],
+        [variant(2), 2],
+        [variant(3), 3],
+      ]);
+      expect(variantCodeOf('MP-004127', 2)).toBe('MP-004127-02');
+      expect(variantCodeOf('MP-004127', 12)).toBe('MP-004127-12');
+      expect(variantCodeOf('MP-004127', 100)).toBe('MP-004127-100');
+    });
+
     it('announces the removal of a proposed variant, once', () => {
       const product = reloaded(configurable());
       product.addVariant(variant(1), 3, T1, 'seller');
@@ -216,6 +240,47 @@ describe.each(FIXTURE_MARKETS)('product in market $code', ({ code }) => {
       });
       expect(product.pendingEvents).toEqual([]);
       expect(product.state.version).toBe(1);
+    });
+  });
+
+  describe('Product.setOwnBrand', () => {
+    it('sets the flag on a stored seller product: one version, no event', () => {
+      const product = reloaded(simple());
+
+      expect(product.setOwnBrand({ ownBrand: true, now: T1 })).toEqual({ ok: true, value: true });
+
+      expect(product.state).toMatchObject({ ownBrand: true, version: 2, lastChangedAt: T1 });
+      expect(product.pendingEvents).toHaveLength(0);
+    });
+
+    it('changes nothing, and says so, when the value is the one it has', () => {
+      const product = reloaded(simple());
+
+      expect(product.setOwnBrand({ ownBrand: false, now: T1 })).toEqual({
+        ok: true,
+        value: false,
+      });
+
+      expect(product.state).toMatchObject({ ownBrand: false, version: 1, lastChangedAt: T0 });
+    });
+
+    it('refuses a PLATFORM product', () => {
+      const product = reloaded(simple('PLATFORM'));
+
+      expect(product.setOwnBrand({ ownBrand: true, now: T1 })).toEqual({
+        ok: false,
+        error: { code: 'product.seller-only' },
+      });
+    });
+
+    it('refuses a product that has ended', () => {
+      const product = reloaded(simple());
+      product.discard(T1);
+
+      expect(product.setOwnBrand({ ownBrand: true, now: T1 })).toEqual({
+        ok: false,
+        error: { code: 'product.not-editable' },
+      });
     });
   });
 

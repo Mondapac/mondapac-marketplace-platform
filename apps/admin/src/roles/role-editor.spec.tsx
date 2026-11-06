@@ -90,6 +90,28 @@ describe('role editor', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('checks the name as it is typed or left, and keeps Save off while it is wrong', () => {
+    mount();
+    const name = screen.getByLabelText('Role name');
+    // Nothing is flagged on a new, untouched form.
+    expect(screen.queryByText('Enter a name for the role.')).toBeNull();
+    fireEvent.blur(name);
+    expect(screen.getByText('Enter a name for the role.')).toBeTruthy();
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Create role' }).disabled).toBe(
+      true,
+    );
+    fireEvent.change(name, { target: { value: 'Night shift' } });
+    expect(screen.queryByText('Enter a name for the role.')).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Create role' }).disabled).toBe(
+      false,
+    );
+    fireEvent.change(name, { target: { value: `Bad\u202Ename` } });
+    expect(screen.getByRole('group', { name: /needs? fixing/ }).textContent).toContain(
+      '1 setting needs fixing',
+    );
+  });
+
   it('shows a key the admin may not give as locked, and a protected one with its note', () => {
     mount();
     const locked = screen.getByLabelText<HTMLInputElement>('Manage');
@@ -170,7 +192,7 @@ describe('role editor', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Role name').value).toBe('My draft name');
     expect(screen.getByLabelText<HTMLInputElement>('View').checked).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(
       screen.getByText('Saved name: Night shift (renamed). Your name: My draft name.'),
     ).toBeTruthy();
@@ -302,7 +324,7 @@ describe('role editor', () => {
     mount({ initialName: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
     const summary = screen.getByRole('alert');
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain('1 setting needs fixing');
     fireEvent.click(within(summary).getByRole('link', { name: 'Role name' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Role name'));
     expect(call).not.toHaveBeenCalled();

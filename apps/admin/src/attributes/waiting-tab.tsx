@@ -1,0 +1,297 @@
+'use client';
+
+import {
+  Badge,
+  Banner,
+  Button,
+  Dialog,
+  EmptyState,
+  LoadError,
+  SkeletonRows,
+  toast,
+} from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { callApi } from '../api/client.ts';
+import { When } from '../shared/when.tsx';
+import { useAttributeCall } from './use-attribute-call.ts';
+import {
+  API_ARCHIVE_REQUESTS,
+  API_RELAXATIONS,
+  type OpenRelaxation,
+  type OpenRelaxationList,
+} from './types.ts';
+
+type Load =
+  | { readonly state: 'loading' }
+  | { readonly state: 'ready'; readonly requests: readonly OpenRelaxation[] }
+  | { readonly state: 'failed' };
+
+type Pending = { readonly kind: 'confirm' | 'withdraw'; readonly request: OpenRelaxation } | null;
+
+/** The attribute's name in the panel's language, else any name it has, else its code. */
+function nameOf(request: OpenRelaxation, locale: string): string {
+  const names = request.attribute.names;
+  return (
+    names[locale] ??
+    names[locale.split('-')[0] ?? locale] ??
+    Object.values(names)[0] ??
+    request.attribute.code
+  );
+}
+
+/**
+ * The Waiting for you tab (attributes A2 part 3): requests to turn off Material that wait for a
+ * second administrator, oldest first. Another administrator's request can be
+ * confirmed; the reader's own can be withdrawn. Both ask first. Only an admin with
+ * `catalog.attribute.edit` reads the clear-material requests and `catalog.attribute.restructure` the archive requests; any other admin sees the empty state.
+ */
+export function WaitingTab({
+  canEdit,
+  canRestructure = false,
+  csrfToken,
+  onOpenAttribute,
+}: {
+  readonly canEdit: boolean;
+  /** `catalog.attribute.restructure`: an archive request is confirmed with it (attributes A8). */
+  readonly canRestructure?: boolean;
+  readonly csrfToken: string;
+  readonly onOpenAttribute: (attributeId: string) => void;
+}) {
+  const t = useTranslations('attributes.waiting');
+  const tl = useTranslations('load');
+  const locale = useLocale();
+  const [load, setLoad] = useState<Load>({ state: 'loading' });
+  const [pending, setPending] = useState<Pending>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const section = useRef<HTMLElement>(null);
+
+  /**
+   * Reads the list. After a decision the rows already shown stay while it reads (`quiet`), and
+   * focus moves to the list, since the row whose button opened the dialog may be gone.
+   */
+  const fetchRequests = useCallback(
+    async (quiet = false) => {
+      if (quiet) setRefreshing(true);
+      else setLoad({ state: 'loading' });
+      // Each list needs its own key: the clear-material list `catalog.attribute.edit`, the archive
+      // list `catalog.attribute.restructure` (attributes A8). An admin with one reads only that one.
+      const answers = await Promise.all([
+        canEdit ? callApi<OpenRelaxationList>('GET', API_RELAXATIONS) : null,
+        canRestructure ? callApi<OpenRelaxationList>('GET', API_ARCHIVE_REQUESTS) : null,
+      ]);
+      setRefreshing(false);
+      const used = answers.filter((answer) => answer !== null);
+      if (used.some((answer) => !answer.ok && answer.failure.status === 401)) {
+        window.location.assign('/session-ended');
+        return;
+      }
+      if (used.every((answer) => answer.ok)) {
+        const requests = used
+          .flatMap((answer) => (answer.ok ? answer.body.requests : []))
+          .sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+        setLoad({ state: 'ready', requests });
+        if (quiet) section.current?.focus();
+        return;
+      }
+      setLoad({ state: 'failed' });
+    },
+    [canEdit, canRestructure],
+  );
+
+  const canRead = canEdit || canRestructure;
+  useEffect(() => {
+    if (canRead) void fetchRequests();
+  }, [canRead, fetchRequests]);
+
+  const empty = (
+    <EmptyState
+      size="card"
+      icon="inbox"
+      title={t('empty')}
+      body={t(canRead ? 'body' : 'view-only-body')}
+    />
+  );
+  if (!canRead) return empty;
+
+  return (
+    <section
+      ref={section}
+      tabIndex={-1}
+      aria-label={t('label')}
+      aria-busy={load.state === 'loading' || refreshing}
+      className="flex min-w-0 flex-col gap-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+    >
+      {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={3} /> : null}
+      {load.state === 'failed' ? (
+        <LoadError
+          className="flex flex-col items-start gap-3"
+          message={t('load-error')}
+          retryLabel={tl('retry')}
+          onRetry={() => void fetchRequests()}
+        />
+      ) : null}
+      {load.state === 'ready' && load.requests.length === 0 ? empty : null}
+      {load.state === 'ready' && load.requests.length > 0 ? (
+        <ul
+          role="list"
+          className="flex flex-col divide-y divide-line rounded-lg border border-line bg-surface"
+        >
+          {load.requests.map((request) => {
+            const name = nameOf(request, locale);
+            return (
+              <li
+                key={request.id}
+                className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
+              >
+                <div className="flex min-w-0 flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium wrap-anywhere text-fg">{name}</span>
+                    <Badge tone="attention">{t(`kind.${request.kind}`)}</Badge>
+                    {request.mine ? <Badge tone="neutral">{t('mine')}</Badge> : null}
+                  </div>
+                  <p className="text-sm wrap-anywhere text-fg-muted">{request.attribute.code}</p>
+                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
+                    <dt className="text-fg-muted">{t('requested')}</dt>
+                    <dd>
+                      <When iso={request.requestedAt} missing="" />
+                    </dd>
+                    <dt className="text-fg-muted">{t('expires')}</dt>
+                    <dd>
+                      <When iso={request.expiresAt} missing="" />
+                    </dd>
+                  </dl>
+                  {request.mine ? (
+                    <p className="text-sm text-fg-muted">{t('same-admin-note')}</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    aria-label={t('open-named', { name })}
+                    onClick={() => onOpenAttribute(request.attribute.id)}
+                  >
+                    {t('open-attribute')}
+                  </Button>
+                  {request.allowedActions.confirm.allowed &&
+                  (request.kind === 'archive' ? canRestructure : canEdit) ? (
+                    <Button
+                      aria-label={t('confirm-named', { name })}
+                      onClick={() => setPending({ kind: 'confirm', request })}
+                    >
+                      {t('confirm')}
+                    </Button>
+                  ) : null}
+                  {request.allowedActions.cancel.allowed && canEdit ? (
+                    <Button
+                      variant="destructive"
+                      aria-label={t('withdraw-named', { name })}
+                      onClick={() => setPending({ kind: 'withdraw', request })}
+                    >
+                      {t('withdraw')}
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {pending === null ? null : (
+        <DecisionDialog
+          kind={pending.kind}
+          request={pending.request}
+          name={nameOf(pending.request, locale)}
+          csrfToken={csrfToken}
+          onClose={() => setPending(null)}
+          onDone={() => {
+            toast.success(
+              t(
+                pending.kind === 'confirm'
+                  ? pending.request.kind === 'archive'
+                    ? 'confirmed-archive'
+                    : 'confirmed'
+                  : 'withdrawn',
+              ),
+            );
+            setPending(null);
+            void fetchRequests(true);
+          }}
+          onReload={() => {
+            setPending(null);
+            void fetchRequests(true);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+/** Confirm another admin's request, or withdraw the reader's own, after the admin agrees. */
+function DecisionDialog({
+  kind,
+  request,
+  name,
+  csrfToken,
+  onClose,
+  onDone,
+  onReload,
+}: {
+  readonly kind: 'confirm' | 'withdraw';
+  readonly request: OpenRelaxation;
+  readonly name: string;
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly onReload: () => void;
+}) {
+  const t = useTranslations('attributes.waiting');
+  const te = useTranslations('attributes.editor');
+  const call = useAttributeCall(csrfToken);
+  const action = kind === 'confirm' ? 'confirm' : 'cancel';
+  // The words of an archive request differ from those of turning Material off.
+  const words = request.kind === 'archive' ? `${kind}-archive` : kind;
+
+  async function decide() {
+    // An archive request is confirmed on its own route, under its own key (attributes A8).
+    const base =
+      request.kind === 'archive' && action === 'confirm' ? API_ARCHIVE_REQUESTS : API_RELAXATIONS;
+    const answer = await call.run('POST', `${base}/${encodeURIComponent(request.id)}/${action}`, {
+      version: request.version,
+    });
+    if (answer.ok) onDone();
+  }
+
+  const problem = call.problem;
+  return (
+    <Dialog
+      open
+      title={t(`${words}-title`, { name })}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          {problem?.reload === true ? (
+            <Button onClick={onReload}>{t('reload')}</Button>
+          ) : (
+            <Button
+              variant={kind === 'withdraw' ? 'destructive-solid' : 'primary'}
+              loading={call.pending}
+              disabled={call.pending}
+              onClick={() => void decide()}
+            >
+              {t(kind)}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
+        <p>{t(`${words}-body`)}</p>
+      </div>
+    </Dialog>
+  );
+}

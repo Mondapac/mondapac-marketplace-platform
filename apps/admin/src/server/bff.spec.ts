@@ -552,6 +552,35 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the category editor on its exact paths and methods only (categories C3)', async () => {
+    const id = ID;
+    const base = 'catalog/admin/categories';
+    expect((await call('POST', base)).status).toBe(200);
+    expect((await call('PATCH', `${base}/${id}`)).status).toBe(200);
+    for (const action of ['reorder', 'hide', 'show', 'change-slug', 'discard']) {
+      expect((await call('POST', `${base}/${id}/${action}`)).status).toBe(200);
+      expect((await call('PUT', `${base}/${id}/${action}`)).status).toBe(404);
+    }
+    expect((await call('PUT', `${base}/${id}`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/${id}`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}`)).status).toBe(404);
+    expect((await call('PATCH', `${base}/not-a-uuid`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}/restore`)).status).toBe(404);
+  });
+
+  it('relays move, merge and archive on their exact paths and methods only (categories C4a)', async () => {
+    const id = ID;
+    const base = 'catalog/admin/categories';
+    for (const action of ['move', 'merge', 'archive']) {
+      expect((await call('POST', `${base}/${id}/${action}`)).status).toBe(200);
+      expect((await call('PUT', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('PATCH', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('DELETE', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/not-a-uuid/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/${id}/${action}/extra`)).status).toBe(404);
+    }
+  });
+
   it('relays the assistant settings read and write on their exact path only', async () => {
     const path = 'assistant/admin/settings';
     const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
@@ -606,6 +635,18 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(404);
     expect((await call('DELETE', `${base}/models/${ID}`)).status).toBe(404);
     expect((await call('PUT', `${base}/models`)).status).toBe(404);
+  });
+
+  it('relays the service areas: a read, and the name edit as a POST on its exact path', async () => {
+    const base = 'sellers/admin/service-areas';
+    const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, base.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', `${base}/names`)).status).toBe(200);
+    expect((await call('POST', base)).status).toBe(404);
+    expect((await call('PUT', `${base}/names`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/names`)).status).toBe(404);
+    expect((await call('POST', `${base}/names/extra`)).status).toBe(404);
   });
 
   it('relays the delivery settings of the Market and of a seller on their exact paths only', async () => {
@@ -1121,6 +1162,36 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/archive`],
     ['POST', `catalog/admin/brands/${id}/merge`],
     ['POST', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['GET', 'catalog/admin/categories'],
+    ['GET', `catalog/admin/categories/${id}`],
+    ['GET', `catalog/admin/categories/${id}/impact`],
+    ['GET', 'catalog/admin/business-activities'],
+    ['GET', `catalog/admin/business-activities/${id}`],
+    ['POST', 'catalog/admin/business-activities'],
+    ['PUT', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/attributes'],
+    ['GET', `catalog/admin/attributes/${id}`],
+    ['POST', 'catalog/admin/attributes'],
+    ['PUT', `catalog/admin/attributes/${id}`],
+    ['POST', `catalog/admin/attributes/${id}/publish`],
+    ['POST', `catalog/admin/attributes/${id}/discard`],
+    ['GET', 'catalog/admin/attribute-suggestions'],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/approve`],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/map`],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
+    ['GET', 'catalog/admin/attribute-relaxations'],
+    ['GET', 'catalog/admin/attribute-archive-requests'],
+    ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
+    ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
+    ['POST', `catalog/admin/attribute-relaxations/${id}/cancel`],
+    ['GET', `catalog/admin/attributes/${id}/impact`],
+    ['POST', `catalog/admin/attributes/${id}/merge-values`],
+    ['POST', `catalog/admin/attributes/${id}/merge`],
+    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['POST', `catalog/admin/attributes/${id}/archive-requests`],
+    ['POST', `catalog/admin/attribute-archive-requests/${id}/confirm`],
+    ['GET', 'catalog/admin/feature-sets'],
+    ['GET', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1158,6 +1229,42 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/delete`],
     ['POST', 'catalog/admin/brands/merge-queue'],
     ['GET', 'catalog/admin/brands/merge-queue/dismiss'],
+    ['PUT', `catalog/admin/categories/${id}`],
+    ['DELETE', `catalog/admin/categories/${id}`],
+    ['GET', 'catalog/admin/categories/not-a-uuid'],
+    ['GET', `catalog/admin/categories/${id}/extra`],
+    ['POST', `catalog/admin/categories/${id}/impact`],
+    ['DELETE', `catalog/admin/business-activities/${id}`],
+    ['PUT', 'catalog/admin/business-activities'],
+    ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
+    ['POST', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/business-activities/not-a-uuid'],
+    ['PUT', 'catalog/admin/attributes'],
+    ['POST', 'catalog/admin/attribute-suggestions'],
+    ['POST', `catalog/admin/attribute-suggestions/${id}`],
+    ['PUT', `catalog/admin/attribute-suggestions/${id}/approve`],
+    ['PUT', 'catalog/admin/attributes/not-a-uuid'],
+    ['POST', `catalog/admin/attributes/${id}`],
+    ['DELETE', `catalog/admin/attributes/${id}`],
+    ['POST', 'catalog/admin/attribute-relaxations'],
+    ['GET', `catalog/admin/attribute-relaxations/${id}/confirm`],
+    ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/cancel'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/relaxation-requests'],
+    ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/confirm'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/merge-values'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/merge'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/archive'],
+    ['POST', 'catalog/admin/attribute-archive-requests/not-a-uuid/confirm'],
+    ['GET', `catalog/admin/attribute-archive-requests/${id}/confirm`],
+    ['POST', `catalog/admin/attributes/${id}/impact`],
+    ['GET', `catalog/admin/attributes/${id}/relaxation-requests`],
+    ['POST', `catalog/admin/attribute-relaxations/${id}`],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/publish'],
+    ['GET', `catalog/admin/attributes/${id}/archive`],
+    ['GET', `catalog/admin/attributes/${id}/publish`],
+    ['GET', 'catalog/admin/attributes/not-a-uuid'],
+    ['POST', 'catalog/admin/feature-sets'],
+    ['GET', 'catalog/admin/feature-sets/not-a-uuid'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1202,6 +1309,63 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands');
+  });
+
+  it('passes only status, search, afterId and limit of the business activity list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/business-activities?status=inactive&search=gro&afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/business-activities?status=inactive&search=gro&afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/business-activities?status=draft&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/business-activities',
+    );
+  });
+
+  it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=merge&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=merge`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=delete`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact`,
+    );
+    const tree = await run('GET', 'catalog/admin/categories?q=x&limit=3', readHeaders);
+    expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+  });
+
+  it('passes only the known, well-formed filters of the attribute list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/attributes?search=heat&type=select&status=draft&usedIn=${id}&missing=fa-IR&afterId=${id}&limit=50&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/attributes?search=heat&type=select&status=draft&usedIn=${id}&missing=fa-IR&afterId=${id}&limit=50`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/attributes?search=${'x'.repeat(121)}&type=colour&status=gone&usedIn=nope&missing=Persian&afterId=1&limit=abc`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/attributes');
   });
 
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {

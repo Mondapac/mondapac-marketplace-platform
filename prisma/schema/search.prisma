@@ -21,8 +21,16 @@ model SearchOfferDocument {
   /// Set by the trigger offer_documents_set_vector from name (weight A) and shortText (B); the
   /// CHECK offer_documents_search_vector_check keeps it from being empty.
   searchVector     Unsupported("tsvector")? @map("search_vector")
+  /// The searchable attribute values (brand and its aliases, the country, option labels): words
+  /// only, built by the indexer; the trigger weighs them at C, below the name and short text.
+  searchText       String?                  @map("search_text")
+  /// Facet values as `attribute=value`: option codes (merges followed), `true`, `brand=<slug>`,
+  /// `country-of-origin=<iso code>`. At most 100 (CHECK). A filter asks for one of the values.
+  facetCodes       String[]                 @default([]) @map("facet_codes")
   /// The last write of this row; a rebuild deletes the rows it did not touch.
   indexedAt        DateTime                 @map("indexed_at") @db.Timestamptz(6)
+
+  numbers SearchOfferDocumentNumber[]
 
   @@id([marketId, offerId])
   @@index([marketId, productId])
@@ -30,6 +38,75 @@ model SearchOfferDocument {
   /// The text query (websearch_to_tsquery) and the category filter (@>).
   @@index([searchVector], type: Gin, map: "offer_documents_search_vector_idx")
   @@index([categoryIds], type: Gin, map: "offer_documents_category_ids_idx")
+  /// The facet filter (a hand-written index; the migration creates it).
+  @@index([facetCodes], type: Gin, map: "offer_documents_facet_codes_idx")
   @@map("offer_documents")
+  @@schema("search")
+}
+
+/// The star totals of one product, copied from reviews' public facade by a job (package 5). Only
+/// the search ranking reads it; it is rebuilt from reviews at any time, empty while reviews are
+/// off or the rating boost is off in the Market, and never a source of truth.
+model SearchProductRating {
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  productId      String   @map("product_id") @db.Uuid
+  /// Published reviews of the product (1 or more) and the sum of their stars.
+  ratingCount    Int      @map("rating_count")
+  ratingSum      Int      @map("rating_sum")
+  /// The Bayesian average of the stars times 1000 (a prior of `priorCount` ratings at the prior
+  /// mean plus the real ones), computed by the sync job from Market config. 0 to 5000 (CHECK).
+  bayesTimes1000 Int      @map("bayes_times_1000")
+  /// The relevance factor the rating gives this product, in millionths (1000000 is no change).
+  /// 900000 to 1100000 (CHECK): the rating can move a result by 10 % at most, whatever the config.
+  boostPpm       Int      @map("boost_ppm")
+  /// The last write of this row; a sync deletes the rows it did not touch.
+  syncedAt       DateTime @map("synced_at") @db.Timestamptz(6)
+
+  @@id([marketId, productId])
+  @@map("product_ratings")
+  @@schema("search")
+}
+
+/// The progress of the attribute reindex of one Market (attributes A7): which stamp of the
+/// searchable and filter definitions the index was last rebuilt for, and how far a run has got.
+/// The row is created by the first run and never deleted.
+model SearchReindexState {
+  marketId      String    @id @map("market_id") @db.VarChar(8)
+  tenantId      String    @map("tenant_id")
+  /// The catalog stamp the whole index was last rebuilt for; null before the first run.
+  doneStamp     String?   @map("done_stamp")
+  /// The stamp a running or failed run is working towards.
+  targetStamp   String?   @map("target_stamp")
+  /// idle | running | failed.
+  status        String
+  /// Offers re-read by the current (or last) run.
+  offersDone    Int       @map("offers_done")
+  /// The last Offer id of the last page done: a run resumes after it.
+  cursorOfferId String?   @map("cursor_offer_id") @db.Uuid
+  startedAt     DateTime? @map("started_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @map("updated_at") @db.Timestamptz(6)
+  finishedAt    DateTime? @map("finished_at") @db.Timestamptz(6)
+  /// A short code of the last failure (never text from a user).
+  failure       String?
+
+  @@map("reindex_state")
+  @@schema("search")
+}
+
+/// A number of a document a range filter reads (attributes A7): one row per attribute, written
+/// with the document and deleted with it.
+model SearchOfferDocumentNumber {
+  marketId String              @map("market_id") @db.VarChar(8)
+  tenantId String              @map("tenant_id")
+  offerId  String              @map("offer_id") @db.Uuid
+  /// The attribute code.
+  attr     String
+  value    Decimal             @db.Decimal(24, 9)
+  document SearchOfferDocument @relation(fields: [marketId, offerId], references: [marketId, offerId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, offerId, attr])
+  @@index([marketId, attr, value])
+  @@map("offer_document_numbers")
   @@schema("search")
 }
