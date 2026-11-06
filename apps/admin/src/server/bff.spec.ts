@@ -1504,6 +1504,47 @@ describe('relay of the product list', () => {
     expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products');
   });
 
+  describe('the order export', () => {
+    const exportPath = ['ordering', 'admin', 'orders', 'export'];
+
+    it('relays the list filter and drops paging, sort and a value of the wrong shape', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        get(
+          `ordering/admin/orders/export?format=csv&status=confirmed&paymentState=captured&fulfilment=shipped&sellerId=${id}&from=2026-10-01T00:00:00.000Z&to=2026-11-01T00:00:00.000Z&page=2&pageSize=50&sort=total&limit=5&cursor=c1`,
+        ),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get('ordering/admin/orders/export?format=xlsx&status=shipped&paymentState=free&from=today'),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/ordering/admin/orders/export?format=csv&status=confirmed&paymentState=captured&fulfilment=shipped&sellerId=${id}&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z`,
+      );
+      expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/ordering/admin/orders/export');
+    });
+
+    it('does not relay the export as a write', async () => {
+      const upstream = upstreamOk();
+      expect(
+        (
+          await relay(
+            config,
+            post('ordering/admin/orders/export', sameOrigin, '{}'),
+            exportPath,
+            upstream,
+          )
+        ).status,
+      ).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+  });
+
   describe('the bulk action and the export', () => {
     const exportPath = ['catalog', 'admin', 'products', 'export'];
     const second = '0190a000-0000-7000-8000-000000000002';

@@ -13,6 +13,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { downloadOrders } from './export-file.ts';
 import { OrdersTable } from './orders-table.tsx';
 import {
   MAX_PAGED_ROWS,
@@ -20,6 +21,7 @@ import {
   PAGE_SIZE,
   SORTS,
   pageCountOf,
+  exportQueryOf,
   queryOf,
   rangeIsBackwards,
   type Days,
@@ -56,6 +58,11 @@ export function SellerOrders({
   const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<{
+    readonly tone: 'info' | 'critical';
+    readonly text: string;
+  } | null>(null);
   // Only the newest question may fill the list: a slow answer for old filters is dropped.
   const latest = useRef(0);
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
@@ -81,6 +88,7 @@ export function SellerOrders({
     cursors?: readonly (string | null)[];
     focus?: boolean;
   }) {
+    setExportNote(null);
     const nextFilter = want.filter ?? filter;
     const nextDays = want.days ?? days;
     const nextSort = want.sort ?? sort;
@@ -127,6 +135,34 @@ export function SellerOrders({
   }
 
   const filtered = days.from !== '' || days.to !== '';
+  // The file holds every order the tab and days match, not only the page on screen.
+  async function exportFile() {
+    setExporting(true);
+    setExportNote(null);
+    const outcome = await downloadOrders(
+      'ordering/seller/orders/export',
+      exportQueryOf(filter, days),
+    );
+    setExporting(false);
+    if (outcome.ok) {
+      setExportNote({ tone: 'info', text: t('export.done') });
+    } else if (outcome.reason === 'session') {
+      window.location.assign('/session-ended');
+    } else if (outcome.reason === 'too-large') {
+      setExportNote({
+        tone: 'critical',
+        text:
+          outcome.matching === undefined || outcome.max === undefined
+            ? t('export.too-large-plain')
+            : t('export.too-large', {
+                matching: number(outcome.matching),
+                max: number(outcome.max),
+              }),
+      });
+    } else {
+      setExportNote({ tone: 'critical', text: t(`export.${outcome.reason}`) });
+    }
+  }
   const everyState = filter === 'all' && !filtered;
   const pageCount = total === null ? 1 : pageCountOf(total);
   const first = total === null ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -176,11 +212,23 @@ export function SellerOrders({
               />
             ) : null}
           </div>
-          {filtered ? (
-            <div>
+          <div className="flex flex-wrap items-center gap-3">
+            {filtered ? (
               <Button variant="secondary" onClick={() => void ask({ days: NO_DAYS })}>
                 {t('filters.clear')}
               </Button>
+            ) : null}
+            <Button
+              variant="secondary"
+              disabled={exporting || loading || failed || backwards || orders.length === 0}
+              onClick={() => void exportFile()}
+            >
+              {exporting ? t('export.busy') : t('export.button')}
+            </Button>
+          </div>
+          {exportNote !== null ? (
+            <div role="status">
+              <Banner tone={exportNote.tone}>{exportNote.text}</Banner>
             </div>
           ) : null}
           {total !== null && orders.length > 0 ? (

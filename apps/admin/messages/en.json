@@ -2630,6 +2630,15 @@
       "seller": "Seller {id}",
       "no-parts": "This order has no seller parts."
     },
+    "export": {
+      "button": "Export CSV",
+      "busy": "Preparing the file…",
+      "done": "The file of the orders on this list was downloaded.",
+      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
+      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
+      "invalid": "These filters cannot be exported. Change them and try again.",
+      "unavailable": "The file could not be created. Try again."
+    },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
     "filters": {

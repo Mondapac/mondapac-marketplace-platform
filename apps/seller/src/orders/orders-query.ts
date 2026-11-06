@@ -67,6 +67,17 @@ export function queryOf(
   return `ordering/seller/orders?${params.toString()}`;
 }
 
+/** The query of the export: the tab and the days, without any page, sort or cursor. */
+export function exportQueryOf(status: FulfilmentFilter, days: Days): string {
+  const params = new URLSearchParams();
+  if (status !== 'all') params.set('status', status);
+  const from = startOfDay(days.from);
+  const to = startOfDay(days.to, 1);
+  if (from !== null) params.set('from', from);
+  if (to !== null) params.set('to', to);
+  return params.toString();
+}
+
 /** How many page buttons a total needs, never past the API's depth limit. */
 export const pageCountOf = (total: number): number =>
   Math.min(MAX_PAGE, Math.max(1, Math.ceil(total / PAGE_SIZE)));

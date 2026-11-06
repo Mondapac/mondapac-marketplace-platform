@@ -40,6 +40,7 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.refund-tax-unavailable': 503,
   'ordering.document-not-available': 409,
   'ordering.invoice-numbering-unavailable': 503,
+  'batch.too-large': 413,
   'access.unavailable': 503,
 });
 
@@ -84,6 +85,8 @@ const DETAILS = [
   'quotes',
   'attemptsLeft',
   'total',
+  'max',
+  'matching',
 ] as const;
 
 /** The sellers of `ordering.cart-not-ready`: the public minimum leaves as a money body. */

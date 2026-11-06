@@ -21,6 +21,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -34,11 +35,13 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { AdminExportOrders } from '../application/use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from '../application/use-cases/admin-list-orders.use-case';
 import { AdminRefundOrder } from '../application/use-cases/admin-refund-order.use-case';
 import { AdminViewOrderDocument } from '../application/use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
 import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
+import { sendOrdersExport } from './export-response';
 import { closedBody, refusal } from './http-answers';
 import { REFUND_BODY_KEYS, RefundBody, RefundRequestBody, refundBody } from './refunds.dto';
 import {
@@ -74,6 +77,7 @@ export class AdminOrdersController {
 
   constructor(
     private readonly list: AdminListOrders,
+    private readonly exportOrders: AdminExportOrders,
     private readonly view: AdminViewOrder,
     private readonly refund: AdminRefundOrder,
     private readonly documentOf: AdminViewOrderDocument,
@@ -161,6 +165,52 @@ export class AdminOrdersController {
     this.log('ordering.admin-list-orders-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return adminOrderPageBody(result.value);
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary: 'The orders of the list as a CSV file (admin)',
+    description:
+      'Needs ordering.order.view. The orders the list shows for the same filter (status, q, ' +
+      'paymentState, fulfilment, sellerId, from, to), newest first, at most 10,000: more is 413 ' +
+      'batch.too-large (details.max, details.matching) and the filter is narrowed. One row per ' +
+      'order; no customer name or email. The file streams as an attachment. A text cell that ' +
+      'starts with = + - @ is written with a leading quote.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['pending-payment', 'confirmed', 'cancelled'],
+  })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({
+    name: 'paymentState',
+    required: false,
+    enum: ['none', 'authorised', 'captured', 'voided'],
+  })
+  @ApiQuery({ name: 'fulfilment', required: false, enum: ['to-ship', 'shipped', 'delivered'] })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  @ApiOkResponse({ description: 'text/csv; charset=utf-8 (orders-<date>.csv), as an attachment' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportOrders.execute(context, { ...query });
+    this.log(
+      'ordering.admin-export-orders-route',
+      context,
+      result.ok ? 'exported' : result.error.code,
+    );
+    await sendOrdersExport(result, context, response, this.#logger, 'ordering.admin-export-orders');
   }
 
   @Get(':orderId')

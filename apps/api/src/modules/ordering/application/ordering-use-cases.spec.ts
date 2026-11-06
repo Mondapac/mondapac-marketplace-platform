@@ -36,7 +36,9 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { CheckoutLine } from '../../cart';
 import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
+import { AdminExportOrders } from './use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './use-cases/admin-list-orders.use-case';
+import { SellerExportOrders } from './use-cases/seller-export-orders.use-case';
 import { BookCarrierDeliveries } from './use-cases/book-carrier-deliveries.use-case';
 import { CancelCarrierAfterRefund } from './use-cases/cancel-carrier-after-refund.use-case';
 import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
@@ -90,6 +92,12 @@ const OFFER_2 = id<'Offer'>(0x02);
 const OFFER_3 = id<'Offer'>(0x03);
 const VARIANT = id<'Variant'>(0x10);
 const ADDRESS = id<'CustomerAddress'>(0xad);
+
+const textOf = async (chunks: AsyncIterable<string>): Promise<string> => {
+  let text = '';
+  for await (const chunk of chunks) text += chunk;
+  return text;
+};
 
 describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (code) => {
   const market = testMarketContext(code, 'default');
@@ -1007,6 +1015,65 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         'order-0005-abcd',
       );
 
+    describe('export', () => {
+      it('writes the orders of the filter as a CSV with no customer data', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+        labels.stores.set(SELLER_A, '=Corner Butcher');
+        labels.customers.set(ACCOUNT, { displayName: 'Jane Doe', email: 'jane@example.com' });
+        const exported = await new AdminExportOrders(gate, deps).execute(adminContext(), {
+          status: 'pending-payment',
+        });
+        if (!exported.ok) throw new Error('export failed');
+        const text = await textOf(exported.value.chunks);
+        const lines = text
+          .replace('\uFEFF', '')
+          .split('\r\n')
+          .filter((line) => line !== '');
+
+        expect(exported.value.contentType).toBe('text/csv; charset=utf-8');
+        expect(exported.value.filename).toMatch(/^orders-\d{4}-\d{2}-\d{2}\.csv$/);
+        expect(text.startsWith('\uFEFFOrder,Placed,Status,Payment,')).toBe(true);
+        expect(lines).toHaveLength(2);
+        expect(lines[1]).toContain(result.value.orderId);
+        expect(lines[1]).toContain("'=Corner Butcher");
+        expect(text).not.toContain('jane@example.com');
+        expect(text).not.toContain('Jane Doe');
+      });
+
+      it('writes only the header when no order matches', async () => {
+        await start();
+        const exported = await new AdminExportOrders(gate, deps).execute(adminContext(), {
+          status: 'confirmed',
+        });
+        if (!exported.ok) throw new Error('export failed');
+        const text = await textOf(exported.value.chunks);
+        expect(text.split('\r\n').filter((line) => line !== '')).toHaveLength(1);
+      });
+
+      it('refuses a key, a value or a format the list does not know', async () => {
+        const run = (input: unknown) =>
+          new AdminExportOrders(gate, deps).execute(adminContext(), input);
+        expect(await run({ status: 'shipped' })).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed' },
+        });
+        expect(await run({ page: 2 })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'page', code: 'unknown' }] }),
+        );
+        expect(await run({ format: 'xlsx' })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'format', code: 'value' }] }),
+        );
+        expect(await run('status')).toMatchObject({ ok: false });
+      });
+
+      it('is for an admin only', async () => {
+        expect(await new AdminExportOrders(gate, deps).execute(customer, {})).toEqual(
+          err({ code: 'access.denied' }),
+        );
+      });
+    });
+
     it('names the products, stores and customer, with one batched call per lookup', async () => {
       const result = await start();
       if (!result.ok) throw new Error('checkout failed');
@@ -1648,6 +1715,49 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(bad).toEqual({
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] },
+      });
+    });
+
+    describe('export', () => {
+      const exportOf = (context: CallContext, input: unknown = {}) =>
+        new SellerExportOrders(gate, deps).execute(context, input);
+
+      it("writes the seller's own paid orders and no buyer data", async () => {
+        const order = await paid();
+        const mine = sellerOrderIdOf(order.id, SELLER_A);
+        const theirs = sellerOrderIdOf(order.id, SELLER_B);
+
+        const exported = await exportOf(sellerA, { status: 'to-ship' });
+        if (!exported.ok) throw new Error('export failed');
+        const text = await textOf(exported.value.chunks);
+
+        expect(exported.value.filename).toMatch(/^seller-orders-\d{4}-\d{2}-\d{2}\.csv$/);
+        expect(text.startsWith('\uFEFFSeller order,Order,Paid at,Fulfilment,')).toBe(true);
+        expect(text).toContain(mine);
+        expect(text).not.toContain(theirs);
+        expect(text.split('\r\n').filter((line) => line !== '')).toHaveLength(2);
+        expect(text).not.toMatch(/@|shipTo|recipient/i);
+      });
+
+      it('follows the fulfilment step filter and refuses an unknown key', async () => {
+        const order = await paid();
+        await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+        const shipped = await exportOf(sellerA, { status: 'shipped' });
+        const toShip = await exportOf(sellerA, { status: 'to-ship' });
+        if (!shipped.ok || !toShip.ok) throw new Error('export failed');
+        expect((await textOf(shipped.value.chunks)).split('\r\n').filter(Boolean)).toHaveLength(2);
+        expect((await textOf(toShip.value.chunks)).split('\r\n').filter(Boolean)).toHaveLength(1);
+        expect(await exportOf(sellerA, { sellerId: SELLER_B })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'sellerId', code: 'unknown' }] }),
+        );
+      });
+
+      it('is for a seller only', async () => {
+        expect(await exportOf(customer)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
       });
     });
 

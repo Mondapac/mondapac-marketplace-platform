@@ -725,6 +725,58 @@ describe('relay of the seller order routes', () => {
     );
   });
 
+  it('relays the export with its own filter keys and drops the rest', async () => {
+    const upstream = upstreamOk();
+    const path = ['ordering', 'seller', 'orders', 'export'];
+    const query = (q: string) =>
+      new Request(`http://seller.localhost:3001/api/ordering/seller/orders/export${q}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      });
+    expect(
+      (
+        await relay(
+          config,
+          query('?format=csv&status=shipped&from=2026-10-01T00:00:00.000Z&page=2&limit=5&x=1'),
+          path,
+          upstream,
+        )
+      ).status,
+    ).toBe(200);
+    await relay(config, query('?status=cancelled&format=xlsx&to=yesterday'), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/seller/orders/export?format=csv&status=shipped&from=2026-10-01T00%3A00%3A00.000Z',
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/ordering/seller/orders/export');
+  });
+
+  it('hands the export on as an attachment with the name the API made', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('Seller order\r\n', {
+          status: 200,
+          headers: {
+            'content-type': 'text/csv; charset=utf-8',
+            'content-disposition': 'attachment; filename="seller-orders-2026-11-06.csv"',
+          },
+        }),
+      ),
+    );
+    const response = await relay(
+      config,
+      new Request('http://seller.localhost:3001/api/ordering/seller/orders/export', {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      }),
+      ['ordering', 'seller', 'orders', 'export'],
+      upstream,
+    );
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="seller-orders-2026-11-06.csv"',
+    );
+    expect(await response.text()).toBe('Seller order\r\n');
+  });
+
   it('posts ship and deliver by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     for (const action of ['ship', 'deliver']) {

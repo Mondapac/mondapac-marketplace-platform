@@ -32,6 +32,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'reviews/seller',
     'payments/seller/payout-account',
     'ordering/seller/orders',
+    // The export of the order list as a CSV file (ordering): the list's own filter.
+    'ordering/seller/orders/export',
     'commission-payouts/seller/ledger',
     // The estimated next payout, the payout history (query: `limit`, `cursor`) and the money on
     // hold (commission-payouts, package 6d). The seller id is the session's, never a parameter.
@@ -134,6 +136,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
   'ordering/seller/orders': { limit: null, cursor: null },
+  'ordering/seller/orders/export': {
+    format: /^csv$/,
+    status: /^(to-ship|shipped|delivered)$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+  },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
   // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
   'commission-payouts/seller/payouts': {
@@ -215,6 +223,8 @@ const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
   'x-content-type-options',
+  // The order export arrives as an attachment with a file name the API made.
+  'content-disposition',
 ] as const;
 
 /** The API issues the correlation id and returns it in this header (ADR-0034 decision 3). */

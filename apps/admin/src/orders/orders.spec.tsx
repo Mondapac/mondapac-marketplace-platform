@@ -458,3 +458,80 @@ describe('orders nav', () => {
     expect(ids(['ordering.order.view'])).toContain('orders');
   });
 });
+
+describe('orders export', () => {
+  const csv = (status: number, body: BodyInit | null, headers: Record<string, string> = {}) =>
+    new Response(body, { status, headers });
+  const click = vi.fn();
+
+  beforeEach(() => {
+    click.mockReset();
+    URL.createObjectURL = vi.fn(() => 'blob:orders');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(click);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('downloads the file of the filter, not only the page on screen', async () => {
+    call.mockResolvedValue(pageOf([order()], 60));
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      csv(200, 'Order\r\n', {
+        'content-disposition': 'attachment; filename="orders-2026-11-06.csv"',
+      }),
+    );
+    render(wrap(<OrdersList paging="pages" />));
+    await screen.findByRole('table');
+    fireEvent.change(screen.getByLabelText('Payment'), { target: { value: 'captured' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    expect(
+      await screen.findByText('The file of the orders on this list was downloaded.'),
+    ).toBeTruthy();
+    expect(fetched).toHaveBeenCalledWith(
+      '/api/ordering/admin/orders/export?paymentState=captured',
+      {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      },
+    );
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the admin to narrow the filter when the file would be too large', async () => {
+    call.mockResolvedValue(pageOf([order()], 60));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      csv(
+        413,
+        JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 12345 } }),
+      ),
+    );
+    render(wrap(<OrdersList paging="pages" />));
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    expect(
+      await screen.findByText(
+        '12,345 orders match, and one file holds at most 10,000. Narrow the filters and export again.',
+      ),
+    ).toBeTruthy();
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('says the file could not be created after any other failure, and offers no export with no rows', async () => {
+    call.mockResolvedValue(pageOf([order()], 60));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(csv(503, '{}'));
+    render(wrap(<OrdersList paging="pages" />));
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(await screen.findByText('The file could not be created. Try again.')).toBeTruthy();
+    cleanup();
+
+    call.mockResolvedValue(pageOf([], 0));
+    render(wrap(<OrdersList paging="pages" />));
+    await screen.findByText('No orders yet');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Export CSV' }).disabled).toBe(
+      true,
+    );
+  });
+});

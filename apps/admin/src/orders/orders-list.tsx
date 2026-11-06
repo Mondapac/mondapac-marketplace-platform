@@ -15,6 +15,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { downloadOrders } from './export-file.ts';
 import { OrdersTable } from './orders-table.tsx';
 import {
   FULFILMENT_FILTERS,
@@ -51,6 +52,11 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<{
+    readonly tone: 'info' | 'critical';
+    readonly text: string;
+  } | null>(null);
   const latest = useRef(0);
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
   // user starts on the new rows and not on the pager they used.
@@ -109,11 +115,40 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
 
   // Any change of what is asked for starts again at the first page.
   const change = (patch: Partial<OrderFilters>) => {
+    setExportNote(null);
     setFilters((current) => ({ ...current, ...patch }));
     setPage(1);
     setCursors([null]);
   };
   const number = (n: number) => n.toLocaleString(locale);
+  // The file holds every order the filters match, not only the page on screen.
+  async function exportFile() {
+    setExporting(true);
+    setExportNote(null);
+    const outcome = await downloadOrders(
+      'ordering/admin/orders/export',
+      queryOf(filters, { paging: 'prev-next', cursor: null }),
+    );
+    setExporting(false);
+    if (outcome.ok) {
+      setExportNote({ tone: 'info', text: t('export.done') });
+    } else if (outcome.reason === 'session') {
+      window.location.assign('/session-ended');
+    } else if (outcome.reason === 'too-large') {
+      setExportNote({
+        tone: 'critical',
+        text:
+          outcome.matching === undefined || outcome.max === undefined
+            ? t('export.too-large-plain')
+            : t('export.too-large', {
+                matching: number(outcome.matching),
+                max: number(outcome.max),
+              }),
+      });
+    } else {
+      setExportNote({ tone: 'critical', text: t(`export.${outcome.reason}`) });
+    }
+  }
   const pageCount = total === null ? 1 : pageCountOf(total);
   const first = total === null ? 0 : (page - 1) * PAGE_SIZE + 1;
   const cut = total !== null && total > MAX_PAGED_ROWS;
@@ -177,14 +212,26 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
           />
         ) : null}
       </div>
-      {filtered ? (
-        <div>
+      <div className="flex flex-wrap items-center gap-3">
+        {filtered ? (
           <Button
             variant="secondary"
             onClick={() => change({ paymentState: '', fulfilment: '', from: '', to: '' })}
           >
             {t('filters.clear')}
           </Button>
+        ) : null}
+        <Button
+          variant="secondary"
+          disabled={exporting || loading || failed || backwards || rows.length === 0}
+          onClick={() => void exportFile()}
+        >
+          {exporting ? t('export.busy') : t('export.button')}
+        </Button>
+      </div>
+      {exportNote !== null ? (
+        <div role="status">
+          <Banner tone={exportNote.tone}>{exportNote.text}</Banner>
         </div>
       ) : null}
       {failed ? (
