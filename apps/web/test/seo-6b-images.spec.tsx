@@ -81,6 +81,26 @@ describe('picture sources', () => {
   });
 });
 
+describe('picture sources edge cases', () => {
+  it('keep one entry per width for a small photo, in every format', () => {
+    const set = photoSetOf(photo, PRODUCT, ref(P1, 300, 200), 'large')!;
+    expect(set.sources.map((source) => source.srcSet)).toEqual([
+      `${url(P1, 'thumb.avif')} 240w, ${url(P1, 'large.avif')} 300w`,
+      `${url(P1, 'thumb.webp')} 240w, ${url(P1, 'large.webp')} 300w`,
+    ]);
+  });
+
+  it('drop a format the builder refuses and keep the rest', () => {
+    const noAvif: typeof photo = (product, image, size) =>
+      size.endsWith('.avif') ? undefined : photo(product, image, size);
+    const set = photoSetOf(noAvif, PRODUCT, ref(P1), 'medium')!;
+    expect(set.sources.map((source) => source.type)).toEqual(['image/webp']);
+    const none: typeof photo = (product, image, size) =>
+      size.includes('.') ? undefined : photo(product, image, size);
+    expect(photoSetOf(none, PRODUCT, ref(P1), 'medium')!.sources).toEqual([]);
+  });
+});
+
 describe('card photo', () => {
   it('has srcset, sizes, width and height from the API size', () => {
     const card = cardOf(
