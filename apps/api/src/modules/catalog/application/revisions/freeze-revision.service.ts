@@ -132,10 +132,11 @@ export class FreezeRevision {
     }
     // Values of another feature set are kept in the working copy (a move back restores them) but
     // are not frozen: they are left out, not refused as unknown, only when the family changed.
-    const content =
-      familyCode === state.familyCode
-        ? copy.content
-        : withoutOtherFamilyValues(copy.content, schema);
+    // This is done at every submit, not only after a move: a reject puts the column back on the
+    // old feature set while the working copy still holds the new one's values, and a move back
+    // must not meet them as unknown. A code that names no active definition of the Market stays
+    // and is refused as unknown.
+    const content = await this.#withoutOtherFamilyValues(market, copy.content, schema);
     const frozen = freezeWorkingCopy({
       content,
       defaultLocale: locales.default,
@@ -221,6 +222,26 @@ export class FreezeRevision {
     });
   }
 
+  /** The content with the values of other feature sets' attributes taken out (CAT-10). */
+  async #withoutOtherFamilyValues(
+    market: MarketContext,
+    content: WorkingCopy['content'],
+    schema: AttributeSchema,
+  ): Promise<WorkingCopy['content']> {
+    const raw = content['attributeValues'];
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return content;
+    const known = new Set(schema.fields.map((field) => field.code));
+    const outside = Object.keys(raw).filter((code) => !known.has(code));
+    if (outside.length === 0) return content;
+    const defined = await this.deps.attributes.activeDefinitionCodes(market, outside);
+    return {
+      ...content,
+      attributeValues: Object.fromEntries(
+        Object.entries(raw).filter(([code]) => known.has(code) || !defined.has(code)),
+      ),
+    };
+  }
+
   /** The axes the published revision varies on, or null for a product with none (no lock). */
   async #publishedAxes(market: MarketContext, product: Product): Promise<readonly string[] | null> {
     const published = product.state.publishedRevisionId;
@@ -233,20 +254,6 @@ export class FreezeRevision {
     }
     return axes.size === 0 ? null : [...axes];
   }
-}
-
-/** The content with the attribute values the schema has no field for taken out. */
-function withoutOtherFamilyValues(
-  content: WorkingCopy['content'],
-  schema: AttributeSchema,
-): WorkingCopy['content'] {
-  const raw = content['attributeValues'];
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return content;
-  const known = new Set(schema.fields.map((field) => field.code));
-  return {
-    ...content,
-    attributeValues: Object.fromEntries(Object.entries(raw).filter(([code]) => known.has(code))),
-  };
 }
 
 export type { FreezeIssue };
