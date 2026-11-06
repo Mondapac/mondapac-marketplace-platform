@@ -35,6 +35,7 @@ import { TEST_MARKETS } from '../support/test-config';
 import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { fixedFamilyResolver } from '../support/family-resolver';
 
 // Catalog slice 7 reads (own-products.list, own-product.read, own-offers.list, own-offer.read) on PostgreSQL, for both Market fixtures: the submit
 // service end to end over the real stores (freeze, claim check, revision rows, product pointer,
@@ -186,6 +187,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       workingCopies: copies,
       revisions,
       freeze: new FreezeRevision({
+        familyResolver: fixedFamilyResolver(),
         attributes,
         policy,
         handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),

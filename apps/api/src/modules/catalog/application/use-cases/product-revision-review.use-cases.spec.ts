@@ -282,6 +282,8 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       unitOfWork,
       products,
       revisions,
+      attributes: { familyCodeOfRevision: () => Promise.resolve('default') } as never,
+      policy: { defaultFamily: () => 'default' } as never,
       outbox,
       clock,
     });

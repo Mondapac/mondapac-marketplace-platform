@@ -43,6 +43,7 @@ import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/
 import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { fixedFamilyResolver } from '../support/family-resolver';
 
 // Catalog slice 13 (product photos) on PostgreSQL, for both Market fixtures: upload, list, read
 // and delete as a seller over the real stores and the real image library, and the photos of a
@@ -212,6 +213,7 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          familyResolver: fixedFamilyResolver(),
           attributes,
           policy,
           images,

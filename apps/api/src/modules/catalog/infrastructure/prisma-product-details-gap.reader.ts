@@ -26,15 +26,15 @@ export class PrismaProductDetailsGapReader implements ProductDetailsGapReader {
         publishedRevisionId: { not: null },
         ...(filter.afterId === null ? {} : { id: { gt: filter.afterId } }),
         ...(filter.sellerId === null ? {} : { ownerSellerId: filter.sellerId }),
-        ...(filter.familyCode === null ? {} : { familyCode: filter.familyCode }),
       },
       select: {
         id: true,
         productCode: true,
         ownerSellerId: true,
-        familyCode: true,
         publishedRevision: {
           select: {
+            familyRevision: { select: { family: { select: { code: true } } } },
+            categories: { where: { isPrimary: true }, select: { categoryId: true }, take: 1 },
             attributeValues: true,
             texts: { where: { locale: filter.locale }, select: { name: true } },
           },
@@ -51,7 +51,8 @@ export class PrismaProductDetailsGapReader implements ProductDetailsGapReader {
               productId: row.id,
               productCode: row.productCode,
               ownerSellerId: row.ownerSellerId,
-              familyCode: row.familyCode,
+              revisionFamilyCode: row.publishedRevision.familyRevision.family.code,
+              primaryCategoryId: row.publishedRevision.categories[0]?.categoryId ?? null,
               name: row.publishedRevision.texts[0]?.name ?? null,
               attributeValues: row.publishedRevision.attributeValues,
             },

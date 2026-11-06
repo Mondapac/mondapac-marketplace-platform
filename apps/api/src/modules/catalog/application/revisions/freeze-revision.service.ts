@@ -1,5 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { AttributeValues, ContentHash, MarketContext, Result } from '@mondapac/shared-kernel';
+import type {
+  AttributeSchema,
+  AttributeValues,
+  ContentHash,
+  MarketContext,
+  Result,
+} from '@mondapac/shared-kernel';
 import type { Product } from '../../domain/product';
 import type { ProductTypeHandler, VariantDraft } from '../../domain/product-type-handler';
 import type { RevisionContent } from '../../domain/revision-content';
@@ -7,6 +13,7 @@ import { freezeWorkingCopy, type FreezeIssue } from '../../domain/revision-freez
 import { chooseAxes } from '../../domain/variant-axes';
 import { buildVariantLabels } from '../../domain/variant-labels';
 import type { WorkingCopy } from '../../domain/working-copy';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
@@ -28,10 +35,14 @@ export type FreezeRevisionFailure =
 export interface FrozenRevision {
   readonly content: RevisionContent;
   readonly contentHash: ContentHash;
+  /** The feature set the content was frozen under: the one its primary category holds (CAT-10). */
+  readonly familyCode: string;
 }
 
 export interface FreezeRevisionDependencies {
   readonly attributes: AttributeRepository;
+  /** The feature set of a primary category (attributes plan A4, decision ت۱۰). */
+  readonly familyResolver: ProductFamilyResolver;
   readonly policy: CatalogMarketPolicy;
   /** The registered handler of a product type, or undefined. */
   readonly handlerFor: (typeCode: string) => ProductTypeHandler | undefined;
@@ -86,7 +97,17 @@ export class FreezeRevision {
     if (handler === undefined || handler.variantModel !== state.variantModel) {
       return err({ code: 'revision.type-unknown' });
     }
-    const schema = await this.deps.attributes.loadSchema(market, state.familyCode);
+    // The family follows the primary category (the first one listed) at every submit; a tree or
+    // feature set that cannot be read fails closed, never to the product's old family.
+    const rawCategories = copy.content['categoryIds'];
+    const primaryCategoryId =
+      Array.isArray(rawCategories) && typeof rawCategories[0] === 'string'
+        ? rawCategories[0]
+        : null;
+    const resolved = await this.deps.familyResolver.resolve(market, primaryCategoryId);
+    if (!resolved.ok) return err({ code: 'revision.schema-unavailable' });
+    const familyCode = resolved.familyCode;
+    const schema = await this.deps.attributes.loadSchema(market, familyCode);
     if (schema === null) return err({ code: 'revision.schema-unavailable' });
 
     const locales = this.deps.policy.locales(market);
@@ -109,8 +130,14 @@ export class FreezeRevision {
       if (chosen.ok) variantSchema = chosen.schema;
       else axesIssues.push(...chosen.issues);
     }
+    // Values of another feature set are kept in the working copy (a move back restores them) but
+    // are not frozen: they are left out, not refused as unknown, only when the family changed.
+    const content =
+      familyCode === state.familyCode
+        ? copy.content
+        : withoutOtherFamilyValues(copy.content, schema);
     const frozen = freezeWorkingCopy({
-      content: copy.content,
+      content,
       defaultLocale: locales.default,
       supportedLocales: locales.supported,
       taxCategoryCodes: this.deps.policy.taxCategoryCodes(market),
@@ -126,8 +153,17 @@ export class FreezeRevision {
       contentSchemaVersion: copy.contentSchemaVersion,
     });
 
-    const issues: RevisionIssue[] = frozen.ok ? [...axesIssues] : [...frozen.error, ...axesIssues];
-    const rawValues = copy.content['attributeValues'];
+    // After a move to another feature set, an option the new set does not hold is named as such,
+    // not as an unknown attribute: the seller must pick other options or move the product back.
+    const moved = familyCode !== state.familyCode;
+    const notInFamily = (issue: RevisionIssue): RevisionIssue =>
+      moved && (issue.code === 'variants.axes-unknown' || issue.code === 'variants.option-unknown')
+        ? { path: issue.path, code: 'variants.option-not-in-family' }
+        : issue;
+    const issues: RevisionIssue[] = (
+      frozen.ok ? [...axesIssues] : [...frozen.error, ...axesIssues]
+    ).map(notInFamily);
+    const rawValues = content['attributeValues'];
     // The handler checks every value's type; a non-object is read as no values.
     const values = (
       typeof rawValues === 'object' && rawValues !== null ? rawValues : {}
@@ -162,7 +198,9 @@ export class FreezeRevision {
         maxOptionAttributes,
       );
       if (!variants.ok) {
-        issues.push(...variants.issues.map((issue) => ({ path: issue.path, code: issue.code })));
+        issues.push(
+          ...variants.issues.map((issue) => notInFamily({ path: issue.path, code: issue.code })),
+        );
       }
     }
     if (frozen.ok && frozen.value.imageIds.length > 0) {
@@ -176,7 +214,11 @@ export class FreezeRevision {
       });
     }
     if (issues.length > 0 || !frozen.ok) return err({ code: 'revision.not-ready', issues });
-    return ok({ content: frozen.value, contentHash: revisionContentHash(frozen.value) });
+    return ok({
+      content: frozen.value,
+      contentHash: revisionContentHash(frozen.value),
+      familyCode,
+    });
   }
 
   /** The axes the published revision varies on, or null for a product with none (no lock). */
@@ -191,6 +233,20 @@ export class FreezeRevision {
     }
     return axes.size === 0 ? null : [...axes];
   }
+}
+
+/** The content with the attribute values the schema has no field for taken out. */
+function withoutOtherFamilyValues(
+  content: WorkingCopy['content'],
+  schema: AttributeSchema,
+): WorkingCopy['content'] {
+  const raw = content['attributeValues'];
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return content;
+  const known = new Set(schema.fields.map((field) => field.code));
+  return {
+    ...content,
+    attributeValues: Object.fromEntries(Object.entries(raw).filter(([code]) => known.has(code))),
+  };
 }
 
 export type { FreezeIssue };
