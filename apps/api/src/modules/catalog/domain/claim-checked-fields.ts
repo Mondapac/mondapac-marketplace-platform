@@ -299,6 +299,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
   },
   FieldIssue: { noCustomerText: 'field path and a problem code' },
+  RestructureChange: {
+    noCustomerText: 'ids, a position, a status and a change kind of a move, merge or archive',
+  },
+  RestructurePlan: { noCustomerText: 'category ids and levels of a move, merge or archive plan' },
+  TreeEdge: { noCustomerText: 'a category id and its parent id' },
   HiddenChange: { noCustomerText: 'ids and a state code' },
   PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },

@@ -216,6 +216,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/show',
     'catalog/admin/categories/:id/change-slug',
     'catalog/admin/categories/:id/discard',
+    // Move, merge and archive a platform category (catalog, categories C4a: protected key
+    // `catalog.category-tree.restructure`), each with the tree version and a reason note.
+    'catalog/admin/categories/:id/move',
+    'catalog/admin/categories/:id/merge',
+    'catalog/admin/categories/:id/archive',
     // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',

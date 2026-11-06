@@ -13,7 +13,9 @@ import {
   invalid,
   type ValidationFailure,
 } from '../categories/category-admin-views';
+import { featureSetChanges } from '../../domain/category-restructure';
 import type { AdminCategoryReader } from '../ports/admin-category.reader';
+import type { CategoryAttributeLinkStore } from '../ports/category-attribute-link.store';
 
 export const CATEGORY_IMPACT_ACTIONS = ['move', 'merge', 'archive'] as const;
 export type CategoryImpactAction = (typeof CATEGORY_IMPACT_ACTIONS)[number];
@@ -21,12 +23,19 @@ export type CategoryImpactAction = (typeof CATEGORY_IMPACT_ACTIONS)[number];
 export interface CategoryImpactInput {
   readonly categoryId: unknown;
   readonly action?: unknown;
+  /** Move: the new parent (null: a department); merge: the target. Adds `featureSetChanges`. */
+  readonly targetId?: unknown;
 }
 
 export interface CategoryImpactOutput extends CategoryImpactCounts {
   readonly action: CategoryImpactAction;
   /** False when the time bound ran out: every count is then "at least". */
   readonly complete: boolean;
+  /**
+   * With a target (move or merge): the products whose feature set would change (review
+   * amendments, C4). "At least" too when `complete` is false.
+   */
+  readonly featureSetChanges?: number;
 }
 
 export type CategoryImpactFailure =
@@ -39,6 +48,7 @@ export type CategoryImpactFailure =
 export interface CategoryImpactDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly adminCategoryReader: AdminCategoryReader;
+  readonly linkStore: Pick<CategoryAttributeLinkStore, 'all'>;
 }
 
 /**
@@ -89,7 +99,7 @@ export class CategoryImpact extends UseCase<
     if (context.actor.kind !== 'authenticated' || context.actor.population !== 'admin') {
       return err({ code: 'access.denied' });
     }
-    const body = closedInput(input, ['categoryId', 'action']);
+    const body = closedInput(input, ['categoryId', 'action', 'targetId']);
     if (!body.ok) return body;
     const id = categoryIdOf(body.value['categoryId']);
     if (!id.ok) return id;
@@ -101,6 +111,18 @@ export class CategoryImpact extends UseCase<
       return invalid('action', rawAction === undefined ? 'required' : 'unknown');
     }
     const action = rawAction as CategoryImpactAction;
+    const rawTarget = body.value['targetId'];
+    let target: { readonly id: string | null } | null = null;
+    if (rawTarget !== undefined) {
+      if (action === 'archive') return invalid('targetId', 'unknown');
+      if (rawTarget === null && action === 'move') {
+        target = { id: null };
+      } else {
+        const parsed = categoryIdOf(rawTarget);
+        if (!parsed.ok) return invalid('targetId', 'format');
+        target = { id: parsed.value };
+      }
+    }
     const { market } = context;
     const { adminCategoryReader } = this.deps;
     const read = await this.deps.unitOfWork.run(
@@ -109,15 +131,33 @@ export class CategoryImpact extends UseCase<
         const nodes = await adminCategoryReader.categories(market, MAX_TREE_NODES + 1);
         if (!nodes.some((node) => node.id === id.value)) return ok(null);
         const counted = await adminCategoryReader.productFacts(market, CATEGORY_COUNT_BUDGET_MS);
-        return ok({ nodes, counted });
+        const links =
+          target === null ? null : await this.deps.linkStore.all(market, MAX_TREE_NODES + 1);
+        return ok({ nodes, counted, links });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'category.not-found' });
     try {
-      const counts = categoryImpact(read.value.nodes, id.value, read.value.counted.facts);
-      return ok({ ...counts, action, complete: read.value.counted.complete });
+      const { nodes, counted, links } = read.value;
+      const counts = categoryImpact(nodes, id.value, counted.facts);
+      if (target === null || links === null || action === 'archive') {
+        return ok({ ...counts, action, complete: counted.complete });
+      }
+      if (target.id !== null && !nodes.some((node) => node.id === target.id)) {
+        return err({ code: 'category.not-found' });
+      }
+      const families = new Map(links.map((link) => [link.categoryId as string, link.familyId]));
+      const changes = featureSetChanges(
+        nodes,
+        id.value,
+        action,
+        target.id,
+        (categoryId) => families.get(categoryId),
+        counted.facts,
+      );
+      return ok({ ...counts, action, complete: counted.complete, featureSetChanges: changes });
     } catch (error) {
       if (error instanceof CategoryTreeUnavailableError) {
         return err({ code: 'catalog.categories-unavailable' });
