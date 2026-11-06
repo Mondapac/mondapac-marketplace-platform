@@ -250,6 +250,33 @@ describe('SellerOrders list in page mode', () => {
     );
   });
 
+  it('keeps the chosen days and sort in the fields and shows loading while the answer is on its way', async () => {
+    let answer: (value: unknown) => void = () => {};
+    call.mockReturnValue(new Promise((resolve) => (answer = resolve)) as never);
+    mountPages();
+    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'total-high' } });
+    expect(screen.getByLabelText<HTMLInputElement>('Paid from (UTC)').value).toBe('2026-10-01');
+    expect(screen.getByLabelText<HTMLSelectElement>('Sort by').value).toBe('total-high');
+    expect(screen.getByRole('status').textContent).toBe('Loading orders…');
+    answer({ ok: true, status: 200, body: pagesPage(60) });
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.getByLabelText<HTMLInputElement>('Paid from (UTC)').value).toBe('2026-10-01');
+  });
+
+  it('builds a second quick change on the first one, so neither is dropped', () => {
+    call.mockReturnValue(new Promise(() => {}) as never);
+    mountPages();
+    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
+    fireEvent.change(screen.getByLabelText('Paid until (UTC)'), {
+      target: { value: '2026-10-09' },
+    });
+    expect(call).toHaveBeenCalledTimes(2);
+    const second = String(call.mock.calls[1]?.[1]);
+    expect(second).toContain('from=2026-10-01T00%3A00%3A00.000Z');
+    expect(second).toContain('to=');
+  });
+
   it('asks nothing for a backwards range and says so', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(0) });
     mountPages();

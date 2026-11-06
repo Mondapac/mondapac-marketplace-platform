@@ -1347,6 +1347,7 @@
   },
   "orders": {
     "title": "Orders",
+    "loading": "Loading orders…",
     "intro": "Paid orders for your store, newest first. Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
     "not-found": {
       "title": "Order not found",
