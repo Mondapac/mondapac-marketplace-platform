@@ -95,7 +95,16 @@ const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string
 beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
-  Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+  Object.defineProperty(window, 'location', {
+    value: { assign, href: `${document.baseURI.replace(/\/$/, '')}/catalog/products/edit` },
+    writable: true,
+  });
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
   window.matchMedia = ((query: string) => ({
     matches: false,
     media: query,
@@ -284,7 +293,7 @@ describe('the edit form', () => {
   it('reads the product again after a stale save', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();
-    await screen.findByLabelText('Title');
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
     call.mockResolvedValueOnce(fail(409, 'conflict.stale'));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(await screen.findByText(/Someone else changed this product/)).toBeTruthy();
@@ -350,6 +359,44 @@ describe('the edit form', () => {
     expect((lastBody(2)['content'] as { variants: unknown[] }).variants).toEqual([
       { variantId: minted, optionValues: { size: 'l' } },
     ]);
+  });
+
+  it('keeps Save draft off until something changes, then asks before leaving with unsaved edits', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    const saveDraft = await screen.findByRole('button', { name: 'Save draft' });
+    expect((saveDraft as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Rice' } });
+    expect((saveDraft as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('link', { name: 'Back to products' }));
+    expect(await screen.findByText('Leave without saving?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Stay on page' }));
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    fireEvent.click(saveDraft);
+    await waitFor(() => expectToast('Draft saved.'));
+    expect((saveDraft as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('says so when the new variants were created but the second save failed', async () => {
+    call.mockResolvedValueOnce(
+      ok(
+        view({
+          variantModel: 'configurable',
+          variants: [],
+          form: { ...view().form, fields: [] },
+        }),
+      ),
+    );
+    mountEdit();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add variant' }));
+    call.mockResolvedValueOnce(
+      ok({ variantIds: ['0190a000-0000-7000-8000-0000000000e9'], refusedFields: [] }),
+    );
+    call.mockResolvedValueOnce(fail(409, 'conflict.stale'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(
+      await screen.findByText(/The new variants were created but the draft wasn't saved with them/),
+    ).toBeTruthy();
   });
 
   it('says a product is missing, and offers the way back', async () => {

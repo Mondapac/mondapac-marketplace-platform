@@ -13,6 +13,7 @@ import {
   TextAreaField,
   TextField,
   toast,
+  useUnsavedChangesGuard,
   type SearchSelectLabels,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
@@ -118,9 +119,7 @@ export function ProductEdit({
     return (
       <div className="flex flex-col gap-3">
         <p className="text-fg-muted">{t('not-found')}</p>
-        <a className="font-medium text-link underline" href="/catalog/products">
-          {t('back')}
-        </a>
+        <BackLink href="/catalog/products" label={t('back')} />
       </div>
     );
   }
@@ -168,6 +167,13 @@ function EditForm({
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
   const [status, setStatus] = useState(product.status);
   const busy = useRef(false);
+  // Leaving with edits that are not saved asks first (the same dialog the settings pages use).
+  const guard = useUnsavedChangesGuard(dirty, {
+    title: t('leave.title'),
+    message: t('leave.message'),
+    stay: t('leave.stay'),
+    leave: t('leave.leave'),
+  });
 
   const fixedVariantIds = product.variants
     .filter((variant) => variant.state !== 'retired')
@@ -281,6 +287,7 @@ function EditForm({
 
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
+      {guard.dialog}
       <BackLink href="/catalog/products" label={t('back')} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -290,7 +297,12 @@ function EditForm({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="secondary" loading={pending} disabled={pending}>
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={pending}
+            disabled={pending || (!dirty && content !== undefined)}
+          >
             {t('save-draft')}
           </Button>
           <Button disabled={pending} onClick={() => void run('publish')}>

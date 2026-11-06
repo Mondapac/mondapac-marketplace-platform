@@ -2652,6 +2652,12 @@
         "unavailable": "The product service is unavailable. Try again shortly.",
         "unknown": "Something went wrong. Try again.",
         "partial": "The new variants were created but the draft wasn't saved with them. Save again."
+      },
+      "leave": {
+        "title": "Leave without saving?",
+        "message": "You have changes that are not saved. If you leave this page, they are lost.",
+        "stay": "Stay on page",
+        "leave": "Leave page"
       }
     }
   },
