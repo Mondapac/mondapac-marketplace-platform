@@ -280,6 +280,26 @@ export class RecordingReevaluationRequests implements TagReevaluationRequestRepo
     return Promise.resolve();
   }
 
+  /** The published revisions a category change made pending again (categories C4a). */
+  readonly reopened: {
+    readonly productId: Id<'Product'>;
+    readonly productRevisionId: Id<'ProductRevision'>;
+  }[] = [];
+
+  requestForCategoryChange(
+    _market: MarketContext,
+    request: {
+      readonly productId: Id<'Product'>;
+      readonly productRevisionId: Id<'ProductRevision'>;
+    },
+  ): Promise<void> {
+    this.reopened.push({
+      productId: request.productId,
+      productRevisionId: request.productRevisionId,
+    });
+    return Promise.resolve();
+  }
+
   /** The certification-event requests written, in order (Hassan M2). */
   readonly events: {
     readonly cause: string;
@@ -352,6 +372,7 @@ export function ownedRequests(
 ): TagReevaluationRequestRepository {
   return {
     requestForPublish: (...args) => store.requestForPublish(...args),
+    requestForCategoryChange: (...args) => store.requestForCategoryChange(...args),
     requestForEvent: (...args) => store.requestForEvent(...args),
     pendingUnstarted: (...args) => store.pendingUnstarted(...args),
     listPending: async (market, limit) =>

@@ -19,7 +19,7 @@ import {
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The category image store on PostgreSQL, for both Market fixtures (categories package C3c,
-// migration 20261105200000_catalog_category_images): a replace clears the pointer under the
+// migration 20261106130000_catalog_category_images): a replace clears the pointer under the
 // version guard, deletes the old row with its renditions and points at the new one; at most one
 // image per category; the category may only point at its own image in its own Market; the
 // object key is built from the ids; the app role may insert, read and delete, never update.

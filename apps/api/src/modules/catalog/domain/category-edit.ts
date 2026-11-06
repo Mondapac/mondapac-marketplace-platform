@@ -40,6 +40,8 @@ export interface EditableCategory {
   readonly status: CategoryStatus;
   /** The category whose Hide cascaded to this one; null when hidden on its own. */
   readonly hiddenById: Id<'Category'> | null;
+  /** A `merged` category's target (its products resolve there); absent or null otherwise. */
+  readonly mergedIntoId?: Id<'Category'> | null;
   readonly position: number;
   readonly version: number;
   readonly revisionNo: number;

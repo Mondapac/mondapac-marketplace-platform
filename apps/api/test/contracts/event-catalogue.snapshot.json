@@ -1014,5 +1014,30 @@
     "fields": {
       "categoryId": "id"
     }
+  },
+  {
+    "type": "catalog.platform-category-moved.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "catalog.platform-category-merged.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)",
+      "mergedIntoId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-archived.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
+    }
   }
 ]

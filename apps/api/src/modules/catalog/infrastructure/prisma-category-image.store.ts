@@ -25,7 +25,7 @@ const RENDITION_SELECT = {
 
 /**
  * {@link CategoryImageStore} on `catalog.category_images` and `category_image_renditions`
- * (migration `20261105200000_catalog_category_images`) and the `image_id` pointer of
+ * (migration `20261106130000_catalog_category_images`) and the `image_id` pointer of
  * `platform_categories`. Every statement goes through `PrismaService.tx(market)` with `marketId`
  * at the top level of `where`. A replace clears the pointer with the guarded version update first
  * (the row lock serialises two admins), deletes the old row (its renditions go by the cascade),

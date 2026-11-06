@@ -963,6 +963,22 @@
     }
   },
   {
+    "action": "certification.retired-category.flagged",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
+    "action": "certification.retired-category.flagged-relaxing",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
     "action": "certification.review-check.recorded",
     "targetType": "certification.seller-certification",
     "targetId": "id",
@@ -2807,6 +2823,21 @@
     }
   },
   {
+    "action": "catalog.platform-category.archived",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesUnlinked": "integer",
+      "reasonGiven": "boolean",
+      "status": "enumOf(active|hidden|archived)",
+      "tagsMarked": "integer"
+    }
+  },
+  {
     "action": "catalog.platform-category.created",
     "targetType": "catalog.platform-category",
     "targetId": "id",
@@ -2875,6 +2906,39 @@
     },
     "after": {
       "imageId": "optional(id)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.merged",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesRelinked": "integer",
+      "childrenMoved": "integer",
+      "mergedIntoId": "id",
+      "reasonGiven": "boolean",
+      "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.moved",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "level": "integer",
+      "parentId": "optional(id)"
+    },
+    "after": {
+      "level": "integer",
+      "parentId": "optional(id)",
+      "reasonGiven": "boolean",
+      "subtreeSize": "integer",
+      "tagsMarked": "integer"
     }
   },
   {

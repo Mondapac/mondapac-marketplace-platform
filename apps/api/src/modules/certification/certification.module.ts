@@ -76,6 +76,10 @@ import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.
 import { SendDerecognitionMail } from './application/use-cases/send-derecognition-mail.use-case';
 import { registryProviders } from './infrastructure/registry-providers';
 import { claimPolicyProviders } from './infrastructure/claim-policy-providers';
+import { categoryRetirementProviders } from './infrastructure/category-retirement-providers';
+import { AssertCategoriesRetirable } from './application/use-cases/assert-categories-retirable.use-case';
+import { AssertCategoriesRetirableSystem } from './application/use-cases/assert-categories-retirable-system.use-case';
+import { PlatformCategoriesRetired } from './application/use-cases/platform-categories-retired.use-case';
 import { productCertificationProviders } from './infrastructure/product-certification-providers';
 import { AdminClaimPolicyController } from './presentation/admin-claim-policy.controller';
 import { AdminProductCertificateController } from './presentation/admin-product-certificate.controller';
@@ -171,6 +175,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     ...expiryProviders,
     ...registryProviders,
     ...claimPolicyProviders,
+    ...categoryRetirementProviders,
     ...productCertificationProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
@@ -246,6 +251,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         CertificationTypesSystem,
         SellerCertificateOverview,
         CertifiedCategories,
+        AssertCategoriesRetirable,
+        AssertCategoriesRetirableSystem,
+        PlatformCategoriesRetired,
       ],
       useFactory: (
         evaluateClaims: EvaluateClaims,
@@ -258,6 +266,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         certificationTypesSystem: CertificationTypesSystem,
         sellerCertificateOverview: SellerCertificateOverview,
         certifiedCategories: CertifiedCategories,
+        assertCategoriesRetirable: AssertCategoriesRetirable,
+        assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem,
+        platformCategoriesRetired: PlatformCategoriesRetired,
       ) =>
         new CertificationFacadeImplementation({
           evaluateClaims,
@@ -270,6 +281,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           certificationTypesSystem,
           sellerCertificateOverview,
           certifiedCategories,
+          assertCategoriesRetirable,
+          assertCategoriesRetirableSystem,
+          platformCategoriesRetired,
         }),
     },
   ],

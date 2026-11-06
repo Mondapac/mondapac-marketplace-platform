@@ -260,7 +260,7 @@ database stays the source of truth.
 
 The category image goes through the product image pipeline (decoded and written again as three
 metadata-free JPEG renditions; the raw upload is never stored), with its own tables because a
-`product_images` row belongs to a product. Migration `20261105200000_catalog_category_images`.
+`product_images` row belongs to a product. Migration `20261106130000_catalog_category_images`.
 
 - `category_images`: PK `(market_id, id)`; `category_id` FK `(market_id, category_id)` →
   `platform_categories`; `uploader_account_id`; `pixel_width`, `pixel_height` (the largest rendition,
@@ -687,7 +687,11 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   a newer publish supersedes the older request in its unit (update then insert), so one pending request
   per product (D 5.4).
 - Unique `(market_id, product_revision_id) WHERE kind = 'revision-published'`: a request for a
-  revision is written once (idempotent publish handler).
+  revision is written once (idempotent publish handler). A category move, merge or archive
+  (categories C4a, migration `20261105200000_catalog_tag_request_reopen`) reopens that one row
+  instead, with the product row locked first: `pending`, no cursor, zero counts, `settled_at` NULL
+  and a `created_at` strictly after the stored one. The job's cursor update and close match the
+  `created_at` the run read, so a run already under way never moves or closes the reopened request.
 - Unique `(market_id, source_event_id, cause) NULLS NOT DISTINCT` where `source_event_id` is not
   NULL: one request per consumed event and cause (certification slice 14; was one per event). A
   manufacturer certificate's coverage change writes two from one event (Hassan M2).
@@ -701,7 +705,8 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   cause; migration `20261018210000_catalog_product_certification_endings`).
 - Claim index `(market_id, created_at, id) WHERE state = 'pending'`. The job runs under its scheduler
   lock (PM8) per Market, so no `SKIP LOCKED` is needed; requests are taken in order.
-- Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at)`; purge of settled rows
+- Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at, created_at)` (`created_at`
+  since C4a); purge of settled rows
   after 30 days (10.3).
 
 ### 3.19 `product_images`, `product_image_renditions` (slice 13; D 10, D 17.1 item 1)
@@ -1379,7 +1384,7 @@ No sequence; no function gets a grant.
 | `product_working_copies` | `SELECT, INSERT, UPDATE, DELETE` | 4 (discard and prune, 10.1) | |
 | `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | Never (a discarded draft's Offer becomes `deleted`) | `seller_id` never changes (PRC 2.3) |
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
-| `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at)` | Purge (10.3) | |
+| `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at, created_at)` (`created_at` since C4a) | Purge (10.3) | |
 | `offer_owner_notices` | `SELECT, INSERT`, `UPDATE (state, outcome, attempts, next_attempt_at, settled_at)` | Purge (open) | Certification slice 15 (3.27) |
 | `saved_filters` | `SELECT, INSERT`, `UPDATE (visibility, name, updated_at)` | The application (a filter is a preference, not a record to keep) | Saved filters (3.28); the document, owner, list and position never change after the insert |
 | `platform_import_jobs` | `SELECT, INSERT, DELETE`, `UPDATE (state, file_deleted_at, start_as, skip_errors, to_import, added_rows, failed_rows, stop_reason, not_before, lease_until, version, started_at, finished_at)` | Purge (10.3, 10.4): discarded jobs at once, finished and stopped after 90 days | Admin import (3.29); the owner, file, counts of the check and the creation time never change |

@@ -7,6 +7,7 @@ import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import { FreezeRevision } from './freeze-revision.service';
 
 const T0 = Temporal.Instant.from('2026-10-08T00:00:00Z');
@@ -85,6 +86,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       maxVariantsPerProduct: () => max,
       maxVariantAttributes: () => 2,
       maxCategoryDepth: () => 4,
+      maxCategoryChangeTags: () => 50_000,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],
@@ -256,6 +258,65 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     expect(bad).toMatchObject({ ok: false, error: { code: 'revision.not-ready' } });
     if (bad.ok || bad.error.code !== 'revision.not-ready') return;
     expect(bad.error.issues.map((issue) => issue.code)).toContain('variants.option-unknown');
+  });
+
+  describe('variant axes (V3)', () => {
+    const variants = [
+      { variantId: v(1), optionValues: { size: 'l' } },
+      { variantId: v(2), optionValues: { size: 's' } },
+    ];
+    const codesOf = (result: Awaited<ReturnType<FreezeRevision['freeze']>>): string[] =>
+      !result.ok && result.error.code === 'revision.not-ready'
+        ? result.error.issues.map((issue) => issue.code)
+        : [];
+
+    it('freezes a draft that names the axis it varies on', async () => {
+      const result = await service.freeze(
+        market,
+        product('configurable'),
+        copyOf(ready({ variantAxes: ['size'], variants })),
+      );
+      expect(result.ok).toBe(true);
+    });
+
+    it.each([
+      [[], 'variants.axes-none'],
+      [['weight'], 'variants.axes-unknown'],
+      [['size', 'size'], 'variants.axes-duplicate'],
+    ])('refuses variantAxes %j with %s', async (variantAxes, issue) => {
+      const result = await service.freeze(
+        market,
+        product('configurable'),
+        copyOf(ready({ variantAxes, variants })),
+      );
+      expect(codesOf(result)).toContain(issue);
+    });
+
+    it('refuses axes that differ from the published revision', async () => {
+      const draft = product('configurable');
+      const published = new Proxy(draft, {
+        get: (target, prop) =>
+          prop === 'state'
+            ? { ...target.state, publishedRevisionId: 'rev-1' as Id<'ProductRevision'> }
+            : (Reflect.get(target, prop, target) as unknown),
+      });
+      const revisions = {
+        find: () =>
+          Promise.resolve({ content: { variants: [{ optionValues: { colour: 'red' } }] } }),
+      } as unknown as ProductRevisionRepository;
+      const locked = new FreezeRevision({
+        attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
+        policy: (service as unknown as { deps: { policy: CatalogMarketPolicy } }).deps.policy,
+        handlerFor: () => configurableProductType,
+        revisions,
+      });
+      const changed = await locked.freeze(
+        market,
+        published,
+        copyOf(ready({ variantAxes: ['size'], variants })),
+      );
+      expect(codesOf(changed)).toContain('variants.axes-locked');
+    });
   });
 
   it('builds the variant labels from the option labels and drops a locale with a missing one (V2)', async () => {

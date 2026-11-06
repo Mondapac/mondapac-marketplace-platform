@@ -42,6 +42,11 @@ import {
 } from '../application/ports/attribute-definition.store';
 import { FEATURE_SET_STORE, type FeatureSetStore } from '../application/ports/feature-set.store';
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
+import { CertificationCategoryRetirement } from './certification-category-retirement';
+import {
+  CATEGORY_RETIREMENT_CHECK,
+  type CategoryRetirementCheck,
+} from '../application/ports/category-retirement-check';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
 import { PrismaFeatureSetStore } from './prisma-feature-set.store';
 import {
@@ -255,7 +260,9 @@ import {
 } from '../application/ports/category-image.store';
 import {
   CATEGORY_EDIT_STORE,
+  CATEGORY_RESTRUCTURE_STORE,
   type CategoryEditStore,
+  type CategoryRestructureStore,
 } from '../application/ports/category-edit.store';
 import {
   ADMIN_CATEGORY_READER,
@@ -276,6 +283,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
       new CertificationClaimTextMatcher(certification),
+  },
+  {
+    provide: CATEGORY_RETIREMENT_CHECK,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): CategoryRetirementCheck =>
+      new CertificationCategoryRetirement(certification),
   },
   {
     provide: CLAIM_TERM_LOCALES,
@@ -344,6 +357,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: CATEGORY_IMAGE_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): CategoryImageStore => new PrismaCategoryImageStore(prisma),
+  },
+  {
+    // The same store class: the restructure facts read the same tables in the same unit.
+    provide: CATEGORY_RESTRUCTURE_STORE,
+    inject: [CATEGORY_EDIT_STORE],
+    useFactory: (store: PrismaCategoryEditStore): CategoryRestructureStore => store,
   },
   {
     provide: BRAND_READER,

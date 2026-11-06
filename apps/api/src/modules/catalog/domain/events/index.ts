@@ -108,6 +108,43 @@ export const PlatformCategoryChanged = defineEvent({
 });
 
 /**
+ * A platform category moved under a new parent with its subtree (categories C4a; catalog design
+ * 4.6). `checkedIds` are the ids certification's check cleared: the moved subtree and the old
+ * ancestors that left its products' paths. Catalog's own handler passes them to certification's
+ * backstop `platformCategoriesRetired` (C-4; review of #707).
+ */
+export const PlatformCategoryMoved = defineEvent({
+  type: 'catalog.platform-category-moved.v1',
+  aggregateType: 'platform-category',
+  payload: { categoryId: eventField.id(), checkedIds: eventField.listOf(eventField.id()) },
+});
+
+/**
+ * A platform category was merged into another (C4a): its id and slug now resolve to the target.
+ * Catalog's own handler passes `checkedIds` (the source and its ancestors that are not the
+ * target's) to certification's backstop `platformCategoriesRetired` (C-4).
+ */
+export const PlatformCategoryMerged = defineEvent({
+  type: 'catalog.platform-category-merged.v1',
+  aggregateType: 'platform-category',
+  payload: {
+    categoryId: eventField.id(),
+    mergedIntoId: eventField.id(),
+    checkedIds: eventField.listOf(eventField.id()),
+  },
+});
+
+/**
+ * A platform category was archived (C4a; terminal). Catalog's own handler passes `checkedIds`
+ * (the category) to certification's backstop `platformCategoriesRetired` (C-4).
+ */
+export const PlatformCategoryArchived = defineEvent({
+  type: 'catalog.platform-category-archived.v1',
+  aggregateType: 'platform-category',
+  payload: { categoryId: eventField.id(), checkedIds: eventField.listOf(eventField.id()) },
+});
+
+/**
  * A revision of a product was submitted (catalog design 4.2 row 1; 9.4). Written for every
  * submit, whether the revision then waits for review or is published at once. Ids and the scope.
  */
@@ -293,6 +330,9 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   OfferMoved,
   PlatformCategoryCreated,
   PlatformCategoryChanged,
+  PlatformCategoryMoved,
+  PlatformCategoryMerged,
+  PlatformCategoryArchived,
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,

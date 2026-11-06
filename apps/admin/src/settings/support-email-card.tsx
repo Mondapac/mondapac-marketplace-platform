@@ -6,6 +6,7 @@ import {
   SettingInput,
   SettingRow,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   useLiveErrors,
   SettingsPage,
   SettingsSection,
@@ -114,9 +115,9 @@ export function SupportEmailCard({
 
   const banners = [
     canManage ? null : (
-      <Banner key="read-only" tone="info">
-        {t('settings.support.read-only')}
-      </Banner>
+      <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ),
     invalid ? (
       <SettingsErrorSummary

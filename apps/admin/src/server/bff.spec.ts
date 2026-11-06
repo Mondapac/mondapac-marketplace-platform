@@ -565,8 +565,20 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('DELETE', `${base}/${id}`)).status).toBe(404);
     expect((await call('POST', `${base}/${id}`)).status).toBe(404);
     expect((await call('PATCH', `${base}/not-a-uuid`)).status).toBe(404);
-    expect((await call('POST', `${base}/${id}/merge`)).status).toBe(404);
-    expect((await call('POST', `${base}/${id}/archive`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}/restore`)).status).toBe(404);
+  });
+
+  it('relays move, merge and archive on their exact paths and methods only (categories C4a)', async () => {
+    const id = ID;
+    const base = 'catalog/admin/categories';
+    for (const action of ['move', 'merge', 'archive']) {
+      expect((await call('POST', `${base}/${id}/${action}`)).status).toBe(200);
+      expect((await call('PUT', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('PATCH', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('DELETE', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/not-a-uuid/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/${id}/${action}/extra`)).status).toBe(404);
+    }
   });
 
   it('relays the assistant settings read and write on their exact path only', async () => {
