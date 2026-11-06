@@ -7,6 +7,7 @@ import type { OfferHandling } from '../../domain/offer';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OwnCatalogReader } from '../ports/own-catalog.reader';
+import type { VariantGtinRegistry } from '../ports/variant-gtin.registry';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
 import { requiredChecksOf } from '../revisions/review-checks';
 import { invalid, parsePage, isoOf, type ValidationFailure } from '../own-reads/own-reads.shared';
@@ -62,6 +63,12 @@ export interface ProductRevisionReviewRow {
   /** The named checks an approval must confirm (design 8.3a), derived by the server. */
   readonly requiredChecks: readonly string[];
   readonly hasImages: boolean;
+  /**
+   * Warnings for the reviewer (V4): `gtin.duplicate-platform` when a GTIN of the revision is already
+   * carried by a published PLATFORM product (the seller can sell on it), `gtin.duplicate` when it is
+   * carried by any other product. Advice only; it never blocks a decision.
+   */
+  readonly warnings: readonly string[];
   readonly submittedAt: string;
 }
 
@@ -84,6 +91,7 @@ export interface ReviewQueueListDependencies {
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
   readonly sellerNames: SellerNamesReader;
+  readonly gtinRegistry: VariantGtinRegistry;
 }
 
 interface Position {
@@ -177,15 +185,34 @@ export class ReviewQueueList extends UseCase<
           [...new Set(offers.slice(0, limit).map((offer) => offer.state.productId))],
           locale,
         );
+        const warnings = new Map<string, readonly string[]>();
+        for (const row of revisions.slice(0, limit)) {
+          const found =
+            row.variantGtins.length === 0
+              ? []
+              : await this.deps.gtinRegistry.duplicatesOf(market, row.productId, [
+                  ...new Set(row.variantGtins),
+                ]);
+          warnings.set(
+            row.revisionId,
+            found.length === 0
+              ? []
+              : [
+                  found.some((d) => d.scope === 'PLATFORM')
+                    ? 'gtin.duplicate-platform'
+                    : 'gtin.duplicate',
+                ],
+          );
+        }
         const total =
           (await this.deps.ownReader.pendingReviewCount(market)) +
           (await this.deps.ownReader.pendingRevisionCount(market));
-        return ok({ offers, revisions, labels, total });
+        return ok({ offers, revisions, labels, total, warnings });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    const { offers, revisions, labels, total } = read.value;
+    const { offers, revisions, labels, total, warnings } = read.value;
     const labelOf = new Map(labels.map((label) => [label.productId, label]));
 
     // Merge the two sources into one order: submit instant, then id.
@@ -236,6 +263,7 @@ export class ReviewQueueList extends UseCase<
             reasons: row.sensitiveReasons,
           }),
           hasImages: row.hasImages,
+          warnings: warnings.get(row.revisionId) ?? [],
           submittedAt: row.submittedAt.toString(),
         };
       }

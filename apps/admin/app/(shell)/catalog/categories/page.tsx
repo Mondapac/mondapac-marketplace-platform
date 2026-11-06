@@ -1,7 +1,11 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { CategoriesView } from '../../../../src/categories/categories-view.tsx';
-import { EDIT_PERMISSION, READ_PERMISSION } from '../../../../src/categories/types.ts';
+import {
+  EDIT_PERMISSION,
+  READ_PERMISSION,
+  RESTRUCTURE_PERMISSION,
+} from '../../../../src/categories/types.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 
@@ -24,6 +28,7 @@ export default async function CategoriesPage() {
       {permissionKeys.includes(READ_PERMISSION) ? (
         <CategoriesView
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
+          canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
           csrfToken={gate.session.csrfToken}
         />
       ) : (

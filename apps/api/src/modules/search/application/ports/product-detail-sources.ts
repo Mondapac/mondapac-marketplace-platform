@@ -4,6 +4,8 @@ import type { CallContext, Id, Money, Temporal } from '@mondapac/shared-kernel';
 export interface DetailVariant {
   readonly variantId: Id<'Variant'>;
   readonly label: string | null;
+  /** The photos the seller picked for this Variant from the product's photos, main photo first. */
+  readonly imageIds: readonly Id<'ProductImage'>[];
 }
 
 /** One value of a specification row (catalog's, copied): typed so the page formats it. */

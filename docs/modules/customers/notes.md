@@ -23,7 +23,7 @@ This note records what is built and the rules it keeps.
   eight states and territories, four-digit postcode). A Market without the section answers
   `customers.unavailable`.
 - No address value reaches a log, an event, an audit row or an error (a refused field gives its
-  path and a code only). Writes run serializable (the limit and the one default span rows).
+  path and a code only). Every write of the address book (add, change, remove, set default, and the erasure of an account) first takes the book's advisory lock `customers.lock-address-book` (lock class 1705, one lock per Market, tenant and account) and runs at READ COMMITTED, so writers of one book run one after the other. The limit and the one default span rows; the unique index of the one default is the second line. (They ran serializable and sometimes ran out of retry attempts with 40001 under parallel writers.)
 
 ## Package 2: the address at checkout and on the order
 

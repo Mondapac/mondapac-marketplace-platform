@@ -1,4 +1,5 @@
 import type { SellerFilters, SellerSort } from '../sellers/sellers-state.ts';
+import type { PhotoSet } from './photos.ts';
 
 // The storefront's view of the backend contracts. Until PR #401 (pages and content) and
 // storefront package 2 (best sellers, special prices, category tree) are on main, the home page
@@ -44,6 +45,8 @@ export interface ProductCard {
   /** Units left when stock is low; absent when stock is not low. */
   readonly lowStock?: number;
   readonly imageUrl?: string;
+  /** `srcset` and size of the photo at `imageUrl`; absent for a placeholder or sample photo. */
+  readonly imageSet?: PhotoSet;
 }
 
 /**
@@ -74,6 +77,28 @@ export interface Category {
   readonly name: string;
   readonly shortName: string;
   readonly children: readonly { readonly code: string; readonly name: string }[];
+  /** The category page's extras from the live tree (categories C6); absent on sample data. */
+  readonly page?: CategoryPageFacts;
+}
+
+/** What the category page shows and tells search engines beyond the name (categories C6). */
+export interface CategoryPageFacts {
+  /** The ancestors, top level first: the breadcrumb between Browse and the category. */
+  readonly trail: readonly { readonly code: string; readonly name: string }[];
+  /** 0 at the top level (department); 2 is a category (level 3) that may hold products. */
+  readonly depth: number;
+  readonly shortDescription?: string;
+  readonly seo?: {
+    readonly title?: string;
+    readonly description?: string;
+    readonly noindex: boolean;
+  };
+  /** False when no listed product is on it or below it: the page stays, out of the index. */
+  readonly hasLiveProducts?: boolean;
+  /** The live product count of each child shown, by slug; absent when the tree does not count. */
+  readonly childCounts?: Readonly<Record<string, number>>;
+  /** The live products on the category itself, not below it ("Other {name}"). */
+  readonly directCount?: number;
 }
 
 export interface PromoBanner {
@@ -210,6 +235,11 @@ export interface ProductVariant {
   readonly label?: string;
   /** False when every seller is out of it: the picker greys it and it cannot be added to the cart. */
   readonly inStock: boolean;
+  /**
+   * The photos this Variant shows, as positions in the product's `photos` (main photo first),
+   * when the seller picked some; absent when it shows the product's photos.
+   */
+  readonly photoIndexes?: readonly number[];
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
 }
 
@@ -234,6 +264,8 @@ export interface ProductDetail {
   readonly photos: readonly string[];
   /** Small versions of `photos`, same order and length, for the thumbnail strip. */
   readonly photoThumbs?: readonly string[];
+  /** `srcset` and size of each of `photos` (the large rendition), same order and length. */
+  readonly photoSets?: readonly PhotoSet[];
   /**
    * The product's brand while the brand is active (the name and the slug of its `/brands/<slug>`
    * page); absent for a product without one.

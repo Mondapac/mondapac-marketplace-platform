@@ -39,6 +39,19 @@ const TOP_KEYS = [
   'imageIds',
 ];
 const TEXT_KEYS = ['name', 'shortDescription', 'description'] as const;
+/** The keys of one draft variant: its id, options and the per-variant fields (V4). */
+const VARIANT_DRAFT_KEYS = [
+  'variantId',
+  'optionValues',
+  'gtin',
+  'shippingWeightGrams',
+  'shippingLengthMm',
+  'shippingWidthMm',
+  'shippingHeightMm',
+  'imageIds',
+];
+/** A typed GTIN is at most this long (digits, spaces, hyphens); the value is checked at freeze. */
+const GTIN_INPUT_MAX = 32;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -48,6 +61,29 @@ const invalid: Result<never, Invalid> = err({ code: 'working-copy.invalid-conten
 
 function closedKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+/** Types only; the freeze checks values (check digit, range, gallery membership). */
+function variantFieldsFit(variant: Record<string, unknown>): boolean {
+  const gtin = variant['gtin'];
+  if (
+    gtin !== undefined &&
+    gtin !== null &&
+    (typeof gtin !== 'string' || gtin.length > GTIN_INPUT_MAX)
+  ) {
+    return false;
+  }
+  for (const key of [
+    'shippingWeightGrams',
+    'shippingLengthMm',
+    'shippingWidthMm',
+    'shippingHeightMm',
+  ]) {
+    const value = variant[key];
+    if (value !== undefined && value !== null && typeof value !== 'number') return false;
+  }
+  const images = variant['imageIds'];
+  return images === undefined || images === null || idList(images);
 }
 
 function idList(value: unknown): boolean {
@@ -166,9 +202,7 @@ export function draftTextsOf(
         !isObject(variant) ||
         !closedKeys(
           variant,
-          source === 'revision'
-            ? ['variantId', 'optionValues', 'labels']
-            : ['variantId', 'optionValues'],
+          source === 'revision' ? [...VARIANT_DRAFT_KEYS, 'labels'] : VARIANT_DRAFT_KEYS,
         )
       ) {
         return invalid;
@@ -178,6 +212,7 @@ export function draftTextsOf(
       // A path names a variant by id, so a repeated id would hide the second one's texts from the check.
       if (seenIds.has(variantId)) return invalid;
       seenIds.add(variantId);
+      if (!variantFieldsFit(variant)) return invalid;
       const options = variant['optionValues'];
       if (options !== undefined) {
         if (!isObject(options)) return invalid;

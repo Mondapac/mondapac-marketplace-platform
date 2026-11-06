@@ -19,11 +19,13 @@ import { ProductSearchPageBody } from './search.dto';
 const ALLOWED = [
   'q',
   'category',
+  'direct',
   'store',
   'brand',
   'sort',
   'filter',
   'range',
+  'price',
   'page',
   'pageSize',
 ] as const;
@@ -78,11 +80,13 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
   const request = {
     q: text('q'),
     category: text('category'),
+    direct: text('direct'),
     store: text('store'),
     brand: text('brand'),
     sort: text('sort'),
     filter: list('filter'),
     range: list('range'),
+    price: text('price'),
     page: whole('page'),
     pageSize: whole('pageSize'),
   };
@@ -116,6 +120,14 @@ export class SearchController {
   })
   @ApiQuery({ name: 'q', required: false, description: '2 to 100 characters.' })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
+  @ApiQuery({
+    name: 'direct',
+    required: false,
+    enum: ['true'],
+    description:
+      '`true` lists only the products on `category` itself, not on a category below it (the ' +
+      'buyer site\'s "Other {name}" filter). Needs `category`.',
+  })
   @ApiQuery({
     name: 'store',
     required: false,
@@ -159,6 +171,15 @@ export class SearchController {
       'Number ranges, one parameter per attribute: `<attribute>:<min>..<max>` (either end may be ' +
       'left out). Up to 3; same rules as `filter`.',
   })
+  @ApiQuery({
+    name: 'price',
+    required: false,
+    description:
+      'Price filter: `<min>..<max>` in the Market currency minor units (either end may be left ' +
+      'out). A product matches when one of its variants that matches the other filters is in ' +
+      'stock at a price within it; the item `price` then reads those variants only. Not with ' +
+      '`store` or `brand`. A priced page is `filtered`.',
+  })
   @ApiQuery({ name: 'page', required: false, description: '1 to 100, default 1.' })
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 48, default 24.' })
   @ApiOkResponse({ type: ProductSearchPageBody })
@@ -170,7 +191,14 @@ export class SearchController {
     @Query() query: Record<string, unknown>,
   ): Promise<ProductSearchPageBody> {
     const result = await this.search.execute(context, requestOf(query));
-    if (result.ok) return JSON.parse(JSON.stringify(result.value)) as ProductSearchPageBody;
+    if (result.ok) {
+      // Money amounts are bigint: written as decimal text (JSON has no bigint).
+      return JSON.parse(
+        JSON.stringify(result.value, (_key, value: unknown) =>
+          typeof value === 'bigint' ? value.toString() : value,
+        ),
+      ) as ProductSearchPageBody;
+    }
     const { error } = result;
     if (error.code === 'validation.failed') {
       throw fail(400, error.code, { fields: error.fields });

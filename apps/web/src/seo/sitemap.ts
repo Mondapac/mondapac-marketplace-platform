@@ -1,7 +1,7 @@
 import 'server-only';
 import { headers } from 'next/headers';
 import { apiGet } from '../storefront/api.ts';
-import { MAX_PAGE, categoryIsEmpty } from '../storefront/catalog.ts';
+import { MAX_PAGE } from '../storefront/catalog.ts';
 import { treeOf, type TreeRow } from '../storefront/category-tree.ts';
 import {
   storefrontApiConfig,
@@ -9,6 +9,7 @@ import {
   type StorefrontHost,
 } from '../storefront/config.ts';
 import { liveProducts, type Reader } from '../storefront/listing-source.ts';
+import { photoUrlBuilder, type PhotoUrl } from '../storefront/photos.ts';
 import { categoryHref, productHref } from '../storefront/links.ts';
 import { indexingOn } from './indexing.ts';
 
@@ -90,12 +91,44 @@ const escapeXml = (text: string): string =>
 
 const absolute = (origin: string, path: string): string => new URL(path, origin).href;
 
-export function urlSetXml(origin: string, paths: readonly string[]): string {
-  const rows = paths.map((path) => `<url><loc>${escapeXml(absolute(origin, path))}</loc></url>`);
+/** One page of a children sitemap, with the photos Google may index for it (image sitemap). */
+export interface SitemapUrl {
+  readonly path: string;
+  /** Absolute https URLs of photos, largest rendition. */
+  readonly images?: readonly string[];
+}
+
+export function urlSetXml(origin: string, urls: readonly (string | SitemapUrl)[]): string {
+  const rows = urls.map((entry) => {
+    const { path, images = [] } = typeof entry === 'string' ? { path: entry } : entry;
+    const photos = images.map(
+      (image) => `<image:image><image:loc>${escapeXml(image)}</image:loc></image:image>`,
+    );
+    return `<url><loc>${escapeXml(absolute(origin, path))}</loc>${photos.join('')}</url>`;
+  });
   return (
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
-    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${rows.join('')}</urlset>\n`
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"' +
+    // The products children carry photos, so they declare the image namespace.
+    (urls.some((entry) => typeof entry !== 'string')
+      ? ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'
+      : '') +
+    `>${rows.join('')}</urlset>\n`
   );
+}
+
+/**
+ * The photo URL builder of a host's Market, or null with no photo origin (no image entries).
+ * Only https photo URLs are listed: the builder allows http on localhost, a sitemap must not.
+ */
+export function sitemapPhotos(host: StorefrontHost): PhotoUrl | null {
+  const origin = storefrontApiConfig()?.imageOrigin ?? null;
+  const build = photoUrlBuilder(origin, host.marketId);
+  if (build === null) return null;
+  return (productId, imageId, size) => {
+    const url = build(productId, imageId, size);
+    return url?.startsWith('https://') === true ? url : undefined;
+  };
 }
 
 export function indexXml(origin: string, names: readonly string[]): string {
@@ -118,48 +151,26 @@ async function treeRows(read: Reader): Promise<TreeRow[]> {
   return rows;
 }
 
-const CATEGORY_BATCH = 8;
-/** Most category pages checked for one sitemap; a Market's tree is far smaller. */
+/** Most category pages one sitemap lists; a Market's tree is far smaller. */
 export const MAX_CATEGORY_NODES = 400;
 
 /**
- * The category pages that are not empty: every top-level category and each of its direct children
- * (the page serves no deeper path), judged by the same rule as the page's robots tag.
+ * The category pages worth indexing (categories C6, plan decision 11): every category of the live
+ * tree that is shown in the menu, which the API sets only when its Show in menu switch is on, it
+ * has live products and its parent is shown too. One path per category, at any depth (`/c/<slug>`);
+ * no language prefix and no hreflang (buyer i18n plan v3). A category the admin marked noindex
+ * stays out.
  */
 export async function categoryPaths(read: Reader = memoReader()): Promise<string[]> {
   const rows = await treeRows(read);
   const seen = new Set<string>();
-  const nodes: { category: string; sub?: string }[] = [];
-  for (const top of rows.filter((r) => r.parentId === null)) {
-    if (seen.has(top.slug)) continue;
-    seen.add(top.slug);
-    nodes.push({ category: top.slug });
-    const subs = new Set<string>();
-    for (const child of rows.filter((r) => r.parentId === top.id)) {
-      if (subs.has(child.slug)) continue;
-      subs.add(child.slug);
-      nodes.push({ category: top.slug, sub: child.slug });
-    }
-  }
-  nodes.length = Math.min(nodes.length, MAX_CATEGORY_NODES);
   const paths: string[] = [];
-  try {
-    for (let i = 0; i < nodes.length; i += CATEGORY_BATCH) {
-      const batch = nodes.slice(i, i + CATEGORY_BATCH);
-      const empty = await Promise.all(
-        batch.map((n) =>
-          categoryIsEmpty(
-            { category: n.category, ...(n.sub === undefined ? {} : { subcategory: n.sub }) },
-            read,
-          ),
-        ),
-      );
-      batch.forEach((n, j) => {
-        if (!empty[j]) paths.push(categoryHref(n.category, n.sub));
-      });
-    }
-  } catch {
-    throw new SitemapReadFailed('category listing');
+  for (const row of rows) {
+    if (!row.inMenu || row.hasLiveProducts !== true || row.seo?.noindex === true) continue;
+    if (seen.has(row.slug)) continue;
+    seen.add(row.slug);
+    paths.push(categoryHref(row.slug));
+    if (paths.length >= MAX_CATEGORY_NODES) break;
   }
   return paths;
 }
@@ -171,9 +182,9 @@ function pageRange(n: number): { first: number; last: number } | null {
   return { first, last: Math.min(first + PAGES_PER_CHILD - 1, MAX_PAGE) };
 }
 
-async function productPage(page: number, read: Reader) {
+async function productPage(page: number, read: Reader, photo: PhotoUrl | null = null) {
   try {
-    const live = await liveProducts({ page, pageSize: PRODUCT_PAGE_SIZE }, read);
+    const live = await liveProducts({ page, pageSize: PRODUCT_PAGE_SIZE }, read, photo);
     if (live === undefined) throw new SitemapReadFailed('product search');
     return live;
   } catch {
@@ -184,34 +195,45 @@ async function productPage(page: number, read: Reader) {
 /**
  * The product pages of child `n`: pages of `search/products` until `hasMore` is false or the 4,800
  * cap. Reaching the cap with more left logs one line: that is the trigger for package 4B.
- * Null when `n` names no child.
+ * Each lists its main photo (the search read gives one photo per product, not the whole set) when
+ * a photo builder is given. Null when `n` names no child.
  */
 export async function productPaths(
   n: number,
   read: Reader = memoReader(),
-): Promise<string[] | null> {
+  photo: PhotoUrl | null = null,
+): Promise<SitemapUrl[] | null> {
   const range = pageRange(n);
   if (range === null) return null;
-  const names = new Map<string, string>();
+  const names = new Map<string, { name: string; image?: string }>();
   for (let page = range.first; page <= range.last; page += 1) {
-    const live = await productPage(page, read);
-    for (const card of live.items) names.set(card.id, card.name);
+    const live = await productPage(page, read, photo);
+    for (const card of live.items) {
+      const image = card.imageSet?.largest;
+      names.set(card.id, { name: card.name, ...(image === undefined ? {} : { image }) });
+    }
     if (!live.hasMore) break;
     if (page === MAX_PAGE) {
       log({ msg: 'storefront.sitemap-product-cap', products: MAX_PAGE * PRODUCT_PAGE_SIZE });
     }
   }
-  return [...names].map(([id, name]) => productHref(id, name));
+  return [...names].map(([id, { name, image }]) => ({
+    path: productHref(id, name),
+    ...(image === undefined ? {} : { images: [image] }),
+  }));
 }
 
 /** The index children, kept per Market origin for CACHE_MS. */
 export const cachedChildNames = (origin: string): Promise<string[]> =>
   cached(`${origin}|index`, () => childNames());
 
-/** The URL paths of a child, kept per Market origin for CACHE_MS; null for an unknown child. */
-export const cachedChildPaths = (origin: string, name: string): Promise<string[] | null> =>
+/** The URLs of a child, kept per Market origin for CACHE_MS; null for an unknown child. */
+export const cachedChildPaths = (
+  host: StorefrontHost,
+  name: string,
+): Promise<(string | SitemapUrl)[] | null> =>
   /^(pages|categories)\.xml$|^products-[1-9][0-9]?\.xml$/u.test(name)
-    ? cached(`${origin}|${name}`, () => childPaths(name))
+    ? cached(`${host.origin}|${name}`, () => childPaths(name, memoReader(), sitemapPhotos(host)))
     : Promise.resolve(null);
 
 /** The children the index lists: pages, categories and each products child that has a product. */
@@ -231,9 +253,10 @@ export async function childNames(read: Reader = memoReader()): Promise<string[]>
 export async function childPaths(
   name: string,
   read: Reader = memoReader(),
-): Promise<string[] | null> {
+  photo: PhotoUrl | null = null,
+): Promise<(string | SitemapUrl)[] | null> {
   if (name === 'pages.xml') return pagePaths();
   if (name === 'categories.xml') return categoryPaths(read);
   const match = /^products-([1-9][0-9]?)\.xml$/u.exec(name);
-  return match === null ? null : productPaths(Number(match[1]), read);
+  return match === null ? null : productPaths(Number(match[1]), read, photo);
 }

@@ -57,6 +57,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
     'catalog/categories',
+    // What the platform product create form offers (catalog): the Market's types and languages.
+    'catalog/admin/platform-products/options',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
@@ -170,6 +172,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Import products (catalog): the checked file, as base64 in a JSON body (the one path with a
     // larger body cap, see UPLOAD_PATH).
     'catalog/admin/platform-imports',
+    // A new platform product, as a draft (catalog): the body names the type only.
+    'catalog/admin/platform-products',
     // Save the product list's current view as a tab (catalog): a closed body, for me or everyone.
     'catalog/admin/saved-filters',
   ]),
@@ -201,6 +205,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // Submit (publish) a platform product's working copy (catalog).
+    'catalog/admin/platform-products/:id/submit',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -216,6 +222,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/show',
     'catalog/admin/categories/:id/change-slug',
     'catalog/admin/categories/:id/discard',
+    // Remove a category's image, with the category version seen (catalog, categories C3c).
+    'catalog/admin/categories/:id/image/remove',
     // Move, merge and archive a platform category (catalog, categories C4a: protected key
     // `catalog.category-tree.restructure`), each with the tree version and a reason note.
     'catalog/admin/categories/:id/move',
@@ -268,8 +276,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
+    // Set or replace a category's image, with the category version seen (catalog, categories
+    // C3c). A base64 picture: the body cap of this path is the larger image one.
+    'catalog/admin/categories/:id/image',
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
+    // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
+    'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).
@@ -288,6 +301,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attributes/:id',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
+    // The working copy of a platform product, saved as a draft (catalog).
+    'catalog/admin/platform-products/:id/draft',
   ],
   // The details of one platform category (catalog, categories C3), with the version seen.
   PATCH: ['catalog/admin/categories/:id'],
@@ -307,8 +322,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // One platform product with its working copy, for the product form (catalog).
+    'catalog/admin/platform-products/:id',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
+    // The current image of a category, medium size only (catalog, categories C3c).
+    'catalog/admin/categories/:id/images/:id/medium',
     // One import and its report CSV (catalog): the report takes the query `kind`.
     'catalog/admin/platform-imports/:id',
     'catalog/admin/platform-imports/:id/report',
@@ -445,7 +464,13 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
-  'catalog/admin/categories/:id/impact': { action: /^(move|merge|archive)$/ },
+  // `targetId` is the picked new parent or merge target, or `top` for a department (C4b).
+  'catalog/admin/categories/:id/impact': {
+    action: /^(move|merge|archive)$/,
+    // `top` is exact (the API maps only `top` to a department); an id may be in either case.
+    targetId:
+      /^(?:top|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/,
+  },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,
     limit: /^[0-9]{1,3}$/,
@@ -474,7 +499,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
   'catalog/admin/platform-imports/:id/report': ['kind'],
-  'catalog/admin/categories/:id/impact': ['action'],
+  'catalog/admin/categories/:id/impact': ['action', 'targetId'],
 };
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -570,6 +595,19 @@ const MAX_BODY_BYTES = 16 * 1024;
  */
 const UPLOAD_PATH = 'catalog/admin/platform-imports';
 const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
+/**
+ * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
+ * accepts 5800 kB for this one route and checks the real size itself.
+ */
+const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
+const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
+
+/** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
+function bodyCapOf(method: string, target: string): number {
+  if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  return MAX_BODY_BYTES;
+}
 
 /** Lower case, no trailing dot on the host name; the port stays. */
 export function normaliseHost(raw: string | null): string | null {
@@ -683,8 +721,7 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
-  const bodyCap =
-    request.method === 'POST' && target === UPLOAD_PATH ? MAX_UPLOAD_BODY_BYTES : MAX_BODY_BYTES;
+  const bodyCap = bodyCapOf(request.method, target);
   const declared = Number(request.headers.get('content-length') ?? 0);
   if (declared > bodyCap) return jsonError(413, 'request.too-large');
   let body: string | undefined;

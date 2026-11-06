@@ -50,6 +50,11 @@ export function productIdOfSegment(segment: string): string {
   return match === null ? segment : match[1]!.toLowerCase();
 }
 
-/** The category page of a category slug, or of a subcategory under it. */
-export const categoryHref = (category: string, sub?: string): string =>
-  sub === undefined ? `/c/${category}` : `/c/${category}/${sub}`;
+/** The shape of a category slug (catalog's own pattern); the API answers nothing else. */
+export const CATEGORY_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/u;
+
+/**
+ * The category page of a category slug, at any depth (categories C6: one segment, `/c/<slug>`).
+ * The slug is encoded, so a value that is not a slug can never leave the `/c/` path.
+ */
+export const categoryHref = (slug: string): string => `/c/${encodeURIComponent(slug)}`;

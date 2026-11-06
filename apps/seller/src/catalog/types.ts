@@ -44,9 +44,23 @@ export interface FormField {
   readonly localizable: boolean;
   readonly required: boolean;
   readonly isVariantOption: boolean;
+  /** For a `measure` field, `min` and `max` are in base units (g, ml, mm, count). */
   readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** A `measure` field only: dimension, the unit codes offered, the default and decimal places. */
+  readonly measure?: {
+    readonly dimension: string;
+    readonly units: readonly string[];
+    readonly defaultUnit: string;
+    readonly decimals: number;
+  };
   readonly names: Readonly<Record<string, string>>;
   readonly options: readonly FormOption[];
+}
+
+/** A unit of the Market with its label per locale (apps/api OwnFormUnit). */
+export interface FormUnit {
+  readonly code: string;
+  readonly labels: Readonly<Record<string, string>>;
 }
 
 export interface FormCategory {
@@ -58,6 +72,8 @@ export interface FormCategory {
 /** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
 export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
+  /** The Market's units; a measure field names the ones it offers by code. */
+  readonly units: readonly FormUnit[];
   readonly fields: readonly FormField[];
   readonly categories: readonly FormCategory[];
 }
@@ -147,6 +163,13 @@ export interface DraftSaved {
     readonly ref: string | null;
     readonly locale: string;
     readonly code: string;
+  }[];
+  /** Advice about the saved variants; never a refusal. */
+  readonly variantNotices?: readonly {
+    readonly variantId: string;
+    readonly code: 'gtin.duplicate';
+    /** The PLATFORM product that already carries the barcode, when there is one to sell on. */
+    readonly sellOnProductCode: string | null;
   }[];
 }
 

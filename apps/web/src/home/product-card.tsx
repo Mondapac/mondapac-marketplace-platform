@@ -17,7 +17,7 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
     <article className="pc">
       <div className="tile">
         {product.imageUrl ? (
-          <CardPhoto src={product.imageUrl} category={product.category} />
+          <CardPhoto src={product.imageUrl} category={product.category} set={product.imageSet} />
         ) : (
           <CategoryArt code={product.category} />
         )}

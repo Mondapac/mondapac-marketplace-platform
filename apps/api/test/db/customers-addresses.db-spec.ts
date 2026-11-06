@@ -35,7 +35,7 @@ import { testDatabaseUrl } from './test-database';
 // The address book store as the application role, in both Market fixtures: add, change, remove,
 // one default per customer (the partial unique index), the CHECKs, and never a read across
 // Markets or customers. The real use cases on the real unit of work keep one default under
-// concurrent writes (serializable, retried).
+// concurrent writes (the address-book advisory lock, one writer of a book at a time).
 
 const T0 = Temporal.Instant.from('2026-10-17T10:00:00Z');
 const CHECK = '23514';

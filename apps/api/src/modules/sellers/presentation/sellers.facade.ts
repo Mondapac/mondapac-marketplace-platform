@@ -6,6 +6,8 @@ import type { SellerBusinessActivities } from '../application/use-cases/seller-b
 import type { SellerBusinessActivitiesSystem } from '../application/use-cases/seller-business-activities-system.use-case';
 import type { BlogAccessSystem } from '../application/use-cases/blog-access-system.use-case';
 import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
+import type { MayProposeCategoriesSystem } from '../application/use-cases/may-propose-categories-system.use-case';
+import type { MayProposeCategories } from '../application/use-cases/may-propose-categories.use-case';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
@@ -43,6 +45,8 @@ export interface SellersFacadeUseCases {
   readonly sellerBusinessActivitiesSystem: SellerBusinessActivitiesSystem;
   readonly blogAccess: BlogAccess;
   readonly blogAccessSystem: BlogAccessSystem;
+  readonly mayProposeCategories: MayProposeCategories;
+  readonly mayProposeCategoriesSystem: MayProposeCategoriesSystem;
   readonly activeSince: ActiveSince;
   readonly activeSinceSystem: ActiveSinceSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
@@ -120,6 +124,17 @@ export class SellersFacadeImplementation implements SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
     const useCase =
       context.actor.kind === 'system' ? this.useCases.blogAccessSystem : this.useCases.blogAccess;
+    return useCase.execute(context, { sellerId });
+  }
+
+  mayProposeCategories(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.mayProposeCategoriesSystem
+        : this.useCases.mayProposeCategories;
     return useCase.execute(context, { sellerId });
   }
 

@@ -62,6 +62,7 @@
       "repeatedWordShareBps": 7500
     }
   },
+  "contentFilter": { "blockedTerms": ["zzbad", "zz bad phrase"] },
   "promotions": {
     "lineDiscountCapBps": 6000,
     "sellerMaxDiscountBps": 5000,
@@ -337,12 +338,23 @@
       "name": true,
       "primaryImage": false,
       "anyImage": true,
-      "variantRemoved": false
+      "variantRemoved": false,
+      "gtinChanged": false
     },
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,
     "maxCategoryChangeTags": 20000,
     "maxVariantAttributes": 3,
+    "units": [
+      { "code": "g", "labels": { "ja-JP": "g" } },
+      { "code": "kg", "labels": { "ja-JP": "kg" } },
+      { "code": "ml", "labels": { "ja-JP": "ml" } },
+      { "code": "l", "labels": { "ja-JP": "L" } },
+      { "code": "mm", "labels": { "ja-JP": "mm" } },
+      { "code": "cm", "labels": { "ja-JP": "cm" } },
+      { "code": "m", "labels": { "ja-JP": "m" } },
+      { "code": "count", "labels": { "ja-JP": "each" } }
+    ],
     "approvalRequired": false,
     "productTypes": ["simple"],
     "defaultFamily": "default",

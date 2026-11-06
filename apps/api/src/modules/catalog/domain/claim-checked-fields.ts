@@ -84,6 +84,13 @@ export const REVISION_VARIANT_FIELDS: Record<keyof RevisionVariantContent, Field
   // Attribute code to option code: the codes are internal, the labels live on the definition.
   optionValues: exempt('internal-code'),
   labels: checked('product.variant-label'),
+  // Digits only (check digit validated at the freeze), a number, or ids of the revision's images.
+  gtin: exempt('identifier'),
+  shippingWeightGrams: exempt('number'),
+  shippingLengthMm: exempt('number'),
+  shippingWidthMm: exempt('number'),
+  shippingHeightMm: exempt('number'),
+  imageIds: exempt('reference'),
 };
 
 export const REVISION_CONTENT_FIELDS: Record<keyof RevisionContent, FieldDisposition> = {
@@ -377,6 +384,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
   },
+  OfferSearchVariant: {
+    noCustomerText:
+      'read copy of a published Variant: ids, a position, a GTIN, facet codes and its label (claim-checked when the revision was frozen); the label is index words only, never shown from the index',
+  },
   OfferSearchAttributes: {
     noCustomerText:
       'index words and facet codes read from a published revision: brand name and aliases (an approved brand entity), a country name from the ISO list, option labels and searchable text values (admin text claim-checked when written; seller text claim-checked when the revision was frozen); matching only, never shown and never a certification claim',
@@ -467,6 +478,14 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
   },
   CategoryTreeUnavailableError: { noCustomerText: 'error with a fixed reason' },
+  PublicCategoryDetails: {
+    noCustomerText:
+      'read copy of stored category fields: the menu switch, the English SEO fields and the published short descriptions, already claim-checked when written (C3a)',
+  },
+  PublicCategory: {
+    noCustomerText:
+      'public tree view: LiveCategory with the published short description and SEO fields, already claim-checked when written, with flags and numbers',
+  },
   AdminStoredCategory: {
     noCustomerText:
       'admin read copy of stored category rows in any status: ids, slug and the published CategoryName rows, already claim-checked when written',
@@ -511,5 +530,6 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
   AxisIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },
+  VariantShipping: { noCustomerText: 'four whole numbers (grams, millimetres); no text' },
   WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
 };
