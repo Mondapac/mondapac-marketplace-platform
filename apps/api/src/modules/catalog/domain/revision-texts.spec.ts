@@ -21,6 +21,12 @@ describe.each(FIXTURES)('revision texts in market $code', ({ supported, defaultL
         optionKey: 'size=l',
         optionValues: { size: 'l' },
         labels: { [defaultLocale]: 'Large' },
+        gtin: null,
+        shippingWeightGrams: null,
+        shippingLengthMm: null,
+        shippingWidthMm: null,
+        shippingHeightMm: null,
+        imageIds: [],
       },
     ],
     imageIds: [],
@@ -47,6 +53,7 @@ describe.each(FIXTURES)('revision texts in market $code', ({ supported, defaultL
       taxCategoryCode: 'taxable',
       imageIds: [],
       variantIds: ['v1'],
+      variantGtins: { v1: null },
     });
   });
 });

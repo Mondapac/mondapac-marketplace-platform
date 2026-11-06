@@ -7,7 +7,10 @@ import { PLATFORM_PRODUCT_STATUS } from '../src/modules/catalog/presentation/pla
 import { SaveDraft } from '../src/modules/catalog/application/working-copy/save-draft.service';
 import { SubmitProduct } from '../src/modules/catalog/application/revisions/submit-product.service';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
+import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
+import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
+import { WORKING_COPY_REPOSITORY } from '../src/modules/catalog/application/ports/working-copy.repository';
 import type { Product } from '../src/modules/catalog/domain/product';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
@@ -71,8 +74,21 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
               stored.push(product);
               return Promise.resolve();
             },
-            findById: () => Promise.resolve(null),
+            findById: (_m: unknown, productId: string) =>
+              Promise.resolve(stored.find((product) => product.state.id === productId) ?? null),
             save: () => Promise.resolve(),
+          })
+          .overrideProvider(WORKING_COPY_REPOSITORY)
+          .useValue({ find: () => Promise.resolve(null) })
+          .overrideProvider(PRODUCT_REVISION_REPOSITORY)
+          .useValue({ find: () => Promise.resolve(null) })
+          .overrideProvider(OWN_CATALOG_READER)
+          .useValue({
+            productForm: () =>
+              Promise.resolve({
+                fields: [],
+                categories: [{ categoryId: PRODUCT, parentId: null, names: { en: 'Pantry' } }],
+              }),
           })
           .overrideProvider(ATTRIBUTE_REPOSITORY)
           .useValue({
@@ -161,7 +177,7 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     clock = new FixedClock(START);
     stored = [];
     schemaSeeded = true;
-    saveResult = ok({ variantIds: [], refusedFields: [] });
+    saveResult = ok({ variantIds: [], refusedFields: [], variantNotices: [] });
     submitResult = ok({ revisionId: PRODUCT, revisionNo: 1, published: true });
   });
   afterEach(async () => {
@@ -177,6 +193,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     expect(document.paths[base]?.post?.responses).toHaveProperty('201');
     expect(document.paths[`${base}/{productId}/draft`]?.put?.responses).toHaveProperty('429');
     expect(document.paths[`${base}/{productId}/submit`]?.post?.responses).toHaveProperty('422');
+    expect(document.paths[`${base}/options`]?.get?.responses).toHaveProperty('200');
+    expect(document.paths[`${base}/{productId}`]?.get?.responses).toHaveProperty('404');
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -233,6 +251,51 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(stored).toHaveLength(0);
     });
 
+    it('reads the options and one platform product for the admin form, and refuses without the key', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const viewer = sessionOf(code, VIEWER, 2);
+      const get = (path: string, headers: Record<string, string>) =>
+        http()
+          .get(`/catalog/admin/platform-products${path}`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers });
+
+      const options = await get('/options', root);
+      expect(options.status).toBe(200);
+      expect(options.headers['cache-control']).toBe('no-store');
+      expect((options.body as { productTypes: string[] }).productTypes).toContain('simple');
+
+      const created = await send('post', code, '', { typeCode: 'simple' }, root);
+      const productId = (created.body as { productId: string }).productId;
+      const read = await get(`/${productId}`, root);
+      expect(read.status).toBe(200);
+      expect(read.body).toMatchObject({
+        productId,
+        status: 'draft',
+        variantModel: 'single',
+        workingCopy: null,
+        published: null,
+        form: { categories: [{ names: { en: 'Pantry' } }] },
+      });
+      expect((read.body as { form: { taxCategoryCodes: string[] } }).form.taxCategoryCodes).toEqual(
+        expect.any(Array),
+      );
+
+      for (const path of ['/options', `/${productId}`]) {
+        const denied = await get(path, viewer);
+        expect(denied.status).toBe(403);
+        expect(denied.body).toEqual({ statusCode: 403, code: 'access.denied' });
+        expect((await get(path, {})).status).toBe(401);
+      }
+      const missing = await get(`/${PRODUCT}`, root);
+      expect(missing.status).toBe(404);
+      expect(missing.body).toEqual({ statusCode: 404, code: 'product.not-found' });
+      const malformed = await get('/not-an-id', root);
+      expect(malformed.status).toBe(404);
+      expect(malformed.body).toEqual(missing.body);
+    });
+
     it('refuses an unknown field, a missing field and a non-JSON body with a 400 or 415', async () => {
       await boot();
       await seeded(code);
@@ -277,6 +340,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       await seeded(code);
       saveResult = ok({
         variantIds: [PRODUCT],
+        variantNotices: [
+          { variantId: PRODUCT, code: 'gtin.duplicate', sellOnProductCode: 'MP-004127' },
+        ],
         refusedFields: [
           {
             field: 'product.name',
@@ -297,6 +363,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(saved.status).toBe(200);
       expect(saved.body).toEqual({
         variantIds: [PRODUCT],
+        variantNotices: [
+          { variantId: PRODUCT, code: 'gtin.duplicate', sellOnProductCode: 'MP-004127' },
+        ],
         refusedFields: [
           {
             field: 'product.name',

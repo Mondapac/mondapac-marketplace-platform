@@ -132,6 +132,8 @@ import { FreezeRevision } from './application/revisions/freeze-revision.service'
 import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
+import { PlatformProductOptions } from './application/use-cases/platform-product-options.use-case';
+import { PlatformProductRead } from './application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
@@ -221,6 +223,7 @@ import { OfferListingsSystemQuery } from './application/use-cases/offer-listings
 import { OFFER_LISTINGS_READER } from './application/ports/offer-listings.reader';
 import { PublishedProductQuery } from './application/use-cases/published-product.use-case';
 import { PUBLISHED_PRODUCT_READER } from './application/ports/published-product.reader';
+import { VARIANT_GTIN_REGISTRY } from './application/ports/variant-gtin.registry';
 import { PUBLISHED_IMAGES_READER } from './application/ports/published-images.reader';
 import { PublishedProductImagesQuery } from './application/use-cases/published-product-images.use-case';
 import { PublishedImageRead } from './application/use-cases/published-image-read.use-case';
@@ -312,6 +315,10 @@ import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-
 import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
 import { CATEGORY_EDIT_STORE } from './application/ports/category-edit.store';
+import { CATEGORY_IMAGE_STORE } from './application/ports/category-image.store';
+import { CategoryImageRead } from './application/use-cases/category-image-read.use-case';
+import { CategoryImageRemove } from './application/use-cases/category-image-remove.use-case';
+import { CategoryImageSet } from './application/use-cases/category-image-set.use-case';
 import { CategoryCreate } from './application/use-cases/category-create.use-case';
 import { CategoryEditDetails } from './application/use-cases/category-edit-details.use-case';
 import { CategoryReorder } from './application/use-cases/category-reorder.use-case';
@@ -402,6 +409,7 @@ const PORT = {
   tagSelection: TAG_SELECTION_READER,
   listingsReader: OFFER_LISTINGS_READER,
   publishedProductReader: PUBLISHED_PRODUCT_READER,
+  gtinRegistry: VARIANT_GTIN_REGISTRY,
   publishedImagesReader: PUBLISHED_IMAGES_READER,
   ownerContacts: OFFER_OWNER_CONTACT,
   mailTransport: MAIL_TRANSPORT,
@@ -427,6 +435,7 @@ const PORT = {
   brandReader: BRAND_READER,
   adminCategoryReader: ADMIN_CATEGORY_READER,
   store: CATEGORY_EDIT_STORE,
+  categoryImages: CATEGORY_IMAGE_STORE,
   restructure: CATEGORY_RESTRUCTURE_STORE,
   retirement: CATEGORY_RETIREMENT_CHECK,
   categoryProbes: CATEGORY_ACTION_PROBES,
@@ -590,6 +599,7 @@ const RESTRUCTURE_DEPS = {
       save: true,
       workingCopies: true,
       policy: true,
+      gtinRegistry: true,
       contentFilter: true,
     }),
     {
@@ -1039,6 +1049,33 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       ids: true,
     }),
+    useCaseProvider(CategoryImageSet, {
+      unitOfWork: true,
+      categoryImages: true,
+      categories: true,
+      imageProcessor: true,
+      objectStore: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryImageRemove, {
+      unitOfWork: true,
+      categoryImages: true,
+      categories: true,
+      imageProcessor: true,
+      objectStore: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryImageRead, {
+      unitOfWork: true,
+      categoryImages: true,
+      objectStore: true,
+    }),
     useCaseProvider(CategoryMove, RESTRUCTURE_DEPS),
     useCaseProvider(CategoryMerge, RESTRUCTURE_DEPS),
     useCaseProvider(CategoryArchive, RESTRUCTURE_DEPS),
@@ -1207,6 +1244,7 @@ const RESTRUCTURE_DEPS = {
       ownReader: true,
       policy: true,
       sellerNames: true,
+      gtinRegistry: true,
     }),
     useCaseProvider(AdminCustomVariantLabels, {
       unitOfWork: true,
@@ -1490,6 +1528,15 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),
+    useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(PlatformProductRead, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      ownReader: true,
+      policy: true,
+    }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,
       categories: true,

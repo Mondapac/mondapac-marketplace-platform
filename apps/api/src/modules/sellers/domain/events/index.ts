@@ -89,6 +89,30 @@ export const SellerBlogAccessChanged = defineEvent({
 });
 
 /**
+ * An admin allowed a seller to propose categories (SEL-26; sellers design 7.4). The seller id
+ * only. The aggregate id is derived from the seller id (`seller-admin-settings`) and its version
+ * is the version of the seller's admin settings row, so the events of one seller are ordered and
+ * never collide with the business file's. No consumer yet: `catalog` asks
+ * `mayProposeCategories` at every command.
+ */
+export const SellerCategoryProposalsGranted = defineEvent({
+  type: 'sellers.category-proposals-granted.v1',
+  aggregateType: 'seller-admin-settings',
+  payload: { sellerId: eventField.id() },
+});
+
+/**
+ * An admin took away a seller's permission to propose categories (SEL-26; sellers design 7.4).
+ * The seller id only; aggregate as {@link SellerCategoryProposalsGranted}. Consumer: `catalog`
+ * (its pending proposals of the seller become `cancelled`, reason `permission-revoked`; CAT-51).
+ */
+export const SellerCategoryProposalsRevoked = defineEvent({
+  type: 'sellers.category-proposals-revoked.v1',
+  aggregateType: 'seller-admin-settings',
+  payload: { sellerId: eventField.id() },
+});
+
+/**
  * Every event sellers publishes, declared with `defineEvent` and registered with the event
  * catalogue by `SellersModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -100,4 +124,6 @@ export const SELLERS_EVENTS: readonly EventDefinition[] = [
   BusinessFileWithdrawn,
   StoreProfilePublished,
   SellerBlogAccessChanged,
+  SellerCategoryProposalsGranted,
+  SellerCategoryProposalsRevoked,
 ];

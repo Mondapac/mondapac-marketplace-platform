@@ -7,6 +7,8 @@ export {
   BusinessFileSubmitted,
   SELLERS_EVENTS,
   SellerBlogAccessChanged,
+  SellerCategoryProposalsGranted,
+  SellerCategoryProposalsRevoked,
   SellerFileCreated,
 } from '../domain/events';
 export type { ApprovedSellerZone, SellerSummary } from '../domain/seller-summary';
@@ -18,6 +20,7 @@ export {
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_PERMISSIONS,
   SELLERS_SELLER_FILE_REVIEW,
+  SELLERS_SELLER_SETTINGS_EDIT,
   SELLERS_SELLER_VIEW,
 } from './permissions';
 // The approved-seller-zones contract file (reader interface and token) is deliberately not

@@ -22,7 +22,12 @@ export function useCategoryCall(csrfToken: string, restructure = false) {
   const busy = useRef(false);
 
   const run = useCallback(
-    async <T>(method: 'POST' | 'PATCH', path: string, body: unknown): Promise<Outcome<T>> => {
+    async <T>(
+      method: 'POST' | 'PUT' | 'PATCH',
+      path: string,
+      body: unknown,
+      options: { readonly namesCategoryVersion?: boolean } = {},
+    ): Promise<Outcome<T>> => {
       if (busy.current) return { ok: false, problem: null };
       busy.current = true;
       setPending(true);
@@ -37,7 +42,11 @@ export function useCategoryCall(csrfToken: string, restructure = false) {
       }
       const next = restructure
         ? restructureProblemOf(result.failure)
-        : categoryProblemOf(result.failure, method);
+        : categoryProblemOf(
+            result.failure,
+            method,
+            options.namesCategoryVersion ?? method !== 'POST',
+          );
       setProblem(next);
       return { ok: false, problem: next };
     },

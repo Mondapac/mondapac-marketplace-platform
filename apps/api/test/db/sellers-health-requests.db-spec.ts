@@ -157,9 +157,35 @@ describe.each(TEST_MARKETS)('the seller health request store in market %s', (cod
     expect(await run(market, () => store.latest(market, oldFailed))).toBeNull();
     expect((await run(market, () => store.latest(market, oldPending)))?.status).toBe('pending');
     expect((await run(market, () => store.latest(market, recentDone)))?.status).toBe('done');
-    // Another Market's rows are out of reach.
-    expect(await run(other, () => store.purgeFinishedBefore(other, cut))).toBeGreaterThanOrEqual(0);
     expect((await run(market, () => store.latest(market, recentDone)))?.status).toBe('done');
+  });
+
+  it("never purges another Market's old finished requests", async () => {
+    const foreign = await newSeller(other);
+    await enqueue(other, foreign, T0);
+    await run(other, async () => {
+      const row = (await store.latest(other, foreign))!;
+      await store.finish(other, row.id, 'done', T0);
+    });
+    const cut = T0.add({ hours: 24 * 30 });
+
+    await run(market, () => store.purgeFinishedBefore(market, cut));
+
+    expect((await run(other, () => store.latest(other, foreign)))?.status).toBe('done');
+  });
+
+  it("finds the latest request of one source, so an admin click never counts as the seller's", async () => {
+    const seller = await newSeller();
+    await enqueue(market, seller, T0, 'seller');
+    const first = (await run(market, () => store.latest(market, seller, 'seller')))!;
+    await run(market, () => store.finish(market, first.id, 'done', T0));
+    await enqueue(market, seller, T0.add({ minutes: 20 }), 'admin');
+    expect((await run(market, () => store.latest(market, seller)))?.source).toBe('admin');
+    const own = await run(market, () => store.latest(market, seller, 'seller'));
+    expect(own).toMatchObject({ id: first.id, source: 'seller' });
+    const other = await newSeller();
+    await enqueue(market, other, T0, 'admin');
+    expect(await run(market, () => store.latest(market, other, 'seller'))).toBeNull();
   });
 
   it('keeps Markets apart', async () => {

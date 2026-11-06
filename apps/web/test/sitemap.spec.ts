@@ -5,9 +5,15 @@ import { productHref } from '../src/storefront/links.ts';
 
 // The request's Host header and what the API answers per path.
 const request = vi.hoisted(
-  (): { host: string | null; sampleData: boolean; api: (path: string) => unknown } => ({
+  (): {
+    host: string | null;
+    sampleData: boolean;
+    imageOrigin: string | null;
+    api: (path: string) => unknown;
+  } => ({
     host: 'shop.example',
     sampleData: false,
+    imageOrigin: null,
     api: () => ({ kind: 'failed' }),
   }),
 );
@@ -30,7 +36,7 @@ vi.mock('../src/storefront/config.ts', async (importOriginal) => ({
       { origin: 'https://nz.example', host: 'nz.example', marketId: 'NZ' },
     ],
     clientAddressKey: null,
-    imageOrigin: null,
+    imageOrigin: request.imageOrigin,
   }),
 }));
 vi.mock('../src/storefront/api.ts', async (importOriginal) => ({
@@ -116,6 +122,7 @@ beforeEach(() => {
   vi.stubEnv('STOREFRONT_INDEXING', 'on');
   request.host = 'shop.example';
   request.sampleData = false;
+  request.imageOrigin = null;
   request.api = () => ({ kind: 'failed' });
 });
 afterEach(() => {
@@ -420,5 +427,68 @@ describe('sitemap host and cache', () => {
     expect((await child('pages.xml')).status).toBe(200);
     vi.stubEnv('STOREFRONT_INDEXING', 'off');
     expect((await child('pages.xml')).status).toBe(404);
+  });
+});
+
+describe('image sitemap (products children)', () => {
+  const IMAGE = '01990000-0000-7000-8000-0000000000a1';
+  const child = (name: string) =>
+    childRoute(new Request('https://shop.example/'), {
+      params: Promise.resolve({ name }),
+    });
+  const withPhoto = (): void => {
+    request.api = (path) => {
+      if (path === 'catalog/categories') return { kind: 'ok', body: TREE };
+      const page = Number(new URLSearchParams(path.split('?')[1]).get('page'));
+      return {
+        kind: 'ok',
+        body: {
+          hasMore: false,
+          items:
+            page === 1
+              ? [
+                  {
+                    ...item(1),
+                    primaryImage: { imageId: IMAGE, width: 1600, height: 1200, alt: 'Product 1' },
+                  },
+                  item(2),
+                ]
+              : [],
+        },
+      };
+    };
+  };
+
+  it('lists the large photo of a product, with the image namespace', async () => {
+    request.imageOrigin = 'https://img.example';
+    withPhoto();
+    const text = await (await child('products-1.xml')).text();
+    expect(text).toContain('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"');
+    expect(text).toContain(
+      `<image:image><image:loc>https://img.example/catalog/public-images/AU/${id(1001)}/${IMAGE}/large</image:loc></image:image>`,
+    );
+    // The product without a photo is listed on its own.
+    expect(text.match(/<image:image>/gu)).toHaveLength(1);
+    expect(text.match(/<url>/gu)).toHaveLength(2);
+  });
+
+  it('lists no image without a photo origin', async () => {
+    request.imageOrigin = null;
+    withPhoto();
+    const text = await (await child('products-1.xml')).text();
+    expect(text).not.toContain('<image:image>');
+    expect(text.match(/<url>/gu)).toHaveLength(2);
+  });
+
+  it('lists no image from an http origin', async () => {
+    request.imageOrigin = 'http://localhost:4000';
+    withPhoto();
+    expect(await (await child('products-1.xml')).text()).not.toContain('<image:image>');
+  });
+
+  it('leaves the other children without the image namespace', async () => {
+    request.imageOrigin = 'https://img.example';
+    withPhoto();
+    expect(await (await child('categories.xml')).text()).not.toContain('xmlns:image');
   });
 });

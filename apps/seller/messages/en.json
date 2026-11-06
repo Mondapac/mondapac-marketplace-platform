@@ -966,7 +966,8 @@
         "unknown": "Unknown reason"
       },
       "tab": {
-        "details": "Details"
+        "details": "Details",
+        "variants": "Variants"
       },
       "tabs": "Offer sections"
     },
@@ -1065,7 +1066,36 @@
         "axes-confirm": "Clear and change",
         "remove-dialog": "Remove this variant?",
         "remove-body": "{count, plural, one {This variant has live prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants have live prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
-        "remove-confirm": "Remove"
+        "remove-confirm": "Remove",
+        "step-details": "4. Barcode, shipping and photos for each variant",
+        "details-help": "All optional. Shipping left empty uses the product's own values. Photos come from the product's photos above.",
+        "details-none": "Tick a combination first.",
+        "gtin": "Barcode (GTIN)",
+        "gtin-help": "8, 12, 13 or 14 digits.",
+        "weight": "Shipping weight (g)",
+        "length": "Length (mm)",
+        "width": "Width (mm)",
+        "height": "Height (mm)",
+        "photos": "Photos of this variant",
+        "photos-help": "{count, plural, =0 {No photos picked: the product's photos show.} one {1 photo picked. The first one is the main photo.} other {# photos picked. The first one is the main photo.}}",
+        "photos-none": "Add photos to the product first, then pick them here.",
+        "photo-alt": "Photo {number}",
+        "problem": {
+          "gtin": {
+            "invalid": "Not a valid barcode. Check the digits.",
+            "duplicate": "Another variant of this product has the same barcode."
+          },
+          "size": {
+            "invalid": "Enter a whole number, at least 1 and at most {max}.",
+            "required": "Enter all three sides, or none."
+          },
+          "images": "A variant can pick at most {max} photos.",
+          "blocked": "Fix the highlighted variant fields before saving."
+        },
+        "notice": {
+          "duplicate": "{count, plural, one {A barcode of this draft is already used by another product.} other {# barcodes of this draft are already used by other products.}} This is advice only: you can still save.",
+          "sell-on": "Product {code} already carries one of your barcodes. You may sell on it instead of making a new product."
+        }
       },
       "photos": {
         "title": "Photos",
@@ -1109,6 +1139,7 @@
         "name": "name",
         "primary-image": "main image",
         "variant-removed": "removed variants",
+        "gtin-changed": "variant barcodes (GTIN)",
         "images": "images"
       },
       "attribute": {
@@ -1197,6 +1228,39 @@
       }
     },
     "not-given": "Not given",
+    "variants-table": {
+      "title": "Prices and stock by variant",
+      "tab": "Variants",
+      "variant": "Variant",
+      "variant-n": "Variant {number}",
+      "select": "Select {variant}",
+      "select-all": "Select all variants",
+      "price-for": "Price for {variant}",
+      "held": "Waiting for review: {amount}",
+      "special": {
+        "running": "{amount}, running",
+        "scheduled": "{amount}, scheduled"
+      },
+      "special-link": "Set or end a special price on the Prices page.",
+      "bulk": "Bulk actions",
+      "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
+      "set-price": "Set price",
+      "increase": "Increase by %",
+      "set-stock": "Set stock",
+      "location": "Location",
+      "bulk-label": {
+        "price": "New price ({currency}, GST included)",
+        "increase": "Increase prices by (%)",
+        "stock": "Units in stock"
+      },
+      "apply": "{count, plural, one {Apply to # variant} other {Apply to # variants}}",
+      "bulk-help": "Bulk actions only fill the cells below. Nothing is saved until you press Save.",
+      "skipped": "{count, plural, one {# variant has no price yet and was left as it is.} other {# variants have no price yet and were left as they are.}}",
+      "save": "{count, plural, =0 {Save changes} one {Save # change} other {Save # changes}}",
+      "discard": "Discard changes",
+      "saved": "{count, plural, one {Saved # change.} other {Saved # changes.}}",
+      "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why."
+    },
     "suggestions": {
       "title": "Value suggestions",
       "intro": "When a field of your product does not have the value you need, suggest it here. A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer.",

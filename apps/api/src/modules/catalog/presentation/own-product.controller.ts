@@ -347,6 +347,7 @@ export class OwnProductController {
         ? {
             variantIds: [...result.value.variantIds],
             refusedFields: result.value.refusedFields.map((field) => ({ ...field })),
+            variantNotices: result.value.variantNotices.map((notice) => ({ ...notice })),
           }
         : refusal(result.error, response, context);
     }

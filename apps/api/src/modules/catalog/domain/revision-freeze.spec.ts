@@ -48,7 +48,19 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
       description: null,
     });
     expect(result.value.variants).toEqual([
-      { variantId: v(1), position: 1, optionKey: '', optionValues: {}, labels: {} },
+      {
+        variantId: v(1),
+        position: 1,
+        optionKey: '',
+        optionValues: {},
+        labels: {},
+        gtin: null,
+        shippingWeightGrams: null,
+        shippingLengthMm: null,
+        shippingWidthMm: null,
+        shippingHeightMm: null,
+        imageIds: [],
+      },
     ]);
   });
 
@@ -83,6 +95,117 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
     );
     expect(found).toContainEqual({ path: 'categoryIds.1', code: 'duplicate' });
     expect(found).toContainEqual({ path: 'texts', code: 'unknown' });
+  });
+
+  describe('per-variant fields (variants V4)', () => {
+    const two = (
+      first: Record<string, unknown>,
+      second: Record<string, unknown> = {},
+      gallery: string[] = ['i1', 'i2', 'i3'],
+    ) =>
+      base({
+        variantModel: 'options',
+        liveVariantIds: [v(1), v(2)],
+        content: {
+          ...base().content,
+          imageIds: gallery,
+          variants: [
+            { variantId: v(1), optionValues: { size: 'l' }, ...first },
+            { variantId: v(2), optionValues: { size: 's' }, ...second },
+          ],
+        },
+      });
+    const foundIn = (input: FreezeInput) =>
+      issues(input).map((issue) => `${issue.path}:${issue.code}`);
+
+    it('freezes a GTIN-13 as 14 digits, shipping values and ordered picks', () => {
+      const result = freezeWorkingCopy(
+        two({
+          gtin: '4006381333931',
+          shippingWeightGrams: 450,
+          shippingLengthMm: 200,
+          shippingWidthMm: 100,
+          shippingHeightMm: 50,
+          imageIds: ['i3', 'i1'],
+        }),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.variants[0]).toMatchObject({
+        gtin: '04006381333931',
+        shippingWeightGrams: 450,
+        shippingLengthMm: 200,
+        shippingWidthMm: 100,
+        shippingHeightMm: 50,
+        imageIds: ['i3', 'i1'],
+      });
+      expect(result.value.variants[1]).toMatchObject({
+        gtin: null,
+        shippingWeightGrams: null,
+        shippingLengthMm: null,
+        imageIds: [],
+      });
+    });
+
+    it.each(['4006381333932', '12345', 'abcdefghijklm', '40063813339311', ''])(
+      'refuses the GTIN %j without echoing it',
+      (gtin) => {
+        const found = issues(two({ gtin }));
+        expect(found).toContainEqual({ path: 'variants.0.gtin', code: 'gtin.invalid' });
+        expect(JSON.stringify(found)).not.toContain(gtin === '' ? '\u0000' : gtin);
+      },
+    );
+
+    it('refuses the same GTIN on two variants of one product, in any written form', () => {
+      expect(foundIn(two({ gtin: '4006381333931' }, { gtin: '04006381333931' }))).toEqual([
+        'variants.1.gtin:duplicate',
+      ]);
+    });
+
+    it('refuses out-of-range or non-integer shipping values and half-set dimensions', () => {
+      expect(
+        foundIn(
+          two(
+            { shippingWeightGrams: 0, shippingLengthMm: 1.5, shippingWidthMm: 5 },
+            { shippingWeightGrams: 1_000_001 },
+          ),
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          'variants.0.shippingWeightGrams:invalid',
+          'variants.0.shippingLengthMm:invalid',
+          'variants.0.shippingHeightMm:required',
+          'variants.1.shippingWeightGrams:invalid',
+        ]),
+      );
+    });
+
+    it('refuses a pick outside the gallery, a repeated pick and too many picks', () => {
+      expect(foundIn(two({ imageIds: ['i1', 'i9', 'i1'] }))).toEqual([
+        'variants.0.imageIds.1:unknown',
+        'variants.0.imageIds.2:duplicate',
+      ]);
+      const gallery = Array.from({ length: 21 }, (_, index) => `g${index}`);
+      expect(foundIn(two({ imageIds: gallery }, {}, gallery))).toEqual([
+        'variants.0.imageIds:too-many',
+      ]);
+    });
+
+    it('lets a Simple product carry the fields of its one variant', () => {
+      const result = freezeWorkingCopy(
+        base({
+          content: {
+            ...base().content,
+            imageIds: ['i1'],
+            variants: [{ variantId: v(1), gtin: '96385074', imageIds: ['i1'] }],
+          },
+        }),
+      );
+      expect(result.ok && result.value.variants[0]).toMatchObject({
+        gtin: '00000096385074',
+        imageIds: ['i1'],
+      });
+    });
   });
 
   describe('Configurable variants', () => {

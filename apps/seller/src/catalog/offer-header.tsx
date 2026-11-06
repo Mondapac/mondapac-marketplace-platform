@@ -3,7 +3,7 @@ import { known, OFFER_STATUSES } from './format.ts';
 import { OFFER_TONE } from './offers-table.tsx';
 import type { OfferView } from './types.ts';
 
-export type OfferTab = 'details' | 'prices' | 'stock';
+export type OfferTab = 'details' | 'prices' | 'stock' | 'variants';
 
 /**
  * The top of every offer page: the way back to Offers, the product name with the offer's state,
@@ -34,6 +34,9 @@ export function OfferHeader({
       : []),
     ...(canViewStock || active === 'stock'
       ? [{ id: 'stock', href: `${base}/stock`, label: t('stock.levels.title') }]
+      : []),
+    ...(canViewPrices || canViewStock || active === 'variants'
+      ? [{ id: 'variants', href: `${base}/variants`, label: t('catalog.variants-table.tab') }]
       : []),
   ];
   return (

@@ -154,6 +154,18 @@ export interface SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
 
   /**
+   * `mayProposeCategories` (sellers design 7.1; SEL-26): whether an admin allowed the seller to
+   * propose categories (default off). `catalog` asks it at every proposal command. An unknown
+   * seller, another Market's seller or a read error is `sellers.unavailable`: the caller refuses
+   * and never reads an error as allowed. Two use cases behind this method, as for
+   * `sellerSummaries`. Not exposed over HTTP.
+   */
+  mayProposeCategories(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
    * `activeSinceOf` (promotions T1): the instant the seller's business file was first approved in
    * the context's Market, the clock of promotions' "a seller active for fewer than N days needs
    * approval" rule. A revision approved and later superseded still counts; a rejected or

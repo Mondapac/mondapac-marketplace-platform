@@ -52,6 +52,7 @@ export interface SellerHealthRequestStore {
   ): Promise<boolean>;
 
   /**
+<<<<<<< HEAD
    * Deletes the finished (`done` or `failed`) requests of the Market that were requested before
    * `before`, and answers how many went. A pending request is never deleted. Only the retention
    * purge calls it.
@@ -60,6 +61,16 @@ export interface SellerHealthRequestStore {
 
   /** The newest request of a seller, any status, or `null`. */
   latest(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerHealthRequest | null>;
+=======
+   * The newest request of a seller, any status, or `null`. With `source`, only requests that came
+   * from it (the seller's cooldown looks at the seller's own clicks, never an admin's).
+   */
+  latest(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    source?: SellerHealthRequestSource,
+  ): Promise<SellerHealthRequest | null>;
+>>>>>>> origin/main
 }
 
 export const SELLER_HEALTH_REQUEST_STORE = Symbol('SELLER_HEALTH_REQUEST_STORE');
