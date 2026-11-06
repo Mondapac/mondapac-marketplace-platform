@@ -69,6 +69,8 @@ export function problemText(
     // Run reasons.
     case 'claim-text.found':
       return 'The text mentions a certification. Certification belongs to a seller’s offer, not to the product';
+    case 'text.blocked-term':
+      return 'The text holds a word the platform does not allow';
     case 'claim-text.check-unavailable':
       return 'The certification-wording check was unavailable';
     case 'revision.not-ready':

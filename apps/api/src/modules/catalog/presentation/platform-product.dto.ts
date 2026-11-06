@@ -60,10 +60,16 @@ export class RefusedFieldView {
   locale!: string;
 
   @ApiProperty({
-    enum: ['claim-text.found', 'claim-text.check-unavailable', 'text.invisible-character'],
+    enum: [
+      'claim-text.found',
+      'claim-text.check-unavailable',
+      'text.invisible-character',
+      'text.blocked-term',
+    ],
     description:
       'Why the text kept its last saved value. A certification-like claim in product text is ' +
-      'refused: a claim is made through a certificate, never in free text.',
+      'refused: a claim is made through a certificate, never in free text. text.blocked-term: ' +
+      "the text holds a term of the Market's content filter.",
   })
   code!: string;
 

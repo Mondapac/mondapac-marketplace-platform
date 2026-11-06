@@ -37,6 +37,11 @@ export type SearchSort = (typeof SEARCH_SORTS)[number];
 export interface SearchProductsRequest {
   readonly q?: string | undefined;
   readonly category?: string | undefined;
+  /**
+   * `true`: only Offers whose product is on `category` itself, not on a category below it (the
+   * buyer site's "Other {name}" filter, categories C6). Needs a `category`.
+   */
+  readonly direct?: string | undefined;
   /** A store address: lists that store's Offers (no `q`). */
   readonly store?: string | undefined;
   /** A brand address: lists the Offers of that brand's products (no `q`, no `store`). */
@@ -58,6 +63,8 @@ export interface SearchQuery {
   /** The text to search for, or null when browsing a category. */
   readonly text: string | null;
   readonly categoryId: Id<'Category'> | null;
+  /** True: the category alone, without its subcategories. Only with a category. */
+  readonly direct: boolean;
   /** The store address to list, or null. Never with a text. */
   readonly storeSlug: string | null;
   /** The brand address to list, or null. Never with a text or a store. */
@@ -113,6 +120,12 @@ export function parseSearchQuery(
       typeof request.category === 'string' ? parseId<'Category'>(request.category) : null;
     if (parsed === null || !parsed.ok) return invalid('category', 'format');
     categoryId = parsed.value;
+  }
+  let direct = false;
+  if (request.direct !== undefined && request.direct !== '') {
+    if (request.direct !== 'true') return invalid('direct', 'value');
+    if (categoryId === null) return invalid('direct', 'without-category');
+    direct = true;
   }
   let storeSlug: string | null = null;
   if (request.store !== undefined && request.store !== '') {
@@ -179,6 +192,7 @@ export function parseSearchQuery(
   return ok({
     text,
     categoryId,
+    direct,
     storeSlug,
     brandSlug,
     sort,

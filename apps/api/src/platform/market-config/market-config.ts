@@ -1757,6 +1757,18 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * The content filter (owner decision, 6 Nov 2026), owned by the platform. `blockedTerms`: words
+     * and phrases (any language of the Market, matched as whole words, case-insensitive, Persian
+     * and Arabic letter variants unified) that a description or the alt text of an image may not
+     * hold. A field that holds one is refused with a validation error naming the field. Without
+     * this section nothing is refused. Reviews keep `reviews.autoChecks`.
+     */
+    contentFilter: z
+      .strictObject({
+        blockedTerms: z.array(z.string().trim().min(2).max(64)).max(2000),
+      })
+      .optional(),
+    /**
      * Blog settings (blog package 1), owned by `blog`. `sellerPostsPerMonth`: the posts a seller may
      * submit for the first time in one calendar month, counted in the Market `timezone` (AU 4).
      * `pageSize`: posts per public page (AU 12). `defaultAuthorDisplay`: the byline of a platform
