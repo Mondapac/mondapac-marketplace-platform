@@ -1,9 +1,9 @@
 # ADR-0045: Agent Population and Agent Panel
 
-**Status:** Proposed — 2026-11-06. Needed before the first `agents` PR. The `agents` G1 was
-approved by the project owner on 2026-11-06 as an explicit exception to speed mode
-(`docs/modules/agents/brief.md`, approvals table). Acceptance needs Ali (cto) and Hassan
-(security-tester), because it adds a sign-in population.
+**Status:** Accepted — 2026-11-06 (Ali, cto), after Hassan (security-tester) confirmed his
+findings fixed. Needed before the first `agents` PR. The `agents` G1 was approved by the project
+owner on 2026-11-06 as an explicit exception to speed mode (`docs/modules/agents/brief.md`,
+approvals table).
 **Amends:** ADR-0018 decision 3 (adds a fourth population), decision 4 (adds the named rule
 `agent-self`) and decision 5 (second factor for agents); ADR-0034 decision 1 and its
 per-population `allowedOrigins` (adds `apps/agent`); ADR-0008 decision 1 (the layout note added by
@@ -35,10 +35,14 @@ populations: not a seller member (an agent acts across many sellers and owns non
      gives the agent directly. Neither alone accepts the invitation, so neither a mailbox
      compromise nor the inviting admin alone can take the account.
    - The handover code has at least 40 random bits (base32), only its HMAC is stored, it is
-     bound to its invitation, and it is void after 5 failed attempts.
+     bound to its invitation, and it is void after 5 failed attempts. The acceptance route also
+     counts under the `sign-in.origin` and generic anonymous per-origin limits of identity design
+     6.8, so guesses cannot be spread across many invitations.
+   - The code is shown once to the issuing admin at issue and cannot be retrieved later; a lost
+     code means revoke and reissue.
    - Acceptance sets the password and enrols the second factor in the same step (the admin
      invitation pattern, identity design 3.4 HF6) and opens no session.
-   - Issuing the invitation, revealing the code to the admin and accepting it are audited with
+   - Issuing the invitation (with its one showing of the code) and accepting it are audited with
      the inviter's account id.
    - Issuing an invitation to an email that already has an agent account or a pending
      invitation answers `invitation.already-pending` to the admin only.
@@ -84,8 +88,9 @@ populations: not a seller member (an agent acts across many sellers and owns non
    with the same rules as the other two apps (it imports neither API code nor another app), and
    the relay allowlist check covers the `agent` population.
 10. **Data the agent never sees.** No customer personal data reaches an agent route. The `agents`
-    module reads only totals from `ordering` through its facade (brief section 6, owner answer
-    Q6). Agent earnings are an accrual ledger in `agents`. Real payouts (AGT-11) touch
+    module reads only, for each linked shop, its name and status from the `sellers` facade and
+    its monthly sales total and order count from the `ordering` facade (brief section 6, owner
+    answer Q6). Agent earnings are an accrual ledger in `agents`. Real payouts (AGT-11) touch
     `commission-payouts` and `payments`, are out of scope here, and need their own decision and
     a security-tester review.
 
@@ -112,5 +117,7 @@ populations: not a seller member (an agent acts across many sellers and owns non
 ## Review
 - 2026-11-06, Ali (cto): accept with changes; all ten changes applied above.
 - 2026-11-06, Hassan (security-tester): two High findings (undefined handover code, missing
-  session policy) and five Medium or Low; all applied above (decisions 1 to 8). Acceptance waits
-  for Hassan to confirm the fixes and for Ali to accept.
+  session policy) and five Medium or Low; all applied above (decisions 1 to 8). Re-review: blockers
+  cleared; two wording fixes (code shown once, per-origin limits) applied in decision 2.
+- 2026-11-06, Ali (cto) re-review: accepted; the decision 10 wording on what `agents` reads was
+  widened to match brief Q6.
