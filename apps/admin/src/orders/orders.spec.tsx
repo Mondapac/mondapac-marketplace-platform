@@ -28,6 +28,11 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   trackingRef: null,
   shippedAt: null,
   deliveredAt: null,
+  deliveryMethod: 'scheduled',
+  deliveryWindowStart: null,
+  deliveryWindowEnd: null,
+  readyAt: null,
+  deliveryAttention: null,
   lines: [
     {
       lineId: '0190a000-0000-7000-8000-0000000000b1',
@@ -290,11 +295,66 @@ describe('order detail', () => {
         />,
       ),
     );
-    expect(screen.getByText('Payment failed')).toBeTruthy();
+    expect(screen.getByText(/This order was cancelled: Payment failed\./)).toBeTruthy();
     expect(screen.getByText('Australia Post')).toBeTruthy();
     expect(screen.getByText('AP123')).toBeTruthy();
     expect(screen.getAllByText('Delivered')).toHaveLength(2);
     expect(screen.getByText('Voided')).toBeTruthy();
+  });
+});
+
+describe('order detail layout', () => {
+  it('shows the fulfilment steps, the delivery method and the activity from recorded times', () => {
+    render(
+      wrap(
+        <OrderDetail
+          order={order({
+            sellerOrders: [
+              part({
+                storeName: 'Al Noor Butchery',
+                fulfilment: 'shipped',
+                deliveryMethod: 'same_day',
+                readyAt: '2026-10-13T02:00:00.000Z',
+                shippedAt: '2026-10-13T03:00:00.000Z',
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    const steps = screen.getByRole('list', { name: 'Progress' });
+    expect(within(steps).getByText('Waiting')).toBeTruthy();
+    expect(within(steps).getAllByText(/2026/)).toHaveLength(2);
+    expect(screen.getByText('Same-day delivery')).toBeTruthy();
+    const activity = screen.getByRole('heading', { name: 'Activity' }).parentElement!;
+    const items = within(activity).getAllByRole('listitem');
+    expect(items.map((item) => item.firstElementChild?.textContent)).toEqual([
+      'Order placed',
+      'Payment confirmed',
+      'Al Noor Butchery marked ready',
+      'Al Noor Butchery shipped',
+    ]);
+  });
+
+  it('shows a delivery problem the platform must look at', () => {
+    render(
+      wrap(
+        <OrderDetail
+          order={order({ sellerOrders: [part({ deliveryAttention: 'carrier-unknown' })] })}
+        />,
+      ),
+    );
+    expect(screen.getByRole('alert').textContent).toContain('Delivery needs a look');
+  });
+
+  it('says when the customer details are hidden, and copies the order id', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(wrap(<OrderDetail order={order()} />));
+    expect(screen.getByText(/details are hidden for your role/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID' }));
+    await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+    expect(writeText).toHaveBeenCalledWith('0190a000-0000-7000-8000-000000000001');
   });
 });
 
