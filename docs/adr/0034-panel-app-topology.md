@@ -2,6 +2,7 @@
 
 **Status:** Accepted — 2026-10-08 (Ali, cto), with the deployment gates and known interim deviations
 below.
+**Amended by:** ADR-0045 (decision 1 and per-population `allowedOrigins`: adds `apps/agent`).
 **Amends:** ADR-0008 (layout block: adds `apps/seller`, `apps/admin`, `packages/ui`).
 **Relates to:** ADR-0008 (repository structure; `apps/web`), ADR-0018 and
 `docs/design/domain/identity.md` 6.4 (cookie, CSRF, HF7), ADR-0020 decision 3
