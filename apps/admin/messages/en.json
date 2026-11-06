@@ -2660,6 +2660,13 @@
         "unknown": "Something went wrong. Try again.",
         "partial": "The new variants were created but the draft wasn't saved with them. Save again."
       },
+      "discard": {
+        "button": "Discard product",
+        "title": "Discard this product?",
+        "message": "The product and its draft are removed from the catalog. This can't be undone.",
+        "keep": "Keep product",
+        "confirm": "Discard product"
+      },
       "leave": {
         "title": "Leave without saving?",
         "message": "You have changes that are not saved. If you leave this page, they are lost.",

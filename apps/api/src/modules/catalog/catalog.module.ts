@@ -133,6 +133,7 @@ import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
 import { PlatformProductOptions } from './application/use-cases/platform-product-options.use-case';
+import { PlatformProductDiscard } from './application/use-cases/platform-product-discard.use-case';
 import { PlatformProductRead } from './application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
@@ -1528,6 +1529,12 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),
+    useCaseProvider(PlatformProductDiscard, {
+      unitOfWork: true,
+      products: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(PlatformProductOptions, { policy: true }),
     useCaseProvider(PlatformProductRead, {
       unitOfWork: true,

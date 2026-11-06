@@ -90,6 +90,8 @@ const fail = (status: number, code: string, details?: object) => ({
   ok: false as const,
   failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
+const discardDialog = (): HTMLElement =>
+  screen.getByText('Discard this product?').closest('dialog') as HTMLElement;
 const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string, unknown>;
 
 beforeEach(() => {
@@ -375,6 +377,83 @@ describe('the edit form', () => {
     fireEvent.click(saveDraft);
     await waitFor(() => expectToast('Draft saved.'));
     expect((saveDraft as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('lets the admin leave after choosing Leave page, and not ask again after a save', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
+    const back = screen.getByRole('link', { name: 'Back to products' });
+    fireEvent.click(back);
+    fireEvent.click(await screen.findByRole('button', { name: 'Leave page' }));
+    await waitFor(() => expect(screen.queryByText('Leave without saving?')).toBeNull());
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expectToast('Draft saved.'));
+    fireEvent.click(back);
+    expect(screen.queryByText('Leave without saving?')).toBeNull();
+  });
+
+  it('keeps Save draft on for a product that has no draft yet', async () => {
+    call.mockResolvedValueOnce(ok(view({ workingCopy: null })));
+    mountEdit();
+    const saveDraft = await screen.findByRole('button', { name: 'Save draft' });
+    expect((saveDraft as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('discards an unpublished product after asking, then goes back to the list', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard product' }));
+    expect(await screen.findByText('Discard this product?')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+    call.mockResolvedValueOnce(ok({ productId: ID }));
+    const dialog = discardDialog();
+    fireEvent.click(
+      Array.from(dialog.querySelectorAll('button')).find(
+        (b) => b.textContent === 'Discard product',
+      )!,
+    );
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/catalog/products'));
+    expect(call.mock.calls[1]).toEqual([
+      'POST',
+      `catalog/admin/platform-products/${ID}/discard`,
+      {},
+      'csrf-1',
+    ]);
+  });
+
+  it('keeps the product when the discard is cancelled or refused, and hides it once published', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard product' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep product' }));
+    expect(call).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard product' }));
+    call.mockResolvedValueOnce(fail(409, 'product.not-a-draft'));
+    const dialog = discardDialog();
+    fireEvent.click(
+      Array.from(dialog.querySelectorAll('button')).find(
+        (b) => b.textContent === 'Discard product',
+      )!,
+    );
+    expect(
+      await screen.findByText("This product can't be edited in its current state."),
+    ).toBeTruthy();
+    expect(assign).not.toHaveBeenCalledWith('/catalog/products');
+    cleanup();
+    call.mockResolvedValueOnce(
+      ok(
+        view({
+          status: 'published',
+          published: { revisionId: 'r', revisionNo: 1, publishedAt: '2026-11-05T01:00:00.000Z' },
+        } as unknown as Partial<ProductView>),
+      ),
+    );
+    mountEdit();
+    await screen.findByRole('button', { name: 'Publish changes' });
+    expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
   });
 
   it('says so when the new variants were created but the second save failed', async () => {
