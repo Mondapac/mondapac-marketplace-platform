@@ -105,6 +105,12 @@ class MemoryImages implements ProductImageRepository {
   listUnattached() {
     return Promise.resolve([]);
   }
+  listMissingFormats() {
+    return Promise.resolve([]);
+  }
+  addRenditions() {
+    return Promise.resolve(true);
+  }
   deleteUnused() {
     return Promise.resolve(false);
   }
@@ -129,6 +135,7 @@ describe('reviewer photo routes over HTTP (integration)', () => {
     createdAt: START,
     renditions: (['thumb', 'medium', 'large'] as const).map((size) => ({
       size,
+      format: 'jpeg' as const,
       objectKey: `${productId}/${imageId}/${size}`,
       sha256: Buffer.alloc(32),
       byteSize: 5,

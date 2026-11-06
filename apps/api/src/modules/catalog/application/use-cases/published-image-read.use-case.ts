@@ -3,7 +3,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { isRenditionSize } from '../ports/product-image.repository';
+import { parseRenditionName } from '../ports/product-image.repository';
 import type { PublishedImagesReader } from '../ports/published-images.reader';
 
 export interface PublishedImageReadInput {
@@ -14,8 +14,8 @@ export interface PublishedImageReadInput {
 
 export interface PublishedImageReadOutput {
   readonly bytes: Buffer;
-  /** Always `image/jpeg`: every rendition is written by the server. */
-  readonly contentType: 'image/jpeg';
+  /** Written by the server: JPEG, WebP or AVIF by the requested name. */
+  readonly contentType: 'image/jpeg' | 'image/webp' | 'image/avif';
 }
 
 export type PublishedImageReadFailure =
@@ -27,10 +27,11 @@ export interface PublishedImageReadDependencies {
   readonly objectStore: ObjectStore;
 }
 
+const CONTENT_TYPE = { jpeg: 'image/jpeg', webp: 'image/webp', avif: 'image/avif' } as const;
 const NOT_FOUND = { code: 'image.not-found' } as const;
 
 /**
- * `catalog.published-image-read`: the bytes of one rendition of a product photo, for any visitor
+ * `catalog.published-image-read`: the bytes of one size and format of a product photo (`size` is `thumb`, `thumb.webp`, `thumb.avif` and so on), for any visitor
  * (the buyer site). Rule `anonymous`: no session, the request's Market. The photo is served only
  * when its product is `published` in the Market, the photo is in that product's current published
  * revision and it is not taken down. A malformed id, an unknown size, an unknown id, another
@@ -64,8 +65,9 @@ export class PublishedImageRead extends UseCase<
       typeof input.productId === 'string' ? parseId<'Product'>(input.productId) : null;
     const image = typeof input.imageId === 'string' ? parseId<'ProductImage'>(input.imageId) : null;
     if (product === null || !product.ok || image === null || !image.ok) return err(NOT_FOUND);
-    if (typeof input.size !== 'string' || !isRenditionSize(input.size)) return err(NOT_FOUND);
-    const size = input.size;
+    const name = typeof input.size === 'string' ? parseRenditionName(input.size) : null;
+    if (name === null) return err(NOT_FOUND);
+    const { size, format } = name;
     const { market } = context;
     let read: Result<string | null, unknown>;
     try {
@@ -78,6 +80,7 @@ export class PublishedImageRead extends UseCase<
               product.value,
               image.value,
               size,
+              format,
             ),
           ),
         { readOnly: true },
@@ -90,7 +93,7 @@ export class PublishedImageRead extends UseCase<
     if (read.value === null) return err(NOT_FOUND);
     try {
       const bytes = await this.deps.objectStore.get(read.value);
-      return bytes === null ? err(NOT_FOUND) : ok({ bytes, contentType: 'image/jpeg' });
+      return bytes === null ? err(NOT_FOUND) : ok({ bytes, contentType: CONTENT_TYPE[format] });
     } catch {
       return err({ code: 'image.unavailable' });
     }
