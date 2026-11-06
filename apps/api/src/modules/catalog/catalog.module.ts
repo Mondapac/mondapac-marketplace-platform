@@ -112,6 +112,9 @@ import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product
 import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
 import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
+import { CategorySlugResolveQuery } from './application/use-cases/category-slug-resolve.use-case';
+import { PublicCategoryTreeQuery } from './application/use-cases/public-category-tree.use-case';
+import { PUBLIC_CATEGORY_READER } from './application/ports/public-category.reader';
 import { PublicCategoryController } from './presentation/public-category.controller';
 import { SELL_UNIT_LABELS_READER } from './application/ports/sell-unit-labels.reader';
 import { SellUnitLabelsQuery } from './application/use-cases/sell-unit-labels.use-case';
@@ -379,6 +382,7 @@ const PORT = {
   productOwnersReader: SELLER_PRODUCT_OWNERS_READER,
   productLinkingReader: PRODUCT_LINKING_READER,
   treeReader: CATEGORY_TREE_READER,
+  publicCategories: PUBLIC_CATEGORY_READER,
   offers: OFFER_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
   claims: ClaimQueryBuilder,
@@ -1615,6 +1619,18 @@ const RESTRUCTURE_DEPS = {
       productLinkingReader: true,
     }),
     useCaseProvider(CategoryTreeQuery, { unitOfWork: true, treeReader: true, policy: true }),
+    useCaseProvider(PublicCategoryTreeQuery, {
+      unitOfWork: true,
+      treeReader: true,
+      publicCategories: true,
+      policy: true,
+    }),
+    useCaseProvider(CategorySlugResolveQuery, {
+      unitOfWork: true,
+      treeReader: true,
+      publicCategories: true,
+      policy: true,
+    }),
     useCaseProvider(OfferListingsQuery, {
       unitOfWork: true,
       listingsReader: true,

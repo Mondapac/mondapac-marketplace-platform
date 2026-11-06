@@ -19,9 +19,12 @@ export class MemoryCategoryTree implements CategoryTreeReader {
     this.nodesOf.clear();
   }
 
-  seed(marketId: string, node: Omit<StoredCategoryNode, 'mergedIntoId' | 'names' | 'slug'>): void {
+  seed(
+    marketId: string,
+    node: Omit<StoredCategoryNode, 'mergedIntoId' | 'names' | 'slug' | 'position'>,
+  ): void {
     const list = this.nodesOf.get(marketId) ?? [];
-    list.push({ ...node, mergedIntoId: null, names: [], slug: node.id });
+    list.push({ ...node, mergedIntoId: null, names: [], slug: node.id, position: list.length });
     this.nodesOf.set(marketId, list);
   }
 
