@@ -53,6 +53,9 @@ const SAMPLE_TEXT: Readonly<Record<string, string>> = {
   range2Max: '2',
   range3Min: '1',
   range3Max: '2',
+  // The price bounds of variants V8 are cast to bigint.
+  priceMin: '1',
+  priceMax: '2',
 };
 
 const uuid7 = (): string => uuidV7(Date.now(), crypto.getRandomValues(new Uint8Array(10)));

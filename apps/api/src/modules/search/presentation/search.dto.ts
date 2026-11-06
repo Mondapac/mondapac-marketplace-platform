@@ -147,8 +147,9 @@ export class ProductSearchPageBody {
     type: SearchExactMatchBody,
     nullable: true,
     description:
-      '`q` was exactly the GTIN of a variant on sale: go straight to that product page with ' +
-      '`?v={variantId}`. Null otherwise.',
+      '`q` was exactly the GTIN of a published variant of a listed Offer, in stock or not (the ' +
+      'product page shows its stock): go straight to that product page with `?v={variantId}`. ' +
+      'Null otherwise, and on any page after the first.',
   })
   exactMatch!: SearchExactMatchBody | null;
 }

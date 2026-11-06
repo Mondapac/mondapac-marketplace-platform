@@ -75,6 +75,7 @@ const originFilter: FilterDefinition = {
 };
 
 const row = (n: number, ...facets: string[]): FacetRow => ({
+  offerId: id<'Offer'>(0x90 + n),
   productId: id<'Product'>(0x90 + n),
   facets,
 });

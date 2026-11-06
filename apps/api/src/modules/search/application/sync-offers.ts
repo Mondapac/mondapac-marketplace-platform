@@ -38,12 +38,17 @@ const indexable = (
  * The document of an Offer, or null when it must not be indexed: catalog says it is not
  * sellable, its seller may not sell now (suspended, for one), or the published revision has no
  * text in the Market's locale. Each published variant becomes a sell unit with the stock and price
- * `states` hold for it (absent: out of stock, unpriced). Pure.
+ * `states` hold for it (absent: out of stock, unpriced). A price in another currency than the
+ * Market's is stored as no price: the price filter compares minor units of one currency. Pure.
  */
 export function documentOf(
   offerId: Id<'Offer'>,
   facts: FeedFacts | undefined,
-  settings: { readonly locale: string; readonly textSearchConfig: string },
+  settings: {
+    readonly locale: string;
+    readonly textSearchConfig: string;
+    readonly currency: string;
+  },
   eligibleSellers: ReadonlySet<Id<'Seller'>>,
   states: ReadonlyMap<string, SellUnitState> = new Map(),
 ): OfferDocument | null {
@@ -72,7 +77,7 @@ export function documentOf(
         facetCodes: [...new Set(variant.facets)].slice(0, MAX_VARIANT_FACETS),
         gtin: variant.gtin,
         inStock: state.inStock,
-        price: state.price,
+        price: state.price?.currency === settings.currency ? state.price : null,
       };
     }),
   };
