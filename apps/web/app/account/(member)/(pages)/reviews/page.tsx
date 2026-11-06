@@ -1,5 +1,5 @@
-import { AccountReviews } from '../../../../src/account/reviews.tsx';
-import { accountMetadata } from '../../../../src/seo/metadata.ts';
+import { AccountReviews } from '../../../../../src/account/reviews.tsx';
+import { accountMetadata } from '../../../../../src/seo/metadata.ts';
 
 export const generateMetadata = () => accountMetadata('reviews', '/account/reviews');
 

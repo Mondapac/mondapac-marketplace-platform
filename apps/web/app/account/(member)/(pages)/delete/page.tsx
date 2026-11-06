@@ -1,5 +1,5 @@
-import { AccountDeleteScreen } from '../../../../src/account/account-deletion.tsx';
-import { accountMetadata } from '../../../../src/seo/metadata.ts';
+import { AccountDeleteScreen } from '../../../../../src/account/account-deletion.tsx';
+import { accountMetadata } from '../../../../../src/seo/metadata.ts';
 
 export const generateMetadata = () => accountMetadata('delete', '/account/delete');
 
