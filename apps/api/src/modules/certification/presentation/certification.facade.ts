@@ -5,6 +5,9 @@ import type { EvaluateClaims } from '../application/use-cases/evaluate-claims.us
 import type { EvaluateClaimsSystem } from '../application/use-cases/evaluate-claims-system.use-case';
 import type { CertificationTypes } from '../application/use-cases/certification-types.use-case';
 import type { CertificationTypesSystem } from '../application/use-cases/certification-types-system.use-case';
+import type { AssertCategoriesRetirable } from '../application/use-cases/assert-categories-retirable.use-case';
+import type { AssertCategoriesRetirableSystem } from '../application/use-cases/assert-categories-retirable-system.use-case';
+import type { PlatformCategoriesRetired } from '../application/use-cases/platform-categories-retired.use-case';
 import type { CertifiedCategories } from '../application/use-cases/certified-categories.use-case';
 import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
 import type { ClaimTermList } from '../application/use-cases/claim-term-list.use-case';
@@ -12,11 +15,13 @@ import type { ClaimTermLocales } from '../application/use-cases/claim-term-local
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
 import type { MatchClaimTermsSystem } from '../application/use-cases/match-claim-terms-system.use-case';
 import type {
+  CategoryReferencedByPolicy,
   CertificationFacade,
   CertificationTypeView,
   CertificationUnavailable,
   CertificationValidationFailed,
   ClaimTextInput,
+  RetiredCategoriesFlagged,
   SellerCertificateOverviewRow,
 } from '../contracts/certification.facade';
 import type { ClaimTermMatch } from '../domain/claim-text-matcher';
@@ -34,6 +39,9 @@ export interface CertificationFacadeUseCases {
   readonly certificationTypesSystem: CertificationTypesSystem;
   readonly sellerCertificateOverview: SellerCertificateOverview;
   readonly certifiedCategories: CertifiedCategories;
+  readonly assertCategoriesRetirable: AssertCategoriesRetirable;
+  readonly assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem;
+  readonly platformCategoriesRetired: PlatformCategoriesRetired;
 }
 
 type Failure = AccessDenied | CertificationValidationFailed | CertificationUnavailable;
@@ -101,6 +109,24 @@ export class CertificationFacadeImplementation implements CertificationFacade {
     return result.error.code === 'access.denied'
       ? err(result.error)
       : err({ code: 'certification.unavailable' });
+  }
+
+  assertCategoriesRetirable(
+    context: CallContext,
+    categoryIds: readonly string[],
+  ): Promise<Result<void, Failure | CategoryReferencedByPolicy>> {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.assertCategoriesRetirableSystem
+        : this.useCases.assertCategoriesRetirable;
+    return useCase.execute(context, { categoryIds });
+  }
+
+  platformCategoriesRetired(
+    context: CallContext,
+    categoryIds: readonly string[],
+  ): Promise<Result<RetiredCategoriesFlagged, Failure>> {
+    return this.useCases.platformCategoriesRetired.execute(context, { categoryIds });
   }
 
   async sellerCertificateOverview(

@@ -6,6 +6,7 @@ import { NOINDEX_HEADER, indexingOn } from './src/seo/indexing.ts';
 import { apiGetWith } from './src/storefront/api.ts';
 import { categoryRedirect, type ResolveRead } from './src/storefront/category-redirect.ts';
 import { storefrontApiConfig } from './src/storefront/config.ts';
+import { PATH_HEADER } from './src/storefront/path-header.ts';
 import { parseImageOrigin } from './src/storefront/photos.ts';
 
 /**
@@ -74,6 +75,8 @@ function pageResponse(request?: NextRequest): NextResponse {
     );
     const headers = new Headers(request.headers);
     headers.set('content-security-policy', policy);
+    // The path asked for, for a not-found page, which Next gives no params (product-route.ts).
+    headers.set(PATH_HEADER, request.nextUrl.pathname);
     response = NextResponse.next({ request: { headers } });
     response.headers.set('Content-Security-Policy', policy);
     if (publishedLocales().some((locale) => locale !== DEFAULT_LOCALE)) {

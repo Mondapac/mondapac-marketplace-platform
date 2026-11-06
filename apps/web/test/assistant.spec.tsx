@@ -330,7 +330,9 @@ describe('assistant widget', () => {
     expect((send.mock.calls[0] as unknown[])[2]).toBe('Show halal meat');
     const log = screen.getByRole('log');
     const link = within(log).getByRole('link', { name: 'Free-range chicken' });
-    expect(link.getAttribute('href')).toBe('/p/0192f000-0000-7000-8000-0000000000b1');
+    expect(link.getAttribute('href')).toBe(
+      '/p/free-range-chicken-0192f000-0000-7000-8000-0000000000b1',
+    );
     expect(log.textContent).not.toMatch(/\$|12\.99|1299/);
     expect(within(log).getByText('Here are two products.')).toBeTruthy();
     // The product note already says it; the notice is not repeated.

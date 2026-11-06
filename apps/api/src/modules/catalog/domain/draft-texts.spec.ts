@@ -119,6 +119,15 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     expect(valueAt({ attributeValues: {} }, ['attributeValues', 'toString'])).toBeUndefined();
   });
 
+  it('accepts variantAxes as a list of codes and refuses anything else (V3)', () => {
+    expect(draftTextsOf({ variantAxes: ['size', 'colour'] }, supported, defaultLocale).ok).toBe(
+      true,
+    );
+    for (const bad of ['size', [1], ['bad code'], { size: true }]) {
+      expect(draftTextsOf({ variantAxes: bad }, supported, defaultLocale).ok).toBe(false);
+    }
+  });
+
   it('accepts an empty draft', () => {
     expect(read({})).toEqual({ ok: true, value: [] });
   });

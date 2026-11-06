@@ -561,7 +561,13 @@ export class ReevaluateTags extends UseCase<
     const { market } = context;
     // With no cursor yet, the counts alone (Mojtaba F4: an unanswered first page is recorded).
     await this.deps.unitOfWork.run(market, async () =>
-      ok(await this.deps.requests.progress(market, request.id, { cursorOfferId: cursor, counts })),
+      ok(
+        await this.deps.requests.progress(market, request.id, {
+          cursorOfferId: cursor,
+          counts,
+          requestedAt: request.createdAt,
+        }),
+      ),
     );
   }
 
@@ -611,6 +617,7 @@ export class ReevaluateTags extends UseCase<
     const closed = await this.deps.unitOfWork.run(market, async () =>
       ok(
         await this.deps.requests.close(market, request.id, {
+          requestedAt: request.createdAt,
           state,
           counts,
           now: this.deps.clock.now(),

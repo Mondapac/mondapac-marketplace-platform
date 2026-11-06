@@ -1,6 +1,7 @@
 import { resolveRobots } from 'next/dist/build/webpack/loaders/metadata/resolve-route-data.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiRead } from '../src/storefront/api.ts';
+import { productHref } from '../src/storefront/links.ts';
 
 // The request's Host header and what the API answers per path.
 const request = vi.hoisted(
@@ -296,6 +297,19 @@ describe('sitemap children', () => {
     expect(urls).toHaveLength(4);
     expect(urls.every((url) => url.startsWith('https://shop.example/p/'))).toBe(true);
     expect(new Set(urls).size).toBe(urls.length);
+  });
+
+  it('lists the descriptive path /p/<name>-<id>, the same as the product card link', async () => {
+    serve({ pages: 1, perPage: 2 });
+    const urls = await locs(await child('products-1.xml'));
+    expect(urls).toHaveLength(2);
+    for (const url of urls) {
+      const match =
+        /^https:\/\/shop\.example\/p\/product-(\d+)-(0{8}-0000-4000-8000-\d{12})$/u.exec(url);
+      expect(match).not.toBeNull();
+      // The name part is the product's name as the search read gives it.
+      expect(url).toBe(`https://shop.example${productHref(match![2]!, `Product ${match![1]!}`)}`);
+    }
   });
 
   it('stops paging at hasMore false', async () => {

@@ -144,6 +144,11 @@ export class CategoryImpactBody {
   @ApiProperty({ description: 'Categories under this one, any status.' }) descendants!: number;
   @ApiProperty({ description: 'False when the time bound ran out: every count is "at least".' })
   complete!: boolean;
+  @ApiProperty({
+    required: false,
+    description: 'With `targetId`: published products whose feature set would change.',
+  })
+  featureSetChanges?: number;
 }
 
 // Requests and answers of the tree editor (categories package C3a).
@@ -216,10 +221,35 @@ export class CategoryChangeSlugRequest extends CategoryTreeVersionRequest {
   @ApiProperty({ description: 'The new English URL name. The old one redirects.' }) slug!: string;
 }
 
+const REASON = {
+  description: 'Why (10 to 500 characters, kept on the category revision; never audited as text).',
+  minLength: 10,
+  maxLength: 500,
+};
+
+export class CategoryArchiveRequest extends CategoryTreeVersionRequest {
+  @ApiProperty(REASON) reason!: string;
+}
+
+export class CategoryMoveRequest extends CategoryArchiveRequest {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description: 'The new parent; null makes the category a department.',
+  })
+  parentId!: string | null;
+}
+
+export class CategoryMergeRequest extends CategoryArchiveRequest {
+  @ApiProperty({ format: 'uuid', description: 'The category this one is merged into.' })
+  targetId!: string;
+}
+
 export class CategoryWriteBody {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() slug!: string;
-  @ApiProperty({ enum: ['active', 'hidden', 'archived'] }) status!: string;
+  @ApiProperty({ enum: ['active', 'hidden', 'merged', 'archived'] }) status!: string;
   @ApiProperty() version!: number;
   @ApiProperty() revisionNo!: number;
   @ApiProperty({ description: 'The tree version after the write.' }) treeVersion!: number;
