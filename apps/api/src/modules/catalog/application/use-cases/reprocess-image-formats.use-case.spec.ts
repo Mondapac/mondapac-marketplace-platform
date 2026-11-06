@@ -33,6 +33,7 @@ describe.each(['AU', 'ZZ'] as const)('reprocess of image formats in market %s', 
   let candidates: ImageMissingFormats[];
   let added: { imageId: string; renditions: readonly StoredRendition[] }[];
   let failRows: boolean;
+  let takenDown: boolean;
 
   const unitOfWork = {
     run: async <T, E>(
@@ -56,7 +57,7 @@ describe.each(['AU', 'ZZ'] as const)('reprocess of image formats in market %s', 
       renditions: StoredRendition[],
     ) => {
       added.push({ imageId, renditions });
-      return Promise.resolve();
+      return Promise.resolve(!takenDown);
     },
   } as unknown as ProductImageRepository;
   const run = (context = testCallContext(market, 'system')) =>
@@ -92,6 +93,7 @@ describe.each(['AU', 'ZZ'] as const)('reprocess of image formats in market %s', 
     candidates = [];
     added = [];
     failRows = false;
+    takenDown = false;
   });
 
   it('declares the system rule under its own name and refuses any other actor', async () => {
@@ -145,6 +147,24 @@ describe.each(['AU', 'ZZ'] as const)('reprocess of image formats in market %s', 
     expect((await store.list('', { after: null, limit: 10 })).objects.map((o) => o.key)).toEqual([
       candidates[0]!.jpegs[0]!.objectKey,
     ]);
+  });
+
+  it('replaces a file an earlier run left without its row, and counts it as done', async () => {
+    candidates = [await photo(1)];
+    await store.put(`${PRODUCT}/${candidates[0]!.id}/medium-webp`, Buffer.from('half'));
+
+    expect(await run()).toEqual(ok({ scanned: 1, completed: 1, failed: 0 }));
+    const webp = added[0]!.renditions.find((r) => r.format === 'webp')!;
+    expect(webp.byteSize).toBe((await store.get(webp.objectKey))!.length);
+    expect(webp.byteSize).toBeGreaterThan(4);
+  });
+
+  it('removes its files and counts a failure when the photo was taken down meanwhile', async () => {
+    candidates = [await photo(1)];
+    takenDown = true;
+
+    expect(await run()).toEqual(ok({ scanned: 1, completed: 0, failed: 1 }));
+    expect((await store.list('', { after: null, limit: 10 })).objects).toHaveLength(1);
   });
 
   it('does nothing when no photo lacks a format', async () => {

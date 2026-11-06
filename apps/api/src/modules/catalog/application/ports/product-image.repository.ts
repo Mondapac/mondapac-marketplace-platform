@@ -152,14 +152,15 @@ export interface ProductImageRepository {
   ): Promise<readonly ImageMissingFormats[]>;
   /**
    * Adds rendition rows to an existing clean photo. Insert-only; a row that already exists is
-   * left as it is (a second run of the reprocess adds nothing).
+   * left as it is (a second run of the reprocess adds nothing). False, with nothing added, when
+   * the photo is not clean any more (taken down since it was listed).
    */
   addRenditions(
     market: MarketContext,
     productId: Id<'Product'>,
     imageId: Id<'ProductImage'>,
     renditions: readonly StoredRendition[],
-  ): Promise<void>;
+  ): Promise<boolean>;
   /**
    * True when deleted; false when a revision uses it (also when one joined after the check: the
    * foreign key refuses), it is taken down (the takedown record stays) or it does not exist.

@@ -4,7 +4,10 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { deriveFormats } from '../../../../platform/images/image-pipeline';
-import type { ObjectStore } from '../../../../platform/storage/object-store';
+import {
+  ObjectAlreadyExistsError,
+  type ObjectStore,
+} from '../../../../platform/storage/object-store';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { ORPHAN_SWEEP_BATCH } from '../images/image-limits';
 import {
@@ -117,7 +120,15 @@ export class ReprocessImageFormats extends UseCase<
         if (!derived.ok) return false;
         for (const file of derived.value) {
           const objectKey = renditionObjectKey(image.productId, image.id, jpeg.size, file.format);
-          await deps.objectStore.put(objectKey, file.bytes);
+          // No row names this key (the photo was listed because the row is missing), so a file
+          // already there is what an earlier run left when it stopped before its rows: replace it.
+          try {
+            await deps.objectStore.put(objectKey, file.bytes);
+          } catch (error) {
+            if (!(error instanceof ObjectAlreadyExistsError)) throw error;
+            await deps.objectStore.delete(objectKey);
+            await deps.objectStore.put(objectKey, file.bytes);
+          }
           written.push(objectKey);
           rows.push({
             size: jpeg.size,
@@ -130,11 +141,10 @@ export class ReprocessImageFormats extends UseCase<
           });
         }
       }
-      const saved = await deps.unitOfWork.run(market, async () => {
-        await deps.images.addRenditions(market, image.productId, image.id, rows);
-        return ok(true);
-      });
-      if (saved.ok) return true;
+      const saved = await deps.unitOfWork.run(market, async () =>
+        ok(await deps.images.addRenditions(market, image.productId, image.id, rows)),
+      );
+      if (saved.ok && saved.value) return true;
     } catch {
       // Falls through to the cleanup below.
     }

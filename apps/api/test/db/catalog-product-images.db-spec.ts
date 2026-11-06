@@ -985,6 +985,21 @@ describe.each(TEST_MARKETS)(
         expect(objectsOf(legacyId)).toHaveLength(9);
       });
 
+      it('reprocess adds nothing to a photo that was taken down after it was listed', async () => {
+        const product = await draftedProduct();
+        const view = await uploaded(product.state.id);
+        await takeDown.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: view.imageId,
+          reasonCode: 'other',
+        });
+
+        const added = await inUnit(() =>
+          images.addRenditions(market, product.state.id, view.imageId as Id<'ProductImage'>, []),
+        );
+        expect(added).toBe(false);
+      });
+
       it('leaves a taken-down photo as the takedown left it', async () => {
         const product = await draftedProduct();
         const view = await uploaded(product.state.id);

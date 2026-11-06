@@ -109,7 +109,7 @@ class MemoryImages implements ProductImageRepository {
     return Promise.resolve([]);
   }
   addRenditions() {
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
   deleteUnused() {
     return Promise.resolve(false);

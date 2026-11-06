@@ -100,8 +100,15 @@ export class PrismaProductImageRepository implements ProductImageRepository {
     productId: Id<'Product'>,
     imageId: Id<'ProductImage'>,
     renditions: readonly StoredRendition[],
-  ): Promise<void> {
-    await this.prisma.tx(market).catalogProductImageRendition.createMany({
+  ): Promise<boolean> {
+    const tx = this.prisma.tx(market);
+    // A photo taken down since it was listed gets no new files (the takedown removed its own).
+    const clean = await tx.catalogProductImage.findFirst({
+      where: { marketId: market.marketId, productId, id: imageId, state: 'clean' },
+      select: { id: true },
+    });
+    if (clean === null) return false;
+    await tx.catalogProductImageRendition.createMany({
       data: renditions.map((rendition) => ({
         marketId: market.marketId,
         tenantId: market.tenantId,
@@ -117,6 +124,7 @@ export class PrismaProductImageRepository implements ProductImageRepository {
       })),
       skipDuplicates: true,
     });
+    return true;
   }
 
   async list(market: MarketContext, productId: Id<'Product'>): Promise<readonly ProductImage[]> {

@@ -82,7 +82,7 @@ class MemoryImages implements ProductImageRepository {
     return Promise.resolve([]);
   }
   addRenditions() {
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
   deleteUnused(_m: unknown, _p: unknown, imageId: string) {
     const index = this.rows.findIndex((row) => row.id === imageId);
