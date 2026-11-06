@@ -100,6 +100,32 @@ export class OwnOfferSellUnitsSet {
   changedVariantIds!: string[];
 }
 
+export class OwnOfferSellUnitView {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({ description: 'The number of the variant within its product.' })
+  variantNo!: number;
+  @ApiProperty({ description: 'The variant code: {productCode}-{nn}.' }) variantCode!: string;
+  @ApiProperty({ enum: ['proposed', 'published'] }) state!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: "The published variant label in the Market's default locale, else null.",
+  })
+  label!: string | null;
+  @ApiProperty() selling!: boolean;
+  @ApiProperty({ nullable: true, type: String }) variantSku!: string | null;
+}
+
+export class OwnOfferSellUnitsView {
+  @ApiProperty({ enum: ['PLATFORM', 'SELLER'] }) productScope!: string;
+  @ApiProperty() sellerSku!: string;
+  @ApiProperty({
+    type: [OwnOfferSellUnitView],
+    description: 'The non-retired variants of the product, ordered by variant number.',
+  })
+  units!: OwnOfferSellUnitView[];
+}
+
 export class OwnOfferSetHandlingRequest {
   @ApiProperty({
     enum: ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'],
