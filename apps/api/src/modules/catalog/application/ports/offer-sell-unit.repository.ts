@@ -18,6 +18,13 @@ export interface StoredSellUnit {
  */
 export interface OfferSellUnitRepository {
   /**
+   * Takes the Offer's row lock until the unit ends (a no-op update), so two requests that change
+   * the sell units of one Offer run one after the other and the "at least one unit selling" rule is
+   * checked against the other's committed result. Call it before `unitsOf`.
+   */
+  lockOffer(market: MarketContext, offerId: Id<'Offer'>): Promise<void>;
+
+  /**
    * The non-retired variants of the product in creation order, each with its stored state or the
    * default (selling, no SKU); `variantNo` is the number within the product.
    */
@@ -34,7 +41,11 @@ export interface OfferSellUnitRepository {
    */
   save(
     market: MarketContext,
-    offer: { readonly id: Id<'Offer'>; readonly sellerId: Id<'Seller'> },
+    offer: {
+      readonly id: Id<'Offer'>;
+      readonly sellerId: Id<'Seller'>;
+      readonly productId: Id<'Product'>;
+    },
     states: readonly SellUnitState[],
     now: Temporal.Instant,
   ): Promise<

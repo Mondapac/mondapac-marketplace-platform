@@ -12,6 +12,7 @@ CREATE TABLE "catalog"."offer_sell_units" (
     "tenant_id" TEXT NOT NULL,
     "offer_id" UUID NOT NULL,
     "seller_id" UUID NOT NULL,
+    "product_id" UUID NOT NULL,
     "variant_id" UUID NOT NULL,
     "variant_sku" TEXT COLLATE "C",
     "selling" BOOLEAN NOT NULL,
@@ -38,12 +39,13 @@ ALTER TABLE "catalog"."offer_sell_units"
 CREATE UNIQUE INDEX "offer_sell_units_market_id_seller_id_variant_sku_key"
   ON "catalog"."offer_sell_units" ("market_id", "seller_id", "variant_sku") WHERE "variant_sku" IS NOT NULL;
 
--- The row belongs to an Offer of the same seller and to a variant in the same Market.
+-- The row belongs to an Offer of the same seller and to a variant of the stated product (the
+-- application writes the Offer's product; the Offer-move slice (CAT-45) must re-key it, 2.4).
 ALTER TABLE "catalog"."offer_sell_units"
   ADD CONSTRAINT "offer_sell_units_market_id_offer_id_seller_id_fkey" FOREIGN KEY ("market_id", "offer_id", "seller_id")
     REFERENCES "catalog"."offers" ("market_id", "id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT "offer_sell_units_market_id_variant_id_fkey" FOREIGN KEY ("market_id", "variant_id")
-    REFERENCES "catalog"."product_variants" ("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT "offer_sell_units_market_id_product_id_variant_id_fkey" FOREIGN KEY ("market_id", "product_id", "variant_id")
+    REFERENCES "catalog"."product_variants" ("market_id", "product_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- A variant SKU never equals an open Offer's SKU of the same seller, in either direction. The
 -- partial unique cannot span two tables, so two triggers decide a race (each locks the seller's
@@ -62,8 +64,12 @@ BEGIN
   END IF;
   RETURN NEW;
 END; $$;
-CREATE TRIGGER "offer_sell_units_sku_guard" BEFORE INSERT OR UPDATE OF "variant_sku"
-  ON "catalog"."offer_sell_units" FOR EACH ROW EXECUTE FUNCTION "catalog"."offer_sell_units_sku_guard"();
+CREATE TRIGGER "offer_sell_units_sku_guard_insert" BEFORE INSERT
+  ON "catalog"."offer_sell_units" FOR EACH ROW WHEN (NEW."variant_sku" IS NOT NULL)
+  EXECUTE FUNCTION "catalog"."offer_sell_units_sku_guard"();
+CREATE TRIGGER "offer_sell_units_sku_guard_update" BEFORE UPDATE OF "variant_sku"
+  ON "catalog"."offer_sell_units" FOR EACH ROW WHEN (NEW."variant_sku" IS NOT NULL AND NEW."variant_sku" IS DISTINCT FROM OLD."variant_sku")
+  EXECUTE FUNCTION "catalog"."offer_sell_units_sku_guard"();
 
 CREATE FUNCTION "catalog"."offers_vs_unit_sku_guard"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
@@ -79,8 +85,14 @@ BEGIN
   END IF;
   RETURN NEW;
 END; $$;
-CREATE TRIGGER "offers_vs_unit_sku_guard" BEFORE INSERT OR UPDATE OF "seller_sku", "status"
+-- The Offer triggers fire only when the SKU or the status really changes, so an ordinary Offer save
+-- takes no seller-wide lock.
+CREATE TRIGGER "offers_vs_unit_sku_guard_insert" BEFORE INSERT
   ON "catalog"."offers" FOR EACH ROW EXECUTE FUNCTION "catalog"."offers_vs_unit_sku_guard"();
+CREATE TRIGGER "offers_vs_unit_sku_guard_update" BEFORE UPDATE OF "seller_sku", "status"
+  ON "catalog"."offers" FOR EACH ROW
+  WHEN (NEW."seller_sku" IS DISTINCT FROM OLD."seller_sku" OR NEW."status" IS DISTINCT FROM OLD."status")
+  EXECUTE FUNCTION "catalog"."offers_vs_unit_sku_guard"();
 
 -- Grants: the application inserts and updates the switch and the SKU; nothing else changes and no
 -- row is ever deleted (no DELETE grant).

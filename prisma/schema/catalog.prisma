@@ -365,12 +365,12 @@ model CatalogAttributeDefinition {
 /// Where a value of a merged attribute goes (attributes A8, insert-only): the source's option code
 /// and the target's option code. A source of a type without options has no rows.
 model CatalogAttributeMergeOption {
-  marketId     String                     @map("market_id") @db.VarChar(8)
-  tenantId     String                     @map("tenant_id")
-  sourceId     String                     @map("source_id") @db.Uuid
-  sourceCode   String                     @map("source_code")
-  targetCode   String                     @map("target_code")
-  source       CatalogAttributeDefinition @relation("MergeOptionSource", fields: [marketId, sourceId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  marketId   String                     @map("market_id") @db.VarChar(8)
+  tenantId   String                     @map("tenant_id")
+  sourceId   String                     @map("source_id") @db.Uuid
+  sourceCode String                     @map("source_code")
+  targetCode String                     @map("target_code")
+  source     CatalogAttributeDefinition @relation("MergeOptionSource", fields: [marketId, sourceId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, sourceId, sourceCode])
   @@map("attribute_merge_options")
@@ -841,6 +841,9 @@ model CatalogOfferSellUnit {
   offerId    String                @map("offer_id") @db.Uuid
   /// A copy bound to the Offer's seller by the composite foreign key; never updated.
   sellerId   String                @map("seller_id") @db.Uuid
+  /// The Offer's product, bound to the variant by the composite foreign key (the variant is of this
+  /// product). The Offer-move slice (CAT-45) must re-key the rows (catalog design 2.4).
+  productId  String                @map("product_id") @db.Uuid
   variantId  String                @map("variant_id") @db.Uuid
   /// 1 to 64 printable ASCII characters, no space (CHECK); collation "C" is set in the migration.
   variantSku String?               @map("variant_sku")
@@ -850,7 +853,7 @@ model CatalogOfferSellUnit {
   createdAt  DateTime              @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime              @map("updated_at") @db.Timestamptz(6)
   offer      CatalogOffer          @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
-  variant    CatalogProductVariant @relation(fields: [marketId, variantId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  variant    CatalogProductVariant @relation(fields: [marketId, productId, variantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, offerId, variantId])
   @@unique([marketId, id])

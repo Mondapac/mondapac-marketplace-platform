@@ -10,6 +10,7 @@ import { OfferSellUnitChanged } from '../../domain/events';
 import { applySellUnitChanges, type SellUnitChange } from '../../domain/offer-sell-unit';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OfferSellUnitRepository } from '../ports/offer-sell-unit.repository';
+import type { SaveWorkingCopy } from '../working-copy/save-working-copy.service';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
 
 /** One requested change as the route passes it: a closed shape; each of the two fields is optional. */
@@ -33,6 +34,7 @@ export type OwnOfferSetSellUnitsFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'seller.not-eligible' }
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'offer.not-found' }
   | { readonly code: 'offer.sku-taken' }
   | { readonly code: 'offer.none-selling' }
@@ -47,6 +49,8 @@ export interface OwnOfferSetSellUnitsDependencies {
   readonly offers: OfferRepository;
   readonly sellUnits: OfferSellUnitRepository;
   readonly eligibility: SellerEligibilityReader;
+  /** Spends the account's save budget (design 8.4: shared with draft saves and Offer edits). */
+  readonly save: Pick<SaveWorkingCopy, 'reserveSaves'>;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
 }
@@ -122,6 +126,10 @@ export class OwnOfferSetSellUnits extends UseCase<
     if (!parsed.ok) return parsed;
     const { offerId, changes } = parsed.value;
 
+    // Spent before any read, so a loop of requests is bounded (the same budget as an Offer edit).
+    const throttled = await deps.save.reserveSaves(context);
+    if (throttled !== null) return err(throttled);
+
     try {
       return await deps.unitOfWork.run<OwnOfferSetSellUnitsOutput, OwnOfferSetSellUnitsFailure>(
         market,
@@ -134,6 +142,7 @@ export class OwnOfferSetSellUnits extends UseCase<
           ) {
             return err({ code: 'offer.not-found' } as const);
           }
+          await deps.sellUnits.lockOffer(market, offerId);
           const current = await deps.sellUnits.unitsOf(market, offerId, offer.state.productId);
           const applied = applySellUnitChanges(current, changes);
           if (!applied.ok) {
@@ -160,7 +169,7 @@ export class OwnOfferSetSellUnits extends UseCase<
           const now = deps.clock.now();
           const saved = await deps.sellUnits.save(
             market,
-            { id: offerId, sellerId },
+            { id: offerId, sellerId, productId: offer.state.productId },
             changed.map(({ variantId, variantSku, selling }) => ({
               variantId,
               variantSku,
@@ -219,7 +228,7 @@ function parse(
     if (typeof unit !== 'object' || unit === null || Array.isArray(unit)) return fail(path, 'type');
     const record = unit as Record<string, unknown>;
     for (const key of Object.keys(record)) {
-      if (!(UNIT_KEYS as readonly string[]).includes(key)) return fail(`${path}.${key}`, 'unknown');
+      if (!(UNIT_KEYS as readonly string[]).includes(key)) return fail(path, 'unknown');
     }
     const variant =
       typeof record.variantId === 'string' ? parseId<'Variant'>(record.variantId) : null;

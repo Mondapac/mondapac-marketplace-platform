@@ -401,10 +401,15 @@ export class OwnOfferController {
       'the product page without retiring the variant; true puts it back. At least one unit must ' +
       'keep selling (offer.none-selling). A SKU already used by the seller, in another unit or an ' +
       'open Offer, is offer.sku-taken. Only changed units are stored. An Offer of another seller, a ' +
-      'deleted one and an unknown id are one byte-identical offer.not-found.',
+      'deleted one and an unknown id are one byte-identical offer.not-found. Shares the save budget ' +
+      'of draft saves and Offer edits: 60 a minute and 1,000 a day per account.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
   @ApiBody({ type: OwnOfferSetSellUnitsRequest })
   @ApiOkResponse({ type: OwnOfferSellUnitsSet })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })

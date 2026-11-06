@@ -74,6 +74,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-sell-units in market %s', (c
       eligible?: boolean;
       units?: (SellUnitState & { variantNo: number })[];
       refusal?: 'offer.sku-taken';
+      reserve?: { code: 'request.throttled'; retryAfterSeconds: number } | null;
     } = {},
   ) {
     const state = options.offer === undefined ? offerState() : options.offer;
@@ -83,8 +84,17 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-sell-units in market %s', (c
     ];
     const outbox = new RecordingOutbox();
     const writes: SellUnitState[][] = [];
+    const order: string[] = [];
+    const reserved: number[] = [];
     const sellUnits: OfferSellUnitRepository = {
-      unitsOf: () => Promise.resolve(units),
+      lockOffer: () => {
+        order.push('lock');
+        return Promise.resolve();
+      },
+      unitsOf: () => {
+        order.push('read');
+        return Promise.resolve(units);
+      },
       save: (_m, _o, states) => {
         if (options.refusal !== undefined) return Promise.resolve({ refusal: options.refusal });
         writes.push([...states]);
@@ -108,10 +118,16 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-sell-units in market %s', (c
       } as never,
       sellUnits,
       eligibility: { isEligible: () => Promise.resolve(options.eligible ?? true) },
+      save: {
+        reserveSaves: () => {
+          reserved.push(1);
+          return Promise.resolve(options.reserve ?? null);
+        },
+      },
       outbox,
       clock,
     });
-    return { useCase, state, outbox, writes };
+    return { useCase, state, outbox, writes, order, reserved };
   }
 
   it('turns a unit off sale, stores only that unit and emits one event', async () => {
@@ -198,6 +214,33 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-sell-units in market %s', (c
       units: [{ variantId: v1, selling: false }],
     });
     expect(denied).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+  });
+
+  it('locks the Offer before it reads the units, so concurrent requests run one after the other', async () => {
+    const r = rig();
+    await r.useCase.execute(contextOf('seller'), {
+      offerId: r.state!.id,
+      units: [{ variantId: v1, selling: false }],
+    });
+    expect(r.order).toEqual(['lock', 'read']);
+  });
+
+  it('spends the save budget before any read and answers request.throttled when it is spent', async () => {
+    const spent = { code: 'request.throttled' as const, retryAfterSeconds: 30 };
+    const r = rig({ reserve: spent });
+    const out = await r.useCase.execute(contextOf('seller'), {
+      offerId: r.state!.id,
+      units: [{ variantId: v1, selling: false }],
+    });
+    expect(out).toEqual({ ok: false, error: spent });
+    expect(r.order).toEqual([]);
+    expect(r.writes).toHaveLength(0);
+    const ok = rig();
+    await ok.useCase.execute(contextOf('seller'), {
+      offerId: ok.state!.id,
+      units: [{ variantId: v1, selling: false }],
+    });
+    expect(ok.reserved).toHaveLength(1);
   });
 
   it('refuses a seller who may not sell', async () => {

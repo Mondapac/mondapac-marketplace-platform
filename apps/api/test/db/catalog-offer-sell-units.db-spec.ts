@@ -104,8 +104,10 @@ describe.each(TEST_MARKETS)(
     async function offer(productId: string, sellerId: string, sellerSku = sku()) {
       const row = offerRow(productId, sellerId, sellerSku);
       await insert('offers', row);
+      productOfOffer.set(row.id, productId);
       return row.id;
     }
+    const productOfOffer = new Map<string, string>();
     const unitRow = (
       offerId: string,
       sellerId: string,
@@ -116,6 +118,7 @@ describe.each(TEST_MARKETS)(
       ...base(),
       offer_id: offerId,
       seller_id: sellerId,
+      product_id: productOfOffer.get(offerId),
       variant_id: variantId,
       variant_sku: null,
       selling: true,
@@ -184,6 +187,46 @@ describe.each(TEST_MARKETS)(
       expect(await insertState('offers', offerRow(p3, seller, unitSku))).toBe('23505');
       // Another seller's Offer may use it.
       await insert('offers', offerRow(p3, uuid7(), unitSku));
+    });
+
+    it('refuses a variant that is not a variant of the stated product', async () => {
+      const seller = uuid7();
+      const p = await product();
+      const o = await offer(p, seller);
+      const otherProduct = await product();
+      const foreignVariant = await variant(otherProduct, 1);
+      expect(await insertState('offer_sell_units', unitRow(o, seller, foreignVariant))).toBe(
+        '23503',
+      );
+    });
+
+    it('decides a race between a unit SKU and an Offer SKU: the second to commit is refused', async () => {
+      const seller = uuid7();
+      const p = await product();
+      const p2 = await product();
+      const v = await variant(p, 1);
+      const o = await offer(p, seller);
+      const same = sku();
+      const second = new Client({ connectionString: testDatabaseUrl() });
+      await second.connect();
+      try {
+        await sql.query('BEGIN');
+        await insert('offer_sell_units', unitRow(o, seller, v, { variant_sku: same }));
+        // The other transaction asks for the same SKU as an Offer SKU; it waits on the lock.
+        await second.query('BEGIN');
+        const row = offerRow(p2, seller, same);
+        const pending = second
+          .query(insertSql('offers', row), Object.values(row))
+          .then(() => null)
+          .catch((error: { code?: string }) => error.code ?? 'error');
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await sql.query('COMMIT');
+        expect(await pending).toBe('23505');
+      } finally {
+        await second.query('ROLLBACK').catch(() => undefined);
+        await second.end();
+        await sql.query('ROLLBACK').catch(() => undefined);
+      }
     });
 
     it('refuses a row whose seller is not the Offer’s seller', async () => {

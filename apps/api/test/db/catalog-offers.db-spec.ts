@@ -299,16 +299,20 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
       const first = await run(market, () =>
         units.save(
           market,
-          { id: offer.state.id, sellerId },
+          { id: offer.state.id, sellerId, productId: product.state.id },
           [{ variantId, variantSku: 'VAR-1', selling: false }],
           now,
         ),
       );
+      // The lock is a no-op update: it changes nothing the Offer holds.
+      await run(market, () => units.lockOffer(market, offer.state.id));
+      const locked = await run(market, () => offers.findById(market, offer.state.id));
+      expect(locked?.state.version).toBe(offer.state.version);
       expect(first).toMatchObject({ refusal: null, stored: [{ variantId, version: 1 }] });
       const again = await run(market, () =>
         units.save(
           market,
-          { id: offer.state.id, sellerId },
+          { id: offer.state.id, sellerId, productId: product.state.id },
           [{ variantId, variantSku: 'VAR-1', selling: true }],
           now,
         ),

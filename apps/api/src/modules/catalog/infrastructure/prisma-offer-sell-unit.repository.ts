@@ -26,6 +26,13 @@ export class PrismaOfferSellUnitRepository implements OfferSellUnitRepository {
     private readonly ids: IdGenerator,
   ) {}
 
+  async lockOffer(market: MarketContext, offerId: Id<'Offer'>): Promise<void> {
+    await this.prisma.tx(market).catalogOffer.updateMany({
+      where: { marketId: market.marketId, id: offerId },
+      data: { version: { increment: 0 } },
+    });
+  }
+
   async unitsOf(
     market: MarketContext,
     offerId: Id<'Offer'>,
@@ -56,7 +63,11 @@ export class PrismaOfferSellUnitRepository implements OfferSellUnitRepository {
 
   async save(
     market: MarketContext,
-    offer: { readonly id: Id<'Offer'>; readonly sellerId: Id<'Seller'> },
+    offer: {
+      readonly id: Id<'Offer'>;
+      readonly sellerId: Id<'Seller'>;
+      readonly productId: Id<'Product'>;
+    },
     states: readonly SellUnitState[],
     now: Temporal.Instant,
   ): Promise<
@@ -81,6 +92,7 @@ export class PrismaOfferSellUnitRepository implements OfferSellUnitRepository {
               tenantId: market.tenantId,
               offerId: offer.id,
               sellerId: offer.sellerId,
+              productId: offer.productId,
               variantId: state.variantId,
               variantSku: state.variantSku,
               selling: state.selling,
@@ -116,6 +128,10 @@ export class PrismaOfferSellUnitRepository implements OfferSellUnitRepository {
       }
     } catch (error) {
       const violated = this.prisma.violatedConstraint(error);
+      // Two first inserts of one row raced: the second starts again (the use case answers conflict.stale).
+      if (violated === 'offer_sell_units_pkey') {
+        throw new StaleAggregateError('catalog.offer_sell_units', offer.id);
+      }
       if (violated !== null && SKU_CONSTRAINTS.has(violated)) return { refusal: 'offer.sku-taken' };
       throw error;
     }
