@@ -1,9 +1,9 @@
 'use client';
 
-import { Banner, Button, Card, Select, TextField, toast } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, Select, TextField, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { priceProblemOf } from '../price/errors.ts';
 import { formatMinor } from '../price/money.ts';
@@ -21,8 +21,13 @@ import {
   type TableRow,
 } from './variants-table-logic.ts';
 import { inputOf } from '../price/money.ts';
+import { unitProblemOf, variantOfPath } from './sell-unit-errors.ts';
+import { fallbackSku, isLastSelling, unitPlanOf, type UnitRow } from './sell-unit-logic.ts';
+import { SizesYouSell } from './sizes-you-sell.tsx';
 
 type Bulk = 'price' | 'increase' | 'stock';
+
+const unitError = (name: string): string => `catalog.variants-table.units.error.${name}`;
 
 /**
  * Price, special price and stock of every variant of one offer in one table (variants V3b).
@@ -37,6 +42,7 @@ export function VariantsTable({
   currency: marketCurrency,
   canEditPrice: mayEditPrice,
   canEditStock,
+  units,
   csrfToken,
 }: {
   readonly offerId: string;
@@ -46,6 +52,15 @@ export function VariantsTable({
   readonly currency: string | null;
   readonly canEditPrice: boolean;
   readonly canEditStock: boolean;
+  /**
+   * The SKU and Selling columns (variants V5); null when the seller may not view the catalog.
+   * `canEdit` is the key `catalog.own-product.edit`; a PLATFORM product also shows "Sizes you sell".
+   */
+  readonly units?: {
+    readonly canEdit: boolean;
+    readonly productScope: 'PLATFORM' | 'SELLER';
+    readonly sellerSku: string;
+  } | null;
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
@@ -64,7 +79,33 @@ export function VariantsTable({
   const [bulkValue, setBulkValue] = useState('');
   const [bulkSource, setBulkSource] = useState(sources[0]?.id ?? '');
   const [bulkNote, setBulkNote] = useState<string | null>(null);
+  const [skuDrafts, setSkuDrafts] = useState<Record<string, string>>({});
+  const [sellingDrafts, setSellingDrafts] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const lastHintId = useId();
+  const tableErrorId = useId();
+
+  const showUnits = units != null && rows.some((row) => row.unit != null);
+  const canEditUnits = showUnits && units.canEdit;
+  const unitRows: UnitRow[] = rows.flatMap((row) =>
+    row.unit == null ? [] : [{ variantId: row.variantId, unit: row.unit }],
+  );
+  const plan = unitPlanOf(unitRows, skuDrafts, sellingDrafts);
+  const unitChanges = canEditUnits ? plan.changes : [];
+  const sellingOf = (row: TableRow) => sellingDrafts[row.variantId] ?? row.unit?.selling ?? true;
+  const skuText = (row: TableRow) => skuDrafts[row.variantId] ?? row.unit?.variantSku ?? '';
+  const onlyOneLeft = showUnits && unitRows.filter((item) => sellingOf(rowOf(item))).length === 1;
+  function rowOf(item: UnitRow): TableRow {
+    return rows.find((row) => row.variantId === item.variantId) as TableRow;
+  }
+  const lockedOn = (row: TableRow) =>
+    row.unit != null && sellingOf(row) && isLastSelling(unitRows, sellingDrafts, row.variantId);
+  function setSelling(variantId: string, on: boolean) {
+    const next = { ...sellingDrafts, [variantId]: on };
+    if (on === rows.find((row) => row.variantId === variantId)?.unit?.selling)
+      delete next[variantId];
+    setSellingDrafts(next);
+  }
 
   const live = rows.filter((row) => row.price?.retired !== true);
   const priceText = (row: TableRow) => priceDrafts[row.variantId] ?? savedPriceText(row, currency);
@@ -72,6 +113,9 @@ export function VariantsTable({
     stockDrafts[stockKey(row.variantId, sourceId)] ?? savedStockText(row, sourceId);
   const { writes } = writesOf(rows, sources, currency, priceDrafts, stockDrafts);
   const canBulk = canEditPrice || canEditStock;
+  const canSave = canBulk || canEditUnits;
+  // A malformed SKU counts as a change so that Save can show why it is not sent.
+  const changeCount = writes.length + unitChanges.length + (canEditUnits ? plan.badSku.length : 0);
 
   function toggle(variantId: string, on: boolean) {
     const next = new Set(selected);
@@ -113,11 +157,25 @@ export function VariantsTable({
       found[item.key] =
         item.kind === 'price' ? t('price.error.invalid') : t('stock.levels.error.invalid');
     }
+    const unitsPlan = canEditUnits ? unitPlanOf(unitRows, skuDrafts, sellingDrafts) : null;
+    if (unitsPlan !== null) {
+      for (const id of unitsPlan.badSku) found[`sku:${id}`] = t(unitError('format'));
+      for (const id of unitsPlan.duplicateSku) found[`sku:${id}`] = t(unitError('duplicate'));
+      if (unitsPlan.noneSelling) found.units = t(unitError('none-selling'));
+    }
+    const sendUnits =
+      unitsPlan !== null &&
+      unitsPlan.changes.length > 0 &&
+      unitsPlan.badSku.length === 0 &&
+      unitsPlan.duplicateSku.length === 0 &&
+      !unitsPlan.noneSelling;
     setErrors(found);
-    if (plan.writes.length === 0) return;
+    if (plan.writes.length === 0 && !sendUnits) return;
     setSaving(true);
     const priceLeft = { ...priceDrafts };
     const stockLeft = { ...stockDrafts };
+    const skuLeft = { ...skuDrafts };
+    const sellingLeft = { ...sellingDrafts };
     const seen = { ...versions };
     let done = 0;
     let stopped = false;
@@ -173,11 +231,59 @@ export function VariantsTable({
         done += 1;
       }
     }
+    if (sendUnits && !stopped) {
+      const changes = unitsPlan.changes;
+      const result = await callApi<{ changedVariantIds: string[] }>(
+        'PUT',
+        `catalog/seller/offers/${offerId}/sell-units`,
+        { units: changes },
+        csrfToken,
+      );
+      if (result.ok) {
+        for (const change of changes) {
+          delete skuLeft[change.variantId];
+          delete sellingLeft[change.variantId];
+        }
+        done += changes.length;
+      } else if (result.failure.status === 401) {
+        window.location.assign('/session-ended');
+        return;
+      } else {
+        const failure = result.failure;
+        const problem = unitProblemOf(failure);
+        const named = (failure.details?.fields ?? []).flatMap((field) => {
+          const id = variantOfPath(
+            field.path,
+            unitRows.map((r) => r.variantId),
+          );
+          return id === null ? [] : [{ id, code: field.code }];
+        });
+        const skuSet = changes.filter((c) => typeof c.variantSku === 'string');
+        if (problem === 'invalid' && named.length > 0) {
+          for (const item of named) {
+            found[`sku:${item.id}`] = t(
+              unitError(item.code === 'duplicate' ? 'duplicate' : 'format'),
+            );
+          }
+        } else if (problem === 'sku-taken' && skuSet.length === 1) {
+          // One new SKU in the request: it is the one that is taken.
+          found[`sku:${skuSet[0]?.variantId}`] = t(unitError('sku-taken'));
+        } else {
+          found.units = t(
+            problem === 'throttled'
+              ? 'price.error.throttled'
+              : unitError(problem === 'sku-taken' ? 'sku-taken-table' : problem),
+          );
+        }
+      }
+    }
     setSaving(false);
     // After a refresh the server's versions are the truth; keep ours only when nothing refreshes.
     setVersions(done > 0 ? {} : seen);
     setPriceDrafts(priceLeft);
     setStockDrafts(stockLeft);
+    setSkuDrafts(skuLeft);
+    setSellingDrafts(sellingLeft);
     setErrors(found);
     const failed = Object.keys(found).length;
     if (done > 0 && failed === 0 && !stopped)
@@ -202,6 +308,29 @@ export function VariantsTable({
             {t('stock.title')}
           </a>
         </Banner>
+      ) : null}
+      {errors.units === undefined ? null : (
+        <div id={tableErrorId}>
+          <Banner tone="critical">
+            <p>{errors.units}</p>
+          </Banner>
+        </div>
+      )}
+      {showUnits && units.productScope === 'PLATFORM' ? (
+        <SizesYouSell
+          items={unitRows.map((item) => {
+            const row = rowOf(item);
+            return {
+              variantId: item.variantId,
+              label: item.unit.label ?? item.unit.variantCode,
+              checked: sellingOf(row),
+              locked: lockedOn(row),
+            };
+          })}
+          disabled={!canEditUnits}
+          hintId={lastHintId}
+          onChange={setSelling}
+        />
       ) : null}
       {canBulk && selected.size > 0 ? (
         <div
@@ -258,7 +387,7 @@ export function VariantsTable({
       ) : null}
 
       <div
-        className="overflow-x-auto"
+        className="relative overflow-x-auto"
         role="region"
         aria-label={t('catalog.variants-table.title')}
         tabIndex={0}
@@ -301,6 +430,16 @@ export function VariantsTable({
                   {source.name}
                 </th>
               ))}
+              {showUnits ? (
+                <>
+                  <th scope="col" className="p-2 text-start font-medium">
+                    {t('catalog.variants-table.units.sku')}
+                  </th>
+                  <th scope="col" className="p-2 text-start font-medium">
+                    {t('catalog.variants-table.units.selling')}
+                  </th>
+                </>
+              ) : null}
               {sources.length === 0 ? <th scope="col" colSpan={colSpanStock} /> : null}
             </tr>
           </thead>
@@ -308,8 +447,13 @@ export function VariantsTable({
             {rows.map((row) => {
               const retired = row.price?.retired === true;
               const special = row.price?.special;
+              const unit = row.unit;
+              const offSale = unit != null && !sellingOf(row);
               return (
-                <tr key={row.variantId} className="border-t border-line align-top">
+                <tr
+                  key={row.variantId}
+                  className={`border-t border-line align-top ${offSale ? 'bg-subtle text-fg-muted' : ''}`}
+                >
                   {canBulk ? (
                     <td className="p-2 [&_label]:sr-only">
                       <input
@@ -324,8 +468,18 @@ export function VariantsTable({
                   ) : null}
                   <th scope="row" className="p-2 text-start font-medium">
                     {row.label}
+                    {unit == null ? null : (
+                      <span className="block font-mono text-xs font-normal text-fg-muted" dir="ltr">
+                        {unit.variantCode}
+                      </span>
+                    )}
                     {retired ? (
                       <span className="block text-fg-muted">{t('price.retired')}</span>
+                    ) : null}
+                    {offSale ? (
+                      <span className="mt-1 block">
+                        <Badge tone="neutral">{t('catalog.variants-table.units.off-sale')}</Badge>
+                      </span>
                     ) : null}
                   </th>
                   {showPrice ? (
@@ -400,12 +554,79 @@ export function VariantsTable({
                       </td>
                     );
                   })}
+                  {showUnits ? (
+                    <>
+                      <td className="p-2 [&_label]:sr-only">
+                        {unit == null ? (
+                          <span>-</span>
+                        ) : canEditUnits ? (
+                          <TextField
+                            name={`sku-${row.variantId}`}
+                            label={t('catalog.variants-table.units.sku')}
+                            aria-label={t('catalog.variants-table.units.sku-for', {
+                              variant: row.label,
+                            })}
+                            dir="ltr"
+                            className="font-mono"
+                            autoComplete="off"
+                            spellCheck={false}
+                            placeholder={fallbackSku(units.sellerSku, unit.variantNo)}
+                            value={skuText(row)}
+                            error={errors[`sku:${row.variantId}`]}
+                            onChange={(event) =>
+                              setSkuDrafts({ ...skuDrafts, [row.variantId]: event.target.value })
+                            }
+                          />
+                        ) : (
+                          <span className="font-mono" dir="ltr">
+                            {unit.variantSku ?? fallbackSku(units.sellerSku, unit.variantNo)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        {unit == null ? (
+                          <span>-</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            className="size-5 accent-accent"
+                            aria-label={t('catalog.variants-table.units.selling-for', {
+                              variant: row.label,
+                            })}
+                            aria-describedby={
+                              lockedOn(row) && onlyOneLeft
+                                ? lastHintId
+                                : errors.units !== undefined
+                                  ? tableErrorId
+                                  : undefined
+                            }
+                            checked={sellingOf(row)}
+                            disabled={!canEditUnits || lockedOn(row)}
+                            onChange={(event) => setSelling(row.variantId, event.target.checked)}
+                          />
+                        )}
+                      </td>
+                    </>
+                  ) : null}
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      {showUnits ? (
+        <div className="flex flex-col gap-1 text-sm text-fg-muted">
+          {onlyOneLeft && units.productScope !== 'PLATFORM' ? (
+            <p id={lastHintId}>{t('catalog.variants-table.units.last-hint')}</p>
+          ) : null}
+          <p>
+            {t('catalog.variants-table.units.sku-help', {
+              example: fallbackSku(units.sellerSku, 1),
+            })}
+          </p>
+        </div>
+      ) : null}
       {showPrice ? (
         <p className="text-sm text-fg-muted">
           <a className="font-medium text-link underline" href={`/offers/${offerId}/prices`}>
@@ -413,22 +634,24 @@ export function VariantsTable({
           </a>
         </p>
       ) : null}
-      {canBulk ? (
+      {canSave ? (
         <div className="flex flex-wrap items-center gap-3">
           <Button
             loading={saving}
-            disabled={saving || writes.length === 0}
+            disabled={saving || changeCount === 0}
             onClick={() => void save()}
           >
-            {t('catalog.variants-table.save', { count: writes.length })}
+            {t('catalog.variants-table.save', { count: changeCount })}
           </Button>
-          {writes.length === 0 ? null : (
+          {changeCount === 0 ? null : (
             <Button
               variant="secondary"
               disabled={saving}
               onClick={() => {
                 setPriceDrafts({});
                 setStockDrafts({});
+                setSkuDrafts({});
+                setSellingDrafts({});
                 setErrors({});
               }}
             >
