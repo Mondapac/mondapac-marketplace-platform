@@ -270,6 +270,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PUT: [
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
+    // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
+    'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).

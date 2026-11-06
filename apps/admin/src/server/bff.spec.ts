@@ -732,6 +732,13 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `sellers/admin/${ID}/review/suspend`)).status).toBe(404);
   });
 
+  it('relays the category-proposals switch as PUT for a seller UUID only (C9-0)', async () => {
+    expect((await call('PUT', `sellers/admin/${ID}/category-proposals`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/category-proposals')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
+    expect((await call('DELETE', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
+  });
+
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
     expect((await call('POST', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(200);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/reject`)).status).toBe(200);

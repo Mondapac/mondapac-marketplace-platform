@@ -640,6 +640,8 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "sellers.may-propose-categories", "rule": "anonymous" },
+  { "name": "sellers.may-propose-categories-system", "rule": "system" },
   { "name": "sellers.my-file-check-slug", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "sellers.my-file-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
