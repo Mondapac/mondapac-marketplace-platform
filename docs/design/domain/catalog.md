@@ -1580,6 +1580,24 @@ and a product type list such as "Fresh meat"; the domain has the brand required 
 the types `simple` and `configurable`, so the page follows the domain; (5) the notice goes to every
 admin with the key.
 
+## 14b. Variant files (variants V9c; plan section 15)
+
+One row per variant. Columns, in this order: `product_code`, `variant_code` (`{productCode}-{nn}`,
+M-7), one `option[<attribute code>]` per axis of the product (the option's English label; a code is
+accepted on import), `gtin`, `variant_sku`, `price`, `stock[<source code>]` per stock location of the
+seller, `selling` (`yes` / `no`). The scope of each file and who writes what follow the module
+boundary (9): `catalog` writes only catalog columns, prices stay `pricing`'s and stock `inventory`'s.
+
+| Part | Design |
+|---|---|
+| Admin export (Catalogue > Variants, V6) | `GET catalog/admin/variants/export?format=csv\|xlsx` with the Variants tab's current filters; key `catalog.product.view`. Columns `product_code`, `variant_code`, `product_type`, `option[...]` (union of the axes of the exported products, empty where a product has no such axis), `gtin`, `state` (`proposed`, `published`), `offer_count`. Published revision content only (a never-published product's draft is not exported). No price, stock or seller column: they are other modules' data and the admin tab does not show them. At most 20,000 rows (`export.too-large` with `max`, the 9.2c pattern); formula guard on every cell (AC 41, shared code); the same `SheetWriter` as the products export; no audit row (a read, as 9.2c) |
+| Seller export (offer Variants tab, V3b) | Built in the seller panel from what the tab already reads (catalog own reads, `pricing` and `inventory` views); CSV and XLSX; formula guard; one file per Offer. `price` is the regular price in force; a pending price or a special price is not exported (their own pages hold them). `gtin` is read-only information for a PLATFORM product |
+| Seller import (update only, the same tab) | The seller uploads the file on the Offer's Variants tab. The panel parses it **in the browser** (CSV; XLSX with the same limits as 14a: 10 MiB, 5,000 rows, 64 columns, 10,000 characters a cell, formulas refused), matches each row to a **live variant of this Offer's product** by `variant_code`; without one, by `variant_sku`; without one, by the option labels; no match or more than one is `import.variant-ambiguous` for that row (M-9 note in 14). A row never creates, retires or renames a variant (plan s15: import never removes a variant; new variants are added in the product form), never changes options or `gtin` (shown as read-only; a different value is a row warning `import.read-only-column`), and never touches another Offer (`product_code` must be this Offer's product). The page then shows a preview of only the changed cells, and **Save** sends them through the existing routes, exactly as the tab's own Save (V3b): `pricing` regular price (with series version and step-up, so a price jump still goes to review), `inventory` stock level per source (stock version), and the V5 `own-offer.set-sell-units` for `variant_sku` and `selling`. Each cell keeps its own answer; a failed cell keeps its draft and reason. No new backend route, permission or job: a column whose key the seller lacks is refused before the preview (`import.column-not-allowed`). Unknown columns are listed and ignored; certification, handling and status columns are refused as in 14 |
+| Limits | The seller import is bounded by the existing per-route limits (draft saves, price writes, stock writes); a file of more than `maxVariantsPerProduct` rows is refused before parsing rows (`import.too-many-rows`) |
+
+What is **not** built: the seller product import of 14 (new products, new variants from a file;
+P1), and an admin import of variant rows (the admin adds variants in the product form).
+
 ## 15. Slices
 
 ### 15.1 Order, size and security gates
