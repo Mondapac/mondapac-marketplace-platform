@@ -47,6 +47,8 @@ export interface ProductCard {
   readonly imageUrl?: string;
   /** `srcset` and size of the photo at `imageUrl`; absent for a placeholder or sample photo. */
   readonly imageSet?: PhotoSet;
+  /** Large URLs of every photo the read lists (at most 8), for the image sitemap. */
+  readonly largeImages?: readonly string[];
 }
 
 /**

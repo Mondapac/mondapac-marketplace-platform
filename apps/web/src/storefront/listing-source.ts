@@ -109,6 +109,7 @@ export async function liveProducts(
   query: LiveQuery,
   read: Reader = readOnce,
   photo: PhotoUrl | null = null,
+  allImages = false,
 ): Promise<LivePage | undefined> {
   const rows = await treeRows(read);
   if (rows === undefined) return undefined;
@@ -132,5 +133,5 @@ export async function liveProducts(
   const items = (body.items as unknown[]).filter(
     (item) => isObject(item) && typeof item.productId === 'string' && UUID.test(item.productId),
   );
-  return { items: cardsOf({ items }, slugsOf(rows), photo), hasMore: body.hasMore };
+  return { items: cardsOf({ items }, slugsOf(rows), photo, allImages), hasMore: body.hasMore };
 }
