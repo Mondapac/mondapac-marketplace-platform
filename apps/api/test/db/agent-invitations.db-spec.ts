@@ -131,6 +131,25 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (database, ADR-0045)
     ).resolves.toBeNull();
   });
 
+  it('refuses a second pending invitation for the same reserved account id', async () => {
+    const first = agentInvitation();
+    await inUnit(market, () => invitations.add(market, first));
+    const second = Invitation.issueAgent({
+      id: newId<'Invitation'>(),
+      marketId: market.marketId,
+      email: email('other'),
+      displayName: 'Agent Two',
+      agentAccountId: first.state.agentAccountId!,
+      handoverCodeHmac: HMAC,
+      invitedByAccountId: newId<'Account'>(),
+      now: NOW,
+    });
+
+    await expect(inUnit(market, () => invitations.add(market, second))).rejects.toBeInstanceOf(
+      InvitationAlreadyPendingError,
+    );
+  });
+
   it('allows one pending agent invitation per address, and an admin one for the same address', async () => {
     const address = email('shared');
     await inUnit(market, () => invitations.add(market, agentInvitation(address)));

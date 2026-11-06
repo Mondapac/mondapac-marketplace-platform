@@ -1,6 +1,10 @@
+-- Safety: a blocked statement fails instead of queueing.
+SET lock_timeout = '5s';
 -- ADR-0045 decision 1: an authenticated agent is audited as actor type AGENT, with its account id.
 -- Hand-written; no Prisma model changes (the columns are TEXT). Each swap adds the new CHECK
--- NOT VALID, validates it, then drops the old one (short lock).
+-- NOT VALID, validates it, then drops the old one. Prisma runs this file in one transaction, so
+-- each table's ACCESS EXCLUSIVE lock is held through its VALIDATE: fine while these tables are
+-- small; a live database would need the VALIDATE statements in a separate migration.
 ALTER TABLE "platform"."audit_log"
   ADD CONSTRAINT "audit_log_actor_type_check_v2" CHECK ("actor_type" IN ('USER', 'SYSTEM', 'ANONYMOUS', 'AGENT')) NOT VALID,
   ADD CONSTRAINT "audit_log_actor_check_v2" CHECK (("actor_type" IN ('USER', 'AGENT')) = ("actor_id" IS NOT NULL)) NOT VALID;

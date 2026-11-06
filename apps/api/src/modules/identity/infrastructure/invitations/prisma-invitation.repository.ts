@@ -33,6 +33,7 @@ const PENDING_KEYS: ReadonlySet<string> = new Set([
   'invitations_market_id_seller_id_owner_pending_key',
   'invitations_market_id_email_seller_owner_pending_key',
   'invitations_market_id_email_agent_pending_key',
+  'invitations_market_id_agent_account_id_pending_key',
 ]);
 
 const SELECTED = {

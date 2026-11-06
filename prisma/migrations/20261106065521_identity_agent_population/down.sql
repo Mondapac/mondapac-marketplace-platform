@@ -4,6 +4,7 @@ SET lock_timeout = '5s';
 -- Reverses 20261106065521_identity_agent_population. It fails while an agent account, session,
 -- sign-in record or invitation exists, which is right: dropping the agent population must not
 -- silently orphan or delete them.
+DROP INDEX "identity"."invitations_market_id_agent_account_id_pending_key";
 DROP INDEX "identity"."invitations_market_id_agent_account_id_idx";
 DROP INDEX "identity"."invitations_market_id_email_agent_pending_key";
 DROP INDEX "identity"."invitations_market_id_email_pending_platform_key";

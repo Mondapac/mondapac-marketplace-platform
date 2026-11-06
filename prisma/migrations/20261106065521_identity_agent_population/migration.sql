@@ -1,3 +1,5 @@
+-- Safety: a blocked statement fails instead of queueing.
+SET lock_timeout = '5s';
 -- AlterTable
 ALTER TABLE "identity"."invitations" ADD COLUMN     "agent_account_id" UUID,
 ADD COLUMN     "handover_code_hmac" BYTEA,
@@ -6,7 +8,10 @@ ALTER COLUMN "role_id" DROP NOT NULL;
 
 -- Hand-written (database-designer): docs/modules/agents/data.md section 5 (PR 0) and ADR-0045.
 -- 1. The agent population joins every population CHECK of schema identity. The new CHECK is added
---    NOT VALID, validated, and only then replaces the old one, so no table is rewritten.
+--    NOT VALID, validated, and only then replaces the old one, so no table is rewritten. Prisma
+--    runs this file in one transaction, so each table's ACCESS EXCLUSIVE lock is held through its
+--    VALIDATE: fine while these tables are small; a live database would need the VALIDATE
+--    statements in a separate migration.
 ALTER TABLE "identity"."accounts"
   ADD CONSTRAINT "accounts_population_check_v2"
     CHECK ("population" IN ('customer', 'seller', 'admin', 'agent')) NOT VALID;
@@ -74,3 +79,8 @@ CREATE UNIQUE INDEX "invitations_market_id_email_agent_pending_key"
 CREATE INDEX "invitations_market_id_agent_account_id_idx"
   ON "identity"."invitations" ("market_id", "agent_account_id")
   WHERE "kind" = 'agent';
+-- One pending invitation per reserved account id: two invitations can never promise the same
+-- account.
+CREATE UNIQUE INDEX "invitations_market_id_agent_account_id_pending_key"
+  ON "identity"."invitations" ("market_id", "agent_account_id")
+  WHERE "kind" = 'agent' AND "state" = 'pending';

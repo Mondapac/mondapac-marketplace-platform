@@ -1,3 +1,5 @@
+-- Safety: a blocked statement fails instead of queueing.
+SET lock_timeout = '5s';
 -- Reverse of migration.sql. It fails while any row with actor type AGENT exists (never deletes audit rows).
 ALTER TABLE "platform"."audit_log"
   ADD CONSTRAINT "audit_log_actor_type_check_v1" CHECK ("actor_type" IN ('USER', 'SYSTEM', 'ANONYMOUS')) NOT VALID,
