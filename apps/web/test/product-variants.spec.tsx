@@ -11,6 +11,7 @@ import {
   variantFromParam,
   type ProductDetailBody,
 } from '../src/storefront/product-detail.ts';
+import { photoUrlBuilder } from '../src/storefront/photos.ts';
 import { defaultVariantOf } from '../src/storefront/variants.ts';
 
 // The Variant picker of the product page: the default choice, out of stock, the `?v=` link, the
@@ -288,5 +289,85 @@ describe('structured data for Variants', () => {
       URL_,
     ) as Record<string, unknown>;
     expect(node['@type']).toBe('Product');
+  });
+});
+
+describe('photos of a Variant', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/p/rice'));
+
+  const A = '01990000-0000-7000-8000-0000000000a1';
+  const B = '01990000-0000-7000-8000-0000000000a2';
+  const C = '01990000-0000-7000-8000-0000000000a3';
+  const photo = photoUrlBuilder('https://img.example.com', 'AU')!;
+  const ref = (imageId: string) => ({ imageId, width: 100, height: 100, alt: 'Rice' });
+  const withPhotos = (variantImages: unknown): ProductDetailBody => ({
+    ...RICE,
+    images: [ref(A), ref(B), ref(C)],
+    variantImages,
+  });
+  const idsOf = (urls: readonly string[] | undefined) => urls?.map((u) => u.split('/').at(-2));
+
+  it('reads the picks as positions of the product photos, main photo first', () => {
+    const detail = productDetailOf(
+      withPhotos([{ variantId: V5, imageIds: [C, A] }]),
+      'en',
+      labels,
+      photo,
+    )!;
+    expect(detail.variants?.find((v) => v.id === V5)?.photoIndexes).toEqual([2, 0]);
+    expect(detail.variants?.find((v) => v.id === V1)?.photoIndexes).toBeUndefined();
+    expect(idsOf(detail.photos)).toEqual([A, B, C]);
+  });
+
+  it('drops a pick that is not a shown photo, a repeat and a malformed entry', () => {
+    const detail = productDetailOf(
+      withPhotos([
+        { variantId: V1, imageIds: ['nope', B, B] },
+        { variantId: V5, imageIds: ['nope'] },
+        { variantId: 7, imageIds: [A] },
+        'x',
+        null,
+      ]),
+      'en',
+      labels,
+      photo,
+    )!;
+    expect(detail.variants?.find((v) => v.id === V1)?.photoIndexes).toEqual([1]);
+    expect(detail.variants?.find((v) => v.id === V5)?.photoIndexes).toBeUndefined();
+    expect(
+      productDetailOf(withPhotos('x'), 'en', labels, photo)?.variants?.[0]?.photoIndexes,
+    ).toBeUndefined();
+  });
+
+  it('shows the photos of the chosen Variant and the product photos for one without picks', () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('min-width: 1000px'),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf(
+              withPhotos([{ variantId: V5, imageIds: [C, A] }]),
+              'en',
+              labels,
+              photo,
+            )!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    const shown = () =>
+      Array.from(document.querySelectorAll('.gmain img')).map((img) =>
+        img.getAttribute('src')?.split('/').at(-2),
+      );
+    expect(shown()).toEqual([A, B, C]);
+    fireEvent.click(screen.getByRole('radio', { name: '5 kg' }));
+    expect(shown()).toEqual([C, A]);
+    fireEvent.click(screen.getByRole('radio', { name: '1 kg' }));
+    expect(shown()).toEqual([A, B, C]);
   });
 });

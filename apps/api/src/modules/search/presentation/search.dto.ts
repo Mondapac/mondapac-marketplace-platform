@@ -298,6 +298,17 @@ export class ProductDetailSpecificationGroupBody {
   specifications!: ProductDetailSpecificationBody[];
 }
 
+export class ProductDetailVariantImagesBody {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({
+    type: [String],
+    description:
+      'The photo ids this Variant shows, main photo first. Each is one of the `images` of the ' +
+      'product; build the URL like any photo.',
+  })
+  imageIds!: string[];
+}
+
 export class ProductDetailBody {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ description: 'The published name in the Market default locale.' })
@@ -324,6 +335,12 @@ export class ProductDetailBody {
       'Public photos in the published revision order (the first is the main one); at most 8.',
   })
   images!: ProductImageRefBody[];
+  @ApiProperty({
+    type: [ProductDetailVariantImagesBody],
+    description:
+      'The photos of each Variant that picked some of the product photos; a Variant not listed shows the product photos. Never more than the product photos.',
+  })
+  variantImages!: ProductDetailVariantImagesBody[];
   @ApiProperty({
     type: [ProductDetailOfferBody],
     description: 'At least one Offer, lowest unit price first.',

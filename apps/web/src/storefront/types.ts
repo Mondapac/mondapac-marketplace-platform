@@ -235,6 +235,11 @@ export interface ProductVariant {
   readonly label?: string;
   /** False when every seller is out of it: the picker greys it and it cannot be added to the cart. */
   readonly inStock: boolean;
+  /**
+   * The photos this Variant shows, as positions in the product's `photos` (main photo first),
+   * when the seller picked some; absent when it shows the product's photos.
+   */
+  readonly photoIndexes?: readonly number[];
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
 }
 
