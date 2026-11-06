@@ -207,6 +207,24 @@ export interface IdentityFacade {
   ): Promise<Result<readonly CustomerAccountSummary[], AccessDenied | IdentityValidationFailed>>;
 
   /**
+   * The customer accounts whose display name contains `term` (2 to 80 characters after
+   * trimming; case insensitive), at most 200, for an admin list that filters by customer name.
+   * Rule `permissions [identity.customer-account.view]`, checked by the gate and again in the
+   * read; the system actor, a seller, a customer and an acting-as session are refused. `capped`
+   * is true when more than 200 matched, so the caller can ask for a longer term. The term is
+   * personal data: never logged. Not exposed over HTTP.
+   */
+  searchCustomerAccounts(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly accountIds: readonly Id<'Account'>[]; readonly capped: boolean },
+      AccessDenied | IdentityValidationFailed
+    >
+  >;
+
+  /**
    * The short name ("Maryam R.") of each requested customer account, for the seller's own order
    * notices. Rule `permissions [identity.customer-short-name.view]`, seller scope, denied while
    * the seller is not approved; checked by the gate and again in the read. The system actor, an

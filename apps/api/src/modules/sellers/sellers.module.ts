@@ -87,6 +87,7 @@ import { ReviewRegisterCheckRead } from './application/use-cases/review-register
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
+import { SearchStoreNames } from './application/use-cases/search-store-names.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
 import { ActiveSinceSystem } from './application/use-cases/active-since-system.use-case';
 import { ActiveSince } from './application/use-cases/active-since.use-case';
@@ -326,6 +327,10 @@ const REVIEW_DECISION_PORTS = {
       outbox: true,
       registered: true,
       clock: true,
+    }),
+    useCaseProvider(SearchStoreNames, {
+      unitOfWork: true,
+      storeProfiles: true,
     }),
     useCaseProvider(SellerSummaries, {
       unitOfWork: true,
@@ -655,6 +660,7 @@ const REVIEW_DECISION_PORTS = {
       inject: [
         SellerSummaries,
         SellerSummariesSystem,
+        SearchStoreNames,
         SellingEligibility,
         SellingEligibilitySystem,
         AllowedProductTypes,
@@ -673,6 +679,7 @@ const REVIEW_DECISION_PORTS = {
       useFactory: (
         sellerSummaries: SellerSummaries,
         sellerSummariesSystem: SellerSummariesSystem,
+        searchStoreNames: SearchStoreNames,
         sellingEligibility: SellingEligibility,
         sellingEligibilitySystem: SellingEligibilitySystem,
         allowedProductTypes: AllowedProductTypes,
@@ -691,6 +698,7 @@ const REVIEW_DECISION_PORTS = {
         new SellersFacadeImplementation({
           sellerSummaries,
           sellerSummariesSystem,
+          searchStoreNames,
           sellingEligibility,
           sellingEligibilitySystem,
           allowedProductTypes,

@@ -57,6 +57,28 @@ export class InMemoryStoreProfiles implements StoreProfileRepository {
     return Promise.resolve(found);
   }
 
+  searchApprovedStoreIds(
+    market: MarketContext,
+    term: string,
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]> {
+    if (this.failReads) return Promise.reject(new Error('store profiles down'));
+    const needle = term.toLowerCase();
+    const prefix = `${market.marketId}|`;
+    const ids: Id<'Seller'>[] = [];
+    for (const [key, profile] of this.stored) {
+      if (
+        key.startsWith(prefix) &&
+        profile.approved &&
+        typeof profile.publicStoreName === 'string' &&
+        profile.publicStoreName.toLowerCase().includes(needle)
+      ) {
+        ids.push(key.slice(prefix.length) as Id<'Seller'>);
+      }
+    }
+    return Promise.resolve(ids.sort().slice(0, limit));
+  }
+
   find(market: MarketContext, sellerId: Id<'Seller'>): Promise<StoreSettings | null> {
     const profile = this.at(market, sellerId);
     return Promise.resolve(profile === undefined ? null : { ...profile });

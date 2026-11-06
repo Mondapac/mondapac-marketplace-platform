@@ -337,6 +337,20 @@ export class IdentityFakes {
           (a) => a.marketId === market.marketId && a.population === population,
         ),
       ),
+    searchCustomerIdsByName: (market: MarketContext, term: string, limit: number) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter(
+            (state) =>
+              state.marketId === market.marketId &&
+              state.population === 'customer' &&
+              state.displayName !== null &&
+              state.displayName.toLowerCase().includes(term.toLowerCase()),
+          )
+          .map((state) => state.id)
+          .sort()
+          .slice(0, limit),
+      ),
     customerSummaries: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
       Promise.resolve(
         ids.flatMap((id) => {

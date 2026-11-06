@@ -5,6 +5,7 @@ import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
 import type { OwnOwnerEmail } from '../application/use-cases/own-owner-email.use-case';
 import type { CustomerAccountOf } from '../application/use-cases/customer-account-of.use-case';
+import type { SearchCustomerAccounts } from '../application/use-cases/search-customer-accounts.use-case';
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
 import type { OwnAccountTiedToSeller } from '../application/use-cases/own-account-tied-to-seller.use-case';
@@ -45,6 +46,7 @@ export interface IdentityFacadeUseCases {
   readonly requireStepUp: RequireStepUp;
   readonly customerAccountOf: CustomerAccountOf;
   readonly customerAccountSummaries: CustomerAccountSummaries;
+  readonly searchCustomerAccounts: SearchCustomerAccounts;
   readonly customerShortNames: CustomerShortNames;
   readonly teamMemberLabels: TeamMemberLabels;
   readonly endOtherCustomerSessions: EndOtherCustomerSessions;
@@ -133,6 +135,18 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly CustomerAccountSummary[], AccessDenied | IdentityValidationFailed>> {
     return this.useCases.customerAccountSummaries.execute(context, { accountIds });
+  }
+
+  searchCustomerAccounts(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly accountIds: readonly Id<'Account'>[]; readonly capped: boolean },
+      AccessDenied | IdentityValidationFailed
+    >
+  > {
+    return this.useCases.searchCustomerAccounts.execute(context, { term });
   }
 
   customerShortNames(

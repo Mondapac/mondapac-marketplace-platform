@@ -652,6 +652,7 @@
   { "name": "sellers.purge-expired", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.run-seller-health", "rule": "system" },
+  { "name": "sellers.search-store-names", "rule": "anonymous" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },

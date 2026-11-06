@@ -49,6 +49,21 @@ export interface OrderLabels {
     accountIds: readonly Id<'Account'>[],
   ): Promise<ReadonlyMap<Id<'Account'>, OrderCustomer>>;
   /**
+   * identity's `searchCustomerAccounts` (`identity.customer-account.view`): the customer accounts
+   * whose name contains `term`. An admin without the key gets no accounts and `capped: false`
+   * (the search then reaches store names only), not an error. PERSONAL DATA: the term is never
+   * logged.
+   */
+  customerAccountsMatching(
+    context: CallContext,
+    term: string,
+  ): Promise<{ readonly accountIds: readonly Id<'Account'>[]; readonly capped: boolean }>;
+  /** sellers' `searchStoreNames`: the sellers whose approved public store name contains `term`. */
+  sellersMatching(
+    context: CallContext,
+    term: string,
+  ): Promise<{ readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean }>;
+  /**
    * identity's `customerShortNames` (`identity.customer-short-name.view`), for a seller's own
    * order notices. A seller member without the key gets an empty map, not an error.
    */

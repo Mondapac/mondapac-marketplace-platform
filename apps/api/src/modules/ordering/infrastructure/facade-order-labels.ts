@@ -101,6 +101,27 @@ export class FacadeOrderLabels implements OrderLabels {
     return customers;
   }
 
+  async customerAccountsMatching(
+    context: CallContext,
+    term: string,
+  ): Promise<{ readonly accountIds: readonly Id<'Account'>[]; readonly capped: boolean }> {
+    const answer = await this.identity.searchCustomerAccounts(context, term);
+    if (!answer.ok) {
+      if (answer.error.code === 'access.denied') return { accountIds: [], capped: false };
+      throw new Error(`identity.searchCustomerAccounts: ${answer.error.code}`);
+    }
+    return answer.value;
+  }
+
+  async sellersMatching(
+    context: CallContext,
+    term: string,
+  ): Promise<{ readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean }> {
+    const answer = await this.sellers.searchStoreNames(context, term);
+    if (!answer.ok) throw new Error(`sellers.searchStoreNames: ${answer.error.code}`);
+    return answer.value;
+  }
+
   async customerShortNamesOf(
     context: CallContext,
     accountIds: readonly Id<'Account'>[],

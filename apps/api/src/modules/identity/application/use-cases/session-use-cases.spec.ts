@@ -162,6 +162,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         requireStepUp: undefined as never,
         customerAccountOf: undefined as never,
         customerAccountSummaries: undefined as never,
+        searchCustomerAccounts: undefined as never,
         customerShortNames: undefined as never,
         teamMemberLabels: undefined as never,
         endOtherCustomerSessions: undefined as never,

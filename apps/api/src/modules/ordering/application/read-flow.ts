@@ -27,6 +27,7 @@ export type ReadFailure =
       readonly fields: readonly { path: string; code: string }[];
     }
   | { readonly code: 'access.denied' }
+  | { readonly code: 'access.unavailable' }
   | { readonly code: 'ordering.order-not-found' };
 
 export const DEFAULT_PAGE_SIZE = 25;
@@ -51,6 +52,13 @@ export interface ListInput {
   /** Admin only: an order id or a seller order id (the reference in the emails), exact. */
   readonly q?: unknown;
   /**
+   * Admin only: free text of 2 to 80 characters, matched against the customer's name and the
+   * store's public name (each owner module answers which accounts and sellers match). Needs
+   * `identity.customer-account.view` to reach customer names; without it only store names match.
+   * An order matches when its customer or any of its sellers does.
+   */
+  readonly search?: unknown;
+  /**
    * Admin only. With `page` the list answers an offset page with its total (the page-number
    * mode of the List paging setting); without it, the cursor page.
    */
@@ -72,10 +80,14 @@ const PAYMENT_STATES: readonly PaymentState[] = ['none', 'authorised', 'captured
 const FULFILMENTS: readonly Fulfilment[] = ['to-ship', 'shipped', 'delivered'];
 const SORT_KEYS: readonly OrderSort['key'][] = ['created', 'total'];
 
+/** The search text's length bounds, in characters after trimming. */
+export const MIN_SEARCH_LENGTH = 2;
+export const MAX_SEARCH_LENGTH = 80;
+
 function pageOf(
   input: ListInput,
   allowFilters: boolean,
-): Result<{ page: OrderPage; filter: OrderFilter }, ReadFailure> {
+): Result<{ page: OrderPage; filter: OrderFilter; search: string | null }, ReadFailure> {
   const fields: { path: string; code: string }[] = [];
   let limit = DEFAULT_PAGE_SIZE;
   if (input.limit !== undefined) {
@@ -106,6 +118,18 @@ function pageOf(
     const parsed = typeof input.q === 'string' ? parseId(input.q.trim().toLowerCase()) : null;
     if (allowFilters && parsed !== null && parsed.ok) reference = parsed.value;
     else fields.push({ path: 'q', code: 'format' });
+  }
+  let search: string | null = null;
+  if (input.search !== undefined) {
+    const text = typeof input.search === 'string' ? input.search.trim() : null;
+    if (
+      allowFilters &&
+      text !== null &&
+      [...text].length >= MIN_SEARCH_LENGTH &&
+      [...text].length <= MAX_SEARCH_LENGTH
+    ) {
+      search = text;
+    } else fields.push({ path: 'search', code: 'length' });
   }
   let paymentState: PaymentState | null = null;
   if (input.paymentState !== undefined) {
@@ -146,7 +170,8 @@ function pageOf(
     ? err({ code: 'validation.failed', fields })
     : ok({
         page: { limit, after },
-        filter: { status, reference, paymentState, sellerId, fulfilment, from, to },
+        filter: { status, reference, paymentState, sellerId, fulfilment, from, to, parties: null },
+        search,
       });
 }
 
@@ -382,8 +407,33 @@ export async function listAllOrders(
   if (!parsed.ok) return parsed;
   const offset = offsetOf(input ?? {});
   if (!offset.ok) return offset;
-  const { page, filter } = parsed.value;
+  const { page } = parsed.value;
   const request = offset.value;
+  // The search is resolved by the owning modules before the read unit (no facade call inside a
+  // unit). It fails closed: rows are never shown unfiltered when the search could not run.
+  let filter = parsed.value.filter;
+  let searchCapped = false;
+  if (parsed.value.search !== null) {
+    try {
+      const [customers, stores] = await Promise.all([
+        deps.labels.customerAccountsMatching(context, parsed.value.search),
+        deps.labels.sellersMatching(context, parsed.value.search),
+      ]);
+      filter = {
+        ...filter,
+        parties: { accountIds: customers.accountIds, sellerIds: stores.sellerIds },
+      };
+      searchCapped = customers.capped || stores.capped;
+    } catch {
+      // Never log the text or the error (it may name the term).
+      logger.warn({
+        msg: 'ordering.admin-order-search.lookup-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'access.unavailable' });
+    }
+  }
   const read = await deps.unitOfWork.run<
     {
       readonly rows: OrderPageView<AdminOrderView>;
@@ -429,5 +479,6 @@ export async function listAllOrders(
       request === null || read.value.total === null
         ? null
         : { total: read.value.total, page: request.page, pageSize: request.pageSize },
+    searchCapped,
   });
 }

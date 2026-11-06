@@ -159,6 +159,7 @@ import { ListRegisteredSellers } from './application/use-cases/list-registered-s
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
 import { OwnOwnerEmail } from './application/use-cases/own-owner-email.use-case';
 import { CustomerAccountOf } from './application/use-cases/customer-account-of.use-case';
+import { SearchCustomerAccounts } from './application/use-cases/search-customer-accounts.use-case';
 import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
 import { CustomerShortNames } from './application/use-cases/customer-short-names.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
@@ -883,6 +884,12 @@ function useCaseProvider<D, U>(
       accounts: true,
     }),
     useCaseProvider(CustomerAccountSummaries, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
+    useCaseProvider(SearchCustomerAccounts, {
       unitOfWork: true,
       accounts: true,
       grants: true,
@@ -1756,6 +1763,7 @@ function useCaseProvider<D, U>(
         RequireStepUp,
         CustomerAccountOf,
         CustomerAccountSummaries,
+        SearchCustomerAccounts,
         CustomerShortNames,
         TeamMemberLabels,
         EndOtherCustomerSessions,
@@ -1775,6 +1783,7 @@ function useCaseProvider<D, U>(
         requireStepUp: RequireStepUp,
         customerAccountOf: CustomerAccountOf,
         customerAccountSummaries: CustomerAccountSummaries,
+        searchCustomerAccounts: SearchCustomerAccounts,
         customerShortNames: CustomerShortNames,
         teamMemberLabels: TeamMemberLabels,
         endOtherCustomerSessions: EndOtherCustomerSessions,
@@ -1794,6 +1803,7 @@ function useCaseProvider<D, U>(
           requireStepUp,
           customerAccountOf,
           customerAccountSummaries,
+          searchCustomerAccounts,
           customerShortNames,
           teamMemberLabels,
           endOtherCustomerSessions,

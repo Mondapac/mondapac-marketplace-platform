@@ -1141,10 +1141,71 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           orders: [],
           nextCursor: null,
           counts: { pendingPayment: 0, confirmed: 0, cancelled: 0 },
+          searchCapped: false,
           paging: null,
         },
       });
       expect(labels.calls).toEqual([]);
+    });
+
+    describe('search by customer name or store name', () => {
+      const search = (input: Record<string, unknown>) =>
+        new AdminListOrders(gate, deps).execute(adminContext(), input);
+
+      it('finds an order by its customer or one of its stores, and by both filters together', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+        labels.stores.set(SELLER_A, 'Corner Butcher');
+        labels.customers.set(ACCOUNT, { displayName: 'Jane Citizen', email: 'jane@example.com' });
+        labels.customers.set(OTHER, { displayName: 'Omar Other', email: 'omar@example.com' });
+
+        const byStore = await search({ search: ' butcher ' });
+        const byCustomer = await search({ search: 'CITIZEN', page: 1 });
+        const stranger = await search({ search: 'omar' });
+        const combined = await search({ search: 'butcher', paymentState: 'captured' });
+        const none = await search({ search: 'nobody' });
+
+        expect(byStore.ok && byStore.value.orders.map((o) => o.orderId)).toEqual([
+          result.value.orderId,
+        ]);
+        expect(byCustomer.ok && byCustomer.value.paging?.total).toBe(1);
+        expect(stranger.ok && stranger.value.orders).toEqual([]);
+        expect(combined.ok && combined.value.orders).toEqual([]);
+        expect(none.ok && none.value.orders).toEqual([]);
+        // Whatever the search, the counts stay the Market's.
+        expect(none.ok && none.value.counts.pendingPayment).toBe(1);
+        expect(byStore.ok && byStore.value.searchCapped).toBe(false);
+      });
+
+      it('passes on that the owners capped their matches', async () => {
+        labels.stores.set(SELLER_A, 'Corner Butcher');
+        labels.searchCapped = true;
+        const capped = await search({ search: 'butcher' });
+        expect(capped.ok && capped.value.searchCapped).toBe(true);
+      });
+
+      it('refuses a text that is too short or too long, echoing nothing', async () => {
+        const bad = {
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'search', code: 'length' }] },
+        };
+        expect(await search({ search: ' a ' })).toEqual(bad);
+        expect(await search({ search: 'x'.repeat(81) })).toEqual(bad);
+        expect(await search({ search: 7 })).toEqual(bad);
+        // A customer's own list takes no search.
+        expect(
+          await new ListOrders(gate, deps).execute(customer, { search: 'butcher' }),
+        ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      });
+
+      it('fails closed when an owner cannot answer: never the unfiltered list', async () => {
+        await start();
+        labels.fail.add('stores');
+        expect(await search({ search: 'butcher' })).toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+      });
     });
 
     describe('page mode', () => {
