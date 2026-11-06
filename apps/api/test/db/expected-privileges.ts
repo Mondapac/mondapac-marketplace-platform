@@ -1223,6 +1223,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [
         'brand_id',
         'discarded_at',
+        'family_code',
         'last_changed_at',
         'matched_into_product_id',
         'owner_seller_id',

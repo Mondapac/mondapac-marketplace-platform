@@ -125,7 +125,7 @@ migration in 8. "Privileges" lines are in 7.
 | `created_by_seller_id` | `uuid` | yes | 1 | The seller who created it; never updated (column grant). Keeps the origin after promotion without a history read |
 | `type_code` | `text` | no | 1 | CA4 pattern; never updated (column grant; CAT-10) |
 | `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Never updated. Target of the variant FK (3.2) |
-| `family_code` | `text` | no | 1 | CA4; never updated |
+| `family_code` | `text` | no | 1 | CA4; changes only with a revision pointer (trigger `products_family_follows_revision`; A4, CAT-10 change): the family of the last accepted submit (the database guards the timing, not the value: the application resolves it from the primary category) |
 | `product_code` | `text COLLATE "C"` | no | 1 | From `product_code_counters` (3.3), never input. CHECK `^[A-Z0-9][A-Z0-9-]{3,31}$`. **Unique `(market_id, product_code)`** (D 17.1). Never updated |
 | `status` | `text` | no | 1 | CHECK `draft`, `discarded`, `unpublished`, `published`, `matched`, `withdrawn`, `retired` (D 4.1; `discarded` terminal, Q-K2) |
 | `discarded_at` | `timestamptz(6)` | yes | 1 | CHECK `products_discarded_check`: `(status = 'discarded') = (discarded_at IS NOT NULL)`; CHECK `status <> 'discarded' OR (published_revision_id IS NULL AND pending_revision_id IS NULL)` (a backstop: a discarded product has no published or pending revision; "never submitted" itself is the use case's check. Added with the pointers in migration 4) |
@@ -1352,7 +1352,7 @@ No sequence; no function gets a grant.
 |---|---|---|---|
 | `outbox` | `SELECT, INSERT`, `UPDATE (published_at)` | Never | PM2 |
 | `inbox` | `SELECT, INSERT` | Prune job | PM4 |
-| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
+| `products` | `SELECT, INSERT`, `UPDATE (family_code, scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, code, creator immutable (CAT-10); family only with a revision pointer (trigger) |
 | `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | Never (the guard refuses it for every role) | M-1 |
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |
