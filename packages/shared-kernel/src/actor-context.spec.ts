@@ -113,8 +113,8 @@ describe.each(MARKETS)('actors of market %s (identity design 4; foundations 3.4)
 });
 
 describe('ActorContext', () => {
-  it('names the three populations of identity design 4', () => {
-    expect(POPULATIONS).toEqual(['customer', 'seller', 'admin']);
+  it('names the four populations of identity design 4 and ADR-0045', () => {
+    expect(POPULATIONS).toEqual(['customer', 'seller', 'admin', 'agent']);
   });
 
   it('is a closed union on kind: a switch over it is exhaustive', () => {
