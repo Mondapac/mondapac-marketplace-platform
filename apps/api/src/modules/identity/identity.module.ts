@@ -1529,6 +1529,8 @@ function useCaseProvider<D, U>(
       codes: true,
       hasher: true,
       commonPasswords: true,
+      grants: true,
+      effectiveKeys: true,
       outbox: true,
       audit: true,
       policy: true,

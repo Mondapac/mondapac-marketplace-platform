@@ -1749,6 +1749,17 @@
     }
   },
   {
+    "action": "identity.agent-invitation.acceptance-refused",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "boundSubjectId": "id",
+      "invitedByAccountId": "id"
+    }
+  },
+  {
     "action": "identity.agent-invitation.accepted",
     "targetType": "identity.invitation",
     "targetId": "id",

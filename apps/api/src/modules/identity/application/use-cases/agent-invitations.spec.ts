@@ -84,10 +84,13 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (ADR-0045)', (code) 
   let clock: FixedClock;
 
   /** Only ADMIN holds `agents.agent.manage`; ADMIN_WITHOUT_KEY is an admin without it. */
+  const keyHolders = new Set<Id<'Account'>>();
   const effectiveKeys: EffectiveKeyResolver = (subject) =>
-    new Set(subject.accountId === ADMIN ? [AGENTS_MANAGE_KEY] : []);
+    new Set(keyHolders.has(subject.accountId) ? [AGENTS_MANAGE_KEY] : []);
 
   function setUp() {
+    keyHolders.clear();
+    keyHolders.add(ADMIN);
     fakes = new IdentityFakes();
     clock = new FixedClock(START);
     fakes.seedRole({
@@ -186,6 +189,8 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (ADR-0045)', (code) 
           hash: (password: string) => Promise.resolve({ ok: true, value: fakeHashOf(password) }),
         } as never,
         commonPasswords: { isCommon: () => false },
+        grants: fakes.grantReader,
+        effectiveKeys,
         outbox: fakes.outbox,
         audit: fakes.audit,
         ids: new SequenceIdGenerator(clock),
@@ -636,6 +641,53 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (ADR-0045)', (code) 
 
       expect(throttled).toBe(true);
     });
+
+    it.each([
+      [
+        'is disabled',
+        () => {
+          fakes.accounts.set(ADMIN, { ...fakes.accounts.get(ADMIN)!, status: 'disabled' });
+        },
+      ],
+      [
+        'no longer holds the key',
+        () => {
+          fakes.seedAssignment({
+            id: id<'RoleAssignment'>(`01990000-0000-7000-8000-${n12(0xe1ff)}`),
+            marketId,
+            accountId: ADMIN,
+            roleId: ROLE,
+            assignedByAccountId: null,
+            assignedAt: START,
+            version: 1,
+          });
+          keyHolders.delete(ADMIN);
+        },
+      ],
+    ])(
+      'refuses as unavailable, audits it and creates nothing when the inviter %s',
+      async (_label, change) => {
+        const useCases = setUp();
+        const invite = await issued(useCases);
+        change();
+
+        const result = await acceptWith(useCases, invite.token, invite.handoverCode);
+
+        expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+        expect(fakes.accounts.has(invite.accountId)).toBe(false);
+        expect([...fakes.factors.values()]).toHaveLength(0);
+        expect(fakes.sessions.size).toBe(0);
+        expect(fakes.invitations.get(invite.invitationId)).toMatchObject({ state: 'pending' });
+        const audit = fakes.audits.find(
+          (a) => a.action === 'identity.agent-invitation.acceptance-refused',
+        )!;
+        expect(audit.after).toMatchObject({
+          invitedByAccountId: ADMIN,
+          boundSubjectId: invite.invitationId,
+        });
+        expect(JSON.stringify(fakes.audits)).not.toContain(invite.handoverCode);
+      },
+    );
 
     it('rejects a malformed code without counting anything', async () => {
       const useCases = setUp();

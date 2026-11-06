@@ -425,6 +425,22 @@ export const AgentInvitationAcceptedAudit = defineAuditAction({
 });
 
 /**
+ * An agent's acceptance was refused at the closing unit because its inviter is no longer an
+ * active, verified admin holding `agents.agent.manage` (ADR-0045 decision 2; as the admin
+ * invitation's inviter re-check). Nothing is created; the invitation stays as it was. Target: the
+ * invitation, named in `boundSubjectId`; `invitedByAccountId` is the inviter who no longer stands.
+ */
+export const AgentInvitationAcceptanceRefusedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.acceptance-refused',
+  targetType: 'identity.invitation',
+  actors: ['anonymous'],
+  after: {
+    invitedByAccountId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
  * A second factor became active (identity design 3.4, 3.6; PA 5 row 7): inside an admin
  * invitation's acceptance (`boundSubjectId` = the invitation) or from an enrolment link with the
  * password (`boundSubjectId` = the account). Target: the factor.
@@ -657,6 +673,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   AgentInvitationIssuedAudit,
   AgentInvitationRevokedAudit,
   AgentInvitationAcceptedAudit,
+  AgentInvitationAcceptanceRefusedAudit,
   RoleCreatedAudit,
   RoleUpdatedAudit,
   RoleDeletedAudit,

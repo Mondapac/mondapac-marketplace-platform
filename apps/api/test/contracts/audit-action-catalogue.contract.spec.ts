@@ -302,6 +302,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.admin-session.opened',
       'identity.admin-step-up.refused',
       'identity.admin-step-up.verified',
+      'identity.agent-invitation.acceptance-refused',
       'identity.agent-invitation.accepted',
       'identity.agent-invitation.issued',
       'identity.agent-invitation.revoked',

@@ -6,7 +6,11 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { Account } from '../../domain/account';
-import { AgentInvitationAcceptedAudit, SecondFactorActivatedAudit } from '../../domain/audit';
+import {
+  AgentInvitationAcceptanceRefusedAudit,
+  AgentInvitationAcceptedAudit,
+  SecondFactorActivatedAudit,
+} from '../../domain/audit';
 import { normaliseHandoverCode } from '../../domain/handover-code';
 import { decodeBase32Secret } from '../../domain/otpauth';
 import {
@@ -19,6 +23,10 @@ import { SecondFactor } from '../../domain/second-factor';
 import { blockAfterFailure, reservationVerdict } from '../../domain/throttle';
 import { candidateSteps, parseTotpCode } from '../../domain/totp';
 import type { AccountRepository } from '../ports/account.repository';
+import type { EffectiveKeyResolver } from '../access/effective-keys';
+import type { RoleGrantReader } from '../ports/role-grant-reader';
+import { readActingGrants } from '../roles/granting';
+import { AGENTS_MANAGE_KEY } from '../../contracts/agent-access';
 import type { CommonPasswordList } from '../ports/common-password-list';
 import type { HandoverCodes } from '../ports/handover-codes';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
@@ -88,6 +96,8 @@ export interface AcceptAgentInvitationDependencies {
   readonly codes: HandoverCodes;
   readonly hasher: PasswordHasher;
   readonly commonPasswords: CommonPasswordList;
+  readonly grants: RoleGrantReader;
+  readonly effectiveKeys: EffectiveKeyResolver;
   readonly outbox: OutboxWriter;
   readonly audit: AuditWriter;
   readonly policy: IdentityMarketPolicy;
@@ -340,7 +350,8 @@ export class AcceptAgentInvitation extends UseCase<
           readonly accountId: Id<'Account'>;
           readonly codes: readonly RecoveryCode[];
         }
-      | { readonly kind: 'refused' };
+      | { readonly kind: 'refused' }
+      | { readonly kind: 'inviter-gone' };
     let closed: Result<Closed, never>;
     try {
       closed = await unitOfWork.run(
@@ -358,6 +369,27 @@ export class AcceptAgentInvitation extends UseCase<
           const stored = invitation.state.handoverCodeHmac;
           if (accountId === null || inviterId === null || stored === null) return refuse();
           const matched = this.deps.codes.matches(market, invitationId, parsed.handover, stored);
+          // The inviter still stands: an active, verified admin who still holds the key (a
+          // disabled or demoted inviter cannot leave an account behind in a pending invitation).
+          // The refusal is committed with its audit row; the invitation is untouched.
+          if (!matched) return refuse();
+          const inviter = await readActingGrants(
+            this.deps,
+            market,
+            { accountId: inviterId, population: 'admin', sellerId: null },
+            [],
+            [AGENTS_MANAGE_KEY],
+          );
+          if (inviter === null) {
+            await throttles.release(market, [attempt.reservation]);
+            await this.deps.audit.record(
+              context,
+              AgentInvitationAcceptanceRefusedAudit.entry(invitationId, {
+                after: { invitedByAccountId: inviterId, boundSubjectId: invitationId },
+              }),
+            );
+            return ok({ kind: 'inviter-gone' });
+          }
           const account = Account.acceptInvitation({
             id: accountId,
             marketId: market.marketId,
@@ -411,7 +443,11 @@ export class AcceptAgentInvitation extends UseCase<
       await this.release(context, attempt);
       throw error;
     }
-    if (!closed.ok || closed.value.kind === 'refused') {
+    if (closed.ok && closed.value.kind === 'inviter-gone') {
+      this.log('identity.accept-agent-invitation.inviter-refused', context, { invitationId });
+      return err(UNAVAILABLE);
+    }
+    if (!closed.ok || closed.value.kind !== 'accepted') {
       this.log('identity.accept-agent-invitation.refused', context, {
         invitationId,
         reason: REJECTED.code,
