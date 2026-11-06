@@ -67,7 +67,7 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-09T03:30:00.000Z',
   createdAt: '2026-10-01T00:00:00.000Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], fields: [], categories: [] },
+  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
   workingCopy: { content: {}, lastSavedAt: '2026-10-09T03:00:00.000Z', baseRevisionId: null },
   published: {
     revisionId: 'r1',

@@ -42,6 +42,7 @@ describe('attributes section suggestions', () => {
             field('tags', 'multi-select'),
             field('notes', 'text'),
           ]}
+          units={[]}
           inputs={{}}
           locales={['en-AU']}
           defaultLocale="en-AU"

@@ -1,5 +1,5 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MeasureSettings, Result } from '@mondapac/shared-kernel';
 import { isActingAsSession } from '../acting-as';
 import type {
   AttributeBounds,
@@ -189,18 +189,67 @@ export function localizedOf(
 function boundsOf(raw: unknown): Result<AttributeBounds, ValidationFailure> {
   if (raw === undefined || raw === null) return ok({});
   if (typeof raw !== 'object' || Array.isArray(raw)) return invalid('bounds', 'type');
-  const out: { maxLength?: number; min?: number; max?: number } = {};
+  const out: { maxLength?: number; min?: number; max?: number; measure?: MeasureSettings } = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (key !== 'maxLength' && key !== 'min' && key !== 'max') {
+    if (key !== 'maxLength' && key !== 'min' && key !== 'max' && key !== 'measure') {
       return invalid(`bounds.${key.slice(0, 16)}`, 'unknown');
     }
     if (value === null || value === undefined) continue;
+    if (key === 'measure') {
+      const measure = measureOf(value);
+      if (!measure.ok) return measure;
+      out.measure = measure.value;
+      continue;
+    }
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       return invalid(`bounds.${key}`, 'type');
     }
     out[key] = value;
   }
   return ok(out);
+}
+
+/**
+ * Whether every unit a `measure` offers is one the Market lists under `catalog.units` (attributes
+ * A3). The domain checks the dimension and the default; which units this Market offers is
+ * configuration, so it is checked here. Returns the field to mark, or null.
+ */
+export function marketUnitsRefusal(
+  bounds: AttributeBounds,
+  marketUnits: readonly { readonly code: string }[],
+): FieldIssue | null {
+  const offered = new Set(marketUnits.map((unit) => unit.code));
+  const missing = bounds.measure?.units.some((unit) => !offered.has(unit)) ?? false;
+  return missing ? { path: 'bounds.measure.units', code: 'not-offered' } : null;
+}
+
+/** The unit settings of a measure, shapes only: the domain checks that they add up. */
+function measureOf(raw: unknown): Result<MeasureSettings, ValidationFailure> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return invalid('bounds.measure', 'type');
+  }
+  const item = raw as Record<string, unknown>;
+  for (const key of Object.keys(item)) {
+    if (!['dimension', 'units', 'defaultUnit', 'decimals'].includes(key)) {
+      return invalid(`bounds.measure.${key.slice(0, 16)}`, 'unknown');
+    }
+  }
+  const { dimension, units, defaultUnit, decimals } = item;
+  if (typeof dimension !== 'string') return invalid('bounds.measure.dimension', 'type');
+  if (!Array.isArray(units) || units.some((unit) => typeof unit !== 'string')) {
+    return invalid('bounds.measure.units', 'type');
+  }
+  if (units.length > 16) return invalid('bounds.measure.units', 'too-many');
+  if (typeof defaultUnit !== 'string') return invalid('bounds.measure.defaultUnit', 'type');
+  if (typeof decimals !== 'number' || !Number.isInteger(decimals)) {
+    return invalid('bounds.measure.decimals', 'type');
+  }
+  return ok({
+    dimension: dimension as MeasureSettings['dimension'],
+    units: units as string[],
+    defaultUnit,
+    decimals,
+  });
 }
 
 function optionsOf(
