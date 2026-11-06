@@ -729,6 +729,7 @@
   { "name": "storefront.view-published-page", "rule": "anonymous" },
   { "name": "storefront.view-published-slides", "rule": "anonymous" },
   { "name": "storefront.view-served-placements", "rule": "anonymous" },
+  { "name": "storefront.view-slide-image", "rule": "anonymous" },
   { "name": "tax.calculate-tax", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },

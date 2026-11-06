@@ -1,4 +1,4 @@
-import { Controller, Get, Logger, Param, Query, Res } from '@nestjs/common';
+import { Controller, Get, Logger, Param, Query, Res, StreamableFile } from '@nestjs/common';
 import {
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -19,6 +19,7 @@ import type {
 import { ViewPublishedLandingPage } from '../application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from '../application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from '../application/use-cases/view-published-page.use-case';
+import { ViewStorefrontSlideImage } from '../application/use-cases/view-slide-image.use-case';
 import { ViewPublishedStorefrontSlides } from '../application/use-cases/view-published-slides.use-case';
 import { refusal } from './http-answers';
 import { PublishedSlidesBody, publishedSlidesBody } from './public-slide.dto';
@@ -43,6 +44,7 @@ export class PublicStorefrontController {
     private readonly landing: ViewPublishedLandingPage,
     private readonly navigation: ViewPublishedStorefrontNavigation,
     private readonly slides: ViewPublishedStorefrontSlides,
+    private readonly slideImage: ViewStorefrontSlideImage,
   ) {}
 
   private answer(
@@ -164,5 +166,39 @@ export class PublicStorefrontController {
       result.value.maxAgeSeconds > 0 ? `public, max-age=${result.value.maxAgeSeconds}` : 'no-store',
     );
     return publishedSlidesBody(result.value);
+  }
+
+  @Get('slide-images/:imageId/:size')
+  @ApiOperation({
+    summary: 'One rendition of a slide image (public)',
+    description:
+      'No session needed. `size` is desktop, desktop-small, mobile or mobile-small; always a ' +
+      'metadata-free JPEG. The image id is unguessable and the file is read from the stored ' +
+      'rendition row. Cached for five minutes; the answer varies by `X-Market-Id`.',
+  })
+  @ApiParam({ name: 'imageId', description: 'A slide image id. A UUID v7.' })
+  @ApiParam({ name: 'size', enum: ['desktop', 'desktop-small', 'mobile', 'mobile-small'] })
+  @ApiOkResponse({ description: 'image/jpeg bytes' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'storefront.slide-image-not-found' })
+  async slideImageFile(
+    @Call() context: CallContext,
+    @Param('imageId') imageId: string,
+    @Param('size') size: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.vary('X-Market-Id');
+    const result = await this.slideImage.execute(context, { imageId, size });
+    this.#logger.log({
+      msg: 'storefront.view-slide-image-route',
+      outcome: result.ok ? 'ok' : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) {
+      response.setHeader('Cache-Control', 'no-store');
+      throw refusal(result.error, context, this.#logger);
+    }
+    response.setHeader('Cache-Control', 'public, max-age=300');
+    return new StreamableFile(result.value.bytes, { type: result.value.contentType });
   }
 }

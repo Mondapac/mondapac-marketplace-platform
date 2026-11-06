@@ -31,6 +31,12 @@ export const STOREFRONT_STATUS: Readonly<Record<string, number>> = Object.freeze
   'storefront.slide-position-full': 409,
   'storefront.slide-link-invalid': 409,
   'storefront.slide-order-mismatch': 409,
+  'storefront.slide-image-not-found': 404,
+  'file.too-large': 413,
+  'file.unsupported-type': 415,
+  'file.too-many-pixels': 422,
+  'file.too-small': 422,
+  'file.unreadable': 422,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -79,5 +85,8 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (typeof error.retryAfterSeconds === 'number') {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
   return fail(status, error.code);
 }
