@@ -1,4 +1,10 @@
-import { buildSearchAttributes, type SearchDefinition } from './search-attributes';
+import {
+  buildSearchAttributes,
+  buildVariantFacets,
+  variantLabelOf,
+  withVariantWords,
+  type SearchDefinition,
+} from './search-attributes';
 import { countryCodeOf, ISO_COUNTRIES } from './iso-countries';
 
 const options = (
@@ -232,6 +238,57 @@ describe('buildSearchAttributes', () => {
       locale: 'en-AU',
     });
     expect(unknown.facets).toEqual([]);
+  });
+});
+
+describe('variant facets and labels (variants V8)', () => {
+  it('indexes an axis value as its option code, following a merged option', () => {
+    const definitions = new Map([['weight', definition()]]);
+    expect(buildVariantFacets({ optionValues: { weight: 'kg1' }, definitions })).toEqual([
+      'weight=kg1',
+    ]);
+    expect(buildVariantFacets({ optionValues: { weight: 'kg2' }, definitions })).toEqual([
+      'weight=kg1',
+    ]);
+  });
+
+  it('follows a merged attribute to its active target', () => {
+    const definitions = new Map([
+      [
+        'tin-size',
+        definition({ mergedInto: { code: 'weight', options: new Map([['s', 'kg1']]) } }),
+      ],
+      ['weight', definition()],
+    ]);
+    expect(buildVariantFacets({ optionValues: { 'tin-size': 's' }, definitions })).toEqual([
+      'weight=kg1',
+    ]);
+  });
+
+  it('leaves out an unknown option, an inactive or non-filter definition and a non-choice type', () => {
+    const cases: [Record<string, unknown>, Map<string, SearchDefinition>][] = [
+      [{ weight: 'nope' }, new Map([['weight', definition()]])],
+      [{ weight: 'kg1' }, new Map([['weight', definition({ status: 'archived' })]])],
+      [{ weight: 'kg1' }, new Map([['weight', definition({ canBeFilter: false })]])],
+      [{ weight: 'kg1' }, new Map([['weight', definition({ dataType: 'text' })]])],
+      [{ other: 'kg1' }, new Map([['weight', definition()]])],
+    ];
+    for (const [optionValues, definitions] of cases) {
+      expect(buildVariantFacets({ optionValues, definitions })).toEqual([]);
+    }
+  });
+
+  it('reads a label in the locale, else English, else null', () => {
+    expect(variantLabelOf({ 'en-AU': '1 kg', 'fa-IR': '۱ کیلو' }, 'fa-IR')).toBe('۱ کیلو');
+    expect(variantLabelOf({ 'en-AU': '1 kg' }, 'ja-JP')).toBe('1 kg');
+    expect(variantLabelOf({ 'fa-IR': '۱ کیلو' }, 'ja-JP')).toBe(null);
+    expect(variantLabelOf(null, 'en-AU')).toBe(null);
+  });
+
+  it('adds labels to the search text once, within the limit', () => {
+    expect(withVariantWords('Al Safa', ['1 kg', '10 kg', null, '1 kg'])).toBe('Al Safa 1 kg 10 kg');
+    expect(withVariantWords('', ['1 kg'])).toBe('1 kg');
+    expect([...withVariantWords('x', ['y'.repeat(3000)])].length).toBe(2000);
   });
 });
 
