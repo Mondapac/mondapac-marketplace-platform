@@ -38,6 +38,7 @@ import {
   PlatformProductSubmit,
   type PlatformProductSubmitInput,
 } from './platform-product-submit.use-case';
+import { fixedFamilyResolver } from '../../../../../test/support/family-resolver';
 
 // `platform-product.submit` in memory (catalog design 4.2 row 1, 6; slice 6), on both Market
 // fixtures: the freeze, the claim-text check over every text of the frozen content, the admin
@@ -241,6 +242,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
         ),
     } as unknown as AttributeRepository;
     const freeze = new FreezeRevision({
+      familyResolver: fixedFamilyResolver(),
       attributes,
       policy,
       handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),

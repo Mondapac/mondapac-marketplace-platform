@@ -59,6 +59,17 @@ export class PrismaAttributeRepository implements AttributeRepository {
     return row === null ? null : (row.id as Id<'AttributeFamily'>);
   }
 
+  async familyCodeOfRevision(
+    market: MarketContext,
+    familyRevisionId: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.tx(market).catalogAttributeFamilyRevision.findFirst({
+      where: { marketId: market.marketId, id: familyRevisionId },
+      select: { family: { select: { code: true } } },
+    });
+    return row?.family.code ?? null;
+  }
+
   async loadSchema(market: MarketContext, familyCode: string): Promise<AttributeSchema | null> {
     const tx = this.prisma.tx(market);
     const family = await tx.catalogAttributeFamily.findFirst({

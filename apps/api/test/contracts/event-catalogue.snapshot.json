@@ -215,6 +215,15 @@
     }
   },
   {
+    "type": "catalog.product-family-changed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
     "type": "catalog.product-revision-changes-requested.v1",
     "aggregateType": "product",
     "fields": {
