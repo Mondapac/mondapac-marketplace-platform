@@ -6,7 +6,7 @@ import { marketOf, otherMarketOf } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 import { sqlState } from './sql-state';
 
-// Variants V5 on PostgreSQL (migration 20261105000000_catalog_offer_sell_units), for both Market
+// Variants V5 on PostgreSQL (migration 20261106160000_catalog_offer_sell_units), for both Market
 // fixtures: the sparse (Offer, Variant) row, the SKU shape and per-seller unique, the two-way
 // check against Offer SKUs (triggers), the same-seller and same-Market foreign keys, and the
 // grants (no DELETE, no change of the owning columns).

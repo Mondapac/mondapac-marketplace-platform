@@ -1,4 +1,4 @@
--- Reverses 20261105000000_catalog_offer_sell_units: the triggers and their functions first, then
+-- Reverses 20261106160000_catalog_offer_sell_units: the triggers and their functions first, then
 -- the grants, then the table. Variant SKUs and "selling" switches are lost (every unit sells again).
 DROP TRIGGER "offers_vs_unit_sku_guard" ON "catalog"."offers";
 DROP FUNCTION "catalog"."offers_vs_unit_sku_guard"();
