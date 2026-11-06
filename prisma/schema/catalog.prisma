@@ -356,6 +356,7 @@ model CatalogAttributeDefinition {
   publishedRevision   CatalogAttributeDefinitionRevision?  @relation("DefinitionPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
   relaxationRequests  CatalogAttributeRelaxationRequest[]  @relation("DefinitionRelaxationRequests")
   valueSuggestions    CatalogAttributeValueSuggestion[]    @relation("DefinitionValueSuggestions")
+  variantTypeSetting  CatalogVariantTypeSetting[]          @relation("VariantTypeSetting")
 
   @@unique([marketId, id])
   @@unique([marketId, code])
@@ -1470,5 +1471,50 @@ model CatalogCategoryAttributeLinkRevision {
   @@unique([marketId, categoryId, id])
   @@index([marketId, familyId])
   @@map("category_attribute_link_revisions")
+  @@schema("catalog")
+}
+
+/// How buyers choose a variant type (variants V6; plan section 9): one root per variant attribute,
+/// holding the pointer to the current revision and the version a write names, like a category's
+/// attribute links. A variant type without a root uses the defaults (buttons, manual order). The
+/// CHECKs, the insert-only triggers and the grants are hand-written in the migration.
+model CatalogVariantTypeSetting {
+  marketId          String                              @map("market_id") @db.VarChar(8)
+  tenantId          String                              @map("tenant_id")
+  definitionId      String                              @map("definition_id") @db.Uuid
+  currentRevisionId String?                             @map("current_revision_id") @db.Uuid
+  version           Int
+  createdAt         DateTime                            @map("created_at") @db.Timestamptz(6)
+  definition        CatalogAttributeDefinition          @relation("VariantTypeSetting", fields: [marketId, definitionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  currentRevision   CatalogVariantTypeSettingRevision?  @relation("VariantTypeSettingCurrent", fields: [marketId, definitionId, currentRevisionId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
+  revisions         CatalogVariantTypeSettingRevision[] @relation("VariantTypeSettingRevisions")
+
+  @@id([marketId, definitionId])
+  @@map("variant_type_settings")
+  @@schema("catalog")
+}
+
+/// A revision of a variant type's settings (insert-only). `swatches` maps an option code to a
+/// colour `#RRGGBB`; `sellerHelp` maps a locale to one sentence shown above the variant grid.
+model CatalogVariantTypeSettingRevision {
+  id              String                      @id @db.Uuid
+  marketId        String                      @map("market_id") @db.VarChar(8)
+  tenantId        String                      @map("tenant_id")
+  definitionId    String                      @map("definition_id") @db.Uuid
+  revisionNo      Int                         @map("revision_no")
+  /// buttons | swatches | dropdown.
+  displayStyle    String                      @map("display_style")
+  /// manual | alphabetical | by-size.
+  optionOrder     String                      @map("option_order")
+  swatches        Json                        @db.JsonB
+  sellerHelp      Json                        @map("seller_help") @db.JsonB
+  authorAccountId String                      @map("author_account_id") @db.Uuid
+  createdAt       DateTime                    @map("created_at") @db.Timestamptz(6)
+  setting         CatalogVariantTypeSetting   @relation("VariantTypeSettingRevisions", fields: [marketId, definitionId], references: [marketId, definitionId], onDelete: Restrict, onUpdate: Restrict)
+  current         CatalogVariantTypeSetting[] @relation("VariantTypeSettingCurrent")
+
+  @@unique([marketId, definitionId, revisionNo])
+  @@unique([marketId, definitionId, id])
+  @@map("variant_type_setting_revisions")
   @@schema("catalog")
 }

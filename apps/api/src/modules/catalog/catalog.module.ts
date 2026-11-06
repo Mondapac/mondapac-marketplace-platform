@@ -353,6 +353,16 @@ import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job'
  * The Nest token of each dependency name the use cases of catalog share: a use case's dependency
  * object is built from these by {@link useCaseProvider}, so a name always means the same port.
  */
+import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
+import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
+import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
+import { AdminVariantTypesList } from './application/use-cases/admin-variant-types-list.use-case';
+import { AdminVariantIssueCounts } from './application/use-cases/admin-variant-issue-counts.use-case';
+import { AdminVariantsExport } from './application/use-cases/admin-variants-export.use-case';
+import { AdminVariantsList } from './application/use-cases/admin-variants-list.use-case';
+import { VariantTypeSettingsEdit } from './application/use-cases/variant-type-settings-edit.use-case';
+import { VariantAdminController } from './presentation/variant-admin.controller';
+
 /** The three key probes the category reads use for their allowed actions (categories C1). */
 const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
 
@@ -450,6 +460,8 @@ const PORT = {
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
   contentFilter: ContentFilter,
+  variantAdminReader: VARIANT_ADMIN_READER,
+  variantTypeSettings: VARIANT_TYPE_SETTINGS_STORE,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -534,6 +546,7 @@ const RESTRUCTURE_DEPS = {
     OfferReviewController,
     AdminProductListController,
     AdminCustomVariantLabelsController,
+    VariantAdminController,
     AdminProductBulkController,
     PlatformImportController,
     SavedFilterController,
@@ -1248,6 +1261,45 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       customVariantLabelsReader: true,
       policy: true,
+    }),
+    // Variants V6: the admin Catalogue > Variants page.
+    useCaseProvider(AdminVariantTypesList, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AdminVariantTypeGet, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(VariantTypeSettingsEdit, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      variantTypeSettings: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AdminVariantsList, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AdminVariantIssueCounts, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AdminVariantsExport, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,

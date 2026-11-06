@@ -2989,5 +2989,25 @@
     "after": {
       "revisionNo": "integer"
     }
+  },
+  {
+    "action": "catalog.variant-type.settings-changed",
+    "targetType": "catalog.variant-type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "displayStyle": "enumOf(buttons|swatches|dropdown)",
+      "optionOrder": "enumOf(manual|alphabetical|by-size)",
+      "revisionNo": "integer",
+      "sellerHelpCount": "integer",
+      "swatchCount": "integer"
+    },
+    "after": {
+      "displayStyle": "enumOf(buttons|swatches|dropdown)",
+      "optionOrder": "enumOf(manual|alphabetical|by-size)",
+      "revisionNo": "integer",
+      "sellerHelpCount": "integer",
+      "swatchCount": "integer"
+    }
   }
 ]
