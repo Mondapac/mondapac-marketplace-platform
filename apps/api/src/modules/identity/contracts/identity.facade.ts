@@ -294,7 +294,7 @@ export interface IdentityFacade {
 
   /**
    * Issues an agent invitation with a handover code (ADR-0045 decision 2). The caller is the
-   * `agents` module's CreateAgent, running for an admin who holds `agents.manage`; the caller's
+   * `agents` module's CreateAgent, running for an admin who holds `agents.agent.manage`; the caller's
    * context goes through unchanged and identity checks the key again on that actor, in the unit
    * that writes. Rule `own-resources` (an active admin). The code is returned once and only its
    * HMAC is stored; the link goes by mail. An address that already has an agent account or a live
@@ -323,7 +323,7 @@ export interface IdentityFacade {
   /**
    * Disables an agent: sessions revoked and open invitations voided in one serializable unit
    * (ADR-0045 decision 5). Idempotent. Rule `own-resources` (an active admin holding
-   * `agents.manage`, re-checked).
+   * `agents.agent.manage`, re-checked).
    */
   disableAgentAccount(
     context: CallContext,
@@ -338,8 +338,8 @@ export interface IdentityFacade {
 
   /**
    * The access state of up to 500 agents, read live: `active`, `disabled` or `invited`; an id
-   * that is none of them is absent. Rule `own-resources` (an active admin holding `agents.read` or
-   * `agents.manage`).
+   * that is none of them is absent. Rule `own-resources` (an active admin holding `agents.agent.read` or
+   * `agents.agent.manage`).
    */
   agentAccessOf(
     context: CallContext,

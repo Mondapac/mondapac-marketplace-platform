@@ -45,7 +45,7 @@ export interface AgentInvitationDependencies {
 
 /**
  * The acting admin, re-checked in the unit that writes (as `InviteAdmin`, Mohammad C1): an active,
- * verified admin account of this Market whose effective keys hold `agents.manage`. The key is the
+ * verified admin account of this Market whose effective keys hold `agents.agent.manage`. The key is the
  * `agents` module's rule, passed through the caller's own actor (ADR-0045; design 3). False: the
  * caller answers `access.denied`.
  */

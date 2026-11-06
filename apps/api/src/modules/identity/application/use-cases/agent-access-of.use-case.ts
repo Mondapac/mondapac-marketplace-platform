@@ -32,7 +32,7 @@ export interface AgentAccessOfDependencies {
  * rows and never from an event: `active` or `disabled` for an agent account, `invited` for an id
  * with a pending invitation and no account (an expired one not yet purged included). An id that is
  * neither is absent from the answer, as is an account of another population. Rule `own-resources`
- * for an active admin who holds `agents.read` or `agents.manage` (both are the `agents` module's
+ * for an active admin who holds `agents.agent.read` or `agents.agent.manage` (both are the `agents` module's
  * keys, re-checked on the caller's actor in the read unit). Read-only: opens no transaction beyond
  * the unit's snapshot (ADR-0025).
  */

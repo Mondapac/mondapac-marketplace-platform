@@ -275,8 +275,8 @@ describe.each(TEST_MARKETS)('agent accounts in market %s (ADR-0045)', (code) => 
     });
 
     it.each([
-      ['an admin without agents.manage', () => as(NO_KEY)],
-      ['an admin with only agents.read', () => as(READER)],
+      ['an admin without agents.agent.manage', () => as(NO_KEY)],
+      ['an admin with only agents.agent.read', () => as(READER)],
       ['a customer', () => as(CUSTOMER, 'customer')],
       ['an agent', () => as(AGENT, 'agent')],
       ['an anonymous caller', () => testCallContext(market, 'anonymous', 'agent-account-0003')],
@@ -428,7 +428,7 @@ describe.each(TEST_MARKETS)('agent accounts in market %s (ADR-0045)', (code) => 
     });
 
     it.each([
-      ['an admin holding only agents.manage', () => as(READER)],
+      ['an admin holding only agents.agent.manage', () => as(READER)],
       ['an admin without the key', () => as(NO_KEY)],
       ['an agent', () => as(AGENT, 'agent')],
       ['a customer', () => as(CUSTOMER, 'customer')],

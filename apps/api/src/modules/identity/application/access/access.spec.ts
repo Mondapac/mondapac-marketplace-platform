@@ -543,7 +543,7 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
           SELLER_ACCESS_VIEW.key,
           TEAM_MEMBER_VIEW.key,
           'identity.agent-account.reset-second-factor',
-          'agents.manage',
+          'agents.agent.manage',
         ]) {
           await expect(check().check(as('agent'), needs(key))).resolves.toEqual(DENIED);
         }

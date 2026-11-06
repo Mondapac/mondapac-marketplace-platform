@@ -8,10 +8,10 @@ import type { AccessDenied } from '../../../platform/authz';
  * actor, in the unit that writes. Until `agents` declares it the permission registry holds it
  * for nobody and every such use case answers `access.denied` (fail closed).
  */
-export const AGENTS_MANAGE_KEY = 'agents.manage';
+export const AGENTS_MANAGE_KEY = 'agents.agent.manage';
 
-/** The permission to read agents (list, detail): `agents.read`, also declared by `agents`. */
-export const AGENTS_READ_KEY = 'agents.read';
+/** The permission to read agents (list, detail): `agents.agent.read`, also declared by `agents`. */
+export const AGENTS_READ_KEY = 'agents.agent.read';
 
 /** The access state of an agent account (ADR-0045 decision 5), read live. */
 export type AgentAccess = 'active' | 'disabled' | 'invited';

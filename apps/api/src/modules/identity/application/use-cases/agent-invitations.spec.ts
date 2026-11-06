@@ -83,7 +83,7 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (ADR-0045)', (code) 
   let fakes: IdentityFakes;
   let clock: FixedClock;
 
-  /** Only ADMIN holds `agents.manage`; ADMIN_WITHOUT_KEY is an admin without it. */
+  /** Only ADMIN holds `agents.agent.manage`; ADMIN_WITHOUT_KEY is an admin without it. */
   const effectiveKeys: EffectiveKeyResolver = (subject) =>
     new Set(subject.accountId === ADMIN ? [AGENTS_MANAGE_KEY] : []);
 
@@ -310,7 +310,7 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (ADR-0045)', (code) 
       expect(first.value.accountId).not.toBe(second.value.accountId);
     });
 
-    it('is refused to an admin without agents.manage, and to a customer', async () => {
+    it('is refused to an admin without agents.agent.manage, and to a customer', async () => {
       const useCases = setUp();
 
       await expect(
@@ -418,7 +418,7 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (ADR-0045)', (code) 
       ).resolves.toEqual({ ok: false, error: { code: 'invitation.not-found' } });
     });
 
-    it('is refused without agents.manage', async () => {
+    it('is refused without agents.agent.manage', async () => {
       const useCases = setUp();
       const { invitationId } = await issued(useCases);
 

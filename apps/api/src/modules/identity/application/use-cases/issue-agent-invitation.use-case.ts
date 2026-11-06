@@ -39,7 +39,7 @@ export type IssueAgentInvitationFailure =
 
 /**
  * Issues an agent invitation with a handover code (ADR-0045 decision 2; agents design 3). Called
- * through the facade by the `agents` module's CreateAgent, which has already checked `agents.manage`;
+ * through the facade by the `agents` module's CreateAgent, which has already checked `agents.agent.manage`;
  * identity checks it again on the same actor in the unit that writes (the key is `agents`'s, passed
  * through the caller's actor). Rule `own-resources` (an active admin), then in one unit: the acting
  * admin re-checked, the address not taken, the `mail.account` counter, a stale pending invitation

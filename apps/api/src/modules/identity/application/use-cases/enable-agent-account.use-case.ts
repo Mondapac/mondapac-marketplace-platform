@@ -10,7 +10,7 @@ import {
 
 /**
  * Enables an agent account (ADR-0045 decision 5; see `changeAgentAccountStatus`). Rule
- * `own-resources` for an active admin; `agents.manage` is the `agents` module's rule, re-checked
+ * `own-resources` for an active admin; `agents.agent.manage` is the `agents` module's rule, re-checked
  * on the caller's own actor in the serializable unit that writes.
  */
 export class EnableAgentAccount extends UseCase<

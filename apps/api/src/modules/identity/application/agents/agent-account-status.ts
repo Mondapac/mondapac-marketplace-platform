@@ -48,7 +48,7 @@ const logger = new Logger('AgentAccountStatus');
 /**
  * Disabling and enabling an agent account (ADR-0045 decision 5), the routine of
  * `identity.disable-agent-account` and `identity.enable-agent-account`. In **one serializable
- * unit** (every writer of `accounts.status`, HF8): the acting admin re-checked for `agents.manage`,
+ * unit** (every writer of `accounts.status`, HF8): the acting admin re-checked for `agents.agent.manage`,
  * the credential lock (the one a sign-in's closing unit takes, so a sign-in racing a disable
  * either commits its session first and is revoked here, or reads the disabled status and
  * refuses), then

@@ -29,7 +29,7 @@ export type ReissueAgentInvitationFailure =
  * handover code or link means revoke and issue again, never a retrieval. In one unit the pending
  * invitation of `accountId` is revoked (its code is void) and a new one is issued for the same
  * address, name and reserved account id, with a new handover code shown once and a new link mail.
- * Rule `own-resources` (an active admin), `agents.manage` re-checked in the unit.
+ * Rule `own-resources` (an active admin), `agents.agent.manage` re-checked in the unit.
  */
 export class ReissueAgentInvitation extends UseCase<
   ReissueAgentInvitationInput,

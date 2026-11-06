@@ -19,7 +19,7 @@ export type RevokeAgentInvitationFailure =
 /**
  * Revokes a pending agent invitation (ADR-0045 decision 2: "revoke, reissue"). Rule
  * `own-resources` (an active admin); in one unit the acting admin is re-checked for
- * `agents.manage`, the invitation is read in this Market (an invitation of another kind is
+ * `agents.agent.manage`, the invitation is read in this Market (an invitation of another kind is
  * `invitation.not-found`, so this never revokes an admin or seller invitation), revoked (its
  * address, name and handover code are cleared) and audited with its event.
  */
