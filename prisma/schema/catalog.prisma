@@ -730,6 +730,8 @@ model CatalogProductRevisionVariant {
 
   @@id([marketId, revisionId, variantId])
   @@unique([marketId, revisionId, optionKey])
+  /// The admin Variants page pages variants newest first by variant id (V6).
+  @@index([marketId, variantId])
   /// The duplicate-GTIN lookup of a draft save (V4); a partial index, hand-written.
   @@map("product_revision_variants")
   @@schema("catalog")

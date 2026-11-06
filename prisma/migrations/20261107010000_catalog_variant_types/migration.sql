@@ -82,3 +82,7 @@ CREATE TRIGGER "variant_type_setting_revisions_no_truncate" BEFORE TRUNCATE
 GRANT SELECT, INSERT, UPDATE ("current_revision_id", "version")
   ON TABLE "catalog"."variant_type_settings" TO "mondapac_app";
 GRANT SELECT, INSERT ON TABLE "catalog"."variant_type_setting_revisions" TO "mondapac_app";
+
+-- The admin Variants page pages the variants of live products newest first by variant id (V6).
+CREATE INDEX "product_revision_variants_market_id_variant_id_idx"
+  ON "catalog"."product_revision_variants"("market_id", "variant_id");

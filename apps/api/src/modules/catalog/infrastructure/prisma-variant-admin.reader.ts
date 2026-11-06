@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -129,6 +130,8 @@ const typeWhere = (code: string): VariantWhere => ({
  * outside catalog.
  */
 export class PrismaVariantAdminReader implements VariantAdminReader {
+  readonly #logger = new Logger('PrismaVariantAdminReader');
+
   constructor(private readonly prisma: PrismaService) {}
 
   async variantTypes(market: MarketContext, limit: number): Promise<readonly VariantTypeRecord[]> {
@@ -228,6 +231,13 @@ export class PrismaVariantAdminReader implements VariantAdminReader {
       orderBy: [{ code: 'asc' }],
       take: FEATURE_SET_SCAN,
     });
+    if (families.length >= FEATURE_SET_SCAN) {
+      this.#logger.warn({
+        msg: 'catalog.variant-admin.feature-set-cap',
+        marketId: market.marketId,
+        cap: FEATURE_SET_SCAN,
+      });
+    }
     for (const family of families) {
       const revision = family.publishedRevision;
       if (revision === null) continue;
@@ -371,6 +381,14 @@ export class PrismaVariantAdminReader implements VariantAdminReader {
       orderBy: { gtin: 'asc' },
       take: DUPLICATE_GTIN_SCAN,
     });
+    if (groups.length >= DUPLICATE_GTIN_SCAN) {
+      // The filter and its count stop here; the cap is logged so the data gets fixed.
+      this.#logger.warn({
+        msg: 'catalog.variant-admin.duplicate-gtin-cap',
+        marketId: market.marketId,
+        cap: DUPLICATE_GTIN_SCAN,
+      });
+    }
     return groups.flatMap((group) => (group.gtin === null ? [] : [group.gtin]));
   }
 }

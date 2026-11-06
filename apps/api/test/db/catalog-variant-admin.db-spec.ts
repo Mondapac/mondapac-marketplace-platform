@@ -38,7 +38,10 @@ const freshGtin = (): string =>
 describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (code) => {
   const market = marketOf(code);
   const other = marketOf(otherMarketOf(code));
-  const LOCALES = ['en-AU', 'ar-AU'];
+  // The Market's own locales (ZZ: ja-JP and en-US); AU supports one, so a second is passed as the
+  // reader takes the locale list from its caller.
+  const LOCALES = code === 'ZZ' ? ['ja-JP', 'en-US'] : ['en-AU', 'ar-AU'];
+  const [L0, L1] = LOCALES as [string, string];
   let db: Persistence;
   let owner: Client;
   let products: PrismaProductRepository;
@@ -92,7 +95,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
       ...base,
       family_id: familyId,
       revision_no: 1,
-      names: JSON.stringify({ 'en-AU': `Family ${tag}` }),
+      names: JSON.stringify({ [L0]: `Family ${tag}` }),
       groups: JSON.stringify([
         { groupCode: 'g', attributes: [{ code: typeCode, required: true, isVariantOption: true }] },
       ]),
@@ -125,13 +128,13 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
       material: false,
       is_variant_option: true,
       bounds: '{}',
-      names: JSON.stringify({ 'en-AU': 'Size' }),
+      names: JSON.stringify({ [L0]: 'Size' }),
       author_kind: 'seed',
       created_at: T0.toString(),
     });
     const optionLabels: Record<string, Record<string, string>> = {
-      l: { 'en-AU': 'Large', 'ar-AU': 'كبير' },
-      m: { 'en-AU': 'Medium' },
+      l: { [L0]: 'Large', [L1]: 'كبير' },
+      m: { [L0]: 'Medium' },
     };
     for (const [index, [optionCode, labels]] of Object.entries(optionLabels).entries()) {
       await insert('attribute_definition_revision_options', {
@@ -207,7 +210,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
     await insert('product_revision_texts', {
       ...base,
       revision_id: revisionId,
-      locale: 'en-AU',
+      locale: L0,
       name: options.name ?? 'Basmati rice',
       short_description: null,
       description: null,
@@ -272,7 +275,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
           issue: query.issue ?? null,
           after: query.after ?? null,
           limit: query.limit ?? 100,
-          locale: 'en-AU',
+          locale: L0,
           locales: LOCALES,
         }),
       true,
@@ -282,8 +285,8 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
   it('reads a variant type with its options, the defaults, its feature set and its counts', async () => {
     const type = await seedType(market);
     await seedProduct(market, type, [
-      { option: 'l', labels: { 'en-AU': 'Large' }, gtin: null },
-      { option: 'm', labels: { 'en-AU': 'Medium' }, gtin: null },
+      { option: 'l', labels: { [L0]: 'Large' }, gtin: null },
+      { option: 'm', labels: { [L0]: 'Medium' }, gtin: null },
     ]);
     await seedProduct(market, type, [{ option: 'l', labels: {}, gtin: null }], { status: 'draft' });
 
@@ -292,7 +295,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
       id: type.definitionId,
       code: type.typeCode,
       status: 'active',
-      names: { 'en-AU': 'Size' },
+      names: { [L0]: 'Size' },
       settings: DEFAULT_VARIANT_TYPE_SETTINGS,
       settingsVersion: 0,
     });
@@ -326,7 +329,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
         displayStyle: 'swatches',
         optionOrder: 'by-size',
         swatches: { l: '#AA0000' },
-        sellerHelp: { 'en-AU': 'Pick the size on the label.' },
+        sellerHelp: { [L0]: 'Pick the size on the label.' },
       },
       optionCodes: new Set(['l', 'm']),
       locales: LOCALES,
@@ -377,12 +380,12 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
     const type = await seedType(market);
     const shared = freshGtin();
     const a = await seedProduct(market, type, [
-      { option: 'l', labels: { 'en-AU': 'Large', 'ar-AU': 'كبير' }, gtin: shared },
-      { option: 'm', labels: { 'en-AU': 'Medium' }, gtin: freshGtin() },
+      { option: 'l', labels: { [L0]: 'Large', [L1]: 'كبير' }, gtin: shared },
+      { option: 'm', labels: { [L0]: 'Medium' }, gtin: freshGtin() },
     ]);
     const b = await seedProduct(market, type, [
       { option: 'l', labels: {}, gtin: shared },
-      { option: 'm', labels: { 'en-AU': 'Medium', 'ar-AU': '' }, gtin: null },
+      { option: 'm', labels: { [L0]: 'Medium', [L1]: '' }, gtin: null },
     ]);
     const [a0, a1] = a.variantIds as [string, string];
     const [b0, b1] = b.variantIds as [string, string];
@@ -404,8 +407,8 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
       productImages: 0,
       missingLocales: [],
     });
-    expect(byId.get(a1)).toMatchObject({ duplicateGtin: false, missingLocales: ['ar-AU'] });
-    expect(byId.get(b0)?.missingLocales).toEqual(['en-AU', 'ar-AU']);
+    expect(byId.get(a1)).toMatchObject({ duplicateGtin: false, missingLocales: [L1] });
+    expect(byId.get(b0)?.missingLocales).toEqual([L0, L1]);
 
     const issue = async (name: Parameters<typeof page>[1]['issue']) =>
       idsOf((await page(market, { typeCode: type.typeCode, issue: name })).rows).sort();
@@ -433,9 +436,9 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
     const type = await seedType(market);
     const gtin = freshGtin();
     const a = await seedProduct(market, type, [
-      { option: 'l', labels: { 'en-AU': 'Large' }, gtin },
-      { option: 'm', labels: { 'en-AU': 'Medium' }, gtin: null },
-      { option: 'l', labels: { 'en-AU': 'Large' }, gtin: null },
+      { option: 'l', labels: { [L0]: 'Large' }, gtin },
+      { option: 'm', labels: { [L0]: 'Medium' }, gtin: null },
+      { option: 'l', labels: { [L0]: 'Large' }, gtin: null },
     ]);
 
     const byCode = await page(market, {
@@ -448,6 +451,8 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
     const variantCode = byCode.rows.find((r) => r.variantId === a.variantIds[1])!.variantCode;
     const byVariant = await page(market, { typeCode: type.typeCode, text: variantCode });
     expect(idsOf(byVariant.rows)).toEqual([a.variantIds[1]]);
+    const byName = await page(market, { typeCode: type.typeCode, text: 'BASMATI' });
+    expect(idsOf(byName.rows).sort()).toEqual([...a.variantIds].sort());
     const none = await page(market, { typeCode: type.typeCode, text: 'no-such-thing' });
     expect(none.rows).toEqual([]);
 
