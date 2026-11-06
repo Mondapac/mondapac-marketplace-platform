@@ -115,6 +115,12 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
         },
       ],
       images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
+      variantImages: [
+        {
+          variantId: id<'Variant'>(4),
+          imageIds: [id<'ProductImage'>(0x702), id<'ProductImage'>(0x701)],
+        },
+      ],
       offers: [
         {
           offerId: ITEM.offerId,
@@ -236,6 +242,12 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
         },
       ],
       images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
+      variantImages: [
+        {
+          variantId: id<'Variant'>(4),
+          imageIds: [id<'ProductImage'>(0x702), id<'ProductImage'>(0x701)],
+        },
+      ],
       offers: [
         {
           offerId: ITEM.offerId,
