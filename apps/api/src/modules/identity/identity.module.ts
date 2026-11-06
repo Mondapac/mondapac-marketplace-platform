@@ -120,7 +120,13 @@ import { DisableAdminAccount } from './application/use-cases/disable-admin-accou
 import { DisableCustomerAccount } from './application/use-cases/disable-customer-account.use-case';
 import { EnableAdminAccount } from './application/use-cases/enable-admin-account.use-case';
 import { EnableCustomerAccount } from './application/use-cases/enable-customer-account.use-case';
+import { AcceptAgentInvitation } from './application/use-cases/accept-agent-invitation.use-case';
 import { InviteAdmin } from './application/use-cases/invite-admin.use-case';
+import { IssueAgentInvitation } from './application/use-cases/issue-agent-invitation.use-case';
+import { ReissueAgentInvitation } from './application/use-cases/reissue-agent-invitation.use-case';
+import { RevokeAgentInvitation } from './application/use-cases/revoke-agent-invitation.use-case';
+import { StartAgentInvitationAcceptance } from './application/use-cases/start-agent-invitation-acceptance.use-case';
+import { HANDOVER_CODES } from './application/ports/handover-codes';
 import { ResendAdminInvitation } from './application/use-cases/resend-admin-invitation.use-case';
 import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
@@ -300,6 +306,7 @@ const PORT = {
   challengeTokens: CHALLENGE_TOKENS,
   invitationTokens: INVITATION_TOKENS,
   enrolmentTags: ENROLMENT_SECRET_TAGS,
+  codes: HANDOVER_CODES,
   stepUp: STEP_UP_REPOSITORY,
   stepUpActions: StepUpActionRegistry,
   signInProviders: SIGN_IN_PROVIDERS_PORT,
@@ -1362,6 +1369,76 @@ function useCaseProvider<D, U>(
       outbox: true,
       audit: true,
       clock: true,
+    }),
+    useCaseProvider(IssueAgentInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      grants: true,
+      effectiveKeys: true,
+      throttles: true,
+      keys: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      codes: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ReissueAgentInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      grants: true,
+      effectiveKeys: true,
+      throttles: true,
+      keys: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      codes: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(RevokeAgentInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      grants: true,
+      effectiveKeys: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(StartAgentInvitationAcceptance, {
+      unitOfWork: true,
+      invitations: true,
+      throttles: true,
+      keys: true,
+      invitationTokens: true,
+      secrets: true,
+      enrolmentTags: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(AcceptAgentInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      invitationTokens: true,
+      enrolmentTags: true,
+      secrets: true,
+      codes: true,
+      hasher: true,
+      commonPasswords: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(InviteAdmin, {
       unitOfWork: true,

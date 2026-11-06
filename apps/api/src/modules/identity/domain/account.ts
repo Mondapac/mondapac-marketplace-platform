@@ -217,15 +217,15 @@ export class Account {
   static acceptInvitation(input: {
     readonly id: Id<'Account'>;
     readonly marketId: MarketId;
-    readonly population: 'admin' | 'seller';
+    readonly population: 'admin' | 'seller' | 'agent';
     readonly email: EmailAddress;
     readonly displayName: string;
     readonly passwordHash: string;
     readonly now: Temporal.Instant;
   }): Account {
     const { id, marketId, population, email, displayName, passwordHash, now } = input;
-    if (population !== 'admin' && population !== 'seller') {
-      throw new TypeError('Account.acceptInvitation: only seller-side and admin accounts');
+    if (population !== 'admin' && population !== 'seller' && population !== 'agent') {
+      throw new TypeError('Account.acceptInvitation: only seller-side, admin and agent accounts');
     }
     if (displayName.trim() === '') throw new AccountInvariantError('display-name-required');
     return new Account(

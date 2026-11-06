@@ -130,7 +130,7 @@ export class IssueFirstAdminInvitation extends UseCase<
             await this.deps.audit.record(
               context,
               InvitationRevokedAudit.entry(pending.state.id, {
-                after: { kind: pending.state.kind, roleId: pending.state.roleId },
+                after: { kind: pending.state.kind, roleId: pending.roleId },
               }),
             );
             replaced = true;

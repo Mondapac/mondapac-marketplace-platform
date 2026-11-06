@@ -358,7 +358,7 @@ export class AcceptAdminInvitation extends UseCase<
           if (!acceptableAdminInvitation(invitation, now)) return refuse();
           // I-6: the role is read again, in the context Market, at this moment. A platform role
           // has no seller (R9); a seller's role is never an admin's.
-          const role = await this.deps.roles.findById(market, invitation.state.roleId);
+          const role = await this.deps.roles.findById(market, invitation.roleId);
           if (role === null || role.state.scope !== 'platform' || role.state.sellerId !== null) {
             return refuse();
           }

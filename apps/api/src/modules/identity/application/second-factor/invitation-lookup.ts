@@ -22,3 +22,22 @@ export function acceptableAdminInvitation(
     invitation.state.email !== null
   );
 }
+
+/**
+ * Whether an invitation can be accepted through the agent path (ADR-0045 decision 2): dispatched,
+ * pending and unexpired at `now`, of the `agent` kind, with a live handover code. The admin path
+ * above never passes an agent invitation and this one never passes any other kind, so a token of
+ * one kind cannot be used on the other's route.
+ */
+export function acceptableAgentInvitation(
+  invitation: Invitation | null,
+  now: Temporal.Instant,
+): invitation is Invitation {
+  return (
+    invitation !== null &&
+    invitation.usableAt(now) &&
+    invitation.state.kind === 'agent' &&
+    invitation.state.email !== null &&
+    invitation.handoverCodeLive
+  );
+}

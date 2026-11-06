@@ -385,6 +385,46 @@ export const InvitationAcceptedAudit = defineAuditAction({
 });
 
 /**
+ * An agent invitation was issued by an admin (ADR-0045 decision 2). Target: the invitation; the
+ * actor is the inviter. `agentAccountId` is the account the invitation will create. Never the
+ * invited address, and never the handover code or its HMAC (the code is shown once, to the
+ * issuing admin only).
+ */
+export const AgentInvitationIssuedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.issued',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: { agentAccountId: auditField.id() },
+});
+
+/**
+ * A pending agent invitation was revoked by an admin, replaced by a re-issue, or voided by
+ * disabling the agent (ADR-0045 decisions 2 and 5). Target: the invitation.
+ */
+export const AgentInvitationRevokedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.revoked',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: { agentAccountId: auditField.id() },
+});
+
+/**
+ * An agent invitation was accepted (ADR-0045 decision 2): the link token and the handover code
+ * together bound the request, so `boundSubjectId` names the invitation; `accountId` is the account
+ * created and `invitedByAccountId` the admin who issued the invitation.
+ */
+export const AgentInvitationAcceptedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.accepted',
+  targetType: 'identity.invitation',
+  actors: ['anonymous'],
+  after: {
+    accountId: auditField.id(),
+    invitedByAccountId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
  * A second factor became active (identity design 3.4, 3.6; PA 5 row 7): inside an admin
  * invitation's acceptance (`boundSubjectId` = the invitation) or from an enrolment link with the
  * password (`boundSubjectId` = the account). Target: the factor.
@@ -599,6 +639,9 @@ export const SellerAccessReappliedAudit = defineAuditAction({
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
   RoleSeedApplied,
+  AgentInvitationIssuedAudit,
+  AgentInvitationRevokedAudit,
+  AgentInvitationAcceptedAudit,
   RoleCreatedAudit,
   RoleUpdatedAudit,
   RoleDeletedAudit,

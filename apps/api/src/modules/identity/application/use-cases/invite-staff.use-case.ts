@@ -220,7 +220,7 @@ export class InviteStaff extends UseCase<InviteStaffInput, InviteStaffOutput, In
             await audit.record(
               context,
               InvitationRevokedAudit.entry(pending.state.id, {
-                after: { kind: pending.state.kind, roleId: pending.state.roleId },
+                after: { kind: pending.state.kind, roleId: pending.roleId },
               }),
             );
             replaced = true;

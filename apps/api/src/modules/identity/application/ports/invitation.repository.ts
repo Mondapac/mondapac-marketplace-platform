@@ -45,6 +45,27 @@ export interface InvitationRepository {
   ): Promise<Invitation | null>;
 
   /**
+   * The pending agent invitation for this normalised address, or null: at most one, by the
+   * partial unique key `invitations_market_id_email_agent_pending_key` (ADR-0045).
+   */
+  findPendingAgentFor(market: MarketContext, emailNormalized: string): Promise<Invitation | null>;
+
+  /** The pending agent invitation that reserved this account id, or null. */
+  findPendingAgentByAccountId(
+    market: MarketContext,
+    agentAccountId: Id<'Account'>,
+  ): Promise<Invitation | null>;
+
+  /**
+   * Of these agent account ids, those with a pending invitation (an expired one not yet purged
+   * included): the "invited" state of `agentAccessOf`. At most 500 ids per call.
+   */
+  agentAccountIdsWithPendingInvitation(
+    market: MarketContext,
+    agentAccountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlySet<Id<'Account'>>>;
+
+  /**
    * The pending seller-owner invitation of this seller, or null: at most one, by the partial
    * unique key `invitations_market_id_seller_id_owner_pending_key` (HF5 (a), M12; slice 9).
    */

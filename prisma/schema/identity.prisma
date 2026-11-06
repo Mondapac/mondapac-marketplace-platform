@@ -511,17 +511,18 @@ model IdentityInvitation {
   id                 String                @id @db.Uuid
   marketId           String                @map("market_id") @db.VarChar(8)
   tenantId           String                @map("tenant_id")
-  /// seller-owner | staff | admin.
+  /// seller-owner | staff | admin | agent (ADR-0045).
   kind               String
   /// Personal. As typed, trimmed; NULL once decided.
   email              String?
   /// Personal. Trimmed, NFC, lower-cased; NULL once decided.
   emailNormalized    String?               @map("email_normalized")
-  /// Personal. Only on a pending seller-owner invitation (D 3.4, ux.md D6).
+  /// Personal. Only on a pending seller-owner or agent invitation (D 3.4, ux.md D6; ADR-0045).
   displayName        String?               @map("display_name")
-  /// Plain id (C4): the role may be deleted meanwhile, and acceptance refuses (R12).
-  roleId             String                @map("role_id") @db.Uuid
-  /// The seller of a seller-owner or staff invitation; NULL for admin.
+  /// Plain id (C4): the role may be deleted meanwhile, and acceptance refuses (R12). NULL for
+  /// an agent invitation: an agent holds no role (ADR-0045 decision 6).
+  roleId             String?               @map("role_id") @db.Uuid
+  /// The seller of a seller-owner or staff invitation; NULL for admin and agent.
   sellerId           String?               @map("seller_id") @db.Uuid
   /// Plain id (C4); NULL for the first-admin routine (HF5 (b)).
   invitedByAccountId String?               @map("invited_by_account_id") @db.Uuid
@@ -536,6 +537,13 @@ model IdentityInvitation {
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version            Int
   createdAt          DateTime              @map("created_at") @db.Timestamptz(6)
+  /// HMAC-SHA-256 of the handover code, bound to this invitation (ADR-0045 decision 2); agent
+  /// kind only, NULL once decided. The code itself is never stored.
+  handoverCodeHmac   Bytes?                @map("handover_code_hmac")
+  /// Wrong handover codes presented; the code is void from 5. Agent kind only.
+  handoverFailedAttempts Int?              @map("handover_failed_attempts") @db.SmallInt
+  /// The id the agent account will have (agent kind only): returned at issue, kept by a re-issue.
+  agentAccountId     String?               @map("agent_account_id") @db.Uuid
   sellerAccess       IdentitySellerAccess? @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   /// Acceptance and the preview (D 8.6 row 5); NULLs do not collide.

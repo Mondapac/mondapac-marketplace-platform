@@ -120,7 +120,10 @@ import {
   SIGN_IN_CHALLENGE_REPOSITORY,
   type SignInChallengeRepository,
 } from '../../src/modules/identity/application/ports/sign-in-challenge.repository';
-import { Invitation, type InvitationState } from '../../src/modules/identity/domain/invitation';
+import {
+  Invitation,
+  type InvitationRestoreState,
+} from '../../src/modules/identity/domain/invitation';
 import {
   SecondFactor,
   type SecondFactorState,
@@ -195,7 +198,7 @@ export class IdentityFakes {
   readonly factors = new Map<string, SecondFactorState>();
   /** Sign-in challenges by id, with the hex of their token hash (slice 7). */
   readonly challenges = new Map<string, { challenge: SignInChallenge; tokenHash: string }>();
-  readonly invitations = new Map<string, InvitationState>();
+  readonly invitations = new Map<string, InvitationRestoreState>();
   /** Seller step-up rules by "market|seller|action", and proofs by "market|session|action". */
   readonly stepUpPolicies = new Map<string, { required: boolean; updatedAt: Temporal.Instant }>();
   readonly stepUpProofs = new Map<string, Temporal.Instant>();
@@ -1661,6 +1664,41 @@ export class IdentityFakes {
       );
       return Promise.resolve(state === undefined ? null : Invitation.restore(state));
     },
+    findPendingAgentFor: (market, emailNormalized) => {
+      const state = [...this.invitations.values()].find(
+        (candidate) =>
+          candidate.marketId === market.marketId &&
+          candidate.kind === 'agent' &&
+          candidate.state === 'pending' &&
+          candidate.email?.normalized === emailNormalized,
+      );
+      return Promise.resolve(state === undefined ? null : Invitation.restore(state));
+    },
+    findPendingAgentByAccountId: (market, accountId) => {
+      const state = [...this.invitations.values()].find(
+        (candidate) =>
+          candidate.marketId === market.marketId &&
+          candidate.kind === 'agent' &&
+          candidate.state === 'pending' &&
+          candidate.agentAccountId === accountId,
+      );
+      return Promise.resolve(state === undefined ? null : Invitation.restore(state));
+    },
+    agentAccountIdsWithPendingInvitation: (market, accountIds) =>
+      Promise.resolve(
+        new Set(
+          [...this.invitations.values()]
+            .filter(
+              (candidate) =>
+                candidate.marketId === market.marketId &&
+                candidate.kind === 'agent' &&
+                candidate.state === 'pending' &&
+                candidate.agentAccountId != null &&
+                accountIds.includes(candidate.agentAccountId),
+            )
+            .map((candidate) => candidate.agentAccountId!),
+        ),
+      ),
     pendingAdminInvitations: (market, after, limit) =>
       Promise.resolve(
         [...this.invitations.values()]
@@ -1678,7 +1716,7 @@ export class IdentityFakes {
             id: state.id,
             state: 'pending' as const,
             email: state.email?.typed ?? '',
-            roleId: state.roleId,
+            roleId: state.roleId!,
             invitedByAccountId: state.invitedByAccountId,
             expiresAt: state.expiresAt,
             createdAt: state.createdAt,
@@ -1701,7 +1739,7 @@ export class IdentityFakes {
             id: state.id,
             state: 'pending' as const,
             email: state.email?.typed ?? '',
-            roleId: state.roleId,
+            roleId: state.roleId!,
             invitedByAccountId: state.invitedByAccountId,
             expiresAt: state.expiresAt,
             createdAt: state.createdAt,
@@ -1722,6 +1760,7 @@ export class IdentityFakes {
         (candidate) =>
           candidate.marketId === market.marketId &&
           candidate.state === 'pending' &&
+          candidate.kind !== 'agent' &&
           candidate.sellerId === sellerId &&
           candidate.email?.normalized === emailNormalized,
       );

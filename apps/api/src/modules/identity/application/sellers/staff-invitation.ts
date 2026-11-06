@@ -107,7 +107,8 @@ export async function changeStaffInvitation(
       ) {
         return err({ code: 'invitation.unknown' });
       }
-      const { kind, roleId } = invitation.state;
+      const { kind } = invitation.state;
+      const roleId = invitation.roleId;
       if (change === 'resend') {
         const address = invitation.state.email;
         const verdict = await staffInvitationResendVerdict(

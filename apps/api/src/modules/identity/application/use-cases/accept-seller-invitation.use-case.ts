@@ -301,7 +301,7 @@ export class AcceptSellerInvitation extends UseCase<
         const sellerId = invitation.state.sellerId!;
         const inviterId = invitation.state.invitedByAccountId;
         const staff = invitationKind === 'staff';
-        const role = await this.deps.roles.findById(market, invitation.state.roleId);
+        const role = await this.deps.roles.findById(market, invitation.roleId);
         if (role === null || role.state.scope !== 'seller' || role.isSystem === staff) {
           return ok(null);
         }
