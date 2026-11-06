@@ -31,8 +31,8 @@ States:
 - Field error: `FieldStatus` under the field plus `SettingsErrorSummary`-style summary at top; focus moves to the first invalid field. Wrong code: "That code is not right. Check it with MondaPac and try again. {n} tries left."
 - Invitation expired or revoked: `Banner` critical: "This invitation has expired. Ask MondaPac to send a new one." No form shown; no retry button.
 - Code locked (5 wrong tries): `Banner` critical: "Too many wrong codes. This invitation is locked. Ask MondaPac to reissue it." Form removed.
-- Already set up: redirect to sign-in with info `Banner` "Your account is already set up. Sign in."
-- Back from step 2/3 to step 1 is not allowed once the code is accepted (code is single-use); "Back" exists only between password and nothing; step 3 cannot be skipped (second factor is mandatory; no "Skip").
+- Already set up: shows the same expired banner as above.
+- Steps 1–2 are checked only in the browser; "Continue" on step 1 makes no server call. The server checks the handover code, password and authenticator code together on "Finish set-up". Step 3 cannot be skipped (second factor is mandatory; no "Skip").
 - Responsive: card 100% wide at 375, 440px centred at 768/1280. Keyboard: Enter submits the step; step heading receives focus on step change.
 
 ## 2. Agent dashboard (AGT-06)

@@ -231,4 +231,4 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
 ## 9. G2 reviews
 
 - 2026-11-06, Ali (cto): open questions 3 to 8 decided; final review wording fixes applied.
-- 2026-11-06, Hassan (security-tester): one High (refund lost on the commission-share basis when it arrives before the earning) and five Medium, three Low findings; all applied in sections 1, 2, 3, 4 and 5 and in `ux.md` section 1 and 4. Re-review pending.
+- 2026-11-06, Hassan (security-tester): one High (refund lost on the commission-share basis when it arrives before the earning) and five Medium, three Low findings; all applied in sections 1, 2, 3, 4 and 5 and in `ux.md` section 1 and 4. Re-review: blocker cleared; two Low wording fixes in `ux.md` section 1 applied (already-set-up shows the expired banner; steps 1–2 checked only in the browser).
