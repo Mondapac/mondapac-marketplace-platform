@@ -99,6 +99,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       approvalRequired: () => Promise.resolve(true),
     };
     service = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes,
       policy,
@@ -175,6 +176,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     ): FreezeRevision {
       const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
       return new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         ...deps,
         familyResolver: { resolve } as never,
         attributes: {
@@ -260,6 +262,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       // new set's values: they are left out, never met as unknown (CAT-10).
       const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
       const back = new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         ...deps,
         familyResolver: { resolve: () => Promise.resolve({ ok: true, familyCode: 'default' }) },
         attributes: {
@@ -283,6 +286,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     it('a dropped material attribute is no relaxation: the revision just does not carry it', async () => {
       const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
       const moved = new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         ...deps,
         familyResolver: { resolve: () => Promise.resolve({ ok: true, familyCode: 'frozen' }) },
         attributes: {
@@ -661,6 +665,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       }),
     ).rejects.toThrow(/do not belong together/);
     const mismatched = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes: {
         loadSchema: () => Promise.resolve(schemaOf()),
@@ -691,6 +696,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       error: { code: 'revision.schema-unavailable' },
     });
     const unknown = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes: {
         loadSchema: () => Promise.resolve(schemaOf()),
@@ -705,6 +711,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
   });
   it('reports a required field whose value suggestion is open as pending, not as missing', async () => {
     const withSuggestions = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
       policy: {

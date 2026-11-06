@@ -190,6 +190,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       workingCopies: copies,
       revisions,
       freeze: new FreezeRevision({
+        revisions,
         familyResolver: fixedFamilyResolver(),
         attributes,
         policy,

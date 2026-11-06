@@ -334,6 +334,7 @@ describe.each(FIXTURES)(
           ),
       } as unknown as AttributeRepository;
       const freeze = new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         familyResolver: fixedFamilyResolver(),
         attributes,
         policy,

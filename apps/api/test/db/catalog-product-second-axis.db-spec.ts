@@ -89,6 +89,9 @@ describe.each(TEST_MARKETS)(
     };
     let categoryId: string;
     let eligible = true;
+    let axisAdded = true;
+    let maxAxes = 2;
+    let approvalOn = true;
     const reviewClock = new FixedClock(T1);
 
     const policy: CatalogMarketPolicy = {
@@ -102,10 +105,10 @@ describe.each(TEST_MARKETS)(
         anyImage: false,
         variantRemoved: true,
         gtinChanged: true,
-        axisAdded: true,
+        axisAdded,
       }),
       maxVariantsPerProduct: () => 10,
-      maxVariantAttributes: () => 2,
+      maxVariantAttributes: () => maxAxes,
       units: () => [],
       maxCategoryDepth: () => 4,
       maxCategoryChangeTags: () => 50_000,
@@ -114,7 +117,7 @@ describe.each(TEST_MARKETS)(
       conditions: () => ['new'],
       sellFromCatalogue: () => Promise.resolve(true),
       sellerCanCreateProduct: () => Promise.resolve(true),
-      approvalRequired: () => Promise.resolve(true),
+      approvalRequired: () => Promise.resolve(approvalOn),
     };
 
     async function insert(table: string, row: Record<string, unknown>) {
@@ -263,6 +266,9 @@ describe.each(TEST_MARKETS)(
     beforeEach(() => {
       appended = [];
       eligible = true;
+      axisAdded = true;
+      maxAxes = 2;
+      approvalOn = true;
     });
     afterAll(async () => {
       await app.end();
@@ -305,12 +311,12 @@ describe.each(TEST_MARKETS)(
       optionValues: colour === undefined ? { size } : { size, colour },
     });
 
-    async function draftedProduct(): Promise<Product> {
+    async function draftedProduct(scope: 'SELLER' | 'PLATFORM' = 'SELLER'): Promise<Product> {
       const created = Product.create({
         id: uuid7() as Id<'Product'>,
         marketId: market.marketId,
-        scope: 'SELLER',
-        sellerId: SELLER,
+        scope,
+        sellerId: scope === 'SELLER' ? SELLER : null,
         handler: configurableProductType,
         familyCode: 'default',
         productCode: `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
@@ -319,7 +325,8 @@ describe.each(TEST_MARKETS)(
       });
       if (!created.ok) throw new Error(created.error.code);
       VARIANTS = [uuid7() as Id<'Variant'>, uuid7() as Id<'Variant'>];
-      for (const id of VARIANTS) created.value.addVariant(id, 100, T0, 'seller');
+      for (const id of VARIANTS)
+        created.value.addVariant(id, 100, T0, scope === 'SELLER' ? 'seller' : 'admin');
       await inUnit(() => products.add(market, created.value));
       await saveCopy(
         created.value.state.id,
@@ -458,6 +465,74 @@ describe.each(TEST_MARKETS)(
       expect(refused.error.issues.map((issue) => issue.code)).toContain('variants.option-missing');
       expect(await productRow(productId)).toMatchObject({
         published_revision_id: firstRevisionId,
+        pending_revision_id: null,
+      });
+    });
+
+    it('publishes a second axis at once, not sensitive and with no reason, when the Market does not list axisAdded and approval is off', async () => {
+      const { productId, firstRevisionId } = await publishedOnOneAxis();
+      axisAdded = false;
+      approvalOn = false;
+      await saveCopy(productId, twoAxes(), firstRevisionId);
+      const second = await submitCopy(productId);
+      if (!second.ok) throw new Error(second.error.code);
+      expect(second.value).toMatchObject({ revisionNo: 2, published: true });
+      expect(await revisionRow(second.value.revisionId)).toEqual({
+        revision_no: 2,
+        sensitive: false,
+        sensitive_reasons: [],
+      });
+      expect(await productRow(productId)).toMatchObject({
+        status: 'published',
+        published_revision_id: second.value.revisionId,
+        pending_revision_id: null,
+      });
+      const after = await inUnit(
+        () => revisions.find(market, productId, second.value.revisionId),
+        true,
+      );
+      expect(after!.content.variants.map((variant) => variant.variantId)).toEqual([...VARIANTS]);
+      expect(after!.content.variants.map((variant) => variant.optionValues)).toEqual([
+        { size: 'l', colour: 'r' },
+        { size: 's', colour: 'b' },
+      ]);
+    });
+
+    it('refuses a second axis when the Market allows one axis at most', async () => {
+      const { productId, firstRevisionId } = await publishedOnOneAxis();
+      maxAxes = 1;
+      await saveCopy(productId, twoAxes(), firstRevisionId);
+      const refused = await submitCopy(productId);
+      expect(refused).toMatchObject({ ok: false, error: { code: 'revision.not-ready' } });
+      if (refused.ok || refused.error.code !== 'revision.not-ready') return;
+      const codes = refused.error.issues.map((issue) => issue.code);
+      expect(codes).toContain('variants.axes-too-many');
+      expect(codes).toContain('variants.axes-locked');
+      expect(await productRow(productId)).toMatchObject({
+        published_revision_id: firstRevisionId,
+        pending_revision_id: null,
+      });
+    });
+
+    it('publishes an admin-authored second axis on a PLATFORM product at once, marked sensitive with axis-added (design 4.2, 4.3)', async () => {
+      const product = await draftedProduct('PLATFORM');
+      const productId = product.state.id;
+      const first = await submit.execute(adminContext(), { productId, replacePending: false });
+      if (!first.ok) throw new Error(first.error.code);
+      expect(first.value).toMatchObject({ revisionNo: 1, published: true });
+
+      await saveCopy(productId, twoAxes(), first.value.revisionId);
+      const second = await submit.execute(adminContext(), { productId, replacePending: false });
+      if (!second.ok) throw new Error(second.error.code);
+      expect(second.value).toMatchObject({ revisionNo: 2, published: true });
+      expect(await revisionRow(second.value.revisionId)).toEqual({
+        revision_no: 2,
+        sensitive: true,
+        sensitive_reasons: ['axis-added'],
+      });
+      expect(await productRow(productId)).toMatchObject({
+        status: 'published',
+        published_revision_id: second.value.revisionId,
         pending_revision_id: null,
       });
     });

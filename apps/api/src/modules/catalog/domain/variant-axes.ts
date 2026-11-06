@@ -30,8 +30,8 @@ export function axisCandidates(schema: AttributeSchema): readonly string[] {
  * the published revision: once a product is published its axes stay as they were (decision t3), so
  * a different set is refused, with one exception (Add a second axis, V9b): when the published
  * revision has exactly one axis and `maxAxes` is at least 2, that axis plus exactly one more is
- * accepted, once (with at most two axes nothing is stored for it). The returned schema holds the chosen axes as the only option
- * attributes; an unchosen candidate is not an axis of this product.
+ * accepted, once (with at most two axes nothing is stored for it). The returned schema holds the chosen
+ * axes as the only option attributes; an unchosen candidate is not an axis of this product.
  */
 export function chooseAxes(
   schema: AttributeSchema,

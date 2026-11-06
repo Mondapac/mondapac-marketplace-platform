@@ -180,6 +180,7 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          revisions,
           familyResolver: fixedFamilyResolver(),
           attributes,
           policy,
